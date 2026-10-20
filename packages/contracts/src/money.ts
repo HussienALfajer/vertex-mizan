@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { DomainError, type ErrorCode } from './errors.js';
 import {
+  addExact,
   divideHalfAwayFromZero,
   MINOR_MAX,
   MINOR_MIN,
@@ -210,30 +211,46 @@ function crossRatio(from: CurrencyCode, to: CurrencyCode, { on, legs }: CrossRat
  * its own currency is not a conversion: the caller uses it as is, with no rate.
  */
 export function convert(amount: Money, to: CurrencyCode, rate: ExchangeRate | CrossRate): Money {
-  const exact = exactConversion(amount, to, rate);
+  const exact = exactValue(amount, to, rate);
   return money(divideHalfAwayFromZero(exact.numerator, exact.denominator), to);
 }
 
-/** An exact amount in minor units: `numerator ÷ denominator`, with `denominator` above zero. */
-export interface ExactAmount {
-  readonly numerator: bigint;
-  readonly denominator: bigint;
-}
-
-/**
- * The exact value that `convert()` rounds, in minor units of `to`, checked as `convert()` checks
- * its arguments. Not a second conversion: it is for checks that need the unrounded value, such as
- * whether an entry is out of balance by conversion rounding only (`packages/ledger`).
- */
-export function exactConversion(
-  amount: Money,
-  to: CurrencyCode,
-  rate: ExchangeRate | CrossRate,
-): ExactAmount {
+/** The exact value `convert()` rounds, as a fraction of minor units of `to`. Never exported. */
+function exactValue(amount: Money, to: CurrencyCode, rate: ExchangeRate | CrossRate): Ratio {
   const from = amount.currency;
   checkMinor(amount.amountMinor, from);
   const ratio = 'base' in rate ? rateRatio(checkRate(rate), from, to) : crossRatio(from, to, rate);
   return scaleExact(amount.amountMinor, ratio, currencies[from].exponent, currencies[to].exponent);
+}
+
+/** A term of `sumsToZeroExactly()`: an amount as is, or an amount converted with `rate`. */
+export interface ExactTerm {
+  readonly amount: Money;
+  readonly rate?: ExchangeRate | CrossRate;
+}
+
+/**
+ * Whether terms sum to exactly zero in `currency` before any rounding: each term is an amount in
+ * `currency` taken as is, or an amount converted to `currency` with its rate, taken at the exact
+ * value `convert()` would round. It tells whether an entry is out of balance by conversion rounding
+ * only (`packages/ledger`). The unrounded value itself never leaves this module, so `convert()`
+ * stays the one conversion. Checks its terms as `convert()` does; an amount in another currency
+ * with no rate is refused (`RATE_PAIR_MISMATCH`).
+ */
+export function sumsToZeroExactly(currency: CurrencyCode, terms: readonly ExactTerm[]): boolean {
+  let sum: Ratio = { numerator: 0n, denominator: 1n };
+  for (const { amount, rate } of terms) {
+    if (rate === undefined) {
+      checkMinor(amount.amountMinor, amount.currency);
+      if (amount.currency !== currency) {
+        fail('RATE_PAIR_MISMATCH', `A ${amount.currency} amount in a ${currency} sum with no rate`);
+      }
+      sum = addExact(sum, { numerator: amount.amountMinor, denominator: 1n });
+    } else {
+      sum = addExact(sum, exactValue(amount, currency, rate));
+    }
+  }
+  return sum.numerator === 0n;
 }
 
 /**

@@ -8,8 +8,8 @@ import {
   convert,
   currencies,
   type ExchangeRate,
-  exactConversion,
   money,
+  sumsToZeroExactly,
 } from './money.js';
 import { MINOR_MAX, type Ratio, scaleMinor } from './money-arithmetic.js';
 
@@ -115,21 +115,23 @@ describe('convert properties', () => {
     );
   });
 
-  it('exposes the exact value it rounds through exactConversion()', () => {
+  it('sums to zero exactly when amounts of one currency at one rate do, and only then', () => {
     fc.assert(
-      fc.property(amount, rateDigits, pair, (x, digits, [base, quoteCurrency]) => {
-        const rate = quote(base, quoteCurrency, rateText(digits));
-        const ratio = { numerator: digits.units, denominator: 10n ** BigInt(digits.scale) };
-        const value = exact(
-          x,
-          ratio,
-          currencies[base].exponent,
-          currencies[quoteCurrency].exponent,
-        );
-        const result = exactConversion(money(x, base), quoteCurrency, rate);
-        expect(result.denominator > 0n).toBe(true);
-        expect(result.numerator * value.denominator).toBe(value.numerator * result.denominator);
-      }),
+      fc.property(
+        fc.array(amount, { minLength: 1, maxLength: 6 }),
+        rateDigits,
+        pair,
+        fc.bigInt({ min: -3n, max: 3n }),
+        (amounts, digits, [base, quoteCurrency], offset) => {
+          const rate = quote(base, quoteCurrency, rateText(digits));
+          const balanced = [...amounts, -amounts.reduce((sum, x) => sum + x, 0n) + offset];
+          const terms = balanced.map((x) => ({ amount: money(x, base), rate }));
+          expect(sumsToZeroExactly(quoteCurrency, terms)).toBe(offset === 0n);
+          // The same amounts in their own currency, with no rate.
+          const own = balanced.map((x) => ({ amount: money(x, base) }));
+          expect(sumsToZeroExactly(base, own)).toBe(offset === 0n);
+        },
+      ),
       { numRuns: 2_000 },
     );
   });

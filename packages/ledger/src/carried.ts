@@ -9,7 +9,12 @@ import { abs, share } from './share.js';
  * ledger.
  */
 
-/** An open item measured once (an invoice's receivable, a contract asset, a contract liability). */
+/**
+ * An open item measured once (an invoice's receivable, a contract asset), cleared as movements
+ * come. A balance is split by one method only: a schedule known in advance (a deferral's months,
+ * a deposit's milestones) with `allocateCarried()`, movements as they come with `clearOpenItem()`.
+ * The two round differently, so mixing them on one balance would leave a remainder.
+ */
 export interface OpenItem {
   /** The amounts the item was measured at. Month-end revaluations reverse, so they are not here. */
   readonly measured: CarriedAmounts;

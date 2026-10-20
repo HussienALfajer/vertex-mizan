@@ -94,8 +94,128 @@ describe('balanceEntry', () => {
       measuredLine({ account: '4110', amount: money(-2n, 'USD') }, usdBulletin),
     ];
     expect(() => balanceEntry({ on: '2026-11-03', ledgers: sypUsd, lines, rounding })).toThrow(
-      expect.objectContaining({ code: 'ENTRY_UNBALANCED' }),
+      expect.objectContaining({
+        code: 'ENTRY_UNBALANCED',
+        details: { currency: 'USD', residualMinor: '-1' },
+      }),
     );
+  });
+
+  it('never turns lines that do not balance in their one currency into a gain or loss', () => {
+    // New measurements: 100.00 USD against 90.00 USD at 121.5, in a company with SYP books only.
+    const sypBook = { ...usdBulletin, ledgers: sypOnly };
+    const invoice = [
+      measuredLine({ account: '1210', amount: money(10_000n, 'USD') }, sypBook),
+      measuredLine({ account: '4110', amount: money(-9_000n, 'USD') }, sypBook),
+    ];
+    expect(refusal(() => exchangeDifferenceLines(sypOnly, invoice, gainOrLoss))).toBe(
+      'ENTRY_UNBALANCED',
+    );
+    const gain = differenceLine(sypOnly, 'book', -121_500n, { kind: 'gain-loss', ...gainOrLoss });
+    expect(
+      refusal(() =>
+        balanceEntry({ on: '2026-11-03', ledgers: sypOnly, lines: [...invoice, gain], rounding }),
+      ),
+    ).toBe('ENTRY_UNBALANCED');
+    // An overpayment: 120.00 USD received at 123 against a 100.00 USD receivable at 120. The
+    // 20.00 USD over is the client's, not a gain, so the rule must post it before balancing.
+    const item = {
+      transaction: money(10_000n, 'USD'),
+      bookMinor: 1_200_000n,
+      parallelMinor: 10_000n,
+    };
+    const at = {
+      ledgers: sypUsd,
+      on: '2026-11-20',
+      rates: [rate('USD', 'SYP', '123.0000', 'bulletin', '2026-11-20')],
+    };
+    const paid = [
+      measuredLine({ account: '1121', amount: money(12_000n, 'USD') }, at),
+      carriedLine({
+        account: '1210',
+        amounts: clearOpenItem({ measured: item, openMinor: 10_000n }, -10_000n),
+      }),
+    ];
+    expect(() => exchangeDifferenceLines(sypUsd, paid, gainOrLoss)).toThrow(
+      expect.objectContaining({
+        code: 'ENTRY_UNBALANCED',
+        details: { currency: 'USD', residualMinor: '-2000' },
+      }),
+    );
+    // With the 20.00 USD credited to the client, the book gain is the 300.00 SYP alone.
+    const credit = measuredLine({ account: '2220', amount: money(-2_000n, 'USD') }, at);
+    const differences = exchangeDifferenceLines(sypUsd, [...paid, credit], gainOrLoss);
+    expect(differences.map((line) => [line.bookMinor, line.parallelMinor])).toEqual([
+      [-30_000n, 0n],
+    ]);
+  });
+
+  it('refuses a difference line among new measurements in one currency, rounding included', () => {
+    const lines = invoice(usdBulletin, [3_333n, 3_333n, 3_334n], 'USD');
+    const absorbed = differenceLine(sypUsd, 'book', 1n, { kind: 'gain-loss', ...gainOrLoss });
+    expect(
+      refusal(() =>
+        balanceEntry({ on: '2026-11-03', ledgers: sypUsd, lines: [...lines, absorbed], rounding }),
+      ),
+    ).toBe('ENTRY_UNBALANCED');
+  });
+
+  it('accepts rounding lines passed in only when they are exactly the rounding needed', () => {
+    const lines = invoice(usdBulletin, [3_333n, 3_333n, 3_334n], 'USD');
+    const entry = balanceEntry({ on: '2026-11-03', ledgers: sypUsd, lines, rounding });
+    // Passed in again (as a reversal passes its own), the rounding line is accepted as it is.
+    expect(balanceEntry({ on: '2026-11-03', ledgers: sypUsd, lines: entry, rounding })).toEqual(
+      entry,
+    );
+    const roundingLine = (amount: bigint) => ({
+      kind: 'rounding' as const,
+      ledger: 'book' as const,
+      account: '5920',
+      dimensions: {},
+      transaction: money(amount, 'SYP'),
+      bookMinor: amount,
+      parallelMinor: 0n,
+    });
+    // A rounding line that hides a settlement's 300.00 SYP exchange residual: a 100.00 USD
+    // receivable carried at 12 000.00 SYP, paid at 123.
+    const item = {
+      transaction: money(10_000n, 'USD'),
+      bookMinor: 1_200_000n,
+      parallelMinor: 10_000n,
+    };
+    const at = {
+      ledgers: sypUsd,
+      on: '2026-11-20',
+      rates: [rate('USD', 'SYP', '123.0000', 'bulletin', '2026-11-20')],
+    };
+    const settlement = [
+      measuredLine({ account: '1121', amount: money(10_000n, 'USD') }, at),
+      carriedLine({
+        account: '1210',
+        amounts: clearOpenItem({ measured: item, openMinor: 10_000n }, -10_000n),
+      }),
+    ];
+    expect(
+      refusal(() =>
+        balanceEntry({
+          on: '2026-11-20',
+          ledgers: sypUsd,
+          lines: [...settlement, roundingLine(-30_000n)],
+          rounding,
+        }),
+      ),
+    ).toBe('ENTRY_UNBALANCED');
+    // A rounding line that is not the rounding the entry needs.
+    expect(
+      refusal(() =>
+        balanceEntry({
+          on: '2026-11-03',
+          ledgers: sypUsd,
+          lines: [...lines, roundingLine(5n)],
+          rounding,
+        }),
+      ),
+    ).toBe('ENTRY_UNBALANCED');
   });
 
   it('refuses fewer than two lines and SYP amounts before the new pound', () => {

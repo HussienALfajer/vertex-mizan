@@ -2,16 +2,15 @@ import {
   type CompanyLedgers,
   type CurrencyCode,
   checkCurrencyDate,
+  convert,
   DomainError,
-  divideHalfAwayFromZero,
-  type ExactAmount,
-  exactConversion,
+  type ExactTerm,
   type Ledger,
   type Money,
   money,
+  sumsToZeroExactly,
 } from '@vertex-mizan/contracts';
 import { type Dimensions, keptLedgers, type Line, ledgerAmount, ledgerCurrency } from './lines.js';
-import { abs } from './share.js';
 
 /** Where a line goes: an account and its dimensions. */
 export interface LineTarget {
@@ -77,16 +76,48 @@ export function differenceLine(
 }
 
 /**
+ * The lines an exchange difference cannot explain: all but difference and rounding lines. When
+ * they are all in one transaction currency they balance in it; when they are also all new
+ * measurements, any residual in a ledger is conversion rounding (ADR 0007). An overpayment, a
+ * short payment or a mistake in a posting rule is never a gain or loss.
+ */
+function checkOneCurrency(lines: readonly Line[]): void {
+  const base = lines.filter((line) => line.kind !== 'difference' && line.kind !== 'rounding');
+  const currency = base[0]?.transaction.currency;
+  if (currency === undefined || base.some((line) => line.transaction.currency !== currency)) {
+    return;
+  }
+  let total = 0n;
+  for (const line of base) total += line.transaction.amountMinor;
+  if (total !== 0n) {
+    throw new DomainError('ENTRY_UNBALANCED', `The entry's ${currency} lines do not balance`, {
+      currency,
+      residualMinor: (-total).toString(),
+    });
+  }
+  const measuredOnly = base.every((line) => line.kind === 'measured');
+  if (measuredOnly && lines.some((line) => line.kind === 'difference')) {
+    throw new DomainError(
+      'ENTRY_UNBALANCED',
+      `New measurements in ${currency} alone leave no exchange difference`,
+      { currency },
+    );
+  }
+}
+
+/**
  * The realised exchange-difference lines that balance `lines` (IAS 21.28): one on `target`, the
  * exchange gain or loss account, for the residual of each ledger they leave out of balance. For
  * posting rules that settle or clear a carried balance, or whose lines are in more than one
  * transaction currency; the residual includes the conversion rounding of their new measurements.
+ * Lines in one transaction currency that do not balance in it are refused (`ENTRY_UNBALANCED`).
  */
 export function exchangeDifferenceLines(
   ledgers: CompanyLedgers,
   lines: readonly Line[],
   target: LineTarget,
 ): Line[] {
+  checkOneCurrency(lines);
   const differences: Line[] = [];
   for (const [ledger] of keptLedgers(ledgers)) {
     const residual = -ledgerTotal(lines, ledger);
@@ -111,12 +142,13 @@ function checkShape(line: Line, ledgers: CompanyLedgers): void {
 }
 
 /**
- * Checks a line's amount in one ledger and returns its exact value there: the unrounded
- * conversion of a converted line, the amount itself otherwise.
+ * Checks a line's amount in one ledger against its kind, and returns its term in the exact
+ * balance: the transaction amount with the rate it was converted at, or the amount as is.
+ * Rounding lines have no term: the rounding they absorb is judged without them.
  */
-function exactIn(line: Line, ledger: Ledger, currency: CurrencyCode): ExactAmount {
+function termIn(line: Line, ledger: Ledger, currency: CurrencyCode): ExactTerm | null {
   const amount = amountIn(line, ledger);
-  money(amount, currency); // refuses an amount outside the stored range
+  const asIs = { amount: money(amount, currency) }; // refuses an amount outside the stored range
   const { transaction } = line;
   const own = transaction.currency === currency;
   if (line.kind === 'difference' || line.kind === 'rounding') {
@@ -129,7 +161,7 @@ function exactIn(line: Line, ledger: Ledger, currency: CurrencyCode): ExactAmoun
           ? transaction.amountMinor === amount
           : line.kind === 'difference' && transaction.amountMinor === 0n;
     if (!fits) throw new TypeError(`A ${line.kind} line that does not fit ADR 0007`);
-    return { numerator: amount, denominator: 1n };
+    return line.kind === 'rounding' ? null : asIs;
   }
   const conversion = line.kind === 'measured' ? line.conversions[ledger] : null;
   if (own) {
@@ -137,28 +169,14 @@ function exactIn(line: Line, ledger: Ledger, currency: CurrencyCode): ExactAmoun
     if (conversion !== null || transaction.amountMinor !== amount) {
       throw new TypeError('A line in the ledger currency whose amount is not its own');
     }
-    return { numerator: amount, denominator: 1n };
+    return asIs;
   }
-  if (line.kind === 'carried') return { numerator: amount, denominator: 1n };
+  if (line.kind === 'carried') return asIs;
   if (conversion === null) throw new TypeError('A measured line with no conversion');
-  const exact = exactConversion(transaction, currency, conversion.rate);
-  if (divideHalfAwayFromZero(exact.numerator, exact.denominator) !== amount) {
+  if (convert(transaction, currency, conversion.rate).amountMinor !== amount) {
     throw new TypeError('A measured line whose amount is not the conversion it records');
   }
-  return exact;
-}
-
-function gcd(a: bigint, b: bigint): bigint {
-  let [x, y] = [abs(a), abs(b)];
-  while (y !== 0n) [x, y] = [y, x % y];
-  return x;
-}
-
-function add(a: ExactAmount, b: ExactAmount): ExactAmount {
-  const numerator = a.numerator * b.denominator + b.numerator * a.denominator;
-  const denominator = a.denominator * b.denominator;
-  const divisor = gcd(numerator, denominator);
-  return { numerator: numerator / divisor, denominator: denominator / divisor };
+  return { amount: transaction, rate: conversion.rate };
 }
 
 /** An entry as a posting rule built it, before its rounding lines. */
@@ -174,14 +192,17 @@ export interface EntryDraft {
 /**
  * The lines of an entry ready to post (ADR 0007): `lines`, and for each ledger that conversion
  * rounding alone leaves out of balance, a line on the rounding account for the difference, in that
- * ledger only. Rounding alone means that the exact, unrounded values of the converted lines and
- * the other lines' amounts sum to zero, so the difference is at most half a minor unit per
- * converted line.
+ * ledger only. Rounding alone means that, leaving rounding lines out, the exact, unrounded values
+ * of the converted lines and the other lines' amounts sum to zero; the rounding of a ledger, added
+ * here or passed in (a reversal's, which must then balance the ledger by itself), is therefore at
+ * most half a minor unit per converted line.
  *
  * Refuses an entry with fewer than two lines (`ENTRY_TOO_FEW_LINES`), an SYP amount dated before
- * the new pound (`SYP_BEFORE_REDENOMINATION`), and any other imbalance (`ENTRY_UNBALANCED`): an
- * exchange residual is posted by the posting rule as difference lines before this. A line whose
- * amounts contradict its kind is a programming error (`TypeError`).
+ * the new pound (`SYP_BEFORE_REDENOMINATION`), and any other imbalance (`ENTRY_UNBALANCED`): lines
+ * in one transaction currency that do not balance in it, a difference line among new measurements
+ * in one currency, or a residual that is not rounding (the posting rule posts an exchange residual
+ * as difference lines first). A line whose amounts contradict its kind is a programming error
+ * (`TypeError`).
  */
 export function balanceEntry(draft: EntryDraft): Line[] {
   const { on, ledgers, lines } = draft;
@@ -194,23 +215,31 @@ export function balanceEntry(draft: EntryDraft): Line[] {
     checkShape(line, ledgers);
   }
   // Every line is checked in every ledger before any balance is judged.
-  const exactTotals = keptLedgers(ledgers).map(([ledger, settings]) => {
-    let exact: ExactAmount = { numerator: 0n, denominator: 1n };
-    for (const line of lines) exact = add(exact, exactIn(line, ledger, settings.currency));
-    return { ledger, exact };
+  const checked = keptLedgers(ledgers).map(([ledger, settings]) => {
+    const terms: ExactTerm[] = [];
+    for (const line of lines) {
+      const term = termIn(line, ledger, settings.currency);
+      if (term !== null) terms.push(term);
+    }
+    return { ledger, currency: settings.currency, terms };
   });
+  checkOneCurrency(lines);
   const balanced = [...lines];
-  for (const { ledger, exact } of exactTotals) {
+  for (const { ledger, currency, terms } of checked) {
     const residual = -ledgerTotal(lines, ledger);
-    if (residual === 0n) continue;
-    if (exact.numerator !== 0n) {
+    // Rounding lines passed in (a reversal's) must be all the rounding their ledger needs.
+    const rounded = lines.some((line) => line.kind === 'rounding' && line.ledger === ledger);
+    if (residual === 0n && !rounded) continue;
+    if ((rounded && residual !== 0n) || !sumsToZeroExactly(currency, terms)) {
       throw new DomainError(
         'ENTRY_UNBALANCED',
         `The entry is out of balance in the ${ledger} ledger beyond conversion rounding`,
         { ledger, residualMinor: residual.toString() },
       );
     }
-    balanced.push(oneLedgerLine('rounding', ledgers, ledger, residual, null, draft.rounding));
+    if (residual !== 0n) {
+      balanced.push(oneLedgerLine('rounding', ledgers, ledger, residual, null, draft.rounding));
+    }
   }
   return balanced;
 }

@@ -19,8 +19,16 @@ import {
   entryHash,
   verifyChain,
 } from './integrity.js';
-import { type CarriedAmounts, carriedLine, keptLedgers, type Line, ledgerAmount } from './lines.js';
+import {
+  type CarriedAmounts,
+  carriedLine,
+  keptLedgers,
+  type Line,
+  ledgerAmount,
+  ledgerCurrency,
+} from './lines.js';
 import { type MeasureContext, measuredLine } from './measure.js';
+import { refusal } from './test-fixtures.js';
 
 /**
  * The ADR 0007 properties of the ledger mechanics, and the integrity chain's (ADR 0005). The
@@ -126,7 +134,7 @@ const newMeasurements = fc
         measuredLine({ account: 'C', amount: money(-credit, from) }, context),
       ),
     ];
-    return { company, lines };
+    return { company, lines, context, from };
   });
 
 const rounding = { account: 'R' };
@@ -191,6 +199,55 @@ describe('built entries', () => {
   });
 });
 
+describe('imbalances', () => {
+  it('in the one currency of an entry are refused, with or without difference lines', () => {
+    fc.assert(
+      fc.property(newMeasurements, nonZero, ({ company, lines, context, from }, offset) => {
+        const off = [
+          ...lines,
+          measuredLine({ account: 'D', amount: money(offset, from) }, context),
+        ];
+        expect(refusal(() => exchangeDifferenceLines(company, off, { account: 'X' }))).toBe(
+          'ENTRY_UNBALANCED',
+        );
+        expect(
+          refusal(() => balanceEntry({ on: '2026-11-15', ledgers: company, lines: off, rounding })),
+        ).toBe('ENTRY_UNBALANCED');
+      }),
+      { numRuns: 500 },
+    );
+  });
+
+  it('are never absorbed by a rounding line passed in', () => {
+    fc.assert(
+      fc.property(newMeasurements, nonZero, fc.boolean(), ({ company, lines }, extra, inBook) => {
+        const entry = balanceEntry({ on: '2026-11-15', ledgers: company, lines, rounding });
+        const ledger: Ledger = inBook || company.parallel === null ? 'book' : 'parallel';
+        const roundingLine: Line = {
+          kind: 'rounding',
+          ledger,
+          account: 'R',
+          dimensions: {},
+          transaction: money(extra, ledgerCurrency(company, ledger)),
+          bookMinor: ledger === 'book' ? extra : 0n,
+          parallelMinor: company.parallel === null ? null : ledger === 'parallel' ? extra : 0n,
+        };
+        expect(
+          refusal(() =>
+            balanceEntry({
+              on: '2026-11-15',
+              ledgers: company,
+              lines: [...entry, roundingLine],
+              rounding,
+            }),
+          ),
+        ).toBe('ENTRY_UNBALANCED');
+      }),
+      { numRuns: 500 },
+    );
+  });
+});
+
 describe('settlements', () => {
   it('balance with difference lines that each carry an amount in one ledger only', () => {
     fc.assert(
@@ -219,6 +276,17 @@ describe('settlements', () => {
               amounts: clearOpenItem({ measured: item, openMinor: total }, -paid),
             }),
           ];
+          // Paying more than is open is not an exchange difference: the excess needs its own line.
+          const overpaid = [
+            measuredLine(
+              { account: 'P', amount: money(paid + (total < 0n ? -1n : 1n), from) },
+              at('2026-11-20', settled),
+            ),
+            ...lines.slice(1),
+          ];
+          expect(refusal(() => exchangeDifferenceLines(company, overpaid, { account: 'X' }))).toBe(
+            'ENTRY_UNBALANCED',
+          );
           const differences = exchangeDifferenceLines(company, lines, { account: 'X' });
           const entry = balanceEntry({
             on: '2026-11-20',

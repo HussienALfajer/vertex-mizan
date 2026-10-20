@@ -29,8 +29,7 @@ describe('clearOpenItem', () => {
       bookMinor: -404_404n,
       parallelMinor: -3_333n,
     });
-    // The last part clears what remains: 1 213 333 − 808 808. Converting each part on its own
-    // would clear 404 404 + 404 404 + 404 524 = 1 213 332 and leave 0.01 SYP behind.
+    // The last part clears what remains, 1 213 333 − 808 808, so the parts always sum exactly.
     expect(last).toEqual({
       transaction: money(-3_334n, 'USD'),
       bookMinor: -404_525n,

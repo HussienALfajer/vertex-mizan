@@ -11,11 +11,11 @@ import {
   currencies,
   currencyCodeSchema,
   type ExchangeRate,
-  exactConversion,
   exchangeRateSchema,
   minorAmountSchema,
   money,
   ratePolicySchema,
+  sumsToZeroExactly,
 } from './money.js';
 import { divideHalfAwayFromZero, MINOR_MAX, MINOR_MIN } from './money-arithmetic.js';
 
@@ -277,30 +277,56 @@ describe('convert with a cross rate', () => {
   });
 });
 
-describe('exactConversion', () => {
-  it('is the value convert() rounds, as a fraction of minor units', () => {
-    // 0.01 USD × 0.625 = 0.00625 SYP: 0.625 minor units, rounded by convert() to 0.01
-    const exact = exactConversion(money(1n, 'USD'), 'SYP', quote('USD', 'SYP', '0.625'));
-    expect(exact.numerator * 1000n).toBe(625n * exact.denominator);
-    expect(convert(money(1n, 'USD'), 'SYP', quote('USD', 'SYP', '0.625')).amountMinor).toBe(1n);
-    // 1.43 TRY × 2.9 ÷ 118.5 = 0.0349957… USD: 3.49957… cents
-    const cross: CrossRate = {
-      on: '2026-10-20',
-      legs: [quote('TRY', 'SYP', '2.9'), usdSyp],
-    };
-    const crossed = exactConversion(money(143n, 'TRY'), 'USD', cross);
-    expect(crossed.numerator * 1185n).toBe(143n * 29n * crossed.denominator);
+describe('sumsToZeroExactly', () => {
+  const half = quote('USD', 'SYP', '0.5');
+
+  it('sums the exact values convert() would round', () => {
+    // 0.03 USD against 0.01 USD three times at 0.5: 0.015 − 3 × 0.005 = 0 exactly, though the
+    // rounded amounts (0.02 and 0.01 three times) leave 0.01 SYP over.
+    const terms = [3n, -1n, -1n, -1n].map((cents) => ({ amount: money(cents, 'USD'), rate: half }));
+    expect(sumsToZeroExactly('SYP', terms)).toBe(true);
+    expect(terms.map((term) => convert(term.amount, 'SYP', half).amountMinor)).toEqual([
+      2n,
+      -1n,
+      -1n,
+      -1n,
+    ]);
+    // 0.03 USD against 0.02 USD: 0.005 SYP over, exactly.
+    const short = [3n, -2n].map((cents) => ({ amount: money(cents, 'USD'), rate: half }));
+    expect(sumsToZeroExactly('SYP', short)).toBe(false);
   });
 
-  it('checks its arguments as convert() does', () => {
-    expect(refusal(() => exactConversion(money(100n, 'EUR'), 'SYP', usdSyp))).toBe(
+  it('takes amounts in the currency as they are, and crosses exactly', () => {
+    // 1.43 TRY × 2.9 ÷ 118.5 = 0.0349957… USD, never equal to a whole number of cents.
+    const cross: CrossRate = { on: '2026-10-20', legs: [quote('TRY', 'SYP', '2.9'), usdSyp] };
+    expect(
+      sumsToZeroExactly('USD', [
+        { amount: money(143n, 'TRY'), rate: cross },
+        { amount: money(-3n, 'USD') },
+      ]),
+    ).toBe(false);
+    // 2.37 TRY × 2.9 ÷ 118.5 = 5.8 cents, five times 29 cents exactly, though each part
+    // rounds to 6 cents.
+    const parts = [1, 2, 3, 4, 5].map(() => ({ amount: money(237n, 'TRY'), rate: cross }));
+    expect(sumsToZeroExactly('USD', [...parts, { amount: money(-29n, 'USD') }])).toBe(true);
+    expect(sumsToZeroExactly('USD', [...parts, { amount: money(-30n, 'USD') }])).toBe(false);
+    expect(sumsToZeroExactly('SYP', [])).toBe(true);
+  });
+
+  it('checks its terms as convert() does', () => {
+    expect(
+      refusal(() => sumsToZeroExactly('SYP', [{ amount: money(100n, 'EUR'), rate: usdSyp }])),
+    ).toBe('RATE_PAIR_MISMATCH');
+    expect(refusal(() => sumsToZeroExactly('SYP', [{ amount: money(100n, 'USD') }]))).toBe(
       'RATE_PAIR_MISMATCH',
     );
-    expect(
-      refusal(() =>
-        exactConversion({ amountMinor: MINOR_MAX + 1n, currency: 'USD' }, 'SYP', usdSyp),
-      ),
-    ).toBe('AMOUNT_OUT_OF_RANGE');
+    const outside = { amountMinor: MINOR_MAX + 1n, currency: 'USD' } as const;
+    expect(refusal(() => sumsToZeroExactly('SYP', [{ amount: outside, rate: usdSyp }]))).toBe(
+      'AMOUNT_OUT_OF_RANGE',
+    );
+    expect(refusal(() => sumsToZeroExactly('USD', [{ amount: outside }]))).toBe(
+      'AMOUNT_OUT_OF_RANGE',
+    );
   });
 });
 

@@ -45,6 +45,20 @@ export function scaleExact(
   };
 }
 
+function gcd(a: bigint, b: bigint): bigint {
+  let [x, y] = [a < 0n ? -a : a, b < 0n ? -b : b];
+  while (y !== 0n) [x, y] = [y, x % y];
+  return x;
+}
+
+/** The exact sum of two fractions with positive denominators, reduced. */
+export function addExact(a: Ratio, b: Ratio): Ratio {
+  const numerator = a.numerator * b.denominator + b.numerator * a.denominator;
+  const denominator = a.denominator * b.denominator;
+  const divisor = gcd(numerator, denominator);
+  return { numerator: numerator / divisor, denominator: denominator / divisor };
+}
+
 /** `scaleExact()` rounded half away from zero: one exact division, one rounding. */
 export function scaleMinor(
   amountMinor: bigint,
