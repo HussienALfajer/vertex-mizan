@@ -12,7 +12,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done. Phases are 
 
 ## Phase 0 — Foundation
 - [~] Monorepo scaffold: pnpm, Turborepo, TypeScript, Biome, `packages/config`, CI (lint, typecheck, test, build, gitleaks, dependency advisories, docs-only skip) done; `Typecheck, lint, test, build` and `Secret scan` required by the `main: require CI` ruleset (owner, 2026-10-20); migration drift arrives with `packages/db`
-- [ ] `packages/contracts`: the money module (currencies, quoted rates, rate policies, conversion half away from zero, compatibility with Hub's `convertMinor`; ADR 0007), error codes, permission map
+- [x] `packages/contracts`: the money module (currencies, quoted rates, rate policies per ledger, one conversion half away from zero with cross rates, compatibility with Hub's `convertMinor`, fast-check properties; ADR 0007), the error-code registry, the Biome rule against arithmetic on `*Minor` fields elsewhere; the permission map moves to S01
 - [ ] `packages/ledger`: line building in the book and parallel ledgers, rounding and exchange-difference lines, cumulative allocation, the integrity hash; property tests (fast-check)
 - [ ] `packages/db`: roles (`mizan_owner`, `mizan_app`, `mizan_jobs`, `mizan_queue`), company context, forced RLS, append-only and deferred-invariant triggers (`ENABLE ALWAYS`), convention and invariant tests run as `mizan_app` (ADR 0003, 0005, 0008)
 - [ ] The scenario-book runner (exact set of entries, both ledgers, `Proposed` skipped; ADR 0008)

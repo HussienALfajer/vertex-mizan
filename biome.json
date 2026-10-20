@@ -2,6 +2,7 @@
   "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
   "root": true,
   "extends": ["@vertex-mizan/config/biome"],
+  "plugins": ["./packages/config/biome-plugins/minor-arithmetic.grit"],
   "vcs": {
     "enabled": true,
     "clientKind": "git",

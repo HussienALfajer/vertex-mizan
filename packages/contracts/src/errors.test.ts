@@ -1,0 +1,47 @@
+import { describe, expect, it } from 'vitest';
+import { DomainError, errorCodeSchema, errorCodes, errorStatus } from './errors.js';
+
+describe('error codes', () => {
+  it('are upper snake case and unique', () => {
+    for (const code of errorCodes) expect(code).toMatch(/^[A-Z]+(_[A-Z]+)*$/);
+    expect(new Set(errorCodes).size).toBe(errorCodes.length);
+  });
+
+  it('each map to a client or server error status', () => {
+    for (const code of errorCodes) {
+      expect(errorStatus[code]).toBeGreaterThanOrEqual(400);
+      expect(errorStatus[code]).toBeLessThan(600);
+    }
+  });
+
+  // Codes are stable and never renamed, removed or reused (ADR 0006): Hub reads them. This list is
+  // append-only like the registry: a new code is added at the end of both, in the same order, and
+  // a line is never edited or deleted.
+  it('keep every code published so far, in order, with its status', () => {
+    expect(Object.entries(errorStatus)).toEqual([
+      // PR 2, money (ADR 0007)
+      ['AMOUNT_OUT_OF_RANGE', 422],
+      ['INVALID_RATE', 422],
+      ['RATE_PAIR_MISMATCH', 422],
+      ['CROSS_RATE_MISMATCH', 422],
+      ['RATE_MISSING', 422],
+      ['SYP_BEFORE_REDENOMINATION', 422],
+    ]);
+  });
+
+  it('are the only codes the schema accepts', () => {
+    expect(errorCodeSchema.parse('RATE_MISSING')).toBe('RATE_MISSING');
+    expect(errorCodeSchema.safeParse('SOMETHING_ELSE').success).toBe(false);
+  });
+});
+
+describe('DomainError', () => {
+  it('is an Error with its code, message and details', () => {
+    const error = new DomainError('RATE_MISSING', 'No bulletin rate', { on: '2026-10-20' });
+    expect(error).toBeInstanceOf(Error);
+    expect(error.name).toBe('DomainError');
+    expect(error.code).toBe('RATE_MISSING');
+    expect(error.message).toBe('No bulletin rate');
+    expect(error.details).toEqual({ on: '2026-10-20' });
+  });
+});

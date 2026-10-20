@@ -1,0 +1,34 @@
+language js
+
+// ADR 0007: no arithmetic on `*Minor` fields outside packages/contracts and packages/ledger. An
+// operand is refused when its text holds an identifier ending in `Minor` anywhere (a cast, `??`,
+// a call, an index, several lines), so `Number(row.amountMinor) / 100` is caught too.
+or {
+  or {
+    `$left + $right`,
+    `$left - $right`,
+    `$left * $right`,
+    `$left / $right`,
+    `$left % $right`,
+    `$left ** $right`,
+    `$left << $right`,
+    `$left >> $right`,
+    `$left >>> $right`,
+    `$left & $right`,
+    `$left | $right`,
+    `$left ^ $right`
+  } where { or { $left <: r"(?s).*Minor\b.*", $right <: r"(?s).*Minor\b.*" } },
+  JsAssignmentExpression() as $assignment where {
+    $assignment <: r"(?s)[^=]*[-+*/%&|^<>]=.*",
+    $assignment <: r"(?s).*Minor\b.*"
+  },
+  or {
+    JsPreUpdateExpression(),
+    JsPostUpdateExpression()
+  } as $update where { $update <: r"(?s).*Minor\b.*" },
+  JsUnaryExpression() as $unary where { $unary <: r"(?s)\s*[-+~].*Minor\b.*" }
+} as $expr where {
+  not $filename <: r".*[/\\\\]packages[/\\\\]contracts[/\\\\]src[/\\\\].*",
+  not $filename <: r".*[/\\\\]packages[/\\\\]ledger[/\\\\]src[/\\\\].*",
+  register_diagnostic(span=$expr, message="No arithmetic on *Minor amounts outside packages/contracts and packages/ledger (ADR 0007): use the money module.")
+}

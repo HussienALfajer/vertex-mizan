@@ -8,6 +8,7 @@ CI for every pull request and for `main` (`workflows/ci.yml`), and Dependabot fo
 - A step arrives with its first subject: the PostgreSQL service and migration drift with `packages/db`, the scenario book with its runner, the OpenAPI check with `apps/api`, E2E with `apps/web`.
 - `pnpm audit --prod` accepts only advisories listed with a reason in `pnpm-workspace.yaml` (`auditConfig.ignoreGhsas`); none is listed today.
 - The migration guard (`pnpm check:migrations`, ADR 0008) runs in the static job over `packages/db/migrations/*.sql`.
+- The error-code guard (`pnpm check:error-codes`, ADR 0006) runs in the static job against the pull request's base commit (the push's previous commit on `main`), so the static checkout fetches the full history.
 - Pull requests that change only Markdown skip the checks; the gate job still reports, so the ruleset and auto-merge work. The scenario book (`docs/scenarios/`) is executed as tests, so a change there runs the checks.
 - CI runs the same root commands as the `AGENTS.md` commands table; a new check gets a root script first, then a step here.
 - No secrets in workflows beyond `GITHUB_TOKEN`; deploys never run from CI without an ADR.

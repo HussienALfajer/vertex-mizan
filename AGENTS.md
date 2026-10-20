@@ -44,6 +44,7 @@ The PR that adds a command adds it here and keeps it true. Run from the reposito
 | `pnpm lint` · `pnpm lint:fix` | Biome check of the repository · apply its fixes |
 | `pnpm typecheck` · `pnpm test` · `pnpm build` | Every package through Turborepo; one package: `pnpm --filter @vertex-mizan/<name> test` |
 | `pnpm check:migrations` | The migration guard: refuses guard-weakening SQL in `packages/db/migrations` (ADR 0008) |
+| `pnpm check:error-codes` | The error-code guard: the codes in `packages/contracts` at `origin/main` (or `--base <ref>`) are still first, in order, with their status (ADR 0006) |
 
 ## Non-negotiable conventions
 
