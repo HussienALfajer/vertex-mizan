@@ -1,0 +1,12 @@
+/*
+ * The Vertex Mizan design system stylesheet. An app imports Tailwind, the typefaces, then this file:
+ *
+ *   @import "tailwindcss";
+ *   @import "@vertex-mizan/ui/fonts.css";
+ *   @import "@vertex-mizan/ui/styles.css";
+ */
+@import "./theme.css";
+@import "./base.css";
+
+/* Generate the utilities used by the components in this package. */
+@source "../";

@@ -49,6 +49,7 @@ The PR that adds a command adds it here and keeps it true. Run from the reposito
 | `pnpm db:generate` | Generate a migration from the Drizzle schema; run again, it must report nothing (the CI drift check) |
 | `pnpm check:migrations` | The migration guard: refuses guard-weakening SQL in `packages/db/migrations`, and changes to the append-only tables of the registry (ADR 0008) |
 | `pnpm check:error-codes` | The error-code guard: the codes in `packages/contracts` at `origin/main` (or `--base <ref>`) are still first, in order, with their status (ADR 0006) |
+| `pnpm --filter @vertex-mizan/ui preview` | The design system's preview page (Vite, until `apps/web`); `preview:build` writes `.preview/ui` |
 
 ## Non-negotiable conventions
 
@@ -82,7 +83,7 @@ The PR that adds a command adds it here and keeps it true. Run from the reposito
 - **One validation source:** Zod schemas in `packages/contracts`.
 - **Authorization is server-side:** every endpoint declares its permission.
 - **Audit; archive, don't delete.** Companies and used accounts are archived. Ledger data is kept at least 10 years.
-- **Arabic-first RTL UI (ADR 0009):** logical CSS, all text through i18n, Latin digits, design-system components only, responsive from 360 px. Amounts only through the Amount component (LTR-isolated, minus sign and negative color). SYP is labelled "الليرة السورية الجديدة" on printed output.
+- **Arabic-first RTL UI (ADR 0009, ADR 0010):** logical CSS, all text through i18n, Latin digits, design-system components only, responsive from 360 px. A screen that needs something the design system lacks gets it first as a general component in `packages/ui`, built for accounting work and tested, then uses it (ADR 0010 §7, `packages/ui/CLAUDE.md`). Amounts only through the Amount component (LTR-isolated, minus sign and negative color). SYP is labelled "الليرة السورية الجديدة" on printed output.
 - **Public repository:** no secrets and no real company, client or financial data: synthetic data only.
 
 ## How to work

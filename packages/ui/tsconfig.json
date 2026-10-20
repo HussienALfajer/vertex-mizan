@@ -1,0 +1,10 @@
+{
+  "extends": "@vertex-mizan/config/tsconfig/react.json",
+  "compilerOptions": {
+    "types": ["vite/client", "node"],
+    // `src/vite.ts` and the preview's config run in Node as TypeScript (Vite loads them): their
+    // imports name `.ts` files.
+    "allowImportingTsExtensions": true
+  },
+  "include": ["src", "preview"]
+}

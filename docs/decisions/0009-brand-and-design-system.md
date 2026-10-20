@@ -1,6 +1,6 @@
 # 0009 — Brand and design system: the Vertex identity, accounting components, company branding on printed books
 
-Status: Accepted · Date: 2026-10-20 (owner)
+Status: Accepted · Date: 2026-10-20 (owner) · Components, densities and interaction refined by ADR 0010
 
 ## Context
 The owner wants one visual identity across the Vertex systems. Vertex Hub holds the reference identity (`D:\vertex-hub\brand\identity.md`) and a design system on shadcn/ui and Base UI (Hub ADR 0004). Vertex Food copied it with its own product word (Food ADR 0018). ADR 0002 names `packages/ui` and `packages/tokens` but no decision said what Mizan's identity is or which components an accounting system needs that Hub does not have. An accounting interface lives in dense tables of numbers, keyboard entry and printed legal books, inside a right-to-left Arabic interface where numbers run left to right.

@@ -30,6 +30,18 @@ describe('shared tsconfig', () => {
       moduleResolution: 'NodeNext',
     });
   });
+
+  it('react extends base and resolves modules as a bundler does, with the DOM and JSX', () => {
+    const config = readJson('tsconfig/react.json');
+    expect(config.extends).toBe('./base.json');
+    expect(config.compilerOptions).toMatchObject({
+      module: 'ESNext',
+      moduleResolution: 'Bundler',
+      lib: ['ES2024', 'DOM', 'DOM.Iterable'],
+      jsx: 'react-jsx',
+      noEmit: true,
+    });
+  });
 });
 
 describe('shared biome config', () => {

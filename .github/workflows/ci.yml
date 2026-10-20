@@ -20,7 +20,8 @@ concurrency:
 jobs:
   # Pull requests that change only Markdown skip the checks; the gate job below still reports, so
   # the ruleset and auto-merge work. The scenario book (docs/scenarios/) is executed as tests
-  # (ADR 0005), so its Markdown counts as code.
+  # (ADR 0005), so its Markdown counts as code; so does brand/, whose identity tables and logo files
+  # the token tests read (ADR 0009).
   changes:
     name: Changes
     runs-on: ubuntu-latest
@@ -38,7 +39,7 @@ jobs:
           code=true
           if git cat-file -e "$BASE^{commit}" 2>/dev/null; then
             changed=$(git diff --name-only "$BASE" HEAD)
-            if [ -n "$changed" ] && ! echo "$changed" | grep -qvE '\.md$' && ! echo "$changed" | grep -q '^docs/scenarios/'; then
+            if [ -n "$changed" ] && ! echo "$changed" | grep -qvE '\.md$' && ! echo "$changed" | grep -qE '^(docs/scenarios|brand)/'; then
               code=false
             fi
           fi

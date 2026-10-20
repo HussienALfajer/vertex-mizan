@@ -43,3 +43,6 @@ Thumbs.db
 .claude/worktrees/
 CLAUDE.local.md
 TASKS.md
+
+# The design system preview build (packages/ui/preview)
+.preview/
