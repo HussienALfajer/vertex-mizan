@@ -131,5 +131,5 @@ These rules are unchanged from ADR 0004.
   - releasing or clearing a balance never converts it again;
   - allocations sum exactly;
   - a reversal negates every amount exactly;
-  - a conversion and its inverse differ by at most half of one minor unit of the intermediate currency, expressed in the original currency.
+  - the exact inverse of a converted amount differs from the original by at most half of one minor unit of the intermediate currency, expressed in the original currency; converted back with rounding, it differs by at most that plus half of one minor unit of the original currency (owner, 2026-10-20: rounding twice can add a full unit, for example 0.01 at 0.625 converts to 0.01 and back to 0.02).
 - All money code lives in `packages/contracts` (types, the currency table, the conversion) and `packages/ledger` (lines, balancing, differences, allocation, revaluation). A lint rule forbids number arithmetic on fields named `*Minor` elsewhere.
