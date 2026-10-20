@@ -52,6 +52,8 @@ const PUSH_OPTIONS_WITH_VALUE = new Set([
 ]);
 // Flags after which a shell takes a script (`bash -c`, `sh -lc`, `pwsh -Command`, `cmd /c`).
 const SCRIPT_FLAGS = new Set(['-c', '-lc', '-ic', '-Command', '-command', '/c', '/C']);
+// Flags of `gh` whose value is prose (a pull request's title or body), never a script.
+const TEXT_FLAGS = new Set(['--title', '-t', '--body', '-b']);
 // Pathspecs that stage the whole tree.
 const WHOLE_TREE = new Set(['.', './', '*', ':', ':/', ':/.', ':/*']);
 
@@ -149,6 +151,21 @@ function withoutValues(rest, optionsWithValue) {
   return rest.filter((_, index) => !optionsWithValue.has(rest[index - 1] ?? ''));
 }
 
+/**
+ * The words without shell redirections (`2>`, `>/dev/null`, `<<EOF`), which are not arguments of
+ * the command; a bare operator also takes its target, the next word. The value of an option that
+ * takes one (`-m "<draft>"`) is never read as a redirection.
+ */
+function withoutRedirections(args, optionsWithValue) {
+  const result = [];
+  for (let i = 0; i < args.length; i++) {
+    const redirection = /^\d*(?:>>?|<<?<?|&>>?)(.*)$/.exec(args[i]);
+    if (!redirection || optionsWithValue.has(args[i - 1] ?? '')) result.push(args[i]);
+    else if (redirection[1] === '') i++;
+  }
+  return result;
+}
+
 function checkGit(args) {
   let dir = projectDir;
   let index = 0;
@@ -166,7 +183,13 @@ function checkGit(args) {
     }
   }
   const subcommand = args[index];
-  const rest = args.slice(index + 1);
+  const valueOptions =
+    subcommand === 'commit'
+      ? COMMIT_OPTIONS_WITH_VALUE
+      : subcommand === 'push'
+        ? PUSH_OPTIONS_WITH_VALUE
+        : new Set();
+  const rest = withoutRedirections(args.slice(index + 1), valueOptions);
   const used = subcommand === 'commit' ? withoutValues(rest, COMMIT_OPTIONS_WITH_VALUE) : rest;
   const flags = used.filter((arg) => arg.startsWith('-'));
 
@@ -252,9 +275,12 @@ function check(line, depth = 0) {
       continue;
     }
     // A script run by a shell (`bash -c "git commit …"`, `pwsh -Command "…"`, `eval "…"`) is
-    // checked too: a word after a script flag, or any quoted word that could hold a command.
+    // checked too: a word after a script flag, or any quoted word that could hold a command. Prose
+    // given to `gh` (`--title`, `--body`) is text, not a script, even when it mentions git.
     parts.forEach((word, index) => {
-      const script = SCRIPT_FLAGS.has(parts[index - 1] ?? '') || /[\s;&|()`'"]/.test(word);
+      const previous = parts[index - 1] ?? '';
+      if (TEXT_FLAGS.has(previous) || /^--(?:title|body)=/.test(word)) return;
+      const script = SCRIPT_FLAGS.has(previous) || /[\s;&|()`'"]/.test(word);
       if (depth < 2 && script) check(word, depth + 1);
     });
   }

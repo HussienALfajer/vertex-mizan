@@ -78,6 +78,17 @@ describe('git guard: commits', () => {
     expect(refused(`git -C "${feature}" commit --amend --no-edit`)).toBe(false);
     expect(refused(`git -C "${feature}" commit --author "A B <a@b.test>" -m x`)).toBe(false);
     expect(refused(`git -C "${feature}" commit -F message.txt`)).toBe(false);
+    expect(refused(`git -C "${feature}" commit -m "<draft>"`)).toBe(false);
+  });
+
+  it.each([
+    'commit -m "fix: x" 2>&1',
+    'commit -m "fix: x" 2>&1 | tail -3',
+    'commit -F message.txt >/dev/null',
+    'commit -F message.txt 2> err.txt',
+    "commit -F - <<'EOF'",
+  ])('allows git %s on a branch: redirections are not paths', (args) => {
+    expect(refused(`git -C "${feature}" ${args}`)).toBe(false);
   });
 
   it.each([
@@ -94,6 +105,17 @@ describe('git guard: commits', () => {
     'commit -m x --pathspec-from-file=-',
   ])('refuses git %s on a branch', (args) => {
     expect(refused(`git -C "${feature}" ${args}`)).toBe(true);
+  });
+});
+
+describe('git guard: prose given to gh', () => {
+  it.each([
+    'gh pr create --title "x" --body "the guard refuses git commit -a, broad staging and git push origin main"',
+    'gh pr create -t "x" -b "stage by path, never git add -A"',
+    'gh pr create --title "x" --body="never git add -A"',
+    'gh pr create --title "x" --body-file pr-body.md',
+  ])('allows %s', (command) => {
+    expect(refused(command)).toBe(false);
   });
 });
 
@@ -188,6 +210,7 @@ describe('git guard: pushes', () => {
       'push origin @',
       'push -o ci.skip origin',
       'push --push-option ci.skip origin HEAD',
+      'push origin 2>&1',
     ]) {
       expect(refused(`git -C "${main}" ${args}`), args).toBe(true);
       expect(refused(`git -C "${feature}" ${args}`), args).toBe(false);
