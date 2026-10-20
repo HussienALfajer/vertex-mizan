@@ -72,6 +72,27 @@ describe('parseAmount', () => {
     expect(parseAmount('92233720368547758.08', 'USD')).toEqual(refused('AMOUNT_OUT_OF_RANGE'));
   });
 
+  it('never joins two values into one: space inside a number must group correctly', () => {
+    // Two cells pasted from Excel arrive with a tab, two lines with a line break.
+    expect(parseAmount('1250\t750', 'USD')).toEqual(refused('INVALID'));
+    expect(parseAmount('1250\n750', 'USD')).toEqual(refused('INVALID'));
+    // A browser may turn the break into a space: then it is a separator that does not group.
+    expect(parseAmount('1250 750', 'USD')).toEqual(refused('INVALID'));
+    expect(parseAmount('1 25', 'USD')).toEqual(refused('INVALID'));
+    expect(parseAmount('12 50', 'USD')).toEqual(refused('INVALID'));
+    // Correct grouping with spaces, no-break or narrow no-break spaces is read as grouping.
+    expect(parseAmount('1 250 000.50', 'USD')).toEqual(ok(125_000_050n));
+    expect(parseAmount('1 250 000', 'USD')).toEqual(ok(125_000_000n));
+    expect(parseAmount('- 5', 'USD')).toEqual(ok(-500n));
+    expect(parseAmount('\t1,250.00\n', 'USD')).toEqual(ok(125_000n));
+  });
+
+  it('reads a first group of zeros as a decimal comma and refuses it', () => {
+    expect(parseAmount('0,500', 'USD')).toEqual(refused('INVALID'));
+    expect(parseAmount('00,125', 'USD')).toEqual(refused('INVALID'));
+    expect(parseAmount('-0,500', 'USD')).toEqual(refused('INVALID'));
+  });
+
   it('refuses a negative amount where only magnitudes are allowed, but not zero', () => {
     const magnitudes = { allowNegative: false };
     expect(parseAmount('-5', 'USD', magnitudes)).toEqual(refused('NEGATIVE_NOT_ALLOWED'));
@@ -114,6 +135,10 @@ describe('evaluateAmount', () => {
     expect(parseAmount('=1)', 'USD')).toEqual(refused('INVALID'));
     expect(parseAmount('=1,000+1', 'USD')).toEqual(refused('INVALID'));
     expect(parseAmount('=2^3', 'USD')).toEqual(refused('INVALID'));
+    expect(parseAmount('=1 2+3', 'USD')).toEqual(refused('INVALID'));
+    expect(parseAmount('=1.5 0', 'USD')).toEqual(refused('INVALID'));
+    expect(parseAmount('=1250\t750', 'USD')).toEqual(refused('INVALID'));
+    expect(parseAmount('= ( 1250 + 750 ) / 4 ', 'USD')).toEqual(ok(50_000n));
     expect(parseAmount('=1/0', 'USD')).toEqual(refused('DIVISION_BY_ZERO'));
     expect(parseAmount('=1/(2-2)', 'USD')).toEqual(refused('DIVISION_BY_ZERO'));
     expect(parseAmount(`=${'1+'.repeat(100)}1`, 'USD')).toEqual(refused('INVALID'));

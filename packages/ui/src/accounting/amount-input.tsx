@@ -23,7 +23,9 @@ type AmountInputProps = Omit<
   allowNegative?: boolean;
   /**
    * Called on commit with the reason the text is not an amount, or `null` once it is. The text
-   * stays as typed: an error never clears what the person entered (ADR 0010 §4).
+   * stays as typed: an error never clears what the person entered (ADR 0010 §4). The last
+   * committed amount still stands behind refused text, so the form must not save or post while
+   * any amount input reports an error.
    */
   onTextError?: (error: AmountTextError | null) => void;
 };

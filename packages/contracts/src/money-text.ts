@@ -55,19 +55,26 @@ export type AmountTextResult =
 const refuse = (error: AmountTextError): AmountTextResult => ({ ok: false, error });
 
 /**
- * Arabic-Indic (U+0660–0669) and Eastern Arabic-Indic (U+06F0–06F9) digits to Latin, the Arabic
- * decimal and thousands separators (U+066B, U+066C) to `.` and `,`, the minus sign (U+2212) to
- * `-`, and spaces (no-break and thin included) removed: what an Arabic keyboard or keypad types.
+ * Arabic-Indic (U+0660-0669) and Eastern Arabic-Indic (U+06F0-06F9) digits to Latin, the Arabic
+ * decimal and thousands separators (U+066B, U+066C) to `.` and `,`, and the minus sign (U+2212)
+ * to `-`: what an Arabic keyboard or keypad types. Space at either end is dropped; space inside is
+ * left for the caller to judge, since it may join two values into one.
  */
 function normalize(text: string): string {
   return text
-    .replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660))
-    .replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 0x06f0))
-    .replace(/٫/g, '.')
-    .replace(/٬/g, ',')
-    .replace(/−/g, '-')
-    .replace(/[\s   ]/g, '');
+    .trim()
+    .replace(/[\u0660-\u0669]/g, (d) => String(d.charCodeAt(0) - 0x0660))
+    .replace(/[\u06f0-\u06f9]/g, (d) => String(d.charCodeAt(0) - 0x06f0))
+    .replace(/\u066b/g, '.')
+    .replace(/\u066c/g, ',')
+    .replace(/\u2212/g, '-');
 }
+
+/** A space, no-break, thin or narrow no-break space: what some formats put between digit groups. */
+const GROUP_SPACE = /[ \u00a0\u2009\u202f]/g;
+
+/** A tab or a line break inside the text: two pasted cells or lines, never one amount. */
+const SEPARATE_VALUES = /[\t\n\r\v\f\u2028\u2029]/;
 
 /** An exact decimal as a fraction of integers: `12.5` → 125 / 10. */
 interface Fraction {
@@ -81,8 +88,11 @@ function inRange(amountMinor: bigint): AmountTextResult {
     : { ok: true, amountMinor };
 }
 
-/** Thousands separators only where they belong: `1,250,000`, never `1,25` or `12,50,000`. */
-const GROUPED = /^\d{1,3}(,\d{3})+$/;
+/**
+ * Thousands separators only where they belong: `1,250,000`, never `1,25`, `12,50,000` or `0,500`
+ * (a first group of zeros is a decimal comma, not grouping).
+ */
+const GROUPED = /^[1-9]\d{0,2}(,\d{3})+$/;
 
 /**
  * Typed text in major units → minor units, exactly. Grouping is optional but must be correct;
@@ -94,9 +104,13 @@ export function parseAmount(
   currency: CurrencyCode,
   { allowNegative = true }: { allowNegative?: boolean } = {},
 ): AmountTextResult {
-  const source = normalize(text);
-  if (source === '') return refuse('EMPTY');
-  if (source.startsWith('=')) return evaluateAmount(source.slice(1), currency, { allowNegative });
+  const trimmed = normalize(text);
+  if (trimmed === '') return refuse('EMPTY');
+  if (trimmed.startsWith('=')) return evaluateAmount(trimmed.slice(1), currency, { allowNegative });
+  if (SEPARATE_VALUES.test(trimmed)) return refuse('INVALID');
+  // A space after the sign is dropped; a space between digits is a thousands separator, so it
+  // must group correctly: `1 250` is 1,250, `1250 750` and `1 25` are refused.
+  const source = trimmed.replace(/^-[    ]+/, '-').replace(GROUP_SPACE, ',');
   const match = /^(-?)(\d[\d,]*)?(?:\.(\d*))?$/.exec(source);
   if (!match || (match[2] === undefined && !match[3])) return refuse('INVALID');
   const [, sign, integer = '0', fraction = ''] = match;
@@ -122,7 +136,10 @@ export function evaluateAmount(
   currency: CurrencyCode,
   { allowNegative = true }: { allowNegative?: boolean } = {},
 ): AmountTextResult {
-  const source = normalize(expression).replace(/×/g, '*').replace(/÷/g, '/');
+  const spaced = normalize(expression);
+  // Space may sit around operators and parentheses, never inside a number (`1 2` is two numbers).
+  if (SEPARATE_VALUES.test(spaced) || /[\d.]\s+[\d.]/.test(spaced)) return refuse('INVALID');
+  const source = spaced.replace(/\s/g, '').replace(/×/g, '*').replace(/÷/g, '/');
   if (source === '') return refuse('EMPTY');
   if (source.length > MAX_EXPRESSION || !/^[\d.+\-*/()]+$/.test(source)) return refuse('INVALID');
   let at = 0;
