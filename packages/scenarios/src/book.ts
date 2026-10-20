@@ -41,17 +41,14 @@ export class ScenarioFormatError extends Error {
 
 const STATUS = /^Status: (?:Proposed|Approved \(owner, (\d{4}-\d{2}-\d{2})\))$/;
 
-/** A closing fence: the opening one's character, at least as many, indented up to three spaces. */
-function closes(marks: string, text: string): boolean {
-  const fence = /^ {0,3}(`{3,}|~{3,})\s*$/.exec(text)?.[1];
-  return fence !== undefined && fence[0] === marks[0] && fence.length >= marks.length;
-}
+/** Any line a Markdown reader may take for a fence: backticks or tildes after spaces or `>`. */
+const FENCE = /^[\s>]*(?:`{3,}|~{3,})/;
 
 /**
- * Every fenced `yaml` block of a Markdown file, with the line its fence opens on. A case is fenced
- * exactly `` ```yaml `` at the start of a line. Any fence that would hide one is a problem, never
- * skipped: one indented or of tildes or of more backticks, an info string such as `yml`, `YAML` or
- * `yaml title`, and a fence never closed. Fences close as in CommonMark, so scanning goes on.
+ * Every `yaml` block of a scenario file, with the line its fence opens on. A scenario file has no
+ * other fence: a case opens with exactly `` ```yaml `` and closes with `` ``` ``, both at the start
+ * of a line. Any other fence (no language, `yml`, `YAML`, `yaml title`, indented, quoted, tildes,
+ * more backticks) and a block never closed is a problem, so no case is ever hidden from the runner.
  */
 export function yamlBlocks(markdown: string): {
   blocks: { line: number; source: string }[];
@@ -59,29 +56,27 @@ export function yamlBlocks(markdown: string): {
 } {
   const blocks: { line: number; source: string }[] = [];
   const problems: string[] = [];
-  let open: { line: number; yaml: boolean; marks: string; lines: string[] } | null = null;
+  let open: { line: number; lines: string[] } | null = null;
   for (const [index, text] of markdown.split(/\r?\n/).entries()) {
     const line = index + 1;
     if (open === null) {
-      const fence = /^( {0,3})(`{3,}|~{3,})(.*)$/.exec(text);
-      if (!fence) continue;
-      const [, indent = '', marks = '', info = ''] = fence;
-      const regular = indent === '' && marks === '```';
-      const yaml = info.trim() === 'yaml';
-      if (!regular) {
-        problems.push(`Line ${line}: a fence is three backticks at the start of the line`);
-      } else if (!yaml && /^ya?ml\b/i.test(info.trim())) {
-        problems.push(`Line ${line}: a case is fenced exactly \`\`\`yaml`);
+      if (text.trimEnd() === '```yaml') open = { line, lines: [] };
+      else if (FENCE.test(text)) {
+        problems.push(
+          `Line ${line}: the only fence in a scenario file is \`\`\`yaml at the start of a line`,
+        );
       }
-      open = { line, yaml: regular && yaml, marks, lines: [] };
-    } else if (closes(open.marks, text)) {
-      if (open.yaml) blocks.push({ line: open.line, source: open.lines.join('\n') });
+    } else if (text.trimEnd() === '```') {
+      blocks.push({ line: open.line, source: open.lines.join('\n') });
+      open = null;
+    } else if (FENCE.test(text)) {
+      problems.push(`Line ${line}: a yaml block closes with \`\`\` at the start of a line`);
       open = null;
     } else {
       open.lines.push(text);
     }
   }
-  if (open !== null) problems.push(`Line ${open.line}: the fence is never closed`);
+  if (open !== null) problems.push(`Line ${open.line}: the yaml block is never closed`);
   return { blocks, problems };
 }
 

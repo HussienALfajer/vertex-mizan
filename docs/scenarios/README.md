@@ -77,7 +77,7 @@ expect:
 
 Writing the YAML:
 - **Amounts** are whole minor units; a decimal amount is refused, never rounded. **Account codes and rates are quoted** (`"1210"`, `"120.0000"`), dates are `YYYY-MM-DD` and periods `YYYY-MM`.
-- A case is fenced exactly `` ```yaml `` at the start of a line; any other fence (`yml`, indented, tildes, unclosed) is an error, so no case is hidden. A payload holds no decimal number.
+- A scenario file has no fence but its cases: each opens with exactly `` ```yaml `` and closes with `` ``` ``, both at the start of a line. Any other fence (no language, `yml`, indented, in a list or a quote, tildes, unclosed) is an error, so no case is hidden. A payload holds no decimal number.
 - On a line or an open item, no `dims` means no dimensions. On a balance, `dims` filters: the balance over every dimension set holding the stated pairs, so no `dims` is the whole account; with a `currency`, only that currency's lines, and its `amount` may be stated.
 - `parallel` is stated on every line, balance and open item exactly when the company keeps a parallel ledger. In a ledger's own currency, that ledger's amount is the transaction amount (ADR 0007): a SYP line in SYP books has `book` equal to `amount`.
 - Each expected entry balances in both ledgers, and has at least two lines; a `third` case names a line or a rate in a third currency.

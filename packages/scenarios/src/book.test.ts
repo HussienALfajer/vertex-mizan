@@ -47,23 +47,32 @@ describe('the fences', () => {
   const body = CASE.trim();
   const fenced = (open: string, close = open) => `${open}\n${body}\n${close}`;
 
+  const only = 'the only fence in a scenario file is ```yaml';
   it.each([
-    ['yml', fenced('```yml', '```'), 'fenced exactly'],
-    ['YAML', fenced('```YAML', '```'), 'fenced exactly'],
-    ['yaml with a title', fenced('```yaml case', '```'), 'fenced exactly'],
-    ['an indented fence', fenced('  ```yaml', '  ```'), 'three backticks'],
-    ['tildes', fenced('~~~yaml', '~~~'), 'three backticks'],
-    ['four backticks', fenced('````yaml', '````'), 'three backticks'],
-    ['a fence never closed', `\`\`\`yaml\n${body}`, 'never closed'],
+    ['no language', fenced('```', '```'), only],
+    ['yml', fenced('```yml', '```'), only],
+    ['YAML', fenced('```YAML', '```'), only],
+    ['yaml with a title', fenced('```yaml case', '```'), only],
+    ['a fence indented by two spaces', fenced('  ```yaml', '  ```'), only],
+    [
+      'a fence under a list item',
+      `- a case:\n\n    \`\`\`yaml\n    ${body.replaceAll('\n', '\n    ')}\n    \`\`\``,
+      only,
+    ],
+    ['a quoted fence', `> \`\`\`yaml\n> ${body.replaceAll('\n', '\n> ')}\n> \`\`\``, only],
+    ['tildes', fenced('~~~yaml', '~~~'), only],
+    ['four backticks', fenced('````yaml', '````'), only],
+    ['an indented closing fence', fenced('```yaml', '  ```'), 'closes with ```'],
+    ['a block never closed', `\`\`\`yaml\n${body}`, 'never closed'],
   ])('refuses a case hidden by %s, beside a case read', (_, hidden, problem) => {
     const markdown = `${file('Status: Approved (owner, 2026-10-21)', SYP_ONLY)}\n${hidden}\n`;
     expect(problems(markdown).join('\n')).toContain(problem);
   });
 
-  it('closes a fence as CommonMark does, so a later case is still read', () => {
-    const markdown = ['```text', 'a ``` inside', '  ```', '', '```yaml', body, '```'];
+  it('reads each yaml block with the line its fence opens on', () => {
+    const markdown = ['# A rule', '', '```yaml', body, '```', 'Prose with `` ``` `` inline.'];
     expect(yamlBlocks(markdown.join('\n'))).toEqual({
-      blocks: [{ line: 5, source: body }],
+      blocks: [{ line: 3, source: body }],
       problems: [],
     });
   });
