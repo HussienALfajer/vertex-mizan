@@ -8,6 +8,7 @@ import {
   convert,
   currencies,
   type ExchangeRate,
+  exactConversion,
   money,
 } from './money.js';
 import { MINOR_MAX, type Ratio, scaleMinor } from './money-arithmetic.js';
@@ -111,6 +112,25 @@ describe('convert properties', () => {
         },
       ),
       { numRuns: 5_000 },
+    );
+  });
+
+  it('exposes the exact value it rounds through exactConversion()', () => {
+    fc.assert(
+      fc.property(amount, rateDigits, pair, (x, digits, [base, quoteCurrency]) => {
+        const rate = quote(base, quoteCurrency, rateText(digits));
+        const ratio = { numerator: digits.units, denominator: 10n ** BigInt(digits.scale) };
+        const value = exact(
+          x,
+          ratio,
+          currencies[base].exponent,
+          currencies[quoteCurrency].exponent,
+        );
+        const result = exactConversion(money(x, base), quoteCurrency, rate);
+        expect(result.denominator > 0n).toBe(true);
+        expect(result.numerator * value.denominator).toBe(value.numerator * result.denominator);
+      }),
+      { numRuns: 2_000 },
     );
   });
 

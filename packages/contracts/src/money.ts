@@ -1,6 +1,12 @@
 import { z } from 'zod';
 import { DomainError, type ErrorCode } from './errors.js';
-import { MINOR_MAX, MINOR_MIN, type Ratio, scaleMinor } from './money-arithmetic.js';
+import {
+  divideHalfAwayFromZero,
+  MINOR_MAX,
+  MINOR_MIN,
+  type Ratio,
+  scaleExact,
+} from './money-arithmetic.js';
 
 /**
  * Money (ADR 0007): integer minor units (`bigint`) with an ISO 4217 code, never floats. Rates are
@@ -204,16 +210,30 @@ function crossRatio(from: CurrencyCode, to: CurrencyCode, { on, legs }: CrossRat
  * its own currency is not a conversion: the caller uses it as is, with no rate.
  */
 export function convert(amount: Money, to: CurrencyCode, rate: ExchangeRate | CrossRate): Money {
+  const exact = exactConversion(amount, to, rate);
+  return money(divideHalfAwayFromZero(exact.numerator, exact.denominator), to);
+}
+
+/** An exact amount in minor units: `numerator ÷ denominator`, with `denominator` above zero. */
+export interface ExactAmount {
+  readonly numerator: bigint;
+  readonly denominator: bigint;
+}
+
+/**
+ * The exact value that `convert()` rounds, in minor units of `to`, checked as `convert()` checks
+ * its arguments. Not a second conversion: it is for checks that need the unrounded value, such as
+ * whether an entry is out of balance by conversion rounding only (`packages/ledger`).
+ */
+export function exactConversion(
+  amount: Money,
+  to: CurrencyCode,
+  rate: ExchangeRate | CrossRate,
+): ExactAmount {
   const from = amount.currency;
   checkMinor(amount.amountMinor, from);
   const ratio = 'base' in rate ? rateRatio(checkRate(rate), from, to) : crossRatio(from, to, rate);
-  const converted = scaleMinor(
-    amount.amountMinor,
-    ratio,
-    currencies[from].exponent,
-    currencies[to].exponent,
-  );
-  return money(converted, to);
+  return scaleExact(amount.amountMinor, ratio, currencies[from].exponent, currencies[to].exponent);
 }
 
 /**

@@ -4,9 +4,9 @@ Zod schemas and pure rules shared by the API, the worker, the web app and integr
 
 ## Layout
 - `src/<module>.ts` with `src/<module>.test.ts` next to it; `src/index.ts` re-exports every public file.
-- `money.ts`, **the pattern to copy for a module with rules**: the currency table (`currencies`, exponents published as `x-exponents` on `CurrencyCode`), `Money` (bigint minor units), `money()`, `checkCurrencyDate()` (SYP before 2026-01-01), rate types and sources, `exchangeRateSchema` (a rate-table row, as quoted), `convert()` with a rate or a `CrossRate`, `ratePolicySchema` and `companyLedgersSchema` (book and parallel ledger, each with its policy).
-- `money-arithmetic.ts`: the exact integer arithmetic behind `convert()` (`divideHalfAwayFromZero`, `scaleMinor`) and the stored range. Internal: not re-exported, so `convert()` stays the one public conversion.
-- `errors.ts`: `errorStatus` (every code with its HTTP status), `errorCodeSchema`, `DomainError`.
+- `money.ts`, **the pattern to copy for a module with rules**: the currency table (`currencies`, exponents published as `x-exponents` on `CurrencyCode`), `Money` (bigint minor units), `money()`, `checkCurrencyDate()` (SYP before 2026-01-01), rate types and sources, `exchangeRateSchema` (a rate-table row, as quoted), `convert()` with a rate or a `CrossRate`, `exactConversion()` (the unrounded value `convert()` rounds, for `packages/ledger`'s balance check), `ratePolicySchema` and `companyLedgersSchema` (book and parallel ledger, each with its policy).
+- `money-arithmetic.ts`: the exact integer arithmetic behind `convert()` (`divideHalfAwayFromZero`, `scaleExact`, `scaleMinor`) and the stored range. Internal, so `convert()` stays the one public conversion; `index.ts` re-exports only `divideHalfAwayFromZero`, the one rounding, for `packages/ledger`'s allocations and releases.
+- `errors.ts`: `errorStatus` (every code with its HTTP status: the money codes, then the ledger's), `errorCodeSchema`, `DomainError`.
 - Tests: `money.test.ts` (examples), `money.hub-compat.test.ts` (Hub's `convertMinor` examples and an equivalence property), `money.properties.test.ts` (fast-check: exactness, sign symmetry, inverse, cross rates), `errors.test.ts` (the published codes).
 
 ## Rules

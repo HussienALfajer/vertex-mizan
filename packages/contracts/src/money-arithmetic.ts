@@ -1,7 +1,8 @@
 /**
- * The exact integer arithmetic behind `money.ts`. Internal to the package (not re-exported from
- * `index.ts`), so that `convert()` stays the one public conversion; the property tests drive it
- * directly with exponents the currency table does not have yet.
+ * The exact integer arithmetic behind `money.ts`. Internal to the package, so that `convert()`
+ * stays the one public conversion; the property tests drive it directly with exponents the
+ * currency table does not have yet. `index.ts` re-exports `divideHalfAwayFromZero` alone: it is
+ * the one rounding, which `packages/ledger` uses for allocations and proportional releases.
  */
 
 /**
@@ -28,17 +29,29 @@ export function divideHalfAwayFromZero(numerator: bigint, denominator: bigint): 
 }
 
 /**
- * An amount in minor units of a currency with `fromExponent` decimals, times `ratio`, in minor
- * units of a currency with `toExponent` decimals. One exact division, one rounding.
+ * The exact value of an amount in minor units of a currency with `fromExponent` decimals, times
+ * `ratio`, in minor units of a currency with `toExponent` decimals: a fraction whose denominator
+ * is above zero, before any rounding.
  */
+export function scaleExact(
+  amountMinor: bigint,
+  ratio: Ratio,
+  fromExponent: number,
+  toExponent: number,
+): Ratio {
+  return {
+    numerator: amountMinor * ratio.numerator * 10n ** BigInt(toExponent),
+    denominator: ratio.denominator * 10n ** BigInt(fromExponent),
+  };
+}
+
+/** `scaleExact()` rounded half away from zero: one exact division, one rounding. */
 export function scaleMinor(
   amountMinor: bigint,
   ratio: Ratio,
   fromExponent: number,
   toExponent: number,
 ): bigint {
-  return divideHalfAwayFromZero(
-    amountMinor * ratio.numerator * 10n ** BigInt(toExponent),
-    ratio.denominator * 10n ** BigInt(fromExponent),
-  );
+  const exact = scaleExact(amountMinor, ratio, fromExponent, toExponent);
+  return divideHalfAwayFromZero(exact.numerator, exact.denominator);
 }

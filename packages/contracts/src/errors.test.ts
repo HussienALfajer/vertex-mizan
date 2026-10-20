@@ -26,6 +26,10 @@ describe('error codes', () => {
       ['CROSS_RATE_MISMATCH', 422],
       ['RATE_MISSING', 422],
       ['SYP_BEFORE_REDENOMINATION', 422],
+      // PR 3, ledger (ADR 0005, ADR 0007)
+      ['ENTRY_UNBALANCED', 422],
+      ['ENTRY_TOO_FEW_LINES', 422],
+      ['RELEASE_EXCEEDS_BALANCE', 422],
     ]);
   });
 

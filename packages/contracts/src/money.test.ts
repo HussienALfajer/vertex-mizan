@@ -11,12 +11,13 @@ import {
   currencies,
   currencyCodeSchema,
   type ExchangeRate,
+  exactConversion,
   exchangeRateSchema,
   minorAmountSchema,
   money,
   ratePolicySchema,
 } from './money.js';
-import { MINOR_MAX, MINOR_MIN } from './money-arithmetic.js';
+import { divideHalfAwayFromZero, MINOR_MAX, MINOR_MIN } from './money-arithmetic.js';
 
 /** A synthetic rate row; the values in this file are examples, not real rates. */
 function quote(
@@ -273,6 +274,42 @@ describe('convert with a cross rate', () => {
     expect(refusal(() => convert(money(100n, 'TRY'), 'USD', cross(oldSyp, usdSyp)))).toBe(
       'SYP_BEFORE_REDENOMINATION',
     );
+  });
+});
+
+describe('exactConversion', () => {
+  it('is the value convert() rounds, as a fraction of minor units', () => {
+    // 0.01 USD × 0.625 = 0.00625 SYP: 0.625 minor units, rounded by convert() to 0.01
+    const exact = exactConversion(money(1n, 'USD'), 'SYP', quote('USD', 'SYP', '0.625'));
+    expect(exact.numerator * 1000n).toBe(625n * exact.denominator);
+    expect(convert(money(1n, 'USD'), 'SYP', quote('USD', 'SYP', '0.625')).amountMinor).toBe(1n);
+    // 1.43 TRY × 2.9 ÷ 118.5 = 0.0349957… USD: 3.49957… cents
+    const cross: CrossRate = {
+      on: '2026-10-20',
+      legs: [quote('TRY', 'SYP', '2.9'), usdSyp],
+    };
+    const crossed = exactConversion(money(143n, 'TRY'), 'USD', cross);
+    expect(crossed.numerator * 1185n).toBe(143n * 29n * crossed.denominator);
+  });
+
+  it('checks its arguments as convert() does', () => {
+    expect(refusal(() => exactConversion(money(100n, 'EUR'), 'SYP', usdSyp))).toBe(
+      'RATE_PAIR_MISMATCH',
+    );
+    expect(
+      refusal(() =>
+        exactConversion({ amountMinor: MINOR_MAX + 1n, currency: 'USD' }, 'SYP', usdSyp),
+      ),
+    ).toBe('AMOUNT_OUT_OF_RANGE');
+  });
+});
+
+describe('divideHalfAwayFromZero', () => {
+  it('is the one rounding, exported for allocations', () => {
+    expect(divideHalfAwayFromZero(5n, 2n)).toBe(3n);
+    expect(divideHalfAwayFromZero(-5n, 2n)).toBe(-3n);
+    expect(divideHalfAwayFromZero(4n, 3n)).toBe(1n);
+    expect(divideHalfAwayFromZero(-4n, 3n)).toBe(-1n);
   });
 });
 
