@@ -168,6 +168,8 @@ function crossRatio(from: CurrencyCode, to: CurrencyCode, [first, second]: Cross
   if (first.type !== second.type || first.effectiveOn !== second.effectiveOn) {
     fail('CROSS_RATE_MISMATCH', 'A cross rate needs two quotes of the same type and date');
   }
+  // An amount in its own currency is not converted, through a cross rate either.
+  if (from === to) fail('RATE_PAIR_MISMATCH', `A cross rate cannot convert ${from} to itself`);
   const via = first.base === from ? first.quote : first.quote === from ? first.base : null;
   if (via === null || via === to) {
     fail(

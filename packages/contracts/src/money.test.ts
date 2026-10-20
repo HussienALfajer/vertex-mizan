@@ -237,6 +237,11 @@ describe('convert with a cross rate', () => {
     expect(refusal(() => convert(money(100n, 'TRY'), 'USD', [trySyp, eurSyp]))).toBe(
       'RATE_PAIR_MISMATCH',
     );
+    // A currency crossed back to itself: 1 000.00 TRY × 2.9 × 0.345 would invent 0.50 TRY.
+    const sypTry = quote('SYP', 'TRY', '0.345');
+    expect(refusal(() => convert(money(100_000n, 'TRY'), 'TRY', [trySyp, sypTry]))).toBe(
+      'RATE_PAIR_MISMATCH',
+    );
     // The first quote already converts directly: no cross through the target.
     const tryUsd = quote('TRY', 'USD', '0.024');
     expect(refusal(() => convert(money(100n, 'TRY'), 'USD', [tryUsd, usdSyp]))).toBe(

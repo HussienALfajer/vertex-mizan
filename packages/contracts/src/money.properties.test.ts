@@ -213,4 +213,29 @@ describe('cross rate properties', () => {
       { numRuns: 3_000 },
     );
   });
+
+  it('never converts a currency to itself through an intermediate one', () => {
+    fc.assert(
+      fc.property(
+        amount,
+        pair,
+        rateDigits,
+        rateDigits,
+        fc.boolean(),
+        fc.boolean(),
+        (x, [from, via], first, second, firstFromBase, secondFromBase) => {
+          const legs: CrossRate = [
+            firstFromBase ? quote(from, via, rateText(first)) : quote(via, from, rateText(first)),
+            secondFromBase
+              ? quote(via, from, rateText(second))
+              : quote(from, via, rateText(second)),
+          ];
+          expect(() => convert(money(x, from), from, legs)).toThrow(
+            expect.objectContaining({ code: 'RATE_PAIR_MISMATCH' }),
+          );
+        },
+      ),
+      { numRuns: 1_000 },
+    );
+  });
 });

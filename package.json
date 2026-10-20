@@ -12,7 +12,8 @@
     "lint": "biome check --error-on-warnings .",
     "lint:fix": "biome check --write .",
     "test": "turbo run test",
-    "check:migrations": "node scripts/migration-guard.mjs"
+    "check:migrations": "node scripts/migration-guard.mjs",
+    "check:error-codes": "node scripts/error-codes-guard.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.15",

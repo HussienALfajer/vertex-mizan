@@ -12,6 +12,13 @@ const root = fileURLToPath(new URL('../../../', import.meta.url));
 const plugin = fileURLToPath(new URL('../biome-plugins/minor-arithmetic.grit', import.meta.url));
 const biome = join(root, 'node_modules/@biomejs/biome/bin/biome');
 
+/** Declarations every case can use. */
+const HEADER = [
+  'const line = { amountMinor: 5n, parallelMinor: null as bigint | null, rate: 2 };',
+  "const row = { amountMinor: '500' };",
+  'let totalMinor = 0n;',
+];
+
 let dir = '';
 let count = 0;
 
@@ -35,10 +42,7 @@ afterAll(() => {
 function refusedLines(code: string, folder = 'apps/web/src'): number[] {
   const file = join(dir, folder, `case-${count++}.ts`);
   mkdirSync(dirname(file), { recursive: true });
-  writeFileSync(
-    file,
-    `const line = { amountMinor: 5n, rate: 2 };\nlet totalMinor = 0n;\n${code}\n`,
-  );
+  writeFileSync(file, `${HEADER.join('\n')}\n${code}\n`);
   const result = spawnSync(process.execPath, [biome, 'lint', '--reporter=json', file], {
     cwd: dir,
     encoding: 'utf8',
@@ -46,10 +50,10 @@ function refusedLines(code: string, folder = 'apps/web/src'): number[] {
   const report = JSON.parse(result.stdout) as {
     diagnostics: { category: string; location: { start: { line: number } } }[];
   };
-  // Line numbers of the case itself, after the two declarations above.
+  // Line numbers of the case itself, after the declarations of `HEADER`.
   return report.diagnostics
     .filter((diagnostic) => diagnostic.category === 'plugin')
-    .map((diagnostic) => diagnostic.location.start.line - 2);
+    .map((diagnostic) => diagnostic.location.start.line - HEADER.length);
 }
 
 describe('no arithmetic on *Minor fields', () => {
@@ -68,6 +72,34 @@ describe('no arithmetic on *Minor fields', () => {
     ).toEqual([1, 2, 3, 4, 5, 6]);
   });
 
+  it('refuses it behind casts, ??, calls, indexes, several lines and bitwise operators', () => {
+    expect(
+      refusedLines(
+        [
+          'export const a = (line.parallelMinor ?? 0n) + totalMinor;',
+          'export const b = Number.parseInt(row.amountMinor, 10) / 100;',
+          'export const c = (row.amountMinor as unknown as number) / 100;',
+          'export const d = Number(row.amountMinor.toString()) / 100;',
+          'export const e = line.amountMinor.valueOf() * 2n;',
+          "export const f = line['amountMinor'] * 2n;",
+          'export const g = -(line.parallelMinor ?? 0n);',
+          'export const h = line.amountMinor >> 1n;',
+          'export const i = Number(line.amountMinor) | 0;',
+          'export const j = line.amountMinor << 1n;',
+          'export const k = Number(line.amountMinor) >>> 0;',
+          'export const l = line.amountMinor & 1n;',
+          'export const m = line.amountMinor ^ 1n;',
+          'export const n = ~line.amountMinor;',
+          'totalMinor >>= 1n;',
+          'export const o = (',
+          '  line',
+          '    .amountMinor',
+          ') * 2n;',
+        ].join('\n'),
+      ),
+    ).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]);
+  });
+
   it('refuses compound assignment, increments and unary signs', () => {
     expect(
       refusedLines(
@@ -82,7 +114,7 @@ describe('no arithmetic on *Minor fields', () => {
           'export const h = +totalMinor.toString();',
         ].join('\n'),
       ),
-    ).toEqual([1, 2, 4, 5, 6, 7]);
+    ).toEqual([1, 2, 4, 5, 6, 7, 8]);
   });
 
   it('allows comparisons, plain assignment and arithmetic on other fields', () => {
@@ -106,6 +138,10 @@ describe('no arithmetic on *Minor fields', () => {
     expect(refusedLines(code, 'packages/ledger/src')).toEqual([]);
     expect(refusedLines(code, 'packages/db/src')).toEqual([1]);
     expect(refusedLines(code, 'apps/api/src')).toEqual([1]);
+    // Only the real folders: a lookalike path is still refused.
+    expect(refusedLines(code, 'apps/web/src/packages-contracts-src')).toEqual([1]);
+    expect(refusedLines(code, 'packages/contracts/src-old')).toEqual([1]);
+    expect(refusedLines(code, 'packages/ledgers/src')).toEqual([1]);
   });
 
   it('is loaded by the root biome.json', () => {
