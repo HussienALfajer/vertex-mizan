@@ -143,6 +143,10 @@ jobs:
       - name: Migrations apply to the development database
         run: pnpm db:migrate
       - run: pnpm test
+      # The scenario book (ADR 0005, ADR 0008): every Approved case on a fresh database of its own;
+      # Proposed cases are skipped and listed, never counted.
+      - name: Scenario book
+        run: pnpm test:scenarios
       # The cache only grows (each run adds its new task results): start over past 1.5 GB.
       - name: Keep the Turborepo cache small
         if: always()

@@ -6,7 +6,7 @@ Scenarios are written through `/posting-rule`, before the rule's code.
 
 ## Layout
 
-`docs/scenarios/<area>/<rule>.md`. The areas are:
+`docs/scenarios/<area>/<rule>.md`, the rule in kebab-case; the runner refuses a file anywhere else. The areas are:
 - `receivables`;
 - `revenue`;
 - `ad-funds`;
@@ -46,12 +46,16 @@ company:
   book: SYP
   parallel: USD                     # omit for no parallel ledger
   rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true }
-  template: service-agency          # chart-of-accounts template
+                                    # book_accepts_transaction_rate: false unless stated; only market accepts
+  template: service-agency          # chart-of-accounts template (optional)
   closed_periods: []                # e.g. [2026-10]
-rates:                              # company rate table rows
+rates:                              # company rate table rows; source: manual unless stated (hub, import)
   - { date: 2026-11-03, base: USD, quote: SYP, rate: "120.0000", type: bulletin }
 steps:                              # in order; each is a Hub event, a manual entry, or a job
   - event: <type>                   # Hub event (ADR 0006, 0008), payload as Hub sends it
+    accounting_date: 2026-11-03
+    payload: { ... }
+  - manual: <what it records>       # a manual entry; payload as the manual-entry form sends it (S03)
     accounting_date: 2026-11-03
     payload: { ... }
   - job: month_end_revaluation      # or month_end_release, close_period, ...
@@ -62,22 +66,31 @@ expect:
       date: 2026-11-03
       lines:                        # minor units; positive debit, negative credit
         - { account: "1210", dims: { client: C1 }, currency: USD, amount: 10000, book: 1200000, parallel: 10000 }
-  balances:                         # optional: account or open-item balances, report figures
+  balances:                         # optional: account balances; with a currency, its amount may be stated
     - { account: "1210", book: 0, parallel: 0 }
-  outcome:                          # optional: for refusals and holds
+  outcome:                          # optional: the last step's hold or refusal (held | refused)
     status: held
     reason: PERIOD_CLOSED
 ```
 
+Writing the YAML:
+- **Amounts** are whole minor units; a decimal amount is refused, never rounded. **Account codes and rates are quoted** (`"1210"`, `"120.0000"`), dates are `YYYY-MM-DD` and periods `YYYY-MM`.
+- `dims` may be left out (no dimensions). `parallel` is stated on every line and balance exactly when the company keeps a parallel ledger.
+- Each expected entry balances in both ledgers, and has at least two lines; a `third` case names a line or a rate in a third currency.
+- An unknown or misspelt key is an error.
+
 ## The runner's contract
 
-- A `Proposed` scenario is skipped and reported; only `Approved` scenarios count.
+The runner is `packages/scenarios` (`pnpm test:scenarios`, in CI).
+
+- A `Proposed` scenario is skipped and reported; only `Approved` scenarios count. Every file is still read: one that breaks this format fails the run, whatever its status.
+- An `Approved` case whose step has no executor yet fails; it is never skipped.
 - The runner checks:
-  - the **exact set** of entries and lines posted, with no missing and no extra lines;
+  - the **exact set** of entries and lines posted, with no missing and no extra lines: entries in posting order with their source and date, the lines of each in any order;
   - every amount in both ledgers;
   - one audit row per posting;
-  - the stated balances and outcomes.
-- It runs on a fresh test database through the real posting function, never through a mock.
+  - the stated balances and outcomes: every step completes, except the last when the case states an `outcome`, which it must match exactly.
+- It runs on a fresh test database through the real posting function, never through a mock. Each case has a company of its own.
 
 ## Examples
 

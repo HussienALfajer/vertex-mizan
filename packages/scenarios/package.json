@@ -1,0 +1,23 @@
+{
+  "name": "@vertex-mizan/scenarios",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:scenarios": "vitest run --config vitest.scenarios.config.ts"
+  },
+  "dependencies": {
+    "@vertex-mizan/contracts": "workspace:*",
+    "@vertex-mizan/db": "workspace:*",
+    "yaml": "2.9.1",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.2",
+    "@vertex-mizan/config": "workspace:*",
+    "typescript": "6.0.3",
+    "vitest": "5.0.5"
+  }
+}
