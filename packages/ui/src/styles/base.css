@@ -1,0 +1,66 @@
+@layer base {
+  html {
+    background-color: var(--background);
+  }
+
+  /*
+   * Text follows the density (§10). Figures are tabular everywhere: Montserrat's default digits are
+   * proportional, so columns of numbers would not align (ADR 0010 §3).
+   */
+  body {
+    @apply bg-background font-sans text-control text-foreground antialiased;
+    font-weight: 400;
+    font-variant-numeric: tabular-nums;
+  }
+
+  h1,
+  h2,
+  h3 {
+    font-weight: 700;
+  }
+
+  /* Never letter-space, italicize or justify Arabic UI text (§3). */
+  :lang(ar) {
+    letter-spacing: normal;
+  }
+
+  em,
+  i {
+    font-style: normal;
+  }
+
+  /* One focus style everywhere: 2 px ring, 2 px offset (§2). */
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background-color: var(--color-gold-200);
+    color: var(--color-green-950);
+  }
+}
+
+/* Unlayered, so it wins over the utilities layer without !important (§6). */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+    transition-duration: 0.01ms;
+  }
+}
+
+/*
+ * Base UI's own style elements are turned off (`CSPProvider disableStyleElements`): the desktop
+ * app's CSP allows stylesheets from 'self' only. This is the rule Base UI would inject for a
+ * select whose list scrolls without a scrollbar.
+ */
+.base-ui-disable-scrollbar {
+  scrollbar-width: none;
+}
+
+.base-ui-disable-scrollbar::-webkit-scrollbar {
+  display: none;
+}

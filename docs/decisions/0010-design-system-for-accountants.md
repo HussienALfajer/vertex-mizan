@@ -20,7 +20,7 @@ Two densities, set on `<html>` as `data-density` and read by every component thr
 | Control height (buttons, inputs, selects) | 32 px | 44 px | SAP compact 32 / cozy 44, Fluent 44 touch (R§3.1) |
 | Row height (tables, grids, header row) | 28 px | 44 px | Holds Noto Kufi's 1.9 em content area at 13 px (24.7 px) with room to spare (R§5.1); ≥ 24 px target (R§3.3) |
 | Cell padding (inline) | 8 px | 12 px | 4 px grid |
-| Control and cell text | 13 / 20 px | 16 / 24 px | Hub's `sm` for data; 16 px stops iOS from zooming into inputs (R§3.3) |
+| Control and cell text | 13 / 20 px | 16 / 26 px | Hub's `sm` and `md`; 16 px stops iOS from zooming into inputs (R§3.3) |
 | Icon in controls and rows | 16 px | 20 px | Hub's dense-table icon size |
 | Hit area of an icon inside a row | ≥ 24 × 24 px | ≥ 44 × 44 px | WCAG 2.5.8 AA; 2.5.5 AAA in comfortable |
 
