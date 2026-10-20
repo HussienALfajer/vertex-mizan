@@ -128,7 +128,7 @@ The rules are in §6.
 
 ### F10 Posting API for Hub
 Details in the Hub API contract ADR (step 4).
-- A versioned API `/v1` with one endpoint per event type, typed contracts and a published OpenAPI document.
+- A versioned API `/v1`: one events endpoint with a typed contract per event type and version, published as an OpenAPI document (ADR 0006).
 - **Exactly once:** an idempotency key from the Hub event. The same key with the same payload returns the first result; the same key with a different payload returns `409`.
 - **Posting rules owned by Mizan.** For each event type, the accounts are mapped in a screen the accountant maintains, and each rule has its scenario in the scenario book.
 - **Event inbox** with the states received, posted and held, and the reason for each hold (missing mapping, closed period, unknown reference). A held event is retried once its reason is fixed.
