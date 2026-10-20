@@ -7,7 +7,7 @@ import {
   formatMinor,
   parseAmount,
 } from '@vertex-mizan/contracts';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { cn } from '../lib/cn';
 
 type AmountInputProps = Omit<
@@ -58,17 +58,24 @@ function AmountInput({
   const [editing, setEditing] = useState(false);
   const [invalid, setInvalid] = useState(false);
   const [shown, setShown] = useState({ value, currency });
+  const [clearedError, setClearedError] = useState(false);
 
   // An amount set from outside (a loaded entry, a fill down) replaces the text unless it is
-  // being edited; a refused commit leaves the amount, so the typed text stays.
+  // being edited; a refused commit leaves the amount, so the typed text stays. A refused text it
+  // replaces is no longer an error: the caller hears it after the render, never during it.
   if (!editing && (shown.value !== value || shown.currency !== currency)) {
     setShown({ value, currency });
     setText(display(value, currency));
     if (invalid) {
       setInvalid(false);
-      onTextError(null);
+      setClearedError(true);
     }
   }
+  useEffect(() => {
+    if (!clearedError) return;
+    setClearedError(false);
+    onTextError(null);
+  }, [clearedError, onTextError]);
 
   function commit() {
     setEditing(false);

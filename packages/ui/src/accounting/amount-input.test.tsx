@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import type { AmountTextError, CurrencyCode } from '@vertex-mizan/contracts';
 import { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -153,24 +153,36 @@ describe('AmountInput', () => {
   });
 
   it('follows an amount set from outside while not editing, clearing a refused text', () => {
-    const onError = vi.fn();
-    const field = (value: bigint) => (
-      <AmountInput
-        aria-label="amount"
-        currency="USD"
-        value={value}
-        onValueChange={() => {}}
-        onTextError={onError}
-      />
-    );
-    const { rerender } = render(field(100n));
+    // The parent keeps the error in its own state, as callers must; React warns (and the test
+    // fails) if the input updates that state while rendering.
+    const warnings = vi.spyOn(console, 'error').mockImplementation(() => {});
+    let fillDown = (_value: bigint) => {};
+    function Form() {
+      const [value, setValue] = useState<bigint | null>(100n);
+      const [error, setError] = useState<AmountTextError | null>(null);
+      fillDown = setValue;
+      return (
+        <>
+          <AmountInput
+            aria-label="amount"
+            currency="USD"
+            value={value}
+            onValueChange={setValue}
+            onTextError={setError}
+          />
+          <output>{error ?? 'none'}</output>
+        </>
+      );
+    }
+    render(<Form />);
     type('1.234');
     fireEvent.blur(input());
-    expect(onError).toHaveBeenLastCalledWith('TOO_MANY_DECIMALS');
+    expect(screen.getByRole('status').textContent).toBe('TOO_MANY_DECIMALS');
     // A fill down replaces the refused text with a valid amount.
-    rerender(field(250n));
+    act(() => fillDown(250n));
     expect(input().value).toBe('2.50');
     expect(input().hasAttribute('aria-invalid')).toBe(false);
-    expect(onError).toHaveBeenLastCalledWith(null);
+    expect(screen.getByRole('status').textContent).toBe('none');
+    expect(warnings).not.toHaveBeenCalled();
   });
 });
