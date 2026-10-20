@@ -3,8 +3,10 @@
 // folders given as arguments. Tested by `packages/config/test/migration-guard.test.ts`.
 //
 // Comments outside dollar-quoted bodies are ignored. Bodies and string literals are checked as text,
-// as PostgreSQL's lexer skips them, so dynamic SQL written out in one literal is caught; SQL
-// assembled from pieces is not, and the convention tests on the migrated database are the backstop.
+// as PostgreSQL's lexer skips them, so dynamic SQL written out in one unescaped literal is caught.
+// Escaped literals (`U&'…'`, `U&"…"`, `E'…'` with `\x`, `\u` or octal escapes) are refused, since
+// they could spell a forbidden word. SQL assembled from pieces is not caught: the convention tests
+// on the migrated database are the backstop.
 // An intended exception needs a new ADR: a comment inside the statement names the rule and the ADR,
 // `-- migration-guard: allow drop-policy (ADR 0012)`. The ADR must be `Status: Accepted` and say
 // `migration-guard: allow drop-policy` itself. `--decisions <dir>` replaces `docs/decisions/`.
@@ -73,6 +75,11 @@ const RULES = [
     find: pattern(/\b(?:standard_conforming_strings|backslash_quote)\b/i),
     message: 'changes how strings are escaped',
   },
+  {
+    id: 'escaped-literal',
+    find: pattern(/\bU&['"]|\bE'(?:[^'\\]|''|\\[^xuU0-7])*\\[xuU0-7]/i),
+    message: 'uses an escaped literal (U& or an E string with a code escape), which can hide SQL',
+  },
   { id: 'bypass-rls', find: pattern(/\bBYPASSRLS\b/i), message: 'grants BYPASSRLS' },
   {
     id: 'security-definer',
@@ -91,6 +98,9 @@ const RULES = [
     message: 'grants TRUNCATE, TRIGGER, REFERENCES or ALL',
   },
 ];
+
+// What PostgreSQL accepts inside an identifier: a quote after one of these is part of the name.
+const IDENTIFIER = /[A-Za-z0-9_$\u0080-\uffff]/;
 
 const MARKER = /migration-guard:\s*allow\s+([a-z-]+(?:\s*,\s*[a-z-]+)*)\s*\(ADR\s*(\d{4})\)/gi;
 
@@ -138,7 +148,7 @@ function statements(sql) {
       i = k;
     } else if (char === "'") {
       // `E'…'` strings take backslash escapes; every string doubles a quote to escape it.
-      const escapes = /[eE]/.test(sql[i - 1] ?? '') && !/\w/.test(sql[i - 2] ?? '');
+      const escapes = /[eE]/.test(sql[i - 1] ?? '') && !IDENTIFIER.test(sql[i - 2] ?? '');
       let k = i + 1;
       while (k < sql.length) {
         if (escapes && sql[k] === '\\') k += 2;
@@ -154,7 +164,7 @@ function statements(sql) {
     } else if (char === '$') {
       // A dollar-quoted body ends at the first copy of its tag; nothing inside is lexed.
       const tag = /^\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$/.exec(sql.slice(i))?.[0];
-      if (!tag || /\w/.test(sql[i - 1] ?? '')) {
+      if (!tag || IDENTIFIER.test(sql[i - 1] ?? '')) {
         i++;
       } else {
         const close = sql.indexOf(tag, i + tag.length);

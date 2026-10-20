@@ -116,6 +116,31 @@ describe('migration guard: refuses guard-weakening SQL', () => {
     expect(guard("SELECT E'\\' -- '; DROP POLICY company_isolation ON accounts;").rules).toEqual([
       'drop-policy',
     ]);
+    // Escapes that are not code points are fine.
+    expect(guard("SELECT E'it\\'s\\tfine';").status).toBe(0);
+  });
+
+  it('reads `$` and non-ASCII letters as part of a name, as PostgreSQL does', () => {
+    // `x$$$` and `é$$` are names, not the start of a dollar-quoted body.
+    expect(
+      guard('SELECT 1 AS x$$$; SELECT $$ -- $$; DROP POLICY company_isolation ON t;').rules,
+    ).toEqual(['drop-policy']);
+    expect(guard('SELECT 1 AS é$$; SELECT $$ -- $$; DROP POLICY p ON t;').rules).toEqual([
+      'drop-policy',
+    ]);
+    // `a$e'…'` is the name `a$e` and a plain string, not an E string.
+    expect(guard("SELECT a$e'\\'; SELECT ' -- '; DROP POLICY p ON t;").rules).toEqual([
+      'drop-policy',
+    ]);
+  });
+
+  it.each([
+    'SET U&"standard\\005fconforming_strings" = off;',
+    'SET U&"session\\005freplication_role" = replica;',
+    "DO $$ BEGIN EXECUTE E'DROP \\x50OLICY p ON t'; END $$;",
+    "SELECT E'\\120';",
+  ])('refuses an escaped literal that could spell a forbidden word: %s', (sql) => {
+    expect(guard(sql).rules).toEqual(['escaped-literal']);
   });
 
   it('refuses turning standard_conforming_strings off before a string that would hide SQL', () => {

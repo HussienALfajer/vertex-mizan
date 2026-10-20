@@ -76,6 +76,8 @@ describe('git guard: commits', () => {
     expect(refused(`git -C "${feature}" commit -m "a; git add -A"`)).toBe(false);
     expect(refused(`git -C "${feature}" commit -m "-a is refused"`)).toBe(false);
     expect(refused(`git -C "${feature}" commit --amend --no-edit`)).toBe(false);
+    expect(refused(`git -C "${feature}" commit --author "A B <a@b.test>" -m x`)).toBe(false);
+    expect(refused(`git -C "${feature}" commit -F message.txt`)).toBe(false);
   });
 
   it.each([
@@ -86,6 +88,10 @@ describe('git guard: commits', () => {
     'commit .',
     'commit -m x -- .',
     'commit -i .',
+    "commit -m x ':!README.md'",
+    "commit -m x ':(top)'",
+    'commit -m x D:/vertex-mizan',
+    'commit -m x --pathspec-from-file=-',
   ])('refuses git %s on a branch', (args) => {
     expect(refused(`git -C "${feature}" ${args}`)).toBe(true);
   });
@@ -96,6 +102,12 @@ describe('git guard: wrapped commands', () => {
     'eval "git add -A"',
     'powershell "git commit --no-verify -m x"',
     'pwsh -NoProfile "git commit -am x"',
+    'eval "true;git commit -a -m x"',
+    'eval "(git push origin main)"',
+    'eval "/usr/bin/git add -A"',
+    `powershell "& 'git' commit --no-verify -m x"`,
+    'powershell "git.exe push origin main"',
+    'echo $(git add -A)',
   ])('refuses %s', (command) => {
     expect(refused(command)).toBe(true);
   });
@@ -158,6 +170,12 @@ describe('git guard: pushes', () => {
     'git push origin :main',
     'git push --all origin',
     'git push --mirror origin',
+    'git push --branches origin',
+    "git push origin 'refs/heads/*'",
+    'git push origin refs/heads/*:refs/heads/*',
+    'git push origin :',
+    'git push origin +:',
+    'git push origin heads/main',
   ])('refuses %s', (command) => {
     expect(refused(command)).toBe(true);
   });
