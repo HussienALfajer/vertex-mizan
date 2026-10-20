@@ -1,6 +1,13 @@
 import type { ExchangeRate } from '@vertex-mizan/contracts';
 import type { Database } from '@vertex-mizan/db';
-import type { CaseCompany, ExpectedBalance, ExpectedLine, Step, StepKind } from './format.js';
+import type {
+  CaseCompany,
+  ExpectedBalance,
+  ExpectedLine,
+  ExpectedOpenItem,
+  Step,
+  StepKind,
+} from './format.js';
 
 /**
  * The run's fresh database as the runtime roles reach it, the way the API and the worker connect
@@ -33,16 +40,28 @@ export type PostedEntry = {
   auditRows: number;
 };
 
+/**
+ * An account's balance over every dimension set that holds the pairs of `dims` (none: the whole
+ * account), and over the lines of `currency` only when one is named.
+ */
 export type BalanceQuery = Pick<ExpectedBalance, 'account' | 'dims' | 'currency'>;
 
 /** `amount` is the transaction amount, read when the query names a currency. */
 export type ObservedBalance = { amount: bigint | null; book: bigint; parallel: bigint | null };
+
+/** One document's open item on a control account. */
+export type OpenItemQuery = Pick<ExpectedOpenItem, 'item' | 'account'>;
+
+/** What remains of an open item, with its dimensions and currency. */
+export type ObservedOpenItem = Omit<ExpectedOpenItem, 'item' | 'account'>;
 
 /** Reads what the company's ledger holds, from the database, as the reports will. */
 export type LedgerReader = {
   /** Every entry the company has, in posting order. */
   entries: (context: CaseContext) => Promise<PostedEntry[]>;
   balance: (context: CaseContext, query: BalanceQuery) => Promise<ObservedBalance>;
+  /** `null` when the company has no such open item. */
+  openItem: (context: CaseContext, query: OpenItemQuery) => Promise<ObservedOpenItem | null>;
 };
 
 /**

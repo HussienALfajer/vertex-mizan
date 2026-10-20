@@ -1,5 +1,11 @@
-import type { ExpectedBalance, ExpectedEntry } from './format.js';
-import type { BalanceQuery, ObservedBalance, PostedEntry, PostedLine } from './harness.js';
+import type { ExpectedBalance, ExpectedEntry, ExpectedOpenItem } from './format.js';
+import type {
+  BalanceQuery,
+  ObservedBalance,
+  ObservedOpenItem,
+  PostedEntry,
+  PostedLine,
+} from './harness.js';
 
 function describeDimensions(dims: Readonly<Record<string, string>>): string {
   const pairs = Object.entries(dims).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
@@ -105,4 +111,16 @@ export function compareBalance(expected: ExpectedBalance, observed: ObservedBala
       differences.push(`${label}: ${field} ${got ?? 'none'}, expected ${want ?? 'none'}`);
   }
   return differences;
+}
+
+/** An open item: its dimensions, currency and remaining amounts, every one exactly. */
+export function compareOpenItem(
+  expected: ExpectedOpenItem,
+  observed: ObservedOpenItem | null,
+): string[] {
+  const label = `open item ${expected.item}`;
+  if (observed === null) return [`${label} on ${expected.account}: not found`];
+  const found = { ...observed, account: expected.account };
+  if (lineKey(found) === lineKey(expected)) return [];
+  return [`${label}: ${describeLine(found)}, expected ${describeLine(expected)}`];
 }

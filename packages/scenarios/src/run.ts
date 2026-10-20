@@ -1,4 +1,4 @@
-import { balanceQuery, compareBalance, compareEntries } from './compare.js';
+import { balanceQuery, compareBalance, compareEntries, compareOpenItem } from './compare.js';
 import type { Outcome, ScenarioCase, Step, StepKind } from './format.js';
 import type { CaseContext, ScenarioDatabase, ScenarioHarness, StepResult } from './harness.js';
 
@@ -62,7 +62,8 @@ function sameResult(result: StepResult, expected: StepResult | Outcome): boolean
  * difference. Before anything runs, every part the case needs must be in the harness: an approved
  * step with no executor fails the case, never skips it. Each step must be done, except the last when
  * the case states an `outcome`: then the last step must be held or refused with that reason. Then
- * the ledger must hold exactly the expected entries (`compareEntries`) and the stated balances.
+ * the ledger must hold exactly the expected entries (`compareEntries`), the stated balances and
+ * the stated open items.
  */
 export async function runCase(
   scenarioCase: ScenarioCase,
@@ -109,6 +110,10 @@ export async function runCase(
   for (const balance of expect.balances) {
     const observed = await harness.ledger.balance(context, balanceQuery(balance));
     differences.push(...compareBalance(balance, observed));
+  }
+  for (const openItem of expect.openItems) {
+    const query = { item: openItem.item, account: openItem.account };
+    differences.push(...compareOpenItem(openItem, await harness.ledger.openItem(context, query)));
   }
   if (differences.length > 0) throw new ScenarioFailure(differences);
 }

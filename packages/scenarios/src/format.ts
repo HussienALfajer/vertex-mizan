@@ -172,7 +172,24 @@ const rateSchema = z
   .transform(({ date, ...rate }) => ({ effectiveOn: date, ...rate }))
   .pipe(exchangeRateSchema);
 
-const payloadSchema = z.record(z.string(), z.unknown());
+/**
+ * A step's request as the system receives it, checked by the step's executor against the real
+ * contract. Here only one thing is refused: a YAML decimal number anywhere in it, which would reach
+ * the system as a float (integers are already `bigint`).
+ */
+const payloadSchema = z.record(z.string(), z.unknown()).superRefine((payload, context) => {
+  const walk = (value: unknown, path: PropertyKey[]): void => {
+    if (typeof value === 'number') {
+      const message = 'A decimal number: amounts are whole minor units and rates are in quotes';
+      context.addIssue({ code: 'custom', message, path });
+    } else if (Array.isArray(value)) {
+      for (const [index, item] of value.entries()) walk(item, [...path, index]);
+    } else if (typeof value === 'object' && value !== null) {
+      for (const [key, item] of Object.entries(value)) walk(item, [...path, key]);
+    }
+  };
+  walk(payload, []);
+});
 
 /** A step is told apart by its one key: `event`, `manual` or `job`. */
 export const STEP_KINDS = ['event', 'manual', 'job'] as const;
@@ -247,7 +264,11 @@ const entrySchema = z.strictObject({
 
 export type ExpectedEntry = z.output<typeof entrySchema>;
 
-/** An account balance; with a currency, its transaction amount may be stated too. */
+/**
+ * An account balance, as the reports read it. `dims` filters: the balance of every dimension set
+ * holding the stated pairs, so no `dims` is the whole account. With a currency, only that
+ * currency's lines, and its transaction amount may be stated too.
+ */
 const balanceSchema = z
   .strictObject({
     account: accountSchema,
@@ -272,6 +293,24 @@ const balanceSchema = z
 
 export type ExpectedBalance = z.output<typeof balanceSchema>;
 
+/**
+ * An open item (ADR 0008): one document (`item`, such as an invoice number) on its control
+ * account, with its dimensions, its currency and what remains of it in each amount; 0 when cleared.
+ */
+const openItemSchema = z
+  .strictObject({
+    item: z.string({ error: 'Expected the document reference in quotes' }).trim().min(1),
+    account: accountSchema,
+    dims: dimensionsSchema.default({}),
+    currency: currencyCodeSchema,
+    amount: amountSchema,
+    book: amountSchema,
+    parallel: amountSchema.optional(),
+  })
+  .transform((item) => ({ ...item, parallel: item.parallel ?? null }));
+
+export type ExpectedOpenItem = z.output<typeof openItemSchema>;
+
 /** The last step's result when it is not posted: held (ADR 0008 hold reasons) or refused. */
 const outcomeSchema = z.strictObject({
   status: z.enum(['held', 'refused']),
@@ -284,9 +323,14 @@ const expectSchema = z
   .strictObject({
     entries: z.array(entrySchema),
     balances: z.array(balanceSchema).default([]),
+    open_items: z.array(openItemSchema).default([]),
     outcome: outcomeSchema.optional(),
   })
-  .transform((expect) => ({ ...expect, outcome: expect.outcome ?? null }));
+  .transform(({ open_items, ...expect }) => ({
+    ...expect,
+    openItems: open_items,
+    outcome: expect.outcome ?? null,
+  }));
 
 export const caseSchema = z
   .strictObject({
@@ -302,6 +346,26 @@ export const caseSchema = z
     const ledgerMessage = parallel
       ? `The company keeps a ${parallel.currency} parallel ledger: state the parallel amount`
       : 'The company keeps no parallel ledger: state no parallel amount';
+    const issue = (message: string, path: PropertyKey[]) =>
+      context.addIssue({ code: 'custom', message, path });
+
+    // ADR 0007: in a ledger's own currency, the ledger amount is the transaction amount.
+    type Amounts = {
+      currency: string | null;
+      amount: bigint | null;
+      book: bigint;
+      parallel: bigint | null;
+    };
+    const ownCurrency = (row: Amounts, path: PropertyKey[]) => {
+      if (row.amount === null) return;
+      if (row.currency === book.currency && row.book !== row.amount) {
+        issue(`In ${book.currency}, the book amount is the transaction amount`, [...path, 'book']);
+      }
+      if (row.currency === parallel?.currency && row.parallel !== row.amount) {
+        const message = `In ${parallel.currency}, the parallel amount is the transaction amount`;
+        issue(message, [...path, 'parallel']);
+      }
+    };
 
     for (const [e, entry] of scenarioCase.expect.entries.entries()) {
       let bookTotal = 0n;
@@ -309,10 +373,9 @@ export const caseSchema = z
       for (const [l, line] of entry.lines.entries()) {
         bookTotal += line.book;
         parallelTotal += line.parallel ?? 0n;
-        if (!kept(line.parallel)) {
-          const path = ['expect', 'entries', e, 'lines', l, 'parallel'];
-          context.addIssue({ code: 'custom', message: ledgerMessage, path });
-        }
+        const path = ['expect', 'entries', e, 'lines', l];
+        if (!kept(line.parallel)) issue(ledgerMessage, [...path, 'parallel']);
+        ownCurrency(line, path);
       }
       // ADR 0005, invariant 1: every entry balances in the book and the parallel ledger.
       if (bookTotal !== 0n) {
@@ -325,10 +388,18 @@ export const caseSchema = z
       }
     }
     for (const [b, balance] of scenarioCase.expect.balances.entries()) {
-      if (!kept(balance.parallel)) {
-        const path = ['expect', 'balances', b, 'parallel'];
-        context.addIssue({ code: 'custom', message: ledgerMessage, path });
-      }
+      const path = ['expect', 'balances', b];
+      if (!kept(balance.parallel)) issue(ledgerMessage, [...path, 'parallel']);
+      ownCurrency(balance, path);
+    }
+    const items = new Set<string>();
+    for (const [o, openItem] of scenarioCase.expect.openItems.entries()) {
+      const path = ['expect', 'open_items', o];
+      if (!kept(openItem.parallel)) issue(ledgerMessage, [...path, 'parallel']);
+      ownCurrency(openItem, path);
+      const key = JSON.stringify([openItem.item, openItem.account]);
+      if (items.has(key)) issue(`${openItem.item} on ${openItem.account} is stated twice`, path);
+      items.add(key);
     }
 
     if (scenarioCase.company.shape === 'third') {

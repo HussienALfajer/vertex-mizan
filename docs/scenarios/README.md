@@ -66,8 +66,10 @@ expect:
       date: 2026-11-03
       lines:                        # minor units; positive debit, negative credit
         - { account: "1210", dims: { client: C1 }, currency: USD, amount: 10000, book: 1200000, parallel: 10000 }
-  balances:                         # optional: account balances; with a currency, its amount may be stated
+  balances:                         # optional: account balances, as the reports read them
     - { account: "1210", book: 0, parallel: 0 }
+  open_items:                       # optional: what remains of each document on its control account
+    - { item: INV-2026-1, account: "1210", dims: { client: C1 }, currency: USD, amount: 0, book: 0, parallel: 0 }
   outcome:                          # optional: the last step's hold or refusal (held | refused)
     status: held
     reason: PERIOD_CLOSED
@@ -75,7 +77,9 @@ expect:
 
 Writing the YAML:
 - **Amounts** are whole minor units; a decimal amount is refused, never rounded. **Account codes and rates are quoted** (`"1210"`, `"120.0000"`), dates are `YYYY-MM-DD` and periods `YYYY-MM`.
-- `dims` may be left out (no dimensions). `parallel` is stated on every line and balance exactly when the company keeps a parallel ledger.
+- A case is fenced exactly `` ```yaml `` at the start of a line; any other fence (`yml`, indented, tildes, unclosed) is an error, so no case is hidden. A payload holds no decimal number.
+- On a line or an open item, no `dims` means no dimensions. On a balance, `dims` filters: the balance over every dimension set holding the stated pairs, so no `dims` is the whole account; with a `currency`, only that currency's lines, and its `amount` may be stated.
+- `parallel` is stated on every line, balance and open item exactly when the company keeps a parallel ledger. In a ledger's own currency, that ledger's amount is the transaction amount (ADR 0007): a SYP line in SYP books has `book` equal to `amount`.
 - Each expected entry balances in both ledgers, and has at least two lines; a `third` case names a line or a rate in a third currency.
 - An unknown or misspelt key is an error.
 
@@ -89,7 +93,8 @@ The runner is `packages/scenarios` (`pnpm test:scenarios`, in CI).
   - the **exact set** of entries and lines posted, with no missing and no extra lines: entries in posting order with their source and date, the lines of each in any order;
   - every amount in both ledgers;
   - one audit row per posting;
-  - the stated balances and outcomes: every step completes, except the last when the case states an `outcome`, which it must match exactly.
+  - the stated account and open-item balances: an open item by its document and account, with its dimensions, currency and remaining amounts;
+  - the outcomes: every step completes, except the last when the case states an `outcome`, which it must match exactly.
 - It runs on a fresh test database through the real posting function, never through a mock. Each case has a company of its own.
 
 ## Examples

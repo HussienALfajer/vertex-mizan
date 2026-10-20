@@ -41,22 +41,48 @@ export class ScenarioFormatError extends Error {
 
 const STATUS = /^Status: (?:Proposed|Approved \(owner, (\d{4}-\d{2}-\d{2})\))$/;
 
-/** Every fenced `yaml` block of a Markdown file, with the line its fence opens on. */
-export function yamlBlocks(markdown: string): { line: number; source: string }[] {
+/** A closing fence: the opening one's character, at least as many, indented up to three spaces. */
+function closes(marks: string, text: string): boolean {
+  const fence = /^ {0,3}(`{3,}|~{3,})\s*$/.exec(text)?.[1];
+  return fence !== undefined && fence[0] === marks[0] && fence.length >= marks.length;
+}
+
+/**
+ * Every fenced `yaml` block of a Markdown file, with the line its fence opens on. A case is fenced
+ * exactly `` ```yaml `` at the start of a line. Any fence that would hide one is a problem, never
+ * skipped: one indented or of tildes or of more backticks, an info string such as `yml`, `YAML` or
+ * `yaml title`, and a fence never closed. Fences close as in CommonMark, so scanning goes on.
+ */
+export function yamlBlocks(markdown: string): {
+  blocks: { line: number; source: string }[];
+  problems: string[];
+} {
   const blocks: { line: number; source: string }[] = [];
-  let open: { line: number; yaml: boolean; lines: string[] } | null = null;
+  const problems: string[] = [];
+  let open: { line: number; yaml: boolean; marks: string; lines: string[] } | null = null;
   for (const [index, text] of markdown.split(/\r?\n/).entries()) {
+    const line = index + 1;
     if (open === null) {
-      const fence = /^```\s*(\S*)\s*$/.exec(text);
-      if (fence) open = { line: index + 1, yaml: fence[1] === 'yaml', lines: [] };
-    } else if (/^```\s*$/.test(text)) {
+      const fence = /^( {0,3})(`{3,}|~{3,})(.*)$/.exec(text);
+      if (!fence) continue;
+      const [, indent = '', marks = '', info = ''] = fence;
+      const regular = indent === '' && marks === '```';
+      const yaml = info.trim() === 'yaml';
+      if (!regular) {
+        problems.push(`Line ${line}: a fence is three backticks at the start of the line`);
+      } else if (!yaml && /^ya?ml\b/i.test(info.trim())) {
+        problems.push(`Line ${line}: a case is fenced exactly \`\`\`yaml`);
+      }
+      open = { line, yaml: regular && yaml, marks, lines: [] };
+    } else if (closes(open.marks, text)) {
       if (open.yaml) blocks.push({ line: open.line, source: open.lines.join('\n') });
       open = null;
     } else {
       open.lines.push(text);
     }
   }
-  return blocks;
+  if (open !== null) problems.push(`Line ${open.line}: the fence is never closed`);
+  return { blocks, problems };
 }
 
 /**
@@ -104,7 +130,8 @@ export function parseScenario(path: string, markdown: string): ScenarioFile {
   }
 
   const cases: ScenarioCase[] = [];
-  const blocks = yamlBlocks(markdown);
+  const { blocks, problems: fences } = yamlBlocks(markdown);
+  problems.push(...fences);
   if (blocks.length === 0) problems.push('No case: a scenario has at least one yaml block');
   for (const block of blocks) {
     try {
@@ -124,15 +151,17 @@ export function parseScenario(path: string, markdown: string): ScenarioFile {
 
 /**
  * Every scenario file under `docs/scenarios` of the repository, in path order. A file that breaks
- * the format, or sits outside `<area>/<rule>.md`, is an error; `README.md` is the format itself.
+ * the format, or any file outside `<area>/<rule>.md` (another extension included), is an error;
+ * `README.md` is the format itself.
  */
 export function readBook(repositoryRoot: string): Book {
   const root = join(repositoryRoot, 'docs', 'scenarios');
   const files: ScenarioFile[] = [];
   const errors: string[] = [];
-  const names = readdirSync(root, { recursive: true, encoding: 'utf8' })
-    .filter((name) => name.endsWith('.md') && name !== 'README.md')
-    .map((name) => name.split(sep).join('/'))
+  const names = readdirSync(root, { recursive: true, withFileTypes: true })
+    .filter((entry) => !entry.isDirectory())
+    .map((entry) => relative(root, join(entry.parentPath, entry.name)).split(sep).join('/'))
+    .filter((name) => name !== 'README.md')
     .sort();
   for (const name of names) {
     const path = relative(repositoryRoot, join(root, name)).split(sep).join('/');

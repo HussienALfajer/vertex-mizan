@@ -18,6 +18,8 @@ expect:
         - { account: "4110", dims: { client: C1, service: S1 }, currency: USD, amount: -10000, book: -1200000, parallel: -10000 }
   balances:
     - { account: "1210", book: 1200000, parallel: 10000 }
+  open_items:
+    - { item: INV-1, account: "1210", dims: { client: C1 }, currency: USD, amount: 10000, book: 1200000, parallel: 10000 }
 `;
 
 export const SYP_ONLY = `

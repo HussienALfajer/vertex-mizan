@@ -3,6 +3,7 @@ import { parseCase } from './book.js';
 import type { ScenarioCase } from './format.js';
 import type {
   ObservedBalance,
+  ObservedOpenItem,
   PostedEntry,
   ScenarioDatabase,
   ScenarioHarness,
@@ -28,7 +29,11 @@ function asPosted(scenarioCase: ScenarioCase): PostedEntry[] {
 
 function harness(
   posted: PostedEntry[],
-  options: { results?: StepResult[]; balance?: ObservedBalance } = {},
+  options: {
+    results?: StepResult[];
+    balance?: ObservedBalance;
+    openItem?: ObservedOpenItem | null;
+  } = {},
 ) {
   const calls: string[] = [];
   const results = [...(options.results ?? [])];
@@ -46,6 +51,7 @@ function harness(
     ledger: {
       entries: async () => posted,
       balance: async () => options.balance ?? { amount: null, book: 1200000n, parallel: 10000n },
+      openItem: async () => (options.openItem === undefined ? INV_1 : options.openItem),
     },
   };
   return { fake, calls };
@@ -62,6 +68,14 @@ async function differences(work: Promise<void>): Promise<readonly string[]> {
 }
 
 const usdInvoice = parseCase(CASE);
+
+const INV_1: ObservedOpenItem = {
+  dims: { client: 'C1' },
+  currency: 'USD',
+  amount: 10000n,
+  book: 1200000n,
+  parallel: 10000n,
+};
 
 function withLine(entries: PostedEntry[], change: (entry: PostedEntry) => PostedEntry) {
   return entries.map((entry, index) => (index === 0 ? change(entry) : entry));
@@ -159,6 +173,29 @@ describe('runCase', () => {
     expect(await differences(runCase(usdInvoice, fake, database))).toEqual([
       'balance of 1210: parallel 0, expected 10000',
     ]);
+  });
+});
+
+describe('runCase with open items', () => {
+  it('fails an open item the company does not have', async () => {
+    const { fake } = harness(asPosted(usdInvoice), { openItem: null });
+    expect(await differences(runCase(usdInvoice, fake, database))).toEqual([
+      'open item INV-1 on 1210: not found',
+    ]);
+  });
+
+  it.each([
+    ['another remaining amount', { ...INV_1, book: 0n }, 'book 0, parallel 10000'],
+    ['other dimensions', { ...INV_1, dims: { client: 'C2' } }, '1210 {client: C2}'],
+  ])('fails an open item with %s', async (_, openItem, found) => {
+    const { fake } = harness(asPosted(usdInvoice), { openItem });
+    const [difference, ...rest] = await differences(runCase(usdInvoice, fake, database));
+    expect(rest).toEqual([]);
+    expect(difference).toMatch(/^open item INV-1: /);
+    expect(difference).toContain(found);
+    expect(difference).toContain(
+      'expected 1210 {client: C1} USD: amount 10000, book 1200000, parallel 10000',
+    );
   });
 });
 

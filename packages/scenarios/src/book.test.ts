@@ -35,10 +35,37 @@ describe('the README', () => {
       new URL('../../../docs/scenarios/README.md', import.meta.url),
       'utf8',
     );
-    const examples = yamlBlocks(readme.slice(readme.indexOf('\n## Examples')));
+    expect(yamlBlocks(readme).problems).toEqual([]);
+    const examples = yamlBlocks(readme.slice(readme.indexOf('\n## Examples'))).blocks;
     expect(examples).toHaveLength(2);
     for (const example of examples)
       expect(parseCase(example.source).expect.entries).toHaveLength(2);
+  });
+});
+
+describe('the fences', () => {
+  const body = CASE.trim();
+  const fenced = (open: string, close = open) => `${open}\n${body}\n${close}`;
+
+  it.each([
+    ['yml', fenced('```yml', '```'), 'fenced exactly'],
+    ['YAML', fenced('```YAML', '```'), 'fenced exactly'],
+    ['yaml with a title', fenced('```yaml case', '```'), 'fenced exactly'],
+    ['an indented fence', fenced('  ```yaml', '  ```'), 'three backticks'],
+    ['tildes', fenced('~~~yaml', '~~~'), 'three backticks'],
+    ['four backticks', fenced('````yaml', '````'), 'three backticks'],
+    ['a fence never closed', `\`\`\`yaml\n${body}`, 'never closed'],
+  ])('refuses a case hidden by %s, beside a case read', (_, hidden, problem) => {
+    const markdown = `${file('Status: Approved (owner, 2026-10-21)', SYP_ONLY)}\n${hidden}\n`;
+    expect(problems(markdown).join('\n')).toContain(problem);
+  });
+
+  it('closes a fence as CommonMark does, so a later case is still read', () => {
+    const markdown = ['```text', 'a ``` inside', '  ```', '', '```yaml', body, '```'];
+    expect(yamlBlocks(markdown.join('\n'))).toEqual({
+      blocks: [{ line: 5, source: body }],
+      problems: [],
+    });
   });
 });
 
@@ -135,7 +162,10 @@ describe('a case', () => {
     ],
     [
       'a balance without its parallel amount',
-      CASE.replace('book: 1200000, parallel: 10000 }\n', 'book: 1200000 }\n'),
+      CASE.replace(
+        '{ account: "1210", book: 1200000, parallel: 10000 }',
+        '{ account: "1210", book: 1200000 }',
+      ),
       'state the parallel amount',
     ],
     [
@@ -198,6 +228,46 @@ describe('a case', () => {
       CASE.replace('shape: syp-usd', 'shape: third'),
       'third currency',
     ],
+    [
+      'a book-currency line whose book amount is not its transaction amount',
+      SYP_ONLY.replace('amount: 50000, book: 50000', 'amount: 50000, book: 49000').replace(
+        'amount: -50000, book: -50000',
+        'amount: -50000, book: -49000',
+      ),
+      'In SYP, the book amount is the transaction amount',
+    ],
+    [
+      'a parallel-currency line whose parallel amount is not its transaction amount',
+      CASE.replace(
+        'amount: 10000, book: 1200000, parallel: 10000 }\n        -',
+        'amount: 10000, book: 1200000, parallel: 9000 }\n        -',
+      ).replace('parallel: -10000', 'parallel: -9000'),
+      'In USD, the parallel amount is the transaction amount',
+    ],
+    [
+      'a balance in the book currency whose amounts differ',
+      CASE.replace(
+        '{ account: "1210", book: 1200000',
+        '{ account: "1210", currency: SYP, amount: 1, book: 1200000',
+      ),
+      'In SYP, the book amount',
+    ],
+    [
+      'an open item whose parallel amount is not its USD amount',
+      CASE.replace(/book: 1200000, parallel: 10000 \}\n$/, 'book: 1200000, parallel: 1 }\n'),
+      'In USD, the parallel amount',
+    ],
+    [
+      'an open item without its parallel amount',
+      CASE.replace(/book: 1200000, parallel: 10000 \}\n$/, 'book: 1200000 }\n'),
+      'state the parallel amount',
+    ],
+    ['an open item stated twice', CASE.replace(/( {4}- \{ item: .*\n)/, '$1$1'), 'stated twice'],
+    [
+      'a decimal number in a payload',
+      CASE.replace('{ invoice: INV-1,', '{ invoice: INV-1, rate: 122.5,'),
+      'A decimal number',
+    ],
   ])('refuses %s', (_, source, problem) => {
     expect(refusal(source)).toContain(problem);
   });
@@ -237,15 +307,17 @@ describe('the book', () => {
     ]);
   });
 
-  it('reports a file outside an area, deeper than one, or not named in kebab-case', () => {
+  it('reports a file outside an area, deeper than one, not named in kebab-case or not Markdown', () => {
     const result = book({
       'a-rule.md': file('Status: Proposed', CASE),
       'sales/a-rule.md': file('Status: Proposed', CASE),
       'revenue/deeper/a-rule.md': file('Status: Proposed', CASE),
       'revenue/A_Rule.md': file('Status: Proposed', CASE),
+      'revenue/a-rule.yaml': CASE,
+      'revenue/a-rule.MD': file('Status: Proposed', CASE),
     });
     expect(result.files).toEqual([]);
-    expect(result.errors).toHaveLength(4);
+    expect(result.errors).toHaveLength(6);
     for (const error of result.errors)
       expect(error).toContain('expected docs/scenarios/<area>/<rule>.md');
   });
