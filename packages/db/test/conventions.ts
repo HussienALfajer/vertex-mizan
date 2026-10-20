@@ -17,6 +17,8 @@ export const ROLES = [APP_ROLE, JOBS_ROLE, OWNER_ROLE, QUEUE_ROLE];
 export const RULES = {
   registry: 'Every table in public is in the registry, and every registered table exists.',
   'relation-kind': 'No view, materialized view or foreign table, but pg-boss’s own.',
+  'rewrite-rule':
+    'No table has a rewrite rule, which could redirect or drop a write that no trigger then sees.',
   'table-schema':
     'Tables live in public; besides them only the migration journal and pg-boss’s own tables.',
   'table-owner': 'The owner role owns every table.',
@@ -36,7 +38,7 @@ export const RULES = {
     'A company table has one permissive policy: company_isolation, for every role and command.',
   'index-company-first': 'Every secondary index of a company table starts with company_id.',
   'app-privilege':
-    'The app role has no TRUNCATE, TRIGGER or REFERENCES, and DELETE on no table (archive instead).',
+    'The app role has no TRUNCATE, TRIGGER, MAINTAIN or REFERENCES, and DELETE on no table (archive instead).',
   'append-only-grant': 'No role but the owner may UPDATE or DELETE an append-only table.',
   'role-privilege': 'The jobs and queue roles and PUBLIC hold no privilege on any table.',
   'append-only-trigger':
@@ -162,6 +164,7 @@ type Privileges = {
   truncate: boolean;
   references: boolean;
   trigger: boolean;
+  maintain: boolean;
   updateColumn: boolean;
   referencesColumn: boolean;
   anyColumn: boolean;
@@ -199,6 +202,10 @@ export async function checkConventions(
            pg_get_userbyid(c.relowner) as owner
     from pg_class c join pg_namespace n on n.oid = c.relnamespace
     where c.relkind in ('v', 'm', 'f') and ${SYSTEM_SCHEMAS}`);
+  const rewriteRules = await read<{ table: string; name: string }>(`
+    select c.relname as table, r.rulename as name
+    from pg_rewrite r join pg_class c on c.oid = r.ev_class
+    where c.relnamespace = 'public'::regnamespace and c.relkind in ('r', 'p')`);
   const columns = await read<Column>(`
     select c.relname as table, a.attname as name, format_type(a.atttypid, a.atttypmod) as type,
            not a.attnotnull as nullable, pg_get_expr(d.adbin, d.adrelid) as default
@@ -250,6 +257,7 @@ export async function checkConventions(
             has_table_privilege(r.role, c.oid, 'TRUNCATE') as truncate,
             has_table_privilege(r.role, c.oid, 'REFERENCES') as references,
             has_table_privilege(r.role, c.oid, 'TRIGGER') as trigger,
+            has_table_privilege(r.role, c.oid, 'MAINTAIN') as maintain,
             has_any_column_privilege(r.role, c.oid, 'UPDATE') as "updateColumn",
             has_any_column_privilege(r.role, c.oid, 'REFERENCES') as "referencesColumn",
             has_any_column_privilege(r.role, c.oid, 'SELECT, INSERT, UPDATE, REFERENCES')
@@ -273,6 +281,8 @@ export async function checkConventions(
       fail('relation-kind', `${relation.schema}.${relation.name}`, `relkind ${relation.kind}`);
     }
   }
+
+  for (const rule of rewriteRules) fail('rewrite-rule', rule.table, rule.name);
 
   const tables = allTables.filter((t) => t.schema === 'public');
   const names = new Set(tables.map((t) => t.name));
@@ -374,7 +384,12 @@ export async function checkConventions(
     for (const p of privileges.filter((p) => p.table === name)) {
       if (
         p.role === APP_ROLE &&
-        (p.truncate || p.trigger || p.references || p.referencesColumn || (p.delete && !appendOnly))
+        (p.truncate ||
+          p.trigger ||
+          p.maintain ||
+          p.references ||
+          p.referencesColumn ||
+          (p.delete && !appendOnly))
       ) {
         fail('app-privilege', name, JSON.stringify(p));
       }
@@ -382,7 +397,14 @@ export async function checkConventions(
         fail('append-only-grant', name, `${p.role}: ${JSON.stringify(p)}`);
       }
       const any =
-        p.select || p.insert || p.update || p.delete || p.truncate || p.references || p.trigger;
+        p.select ||
+        p.insert ||
+        p.update ||
+        p.delete ||
+        p.truncate ||
+        p.references ||
+        p.trigger ||
+        p.maintain;
       if (p.role !== APP_ROLE && (any || p.anyColumn)) {
         fail('role-privilege', name, `${p.role}: ${JSON.stringify(p)}`);
       }

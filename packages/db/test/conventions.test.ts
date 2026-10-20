@@ -52,6 +52,18 @@ const MUTATIONS: Mutation[] = [
             select company_id, sum(amount_minor) as total_minor from fixture_lines group by 1`,
   },
   {
+    name: 'a rule that doubles every line as it is inserted',
+    rules: ['rewrite-rule'],
+    sql: `create rule fixture_double as on insert to fixture_lines do instead
+            insert into fixture_lines (id, company_id, entry_id, amount_minor)
+            values (new.id, new.company_id, new.entry_id, new.amount_minor * 2)`,
+  },
+  {
+    name: 'a rule that turns an update into nothing',
+    rules: ['rewrite-rule'],
+    sql: 'create rule fixture_skip as on update to fixture_entries do instead nothing',
+  },
+  {
     name: 'a table hidden in the pg-boss schema',
     rules: ['table-schema'],
     sql: 'create table pgboss.fixture_hidden (id uuid)',
@@ -180,6 +192,7 @@ const MUTATIONS: Mutation[] = [
     'grant truncate on fixture_settings to mizan_app',
     'grant trigger on fixture_settings to mizan_app',
     'grant references (id) on fixture_documents to mizan_app',
+    'grant maintain on fixture_settings to mizan_app',
   ].map((sql) => ({ name: sql, rules: ['app-privilege'] as Rule[], sql })),
   ...[
     'grant update on fixture_entries to mizan_app',
@@ -190,6 +203,7 @@ const MUTATIONS: Mutation[] = [
     'grant select on fixture_documents to mizan_jobs',
     'grant select (name) on fixture_settings to mizan_jobs',
     'grant insert on fixture_settings to mizan_queue',
+    'grant maintain on fixture_entries to mizan_queue',
     'grant select on fixture_settings to public',
   ].map((sql) => ({ name: sql, rules: ['role-privilege'] as Rule[], sql })),
   {
