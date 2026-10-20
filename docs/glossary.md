@@ -1,0 +1,65 @@
+# Glossary
+
+One name per concept. Code, contracts and tables use the English term; the Arabic term is what users see. Add a row when a spec introduces a new concept.
+
+| Arabic (UI) | English (code) | Meaning |
+|---|---|---|
+| الشركة | company | A legal entity with its own books; the tenant (`company_id`) |
+| العضوية | membership | A person's role in one company |
+| عميل الربط | API client | A machine identity of a connected system in one company, with scoped keys |
+| دليل الحسابات | chart of accounts | The company's tree of accounts |
+| حساب رئيسي | header account | A grouping account; never posted to |
+| حساب فرعي / حساب ترحيل | postable account | An account lines are posted to |
+| طبيعة الحساب | normal balance | Debit or credit |
+| فئة الحساب | account class | Asset, liability, equity, revenue, expense |
+| بند القائمة | statement line | Where an account appears in the income statement or balance sheet |
+| حساب مراقبة | control account | An account whose balance is the sum of its open items (receivables, client ad funds) |
+| بند مفتوح | open item | One document's outstanding balance in a control account (an invoice, a client's ad funds) |
+| حساب نقدي / غير نقدي | monetary / non-monetary account | Whether foreign-currency balances are revalued (IAS 21) |
+| بُعد تحليلي | dimension | An analysis tag on a line: client, project, department, service |
+| قيمة البعد | dimension value | One client, project, department or service |
+| قيد يومية | journal entry | A dated set of balanced lines |
+| سطر القيد | journal line | One account, its dimensions and its amounts |
+| مدين / دائن | debit / credit | Positive / negative line amount |
+| ترحيل | posting | Writing an entry to the ledger; the only way is the posting function |
+| مسودة | draft | An entry being prepared; not in the ledger |
+| قيد عكسي / عكس | reversal / reverse | A new entry that negates a posted one exactly |
+| قيد إعادة تصنيف | reclassification | Moves an amount between accounts or dimensions |
+| رقم القيد | entry number | Gapless per company and fiscal year, given at posting |
+| سلسلة السلامة | integrity chain | Each posted entry's hash includes the previous entry's hash |
+| الدفتر / دفتر الأستاذ | ledger / general ledger | All posted entries; per-account view |
+| دفتر اليومية | journal book | Posted entries in number order, printable with numbered pages |
+| ميزان المراجعة | trial balance | Balances of all accounts; debits equal credits |
+| كشف حساب | account statement | One account's lines and running balance |
+| قائمة الدخل | income statement | Revenue and expenses for a period |
+| الميزانية العمومية / قائمة المركز المالي | balance sheet | Assets, liabilities and equity at a date |
+| السنة المالية | fiscal year | The calendar year by default |
+| الفترة | period | A month of the fiscal year: open or closed |
+| إقفال الفترة / إعادة فتحها | close / reopen a period | Stop / allow postings dated inside it |
+| قائمة التحقق قبل الإقفال | pre-close checklist | Conditions a period must meet before it closes |
+| العملة الوظيفية | functional currency | The currency entries balance in (USD for Vertex Media) |
+| العملة الثانية | second currency | The currency every line also stores (SYP for Vertex Media) |
+| مبلغ المعاملة | transaction amount | A line's amount in its own currency |
+| سعر الصرف | exchange rate | Quote-currency units per 1 base-currency unit, stored as quoted |
+| سعر السوق / سعر النشرة | market rate / bulletin rate | The rate the company deals at / the Central Bank of Syria bulletin rate |
+| الليرة السورية الجديدة | new Syrian pound | `SYP` since 2026-01-01 (100 old = 1 new) |
+| فرق صرف محقق | realised exchange difference | Gain or loss when a foreign-currency item is settled (IAS 21.28) |
+| فرق صرف غير محقق / إعادة التقييم | unrealised exchange difference / revaluation | Month-end remeasurement of monetary foreign-currency balances (IAS 21.23) |
+| سطر التقريب | rounding line | A line to the conversion-rounding account that balances conversion rounding |
+| التوزيع | allocation | Splitting an amount into parts that sum exactly (cumulative rounding) |
+| إيراد مؤجل / التزامات عقود | deferred revenue / contract liabilities | Amounts invoiced before the service is delivered (IFRS 15) |
+| جدول الاعتراف بالإيراد | recognition schedule | How a deferred amount is released to revenue over time |
+| تحرير الإيراد | revenue release | The entry moving deferred revenue to revenue |
+| العربون | project deposit | The invoice drafted at quote acceptance, before work starts |
+| الدورة | retainer cycle | A retainer's billing period, anchored on its start date (Hub) |
+| أمانات إعلانات العملاء | client ad funds held | Client money held for ad spend; a liability |
+| ذمم منصات الإعلان | ad platforms payable | What is owed to ad platforms for client spend |
+| مصاريف بانتظار مصدر الدفع | project expenses awaiting payment source | Clearing account for Hub expenses with no payment source |
+| حدث | event | A business event sent by a connected system (`invoice.issued`) |
+| مفتاح منع التكرار | idempotency key | The event ID that makes a resend post nothing new |
+| صندوق الوارد / حدث معلّق | event inbox / held event | Received events; one that could not post yet, with its reason |
+| قاعدة الترحيل | posting rule | How an event type becomes entry lines; accounts mapped by the accountant |
+| المطابقة اليومية | daily reconciliation | Comparing a connected system's daily counts and totals with what Mizan posted |
+| الأرصدة الافتتاحية | opening balances | Balances on the first day of the books |
+| مصدر المستند | document source | Which system issues a document type for a company |
+| كتاب السيناريوهات | scenario book | Solved examples of every accounting rule, run as tests |
