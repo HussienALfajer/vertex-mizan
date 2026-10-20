@@ -19,7 +19,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done. Phases are 
 - [ ] Brand and design system (ADR 0009): `brand/` with the MIZAN logo (shown to the owner before use), `packages/tokens` and `packages/ui` copied from Vertex Hub, the Amount and Amount input components (LTR-isolated numbers, minus sign and negative color), light and dark RTL screenshots at phone, tablet and desktop widths
 - [ ] App skeletons: api (`/api/health`, OpenAPI), worker (pg-boss), web (RTL shell on the design system)
 - [ ] Deployment skeleton on the Vertex server at `mizan.vertexmedia.pro`
-- [x] CI migration check that refuses guard-weakening SQL (ADR 0008), with `UPDATE`, `DELETE`, `TRUNCATE`, `MERGE`, upserts, `DROP TABLE`, renames, dropped columns, type changes, inheritance and partitions on the registry's append-only tables, and `CREATE OR REPLACE TRIGGER`, `CREATE RULE` and `DROP OWNED` anywhere; it fails when `packages/db` has no migration, a nested one or no registry
+- [x] CI migration check that refuses guard-weakening SQL (ADR 0008), with `UPDATE`, `DELETE`, `TRUNCATE`, `MERGE`, upserts, `DROP TABLE`, renames, dropped columns, type changes, inheritance and partitions on the registry's append-only tables, and `CREATE OR REPLACE TRIGGER`, `CREATE RULE`, `DROP OWNED` and enum value renames anywhere; it fails when `packages/db` has no migration, a nested one or no registry
 
 ## Phase 1 — The core and the posting API
 Scope: `docs/product/phase-1-scope.md`. One spec per line, each through `/spec` → `/posting-rule` → `/feature-slice`.

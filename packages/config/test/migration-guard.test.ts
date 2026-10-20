@@ -121,6 +121,8 @@ describe('migration guard: refuses guard-weakening SQL', () => {
       'create-rule',
     ],
     ['DROP OWNED BY mizan_owner;', 'drop-owned'],
+    ["ALTER TYPE rate_type RENAME VALUE 'market' TO 'bulletin';", 'rename-enum-value'],
+    ["alter type public.rate_type\n  rename value 'bulletin' to 'market';", 'rename-enum-value'],
   ])('%s → %s', (sql, rule) => {
     const result = guard(sql);
     expect(result.status).toBe(1);

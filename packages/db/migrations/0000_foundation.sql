@@ -31,10 +31,15 @@ $$;
 -- No role but the owner may create temporary tables in this database. PostgreSQL looks up a table
 -- name in the session's temporary schema first, so a temporary table named like a guarded table
 -- would be read by a guard function in its place (an unbalanced entry would pass its check).
--- Guard functions name their tables with the schema too; the convention test checks both.
+-- Guard functions name their tables with the schema too; the convention test checks both. A REVOKE
+-- by a role that does not own the database only warns, so the migration checks that it held.
 DO $$
 BEGIN
   EXECUTE format('REVOKE TEMPORARY ON DATABASE %I FROM PUBLIC', current_database());
+  IF has_database_privilege('public', current_database(), 'TEMPORARY') THEN
+    RAISE EXCEPTION 'PUBLIC can still create temporary tables in %: mizan_owner must own it',
+      current_database();
+  END IF;
 END
 $$;
 --> statement-breakpoint

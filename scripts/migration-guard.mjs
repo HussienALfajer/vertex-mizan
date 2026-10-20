@@ -51,6 +51,11 @@ const RULES = [
     message: 'creates a rewrite rule, which can redirect or drop a write that no trigger sees',
   },
   {
+    id: 'rename-enum-value',
+    find: pattern(/\bALTER\s+TYPE\b[^;]*?\bRENAME\s+VALUE\b/i),
+    message: 'renames an enum value, which changes the meaning of every stored row that holds it',
+  },
+  {
     id: 'drop-owned',
     find: pattern(/\bDROP\s+OWNED\b/i),
     message: 'drops every object a role owns, its tables and guards included',
