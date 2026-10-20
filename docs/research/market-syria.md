@@ -317,6 +317,7 @@ Ranked by how directly they follow from the evidence above. These are opportunit
 | 9 | Trademark searches: Syrian DCIP, WIPO Madrid Monitor for Vertex, Inc. designations, SAIP and UAE before GCC | IP agent |
 | 10 | Wakeed and Al-Bayan pricing, user base and real Syrian adoption | Demo requests, accountant interviews |
 | 11 | How Syrian accountants and businesses actually want to pay and which features make them switch | Interviews with 5–10 accountants and accounting offices |
+| 12 | Whether books kept in USD (functional currency) with an SYP view are accepted, and which SYP translation the tax return needs (added 2026-10-20, Vertex Media chose USD books) | Syrian certified auditor / tax adviser |
 
 ---
 
