@@ -43,7 +43,7 @@
 ## Hooks
 
 - Biome formats and lint-fixes every edited file; remaining problems come back to fix. It does nothing until dependencies are installed.
-- A git guard refuses `git commit` on `main`, `git commit -a`, broad staging (`git add -A`, `.`, `./`, `:/`) and `--no-verify`.
+- A git guard refuses `git commit` on `main`, `git commit -a` or `.`, pushes to `main`, broad staging (`git add -A`, `.`, `./`, `:/`) and `--no-verify`.
 - The two reviewers run Bash through a hook that allows only read-only git commands.
 - At session start, a note shows the branch, uncommitted files and the open items of `TASKS.md`: continue from them.
 
