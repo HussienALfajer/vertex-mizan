@@ -185,10 +185,13 @@ describe('cross rate properties', () => {
         fc.boolean(),
         fc.boolean(),
         (x, [from, via, to], first, second, firstFromBase, secondFromBase) => {
-          const legs: CrossRate = [
-            firstFromBase ? quote(from, via, rateText(first)) : quote(via, from, rateText(first)),
-            secondFromBase ? quote(via, to, rateText(second)) : quote(to, via, rateText(second)),
-          ];
+          const legs: CrossRate = {
+            on: '2026-10-20',
+            legs: [
+              firstFromBase ? quote(from, via, rateText(first)) : quote(via, from, rateText(first)),
+              secondFromBase ? quote(via, to, rateText(second)) : quote(to, via, rateText(second)),
+            ],
+          };
           const factor = (digits: typeof first, fromBase: boolean): Ratio => {
             const unit = 10n ** BigInt(digits.scale);
             return fromBase
@@ -224,12 +227,15 @@ describe('cross rate properties', () => {
         fc.boolean(),
         fc.boolean(),
         (x, [from, via], first, second, firstFromBase, secondFromBase) => {
-          const legs: CrossRate = [
-            firstFromBase ? quote(from, via, rateText(first)) : quote(via, from, rateText(first)),
-            secondFromBase
-              ? quote(via, from, rateText(second))
-              : quote(from, via, rateText(second)),
-          ];
+          const legs: CrossRate = {
+            on: '2026-10-20',
+            legs: [
+              firstFromBase ? quote(from, via, rateText(first)) : quote(via, from, rateText(first)),
+              secondFromBase
+                ? quote(via, from, rateText(second))
+                : quote(from, via, rateText(second)),
+            ],
+          };
           expect(() => convert(money(x, from), from, legs)).toThrow(
             expect.objectContaining({ code: 'RATE_PAIR_MISMATCH' }),
           );

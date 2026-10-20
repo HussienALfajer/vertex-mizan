@@ -135,12 +135,18 @@ export const exchangeRateSchema = z
 export type ExchangeRate = z.infer<typeof exchangeRateSchema>;
 
 /**
- * A third-currency rate crossed through two quotes of the same type and effective date, recorded
- * with both (ADR 0007): the first pairs the source currency with an intermediate one, the second
- * pairs the intermediate currency with the target. For example TRY→USD market through TRY→SYP
- * market and USD→SYP market.
+ * A third-currency rate crossed through two quotes of the same type, each the rate of that type in
+ * force on the date `on` (the entry date), recorded with both (ADR 0007). Their effective dates may
+ * differ (owner, 2026-10-20): a weekly TRY bulletin and a daily USD bulletin cross for any day.
+ * The first quote pairs the source currency with an intermediate one, the second pairs the
+ * intermediate currency with the target; for example TRY→USD market through TRY→SYP market and
+ * USD→SYP market. Choosing the newest quote on or before `on` is the rate lookup's job; `convert()`
+ * refuses a quote effective after `on`.
  */
-export type CrossRate = readonly [ExchangeRate, ExchangeRate];
+export interface CrossRate {
+  readonly on: string;
+  readonly legs: readonly [ExchangeRate, ExchangeRate];
+}
 
 /** Validates a rate passed to `convert()`, with the money error codes instead of Zod's. */
 function checkRate(rate: ExchangeRate): ExchangeRate {
@@ -164,9 +170,14 @@ function rateRatio(rate: ExchangeRate, from: CurrencyCode, to: CurrencyCode): Ra
   );
 }
 
-function crossRatio(from: CurrencyCode, to: CurrencyCode, [first, second]: CrossRate): Ratio {
-  if (first.type !== second.type || first.effectiveOn !== second.effectiveOn) {
-    fail('CROSS_RATE_MISMATCH', 'A cross rate needs two quotes of the same type and date');
+function crossRatio(from: CurrencyCode, to: CurrencyCode, { on, legs }: CrossRate): Ratio {
+  const [first, second] = [checkRate(legs[0]), checkRate(legs[1])];
+  if (!z.iso.date().safeParse(on).success) fail('INVALID_RATE', `A cross rate on ${on}`);
+  if (first.type !== second.type) {
+    fail('CROSS_RATE_MISMATCH', 'A cross rate needs two quotes of the same type');
+  }
+  if (first.effectiveOn > on || second.effectiveOn > on) {
+    fail('CROSS_RATE_MISMATCH', `A cross-rate quote is effective after ${on}`);
   }
   // An amount in its own currency is not converted, through a cross rate either.
   if (from === to) fail('RATE_PAIR_MISMATCH', `A cross rate cannot convert ${from} to itself`);
@@ -195,10 +206,7 @@ function crossRatio(from: CurrencyCode, to: CurrencyCode, [first, second]: Cross
 export function convert(amount: Money, to: CurrencyCode, rate: ExchangeRate | CrossRate): Money {
   const from = amount.currency;
   checkMinor(amount.amountMinor, from);
-  const ratio =
-    'base' in rate
-      ? rateRatio(checkRate(rate), from, to)
-      : crossRatio(from, to, [checkRate(rate[0]), checkRate(rate[1])]);
+  const ratio = 'base' in rate ? rateRatio(checkRate(rate), from, to) : crossRatio(from, to, rate);
   const converted = scaleMinor(
     amount.amountMinor,
     ratio,

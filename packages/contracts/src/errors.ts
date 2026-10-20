@@ -14,7 +14,7 @@ export const errorStatus = {
   INVALID_RATE: 422,
   /** The rate (or a leg of a cross rate) does not convert between the two currencies. */
   RATE_PAIR_MISMATCH: 422,
-  /** The two quotes of a cross rate differ in type or effective date. */
+  /** The two quotes of a cross rate differ in type, or one is effective after the entry date. */
   CROSS_RATE_MISMATCH: 422,
   /**
    * A ledger's policy rate is missing for the date. A Hub event is held with this reason (`202`,

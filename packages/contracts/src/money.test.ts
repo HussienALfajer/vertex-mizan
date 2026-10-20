@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { DomainError, type ErrorCode } from './errors.js';
 import {
+  type CrossRate,
   CURRENCY_CODES,
   type CurrencyCode,
   checkCurrencyDate,
@@ -198,57 +199,78 @@ describe('convert', () => {
 
 describe('convert with a cross rate', () => {
   const trySyp = quote('TRY', 'SYP', '2.9');
+  /** Two quotes applied on the entry date 2026-10-20. */
+  const cross = (first: ExchangeRate, second: ExchangeRate, on = '2026-10-20'): CrossRate => ({
+    on,
+    legs: [first, second],
+  });
 
   it('crosses a third currency through two quotes of the same type and date', () => {
     // 1 000.00 TRY × 2.9 ÷ 118.5 = 24.4725… USD
-    expect(convert(money(100_000n, 'TRY'), 'USD', [trySyp, usdSyp])).toEqual(money(2_447n, 'USD'));
+    expect(convert(money(100_000n, 'TRY'), 'USD', cross(trySyp, usdSyp))).toEqual(
+      money(2_447n, 'USD'),
+    );
     // Back: 24.47 USD × 118.5 ÷ 2.9 = 999.89… TRY
-    expect(convert(money(2_447n, 'USD'), 'TRY', [usdSyp, trySyp]).amountMinor).toBe(99_989n);
+    expect(convert(money(2_447n, 'USD'), 'TRY', cross(usdSyp, trySyp)).amountMinor).toBe(99_989n);
     // Either quote may have either currency as its base: 0.345 TRY per SYP.
     const sypTry = quote('SYP', 'TRY', '0.345');
     // 1 000.00 TRY ÷ 0.345 ÷ 118.5 = 24.4606… USD
-    expect(convert(money(100_000n, 'TRY'), 'USD', [sypTry, usdSyp]).amountMinor).toBe(2_446n);
+    expect(convert(money(100_000n, 'TRY'), 'USD', cross(sypTry, usdSyp)).amountMinor).toBe(2_446n);
   });
 
   it('rounds once, on the exact product, never at the intermediate currency', () => {
     // 1.43 TRY × 2.9 ÷ 118.5 = 0.034996 USD → 0.03. Rounding first to 4.15 SYP would give
     // 0.035021 → 0.04, more than half a cent from the exact value.
-    expect(convert(money(143n, 'TRY'), 'USD', [trySyp, usdSyp]).amountMinor).toBe(3n);
+    expect(convert(money(143n, 'TRY'), 'USD', cross(trySyp, usdSyp)).amountMinor).toBe(3n);
   });
 
-  it('refuses quotes of different types or dates', () => {
+  it('accepts quotes of one type in force on the entry date, whatever their effective dates', () => {
+    // A weekly TRY bulletin of 2026-10-15 and a daily USD bulletin of 2026-10-19, on 2026-10-20.
+    const weekly = quote('TRY', 'SYP', '2.9', { type: 'bulletin', effectiveOn: '2026-10-15' });
+    const daily = quote('USD', 'SYP', '118.5', { type: 'bulletin', effectiveOn: '2026-10-19' });
+    expect(convert(money(100_000n, 'TRY'), 'USD', cross(weekly, daily)).amountMinor).toBe(2_447n);
+    // A quote effective on the entry date itself is in force.
+    expect(
+      convert(money(100_000n, 'TRY'), 'USD', cross(weekly, daily, '2026-10-19')).amountMinor,
+    ).toBe(2_447n);
+  });
+
+  it('refuses quotes of different types, a quote effective after the entry date and a bad date', () => {
     const bulletin = quote('USD', 'SYP', '118.5', { type: 'bulletin' });
     const later = quote('USD', 'SYP', '118.5', { effectiveOn: '2026-10-21' });
-    expect(refusal(() => convert(money(100n, 'TRY'), 'USD', [trySyp, bulletin]))).toBe(
+    expect(refusal(() => convert(money(100n, 'TRY'), 'USD', cross(trySyp, bulletin)))).toBe(
       'CROSS_RATE_MISMATCH',
     );
-    expect(refusal(() => convert(money(100n, 'TRY'), 'USD', [trySyp, later]))).toBe(
+    expect(refusal(() => convert(money(100n, 'TRY'), 'USD', cross(trySyp, later)))).toBe(
       'CROSS_RATE_MISMATCH',
     );
+    expect(
+      refusal(() => convert(money(100n, 'TRY'), 'USD', cross(trySyp, usdSyp, '2026-13-01'))),
+    ).toBe('INVALID_RATE');
   });
 
   it('refuses quotes that do not chain the two currencies', () => {
     const eurSyp = quote('EUR', 'SYP', '135.2');
     // The first quote does not have the source currency.
-    expect(refusal(() => convert(money(100n, 'TRY'), 'USD', [eurSyp, usdSyp]))).toBe(
+    expect(refusal(() => convert(money(100n, 'TRY'), 'USD', cross(eurSyp, usdSyp)))).toBe(
       'RATE_PAIR_MISMATCH',
     );
     // The second quote does not pair the intermediate currency with the target.
-    expect(refusal(() => convert(money(100n, 'TRY'), 'USD', [trySyp, eurSyp]))).toBe(
+    expect(refusal(() => convert(money(100n, 'TRY'), 'USD', cross(trySyp, eurSyp)))).toBe(
       'RATE_PAIR_MISMATCH',
     );
     // A currency crossed back to itself: 1 000.00 TRY × 2.9 × 0.345 would invent 0.50 TRY.
     const sypTry = quote('SYP', 'TRY', '0.345');
-    expect(refusal(() => convert(money(100_000n, 'TRY'), 'TRY', [trySyp, sypTry]))).toBe(
+    expect(refusal(() => convert(money(100_000n, 'TRY'), 'TRY', cross(trySyp, sypTry)))).toBe(
       'RATE_PAIR_MISMATCH',
     );
     // The first quote already converts directly: no cross through the target.
     const tryUsd = quote('TRY', 'USD', '0.024');
-    expect(refusal(() => convert(money(100n, 'TRY'), 'USD', [tryUsd, usdSyp]))).toBe(
+    expect(refusal(() => convert(money(100n, 'TRY'), 'USD', cross(tryUsd, usdSyp)))).toBe(
       'RATE_PAIR_MISMATCH',
     );
     const oldSyp = quote('TRY', 'SYP', '2.9', { effectiveOn: '2025-12-31' });
-    expect(refusal(() => convert(money(100n, 'TRY'), 'USD', [oldSyp, usdSyp]))).toBe(
+    expect(refusal(() => convert(money(100n, 'TRY'), 'USD', cross(oldSyp, usdSyp)))).toBe(
       'SYP_BEFORE_REDENOMINATION',
     );
   });
