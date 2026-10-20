@@ -28,7 +28,12 @@ export const DATABASE_DEADLINES = {
 
 /** The runtime role a connection URL names, or an error for any other role. */
 function runtimeRole(connectionString: string): RuntimeRole {
-  const user = decodeURIComponent(new URL(connectionString).username);
+  const url = new URL(connectionString);
+  // node-postgres lets a `user` query parameter override the URL's user.
+  if (url.searchParams.has('user')) {
+    throw new Error('The connection URL names its role as its user, not in a query parameter');
+  }
+  const user = decodeURIComponent(url.username);
   const role = RUNTIME_ROLES.find((name) => name === user);
   if (!role) {
     throw new Error(

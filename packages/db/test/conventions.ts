@@ -42,14 +42,20 @@ export const RULES = {
   'append-only-grant': 'No role but the owner may UPDATE or DELETE an append-only table.',
   'role-privilege': 'The jobs and queue roles and PUBLIC hold no privilege on any table.',
   'append-only-trigger':
-    'An append-only table refuses UPDATE, DELETE and TRUNCATE through refuse_change() triggers.',
+    'An append-only table refuses UPDATE, DELETE and TRUNCATE through unconditional refuse_change() triggers.',
   'trigger-always':
     'Every trigger is ENABLE ALWAYS, so a replica session cannot skip it (ADR 0008).',
   'constraint-trigger':
     'A constraint trigger is AFTER … FOR EACH ROW, DEFERRABLE INITIALLY DEFERRED (ADR 0008).',
   'security-definer': 'No function runs with its owner’s rights.',
   'pinned-function':
-    'current_company_id() and refuse_change() are exactly as the foundation migration made them.',
+    'Every guard function (current_company_id(), refuse_change(), the deferred checks) is exactly as its migration made it.',
+  'guard-trigger':
+    'Every listed guard trigger is on its table, on INSERT, unconditional, calling its pinned function.',
+  inheritance:
+    'No table inherits from another or is a partition, which would add rows past its guards.',
+  'database-privilege':
+    'The runtime roles and PUBLIC cannot create temporary tables, which shadow guarded tables, or schemas.',
   schemas: 'The schemas are public, drizzle and pgboss, owned by the owner role.',
   'schema-privilege':
     'Only the owner creates in public; pg-boss’s schema is open to the queue role only.',
@@ -73,43 +79,74 @@ const DELETE = 8;
 const UPDATE = 16;
 const TRUNCATE = 32;
 const INSTEAD = 64;
+const INSERT = 4;
 
-/** The guard functions, exactly as `0000_foundation.sql` creates them. */
-export const PINNED_FUNCTIONS = [
-  {
-    name: 'current_company_id',
-    arguments: '',
-    returns: 'uuid',
-    language: 'sql',
-    volatility: 's',
-    parallel: 's',
-    strict: false,
-    leakproof: false,
-    definer: false,
-    config: null,
-    owner: OWNER_ROLE,
-    source: " SELECT nullif(current_setting('app.company_id', true), '')::uuid ",
-  },
-  {
-    name: 'refuse_change',
-    arguments: '',
-    returns: 'trigger',
-    language: 'plpgsql',
-    volatility: 'v',
-    parallel: 'u',
-    strict: false,
-    leakproof: false,
-    definer: false,
-    config: null,
-    owner: OWNER_ROLE,
-    source: `
+/** A guard function, pinned exactly as its migration creates it: a `CREATE OR REPLACE` fails. */
+export type PinnedFunction = {
+  name: string;
+  arguments: string;
+  returns: string;
+  language: string;
+  volatility: string;
+  parallel: string;
+  strict: boolean;
+  leakproof: boolean;
+  definer: boolean;
+  config: string[] | null;
+  owner: string;
+  source: string;
+};
+
+/**
+ * A guard trigger a table must keep: on INSERT, with no WHEN condition, calling a pinned function;
+ * `deferred` ones are constraint triggers, checked at commit (ADR 0008).
+ */
+export type GuardTrigger = { table: string; name: string; function: string; deferred: boolean };
+
+export type Guards = { functions: PinnedFunction[]; triggers: GuardTrigger[] };
+
+/**
+ * The guards of the migrations: every guard function, pinned, and every deferred guard trigger.
+ * The ledger's balance, reversal, open-item and period guards join them with S03.
+ */
+export const GUARDS: Guards = {
+  functions: [
+    {
+      name: 'current_company_id',
+      arguments: '',
+      returns: 'uuid',
+      language: 'sql',
+      volatility: 's',
+      parallel: 's',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: " SELECT nullif(current_setting('app.company_id', true), '')::uuid ",
+    },
+    {
+      name: 'refuse_change',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
 BEGIN
   RAISE EXCEPTION '% is append-only: % refused', TG_TABLE_NAME, TG_OP
     USING ERRCODE = 'restrict_violation';
 END
 `,
-  },
-];
+    },
+  ],
+  triggers: [],
+};
 
 type Table = { schema: string; name: string; owner: string; rls: boolean; forced: boolean };
 type Column = {
@@ -152,6 +189,8 @@ type Trigger = {
   constraint: boolean;
   deferrable: boolean;
   deferred: boolean;
+  /** No WHEN condition and no UPDATE OF column list: it fires on every row of its events. */
+  unconditional: boolean;
   function: string;
 };
 type Privileges = {
@@ -183,6 +222,7 @@ const attributeNames = (relation: string, keys: string) => `
 export async function checkConventions(
   db: pg.Pool | pg.PoolClient,
   registry: Record<string, TableInfo>,
+  guards: Guards = GUARDS,
 ): Promise<Violation[]> {
   const read = async <T>(text: string, values: unknown[] = []) =>
     (await db.query(text, values)).rows as T[];
@@ -243,6 +283,7 @@ export async function checkConventions(
     select c.relname as table, t.tgname as name, t.tgtype::int as type, t.tgenabled::text as enabled,
            t.tgconstraint <> 0 as constraint, t.tgdeferrable as deferrable,
            t.tginitdeferred as deferred,
+           t.tgqual is null and cardinality(t.tgattr::int2[]) = 0 as unconditional,
            case when p.pronamespace = 'public'::regnamespace then p.proname::text end as function
     from pg_trigger t
     join pg_class c on c.oid = t.tgrelid
@@ -413,7 +454,13 @@ export async function checkConventions(
     const ownTriggers = triggers.filter((t) => t.table === name);
     if (appendOnly) {
       const refused = ownTriggers
-        .filter((t) => t.function === 'refuse_change' && t.type & BEFORE && !(t.type & INSTEAD))
+        .filter(
+          (t) =>
+            t.function === 'refuse_change' &&
+            t.unconditional &&
+            t.type & BEFORE &&
+            !(t.type & INSTEAD),
+        )
         .reduce((events, t) => events | (t.type & (UPDATE | DELETE | TRUNCATE)), 0);
       if (refused !== (UPDATE | DELETE | TRUNCATE)) {
         fail('append-only-trigger', name, `refuse_change() covers events ${refused}`);
@@ -439,7 +486,7 @@ export async function checkConventions(
     where p.prosecdef and ${SYSTEM_SCHEMAS}`);
   for (const definer of definers) fail('security-definer', definer.name, 'SECURITY DEFINER');
 
-  const pinned = await read<(typeof PINNED_FUNCTIONS)[number]>(
+  const pinned = await read<PinnedFunction>(
     `select p.proname as name, pg_get_function_identity_arguments(p.oid) as arguments,
             format_type(p.prorettype, null) as returns, l.lanname as language,
             p.provolatile::text as volatility, p.proparallel::text as parallel,
@@ -447,13 +494,48 @@ export async function checkConventions(
             p.proconfig as config, pg_get_userbyid(p.proowner) as owner, p.prosrc as source
      from pg_proc p join pg_language l on l.oid = p.prolang
      where p.pronamespace = 'public'::regnamespace and p.proname = any($1)`,
-    [PINNED_FUNCTIONS.map((f) => f.name)],
+    [guards.functions.map((f) => f.name)],
   );
-  for (const expected of PINNED_FUNCTIONS) {
+  for (const expected of guards.functions) {
     const found = pinned.filter((f) => f.name === expected.name);
     if (found.length !== 1 || JSON.stringify(found[0]) !== JSON.stringify(expected)) {
       fail('pinned-function', `${expected.name}()`, JSON.stringify(found));
     }
+  }
+
+  for (const guard of guards.triggers) {
+    if (!guards.functions.some((f) => f.name === guard.function)) {
+      throw new Error(`Guard trigger ${guard.name} calls ${guard.function}(), which is not pinned`);
+    }
+    const found = triggers.find((t) => t.table === guard.table && t.name === guard.name);
+    if (
+      !found ||
+      found.function !== guard.function ||
+      !found.unconditional ||
+      found.constraint !== guard.deferred ||
+      !(found.type & INSERT)
+    ) {
+      fail('guard-trigger', guard.table, `${guard.name}: ${JSON.stringify(found ?? null)}`);
+    }
+  }
+
+  const inherited = await read<{ child: string; parent: string }>(`
+    select c.relname as child, p.relname as parent
+    from pg_inherits i
+    join pg_class c on c.oid = i.inhrelid
+    join pg_class p on p.oid = i.inhparent
+    where c.relnamespace = 'public'::regnamespace or p.relnamespace = 'public'::regnamespace`);
+  for (const link of inherited) fail('inheritance', link.child, `inherits from ${link.parent}`);
+
+  const databasePrivileges = await read<{ role: string; temporary: boolean; create: boolean }>(
+    `select r.role,
+            has_database_privilege(r.role, current_database(), 'TEMPORARY') as temporary,
+            has_database_privilege(r.role, current_database(), 'CREATE') as create
+     from unnest($1::text[]) as r(role)`,
+    [[APP_ROLE, JOBS_ROLE, QUEUE_ROLE, 'public']],
+  );
+  for (const p of databasePrivileges.filter((p) => p.temporary || p.create)) {
+    fail('database-privilege', p.role, `temporary ${p.temporary}, create ${p.create}`);
   }
 
   const schemas = await read<{ name: string; owner: string }>(`

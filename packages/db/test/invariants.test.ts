@@ -24,7 +24,7 @@ async function post(tx: Transaction, amounts: bigint[]) {
   if (!document) throw new Error('no document inserted');
   const [entry] = await tx
     .insert(fixtureEntries)
-    .values({ companyId: company, documentId: document.id })
+    .values({ companyId: company, documentId: document.id, lineCount: amounts.length })
     .returning({ id: fixtureEntries.id });
   if (!entry) throw new Error('no entry inserted');
   // One statement per line: the entry is out of balance between them, which is allowed until commit.
@@ -191,7 +191,34 @@ describe('a deferred constraint trigger', () => {
     const message = await refusal(
       withCompany(app, company, (tx) => post(tx, [-1000n, 400n, 500n])),
     );
-    expect(message).toMatch(/does not balance: 3 lines, total -100/);
+    expect(message).toMatch(/does not balance: 3 lines of 3, total -100/);
+  });
+
+  it('refuses lines added to an entry a former transaction posted, balanced or not', async () => {
+    const added = (amounts: bigint[]) =>
+      withCompany(app, company, async (tx) => {
+        for (const amountMinor of amounts) {
+          await tx.insert(fixtureLines).values({ companyId: company, entryId, amountMinor });
+        }
+      });
+    expect(await refusal(added([500n, -500n]))).toMatch(/does not balance: 4 lines of 2, total 0/);
+    expect(await lines(app)).toEqual([{ amountMinor: -1000n }, { amountMinor: 1000n }]);
+  });
+
+  it('cannot be dropped as a constraint: only DROP TRIGGER removes it, which the guard refuses', async () => {
+    const client = await superuser.connect();
+    try {
+      await client.query('begin');
+      await client.query('set local role mizan_owner');
+      expect(
+        await refusal(
+          client.query('alter table fixture_lines drop constraint fixture_lines_balance'),
+        ),
+      ).toMatch(/because trigger fixture_lines_balance on table fixture_lines requires it/);
+    } finally {
+      await client.query('rollback');
+      client.release();
+    }
   });
 
   it('still fires in a replica session, because it is ENABLE ALWAYS', async () => {
@@ -208,7 +235,7 @@ describe('a deferred constraint trigger', () => {
         [document, company],
       );
       await client.query(
-        'insert into fixture_entries (id, company_id, document_id) values ($1, $2, $3)',
+        'insert into fixture_entries (id, company_id, document_id, line_count) values ($1, $2, $3, 1)',
         [entry, company, document],
       );
       await client.query(

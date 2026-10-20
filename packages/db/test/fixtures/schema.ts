@@ -1,4 +1,13 @@
-import { bigint, foreignKey, index, pgTable, text, unique, uuid } from 'drizzle-orm/pg-core';
+import {
+  bigint,
+  foreignKey,
+  index,
+  integer,
+  pgTable,
+  text,
+  unique,
+  uuid,
+} from 'drizzle-orm/pg-core';
 import {
   archivedAt,
   companyId,
@@ -32,13 +41,17 @@ export const fixtureDocuments = pgTable(
   ],
 );
 
-/** A company append-only table with a composite key to a business table. */
+/**
+ * A company append-only table with a composite key to a business table. An entry states how many
+ * lines it has, so a line added by a later transaction makes it fail its deferred check.
+ */
 export const fixtureEntries = pgTable(
   'fixture_entries',
   {
     id: id(),
     companyId: companyId(),
     documentId: uuid().notNull(),
+    lineCount: integer().notNull(),
     createdAt: createdAt(),
   },
   (t) => [

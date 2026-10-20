@@ -41,15 +41,20 @@ ALTER TABLE fixture_lines ENABLE ALWAYS TRIGGER fixture_lines_refuse_truncate;
 REVOKE ALL ON fixture_lines FROM PUBLIC;
 GRANT SELECT, INSERT ON fixture_lines TO mizan_app;
 
--- An entry balances, with at least two lines, when its transaction commits: a deferred
--- AFTER … FOR EACH ROW constraint trigger on the entry and on each line, ENABLE ALWAYS (ADR 0008).
--- It checks the whole entry, so firing once per row gives the same answer each time. It runs as
--- the role that wrote the rows, under the company's RLS, which still holds at commit.
+-- An entry is complete and balances when its transaction commits: it has the lines it states (at
+-- least two), so no later transaction can add any, and they sum to zero. A deferred
+-- AFTER … FOR EACH ROW constraint trigger on the entry and on each line, ENABLE ALWAYS (ADR 0008),
+-- checks the whole entry, so firing once per row gives the same answer each time. It runs as the
+-- role that wrote the rows, under the company's RLS, which still holds at commit; an entry it
+-- cannot see fails. Tables are named with their schema: a temporary table of the same name would
+-- otherwise be read instead (the runtime roles cannot create one either). The convention test pins
+-- the function and requires both triggers (fixtureGuards).
 CREATE FUNCTION fixture_entry_balances() RETURNS trigger
   LANGUAGE plpgsql
   AS $$
 DECLARE
   entry uuid;
+  expected integer;
   line_count bigint;
   total numeric;
 BEGIN
@@ -58,11 +63,15 @@ BEGIN
   ELSE
     entry := NEW.entry_id;
   END IF;
-  SELECT count(*), coalesce(sum(amount_minor), 0) INTO line_count, total
-  FROM fixture_lines
-  WHERE company_id = NEW.company_id AND entry_id = entry;
-  IF line_count < 2 OR total <> 0 THEN
-    RAISE EXCEPTION 'fixture entry does not balance: % lines, total %', line_count, total
+  SELECT e.line_count INTO expected
+  FROM public.fixture_entries e
+  WHERE e.company_id = NEW.company_id AND e.id = entry;
+  SELECT count(*), coalesce(sum(l.amount_minor), 0) INTO line_count, total
+  FROM public.fixture_lines l
+  WHERE l.company_id = NEW.company_id AND l.entry_id = entry;
+  IF expected IS NULL OR line_count < 2 OR line_count <> expected OR total <> 0 THEN
+    RAISE EXCEPTION 'fixture entry does not balance: % lines of %, total %',
+      line_count, expected, total
       USING ERRCODE = 'check_violation';
   END IF;
   RETURN NULL;

@@ -4,8 +4,9 @@
 //
 // It reads the table registry (`packages/db/src/schema/registry.ts`, loaded with Node's type
 // stripping) and refuses statements that change or destroy the rows of an append-only table:
-// UPDATE, DELETE, TRUNCATE, MERGE or an upsert's DO UPDATE, a DROP TABLE, a dropped column or a
-// column type change. Run over the default folder, it fails when `packages/db` has no migration,
+// UPDATE, DELETE, TRUNCATE, MERGE or an upsert's DO UPDATE; DROP TABLE, RENAME, SET SCHEMA, a
+// dropped column, a column type change, a generated column or expression; inheritance and
+// partitions. Run over the default folder, it fails when `packages/db` has no migration,
 // keeps one in a subfolder (which it would not read) or has no registry. `--db <dir>` replaces
 // `packages/db`.
 //
@@ -39,6 +40,21 @@ const RULES = [
     message: 'enables a trigger without ALWAYS, so a replica session would skip it',
   },
   { id: 'drop-trigger', find: pattern(/\bDROP\s+TRIGGER\b/i), message: 'drops a trigger' },
+  {
+    id: 'replace-trigger',
+    find: pattern(/\bCREATE\s+OR\s+REPLACE\s+(?:CONSTRAINT\s+)?TRIGGER\b/i),
+    message: 'replaces a trigger in place, which can weaken a guard without DROP TRIGGER',
+  },
+  {
+    id: 'create-rule',
+    find: pattern(/\bCREATE\s+(?:OR\s+REPLACE\s+)?RULE\b/i),
+    message: 'creates a rewrite rule, which can redirect or drop a write that no trigger sees',
+  },
+  {
+    id: 'drop-owned',
+    find: pattern(/\bDROP\s+OWNED\b/i),
+    message: 'drops every object a role owns, its tables and guards included',
+  },
   {
     id: 'drop-policy',
     find: pattern(/\bDROP\s+POLICY\b/i),
@@ -133,20 +149,27 @@ function registryRules(appendOnly) {
     new RegExp(String.raw`\bTRUNCATE\s+(?:TABLE\s+)?(?<tables>${TABLES})`, 'gi'),
     new RegExp(String.raw`\bMERGE\s+INTO\s+(?<tables>${TABLE})`, 'gi'),
     new RegExp(
-      String.raw`\bINSERT\s+INTO\s+(?<tables>${TABLE})(?=[\s\S]*\bON\s+CONFLICT\b[\s\S]*\bDO\s+UPDATE\b)`,
+      String.raw`\bINSERT\s+INTO\s+(?<tables>${TABLE})(?=[^;]*\bON\s+CONFLICT\b[^;]*\bDO\s+UPDATE\b)`,
       'gi',
     ),
   ];
-  const drops = new RegExp(
-    String.raw`\bDROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?<tables>${TABLES})`,
-    'gi',
-  );
-  const alter = new RegExp(
-    String.raw`\bALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?<tables>${TABLE})(?=[\s\S]*(?:` +
-      String.raw`\bDROP\s+(?:COLUMN\s+)?(?:IF\s+EXISTS\s+)?(?!(?:CONSTRAINT|DEFAULT|NOT|IDENTITY|EXPRESSION)\b)${NAME}` +
-      String.raw`|\bALTER\s+(?:COLUMN\s+)?${NAME}\s+(?:SET\s+DATA\s+)?TYPE\b))`,
-    'gi',
-  );
+  // Each lookahead stops at the end of the command, so a function body's later commands are not
+  // read as part of it.
+  const rewrites = [
+    new RegExp(String.raw`\bDROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?<tables>${TABLES})`, 'gi'),
+    new RegExp(
+      String.raw`\bALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?<tables>${TABLE})(?=[^;]*(?:` +
+        String.raw`\bDROP\s+(?:COLUMN\s+)?(?:IF\s+EXISTS\s+)?(?!(?:CONSTRAINT|DEFAULT|NOT|IDENTITY|EXPRESSION)\b)${NAME}` +
+        String.raw`|\bALTER\s+(?:COLUMN\s+)?${NAME}\s+(?:SET\s+DATA\s+)?TYPE\b` +
+        String.raw`|\bRENAME\b|\bSET\s+SCHEMA\b|\bSET\s+EXPRESSION\b|\bGENERATED\b` +
+        String.raw`|\b(?:ATTACH|DETACH)\s+PARTITION\b|\bINHERIT\b))`,
+      'gi',
+    ),
+    new RegExp(String.raw`\b(?:ATTACH|DETACH)\s+PARTITION\s+(?<tables>${TABLE})`, 'gi'),
+    new RegExp(String.raw`\bPARTITION\s+OF\s+(?<tables>${TABLE})`, 'gi'),
+    new RegExp(String.raw`\bINHERIT\s+(?<tables>${TABLE})`, 'gi'),
+    new RegExp(String.raw`\bINHERITS\s*\(\s*(?<tables>${TABLES})\s*\)`, 'gi'),
+  ];
   const first = (offsets) =>
     offsets.filter((offset) => offset !== -1).sort((a, b) => a - b)[0] ?? -1;
   return [
@@ -158,10 +181,10 @@ function registryRules(appendOnly) {
     },
     {
       id: 'append-only-rewrite',
-      find: (text) =>
-        first([drops, alter].map((regex) => namesAppendOnly(text, regex, appendOnly))),
+      find: (text) => first(rewrites.map((regex) => namesAppendOnly(text, regex, appendOnly))),
       message:
-        'drops an append-only table or a column of one, or rewrites a column type, where no trigger fires',
+        'drops, renames, moves or rewrites an append-only table or its columns, or joins it to ' +
+        'another through inheritance or partitions, where no trigger fires',
     },
   ];
 }

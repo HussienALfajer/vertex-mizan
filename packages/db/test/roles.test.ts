@@ -64,6 +64,17 @@ describe('the app role', () => {
     }
   });
 
+  it('cannot create a temporary table, which a guard function would read in place of its own', async () => {
+    const client = await app.$client.connect();
+    try {
+      expect(
+        await refusal(client.query('create temp table fixture_lines (amount_minor bigint)')),
+      ).toMatch(/permission denied to create temporary tables/);
+    } finally {
+      client.release(true);
+    }
+  });
+
   it('cannot replace the functions the policies and the guards call', async () => {
     for (const statement of [
       'create or replace function current_company_id() returns uuid language sql as $$ select null::uuid $$',
@@ -82,6 +93,7 @@ describe('the jobs role', () => {
     expect(await refusal(jobs.select().from(fixtureSettings))).toMatch(DENIED);
     expect(await refusal(jobs.$client.query('create table spare (id uuid)'))).toMatch(DENIED);
     expect(await refusal(jobs.$client.query('set role mizan_owner'))).toMatch(DENIED);
+    expect(await refusal(jobs.$client.query('create temp table spare (id uuid)'))).toMatch(DENIED);
   });
 });
 
@@ -111,5 +123,6 @@ describe('the queue role', () => {
       await client.query('rollback');
       client.release();
     }
+    expect(await refusal(queue.query('create temp table fixture_job (id uuid)'))).toMatch(DENIED);
   });
 });

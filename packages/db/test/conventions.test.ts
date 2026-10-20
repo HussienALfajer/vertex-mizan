@@ -1,8 +1,16 @@
 import { describe, expect, inject, it } from 'vitest';
 import { type TableInfo, tableRegistry } from '../src/index.js';
 import { connect } from './connections.js';
-import { checkConventions, OWNER_ROLE, RULES, type Rule, type Violation } from './conventions.js';
-import { fixtureRegistry } from './fixtures/registry.js';
+import {
+  checkConventions,
+  GUARDS,
+  type Guards,
+  OWNER_ROLE,
+  RULES,
+  type Rule,
+  type Violation,
+} from './conventions.js';
+import { fixtureGuards, fixtureRegistry } from './fixtures/registry.js';
 
 // The conventions of ADR 0003, ADR 0005 and ADR 0008 (test/conventions.ts), read as the app role
 // (ADR 0008). Each rule is then proven: a mutation breaks a fixture table, a function, a schema or
@@ -13,6 +21,10 @@ import { fixtureRegistry } from './fixtures/registry.js';
 const { app, superuser } = connect();
 const database = inject('databaseName');
 const registry: Record<string, TableInfo> = { ...tableRegistry, ...fixtureRegistry };
+const guards: Guards = {
+  functions: [...GUARDS.functions, ...fixtureGuards.functions],
+  triggers: [...GUARDS.triggers, ...fixtureGuards.triggers],
+};
 
 type Mutation = {
   name: string;
@@ -62,6 +74,16 @@ const MUTATIONS: Mutation[] = [
     name: 'a rule that turns an update into nothing',
     rules: ['rewrite-rule'],
     sql: 'create rule fixture_skip as on update to fixture_entries do instead nothing',
+  },
+  {
+    name: 'a table that inherits from another, adding its rows to every read of the parent',
+    rules: ['inheritance'],
+    sql: `create table fixture_shadow (like fixture_settings including all)
+            inherits (fixture_settings)`,
+    registry: {
+      ...registry,
+      fixture_shadow: { module: 'fixtures', scope: 'platform', kind: 'business' },
+    },
   },
   {
     name: 'a table hidden in the pg-boss schema',
@@ -220,6 +242,23 @@ const MUTATIONS: Mutation[] = [
           alter table fixture_lines enable always trigger fixture_lines_refuse_change`,
   },
   {
+    name: 'an append-only table whose guard watches one column only',
+    rules: ['append-only-trigger'],
+    sql: `drop trigger fixture_entries_refuse_change on fixture_entries;
+          create trigger fixture_entries_refuse_change
+            before update of created_at or delete on fixture_entries
+            for each row execute function refuse_change();
+          alter table fixture_entries enable always trigger fixture_entries_refuse_change`,
+  },
+  {
+    name: 'an append-only table whose guard fires only WHEN a condition holds',
+    rules: ['append-only-trigger'],
+    sql: `drop trigger fixture_lines_refuse_change on fixture_lines;
+          create trigger fixture_lines_refuse_change before update or delete on fixture_lines
+            for each row when (false) execute function refuse_change();
+          alter table fixture_lines enable always trigger fixture_lines_refuse_change`,
+  },
+  {
     name: 'a guard a replica session would skip',
     rules: ['trigger-always'],
     sql: 'alter table fixture_entries enable trigger fixture_entries_refuse_change',
@@ -255,6 +294,34 @@ const MUTATIONS: Mutation[] = [
                                   '00000000-0000-7000-8000-000000000000') $$`,
   },
   {
+    name: 'the deferred balance check replaced to accept anything',
+    rules: ['pinned-function'],
+    sql: `create or replace function fixture_entry_balances() returns trigger language plpgsql
+            as $$ BEGIN RETURN NULL; END $$`,
+  },
+  {
+    name: 'the deferred balance check firing only WHEN a condition holds',
+    rules: ['guard-trigger'],
+    sql: `drop trigger fixture_lines_balance on fixture_lines;
+          create constraint trigger fixture_lines_balance after insert on fixture_lines
+            deferrable initially deferred for each row when (new.amount_minor = 0)
+            execute function fixture_entry_balances();
+          alter table fixture_lines enable always trigger fixture_lines_balance`,
+  },
+  {
+    name: 'the deferred balance check dropped from the entries',
+    rules: ['guard-trigger'],
+    sql: 'drop trigger fixture_entries_balance on fixture_entries',
+  },
+  {
+    name: 'the deferred balance check calling another function',
+    rules: ['guard-trigger'],
+    sql: `drop trigger fixture_lines_balance on fixture_lines;
+          create constraint trigger fixture_lines_balance after insert on fixture_lines
+            deferrable initially deferred for each row execute function refuse_change();
+          alter table fixture_lines enable always trigger fixture_lines_balance`,
+  },
+  {
     name: 'refuse_change() replaced to let the change through',
     rules: ['pinned-function'],
     sql: `create or replace function refuse_change() returns trigger language plpgsql
@@ -281,6 +348,11 @@ const MUTATIONS: Mutation[] = [
     sql: 'create function current_company_id(fallback uuid) returns uuid language sql stable as $$ select fallback $$',
   },
   { name: 'another schema', rules: ['schemas'], sql: 'create schema fixture_hidden' },
+  ...[
+    'grant temporary on database :database to mizan_app',
+    'grant temporary on database :database to public',
+    'grant create on database :database to mizan_queue',
+  ].map((sql) => ({ name: sql, rules: ['database-privilege'] as Rule[], sql })),
   ...[
     'grant create on schema public to mizan_app',
     'grant usage on schema pgboss to mizan_app',
@@ -316,7 +388,7 @@ async function underMutation(mutation: Mutation): Promise<Violation[]> {
     if ((mutation.as ?? 'owner') === 'owner') await client.query(`set local role ${OWNER_ROLE}`);
     if (mutation.sql) await client.query(mutation.sql.replaceAll(':database', database));
     await client.query('set local role mizan_app');
-    return await checkConventions(client, mutation.registry ?? registry);
+    return await checkConventions(client, mutation.registry ?? registry, guards);
   } finally {
     await client.query('rollback');
     client.release();
@@ -325,7 +397,7 @@ async function underMutation(mutation: Mutation): Promise<Violation[]> {
 
 describe('the migrated database with the fixture tables', () => {
   it('follows every convention, read as the app role', async () => {
-    expect(await checkConventions(app.$client, registry)).toEqual([]);
+    expect(await checkConventions(app.$client, registry, guards)).toEqual([]);
   });
 
   it('keeps the fixture tables out of the real registry', () => {

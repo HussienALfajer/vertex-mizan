@@ -28,6 +28,17 @@ END
 $$;
 --> statement-breakpoint
 
+-- No role but the owner may create temporary tables in this database. PostgreSQL looks up a table
+-- name in the session's temporary schema first, so a temporary table named like a guarded table
+-- would be read by a guard function in its place (an unbalanced entry would pass its check).
+-- Guard functions name their tables with the schema too; the convention test checks both.
+DO $$
+BEGIN
+  EXECUTE format('REVOKE TEMPORARY ON DATABASE %I FROM PUBLIC', current_database());
+END
+$$;
+--> statement-breakpoint
+
 -- The schema of pg-boss, the worker's job queue (ADR 0002, ADR 0003). pg-boss runs as the queue
 -- role mizan_queue, which reaches no other schema. It installs, migrates and owns its own tables
 -- here at start (with createSchema off, so it needs no database-level CREATE); they are not

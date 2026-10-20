@@ -21,6 +21,10 @@ describe('createDatabase', () => {
     expect(() => createDatabase('postgres://localhost:5432/vertex_mizan')).toThrow(
       /never as an unnamed role/,
     );
+    // node-postgres would connect as the query parameter's user, not the URL's.
+    expect(() => createDatabase(`${inject('appUrl')}?user=mizan_owner`)).toThrow(
+      /not in a query parameter/,
+    );
     const jobs = createDatabase(inject('jobsUrl'));
     try {
       const { rows } = await jobs.$client.query<{ role: string }>('select current_user as role');

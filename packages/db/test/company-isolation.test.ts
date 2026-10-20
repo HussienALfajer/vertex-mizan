@@ -97,7 +97,9 @@ describe('withCompany', () => {
     if (!theirs) throw new Error('no document inserted');
     const message = await refusal(
       withCompany(app, companyA, (tx) =>
-        tx.insert(fixtureEntries).values({ companyId: companyA, documentId: theirs.id }),
+        tx
+          .insert(fixtureEntries)
+          .values({ companyId: companyA, documentId: theirs.id, lineCount: 2 }),
       ),
     );
     expect(message).toMatch(/violates foreign key constraint "fixture_entries_document_fk"/);

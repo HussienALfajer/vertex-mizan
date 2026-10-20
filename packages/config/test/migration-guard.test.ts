@@ -110,6 +110,17 @@ describe('migration guard: refuses guard-weakening SQL', () => {
       'ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL PRIVILEGES ON TABLES TO mizan_app;',
       'grant-forbidden',
     ],
+    [
+      `CREATE OR REPLACE TRIGGER accounts_refuse_change BEFORE UPDATE ON accounts
+         FOR EACH ROW WHEN (false) EXECUTE FUNCTION refuse_change();`,
+      'replace-trigger',
+    ],
+    ['CREATE RULE skip AS ON UPDATE TO accounts DO INSTEAD NOTHING;', 'create-rule'],
+    [
+      'CREATE OR REPLACE RULE copy AS ON INSERT TO accounts DO ALSO NOTIFY accounts;',
+      'create-rule',
+    ],
+    ['DROP OWNED BY mizan_owner;', 'drop-owned'],
   ])('%s → %s', (sql, rule) => {
     const result = guard(sql);
     expect(result.status).toBe(1);
@@ -312,6 +323,19 @@ describe('migration guard: append-only tables of the registry', () => {
     'ALTER TABLE IF EXISTS journal_lines DROP memo, ADD COLUMN note text;',
     'ALTER TABLE ONLY journal_lines ALTER COLUMN amount_minor TYPE numeric USING amount_minor * 2;',
     'ALTER TABLE journal_lines ALTER amount_minor SET DATA TYPE integer;',
+    'ALTER TABLE journal_lines RENAME TO journal_lines_old;',
+    'ALTER TABLE journal_lines RENAME COLUMN book_amount_minor TO parallel_amount_minor;',
+    'ALTER TABLE journal_lines RENAME memo TO note;',
+    'ALTER TABLE journal_lines SET SCHEMA archive;',
+    'ALTER TABLE journal_lines ALTER COLUMN total_minor SET EXPRESSION AS (amount_minor * 2);',
+    `ALTER TABLE journal_lines
+       ADD COLUMN doubled_minor bigint GENERATED ALWAYS AS (amount_minor * 2) STORED;`,
+    'ALTER TABLE journal_lines ATTACH PARTITION journal_lines_2026 FOR VALUES IN (2026);',
+    'ALTER TABLE ledger_all ATTACH PARTITION journal_lines DEFAULT;',
+    'ALTER TABLE ledger_all DETACH PARTITION journal_entries;',
+    'ALTER TABLE journal_lines_extra INHERIT journal_lines;',
+    'CREATE TABLE journal_lines_extra (memo text) INHERITS (accounts, journal_lines);',
+    'CREATE TABLE journal_lines_2027 PARTITION OF journal_lines FOR VALUES IN (2027);',
   ])('refuses dropping or rewriting what it stores: %s', (sql) => {
     const result = guard(sql);
     expect(result.rules).toEqual(['append-only-rewrite']);
@@ -339,6 +363,21 @@ describe('migration guard: append-only tables of the registry', () => {
         REFERENCES journal_entries (company_id, id) ON UPDATE RESTRICT ON DELETE RESTRICT;
       INSERT INTO journal_lines (id) VALUES ($1) ON CONFLICT DO NOTHING;
       SELECT id FROM journal_entries FOR UPDATE OF journal_entries;
+    `);
+    expect(result.output).toContain('nothing weakens a guard');
+    expect(result.status).toBe(0);
+  });
+
+  it('reads each command of a body on its own, so a later upsert or ALTER is not blamed on it', () => {
+    const result = guard(`
+      CREATE FUNCTION post() RETURNS void LANGUAGE plpgsql AS $$
+      BEGIN
+        INSERT INTO journal_lines (id) VALUES (gen_random_uuid());
+        INSERT INTO period_balances (id) VALUES (1) ON CONFLICT (id) DO UPDATE SET id = 1;
+        EXECUTE 'ALTER TABLE journal_lines ENABLE ALWAYS TRIGGER t';
+        EXECUTE 'ALTER TABLE accounts DROP COLUMN memo';
+      END
+      $$;
     `);
     expect(result.output).toContain('nothing weakens a guard');
     expect(result.status).toBe(0);
