@@ -17,7 +17,7 @@ Copy and adapt; never import across repositories.
 |---|---|
 | `docs/product/vision-and-phases.md` | The product, its layers and four phases |
 | `docs/product/phase-1-scope.md` | What phase 1 includes (F01–F14), the accounting policies and the treatment of each Hub event. Anything not in it is out of scope: ask before adding. |
-| `docs/decisions/` | ADRs. Follow them; propose a new ADR to change one. 0007 money (book and parallel ledgers), 0005 and 0008 ledger invariants, 0006 and 0008 the Hub API. |
+| `docs/decisions/` | ADRs. Follow them; propose a new ADR to change one. 0007 money (book and parallel ledgers), 0005 and 0008 ledger invariants, 0006 and 0008 the Hub API, 0009 the brand and design system. |
 | `docs/scenarios/` | The scenario book: one solved example per accounting rule, executed as a test (ADR 0005) |
 | `docs/glossary.md` | Accounting terms in Arabic and English. Name code after the English term. |
 | `docs/ROADMAP.md` | Phase and task status. Update it when an item is done. |
@@ -73,7 +73,7 @@ The PR that adds a command adds it here and keeps it true. No commands exist bef
 - **One validation source:** Zod schemas in `packages/contracts`.
 - **Authorization is server-side:** every endpoint declares its permission.
 - **Audit; archive, don't delete.** Companies and used accounts are archived. Ledger data is kept at least 10 years.
-- **Arabic-first RTL UI:** logical CSS, all text through i18n, Latin digits, design-system components only, responsive from 360 px. SYP is labelled "الليرة السورية الجديدة" on printed output.
+- **Arabic-first RTL UI (ADR 0009):** logical CSS, all text through i18n, Latin digits, design-system components only, responsive from 360 px. Amounts only through the Amount component (LTR-isolated, minus sign and negative color). SYP is labelled "الليرة السورية الجديدة" on printed output.
 - **Public repository:** no secrets and no real company, client or financial data: synthetic data only.
 
 ## How to work
