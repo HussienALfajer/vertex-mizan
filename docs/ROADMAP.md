@@ -3,7 +3,7 @@
 Status legend: `[ ]` not started · `[~]` in progress · `[x]` done. Phases are defined in `docs/product/vision-and-phases.md`. Only the current phase is broken into tasks; the next one is detailed after the current one is in use.
 
 ## Setup
-- [x] Repository: public, no licence, merge commits only, auto-merge, branches deleted after merge, `main: require CI` ruleset (required checks added when CI exists)
+- [x] Repository: public, no licence, merge commits only, auto-merge, branches deleted after merge, `main: require CI` ruleset
 - [x] Market research (`docs/research/market-syria.md`)
 - [x] Working method with Claude Code (`docs/research/working-method.md`)
 - [x] Product decision (ADR 0001), vision and phases, roadmap, phase 1 analysis and scope (`docs/product/phase-1-scope.md`), approved 2026-10-20
@@ -11,7 +11,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done. Phases are 
 - [x] Claude Code setup from the working method: `AGENTS.md`, `CLAUDE.md`, `docs/workflow.md`, `docs/glossary.md`, `docs/open-questions.md`, `.claude/` (settings, subagents `checker`, `reviewer`, `accountant-reviewer`, `explorer`; hooks; skills `spec`, `posting-rule`, `feature-slice`, `db-migration`), spec template, scenario-book format
 
 ## Phase 0 — Foundation
-- [~] Monorepo scaffold: pnpm, Turborepo, TypeScript, Biome, `packages/config`, CI (lint, typecheck, test, build, gitleaks, dependency advisories, docs-only skip) done; migration drift arrives with `packages/db`; CI checks added as required to the `main: require CI` ruleset after the owner's approval
+- [~] Monorepo scaffold: pnpm, Turborepo, TypeScript, Biome, `packages/config`, CI (lint, typecheck, test, build, gitleaks, dependency advisories, docs-only skip) done; `Typecheck, lint, test, build` and `Secret scan` required by the `main: require CI` ruleset (owner, 2026-10-20); migration drift arrives with `packages/db`
 - [ ] `packages/contracts`: the money module (currencies, quoted rates, rate policies, conversion half away from zero, compatibility with Hub's `convertMinor`; ADR 0007), error codes, permission map
 - [ ] `packages/ledger`: line building in the book and parallel ledgers, rounding and exchange-difference lines, cumulative allocation, the integrity hash; property tests (fast-check)
 - [ ] `packages/db`: roles (`mizan_owner`, `mizan_app`, `mizan_jobs`, `mizan_queue`), company context, forced RLS, append-only and deferred-invariant triggers (`ENABLE ALWAYS`), convention and invariant tests run as `mizan_app` (ADR 0003, 0005, 0008)
