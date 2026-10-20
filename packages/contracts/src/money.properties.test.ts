@@ -9,6 +9,7 @@ import {
   currencies,
   type ExchangeRate,
   money,
+  sumsToZeroExactly,
 } from './money.js';
 import { MINOR_MAX, type Ratio, scaleMinor } from './money-arithmetic.js';
 
@@ -111,6 +112,27 @@ describe('convert properties', () => {
         },
       ),
       { numRuns: 5_000 },
+    );
+  });
+
+  it('sums to zero exactly when amounts of one currency at one rate do, and only then', () => {
+    fc.assert(
+      fc.property(
+        fc.array(amount, { minLength: 1, maxLength: 6 }),
+        rateDigits,
+        pair,
+        fc.bigInt({ min: -3n, max: 3n }),
+        (amounts, digits, [base, quoteCurrency], offset) => {
+          const rate = quote(base, quoteCurrency, rateText(digits));
+          const balanced = [...amounts, -amounts.reduce((sum, x) => sum + x, 0n) + offset];
+          const terms = balanced.map((x) => ({ amount: money(x, base), rate }));
+          expect(sumsToZeroExactly(quoteCurrency, terms)).toBe(offset === 0n);
+          // The same amounts in their own currency, with no rate.
+          const own = balanced.map((x) => ({ amount: money(x, base) }));
+          expect(sumsToZeroExactly(base, own)).toBe(offset === 0n);
+        },
+      ),
+      { numRuns: 2_000 },
     );
   });
 

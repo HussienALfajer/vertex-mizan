@@ -23,6 +23,20 @@ export const errorStatus = {
   RATE_MISSING: 422,
   /** An SYP amount or rate dated before 2026-01-01 (the new pound). */
   SYP_BEFORE_REDENOMINATION: 422,
+
+  // Ledger (ADR 0005, ADR 0007).
+  /**
+   * An entry out of balance in a ledger beyond conversion rounding: lines that do not balance, or
+   * an exchange residual that its posting rule did not post as a difference line.
+   */
+  ENTRY_UNBALANCED: 422,
+  /** An entry with fewer than two lines (ADR 0005, invariant 1). */
+  ENTRY_TOO_FEW_LINES: 422,
+  /**
+   * A release, clearing or settlement beyond what remains of a carried balance, such as a payment
+   * above an invoice's open amount (ADR 0005, invariant 9).
+   */
+  RELEASE_EXCEEDS_BALANCE: 422,
 } as const satisfies Record<string, number>;
 
 export type ErrorCode = keyof typeof errorStatus;

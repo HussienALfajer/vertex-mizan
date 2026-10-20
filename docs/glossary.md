@@ -15,6 +15,10 @@ One name per concept. Code, contracts and tables use the English term; the Arabi
 | بند القائمة | statement line | Where an account appears in the income statement or balance sheet |
 | حساب مراقبة | control account | An account whose balance is the sum of its open items (receivables, client ad funds) |
 | بند مفتوح | open item | One document's outstanding balance in a control account (an invoice, a client's ad funds) |
+| المبلغ الدفتري | carrying amount | An item's amount in a ledger: what it was measured at, less what was cleared before; month-end revaluations reverse and are not part of it (ADR 0007) |
+| قياس جديد | new measurement | A line converted at its ledger's policy rate on the entry date: revenue, a new receivable, cash received, an expense |
+| مبلغ محمول | carried amount | A line that releases, clears, settles or reverses a balance at that balance's own amounts; never converted again |
+| رصيد جارٍ | running balance | An item kept per counterparty (client ad funds), cleared at its average carrying amount; it may cross zero |
 | حساب نقدي / غير نقدي | monetary / non-monetary account | Whether foreign-currency balances are revalued (IAS 21) |
 | بُعد تحليلي | dimension | An analysis tag on a line: client, project, department, service |
 | قيمة البعد | dimension value | One client, project, department or service |
