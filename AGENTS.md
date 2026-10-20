@@ -33,7 +33,7 @@ Read these on demand. For a feature, read its spec, the ADRs it lists and its se
 
 pnpm workspaces + Turborepo · TypeScript ~6.0 strict, ESM · Node 24 · PostgreSQL 17 with forced RLS · package scope `@vertex-mizan/*`.
 - `apps/api` NestJS 12 · `apps/worker` NestJS + pg-boss · `apps/web` React + Vite + TanStack
-- `packages/contracts` (Zod, money module, error codes, Hub event contracts) · `ledger` (pure accounting logic, no I/O) · `db` (schema, roles, company context, the posting function) · `ui` · `tokens` · `i18n` · `config`
+- `packages/contracts` (Zod, money module, error codes, Hub event contracts) · `ledger` (pure accounting logic, no I/O) · `db` (schema, roles, company context, the posting function) · `scenarios` (the scenario-book runner) · `ui` · `tokens` · `i18n` · `config`
 
 ## Commands
 
@@ -43,6 +43,7 @@ The PR that adds a command adds it here and keeps it true. Run from the reposito
 |---|---|
 | `pnpm lint` · `pnpm lint:fix` | Biome check of the repository · apply its fixes |
 | `pnpm typecheck` · `pnpm test` · `pnpm build` | Every package through Turborepo; one package: `pnpm --filter @vertex-mizan/<name> test`. The `db` tests need the local database below |
+| `pnpm test:scenarios` | The scenario book on a fresh test database: `Approved` cases run, `Proposed` ones are skipped and listed (`packages/scenarios/CLAUDE.md`); needs the local database below |
 | `docker compose up -d` | The local PostgreSQL 17 (`compose.yaml`, `127.0.0.1:55417`); copy `.env.example` to `.env` first |
 | `pnpm db:setup-local` · `pnpm db:migrate` | Create or update the four database roles and the development database · apply the migrations to it as the owner (`packages/db/CLAUDE.md`) |
 | `pnpm db:generate` | Generate a migration from the Drizzle schema; run again, it must report nothing (the CI drift check) |

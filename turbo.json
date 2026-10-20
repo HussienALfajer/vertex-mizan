@@ -22,6 +22,16 @@
         "DATABASE_JOBS_URL",
         "DATABASE_QUEUE_URL"
       ]
+    },
+    "test:scenarios": {
+      "dependsOn": ["^build"],
+      "outputs": [],
+      "passThroughEnv": [
+        "DATABASE_OWNER_URL",
+        "DATABASE_APP_URL",
+        "DATABASE_JOBS_URL",
+        "DATABASE_QUEUE_URL"
+      ]
     }
   }
 }

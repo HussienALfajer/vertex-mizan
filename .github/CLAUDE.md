@@ -6,6 +6,7 @@ CI for every pull request and for `main` (`workflows/ci.yml`), and Dependabot fo
 - Third-party actions are pinned to a full commit SHA with the tag in a comment; Dependabot proposes updates.
 - The job names `Typecheck, lint, test, build` and `Secret scan` are the checks the `main: require CI` ruleset requires (added 2026-10-20 with the owner's approval). Renaming or splitting a job means updating the ruleset in the same PR, with the owner's approval. New jobs sit behind the `Typecheck, lint, test, build` gate (its `needs`), so the ruleset does not change.
 - A step arrives with its first subject: the scenario book with its runner, the OpenAPI check with `apps/api`, E2E with `apps/web`.
+- The scenario book: the `Tests` job runs `pnpm test:scenarios` after `pnpm test`, on the same PostgreSQL service; the runner creates its own database.
 - `packages/db`: the `Tests` job runs a PostgreSQL 17 service (fake passwords that exist only for the job), `pnpm db:setup-local` and `pnpm db:migrate` before `pnpm test`; the database tests create their own database per run. The static job checks migration drift: `pnpm db:generate` must leave `packages/db/migrations` unchanged.
 - `pnpm audit --prod` accepts only advisories listed with a reason in `pnpm-workspace.yaml` (`auditConfig.ignoreGhsas`); none is listed today.
 - The migration guard (`pnpm check:migrations`, ADR 0008) runs in the static job over `packages/db/migrations/*.sql`, with the table registry of `packages/db`.

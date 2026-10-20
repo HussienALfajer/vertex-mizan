@@ -12,6 +12,7 @@
     "lint": "biome check --error-on-warnings .",
     "lint:fix": "biome check --write .",
     "test": "turbo run test",
+    "test:scenarios": "turbo run test:scenarios",
     "check:migrations": "node scripts/migration-guard.mjs",
     "check:error-codes": "node scripts/error-codes-guard.mjs",
     "db:generate": "pnpm --filter @vertex-mizan/db db:generate",

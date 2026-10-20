@@ -1,0 +1,22 @@
+# packages/scenarios
+
+The scenario-book runner (ADR 0005, ADR 0008): it reads every case of `docs/scenarios/` and runs the `Approved` ones on a fresh test database, through what the system itself runs. The format is `docs/scenarios/README.md`; this package is its only reader. A private test workspace: nothing imports it and it has no build.
+
+## Layout
+- `src/format.ts`: the Zod schema of one case (`caseSchema`), strict objects in the README's snake_case, parsed into camelCase types (`ScenarioCase`, `Step`, `ExpectedEntry`, `ExpectedLine`, `ExpectedBalance`, `Outcome`). Currencies, amounts, rates and rate policies go through `@vertex-mizan/contracts`' schemas (`companyLedgersSchema`, `exchangeRateSchema`, `minorAmountSchema`). The cross checks: the currency shape against the book and parallel currencies, a parallel amount on every line and balance exactly when the company keeps a parallel ledger, every expected entry balanced in both ledgers, a ledger amount equal to the transaction amount in that ledger's own currency (ADR 0007), a third-currency case naming a third currency, no decimal number in a payload.
+- `src/book.ts`: `readBook()` (every `docs/scenarios/<area>/<rule>.md`, `README.md` left out, all errors collected), `yamlBlocks()` (every `` ```yaml `` block; any other fence, or an unclosed block, is a problem, so no case is hidden), `parseScenario()` (title, the one status line, every `yaml` block as a case, unique case names), `parseCase()` (YAML 1.2 core schema, integers as `bigint`, repeated keys refused).
+- `src/harness.ts`: the plug-in points and `bookHarness`, the harness the book runs with: `setUp` (the case's company, ledgers, template, closed periods and rates), `executors` per step kind (`manual`, `event`, `job`) and `ledger` (the posted entries in posting order with their audit-row counts, balances with `dims` as a filter, and open items by document and account). Nothing is registered until S03.
+- `src/compare.ts`: the exact-set comparison (`compareEntries`), `compareBalance` and `compareOpenItem`, as lists of readable differences.
+- `src/run.ts`: `runCase()`; `ScenarioFailure` carries every difference.
+- `test/scenario-book.test.ts` with `test/global-setup.ts` (`createTestDatabase()` from `@vertex-mizan/db/testing`): the book itself, `vitest.scenarios.config.ts`. The runner's own tests are `src/*.test.ts` against a fake harness (`vitest.config.ts`, no database); `src/test-fixtures.ts` holds their synthetic cases.
+
+## Rules
+- **Proposed is skipped, never counted.** A `Proposed` case is an `it.skip` named `Proposed: <case>`, listed by the verbose reporter. Its file is still parsed: a broken file fails the run whatever its status.
+- **An approved case needs every part.** Before anything runs, `runCase` checks the setup, the ledger reader and an executor for each step; anything missing fails the case. Never skip, stub or mock a missing part to make a case pass.
+- **The exact set.** Entries are compared in posting order (source and date); the lines of an entry as a multiset, every field equal (account, dimensions, currency, transaction, book and parallel amounts); a missing or extra entry or line fails. Every posted entry has exactly one audit row. Stated balances match in the book, the parallel and, when stated, the transaction amount. A stated open item (ADR 0008) exists and matches in dimensions, currency and every remaining amount.
+- **Outcomes.** Every step must be `done`, except the last when the case states an `outcome`: then it must be held or refused with exactly that reason.
+- **Through the real system.** Executors and readers get the run's database as the runtime roles (`ScenarioDatabase`: `app`, `jobs` through `createDatabase`), never the owner. A setup or an executor goes through the same services and the posting function the API and the worker use; the ledger reader reads the database, never an executor's return value.
+- **Plugging in a part.** Register it in `bookHarness` (`src/harness.ts`) with the feature that brings it: the setup, the ledger reader and the `manual` executor with S03, `event` with S05, `job` with S07. A new step field or expected field goes into `docs/scenarios/README.md` and `src/format.ts` in the same PR, with a test in `src/book.test.ts`.
+- Amounts are `bigint` minor units from end to end; no number amount and no float. Every test value is synthetic.
+
+Run: `pnpm --filter @vertex-mizan/scenarios test` (the runner) · `pnpm test:scenarios` (the book; needs the local database, `packages/db/CLAUDE.md`).
