@@ -41,7 +41,7 @@ Finish a layer and run its gate through the `checker` subagent. Fix root causes,
 | 4 | api | Module, controllers, service: permission declarations, company context, audit in the transaction, postings only through the posting function, idempotency, held events, coded errors; `test/<module>.test.ts` with another company and a missing permission | the module's tests, architecture test, `api` typecheck |
 | 5 | worker | Jobs safe to run twice (releases, revaluation preview, retries, reconciliation), per company inside the company context | `worker` tests and typecheck |
 | 6 | bridge | `pnpm build`, OpenAPI export and its breaking-change check, generated client types | web typecheck |
-| 7 | web | Screens, i18n keys, loading, empty and error states, amounts with currencies, drill-down to entries, Excel and PDF exports | the app's typecheck, lint, tests |
+| 7 | web | First, every component the screens need that `packages/ui` lacks, built there as a general component (ADR 0010 §7: tested, both densities, on the design-system page); then the screens from design-system components only, i18n keys, loading, empty and error states, amounts with currencies, drill-down to entries, Excel and PDF exports | `ui` tests, the app's typecheck, lint, tests |
 | 8 | e2e | The spec's flows; RTL screenshots (light and dark) at phone, tablet and desktop widths | `pnpm test:e2e`; open the new screenshots and look at them |
 
 Layers a PR does not include are skipped. Helpers arrive with their first real use.

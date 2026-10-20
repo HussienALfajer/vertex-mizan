@@ -78,6 +78,16 @@ Two densities, set on `<html>` as `data-density` and read by every component thr
 - **Not copied:** Hub's workflow-specific components (platform mark, OTP field, radio card, meter, progress, color swatch, calendar grid, password input, multi-combobox, autocomplete). A spec that needs one copies it then.
 - `packages/tokens` follows Food's structure (palette, semantic roles, scales, contrast) plus the densities, and is the single source the theme is tested against.
 
+### 7. A missing component is built in the design system first (owner, 2026-10-21)
+When a screen needs something the design system does not have, it is not drawn inside the screen. It is built first in `packages/ui` as a general component, then the screen uses it:
+- **General:** named and shaped for what it does in accounting work (an account picker, a period range), not for the screen that asked for it; its data and labels come in as props, so the next screen reuses it.
+- **Built for accountants:** both densities through the density utilities; figures only through `Amount` and `AmountInput`; keyboard-complete with its keys in the keymap; focus, error and RTL rules of §3 and §4; Base UI primitives where one exists.
+- **Tested and shown:** its own tests (behaviour, keyboard, accessibility, RTL), and a place on the design-system page (the preview until `apps/web`), so the owner and reviewers see it in both themes and densities.
+- **Hub first:** if Vertex Hub has the component, it is copied and adapted (§6) rather than written anew.
+- **Composition stays in the app:** a screen arranges design-system components and binds them to data; it does not style controls of its own. A pattern that two screens repeat moves into `packages/ui`.
+
+The `reviewer` checks it on every front-end change, and `/feature-slice` builds the missing components before the screens.
+
 ## Consequences
 - ADR 0009's component table is refined by §5; its decisions on identity, negatives, company branding and the UI rules stand.
 - Phase 0's brand and design-system item is split: PR 6 brings the research, this ADR, `brand/`, `packages/tokens`, `packages/i18n`, `packages/ui` with the densities and the PR 6 components, and a preview; PR 6b brings the data grid foundation and the command palette.

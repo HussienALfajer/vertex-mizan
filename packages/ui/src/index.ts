@@ -6,6 +6,8 @@ export * from './accounting/amount-input';
 export * from './accounting/ledger-switch';
 export * from './accounting/period-badge';
 export { AscentLines } from './brand/ascent-lines';
+export { VertexMizanLogo, VertexMizanMark } from './brand/logo';
+export * from './brand/powered-by';
 export * from './components/alert-dialog';
 export * from './components/badge';
 export * from './components/button';

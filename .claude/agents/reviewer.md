@@ -72,6 +72,7 @@ Accounting correctness (accounts, signs, standards, amounts) is the `accountant-
 - **Contracts:** shapes come from `@vertex-mizan/contracts`, not duplicated. Money fields go through the money module only.
 - **Front end:**
   - text through i18n, logical CSS and design-system components;
+  - no one-off component or hand-styled control inside a screen or feature folder: a missing piece is a general component in `packages/ui`, with its tests and a place on the design-system page (ADR 0010 §7);
   - loading, empty and error states;
   - errors shown by `code`;
   - amounts shown with their currency;

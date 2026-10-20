@@ -25,6 +25,7 @@ import {
   LedgerSwitch,
   PageHeader,
   PeriodBadge,
+  PoweredBy,
   Table,
   TableBody,
   TableCell,
@@ -35,6 +36,7 @@ import {
   ToggleGroup,
   ToggleGroupItem,
   useDensity,
+  VertexMizanMark,
 } from '../src/index';
 
 const t = ar.designSystem;
@@ -332,7 +334,8 @@ export function Preview() {
   const { preference, setDensity } = useDensity();
   return (
     <main className="mx-auto flex max-w-6xl min-w-0 flex-col gap-8 px-4 py-6 sm:px-6">
-      <div className="relative">
+      <div className="relative flex flex-col gap-4">
+        <VertexMizanMark label={common.productName} className="w-10 text-primary" />
         <AscentLines className="pointer-events-none absolute inset-y-0 end-0 h-full w-40 text-accent opacity-40" />
         <PageHeader
           title={t.title}
@@ -416,6 +419,10 @@ export function Preview() {
       <Section title={ar.shortcuts.title}>
         <Shortcuts />
       </Section>
+
+      <footer className="border-t border-border pt-4">
+        <PoweredBy label={common.poweredBy} />
+      </footer>
     </main>
   );
 }

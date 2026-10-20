@@ -29,6 +29,15 @@ The Vertex Mizan design system for the web (ADR 0009, ADR 0010): Vertex Hub's co
 ## Keyboard (ADR 0010 §4)
 - Define a shortcut once in `keymap.ts` with `defineShortcut` (it refuses browser-only keys and unmodified global keys); show it with `Kbd`, expose it with `ariaKeyShortcuts`, name it in i18n `shortcuts`. Global keys bind with `useShortcut`; component keys (`scope: 'component'`) only in their focused component.
 
+## A new component (ADR 0010 §7)
+A screen that needs something this package lacks gets it here first, then uses it; never a one-off component or hand-styled control inside a screen. Before it is used:
+1. Copy and adapt Vertex Hub's component if it has one; otherwise build on a Base UI primitive.
+2. Make it general: named for its accounting purpose, data and labels as props (text from i18n in the app).
+3. Both densities through the density utilities; figures through `Amount`/`AmountInput`; its keys in `keymap.ts`; focus, errors and RTL as ADR 0010 §3–§4.
+4. Its own tests next to it: behaviour, keyboard, ARIA, RTL, negative figures where it shows any.
+5. A place on the design-system page (`preview/preview.tsx` until `apps/web`), checked in light and dark, compact and comfortable, at 360, 768 and 1280 px.
+6. Exported from `src/index.ts` and listed in this file.
+
 ## Rules to apply yourself
 - Every app mounts `<DirectionProvider direction={textDirection}>` (from this package, `textDirection` from `@vertex-mizan/i18n`): Base UI reads the direction from it.
 - Build on Base UI primitives, keep their accessibility, and use the `render` prop instead of wrapper elements.
