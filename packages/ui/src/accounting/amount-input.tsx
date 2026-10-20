@@ -22,12 +22,13 @@ type AmountInputProps = Omit<
   /** False for debit and credit cells, which hold magnitudes (ADR 0009). */
   allowNegative?: boolean;
   /**
-   * Called on commit with the reason the text is not an amount, or `null` once it is. The text
+   * Required: called on commit with the reason the text is not an amount, or `null` once it is.
+   * The caller keeps it beside the value. The text
    * stays as typed: an error never clears what the person entered (ADR 0010 §4). The last
    * committed amount still stands behind refused text, so the form must not save or post while
    * any amount input reports an error.
    */
-  onTextError?: (error: AmountTextError | null) => void;
+  onTextError: (error: AmountTextError | null) => void;
 };
 
 const display = (value: bigint | null, currency: CurrencyCode) =>
@@ -49,6 +50,7 @@ function AmountInput({
   className,
   onBlur,
   onKeyDown,
+  onPaste,
   'aria-invalid': ariaInvalid,
   ...props
 }: AmountInputProps) {
@@ -62,6 +64,10 @@ function AmountInput({
   if (!editing && (shown.value !== value || shown.currency !== currency)) {
     setShown({ value, currency });
     setText(display(value, currency));
+    if (invalid) {
+      setInvalid(false);
+      onTextError(null);
+    }
   }
 
   function commit() {
@@ -69,17 +75,17 @@ function AmountInput({
     const result = parseAmount(text, currency, { allowNegative });
     if (result.ok) {
       setInvalid(false);
-      onTextError?.(null);
+      onTextError(null);
       setText(formatMinor(result.amountMinor, currency));
       if (result.amountMinor !== value) onValueChange(result.amountMinor);
     } else if (result.error === 'EMPTY') {
       setInvalid(false);
-      onTextError?.(null);
+      onTextError(null);
       setText('');
       if (value !== null) onValueChange(null);
     } else {
       setInvalid(true);
-      onTextError?.(result.error);
+      onTextError(result.error);
     }
   }
 
@@ -108,13 +114,23 @@ function AmountInput({
         commit();
         onBlur?.(event);
       }}
+      onPaste={(event) => {
+        // Several cells or lines are several values: the browser would flatten their breaks into
+        // spaces, so they are refused here, before they reach the field (a grid pastes them).
+        if (/[\t\n\r]/.test(event.clipboardData.getData('text').trim())) {
+          event.preventDefault();
+          setInvalid(true);
+          onTextError('INVALID');
+        }
+        onPaste?.(event);
+      }}
       onKeyDown={(event) => {
         if (event.key === 'Enter') commit();
         if (event.key === 'Escape' && editing) {
           // Esc cancels the edit and restores the last committed amount.
           setEditing(false);
           setInvalid(false);
-          onTextError?.(null);
+          onTextError(null);
           setText(display(value, currency));
         }
         onKeyDown?.(event);

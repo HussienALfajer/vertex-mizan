@@ -70,8 +70,12 @@ function normalize(text: string): string {
     .replace(/\u2212/g, '-');
 }
 
-/** A space, no-break, thin or narrow no-break space: what some formats put between digit groups. */
-const GROUP_SPACE = /[ \u00a0\u2009\u202f]/g;
+/**
+ * A no-break, thin or narrow no-break space: what formatted exports put between digit groups. An
+ * ordinary space is not one: a browser turns the line breaks of pasted cells into spaces, so
+ * `500 250` may be two values.
+ */
+const GROUP_SPACE = /[\u00a0\u2009\u202f]/g;
 
 /** A tab or a line break inside the text: two pasted cells or lines, never one amount. */
 const SEPARATE_VALUES = /[\t\n\r\v\f\u2028\u2029]/;
@@ -108,9 +112,9 @@ export function parseAmount(
   if (trimmed === '') return refuse('EMPTY');
   if (trimmed.startsWith('=')) return evaluateAmount(trimmed.slice(1), currency, { allowNegative });
   if (SEPARATE_VALUES.test(trimmed)) return refuse('INVALID');
-  // A space after the sign is dropped; a space between digits is a thousands separator, so it
-  // must group correctly: `1 250` is 1,250, `1250 750` and `1 25` are refused.
-  const source = trimmed.replace(/^-[    ]+/, '-').replace(GROUP_SPACE, ',');
+  // A space after the sign is dropped; a group space between digits is a thousands separator,
+  // so it must group correctly; an ordinary space between digits is refused (`500 250`).
+  const source = trimmed.replace(/^-\s+/, '-').replace(GROUP_SPACE, ',');
   const match = /^(-?)(\d[\d,]*)?(?:\.(\d*))?$/.exec(source);
   if (!match || (match[2] === undefined && !match[3])) return refuse('INVALID');
   const [, sign, integer = '0', fraction = ''] = match;

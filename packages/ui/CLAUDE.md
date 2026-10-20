@@ -9,7 +9,7 @@ The Vertex Mizan design system for the web (ADR 0009, ADR 0010): Vertex Hub's co
 - `src/components/<name>.tsx`: one component family per file, exported from `src/index.ts`. Pattern to copy: `src/components/button.tsx` (Base UI primitive + `cva` variants + `cn`).
 - `src/accounting/`: ADR 0010's Phase 0 components: `Amount`, `AmountInput`, `AccountLabel`, `LedgerSwitch`, `PeriodBadge`, each with its test.
 - `src/lib/`: `cn` (tailwind-merge taught the density sizes: `text-control` is a font size), `shortcuts.ts` (`defineShortcut`, `matchesShortcut`, `shortcutKeys`, `ariaKeyShortcuts`), `keymap.ts` (ADR 0010's keyboard map, defined once), `use-shortcut.ts`, `motion.ts`. `Kbd` shows a shortcut's keys.
-- `src/brand/`: the 60° `AscentLines` motif; the MIZAN logo arrives once the owner approves it.
+- `src/brand/`: `VertexMizanLogo`, `VertexMizanMark` (path data from `@vertex-mizan/tokens`, pinned to `brand/logo/svg`), `PoweredBy` (the mark and "Powered by Vertex Mizan") and the 60° `AscentLines` motif.
 - `preview/`: the design system's preview page (`pnpm --filter @vertex-mizan/ui preview`; `preview:build` writes `.preview/ui`, git-ignored) until `apps/web`'s design-system page (PR 8). Its text comes from `@vertex-mizan/i18n` (`designSystem`).
 
 ## Rules the tests enforce
@@ -22,12 +22,13 @@ The Vertex Mizan design system for the web (ADR 0009, ADR 0010): Vertex Hub's co
 - Icons inside rows keep a hit area of at least `size-hit`.
 
 ## Figures (ADR 0010 §3)
+- `AmountInput` requires `onTextError`: keep the error beside the value, and never save or post while any amount input reports one (its last committed amount still stands behind the refused text). It refuses a paste of several cells or lines.
 - Every amount goes through `Amount` (display) or `AmountInput` (entry): never format, parse or compute an amount in a component; the money module of `packages/contracts` does it (`formatMinor`, `amountParts`, `parseAmount`, `summarizeAmounts`).
 - Figure columns use `TableHead numeric` and `TableCell numeric` (aligned to the physical right edge). Totals use `Amount strong`. Rules: a single rule above a subtotal, a double rule under a grand total (the preview shows them).
 - Codes and numbers are LTR isolates (`<bdi dir="ltr">`); names people typed are `<bdi>` (direction from their content).
 
 ## Keyboard (ADR 0010 §4)
-- Define a shortcut once in `keymap.ts` with `defineShortcut` (it refuses browser-only keys and unmodified global keys); show it with `Kbd`, expose it with `ariaKeyShortcuts`, name it in i18n `shortcuts`. Global keys bind with `useShortcut`; component keys (`scope: 'component'`) only in their focused component.
+- Define a shortcut once in `keymap.ts` with `defineShortcut` (it refuses browser-only keys and unmodified global keys); show it with `Kbd`, expose it with `ariaKeyShortcuts`, name it in i18n `shortcuts`. Global keys need Ctrl/⌘ or Alt (Escape aside) and bind with `useShortcut`; component keys (`scope: 'component'`) are handled in their component's own `onKeyDown`, and `useShortcut` refuses them. Keys match `code` when `key` is not Latin or is a dead key (macOS Option).
 
 ## A new component (ADR 0010 §7)
 A screen that needs something this package lacks gets it here first, then uses it; never a one-off component or hand-styled control inside a screen. Before it is used:

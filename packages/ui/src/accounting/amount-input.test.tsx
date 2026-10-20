@@ -95,6 +95,28 @@ describe('AmountInput', () => {
     expect(onCommit).toHaveBeenCalledWith(123n);
   });
 
+  it('refuses a paste of several cells or lines instead of joining them', () => {
+    const onCommit = vi.fn();
+    const onError = vi.fn();
+    render(<Harness initial={500n} currency="USD" onCommit={onCommit} onError={onError} />);
+    for (const pasted of ['500\r\n250\r\n', '500\t250', '500\n250']) {
+      const event = fireEvent.paste(input(), { clipboardData: { getData: () => pasted } });
+      expect(event, JSON.stringify(pasted)).toBe(false); // default prevented
+      expect(onError).toHaveBeenLastCalledWith('INVALID');
+    }
+    expect(input().value).toBe('5.00');
+    fireEvent.blur(input());
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
+  it('lets a single pasted value in, with breaks only at its ends', () => {
+    const onError = vi.fn();
+    render(<Harness onError={onError} />);
+    const event = fireEvent.paste(input(), { clipboardData: { getData: () => '1,250.00\r\n' } });
+    expect(event).toBe(true);
+    expect(onError).not.toHaveBeenCalled();
+  });
+
   it('holds magnitudes only in a debit or credit cell', () => {
     const onError = vi.fn();
     render(<Harness allowNegative={false} onError={onError} />);
@@ -130,13 +152,25 @@ describe('AmountInput', () => {
     expect(input().className).toContain('text-negative');
   });
 
-  it('follows an amount set from outside while not editing', () => {
-    const { rerender } = render(
-      <AmountInput aria-label="amount" currency="USD" value={100n} onValueChange={() => {}} />,
+  it('follows an amount set from outside while not editing, clearing a refused text', () => {
+    const onError = vi.fn();
+    const field = (value: bigint) => (
+      <AmountInput
+        aria-label="amount"
+        currency="USD"
+        value={value}
+        onValueChange={() => {}}
+        onTextError={onError}
+      />
     );
-    rerender(
-      <AmountInput aria-label="amount" currency="USD" value={250n} onValueChange={() => {}} />,
-    );
+    const { rerender } = render(field(100n));
+    type('1.234');
+    fireEvent.blur(input());
+    expect(onError).toHaveBeenLastCalledWith('TOO_MANY_DECIMALS');
+    // A fill down replaces the refused text with a valid amount.
+    rerender(field(250n));
     expect(input().value).toBe('2.50');
+    expect(input().hasAttribute('aria-invalid')).toBe(false);
+    expect(onError).toHaveBeenLastCalledWith(null);
   });
 });

@@ -45,7 +45,7 @@ describe('parseAmount', () => {
     expect(parseAmount('1250', 'USD')).toEqual(ok(125_000n));
     expect(parseAmount('.5', 'USD')).toEqual(ok(50n));
     expect(parseAmount('5.', 'USD')).toEqual(ok(500n));
-    expect(parseAmount('  -1 250.00 ', 'USD')).toEqual(ok(-125_000n));
+    expect(parseAmount('  -1,250.00 ', 'USD')).toEqual(ok(-125_000n));
     expect(parseAmount('−5', 'USD')).toEqual(ok(-500n));
   });
 
@@ -76,14 +76,19 @@ describe('parseAmount', () => {
     // Two cells pasted from Excel arrive with a tab, two lines with a line break.
     expect(parseAmount('1250\t750', 'USD')).toEqual(refused('INVALID'));
     expect(parseAmount('1250\n750', 'USD')).toEqual(refused('INVALID'));
-    // A browser may turn the break into a space: then it is a separator that does not group.
+    // A browser turns the break into a space in a single-line field: an ordinary space between
+    // digits is never grouping, even where the joined digits would group.
     expect(parseAmount('1250 750', 'USD')).toEqual(refused('INVALID'));
+    expect(parseAmount('500 250', 'USD')).toEqual(refused('INVALID'));
+    expect(parseAmount('1 250 000.50', 'USD')).toEqual(refused('INVALID'));
     expect(parseAmount('1 25', 'USD')).toEqual(refused('INVALID'));
     expect(parseAmount('12 50', 'USD')).toEqual(refused('INVALID'));
-    // Correct grouping with spaces, no-break or narrow no-break spaces is read as grouping.
-    expect(parseAmount('1 250 000.50', 'USD')).toEqual(ok(125_000_050n));
-    expect(parseAmount('1 250 000', 'USD')).toEqual(ok(125_000_000n));
+    // Correct grouping with no-break, thin or narrow no-break spaces is read as grouping.
+    expect(parseAmount('1 250 000.50', 'USD')).toEqual(ok(125_000_050n));
+    expect(parseAmount('1 250', 'USD')).toEqual(ok(125_000n));
+    expect(parseAmount('500 250 1', 'USD')).toEqual(refused('INVALID'));
     expect(parseAmount('- 5', 'USD')).toEqual(ok(-500n));
+    expect(parseAmount('- 5', 'USD')).toEqual(ok(-500n));
     expect(parseAmount('\t1,250.00\n', 'USD')).toEqual(ok(125_000n));
   });
 

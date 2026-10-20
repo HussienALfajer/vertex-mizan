@@ -12,10 +12,13 @@ const press = (init: Partial<KeyboardEvent> & { key: string; code: string }) => 
 const palette = defineShortcut({ key: 'K', mod: true });
 
 describe('defineShortcut', () => {
-  it('refuses a printable key without a modifier (WCAG 2.1.4)', () => {
-    expect(() => defineShortcut({ key: '?' })).toThrow(/modifier/);
-    expect(() => defineShortcut({ key: 't' })).toThrow(/modifier/);
-    expect(defineShortcut({ key: 'F8' })).toEqual({ key: 'F8' });
+  it('refuses a page-wide key without Ctrl/⌘ or Alt, Escape aside (WCAG 2.1.4)', () => {
+    for (const key of ['?', 't', 'Enter', 'Delete', 'Backspace', 'ArrowDown', 'F8']) {
+      expect(() => defineShortcut({ key }), key).toThrow(/Ctrl\/⌘ or Alt/);
+      expect(() => defineShortcut({ key, shift: true }), key).toThrow(/Ctrl\/⌘ or Alt/);
+    }
+    expect(defineShortcut({ key: 'Escape' })).toEqual({ key: 'Escape' });
+    expect(defineShortcut({ key: 'F8', scope: 'component' }).key).toBe('F8');
   });
 
   it('refuses the keys the browser keeps with Ctrl/⌘, and its features outside a component', () => {
@@ -69,9 +72,23 @@ describe('matchesShortcut', () => {
     ).toBe(true);
   });
 
+  it('matches Option shortcuts on macOS, where Option makes a dead key', () => {
+    const newEntry = defineShortcut({ key: 'n', alt: true });
+    expect(
+      matchesShortcut(press({ key: 'Dead', code: 'KeyN', altKey: true }), newEntry, 'mac'),
+    ).toBe(true);
+    expect(matchesShortcut(press({ key: '˜', code: 'KeyN', altKey: true }), newEntry, 'mac')).toBe(
+      true,
+    );
+  });
+
   it('matches named keys such as F8 and Alt+ArrowDown', () => {
     expect(
-      matchesShortcut(press({ key: 'F8', code: 'F8' }), defineShortcut({ key: 'F8' }), 'other'),
+      matchesShortcut(
+        press({ key: 'F8', code: 'F8' }),
+        defineShortcut({ key: 'F8', scope: 'component' }),
+        'other',
+      ),
     ).toBe(true);
     const lookup = defineShortcut({ key: 'ArrowDown', alt: true });
     expect(

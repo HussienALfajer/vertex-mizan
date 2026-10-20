@@ -23,8 +23,10 @@ describe('AccountLabel', () => {
     const badge = screen.getByText('حساب رئيسي');
     expect(badge.querySelector('svg')).not.toBeNull();
     cleanup();
-    const { container } = render(<AccountLabel code="5100" name="المصاريف" kind="blocked" />);
-    // No text given, no unlabelled marker either.
+    // @ts-expect-error A blocked or header account needs its text: an unmarked one is refused.
+    render(<AccountLabel code="5100" name="المصاريف" kind="blocked" />);
+    cleanup();
+    const { container } = render(<AccountLabel code="5100" name="المصاريف" />);
     expect(container.querySelector('[data-slot="badge"]')).toBeNull();
   });
 });

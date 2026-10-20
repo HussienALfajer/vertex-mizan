@@ -33,6 +33,9 @@ const BROWSER_ONLY = new Set(['n', 't', 'w', 'q']);
  */
 const BROWSER_FEATURES = new Set(['l', 'd', 'f', 'p', 's', 'r', 'h', 'j']);
 
+/** Values of `key` that name no key: a dead key, an input method composing, an unknown key. */
+const COMPOSING_KEYS = new Set(['Dead', 'Process', 'Unidentified']);
+
 /** Physical keys of punctuation, for layouts that type another character on them. */
 const PUNCTUATION_CODES: Record<string, string> = {
   Slash: '/',
@@ -49,15 +52,16 @@ const PUNCTUATION_CODES: Record<string, string> = {
 };
 
 /**
- * A shortcut, checked when it is defined: a printable key without a modifier only inside its
- * component (WCAG 2.1.4); Ctrl/⌘ with a key the browser keeps never, and with a browser feature's
+ * A shortcut, checked when it is defined: a key without Ctrl/⌘ or Alt only inside its component
+ * (WCAG 2.1.4), Escape aside; Ctrl/⌘ with a key the browser keeps never, and with a browser feature's
  * key only inside a component.
  */
 export function defineShortcut(shortcut: Shortcut): Shortcut {
   const key = shortcut.key.length === 1 ? shortcut.key.toLowerCase() : shortcut.key;
   const global = shortcut.scope !== 'component';
-  if (global && key.length === 1 && !shortcut.mod && !shortcut.alt) {
-    throw new Error(`A global shortcut on "${key}" needs a modifier (WCAG 2.1.4)`);
+  if (global && !shortcut.mod && !shortcut.alt && key !== 'Escape') {
+    // A bare key page-wide would take `t` from every input or Enter from every form.
+    throw new Error(`A global shortcut on "${key}" needs Ctrl/⌘ or Alt (WCAG 2.1.4)`);
   }
   const plainMod = shortcut.mod && !shortcut.alt;
   if (plainMod && BROWSER_ONLY.has(key)) {
@@ -71,7 +75,8 @@ export function defineShortcut(shortcut: Shortcut): Shortcut {
 
 /** The key an event stands for: its character when Latin, else the physical key's character. */
 function eventKey({ key, code }: KeyEvent): string {
-  if (key.length > 1) return key;
+  // macOS's Option makes dead keys (Option+N is `Dead`): those fall back to the physical key.
+  if (key.length > 1 && !COMPOSING_KEYS.has(key)) return key;
   if (/^[\x20-\x7e]$/.test(key)) return key.toLowerCase();
   if (/^Key[A-Z]$/.test(code)) return code.slice(3).toLowerCase();
   if (/^Digit\d$/.test(code)) return code.slice(5);

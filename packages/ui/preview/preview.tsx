@@ -63,9 +63,9 @@ const balances = {
   parallel: {
     currency: 'USD',
     rows: [3_000_000n, 1_000_000n, -12_000n],
-    subtotal: 2_988_000n,
+    subtotal: 3_988_000n,
     liabilities: -1_680_001n,
-    total: 1_307_999n,
+    total: 2_307_999n,
   },
 } as const satisfies Record<Ledger, unknown>;
 

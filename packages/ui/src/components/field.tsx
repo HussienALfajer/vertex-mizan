@@ -1,6 +1,7 @@
 'use client';
 
 import { Field as FieldPrimitive } from '@base-ui/react/field';
+import { CircleAlertIcon } from 'lucide-react';
 import { cn } from '../lib/cn';
 
 /**
@@ -42,19 +43,23 @@ function FieldDescription({ className, ...props }: FieldPrimitive.Description.Pr
   );
 }
 
-/** Pass `match` to show it: `true` for errors computed outside the browser's validity API. */
 /**
- * With a boolean `match`, the form decides alone. Base UI would also show the error while the
- * input's own validity fails (a date past `max`), and keep it after the value is fixed.
+ * Pass `match` to show it: `true` for errors computed outside the browser's validity API. With a
+ * boolean `match`, the form decides alone. Base UI would also show the error while the input's own
+ * validity fails (a date past `max`), and keep it after the value is fixed. An icon goes with the
+ * text, never color alone (ADR 0010 §4).
  */
-function FieldError({ className, ...props }: FieldPrimitive.Error.Props) {
+function FieldError({ className, children, ...props }: FieldPrimitive.Error.Props) {
   if (props.match === false) return null;
   return (
     <FieldPrimitive.Error
       data-slot="field-error"
-      className={cn('text-control text-destructive-text', className)}
+      className={cn('flex items-start gap-1.5 text-control text-destructive-text', className)}
       {...props}
-    />
+    >
+      <CircleAlertIcon aria-hidden="true" className="mt-0.5 size-icon shrink-0" />
+      <span>{children}</span>
+    </FieldPrimitive.Error>
   );
 }
 

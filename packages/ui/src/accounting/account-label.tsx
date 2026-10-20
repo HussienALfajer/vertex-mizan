@@ -7,13 +7,17 @@ type AccountLabelProps = Omit<ComponentProps<'span'>, 'children'> & {
   code: string;
   /** The account's name as the company wrote it: Arabic, English or both. */
   name: string;
-  /**
-   * A header account (never posted to) or a blocked one, shown with an icon and `kindLabel`'s text,
-   * never color alone (ADR 0010 §5).
-   */
-  kind?: 'postable' | 'header' | 'blocked';
-  kindLabel?: string;
-};
+} & (
+    | { kind?: 'postable'; kindLabel?: never }
+    | {
+        /**
+         * A header account (never posted to) or a blocked one, shown with an icon and the
+         * required `kindLabel` text, never color alone (ADR 0010 §5).
+         */
+        kind: 'header' | 'blocked';
+        kindLabel: string;
+      }
+  );
 
 /**
  * An account as accountants read it: the code first, isolated left to right, then the name in its
@@ -40,7 +44,7 @@ function AccountLabel({
         {code}
       </bdi>
       <bdi className={cn('min-w-0 truncate', kind === 'header' && 'font-medium')}>{name}</bdi>
-      {Icon && kindLabel && (
+      {Icon && (
         <Badge tone={kind === 'blocked' ? 'danger' : 'neutral'} className="self-center">
           <Icon aria-hidden="true" />
           {kindLabel}
