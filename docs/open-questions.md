@@ -6,11 +6,14 @@ Decisions not yet made. Never guess an answer to one: ask the owner. Each has a 
 
 | # | Question | Recommendation | Needed before |
 |---|---|---|---|
-| Q1 | Are books kept in USD (functional currency) with an SYP view accepted by Syrian law and the tax authority, and which SYP translation does the tax return need (line-level historical amounts, or IAS 21.39 at closing rate)? (UNVERIFIED, `market-syria.md` §9 item 12) | Ask a Syrian certified auditor. Mizan stores both possibilities. | The 2026 tax return (filed in 2027) |
-| Q2 | Off-server backups for Mizan's database. Hub keeps backups on the server only for now (Hub ADR 0034), but the ledger must be kept 10 years. | Subscribe to off-server storage and test a restore before Vertex Media's books go live. | Phase 1 production |
-| Q3 | The service-agency chart-of-accounts template: account codes, names and statement lines for Vertex Media | Draft it in the chart spec, from the phase 1 scope's accounts, and approve it with the owner | The chart-of-accounts spec |
+| Q1 | Does the tax authority accept the policy chosen for Vertex Media (statutory books in SYP at the Central Bank bulletin rate, a parallel USD ledger at the market rate), and do Decrees 5 and 6 of 2024 on foreign-currency dealing affect USD invoicing? (UNVERIFIED) | A Syrian certified auditor's written view | The 2026 tax return (filed in 2027) |
+| Q2 | Off-server backups for Mizan's database. Hub keeps backups on the server only for now (Hub ADR 0034), but the ledger must be kept 10 years. | The deployment and backup ADR (point-in-time recovery, encrypted off-server copies, restore drills) is written before the first production deploy (owner, 2026-10-20); an off-server storage subscription is needed then. | The first production deploy |
+| Q3 | The chart-of-accounts templates (service agency and general): account codes, Arabic names, statement lines, tax and exchange-difference accounts | Draft them in the S02 spec; show them to one or two Syrian accountants before approval (audit S6) | S02 |
 | Q4 | Who holds the account for each Hub payment method (cash, bank transfer, e-wallet) per currency at Vertex Media, and which real bank and wallet accounts exist | The owner lists them; one account per method and currency | The opening-balances spec |
-| Q5 | Hub's side of the integration (outbox, events, cycle dates on lines, milestone and project events, period check, reconciliation, replay) is scheduled in Hub's sessions | Start Hub F18's integration part once Mizan's posting API contract is implemented and tested | Phase 1 integration |
+| Q5 | Hub's side of the integration (outbox, events, cycle dates on lines, milestone and project events with done dates, optional tax lines, period check, `202 held` handling, reconciliation, replay) is scheduled in Hub's sessions | Start Hub F18's integration part once Mizan's posting API contract is implemented and tested | Phase 1 integration |
+| Q6 | Phase order: the audit proposes cheques and notes, fixed assets and the Al-Ameen import in phase 2, and a pilot with two accounting offices before the phone-shop vertical (audit M8) | Decide when phase 2 is detailed (owner, 2026-10-20) | Phase 2 detailing |
+| Q7 | The hosting location and the data-residency statement for customers (the server is abroad) | Decide later (owner, 2026-10-20); the deployment ADR records the location | Phase 4 |
+| Q8 | The tax authority's procedure for approving an accounting program and its electronic linkage specification | Open the inquiry with the General Commission for Taxes and Fees during phase 1 | Before any tax posting rule |
 
 ## Resolved
 

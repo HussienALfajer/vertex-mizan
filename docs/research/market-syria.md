@@ -1,6 +1,6 @@
 # Market research: accounting software in Syria and the region
 
-- **Date:** 2026-10-20
+- **Date:** 2026-10-20 · **Updated:** 2026-10-20 with the facts re-verified by the foundation audit (`docs/audits/2026-10-foundation-audit.md` §M11)
 - **Purpose:** ground the product decisions for Vertex Mizan (ADR 0001, phase scopes) in facts about the Syrian market, its competitors, and its legal, tax and currency rules.
 - **Method:** desk research (web search, vendor sites, official Syrian sources, public app bundles, trademark aggregators, domain registrar API). No interviews yet. Every price is the one shown on the cited page on the date seen; prices change.
 - **Not legal or tax advice.** Rules below must be confirmed with a Syrian tax adviser and lawyer before they become product requirements.
@@ -25,9 +25,9 @@ Under the project rules, any Syrian legal or tax detail that is not CONFIRMED is
 2. **A modern Syrian challenger already exists: Wakeed (وكيد), wakeed.app.** It is cloud plus offline, multi-company, Arabic/English/Turkish, with an exchange-rate bulletin feed for Syria, a Syrian tax-invoice template, cheques, installments, POS, AI OCR and even a "Connect Claude" connector. It is the closest competitor to the Vertex Mizan concept. Al-Bayan ($20–40/month, cloud with offline sync) is the second.
 3. **Regional cloud leaders (Daftra, Qoyod, Wafeq, Rewaa, Edara) are built for Saudi ZATCA and Egyptian ETA,** bill in SAR/USD by card, and do not target Syria. Daftra is the only one confirmed to accept Syrian sign-ups.
 4. **International products are weak fits:** QuickBooks is blocked in Syria; Business Central is not offered in Syria and has no Arabic; Xero has no Arabic; Zoho is partly usable and has Arabic but charges per organisation with no consolidation; Odoo and ERPNext are usable only self-hosted in practice, with known Arabic print/RTL issues and no Syrian partner network.
-5. **The currency changed.** Since 2026-01-01 the legal currency is the **new Syrian pound** (100 old = 1 new, ISO code still SYP). Old notes stopped being legal tender on 2026-07-31. Documents must state the new currency explicitly. No competitor we examined documents native support for the redenomination. **CONFIRMED.**
+5. **The currency changed.** Since 2026-01-01 the legal currency is the **new Syrian pound** (100 old = 1 new, ISO code still SYP). The exchange window closed on 2026-07-30; old notes are no longer legal tender (final phase from 2026-08-02, REPORTED). Documents must state the new currency explicitly. No competitor we examined documents native support for the redenomination. **CONFIRMED.**
 6. **Dual currency is daily reality:** official Central Bank rate 122.00 SYP/USD on 2026-10-19 versus a parallel rate around 138. Dollar dealing is still formally restricted by Decrees 5 and 6 of 2024 but not enforced. Books should be in SYP with USD as a shadow/reporting currency and stored dated rates.
-7. **The tax system is in transition.** Income Tax Law 24/2003 still applies; no VAT; a consumption spending fee applies to some sectors. New income-tax and sales-tax laws are drafts expected to apply from early 2027. Tax rules must be versioned, dated configuration.
+7. **The tax system is in transition.** Income Tax Law 24/2003 still applies; no VAT; a consumption spending fee applies to some sectors. New income-tax and sales-tax laws are not yet enacted; the Ministry of Finance is preparing to apply them from the start of 2027 (CONFIRMED, SANA, 2026-10-11), and the draft reportedly requires an approved accounting program linked to the tax authority (REPORTED). Tax rules must be versioned, dated configuration.
 8. **The tax authority approves accounting programs** and requires some taxpayer groups to link invoices electronically with QR codes. Being on that approved list is very likely a buying requirement for retail and distribution customers (phase 3). **REPORTED; current rules for 2026 UNVERIFIED.**
 9. **Name:** "Vertex Mizan" as a whole is distinctive and its domains are free, but "Mizan/ميزان" alone is crowded in accounting: a Saudi cloud accounting SaaS called Mezan (ميزان), an accounting app "المِيزان" with 50K+ downloads, and reportedly a program called "الميزان" on the Syrian tax authority's approved list. Overall naming risk: **medium**; always use the full name.
 
@@ -162,20 +162,20 @@ Syria's government changed in December 2024. Pre-2024 laws remain in force unles
 | **Electronic books are accepted**: computer-produced records are accepted for taxpayers who keep accounts electronically (art. 14 c). | same | CONFIRMED |
 | **Retention: 10 years** for books and documents (art. 124). | same | CONFIRMED |
 | Employers keep a chronological employee register with no blanks, insertions or deletions (art. 75). | same | CONFIRMED |
-| Commercial Code (Law 33/2007) requires merchants to keep a journal and an inventory book, traditionally numbered and initialled. | syria.law | REPORTED (articles not read) |
-| Books in Arabic and in Syrian pounds. | — | UNVERIFIED |
+| Commercial Code (Law 33/2007): the journal and the inventory book are mandatory and **kept in Arabic** (art. 16); the journal is chronological, without blanks or erasures (art. 17); numbered and certified by the president of the civil court of first instance (art. 18); kept ten years after closing (art. 19); accounts may be kept electronically under the ministry's executive instructions (art. 22). | Law text on a non-official mirror (audit, 2026-10-20) | REPORTED (articles read, not on an official source) |
+| Books in Syrian pounds. Neither the Income Tax Law nor the Commercial Code names a currency for the books; every amount in the tax law is in Syrian pounds. | Law 24/2003; Law 33/2007 | UNVERIFIED (no rule either way) |
 
 ### 4.2 Income tax
 
 - **In force:** Law 24/2003 as amended. Real-profit taxpayers (companies, banks, importers/exporters, wholesalers, assigned taxpayers) versus **lump-sum (الدخل المقطوع)** taxpayers (crafts and professions). Fiscal year is the calendar year; companies file by 30 June, other real-profit taxpayers by 30 April. **CONFIRMED (2003 text).**
 - **Rates** were amended by Decree 51/2006; reported range 10–28% for business income and about 22% for companies, plus a local-administration surcharge. **REPORTED / UNVERIFIED.**
-- **Reform:** draft income-tax and sales-tax laws (published September 2025) replace the schedular system and abolish lump-sum committees. On 2026-08-10 the Finance Minister said implementation is expected in **early 2027**. **REPORTED (draft).**
+- **Reform:** draft income-tax and sales-tax laws (published September 2025) replace the schedular system and abolish lump-sum committees. On 2026-08-10 the Finance Minister said implementation is expected in **early 2027**, and on 2026-10-11 the Ministry stated it is preparing to apply the new tax system at the start of next year. The laws are not enacted as of 2026-10-20. **CONFIRMED (SANA statements) / REPORTED (draft content).**
 - **Tax amnesty:** Decree 275/2025 waived interest and penalties for 2024 and earlier if paid before 2026-03-31. **REPORTED.**
 
 ### 4.3 Indirect taxes and withholding
 
 - **No VAT.** Draft sales tax: 5% general, up to 15% on luxuries. **REPORTED.**
-- **Consumption spending fee (رسم الإنفاق الاستهلاكي):** Decree 11/2015, amended by Law 15/2024; added on the invoice; e.g. tourist restaurants 5%, 4–5 star hotels 10%. Expected to give way to the sales tax after 2026. **REPORTED.**
+- **Consumption spending fee (رسم الإنفاق الاستهلاكي):** Decree 11/2015, amended by Law 15/2024; added on the invoice; e.g. tourist restaurants 5%, 4–5 star hotels 10%. Executive instructions updated 2026-07-01 (CONFIRMED, SANA). Expected to give way to the sales tax after 2026. **REPORTED.**
 - **Stamp duty:** Decree 44/2005, proportional rates about 0.4–0.7%. **REPORTED.**
 - **Salary tax:** progressive brackets under Decree 30/2023 (5%–15%, in old pounds). Decree 67/2026 set a minimum wage of 12,560 new pounds/month as the exempt minimum. Dividing the old brackets by 100 puts the top bracket below the new exemption, so the 2026 bracket table **must be confirmed** with the tax authority. **REPORTED, inconsistent.**
 - **Non-resident withholding** (art. 61 b): 5% of contract value or 10% of service fees, royalties and rentals, plus salary-tax withholding; remit within 15 days; the Syrian payer is jointly liable. **CONFIRMED (2003 text).**
@@ -184,13 +184,13 @@ Syria's government changed in December 2024. Pre-2024 laws remain in force unles
 
 - The General Commission for Taxes and Fees publishes **"approved accounting programs" (البرامج المحاسبية المعتمدة)** — about 50 programs in 2022. They issue invoices with a QR code and post them to the tax database when online (no permanent connection needed). **REPORTED (2022–2023 news and site snippets).**
 - Decisions obliged groups of taxpayers to use the **electronic invoice linkage (الربط الإلكتروني)**: wholesalers, importers and exporters (QR on every invoice), tourist establishments of two stars and above, pharmaceutical warehouses (must use an approved program), auditors, delivery companies, radiology centres. Alternatives: pre-printed QR labels, PDF invoices in the approved format, or a free Android app from the authority. **REPORTED.**
-- The authority's site (syriantax.gov.sy) failed with HTTP 500 and certificate errors on 2026-10-20, so the 2026 list, the approval procedure and the technical specification are **UNVERIFIED**. The draft reform names electronic invoicing as a core tool. Obtaining the specification and approval procedure is a prerequisite for phase 3 (sales).
+- The authority's site (syriantax.gov.sy) failed with HTTP 500 and certificate errors on 2026-10-20, so the 2026 list, the approval procedure and the technical specification are **UNVERIFIED**. The draft reform names electronic invoicing as a core tool and reportedly requires taxpayers to use an approved program linked to the tax database (REPORTED). The inquiry about the approval procedure opens in phase 1 (open question Q8).
 
 ### 4.5 Accounting standards and audit
 
 - IFRS is required for listed companies, banks and entities supervised by the Syrian Commission on Financial Markets and Securities; **IFRS for SMEs is not adopted; no national standards.** Authority: the Association of Syrian Certified Accountants. **CONFIRMED (IFRS Foundation profile, last updated 2016).**
 - Joint-stock companies and LLCs must appoint licensed auditors (Companies Law 29/2011, Law 33/2009 on the profession). **REPORTED / UNVERIFIED.**
-- **Hyperinflation (IAS 29):** Syria has appeared on hyperinflation watch lists; whether it is on the 2026 list was not verified. Matters only for IFRS reporters. **UNVERIFIED.**
+- **Hyperinflation (IAS 29):** Syria is on watch lists but not on the hyperinflation list for periods to 30 June 2026 (REPORTED). Annual inflation of 127.8% (2023), 58.1% (2024) and a forecast of −12.7% (2025) give about 214% over three years, above the 100% indicator of IAS 29.3(e) (World Bank figures via press, REPORTED). Matters only for SYP-functional IFRS reporters; out of scope for Mizan (ADR 0007).
 
 ### 4.6 Payroll and social insurance
 
@@ -209,9 +209,9 @@ Syria's government changed in December 2024. Pre-2024 laws remain in force unles
 
 | Item | Rule |
 |---|---|
-| Ratio | **100 old pounds = 1 new pound**; 1 pound = 100 qirsh (قرش). ISO code remains **SYP**. |
+| Ratio | **100 old pounds = 1 new pound**; 1 pound = 100 qirsh (قرش). ISO code remains **SYP**: no ISO 4217 amendment for Syria is listed (REPORTED). |
 | Start | **2026-01-01.** Bank and e-wallet balances were converted that day. |
-| Exchange window | Extended several times; Decision 372/H ended it on **2026-07-30**. Old notes are not legal tender from **2026-07-31**; redeemable only at the Central Bank in Damascus for 5 years. Extension to 2026-08-20 for Raqqa, Deir ez-Zor and Hasakah (REPORTED). |
+| Exchange window | Extended several times; Decision 372/H ended it on **2026-07-30**; the final phase began on **2026-08-02** (REPORTED). Old notes are no longer legal tender; redeemable only at the Central Bank in Damascus for 5 years. Extension to 2026-08-20 for Raqqa, Deir ez-Zor and Hasakah (REPORTED). |
 | Documents | After the exchange starts, every document with a financial obligation is written **only in new pounds** and states **"الليرة السورية الجديدة"** explicitly. During the window, prices were shown in both. Documents signed before are settled at old-pound value unless agreed otherwise. Undated documents without a stated currency are rejected. |
 | Restating books | **No published rule.** The natural treatment is to restate opening balances at 2026-01-01 by dividing by 100, with no gain or loss — an inference to confirm with a Syrian auditor. |
 
@@ -310,14 +310,14 @@ Ranked by how directly they follow from the evidence above. These are opportunit
 | 2 | Accounting treatment of the redenomination in company books (opening-balance restatement, comparatives) | Syrian certified auditor; Association of Syrian Certified Accountants guidance |
 | 3 | Current company income-tax rates and the 2026 salary-tax bracket table in new pounds | Tax authority / tax adviser |
 | 4 | Status of Decrees 5 and 6 of 2024 on foreign-currency dealing | Lawyer |
-| 5 | Commercial Code articles on books (certification, language) | Law text |
+| 5 | Commercial Code articles on books: read on a non-official mirror (arts. 16–22); the ministry's executive instructions for electronic books (art. 22) remain to be found | Official gazette; Ministry of Internal Trade |
 | 6 | Social-insurance split and ceilings | General Establishment for Social Insurance |
-| 7 | Whether Syria is on the 2026 IAS 29 hyperinflation list | CAQ IPTF / Big-4 publications |
+| 7 | Whether Syria joins an IAS 29 hyperinflation list (watch list only, mid-2026) | CAQ IPTF / Big-4 publications |
 | 8 | Any personal-data or data-localisation law | Lawyer |
 | 9 | Trademark searches: Syrian DCIP, WIPO Madrid Monitor for Vertex, Inc. designations, SAIP and UAE before GCC | IP agent |
 | 10 | Wakeed and Al-Bayan pricing, user base and real Syrian adoption | Demo requests, accountant interviews |
 | 11 | How Syrian accountants and businesses actually want to pay and which features make them switch | Interviews with 5–10 accountants and accounting offices |
-| 12 | Whether books kept in USD (functional currency) with an SYP view are accepted, and which SYP translation the tax return needs (added 2026-10-20, Vertex Media chose USD books) | Syrian certified auditor / tax adviser |
+| 12 | Whether the tax authority accepts Vertex Media's policy (statutory books in SYP at the bulletin rate, a parallel USD ledger), and the status of Decrees 5 and 6 of 2024 (Vertex Media's book currency changed from USD to SYP after the foundation audit, 2026-10-20) | Syrian certified auditor / tax adviser |
 
 ---
 

@@ -282,3 +282,37 @@ Each with the auditor's recommendation. None was answered during the audit.
 - Versions: npm registry and GitHub releases for NestJS, TypeScript, Drizzle, Better Auth, pg-boss, Biome, Vitest, fast-check, Playwright, exceljs; https://endoflife.date for Node and PostgreSQL
 
 Paragraph numbers of IAS 21 (other than 8–8A and 19A), IFRS 15, IAS 8 and IAS 1 are cited from the auditor's knowledge of the standards and could not be re-read on ifrs.org from this environment; IAS 29.2–4 and 8 were read in full.
+
+## 8. Owner decisions and resolution (2026-10-20)
+
+Answered by the owner on 2026-10-20 and applied in the same day's revision (ADRs 0007 and 0008, `phase-1-scope.md` §4–§10, `open-questions.md`).
+
+| Finding | Decision | Where |
+|---|---|---|
+| B1, B2 | A full parallel ledger with its own exchange differences and revaluation. Vertex Media keeps statutory books in SYP with a parallel USD ledger. SYP is the default book currency. | ADR 0007 |
+| M6 | A rate policy per ledger: the bulletin for the statutory books, the market rate (Hub's own rate accepted) for the parallel ledger | ADR 0007 |
+| M1 | The deployment and backup ADR is written before the first production deploy, not in phase 0; no real company data before it | ADR 0008, Q2, ROADMAP |
+| M2 | Not adopted: the approval gate stays a written rule. GitHub cannot require the owner's review of PRs opened under the owner's own account. | `workflow.md` |
+| M3 | The runner contract and the four currency shapes adopted; protection of expected values stays the written rule (M2) | ADR 0008, `scenarios/README.md` |
+| M4 | Gapless numbers in posting order; the journal book printed by accounting date then number; `posted_at` stored | ADR 0008 |
+| M5 | Revenue dated when delivered; contract assets for milestones; late invoices into closed months are held; prospective schedule changes (m16) | `phase-1-scope.md` §6 |
+| M7 | Optional `taxes[]` on invoice lines and tax accounts in the templates now; the program-approval inquiry in phase 1 | ADR 0008, Q8 |
+| M8 | Decided when phase 2 is detailed | Q6 |
+| M9 | `ENABLE ALWAYS`, no runtime use of the owner role, one lock order, the daily anchor by email in phase 1, and a CI check on guard-weakening SQL (S5) | ADR 0008 |
+| M10 | Period balances in the S03 data model, maintained by the posting function | ADR 0008 |
+| M11, m1, m2, m17 | The research was updated | `market-syria.md` |
+| m3, m4 | Statuses and superseded statements fixed | vision, scope, analysis |
+| m5 | Every hold returns `202 held` with a reason | ADR 0008 |
+| m6 | The third-currency rule adopted | ADR 0007 |
+| m7 | The git guard extended (`commit -a`, `add ./`, `add :/`, `--no-verify`) and tested | `.claude/hooks/git-guard.mjs` |
+| m8 | The reviewers' Bash limited to read-only git commands by a hook in their frontmatter. `effort` is a documented field for agents and skills. | `.claude/hooks/read-only-git.mjs` |
+| m9 | Not a defect: `/btw` is a built-in Claude Code command; the wording now says so | `CLAUDE.md`, `workflow.md` |
+| m10 | `TASKS.md` stays local; the workflow says so | `workflow.md` |
+| m11, m12 | Glossary and spec template extended | `glossary.md`, `specs/_template.md` |
+| m13, S7 | PostgreSQL 17 and Node 24 kept (owner); TypeScript ~6.0 pinned on purpose; the Drizzle 1.0 layout is handled at the scaffold | ADR 0008 |
+| m14 | Summarised manual entries for 1–18 October 2026 | `phase-1-scope.md` F12 |
+| m15 | Attachment storage rule | ADR 0008 |
+| S1 | The hosting and data-residency statement is decided later; a security ADR goes with the deployment ADR | Q7 |
+| S2, S3 | The policy note per company adopted (ADR 0007). The revenue-deferral switch in the general template is decided in S02. | ADR 0007, Q3 |
+| S4 | Amounts in words with phase 2 vouchers | Phase 2 |
+| S6 | The chart templates are shown to Syrian accountants before approval | Q3 |

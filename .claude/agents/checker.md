@@ -34,7 +34,7 @@ At most 40 lines:
       packages/ledger/src/convert.ts:12:5  TS2322 Type 'number' is not assignable to type 'bigint'.
     test: FAIL  (pnpm --filter @vertex-mizan/ledger exec vitest run test/allocate.test.ts)
       test/allocate.test.ts > allocate > parts sum to the total: Counterexample: [1001,[1,1,1]] expected 1000n to be 1001n
-    scenarios: FAIL  docs/scenarios/receivables/usd-invoice-paid-in-syp.md: line 3 functional expected -12295 got -12296
+    scenarios: FAIL  docs/scenarios/receivables/usd-invoice-paid-in-syp.md: line 3 parallel expected 9760 got 9761
 
 - One line per distinct error: path relative to the repository root, line, and the trimmed message. Group repeats.
 - For a failed property test, give the counterexample and the seed fast-check printed.

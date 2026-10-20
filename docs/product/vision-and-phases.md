@@ -1,6 +1,6 @@
 # Vertex Mizan — vision and phases
 
-- **Date:** 2026-10-20 · **Status:** proposed, awaiting the owner's approval (the layers and the four phases themselves are decided in ADR 0001)
+- **Date:** 2026-10-20 · **Status:** approved by the owner (2026-10-20). The order of phases 2 and 3 is reviewed when phase 2 is detailed (open question Q6).
 - **Decisions:** ADR 0001. **Evidence:** `docs/research/market-syria.md`.
 
 ## 1. Vision
@@ -46,7 +46,7 @@ Only the next phase is detailed. Each is built, tested and used by Vertex Media 
 
 ### Phase 1 — The core and the posting API
 **Goal:** Vertex Media's books are kept in Mizan, fed by Vertex Hub.
-- The permanent core for any number of companies, with IFRS 15 revenue recognition and month-end revaluation.
+- The permanent core for any number of companies: statutory books with an optional parallel currency ledger, IFRS 15 revenue recognition and month-end revaluation in each ledger.
 - The versioned posting API with idempotency and closed-period refusal, and the daily reconciliation with Hub.
 - What Vertex Media's accountant needs to use the core: chart of accounts, manual entries, trial balance and ledgers.
 - **Scope:** `docs/product/phase-1-scope.md`.

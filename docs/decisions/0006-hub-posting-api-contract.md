@@ -1,6 +1,6 @@
 # 0006 — The posting API contract with Vertex Hub: versioned events, exactly once, closed periods, daily reconciliation
 
-Status: Accepted · Date: 2026-10-20
+Status: Accepted, amended by [0008](0008-foundation-audit-amendments.md) (every hold is `202`, hold reasons, optional tax lines, milestone revenue date) · Date: 2026-10-20
 
 ## Context
 Hub is the operational system and Mizan the ledger (ADR 0001, Hub ADR 0035). Hub writes each financial event to an outbox in the change's transaction, and its worker delivers it. Mizan may be down, Hub may resend, events may arrive out of order, and a period may close between Hub's check and the delivery. Mizan owns the accounting: Hub sends business events, and Mizan's posting rules turn them into entries (phase 1 scope, Q5). The same contract shape will later serve Vertex Food, Vertex Shifa and third parties.

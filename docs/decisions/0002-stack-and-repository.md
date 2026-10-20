@@ -1,6 +1,6 @@
 # 0002 — Stack and repository: Vertex Hub's stack, one monorepo, a pure ledger package
 
-Status: Accepted · Date: 2026-10-20
+Status: Accepted, amended by [0008](0008-foundation-audit-amendments.md) (versions) · Date: 2026-10-20
 
 ## Context
 Claude Code writes the whole system (`docs/research/working-method.md`). Vertex Hub runs in production on a stack its sessions know well, and Vertex Food and Vertex Shifa run the same backend stack with stronger tenancy and ledger patterns. Mizan integrates with Hub first, shares its server, and is built by the same owner and agent. The owner asked for Hub's stack unless there is a reason to differ (2026-10-20).
@@ -12,7 +12,7 @@ Claude Code writes the whole system (`docs/research/working-method.md`). Vertex 
   - `apps/worker`: NestJS application context with pg-boss. It runs month-end revenue releases, revaluation previews, held-event retries, the reconciliation check, exports and PDF rendering with Playwright's Chromium (Hub ADR 0008).
   - `apps/web`: React 19 + Vite + TanStack Router and Query; Tailwind 4 with the Vertex design system on shadcn/ui and Base UI (Hub ADR 0004), copied and adapted; i18next with Arabic as the only shipped language and RTL by default.
 - **Packages:**
-  - `packages/contracts`: Zod schemas shared by the API, the web app and integrators; the money module (ADR 0004); error codes; the Hub event contracts (ADR 0006), exportable as JSON Schema.
+  - `packages/contracts`: Zod schemas shared by the API, the web app and integrators; the money module (ADR 0007); error codes; the Hub event contracts (ADR 0006), exportable as JSON Schema.
   - `packages/ledger`: **pure accounting logic with no I/O**, the part property tests hammer:
     - building balanced lines from a request;
     - currency conversion and rounding;

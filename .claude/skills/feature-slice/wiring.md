@@ -12,12 +12,14 @@ Walk this list against the diff before a PR closes. Tick only what applies to th
 ## Ledger
 - [ ] Every rule comes from an approved scenario in `docs/scenarios/`
 - [ ] Pure functions in `packages/ledger`, no I/O
-- [ ] Property tests: balance in both currencies, reversal nets to zero, allocations sum exactly, closed periods refused, replay posts nothing
+- [ ] Property tests: balance in both ledgers, difference lines in one ledger only, reversal nets to zero, allocations sum exactly, closed periods refused, replay posts nothing
+- [ ] Scenarios cover every currency shape the rule can occur in
 
 ## Database
 - [ ] Schema file exported from `schema/index.ts` and registered with its owning module, scope and kind
 - [ ] `company_id`, forced RLS, `company_id`-first indexes, composite company foreign keys on company tables
-- [ ] Ledger and audit tables append-only (triggers and grants); deferred invariant triggers where rows depend on each other
+- [ ] Ledger and audit tables append-only (triggers `ENABLE ALWAYS` and grants); deferred invariant triggers where rows depend on each other; locks in the order ledger head, then period
+- [ ] Period balances maintained by the posting function and checked against the lines
 - [ ] Unique indexes on idempotency keys, external references and entry numbers
 - [ ] Writes to the ledger only through the posting function
 - [ ] Migration generated, SQL reviewed, no drift; nothing touches posted data

@@ -12,7 +12,7 @@ Write the spec for **$ARGUMENTS**.
 - The spec's line in `docs/ROADMAP.md` (its features), then each feature's section of the current phase scope (`docs/product/phase-1-scope.md`): find the heading with a search and read that section only. For anything that posts to the ledger, also read the scope's §4 (policies) and §6 (treatment of Hub events).
 - `docs/open-questions.md`, and the ADRs the features touch (`docs/decisions/README.md` lists them):
   - anything with company data reads 0003;
-  - money reads 0004;
+  - money reads 0007;
   - the ledger reads 0005;
   - the Hub API reads 0006.
 - Specs it depends on in `docs/specs/`, existing scenarios in `docs/scenarios/`, the relevant schema and contracts when they exist, and `docs/glossary.md`.
