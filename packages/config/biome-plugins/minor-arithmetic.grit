@@ -1,0 +1,25 @@
+language js
+
+or {
+  or {
+    `$left + $right`,
+    `$left - $right`,
+    `$left * $right`,
+    `$left / $right`,
+    `$left % $right`,
+    `$left ** $right`
+  } where { or { $left <: r".*Minor[)!]*", $right <: r".*Minor[)!]*" } },
+  JsAssignmentExpression() as $assignment where {
+    $assignment <: r"(?s)[^=]*[-+*/%]=.*",
+    $assignment <: r"(?s).*Minor\b.*"
+  },
+  or {
+    JsPreUpdateExpression(),
+    JsPostUpdateExpression()
+  } as $update where { $update <: r"(?s).*Minor\b.*" },
+  JsUnaryExpression() as $unary where { $unary <: r"(?s)\s*[-+].*Minor[)!]*" }
+} as $expr where {
+  not $filename <: r".*packages.contracts.src.*",
+  not $filename <: r".*packages.ledger.src.*",
+  register_diagnostic(span=$expr, message="No arithmetic on *Minor amounts outside packages/contracts and packages/ledger (ADR 0007): use the money module.")
+}

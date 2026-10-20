@@ -7,7 +7,8 @@
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/.claude/hooks/**",
         "$TURBO_ROOT$/scripts/**",
-        "$TURBO_ROOT$/docs/decisions/**"
+        "$TURBO_ROOT$/docs/decisions/**",
+        "$TURBO_ROOT$/biome.json"
       ]
     }
   }

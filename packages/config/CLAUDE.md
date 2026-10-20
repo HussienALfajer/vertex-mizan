@@ -8,7 +8,8 @@ Shared TypeScript and Biome configuration for every app and package (ADR 0002), 
 - `test/config.test.ts`: guards the settings that must never be loosened.
 - `test/git-guard.test.ts`: the Claude Code hook `.claude/hooks/git-guard.mjs`, run with commands on stdin against throwaway repositories (commit on main, `commit -a`, `--no-verify`, broad `add`, pushes to main).
 - `test/migration-guard.test.ts`: the migration guard `scripts/migration-guard.mjs` (ADR 0008), run on throwaway SQL files: every refused rule, dynamic SQL in function bodies, what a ledger migration legitimately creates, and exceptions that name an ADR.
-- `turbo.json` adds `.claude/hooks/`, `scripts/` and `docs/decisions/` to this package's test inputs, so a change there is never a cache hit.
+- `biome-plugins/minor-arithmetic.grit`: a Biome GritQL plugin, loaded by the root `biome.json` (plugin paths resolve from the root config), that refuses arithmetic on `*Minor` fields outside `packages/contracts/src` and `packages/ledger/src` (ADR 0007). `test/minor-arithmetic.test.ts` runs it on throwaway files.
+- `turbo.json` adds `.claude/hooks/`, `scripts/`, `docs/decisions/` and the root `biome.json` to this package's test inputs, so a change there is never a cache hit.
 
 ## Rules
 - A package's `tsconfig.json` extends one of these (`@vertex-mizan/config/tsconfig/node.json`) and adds only paths and output options.
