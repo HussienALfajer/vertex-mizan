@@ -16,7 +16,8 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done. Phases are 
 - [ ] `packages/ledger`: line building in the book and parallel ledgers, rounding and exchange-difference lines, cumulative allocation, the integrity hash; property tests (fast-check)
 - [ ] `packages/db`: roles (`mizan_owner`, `mizan_app`, `mizan_jobs`, `mizan_queue`), company context, forced RLS, append-only and deferred-invariant triggers (`ENABLE ALWAYS`), convention and invariant tests run as `mizan_app` (ADR 0003, 0005, 0008)
 - [ ] The scenario-book runner (exact set of entries, both ledgers, `Proposed` skipped; ADR 0008)
-- [ ] App skeletons: api (`/api/health`, OpenAPI), worker (pg-boss), web (RTL shell); design system copied from Vertex Hub
+- [ ] Brand and design system (ADR 0009): `brand/` with the MIZAN logo (shown to the owner before use), `packages/tokens` and `packages/ui` copied from Vertex Hub, the Amount and Amount input components (LTR-isolated numbers, minus sign and negative color), light and dark RTL screenshots at phone, tablet and desktop widths
+- [ ] App skeletons: api (`/api/health`, OpenAPI), worker (pg-boss), web (RTL shell on the design system)
 - [ ] Deployment skeleton on the Vertex server at `mizan.vertexmedia.pro`
 - [ ] CI migration check that refuses guard-weakening SQL (ADR 0008)
 
