@@ -26,7 +26,7 @@ The foundation audit (`docs/audits/2026-10-foundation-audit.md`) found that ADRs
 
 ### Invariants restated (amends 0005)
 - **Invariant 1** reads: every entry balances in the book ledger and, when set, in the parallel ledger (ADR 0007), and has at least two lines. Rounding and exchange-difference lines follow ADR 0007.
-- **Invariant 9** reads: open items never flip sign in their transaction amount, and **when an open item's transaction amount reaches zero, its book and parallel amounts are zero too**. Both are checked by a deferred trigger.
+- **Invariant 9** reads: open items never flip sign in their transaction amount, except running-balance items such as client ad funds, which may cross zero (ADR 0007). **When an open item's transaction amount reaches zero, its book and parallel amounts are zero too.** Both are checked by a deferred trigger.
 
 ### Period balances (amends 0005; audit M10)
 - A **period-balance table** `(company, period, account, dimension set, currency) → debit and credit per amount type` (transaction, book, parallel) is part of the ledger model from S03.

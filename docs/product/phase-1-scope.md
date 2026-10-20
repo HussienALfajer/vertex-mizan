@@ -206,7 +206,8 @@ Accounts named here are template accounts; the accountant can remap them (F10). 
 
 ### Ad budget
 - **Wallet deposit:** Dr the account of the payment method / Cr Client ad funds held (client open item, USD). A deposit paid in SYP for a USD credit leaves a residual in a ledger, which posts as a realised exchange difference (ADR 0007).
-- **Refunds and spend** clear the client's funds at their average carrying amount. A voided deposit posts its exact reversal and an exchange-difference entry that restores the average (ADR 0007).
+- **Refunds and spend** clear the client's funds at their average carrying amount. A voided deposit posts its exact reversal and an exchange-difference entry that restores the carrying amount (ADR 0007).
+- **A negative wallet** (spend beyond deposits, or a deposit voided after spend) is allowed: the client's funds account turns into a debit balance, the client owes the agency, and the balance sheet shows it as a receivable from that client (ADR 0007). Scenarios: a void after spend, and a spend that crosses zero.
 - **Refund:** the opposite entry.
 - **Void:** the reversal.
 - **Spend** (only for campaigns funded from the wallet): Dr Client ad funds held / Cr Ad platforms payable, which the accountant settles when the platform is paid. An edit or an archive becomes a reversal and a new entry. Campaigns the client pays directly post nothing.
