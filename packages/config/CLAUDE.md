@@ -7,10 +7,10 @@ Shared TypeScript and Biome configuration for every app and package (ADR 0002), 
 - `tsconfig/base.json`: strict compiler options for all code. `tsconfig/node.json`: Node ESM (`NodeNext`), for packages and Node apps.
 - `test/config.test.ts`: guards the settings that must never be loosened.
 - `test/git-guard.test.ts`: the Claude Code hook `.claude/hooks/git-guard.mjs`, run with commands on stdin against throwaway repositories (commit on main, `commit -a`, `--no-verify`, broad `add`, pushes to main).
-- `test/migration-guard.test.ts`: the migration guard `scripts/migration-guard.mjs` (ADR 0008), run on throwaway SQL files: every refused rule, dynamic SQL in function bodies, what a ledger migration legitimately creates, and exceptions that name an ADR.
+- `test/migration-guard.test.ts`: the migration guard `scripts/migration-guard.mjs` (ADR 0008), run on throwaway SQL files and fixture `packages/db` folders: every refused rule, dynamic SQL in function bodies, what a ledger migration legitimately creates, exceptions that name an ADR, changes to the append-only tables of a registry, and a `packages/db` with no migration, a nested one or no registry.
 - `test/error-codes-guard.test.ts`: the error-code guard `scripts/error-codes-guard.mjs` (ADR 0006), run against throwaway repositories: appended codes pass; a removed, renamed, reordered, duplicated or re-statused code fails, and so does a line it cannot read.
 - `biome-plugins/minor-arithmetic.grit`: a Biome GritQL plugin, loaded by the root `biome.json` (plugin paths resolve from the root config), that refuses arithmetic on `*Minor` fields outside `packages/contracts/src` and `packages/ledger/src` (ADR 0007). `test/minor-arithmetic.test.ts` runs it on throwaway files.
-- `turbo.json` adds `.claude/hooks/`, `scripts/`, `docs/decisions/` and the root `biome.json` to this package's test inputs, so a change there is never a cache hit.
+- `turbo.json` adds `.claude/hooks/`, `scripts/`, `docs/decisions/`, the table registry of `packages/db` (read by the migration guard) and the root `biome.json` to this package's test inputs, so a change there is never a cache hit.
 
 ## Rules
 - A package's `tsconfig.json` extends one of these (`@vertex-mizan/config/tsconfig/node.json`) and adds only paths and output options.

@@ -6,6 +6,6 @@ Arabic-first. Vertex Media is the first company on the system and its design par
 
 ## Status
 
-Phase 0, the foundation: the monorepo scaffold, CI, the money module and the ledger core are in place; the database guards, the design system and the app skeletons follow (`docs/ROADMAP.md`).
+Phase 0, the foundation: the monorepo scaffold, CI, the money module, the ledger core and the database foundation (roles, company isolation, the ledger guards and their tests) are in place; the scenario-book runner, the design system and the app skeletons follow (`docs/ROADMAP.md`).
 
 Copyright © 2026 Vertex. All rights reserved. No license is granted to use, copy, modify or distribute this code.

@@ -1,0 +1,23 @@
+# The local PostgreSQL 17 for development and the database tests (packages/db/CLAUDE.md): a
+# disposable container, reachable from this machine only. The admin password is a fake shared with
+# .env.example; `pnpm db:setup-local` then creates the roles and the development database.
+# Start: docker compose up -d · stop: docker compose stop · dispose of it: docker compose down -v
+name: vertex-mizan
+
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_PASSWORD: local-only-admin-password
+    ports:
+      - 127.0.0.1:55417:5432
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U postgres]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+volumes:
+  postgres-data:
