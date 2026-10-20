@@ -1,6 +1,6 @@
 # Phase 1 analysis: the core and the posting API
 
-- **Date:** 2026-10-20 · **Status:** answered by the owner (2026-10-20). The answers and the resulting scope are in `docs/product/phase-1-scope.md`; where this analysis differs (functional currency USD, IFRS 15 deferral, revaluation in phase 1), the scope wins.
+- **Date:** 2026-10-20 · **Status:** answered by the owner (2026-10-20). The answers and the resulting scope are in `docs/product/phase-1-scope.md`; where this analysis differs, the scope wins: IFRS 15 deferral, revaluation in phase 1, and, after the foundation audit, SYP statutory books with a USD parallel ledger (ADR 0007). Event names here are Hub's internal names; the contract names are in ADR 0006.
 - **Inputs:** ADR 0001, `docs/product/vision-and-phases.md`, `docs/research/market-syria.md`, `docs/research/working-method.md`, Hub ADRs 0006, 0024, 0025, 0027, 0035, Hub `v2-scope.md` (F18, F19) and the Hub schema (read-only, 2026-10-20).
 
 ## 1. Goal and done-when

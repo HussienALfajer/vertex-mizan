@@ -17,7 +17,7 @@ Copy and adapt; never import across repositories.
 |---|---|
 | `docs/product/vision-and-phases.md` | The product, its layers and four phases |
 | `docs/product/phase-1-scope.md` | What phase 1 includes (F01–F14), the accounting policies and the treatment of each Hub event. Anything not in it is out of scope: ask before adding. |
-| `docs/decisions/` | ADRs. Follow them; propose a new ADR to change one. 0004 money, 0005 ledger invariants, 0006 the Hub API. |
+| `docs/decisions/` | ADRs. Follow them; propose a new ADR to change one. 0007 money (book and parallel ledgers), 0005 and 0008 ledger invariants, 0006 and 0008 the Hub API. |
 | `docs/scenarios/` | The scenario book: one solved example per accounting rule, executed as a test (ADR 0005) |
 | `docs/glossary.md` | Accounting terms in Arabic and English. Name code after the English term. |
 | `docs/ROADMAP.md` | Phase and task status. Update it when an item is done. |
@@ -44,7 +44,7 @@ The PR that adds a command adds it here and keeps it true. No commands exist bef
 ## Non-negotiable conventions
 
 - **Ledger invariants (ADR 0005):**
-  - every entry balances in the functional and the second currency;
+  - every entry balances in the book ledger and in the parallel ledger;
   - posted entries are append-only, and corrections are reversals;
   - nothing posts into a closed period;
   - nothing posts twice;
@@ -52,10 +52,10 @@ The PR that adds a command adds it here and keeps it true. No commands exist bef
   - the posting function in `packages/db` is the only writer of the ledger.
 
   The database enforces each rule; never weaken a trigger, grant or constraint to make code pass.
-- **Money (ADR 0004):**
+- **Money (ADR 0007):**
   - integer minor units with an ISO code, and no floats anywhere;
-  - rates stored as quoted, never inverted;
-  - three amounts on every line;
+  - rates stored as quoted, never inverted, with a rate policy per ledger;
+  - three amounts on every line: transaction, book and parallel, each ledger with its own exchange differences;
   - conversions round half away from zero, through the one money module;
   - allocations use cumulative rounding.
 - **Company isolation (ADR 0003):**

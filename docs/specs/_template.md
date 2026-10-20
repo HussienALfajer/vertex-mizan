@@ -22,7 +22,7 @@ For each entity, give:
 - company or platform scope and RLS;
 - its kind: business (archived), append-only (ledger, audit), draft or queue.
 
-Money fields follow ADR 0004.
+Money fields follow ADR 0007.
 
 ## States and rules
 States and allowed transitions (who or what triggers each, what happens). Business rules as numbered, testable statements.
@@ -39,8 +39,8 @@ For every operation:
 ## Currencies, rates and rounding
 For every amount:
 - its currency, the rate it uses and where that rate comes from;
-- the functional and second amounts;
-- rounding lines and allocations (ADR 0004).
+- the book and parallel amounts and the rate policy each uses;
+- exchange-difference and rounding lines, and allocations (ADR 0007).
 
 ## Periods
 How the feature behaves at month boundaries, in closed periods (refuse, hold) and at close (checklist items it adds).
@@ -67,6 +67,18 @@ For each screen, give:
 ## Reports
 Figures the feature adds or changes, and how each reconciles to the ledger.
 
+## Printing and legal books
+Documents and books the feature prints (journal book, vouchers, statements): content, Arabic text, page numbering, the SYP label, amounts in words where used. "None" if it prints nothing.
+
+## Volume and performance
+Expected rows per company per month and the largest company served; which queries read period balances and which read lines; indexes; how long the slowest screen or report may take.
+
+## Migration and compatibility
+What existing data, scenarios or API clients the change affects; expand-then-contract steps; `/v1` compatibility.
+
+## Arabic strings and number formats
+New i18n keys, Arabic terms from the glossary, number and date formats (Latin digits), currency labels.
+
 ## Audit
 Which changes and reads write audit entries.
 
@@ -84,6 +96,8 @@ How the feature can be abused or fail, and the control for each:
 A numbered list:
 - concurrency;
 - zero and negative amounts;
+- every currency shape (`syp`, `syp-usd`, `usd-syp`, `third`);
+- a missing policy rate;
 - rate changes mid-month;
 - archived accounts or dimensions;
 - a void after a release;

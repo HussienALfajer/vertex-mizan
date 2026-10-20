@@ -26,9 +26,10 @@ One name per concept. Code, contracts and tables use the English term; the Arabi
 | قيد عكسي / عكس | reversal / reverse | A new entry that negates a posted one exactly |
 | قيد إعادة تصنيف | reclassification | Moves an amount between accounts or dimensions |
 | رقم القيد | entry number | Gapless per company and fiscal year, given at posting |
+| تاريخ القيد / تاريخ الترحيل | accounting date / posting time | The date an entry belongs to / when it was posted (`entry_date`, `posted_at`) |
 | سلسلة السلامة | integrity chain | Each posted entry's hash includes the previous entry's hash |
 | الدفتر / دفتر الأستاذ | ledger / general ledger | All posted entries; per-account view |
-| دفتر اليومية | journal book | Posted entries in number order, printable with numbered pages |
+| دفتر اليومية | journal book | Posted entries printed by accounting date then number, in Arabic, with numbered pages |
 | ميزان المراجعة | trial balance | Balances of all accounts; debits equal credits |
 | كشف حساب | account statement | One account's lines and running balance |
 | قائمة الدخل | income statement | Revenue and expenses for a period |
@@ -37,8 +38,13 @@ One name per concept. Code, contracts and tables use the English term; the Arabi
 | الفترة | period | A month of the fiscal year: open or closed |
 | إقفال الفترة / إعادة فتحها | close / reopen a period | Stop / allow postings dated inside it |
 | قائمة التحقق قبل الإقفال | pre-close checklist | Conditions a period must meet before it closes |
-| العملة الوظيفية | functional currency | The currency entries balance in (USD for Vertex Media) |
-| العملة الثانية | second currency | The currency every line also stores (SYP for Vertex Media) |
+| عملة الدفاتر | book currency | The currency of the statutory books (SYP by default and for Vertex Media) |
+| العملة الموازية | parallel currency | The currency of the optional full parallel ledger (USD for Vertex Media) |
+| الدفتر الموازي | parallel ledger | A complete ledger in the parallel currency, with its own exchange differences and revaluation |
+| مبلغ الدفاتر / المبلغ الموازي | book amount / parallel amount | A line's amount in the book ledger / in the parallel ledger |
+| سياسة الأسعار | rate policy | Which rate type each ledger uses (bulletin for the statutory books, market for the parallel ledger) |
+| سطر فرق صرف | exchange-difference line | A line carrying an amount in one ledger only, for a realised or unrealised difference |
+| عملة العرض | presentation currency | A currency statements are translated into for presentation (IAS 21.39); never a stored ledger |
 | مبلغ المعاملة | transaction amount | A line's amount in its own currency |
 | سعر الصرف | exchange rate | Quote-currency units per 1 base-currency unit, stored as quoted |
 | سعر السوق / سعر النشرة | market rate / bulletin rate | The rate the company deals at / the Central Bank of Syria bulletin rate |
@@ -48,6 +54,7 @@ One name per concept. Code, contracts and tables use the English term; the Arabi
 | سطر التقريب | rounding line | A line to the conversion-rounding account that balances conversion rounding |
 | التوزيع | allocation | Splitting an amount into parts that sum exactly (cumulative rounding) |
 | إيراد مؤجل / التزامات عقود | deferred revenue / contract liabilities | Amounts invoiced before the service is delivered (IFRS 15) |
+| أصل عقد | contract asset | Revenue earned for work done and not yet invoiced (IFRS 15.107) |
 | جدول الاعتراف بالإيراد | recognition schedule | How a deferred amount is released to revenue over time |
 | تحرير الإيراد | revenue release | The entry moving deferred revenue to revenue |
 | العربون | project deposit | The invoice drafted at quote acceptance, before work starts |
@@ -63,3 +70,11 @@ One name per concept. Code, contracts and tables use the English term; the Arabi
 | الأرصدة الافتتاحية | opening balances | Balances on the first day of the books |
 | مصدر المستند | document source | Which system issues a document type for a company |
 | كتاب السيناريوهات | scenario book | Solved examples of every accounting rule, run as tests |
+| شكل العملات | currency shape | A scenario's book and parallel currencies (`syp`, `syp-usd`, `usd-syp`, `third`) |
+| أرصدة الفترات | period balances | Totals per period, account, dimensions and currency, kept by the posting function |
+| مرساة السلسلة | chain anchor | The daily chain head emailed to the owner, outside the server |
+| سند | voucher | A receipt or payment document that produces an entry (phase 2) |
+| شيك / شيك مؤجل | cheque / post-dated cheque | A cheque, or one dated in the future (phase 2 or later) |
+| أوراق قبض / أوراق دفع | notes receivable / notes payable | Cheques and bills held or issued until due (phase 2 or later) |
+| مركز كلفة | cost centre | A dimension used to analyse costs |
+| الفرع | branch | A location of a company (later) |

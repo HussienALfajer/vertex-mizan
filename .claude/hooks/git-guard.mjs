@@ -26,6 +26,12 @@ function currentBranch(dir) {
 }
 
 for (const part of parts) {
+  if (/\bgit\b/.test(part) && /\s--no-verify\b/.test(` ${part} `)) {
+    refuse(
+      'Refused: never skip git hooks with `--no-verify` (AGENTS.md, Git). Fix what the hook reports instead.',
+    );
+  }
+
   const match = part.match(/\bgit\b((?:\s+-C\s+("[^"]+"|'[^']+'|\S+))?)\s+(commit|add)\b(.*)$/);
   if (!match) continue;
   const dirArg = match[2]?.replace(/^["']|["']$/g, '');
@@ -39,11 +45,20 @@ for (const part of parts) {
         'Refused: never commit to main (AGENTS.md, Git). Create a branch named by type first, e.g. `git switch -c feat/<topic>`.',
       );
     }
+    // `-a`, `-am` and other bundles with `a`, or `--all`, stage every tracked change.
+    if (/\s(-[a-zA-Z]*a[a-zA-Z]*|--all)\s/.test(rest)) {
+      refuse(
+        'Refused: never `git commit -a` / `-am` / `--all` (AGENTS.md, Git). Stage the intended files by path, then commit.',
+      );
+    }
   }
 
-  if (subcommand === 'add' && /\s(-A|--all|\.|-u|--update)\s/.test(rest)) {
+  if (
+    subcommand === 'add' &&
+    /\s(-[a-zA-Z]*[Au][a-zA-Z]*|--all|--update|\.\/?|:\/\S*)\s/.test(rest)
+  ) {
     refuse(
-      'Refused: stage files by path, never `git add -A`, `--all`, `-u` or `.` (AGENTS.md, Git). Check `git status` and add the intended files.',
+      'Refused: stage files by path, never `git add -A`, `--all`, `-u`, `.`, `./` or `:/` (AGENTS.md, Git). Check `git status` and add the intended files.',
     );
   }
 }

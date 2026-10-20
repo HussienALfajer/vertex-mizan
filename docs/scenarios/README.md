@@ -1,6 +1,6 @@
 # Scenario book
 
-One Markdown file per accounting rule: posting rules for events, revenue recognition, revaluation, settlement, rounding, allocation, period close. **The documented example is the test.** A runner reads every file and executes it against the real posting function and a fresh test database (ADR 0005). When the rule changes, the scenario changes in the same PR; changing an expected value needs the owner's approval.
+One Markdown file per accounting rule: posting rules for events, revenue recognition, revaluation, settlement, rounding, allocation, period close. **The documented example is the test.** A runner reads every file and executes it against the real posting function and a fresh test database (ADR 0005, ADR 0008). When the rule changes, the scenario changes in the same PR. Changing an expected value needs the owner's approval.
 
 Scenarios are written through `/posting-rule`, before the rule's code.
 
@@ -26,70 +26,133 @@ Scenarios are written through `/posting-rule`, before the rule's code.
    - any Syrian rule with its label (CONFIRMED, REPORTED, UNVERIFIED).
 4. **Cases:** one YAML block per case, with the arithmetic for non-obvious amounts as YAML comments.
 
+## Currency shapes
+
+Every rule is tested in each shape it can occur in (ADR 0007, ADR 0008):
+
+| Shape | Book | Parallel | Who |
+|---|---|---|---|
+| `syp` | SYP | — | The default company |
+| `syp-usd` | SYP | USD | Vertex Media |
+| `usd-syp` | USD | SYP | A company whose statutory books are in USD, if the law allows it |
+| `third` | SYP | USD | A transaction in a third currency (TRY or EUR) |
+
 ## YAML schema
 
 ```yaml
 case: <short name>
 company:
-  functional: USD
-  second: SYP
+  shape: syp-usd                    # see "Currency shapes"
+  book: SYP
+  parallel: USD                     # omit for no parallel ledger
+  rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true }
   template: service-agency          # chart-of-accounts template
   closed_periods: []                # e.g. [2026-10]
-rates:                              # company rate table rows used by manual entries and revaluation
-  - { date: 2026-11-30, base: USD, quote: SYP, rate: "126.0000", type: market }
+rates:                              # company rate table rows
+  - { date: 2026-11-03, base: USD, quote: SYP, rate: "120.0000", type: bulletin }
 steps:                              # in order; each is a Hub event, a manual entry, or a job
-  - event: <type>                   # Hub event (ADR 0006), payload as Hub sends it
+  - event: <type>                   # Hub event (ADR 0006, 0008), payload as Hub sends it
     accounting_date: 2026-11-03
     payload: { ... }
   - job: month_end_revaluation      # or month_end_release, close_period, ...
     period: 2026-11
 expect:
-  entries:                          # in posting order; every line of every entry
+  entries:                          # the exact set posted, in posting order; every line of every entry
     - source: <event type | job | manual>
       date: 2026-11-03
-      lines:                        # amounts in minor units; positive debit, negative credit
-        - { account: "1210", dims: { client: C1 }, currency: SYP, amount: 1220000, functional: 10000, second: 1220000 }
-  balances:                         # optional: account balances or report figures after all steps
-    - { account: "1210", functional: 0, second: 0 }
+      lines:                        # minor units; positive debit, negative credit
+        - { account: "1210", dims: { client: C1 }, currency: USD, amount: 10000, book: 1200000, parallel: 10000 }
+  balances:                         # optional: account or open-item balances, report figures
+    - { account: "1210", book: 0, parallel: 0 }
   outcome:                          # optional: for refusals and holds
     status: held
     reason: PERIOD_CLOSED
 ```
 
-## Example (illustrative format only, not an approved rule)
+## The runner's contract
 
-*An SYP invoice for a completed milestone, paid in SYP at a different rate, in a company whose functional currency is USD.*
+- A `Proposed` scenario is skipped and reported; only `Approved` scenarios count.
+- The runner checks:
+  - the **exact set** of entries and lines posted, with no missing and no extra lines;
+  - every amount in both ledgers;
+  - one audit row per posting;
+  - the stated balances and outcomes.
+- It runs on a fresh test database through the real posting function, never through a mock.
+
+## Examples
+
+These two cases show the format only; they are not approved rules. The account codes are placeholders until the service-agency chart-of-accounts template is approved.
+
+### A USD invoice paid in USD, in the SYP books at the bulletin
 
 ```yaml
-case: SYP milestone invoice paid at a higher SYP/USD rate
-company: { functional: USD, second: SYP, template: service-agency }
+case: USD milestone invoice paid in USD; bulletin moves from 120 to 123
+company: { shape: syp-usd, book: SYP, parallel: USD, rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true } }
+rates:
+  - { date: 2026-11-03, base: USD, quote: SYP, rate: "120.0000", type: bulletin }
+  - { date: 2026-11-20, base: USD, quote: SYP, rate: "123.0000", type: bulletin }
 steps:
   - event: invoice.issued
     accounting_date: 2026-11-03
-    payload: { invoice: INV-2026-1, client: C1, currency: SYP, syp_per_usd: "122.0000",
-               lines: [{ amount: 1220000, source: milestone, service: S1 }] }
+    payload: { invoice: INV-2026-1, client: C1, currency: USD, syp_per_usd: "122.0000",
+               lines: [{ amount: 10000, source: extra_work, service: S1 }] }
   - event: payment.recorded
     accounting_date: 2026-11-20
-    payload: { invoice: INV-2026-1, currency: SYP, amount: 1220000, syp_per_usd: "125.0000" }
+    payload: { invoice: INV-2026-1, currency: USD, amount: 10000, syp_per_usd: "125.0000" }
 expect:
   entries:
     - source: invoice.issued
       date: 2026-11-03
       lines:
-        # 12,200.00 SYP / 122 = 100.00 USD
-        - { account: "1210", dims: { client: C1 }, currency: SYP, amount: 1220000, functional: 10000, second: 1220000 }
-        - { account: "4110", dims: { client: C1, service: S1 }, currency: SYP, amount: -1220000, functional: -10000, second: -1220000 }
+        # book: 100.00 USD × 120 (bulletin) = 12,000.00 SYP; parallel: USD as is (Hub's 122 is not needed)
+        - { account: "1210", dims: { client: C1 }, currency: USD, amount: 10000, book: 1200000, parallel: 10000 }
+        - { account: "4110", dims: { client: C1, service: S1 }, currency: USD, amount: -10000, book: -1200000, parallel: -10000 }
     - source: payment.recorded
       date: 2026-11-20
       lines:
-        # 12,200.00 SYP / 125 = 97.60 USD received
-        - { account: "1112", currency: SYP, amount: 1220000, functional: 9760, second: 1220000 }
-        # the receivable is cleared at its carrying amount, 100.00 USD
-        - { account: "1210", dims: { client: C1 }, currency: SYP, amount: -1220000, functional: -10000, second: -1220000 }
-        # realised exchange loss 2.40 USD (IAS 21.28); no SYP effect, the SYP view is historical
-        - { account: "5910", currency: USD, amount: 240, functional: 240, second: 0 }
+        # book: 100.00 USD × 123 = 12,300.00 SYP received
+        - { account: "1121", currency: USD, amount: 10000, book: 1230000, parallel: 10000 }
+        # the receivable is cleared at its carrying amounts: 12,000.00 SYP, 100.00 USD
+        - { account: "1210", dims: { client: C1 }, currency: USD, amount: -10000, book: -1200000, parallel: -10000 }
+        # realised exchange gain 300.00 SYP in the book ledger only (IAS 21.28); nothing in the parallel ledger
+        - { account: "5910", currency: SYP, amount: -30000, book: -30000, parallel: 0 }
   balances:
-    - { account: "1210", functional: 0, second: 0 }
+    - { account: "1210", book: 0, parallel: 0 }
 ```
 
-The account codes above are placeholders until the service-agency chart-of-accounts template is approved.
+### An SYP invoice paid in SYP, in the USD parallel ledger at Hub's rate
+
+```yaml
+case: SYP milestone invoice paid in SYP; Hub's rate moves from 122 to 125
+company: { shape: syp-usd, book: SYP, parallel: USD, rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true } }
+steps:
+  - event: invoice.issued
+    accounting_date: 2026-11-03
+    payload: { invoice: INV-2026-2, client: C1, currency: SYP, syp_per_usd: "122.0000",
+               lines: [{ amount: 1220000, source: extra_work, service: S1 }] }
+  - event: payment.recorded
+    accounting_date: 2026-11-20
+    payload: { invoice: INV-2026-2, currency: SYP, amount: 1220000, syp_per_usd: "125.0000" }
+expect:
+  entries:
+    - source: invoice.issued
+      date: 2026-11-03
+      lines:
+        # book: SYP as is; parallel: 12,200.00 SYP / 122 (Hub's rate) = 100.00 USD
+        - { account: "1210", dims: { client: C1 }, currency: SYP, amount: 1220000, book: 1220000, parallel: 10000 }
+        - { account: "4110", dims: { client: C1, service: S1 }, currency: SYP, amount: -1220000, book: -1220000, parallel: -10000 }
+    - source: payment.recorded
+      date: 2026-11-20
+      lines:
+        # parallel: 12,200.00 SYP / 125 = 97.60 USD received
+        - { account: "1111", currency: SYP, amount: 1220000, book: 1220000, parallel: 9760 }
+        - { account: "1210", dims: { client: C1 }, currency: SYP, amount: -1220000, book: -1220000, parallel: -10000 }
+        # realised exchange loss 2.40 USD in the parallel ledger only; nothing in the SYP books
+        - { account: "5910", currency: USD, amount: 240, book: 0, parallel: 240 }
+  balances:
+    - { account: "1210", book: 0, parallel: 0 }
+```
+
+Each entry balances in both ledgers:
+- **First example:** book 1,230,000 − 1,200,000 − 30,000 = 0; parallel 10,000 − 10,000 + 0 = 0.
+- **Second example:** book 1,220,000 − 1,220,000 + 0 = 0; parallel 9,760 − 10,000 + 240 = 0.

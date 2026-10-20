@@ -43,14 +43,15 @@
 ## Hooks
 
 - Biome formats and lint-fixes every edited file; remaining problems come back to fix. It does nothing until dependencies are installed.
-- A git guard refuses `git commit` on `main` and `git add -A` / `git add .`.
+- A git guard refuses `git commit` on `main`, `git commit -a`, broad staging (`git add -A`, `.`, `./`, `:/`) and `--no-verify`.
+- The two reviewers run Bash through a hook that allows only read-only git commands.
 - At session start, a note shows the branch, uncommitted files and the open items of `TASKS.md`: continue from them.
 
 ## Context hygiene
 
 - One spec PR or task per session. Suggest `/clear` when the owner moves to unrelated work.
 - Don't load all of `docs/` up front. Read what the current task needs.
-- Side questions go through `/btw`.
+- Side questions go through the built-in `/btw` command.
 
 ## Compaction
 

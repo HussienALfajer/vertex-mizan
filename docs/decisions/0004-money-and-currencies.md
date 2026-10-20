@@ -1,6 +1,6 @@
 # 0004 — Money and currencies: integer minor units, quoted rates, three amounts on every line
 
-Status: Accepted · Date: 2026-10-20
+Status: Superseded by [0007](0007-book-and-parallel-currency-ledgers.md) · Date: 2026-10-20
 
 ## Context
 Vertex Media keeps its books in USD and needs an SYP view for the tax return (phase 1 scope §4). Hub sends amounts in USD or SYP with the SYP-per-USD rate it used (Hub ADR 0006). Revenue is deferred and released over time, SYP balances are revalued at month end, and settlements create realised exchange differences. Every one of these needs exact arithmetic and amounts that add up to the cent. Since 2026-01-01 the Syrian pound is the new pound (100 old = 1 new), and the ISO code is still SYP (`market-syria.md` §5.1, CONFIRMED).

@@ -5,7 +5,7 @@ argument-hint: <rule, e.g. "payment.recorded in another currency">
 effort: high
 ---
 
-Rule: **$ARGUMENTS**. Rules: ADR 0004 (money), ADR 0005 (ledger invariants, scenario book), the policies and event treatment in the current phase scope (§4, §6), and `docs/scenarios/README.md` (format).
+Rule: **$ARGUMENTS**. Rules: ADR 0007 (money, book and parallel ledgers), ADR 0005 and ADR 0008 (ledger invariants, scenario book), the policies and event treatment in the current phase scope (§4, §6), and `docs/scenarios/README.md` (format).
 
 ## 1. Understand
 - Read the scope's treatment of this rule, the spec that needs it, any existing scenario for it, and the glossary.
@@ -18,12 +18,12 @@ Rule: **$ARGUMENTS**. Rules: ADR 0004 (money), ADR 0005 (ledger invariants, scen
 ## 2. Write the scenario (no code)
 - Create or edit `docs/scenarios/<area>/<rule>.md` following `docs/scenarios/README.md`:
   - the explanation and the basis;
-  - a YAML block with the setup (template accounts, functional and second currency, rates);
+  - a YAML block with the setup (the currency shape, the book and parallel currencies, the rate policy, template accounts, rates);
   - the events or manual entries;
-  - the **expected entries line by line**: account code, dimensions, transaction currency and amount, functional and second amounts, rounding lines;
+  - the **expected entries line by line**: account code, dimensions, transaction currency and amount, book and parallel amounts, rounding and exchange-difference lines;
   - the expected balances or report figures.
 - Compute every expected amount by hand with the money module's rules: half away from zero, cumulative allocation. Write the arithmetic beside each non-obvious figure.
-- Cover the variants the rule has, each as its own case:
+- Cover every currency shape the rule can occur in (`syp`, `syp-usd`, `usd-syp`, `third`; `docs/scenarios/README.md`), and the variants the rule has, each as its own case:
   - same currency and cross currency;
   - partial and full settlement;
   - reversal or void;

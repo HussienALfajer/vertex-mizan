@@ -1,6 +1,6 @@
 # 0005 — Ledger invariants: guaranteed by the database, written by one posting function, proven by a hash chain and the scenario book
 
-Status: Accepted · Date: 2026-10-20
+Status: Accepted, amended by [0008](0008-foundation-audit-amendments.md) (journal order, hardened guards, period balances, scenario runner); currency rules in [0007](0007-book-and-parallel-currency-ledgers.md) · Date: 2026-10-20
 
 ## Context
 A ledger is only worth what its guarantees are. The market does not trust cloud accounting (`market-syria.md` §8), the tax law accepts electronic books and requires 10-year retention (Income Tax Law 24/2003, arts. 14 c and 124, CONFIRMED), and the system is written across many AI sessions. A rule that lives only in application code will eventually be broken by a new code path, a script or a migration. The approved working method (§4.2) lists the invariants; this record fixes how each is enforced. Vertex Digital ADR 0003 is the pattern: an append-only journal, idempotency keys and one posting function.

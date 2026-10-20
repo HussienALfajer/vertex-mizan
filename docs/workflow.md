@@ -25,6 +25,7 @@ The unit of work is a spec from `docs/ROADMAP.md`. Each session ends with a merg
 
 - A small spec does sessions 3 and 4 in one PR.
 - **Each layer is committed when its gate passes,** so a crash or a wrong `/rewind` never loses a PR.
+- `TASKS.md` is local and git-ignored: it is a working checklist regenerated from the spec by `/feature-slice`, while the commits on the branch carry the work itself.
 - After each merge the owner runs the cleanup line from the report, then `/clear`.
 
 ## What waits for the owner before auto-merge
@@ -60,7 +61,7 @@ After a spec's backend PR is merged, its screens can be built in a separate sess
 | Product, decisions, scenarios | `docs/product/`, `docs/decisions/`, `docs/specs/`, `docs/scenarios/`, `docs/glossary.md` | On demand |
 | Workflows | `.claude/skills/`: `spec`, `posting-rule`, `feature-slice`, `db-migration` | When invoked |
 | Subagents | `.claude/agents/`: `checker` (Haiku 5.5), `reviewer` and `accountant-reviewer` (Opus 5.5), `explorer` (Sonnet 5.5) | In their own context; only their summary returns |
-| Enforcement | Database guards, hooks (Biome, git guard, session start), convention, invariant and property tests, the scenario book, CI, gitleaks | Always, without costing context |
+| Enforcement | Database guards, hooks (Biome, git guard, session start, read-only git for reviewers), convention, invariant and property tests, the scenario book, the migration guard check, CI, gitleaks | Always, without costing context |
 | Guard rails | `.claude/settings.json`: model and effort, permissions, denied reads, read-only references | Always |
 
 ## Models and effort by task
@@ -83,7 +84,7 @@ Sonnet and Haiku never write code.
 2. `/clear` between unrelated tasks (`/rename` first if you may come back).
 3. `/compact <what to keep>` at natural breaks; `/rewind` to abandon a failed path.
 4. After two failed corrections on the same issue, `/clear` and start again with a better request.
-5. Side questions: `/btw`.
+5. Side questions: the built-in `/btw` command.
 6. Let `checker` run long checks.
 7. Prune the instruction files once per phase.
 
@@ -91,7 +92,7 @@ Sonnet and Haiku never write code.
 
 - The `accountant-reviewer` subagent and the `/posting-rule` skill.
 - The scenario book: accounting rules start as owner-approved numbers that run as tests.
-- Wider owner approval before auto-merge (invariants, money, posting rules, expected values).
+- Wider owner approval before auto-merge (invariants, money, posting rules, expected values). It is a written rule, not enforced by GitHub (owner, 2026-10-20).
 - Ledger invariants enforced by the database and checked by a convention test; a hash chain over posted entries.
 - Property tests (fast-check) for the core.
 - Confirmation labels for Syrian law and tax in every document.

@@ -1,6 +1,6 @@
 # 0003 — Tenancy and access: companies isolated by forced row-level security, people with memberships, API clients per company
 
-Status: Accepted · Date: 2026-10-20
+Status: Accepted, amended by [0008](0008-foundation-audit-amendments.md) (attachments) · Date: 2026-10-20
 
 ## Context
 Mizan is multi-company from day one (ADR 0001). Its users are Vertex Media's owner, an internal accountant, an external accounting office that serves several companies, and management readers (phase 1 scope, Q9). Later it is sold to many unrelated businesses, and to accounting offices that hold dozens of client companies. A company must never see another's books. Isolation that depends on every query remembering a filter is too fragile for a system written across many AI sessions. Vertex Shifa and Vertex Food solved this with forced row-level security (Food ADR 0004).
