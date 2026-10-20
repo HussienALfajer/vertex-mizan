@@ -25,6 +25,14 @@ const OPTIONS_WITH_VALUE = new Set([
 // Options of `git commit` that take the next word as their value, so a message such as
 // `-m "-a"` is not read as a flag.
 const COMMIT_OPTIONS_WITH_VALUE = new Set(['-m', '-F', '-C', '-c', '-t', '--message', '--file']);
+// Options of `git push` that take the next word as their value, so it is not read as the remote.
+const PUSH_OPTIONS_WITH_VALUE = new Set([
+  '-o',
+  '--push-option',
+  '--repo',
+  '--receive-pack',
+  '--exec',
+]);
 // Flags after which a shell takes a script (`bash -c`, `sh -lc`, `pwsh -Command`, `cmd /c`).
 const SCRIPT_FLAGS = new Set(['-c', '-lc', '-ic', '-Command', '-command', '/c', '/C']);
 // Pathspecs that stage the whole tree.
@@ -111,11 +119,9 @@ function targetsMain(refspec) {
   return destination === 'main' || destination === 'refs/heads/main';
 }
 
-/** The flags of `git commit`, without the values of options that take one (`-m <message>`). */
-function commitFlags(rest) {
-  return rest.filter(
-    (arg, index) => arg.startsWith('-') && !COMMIT_OPTIONS_WITH_VALUE.has(rest[index - 1] ?? ''),
-  );
+/** The words of a subcommand, without the values of the options that take one (`-m <message>`). */
+function withoutValues(rest, optionsWithValue) {
+  return rest.filter((_, index) => !optionsWithValue.has(rest[index - 1] ?? ''));
 }
 
 function checkGit(args) {
@@ -136,7 +142,8 @@ function checkGit(args) {
   }
   const subcommand = args[index];
   const rest = args.slice(index + 1);
-  const flags = subcommand === 'commit' ? commitFlags(rest) : rest;
+  const used = subcommand === 'commit' ? withoutValues(rest, COMMIT_OPTIONS_WITH_VALUE) : rest;
+  const flags = used.filter((arg) => arg.startsWith('-'));
 
   // `-n` is `--no-verify` for `git commit` only (for `git push` it is a dry run).
   if (
@@ -154,10 +161,14 @@ function checkGit(args) {
         'Refused: never commit to main (AGENTS.md, Git). Create a branch named by type first, e.g. `git switch -c feat/<topic>`.',
       );
     }
-    // `-a`, `-am` and other bundles with `a`, or `--all`, stage every tracked change.
-    if (flags.some((arg) => arg === '--all' || /^-[a-zA-Z]*a[a-zA-Z]*$/.test(arg))) {
+    // `-a`, `-am` and other bundles with `a`, `--all`, or a whole-tree pathspec (`git commit .`)
+    // commit every tracked change.
+    if (
+      flags.some((arg) => arg === '--all' || /^-[a-zA-Z]*a[a-zA-Z]*$/.test(arg)) ||
+      used.some((arg) => WHOLE_TREE.has(arg))
+    ) {
       refuse(
-        'Refused: never `git commit -a` / `-am` / `--all` (AGENTS.md, Git). Stage the intended files by path, then commit.',
+        'Refused: never `git commit -a` / `-am` / `--all` / `.` (AGENTS.md, Git). Stage the intended files by path, then commit.',
       );
     }
   }
@@ -179,14 +190,18 @@ function checkGit(args) {
   }
 
   if (subcommand === 'push') {
-    const pushFlags = rest.filter((arg) => arg.startsWith('-'));
-    const positional = rest.filter((arg) => !arg.startsWith('-'));
+    const pushWords = withoutValues(rest, PUSH_OPTIONS_WITH_VALUE);
+    const pushFlags = pushWords.filter((arg) => arg.startsWith('-'));
+    const positional = pushWords.filter((arg) => !arg.startsWith('-'));
     const refspecs = positional.slice(1);
+    // `HEAD` and `@` without a destination push the current branch to its own name.
+    const pushesCurrent =
+      refspecs.length === 0 || refspecs.some((r) => ['HEAD', '@', '+HEAD', '+@'].includes(r));
     const pushesMain =
       pushFlags.includes('--all') ||
       pushFlags.includes('--mirror') ||
       refspecs.some(targetsMain) ||
-      (refspecs.length === 0 && currentBranch(dir) === 'main');
+      (pushesCurrent && currentBranch(dir) === 'main');
     if (pushesMain) {
       refuse(
         'Refused: never push main (AGENTS.md, Git). Push your own branch (`git push -u origin <branch>`) and open a pull request.',
@@ -204,9 +219,12 @@ function check(line, depth = 0) {
       checkGit(parts.slice(gitIndex + 1));
       continue;
     }
-    // A script run by a shell (`bash -c "git commit …"`, `pwsh -Command "…"`) is checked too.
+    // A script run by a shell (`bash -c "git commit …"`, `pwsh -Command "…"`, `eval "git …"`) is
+    // checked too: a word after a script flag, or any quoted word that holds a git command.
     parts.forEach((word, index) => {
-      if (depth < 2 && SCRIPT_FLAGS.has(parts[index - 1] ?? '')) check(word, depth + 1);
+      const script =
+        SCRIPT_FLAGS.has(parts[index - 1] ?? '') || (/\s/.test(word) && /(^|\s)git\s/.test(word));
+      if (depth < 2 && script) check(word, depth + 1);
     });
   }
 }

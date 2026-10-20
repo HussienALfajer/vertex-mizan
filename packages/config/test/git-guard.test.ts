@@ -64,6 +64,8 @@ describe('git guard: commits', () => {
       `cd x && git -C '${main}' commit -m x`,
       `bash -c "git -C '${main}' commit -m x"`,
       `env GIT_TRACE=0 git -C "${main}" commit -m x`,
+      `eval "git -C '${main}' commit -m x"`,
+      `pwsh -NoProfile "git -C '${main}' commit -m x"`,
     ]) {
       expect(refused(command), command).toBe(true);
     }
@@ -76,12 +78,27 @@ describe('git guard: commits', () => {
     expect(refused(`git -C "${feature}" commit --amend --no-edit`)).toBe(false);
   });
 
-  it.each(['commit -a -m x', 'commit -am x', 'commit --all -m x', 'commit -sam x'])(
-    'refuses git %s on a branch',
-    (args) => {
-      expect(refused(`git -C "${feature}" ${args}`)).toBe(true);
-    },
-  );
+  it.each([
+    'commit -a -m x',
+    'commit -am x',
+    'commit --all -m x',
+    'commit -sam x',
+    'commit .',
+    'commit -m x -- .',
+    'commit -i .',
+  ])('refuses git %s on a branch', (args) => {
+    expect(refused(`git -C "${feature}" ${args}`)).toBe(true);
+  });
+});
+
+describe('git guard: wrapped commands', () => {
+  it.each([
+    'eval "git add -A"',
+    'powershell "git commit --no-verify -m x"',
+    'pwsh -NoProfile "git commit -am x"',
+  ])('refuses %s', (command) => {
+    expect(refused(command)).toBe(true);
+  });
 });
 
 describe('git guard: hooks', () => {
@@ -145,10 +162,18 @@ describe('git guard: pushes', () => {
     expect(refused(command)).toBe(true);
   });
 
-  it('refuses a push without a refspec from main, allows one from a branch', () => {
-    expect(refused(`git -C "${main}" push`)).toBe(true);
-    expect(refused(`git -C "${main}" push -u origin`)).toBe(true);
-    expect(refused(`git -C "${feature}" push`)).toBe(false);
+  it('refuses a push of the current branch from main, allows one from a branch', () => {
+    for (const args of [
+      'push',
+      'push -u origin',
+      'push -u origin HEAD',
+      'push origin @',
+      'push -o ci.skip origin',
+      'push --push-option ci.skip origin HEAD',
+    ]) {
+      expect(refused(`git -C "${main}" ${args}`), args).toBe(true);
+      expect(refused(`git -C "${feature}" ${args}`), args).toBe(false);
+    }
   });
 
   it.each(['git push -u origin fix/audit-tooling-docs', 'git push origin feat/main-menu'])(
