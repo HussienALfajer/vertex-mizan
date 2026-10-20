@@ -13,4 +13,4 @@ Short records of decisions that shape the system. Each has a status: **Accepted*
 | [0007](0007-book-and-parallel-currency-ledgers.md) | Money and currencies: a book currency and a parallel currency ledger, a rate policy per ledger | Accepted |
 | [0008](0008-foundation-audit-amendments.md) | Amendments after the foundation audit: journal order, hardened guards, period balances, scenario runner, API holds and tax lines | Accepted |
 | [0009](0009-brand-and-design-system.md) | Brand and design system: the Vertex identity, accounting components, company branding on printed books | Accepted (components refined by 0010) |
-| [0010](0010-design-system-for-accountants.md) | Design system for accountants: densities, figures, accounting components and the keyboard | Proposed |
+| [0010](0010-design-system-for-accountants.md) | Design system for accountants: densities, figures, accounting components and the keyboard | Accepted |

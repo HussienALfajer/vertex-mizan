@@ -1,6 +1,6 @@
 # 0010 — Design system for accountants: densities, figures, accounting components and the keyboard
 
-Status: Proposed · Date: 2026-10-21 · Amends ADR 0009
+Status: Accepted · Date: 2026-10-21 (owner) · Amends ADR 0009
 
 ## Context
 ADR 0009 gave Mizan the Vertex identity and named the accounting components. Vertex Hub's design system, which 0009 copies, was made for a general management app: 36–40 px controls, 40–44 px table rows and 15 px body text. Accountants live in dense tables of figures, enter entries from the keyboard and compare columns of numbers. The owner asked for a design system built for them, keeping the Vertex identity and adapting everything else, and delegated every design-system decision (2026-10-21). Accounting and business decisions stay with the owner.
