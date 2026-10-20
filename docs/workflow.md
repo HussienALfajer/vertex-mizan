@@ -36,6 +36,8 @@ Any PR that changes:
 - a posting, recognition, revaluation or settlement rule;
 - an expected value in the scenario book.
 
+Exception (owner, 2026-10-20): a PR that only writes down decisions the owner has just given in the conversation merges at once. The owner's answers are the approval, and the PR body quotes them. Anything in such a PR that the owner was not asked about makes it wait.
+
 Everything else merges automatically once CI passes.
 
 ## Two reviewers on accounting work

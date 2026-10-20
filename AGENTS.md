@@ -114,7 +114,7 @@ Stop and report at the first step that fails.
 5. **Review:** the `reviewer` subagent has run on every feature. The `accountant-reviewer` has run in parallel on any change to the ledger, money, posting rules, periods, reports or the API contract. Their blocking findings are fixed.
 6. **Commit:** intended files only; a Conventional Commit subject and a body with what and why, ending with the session's attribution line.
 7. **Pull request:** `git push -u origin <branch>`, then `gh pr create --base main` with `## Summary` and `## Test plan`, ending with the attribution line, then `gh pr merge <number> --auto --merge`.
-   - **The owner approves before auto-merge** when the PR changes the scope, an ADR, a ledger invariant, the money module, a posting rule or an expected value in the scenario book.
+   - **The owner approves before auto-merge** when the PR changes the scope, an ADR, a ledger invariant, the money module, a posting rule or an expected value in the scenario book. Exception: when the PR only writes down decisions the owner has just given in the conversation, those answers are the approval; it merges at once and the PR body quotes the decisions.
 8. **Report** in the format below.
 
 ## Reporting

@@ -90,7 +90,10 @@ These rules are unchanged from ADR 0004.
   - An open item's carrying amount in each ledger is its historical amount: the amounts it was measured at, less what was cleared before. Month-end revaluations reverse, so they are not part of it.
   - A **partial settlement** clears the carrying amount in proportion to the transaction amount settled, with cumulative rounding; the last settlement clears what remains.
   - Items kept as a running balance per counterparty (client ad funds) are carried at the **average** carrying amount: each withdrawal clears book and parallel amounts in proportion to the transaction balance before it.
-  - **Voiding a movement on a running balance** (a deposit voided after spend) posts the exact reversal of the original entry (ADR 0005, invariant 3) and, in the same transaction, an exchange-difference entry that brings the item back to its average carrying amount, so that a zero transaction balance is zero in both ledgers.
+  - **A running balance may cross zero** (owner, 2026-10-20). Hub lets a client's ad wallet go negative when spend exceeds deposits, or when a deposit is voided after spend: the client then owes the agency.
+    - A movement that crosses zero is split. The existing balance is cleared in full at its carrying amount, and the excess is a new measurement at the movement's rates.
+    - The balance sheet presents each counterparty's debit balance as a receivable and each credit balance as a liability, with no offsetting between counterparties (IAS 1.32).
+  - **Voiding a movement on a running balance** (a deposit voided after spend) posts the exact reversal of the original entry (ADR 0005, invariant 3). In the same transaction, an exchange-difference entry brings the item to its carrying amount under the rules above (the average, or the split when it crosses zero), so that a zero transaction balance is zero in both ledgers.
 - **Realised differences:**
   - At settlement, each ledger clears the open item at its carrying amount in that ledger.
   - The difference between that carrying amount and the settlement's amount in the same ledger posts to **realised exchange gain or loss**, as a difference line (IAS 21.28).
