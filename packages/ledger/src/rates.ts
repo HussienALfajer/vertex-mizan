@@ -31,9 +31,11 @@ export function rateInForce(rates: readonly ExchangeRate[], query: RateQuery): E
 }
 
 /**
- * The rate a ledger's policy converts at: the direct rate in force, or else a cross through `via`
- * of two rates of the same type, each in force on the entry date (their effective dates may
- * differ; owner, 2026-10-20). Null when neither exists.
+ * The rate a ledger's policy converts at: the most recent of the direct rate in force and a cross
+ * through `via` of two rates of the same type, each in force on the entry date (their effective
+ * dates may differ; owner, 2026-10-20). A cross is as recent as its older quote, and the direct
+ * rate wins a tie, so a stale direct rate never overrides fresher quotes (IAS 21.21: the spot
+ * rate at the date of the transaction; owner, 2026-10-20). Null when neither exists.
  */
 export function policyRate(
   rates: readonly ExchangeRate[],
@@ -41,9 +43,11 @@ export function policyRate(
 ): ExchangeRate | CrossRate | null {
   const { type, from, to, on, via } = query;
   const direct = rateInForce(rates, { type, from, to, on });
-  if (direct !== null) return direct;
-  if (via === null || via === from || via === to) return null;
+  if (via === null || via === from || via === to) return direct;
   const first = rateInForce(rates, { type, from, to: via, on });
   const second = rateInForce(rates, { type, from: via, to, on });
-  return first === null || second === null ? null : { on, legs: [first, second] };
+  if (first === null || second === null) return direct;
+  const crossDate = first.effectiveOn < second.effectiveOn ? first.effectiveOn : second.effectiveOn;
+  if (direct !== null && direct.effectiveOn >= crossDate) return direct;
+  return { on, legs: [first, second] };
 }

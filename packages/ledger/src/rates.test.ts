@@ -50,9 +50,23 @@ describe('rateInForce', () => {
 describe('policyRate', () => {
   const weeklyTry = rate('TRY', 'SYP', '2.9500', 'bulletin', '2026-11-02');
   const dailyUsd = rate('USD', 'SYP', '120.0000', 'bulletin', '2026-11-05');
-  const tryUsd = rate('TRY', 'USD', '0.0240', 'bulletin', '2026-11-01');
+  const tryUsd = rate('TRY', 'USD', '0.0240', 'bulletin', '2026-11-02');
 
-  it('is the direct rate when one is in force', () => {
+  it('prefers the more recent of the direct rate and the cross, the direct rate on a tie', () => {
+    // A direct rate of 2026-03-01 is older than the cross's older quote (2026-11-02).
+    const stale = rate('TRY', 'USD', '0.0300', 'bulletin', '2026-03-01');
+    expect(
+      policyRate([stale, weeklyTry, dailyUsd], {
+        type: 'bulletin',
+        from: 'TRY',
+        to: 'USD',
+        on: '2026-11-05',
+        via: 'SYP',
+      }),
+    ).toEqual({ on: '2026-11-05', legs: [weeklyTry, dailyUsd] });
+  });
+
+  it('is the direct rate when it is as recent as the cross', () => {
     expect(
       policyRate([weeklyTry, dailyUsd, tryUsd], {
         type: 'bulletin',
