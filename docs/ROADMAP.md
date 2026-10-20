@@ -11,7 +11,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done. Phases are 
 - [x] Claude Code setup from the working method: `AGENTS.md`, `CLAUDE.md`, `docs/workflow.md`, `docs/glossary.md`, `docs/open-questions.md`, `.claude/` (settings, subagents `checker`, `reviewer`, `accountant-reviewer`, `explorer`; hooks; skills `spec`, `posting-rule`, `feature-slice`, `db-migration`), spec template, scenario-book format
 
 ## Phase 0 — Foundation
-- [ ] Monorepo scaffold: pnpm, Turborepo, TypeScript, Biome, `packages/config`, CI (lint, typecheck, test, build, gitleaks, migration drift, dependency advisories, docs-only skip); CI checks added as required to the `main: require CI` ruleset
+- [~] Monorepo scaffold: pnpm, Turborepo, TypeScript, Biome, `packages/config`, CI (lint, typecheck, test, build, gitleaks, dependency advisories, docs-only skip) done; migration drift arrives with `packages/db`; CI checks added as required to the `main: require CI` ruleset after the owner's approval
 - [ ] `packages/contracts`: the money module (currencies, quoted rates, rate policies, conversion half away from zero, compatibility with Hub's `convertMinor`; ADR 0007), error codes, permission map
 - [ ] `packages/ledger`: line building in the book and parallel ledgers, rounding and exchange-difference lines, cumulative allocation, the integrity hash; property tests (fast-check)
 - [ ] `packages/db`: roles (`mizan_owner`, `mizan_app`, `mizan_jobs`, `mizan_queue`), company context, forced RLS, append-only and deferred-invariant triggers (`ENABLE ALWAYS`), convention and invariant tests run as `mizan_app` (ADR 0003, 0005, 0008)
@@ -19,7 +19,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done. Phases are 
 - [ ] Brand and design system (ADR 0009): `brand/` with the MIZAN logo (shown to the owner before use), `packages/tokens` and `packages/ui` copied from Vertex Hub, the Amount and Amount input components (LTR-isolated numbers, minus sign and negative color), light and dark RTL screenshots at phone, tablet and desktop widths
 - [ ] App skeletons: api (`/api/health`, OpenAPI), worker (pg-boss), web (RTL shell on the design system)
 - [ ] Deployment skeleton on the Vertex server at `mizan.vertexmedia.pro`
-- [ ] CI migration check that refuses guard-weakening SQL (ADR 0008)
+- [~] CI migration check that refuses guard-weakening SQL (ADR 0008): the guard runs in CI; `UPDATE`, `DELETE` and `TRUNCATE` on append-only tables are refused once `packages/db` registers them
 
 ## Phase 1 — The core and the posting API
 Scope: `docs/product/phase-1-scope.md`. One spec per line, each through `/spec` → `/posting-rule` → `/feature-slice`.

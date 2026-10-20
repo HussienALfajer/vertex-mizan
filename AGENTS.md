@@ -35,11 +35,15 @@ pnpm workspaces + Turborepo · TypeScript ~6.0 strict, ESM · Node 24 · Postgre
 - `apps/api` NestJS 12 · `apps/worker` NestJS + pg-boss · `apps/web` React + Vite + TanStack
 - `packages/contracts` (Zod, money module, error codes, Hub event contracts) · `ledger` (pure accounting logic, no I/O) · `db` (schema, roles, company context, the posting function) · `ui` · `tokens` · `i18n` · `config`
 
-None of it exists yet: the scaffold is the first roadmap item after setup.
-
 ## Commands
 
-The PR that adds a command adds it here and keeps it true. No commands exist before the scaffold.
+The PR that adds a command adds it here and keeps it true. Run from the repository root (pnpm 12.14.0, Node 24).
+
+| Command | Does |
+|---|---|
+| `pnpm lint` · `pnpm lint:fix` | Biome check of the repository · apply its fixes |
+| `pnpm typecheck` · `pnpm test` · `pnpm build` | Every package through Turborepo; one package: `pnpm --filter @vertex-mizan/<name> test` |
+| `pnpm check:migrations` | The migration guard: refuses guard-weakening SQL in `packages/db/migrations` (ADR 0008) |
 
 ## Non-negotiable conventions
 

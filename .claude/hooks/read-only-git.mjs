@@ -13,7 +13,9 @@ function refuse(message) {
 }
 
 if (/[;&|<>`\n]|\$\(/.test(command)) {
-  refuse('Refused: reviewers run one read-only git command at a time, with no chaining, pipes, redirection or substitution.');
+  refuse(
+    'Refused: reviewers run one read-only git command at a time, with no chaining, pipes, redirection or substitution.',
+  );
 }
 
 const allowed =
