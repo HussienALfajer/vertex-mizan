@@ -14,7 +14,14 @@
     },
     "test": {
       "dependsOn": ["^build"],
-      "outputs": []
+      "outputs": [],
+      "passThroughEnv": [
+        "DATABASE_ADMIN_URL",
+        "DATABASE_OWNER_URL",
+        "DATABASE_APP_URL",
+        "DATABASE_JOBS_URL",
+        "DATABASE_QUEUE_URL"
+      ]
     }
   }
 }

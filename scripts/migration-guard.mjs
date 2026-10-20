@@ -2,6 +2,13 @@
 // Run by CI (`pnpm check:migrations`) over `packages/db/migrations/*.sql`, or over the files and
 // folders given as arguments. Tested by `packages/config/test/migration-guard.test.ts`.
 //
+// It reads the table registry (`packages/db/src/schema/registry.ts`, loaded with Node's type
+// stripping) and refuses statements that change or destroy the rows of an append-only table:
+// UPDATE, DELETE, TRUNCATE, MERGE or an upsert's DO UPDATE, a DROP TABLE, a dropped column or a
+// column type change. Run over the default folder, it fails when `packages/db` has no migration,
+// keeps one in a subfolder (which it would not read) or has no registry. `--db <dir>` replaces
+// `packages/db`.
+//
 // Comments outside dollar-quoted bodies are ignored. Bodies and string literals are checked as text,
 // as PostgreSQL's lexer skips them, so dynamic SQL written out in one unescaped literal is caught.
 // Escaped literals (`U&'…'`, `U&"…"`, `E'…'` with `\x`, `\u` or octal escapes) are refused, since
@@ -12,10 +19,9 @@
 // `migration-guard: allow drop-policy` itself. `--decisions <dir>` replaces `docs/decisions/`.
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
-const defaultTarget = join(root, 'packages', 'db', 'migrations');
 
 /** A rule that matches a regular expression; returns the offset of the match, or -1. */
 const pattern = (regex) => (text) => text.search(regex);
@@ -98,6 +104,67 @@ const RULES = [
     message: 'grants TRUNCATE, TRIGGER, REFERENCES or ALL',
   },
 ];
+
+// A table name as a statement may write it: optionally ONLY and schema-qualified, quoted or not.
+const NAME = '(?:"(?:[^"]|"")+"|[A-Za-z_][A-Za-z0-9_$]*)';
+const TABLE = String.raw`(?:ONLY\s+)?(?:${NAME}\s*\.\s*)?(${NAME})\s*\*?`;
+const TABLES = String.raw`${TABLE}(?:\s*,\s*${TABLE})*`;
+
+/** The table a name refers to: quoted names keep their case, others are folded to lower case. */
+const tableName = (name) =>
+  name.startsWith('"') ? name.slice(1, -1).replaceAll('""', '"') : name.toLowerCase();
+
+/** The offset of the first match of `regex` whose captured table list names an append-only table. */
+function namesAppendOnly(text, regex, appendOnly) {
+  for (const match of text.matchAll(regex)) {
+    const list = match.groups?.tables ?? '';
+    for (const [, name] of list.matchAll(new RegExp(TABLE, 'gi'))) {
+      if (appendOnly.has(tableName(name ?? ''))) return match.index;
+    }
+  }
+  return -1;
+}
+
+/** The rules that need the registry's append-only tables (ADR 0005: no migration changes them). */
+function registryRules(appendOnly) {
+  const writes = [
+    new RegExp(String.raw`\bUPDATE\s+(?<tables>${TABLE})`, 'gi'),
+    new RegExp(String.raw`\bDELETE\s+FROM\s+(?<tables>${TABLE})`, 'gi'),
+    new RegExp(String.raw`\bTRUNCATE\s+(?:TABLE\s+)?(?<tables>${TABLES})`, 'gi'),
+    new RegExp(String.raw`\bMERGE\s+INTO\s+(?<tables>${TABLE})`, 'gi'),
+    new RegExp(
+      String.raw`\bINSERT\s+INTO\s+(?<tables>${TABLE})(?=[\s\S]*\bON\s+CONFLICT\b[\s\S]*\bDO\s+UPDATE\b)`,
+      'gi',
+    ),
+  ];
+  const drops = new RegExp(
+    String.raw`\bDROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?<tables>${TABLES})`,
+    'gi',
+  );
+  const alter = new RegExp(
+    String.raw`\bALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?<tables>${TABLE})(?=[\s\S]*(?:` +
+      String.raw`\bDROP\s+(?:COLUMN\s+)?(?:IF\s+EXISTS\s+)?(?!(?:CONSTRAINT|DEFAULT|NOT|IDENTITY|EXPRESSION)\b)${NAME}` +
+      String.raw`|\bALTER\s+(?:COLUMN\s+)?${NAME}\s+(?:SET\s+DATA\s+)?TYPE\b))`,
+    'gi',
+  );
+  const first = (offsets) =>
+    offsets.filter((offset) => offset !== -1).sort((a, b) => a - b)[0] ?? -1;
+  return [
+    {
+      id: 'append-only-write',
+      find: (text) => first(writes.map((regex) => namesAppendOnly(text, regex, appendOnly))),
+      message:
+        'changes the rows of an append-only table (UPDATE, DELETE, TRUNCATE, MERGE or DO UPDATE)',
+    },
+    {
+      id: 'append-only-rewrite',
+      find: (text) =>
+        first([drops, alter].map((regex) => namesAppendOnly(text, regex, appendOnly))),
+      message:
+        'drops an append-only table or a column of one, or rewrites a column type, where no trigger fires',
+    },
+  ];
+}
 
 // What PostgreSQL accepts inside an identifier: a quote after one of these is part of the name.
 const IDENTIFIER = /[A-Za-z0-9_$\u0080-\uffff]/;
@@ -202,7 +269,7 @@ function refusal(decisions, adr, rule) {
 }
 
 /** Findings for one SQL file: `{ line, rule, message }`. */
-function check(sql, decisions) {
+function check(sql, decisions, rules) {
   const findings = [];
   for (const statement of statements(sql)) {
     const first = statement.start + statement.text.search(/\S/);
@@ -223,7 +290,7 @@ function check(sql, decisions) {
         }
       }
     }
-    for (const rule of RULES) {
+    for (const rule of rules) {
       const offset = rule.find(statement.text);
       if (offset !== -1 && !allowed.has(rule.id)) {
         findings.push({
@@ -246,20 +313,78 @@ function sqlFiles(target) {
     .map((name) => join(target, name));
 }
 
-const args = process.argv.slice(2);
-const decisionsFlag = args.indexOf('--decisions');
-const decisions =
-  decisionsFlag === -1
-    ? join(root, 'docs', 'decisions')
-    : resolve(args.splice(decisionsFlag, 2)[1] ?? '');
-const files = (args.length > 0 ? args.map((t) => resolve(t)) : [defaultTarget]).flatMap(sqlFiles);
+/** The `.sql` files in the subfolders of `folder`, at any depth. */
+function nestedSqlFiles(folder) {
+  if (!existsSync(folder)) return [];
+  return readdirSync(folder, { recursive: true, withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.endsWith('.sql'))
+    .map((entry) => join(entry.parentPath, entry.name))
+    .filter((file) => resolve(file, '..') !== resolve(folder))
+    .sort();
+}
 
-let failed = 0;
+const show = (path) => relative(process.cwd(), path).replaceAll('\\', '/') || '.';
+
+/** Takes `--flag <value>` out of `args`; returns the resolved value or the fallback. */
+function option(args, flag, fallback) {
+  const index = args.indexOf(flag);
+  return index === -1 ? fallback : resolve(args.splice(index, 2)[1] ?? '');
+}
+
+const args = process.argv.slice(2);
+const decisions = option(args, '--decisions', join(root, 'docs', 'decisions'));
+const db = option(args, '--db', join(root, 'packages', 'db'));
+const migrations = join(db, 'migrations');
+const registry = join(db, 'src', 'schema', 'registry.ts');
+
+// Problems of the layout, each `{ path, rule, message }`.
+const problems = [];
+let appendOnly = new Set();
+if (existsSync(db)) {
+  if (existsSync(registry)) {
+    const { tableRegistry } = await import(pathToFileURL(registry).href);
+    appendOnly = new Set(
+      Object.entries(tableRegistry ?? {})
+        .filter(([, info]) => info?.kind === 'append-only')
+        .map(([name]) => name),
+    );
+  } else {
+    problems.push({
+      path: registry,
+      rule: 'no-registry',
+      message: 'the table registry is missing, so append-only tables cannot be protected',
+    });
+  }
+}
+
+let files;
+if (args.length > 0) {
+  files = args.map((target) => resolve(target)).flatMap(sqlFiles);
+} else {
+  files = existsSync(db) ? sqlFiles(migrations) : [];
+  if (existsSync(db) && files.length === 0) {
+    problems.push({ path: migrations, rule: 'no-migrations', message: 'no migration found' });
+  }
+  for (const file of nestedSqlFiles(migrations)) {
+    problems.push({
+      path: file,
+      rule: 'nested-migration',
+      message: 'a migration in a subfolder, which this guard does not read',
+    });
+  }
+}
+
+const rules = [...RULES, ...registryRules(appendOnly)];
+let failed = problems.length;
+for (const problem of problems) {
+  process.stderr.write(`${show(problem.path)}  ${problem.rule}  ${problem.message}
+`);
+}
 for (const file of files) {
-  for (const finding of check(readFileSync(file, 'utf8'), decisions)) {
+  for (const finding of check(readFileSync(file, 'utf8'), decisions, rules)) {
     failed++;
-    const path = relative(process.cwd(), file).replaceAll('\\', '/');
-    process.stderr.write(`${path}:${finding.line}  ${finding.rule}  ${finding.message}\n`);
+    process.stderr.write(`${show(file)}:${finding.line}  ${finding.rule}  ${finding.message}
+`);
   }
 }
 
