@@ -10,8 +10,8 @@ import { describe, expect, it } from 'vitest';
  */
 
 const root = fileURLToPath(new URL('../../../', import.meta.url));
-// `apps/web/src` joins with the web shell (PR 8); the preview is the design system's own page.
-const sourceDirs = ['packages/ui/src', 'packages/ui/preview'];
+// The design system and the web app, whose design-system page shows every component.
+const sourceDirs = ['packages/ui/src', 'apps/web/src'];
 
 function sourceFiles(dir: string): string[] {
   return readdirSync(join(root, dir), { withFileTypes: true, recursive: true })

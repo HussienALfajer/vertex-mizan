@@ -1,6 +1,6 @@
 /**
- * The design system's own page (`packages/ui/preview`, then `apps/web`'s design-system page): its
- * headings and its synthetic examples. No real company, account or amount (AGENTS.md).
+ * The design-system page of `apps/web` (`/design-system`): its headings and its
+ * synthetic examples. No real company, account or amount (AGENTS.md).
  */
 export const designSystem = {
   title: 'نظام التصميم',
@@ -79,9 +79,5 @@ export const designSystem = {
   },
   states: {
     title: 'الحالات',
-  },
-  palette: {
-    sections: 'أقسام الصفحة',
-    display: 'العرض',
   },
 };
