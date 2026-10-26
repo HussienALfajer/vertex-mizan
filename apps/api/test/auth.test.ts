@@ -10,6 +10,8 @@ import {
 import { and, desc, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { resetTwoFactorByVertex } from '../src/admin/commands.js';
+import { AccountService } from '../src/modules/auth/account.service.js';
+import { newWaitingAuthenticator } from '../src/modules/auth/two-factor.js';
 import { createTestApp } from './app.js';
 import { Browser } from './browser.js';
 import {
@@ -17,6 +19,7 @@ import {
   enrol,
   freshCode,
   reauthenticate,
+  secretOfUri,
   signedInPerson,
   signIn,
   testDatabase,
@@ -525,5 +528,66 @@ describe('re-enrolment needs a fresh code, keyed on the person', () => {
       code: await freshCode(person),
     });
     expect(response.body.code).toBe('INVALID_TWO_FACTOR_CODE');
+  });
+
+  it('keeps backup codes made while a new authenticator waits', async () => {
+    const { browser, person } = await signedInPerson(app, db);
+    await reauthenticate(browser, person);
+    const started = await browser.post('/api/auth/two-factor/enable', {
+      password: person.password,
+    });
+    expect(started.status).toBe(200);
+    const regenerated = await browser.post('/api/auth/two-factor/generate-backup-codes');
+    expect(regenerated.status).toBe(200);
+    const latest: string[] = regenerated.body.backupCodes;
+    const waiting = { ...person, secret: secretOfUri(started.body.totpURI) };
+    const verified = await browser.post('/api/auth/two-factor/verify-totp', {
+      code: await freshCode(waiting),
+    });
+    expect(verified.status).toBe(204);
+    const viaLatest = new Browser(app);
+    await viaLatest.post('/api/auth/sign-in/email', {
+      email: person.email,
+      password: person.password,
+    });
+    const [code] = latest;
+    expect((await viaLatest.post('/api/auth/two-factor/verify-backup-code', { code })).status).toBe(
+      204,
+    );
+  });
+
+  it('never lets a slot left from before a reset stand in the way of enrolling afresh', async () => {
+    const { browser, person } = await signedInPerson(app, db);
+    await reauthenticate(browser, person);
+    expect(
+      (await browser.post('/api/auth/two-factor/enable', { password: person.password })).status,
+    ).toBe(200);
+    await resetTwoFactorByVertex(db, { email: person.email, reason: 'اختبار' });
+    // As if a re-enrolment that started before the reset wrote its slot after it.
+    await newWaitingAuthenticator(db, person.id, 'synthetic-test-secret-of-at-least-32-characters');
+    const again = new Browser(app);
+    await signIn(again, person);
+    await enrol(again, person);
+    expect((await again.get('/api/me')).body.person.twoFactorEnabled).toBe(true);
+    // The stale re-enrolment itself is refused: the person has no authenticator to replace.
+    const stale = app.get(AccountService);
+    await expect(
+      stale.startReenrolment(
+        {
+          requestId: 'test',
+          ipAddress: null,
+          userAgent: null,
+          company: null,
+          person: { id: person.id, name: person.name, email: person.email, twoFactorEnabled: true },
+          session: {
+            id: '019a2b3c-0000-7000-8000-000000000000',
+            activeCompanyId: null,
+            twoFactorVerifiedAt: new Date(),
+            reauthenticatedAt: new Date(),
+          },
+        },
+        person.password,
+      ),
+    ).rejects.toMatchObject({ code: 'TWO_FACTOR_REQUIRED' });
   });
 });

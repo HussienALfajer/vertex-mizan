@@ -161,7 +161,9 @@ export async function resetTwoFactorByVertex(
     const [person] = await tx
       .select({ id: users.id, twoFactorEnabled: users.twoFactorEnabled })
       .from(users)
-      .where(eq(users.email, input.email));
+      .where(eq(users.email, input.email))
+      // The person's lock, as every two-factor change takes it (`lockTwoFactorOf`).
+      .for('update');
     if (!person) throw new Error('No person with that email');
     await tx.delete(twoFactors).where(eq(twoFactors.userId, person.id));
     await dropWaitingAuthenticator(tx, person.id);

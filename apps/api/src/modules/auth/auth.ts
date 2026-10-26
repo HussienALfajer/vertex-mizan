@@ -335,8 +335,9 @@ export function createAuth(db: Database, config: Config) {
           let enrolling = !person.signIn && current?.verified === false;
           // A re-enrolment's first code: checked against the waiting authenticator, which then
           // replaces the old one; Better Auth checks it again against the person's row.
+          // Only beside a verified authenticator: a first enrolment never consults a slot.
           const waiting =
-            !person.signIn && ctx.path === '/two-factor/verify-totp'
+            !person.signIn && ctx.path === '/two-factor/verify-totp' && current?.verified === true
               ? await waitingAuthenticator(db, person.userId)
               : null;
           if (waiting) {

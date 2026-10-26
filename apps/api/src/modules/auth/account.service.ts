@@ -28,10 +28,12 @@ import {
   enrolledTwoFactor,
   generateBackupCodes,
   isLocked,
+  lockTwoFactorOf,
   newWaitingAuthenticator,
   recordCodeFailure,
   releaseCode,
   resetCodeFailures,
+  setWaitingBackupCodes,
   totpMatches,
   useBackupCode,
 } from './two-factor.js';
@@ -110,7 +112,19 @@ export class AccountService {
     if (!account?.password || !(await verifyPassword({ hash: account.password, password }))) {
       throw new CodedException('INVALID_CREDENTIALS', 'Wrong password');
     }
-    const fresh = await newWaitingAuthenticator(this.db, person.id, this.config.authSecret);
+    // Under the person's lock, re-checked: a reset that ran meanwhile wins, and no authenticator
+    // waits for a person without one (S01 rule 21).
+    const fresh = await this.db.transaction(async (tx) => {
+      const enrolled = await lockTwoFactorOf(tx, person.id);
+      const [session] = await tx
+        .select({ id: sessions.id })
+        .from(sessions)
+        .where(eq(sessions.id, access.session.id));
+      if (!enrolled || !session || !(await enrolledTwoFactor(tx, person.id))) {
+        throw new CodedException('TWO_FACTOR_REQUIRED', 'Enrol two-factor authentication first');
+      }
+      return newWaitingAuthenticator(tx, person.id, this.config.authSecret);
+    });
     return {
       totpURI: createOTP(fresh.secret, { digits: 6, period: 30 }).url(TOTP_ISSUER, person.email),
       backupCodes: fresh.backupCodes,
@@ -122,6 +136,8 @@ export class AccountService {
     const backupCodes = generateBackupCodes();
     const encrypted = await encryptBackupCodes(backupCodes, this.config.authSecret);
     await this.db.transaction(async (tx) => {
+      await lockTwoFactorOf(tx, access.person.id);
+      await setWaitingBackupCodes(tx, access.person.id, encrypted);
       const updated = await tx
         .update(twoFactors)
         .set({ backupCodes: encrypted })

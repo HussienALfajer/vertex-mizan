@@ -72,7 +72,7 @@ export async function freshCode(person: TestPerson): Promise<string> {
 }
 
 /** The authenticator secret in an `otpauth://` URI, as the plugin's TOTP takes it. */
-function secretOf(totpURI: string): string {
+export function secretOfUri(totpURI: string): string {
   const encoded = new URL(totpURI).searchParams.get('secret') ?? '';
   return new TextDecoder().decode(base32.decode(encoded));
 }
@@ -96,7 +96,7 @@ export async function signIn(browser: Browser, person: TestPerson): Promise<void
 export async function enrol(browser: Browser, person: TestPerson): Promise<void> {
   const enabled = await browser.post('/api/auth/two-factor/enable', { password: person.password });
   expect(enabled.status, JSON.stringify(enabled.body)).toBe(200);
-  person.secret = secretOf(enabled.body.totpURI);
+  person.secret = secretOfUri(enabled.body.totpURI);
   person.backupCodes = enabled.body.backupCodes;
   const verified = await browser.post('/api/auth/two-factor/verify-totp', {
     code: await freshCode(person),

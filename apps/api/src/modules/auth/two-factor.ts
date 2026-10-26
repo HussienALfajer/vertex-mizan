@@ -1,6 +1,12 @@
 import { randomInt } from 'node:crypto';
 import { createOTP } from '@better-auth/utils/otp';
-import { type Database, type Transaction, twoFactors, verifications } from '@vertex-mizan/db';
+import {
+  type Database,
+  type Transaction,
+  twoFactors,
+  users,
+  verifications,
+} from '@vertex-mizan/db';
 import { generateRandomString, symmetricDecrypt, symmetricEncrypt } from 'better-auth/crypto';
 import { and, eq, gt, lte, sql } from 'drizzle-orm';
 import { tokenIdentifier } from '../../core/http/link-tokens.js';
@@ -108,9 +114,24 @@ export async function waitingAuthenticator(
 }
 
 /**
- * The waiting authenticator's first code verified: in one transaction the slot is consumed and
- * the new secret and backup codes replace the old ones in the person's row, which must still be
- * there. False when the slot is gone or changed meanwhile (a reset, a newer re-enrolment).
+ * Locks the person's row for a change of their two-factor: re-enrolment, its promotion, new
+ * backup codes and both resets take it first, so they run one after the other. Answers whether
+ * the person has two-factor.
+ */
+export async function lockTwoFactorOf(tx: Transaction, userId: string): Promise<boolean> {
+  const [person] = await tx
+    .select({ twoFactorEnabled: users.twoFactorEnabled })
+    .from(users)
+    .where(eq(users.id, userId))
+    .for('update');
+  return person?.twoFactorEnabled ?? false;
+}
+
+/**
+ * The waiting authenticator's first code verified: in one transaction, under the person's lock,
+ * the slot is consumed and the new secret and backup codes replace the person's verified
+ * authenticator. False when the slot is gone or changed meanwhile (a reset, a newer re-enrolment)
+ * or the person no longer has a verified authenticator to replace.
  */
 export async function promoteWaitingAuthenticator(
   db: Database,
@@ -118,6 +139,7 @@ export async function promoteWaitingAuthenticator(
   checked: StoredAuthenticator,
 ): Promise<boolean> {
   return db.transaction(async (tx) => {
+    if (!(await lockTwoFactorOf(tx, userId))) return false;
     const [consumed] = await tx
       .delete(verifications)
       .where(
@@ -137,11 +159,31 @@ export async function promoteWaitingAuthenticator(
         failedVerificationCount: 0,
         lockedUntil: null,
       })
-      .where(eq(twoFactors.userId, userId))
+      .where(and(eq(twoFactors.userId, userId), eq(twoFactors.verified, true)))
       .returning({ id: twoFactors.id });
-    if (replaced.length === 0) throw new Error('No authenticator to replace');
-    return true;
+    return replaced.length === 1;
   });
+}
+
+/**
+ * New backup codes while a new authenticator waits (S01 rule 3: the last set shown is the one in
+ * force): the waiting authenticator takes them too, so its promotion keeps them.
+ */
+export async function setWaitingBackupCodes(
+  tx: Transaction,
+  userId: string,
+  encryptedBackupCodes: string,
+): Promise<void> {
+  const [row] = await tx
+    .select({ value: verifications.value })
+    .from(verifications)
+    .where(eq(verifications.identifier, waitingKey(userId)));
+  if (!row) return;
+  const waiting = JSON.parse(row.value) as StoredAuthenticator;
+  await tx
+    .update(verifications)
+    .set({ value: JSON.stringify({ ...waiting, backupCodes: encryptedBackupCodes }) })
+    .where(eq(verifications.identifier, waitingKey(userId)));
 }
 
 /** Drops a waiting authenticator, at every two-factor reset. */
