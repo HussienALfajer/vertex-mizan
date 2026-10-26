@@ -15,6 +15,8 @@
     "test:scenarios": "turbo run test:scenarios",
     "check:migrations": "node scripts/migration-guard.mjs",
     "check:error-codes": "node scripts/error-codes-guard.mjs",
+    "check:openapi": "node scripts/openapi-guard.mjs",
+    "check:boot": "node scripts/boot-check.mjs",
     "db:generate": "pnpm --filter @vertex-mizan/db db:generate",
     "db:migrate": "pnpm --filter @vertex-mizan/db db:migrate",
     "db:setup-local": "pnpm --filter @vertex-mizan/db db:setup-local"

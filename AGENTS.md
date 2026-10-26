@@ -49,6 +49,9 @@ The PR that adds a command adds it here and keeps it true. Run from the reposito
 | `pnpm db:generate` | Generate a migration from the Drizzle schema; run again, it must report nothing (the CI drift check) |
 | `pnpm check:migrations` | The migration guard: refuses guard-weakening SQL in `packages/db/migrations`, and changes to the append-only tables of the registry (ADR 0008) |
 | `pnpm check:error-codes` | The error-code guard: the codes in `packages/contracts` at `origin/main` (or `--base <ref>`) are still first, in order, with their status (ADR 0006) |
+| `pnpm check:openapi` | The OpenAPI guard: `apps/api/openapi.json` has no breaking change against `origin/main` (or `--base <ref>`), through oasdiff (on the PATH or `OASDIFF`; `scripts/install-oasdiff.sh` pins it) (ADR 0006). The test of `apps/api` keeps the file equal to the API: regenerate with `pnpm --filter @vertex-mizan/api test -u` |
+| `pnpm check:boot` | Starts the built API and worker as a server does and checks `/api/health` answers 200 and the worker schedules its jobs; after `pnpm build` and `pnpm db:migrate` |
+| `pnpm --filter @vertex-mizan/api start` · `pnpm --filter @vertex-mizan/worker start` | Run the built API (`127.0.0.1:3300`, Swagger UI at `/api/docs` outside production) or the worker with the root `.env` |
 | `pnpm --filter @vertex-mizan/ui preview` | The design system's preview page (Vite, until `apps/web`); `preview:build` writes `.preview/ui` |
 
 ## Non-negotiable conventions

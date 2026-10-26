@@ -1,0 +1,61 @@
+import 'reflect-metadata';
+import type { INestApplicationContext } from '@nestjs/common';
+import { Test } from '@nestjs/testing';
+import type { PgBoss } from 'pg-boss';
+import { afterAll, beforeAll, describe, expect, inject, it } from 'vitest';
+import { loadConfig } from '../src/core/config/config.js';
+import { BOSS } from '../src/core/queue/queue.module.js';
+import { jobs } from '../src/jobs/index.js';
+import { HeartbeatJob } from '../src/jobs/system/heartbeat.job.js';
+import { WorkerModule } from '../src/worker.module.js';
+
+/** The worker as `main.ts` builds it, on this run's test database. Close it after the test. */
+async function startWorker(): Promise<INestApplicationContext> {
+  const config = loadConfig({
+    DATABASE_QUEUE_URL: inject('queueUrl'),
+    NODE_ENV: 'test',
+    LOG_LEVEL: 'silent',
+  });
+  const moduleRef = await Test.createTestingModule({
+    imports: [WorkerModule.forRoot(config, jobs)],
+  }).compile();
+  return moduleRef.init();
+}
+
+describe('worker boot', () => {
+  let worker: INestApplicationContext;
+  let boss: PgBoss;
+  const heartbeat = new HeartbeatJob();
+
+  beforeAll(async () => {
+    worker = await startWorker();
+    boss = worker.get<PgBoss>(BOSS);
+  });
+  afterAll(() => worker.close());
+
+  it('installs pg-boss as the queue role and schedules the heartbeat', async () => {
+    expect(await boss.getSchedules(heartbeat.queue)).toEqual([
+      expect.objectContaining({ name: heartbeat.queue, cron: heartbeat.cron }),
+    ]);
+  });
+
+  it('works a queued heartbeat job', async () => {
+    const id = await boss.send(heartbeat.queue, {});
+    expect(id).toEqual(expect.any(String));
+    await expect
+      .poll(async () => (await boss.getJobById(heartbeat.queue, id as string))?.state, {
+        timeout: 15_000,
+        interval: 250,
+      })
+      .toBe('completed');
+  });
+
+  it('keeps one schedule when a second worker boots', async () => {
+    const second = await startWorker();
+    try {
+      expect(await boss.getSchedules(heartbeat.queue)).toHaveLength(1);
+    } finally {
+      await second.close();
+    }
+  });
+});

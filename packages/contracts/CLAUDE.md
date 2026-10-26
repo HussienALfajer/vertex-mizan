@@ -1,6 +1,6 @@
 # packages/contracts
 
-Zod schemas and pure rules shared by the API, the worker, the web app and integrators (ADR 0002): the money module (ADR 0007) and the error-code registry (ADR 0006). The Hub event contracts and the permission map arrive with their specs (S05, S01). Copied from Vertex Food's `packages/contracts` and adapted. No I/O and no Node APIs (`tsconfig.json` loads no Node types); Zod is the only dependency.
+Zod schemas and pure rules shared by the API, the worker, the web app and integrators (ADR 0002): the money module (ADR 0007), the error-code registry (ADR 0006) and the API's health answer. The Hub event contracts and the permission map arrive with their specs (S05, S01). Copied from Vertex Food's `packages/contracts` and adapted. No I/O and no Node APIs (`tsconfig.json` loads no Node types); Zod is the only dependency.
 
 ## Layout
 - `src/<module>.ts` with `src/<module>.test.ts` next to it; `src/index.ts` re-exports every public file.
@@ -8,6 +8,7 @@ Zod schemas and pure rules shared by the API, the worker, the web app and integr
 - `money-arithmetic.ts`: the exact integer arithmetic behind `convert()` (`divideHalfAwayFromZero`, `scaleExact`, `scaleMinor`, `addExact`) and the stored range. Internal, so `convert()` stays the one public conversion; `index.ts` re-exports only `divideHalfAwayFromZero`, the one rounding, for `packages/ledger`'s allocations and releases.
 - `money-text.ts`: amounts as text (ADR 0010): `amountParts()` and `formatMinor()` (Latin digits, `,` grouping, every decimal, ASCII minus), `parseAmount()` (major units to minor; Arabic-Indic digits and the Arabic separators accepted; grouping must be correct; extra decimals refused, never rounded; `AmountTextError` reasons) and `evaluateAmount()` (`=` expressions as exact fractions, rounded once half away from zero). `money-summary.ts`: `summarizeAmounts()` (count, exact sum, rounded average, minimum and maximum per currency, for the grid's summary bar).
 - `errors.ts`: `errorStatus` (every code with its HTTP status: the money codes, then the ledger's), `errorCodeSchema`, `DomainError`.
+- `health.ts`: `healthResponseSchema`, the answer of `GET /api/health` (`apps/api`).
 - Tests: `money.test.ts` (examples), `money.hub-compat.test.ts` (Hub's `convertMinor` examples and an equivalence property), `money.properties.test.ts` (fast-check: exactness, sign symmetry, inverse, cross rates), `money-text.test.ts` (format and parse round trips in both digit sets, expressions against exact integer arithmetic, summaries), `errors.test.ts` (the published codes).
 
 ## Rules

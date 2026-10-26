@@ -11,3 +11,10 @@ allowBuilds:
   # Its install script only checks the platform binary, which the optional @esbuild/* package
   # already provides (used by Vitest through Vite).
   esbuild: false
+  # swagger-ui-dist (@nestjs/swagger) pulls it in to send install telemetry; nothing needs it.
+  "@scarf/scarf": false
+
+# Versions forced past what a dependency pins, each with the advisory it closes.
+overrides:
+  # @nestjs/platform-express 12.2.0 pins multer 2.4.x. GHSA-q7qp-rjg7-q26m.
+  multer: 2.5.0
