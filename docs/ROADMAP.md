@@ -26,7 +26,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done. Phases are 
 
 ## Phase 1 — The core and the posting API
 Scope: `docs/product/phase-1-scope.md`. One spec per line, each through `/spec` → `/posting-rule` → `/feature-slice`.
-- [ ] S01 Companies, people and access: F01
+- [~] S01 Companies, people and access: F01 (`docs/specs/S01-companies-people-access.md`)
 - [ ] S02 Chart of accounts, dimensions and rates: F02 · F03 · F04 (the service-agency template, Q3)
 - [ ] S03 Journal entries and the posting function: F05 · F14 (period balances, `posted_at`, the daily anchor)
 - [ ] S04 Open items and settlements: F06
