@@ -2,8 +2,10 @@ import { accounting } from './accounting.js';
 import { commandPalette } from './command-palette.js';
 import { common } from './common.js';
 import { designSystem } from './design-system.js';
+import { email } from './email.js';
 import { errors } from './errors.js';
 import { grid } from './grid.js';
+import { roles } from './roles.js';
 import { shell } from './shell.js';
 import { shortcuts } from './shortcuts.js';
 
@@ -17,6 +19,8 @@ export const ar = {
   errors,
   designSystem,
   shell,
+  roles,
+  email,
 };
 
 export type Catalog = typeof ar;

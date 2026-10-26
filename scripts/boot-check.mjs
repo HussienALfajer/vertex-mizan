@@ -41,8 +41,16 @@ async function apiHealthy() {
 }
 
 async function main() {
-  const api = start('api', { API_HOST: '127.0.0.1', API_PORT: port });
-  const worker = start('worker', {});
+  // Synthetic settings the check needs and a server sets for real; no email is sent during it.
+  const api = start('api', {
+    API_HOST: '127.0.0.1',
+    API_PORT: port,
+    AUTH_SECRET: 'boot-check-only-secret-of-at-least-32-characters',
+  });
+  const worker = start('worker', {
+    SMTP_URL: 'smtp://127.0.0.1:1025',
+    EMAIL_FROM: 'Mizan <mizan@example.test>',
+  });
   const apps = [api, worker];
   try {
     while (!(await apiHealthy())) {

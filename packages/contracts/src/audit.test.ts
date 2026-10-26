@@ -35,6 +35,7 @@ describe('audit actions', () => {
         'AuditQuery',
         'AuditPage',
         'Cursor',
+        'PageQuery',
         'SignInEvent',
         'SignInPage',
       ]),

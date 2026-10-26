@@ -1,14 +1,16 @@
 # apps/worker
 
-NestJS 12 application context (no HTTP server) for background work with pg-boss (ADR 0002): month-end releases, revaluation previews, held-event retries, the reconciliation check, exports and PDFs, each with its spec. Copied from Vertex Food's `apps/worker` and adapted; logging follows Vertex Hub's worker. Phase 0 holds the queue and the heartbeat only.
+NestJS 12 application context (no HTTP server) for background work with pg-boss (ADR 0002): month-end releases, revaluation previews, held-event retries, the reconciliation check, exports and PDFs, each with its spec. Copied from Vertex Food's `apps/worker` and adapted; logging follows Vertex Hub's worker. S01 added the email outbox and the daily clean-up.
 
 ## Layout
 - `src/main.ts`: loads the config, creates the application context, uses the pino logger, enables shutdown hooks. pg-boss's timers keep the process alive.
-- `src/worker.module.ts`: `WorkerModule.forRoot(config, jobs)`: config, nestjs-pino, the queue.
-- `src/core/config/`: `loadConfig(env)`: `DATABASE_QUEUE_URL` must name `mizan_queue` (a `user` query parameter is refused), `NODE_ENV`, `LOG_LEVEL`.
-- `src/core/queue/`: `QueueModule` (pg-boss as `mizan_queue` in the `pgboss` schema with `createSchema: false`; at start it installs or migrates its tables, then creates, schedules and works every job; graceful stop) and `ScheduledJob`.
-- `src/jobs/<module>/<name>.job.ts`: one scheduled job per file, listed in `src/jobs/index.ts`. Pattern to copy: `src/jobs/system/heartbeat.job.ts` (`system.heartbeat`, every minute, logs `Heartbeat`).
-- `test/worker.test.ts`: the boot test: the real module on a fresh database installs pg-boss as the queue role, schedules the heartbeat once however many workers boot, and works a queued job to `completed`.
+- `src/worker.module.ts`: `WorkerModule.forRoot(config, jobs)`: config, nestjs-pino, the app role's database, the email transport, the queue.
+- `src/core/config/`: `loadConfig(env)`: `DATABASE_QUEUE_URL` must name `mizan_queue` and `DATABASE_APP_URL` `mizan_app` (a `user` query parameter is refused), `SMTP_URL` (`smtp://` or `smtps://`; locally compose.yaml's Mailpit), `EMAIL_FROM`, `NODE_ENV`, `LOG_LEVEL`.
+- `src/core/database/`: `DatabaseModule`, one pool as `mizan_app` (`DATABASE` token), as in `apps/api`.
+- `src/core/email/`: `EmailModule` and `EMAIL_TRANSPORT`: the server's SMTP account through nodemailer; the tests put `CapturingTransport` in its place.
+- `src/core/queue/`: `QueueModule` (pg-boss as `mizan_queue` in the `pgboss` schema with `createSchema: false`; at start it installs or migrates its tables, then creates (with the job's `queueOptions`), schedules and works every job; graceful stop) and `ScheduledJob`.
+- `src/jobs/<module>/<name>.job.ts`: one scheduled job per file, listed in `src/jobs/index.ts`. Pattern to copy: `src/jobs/system/heartbeat.job.ts` (`system.heartbeat`, every minute, logs `Heartbeat`). S01: `src/jobs/email/send.job.ts` (`email.send`, every minute: claims the due outbox rows with a 5-minute lease and `SKIP LOCKED`, sends them, deletes them with their token; a failure keeps its code and waits 2, 4 … 60 minutes; pg-boss keeps its runs one day) with `templates.ts` (the Arabic text from `ar.email`, times in Damascus with Latin digits), and `src/jobs/system/clean-up.job.ts` (`system.clean-up`, daily at 02:00 UTC: expired or idle sessions, expired tokens, old rate-limit rows; expired invitations marked revoked with an audit row per invitation, per company in one transaction).
+- `test/worker.ts` (`startWorker()`, `CapturingTransport`), `test/worker.test.ts` (the boot test: the real module on a fresh database installs pg-boss as the queue role, schedules every job once however many workers boot, and works a queued job to `completed`) and `test/jobs.test.ts` (the S01 jobs, run directly). Files run one at a time (`vitest.config.ts`): the boot test's worker works the same database.
 
 ## Rules
 - Queue names are `<module>.<name>` after the job's file; crons are UTC.

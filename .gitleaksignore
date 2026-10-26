@@ -1,0 +1,5 @@
+# Findings the secret scan (gitleaks, CI) may skip, one fingerprint each. Only synthetic values
+# already in the history belong here; a real secret is rotated and removed instead.
+# The API tests' synthetic AUTH_SECRET literal of commit d3fac62 (S01 PR 2); the tests now
+# generate the key at run time (apps/api/test/app.ts, TEST_AUTH_SECRET).
+d3fac628bc445c403527c1b1fc6c8cf8b87d85fa:apps/api/test/app.ts:generic-api-key:15

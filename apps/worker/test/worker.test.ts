@@ -1,26 +1,10 @@
-import 'reflect-metadata';
 import type { INestApplicationContext } from '@nestjs/common';
-import { Test } from '@nestjs/testing';
 import type { PgBoss } from 'pg-boss';
-import { afterAll, beforeAll, describe, expect, inject, it } from 'vitest';
-import { loadConfig } from '../src/core/config/config.js';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { BOSS } from '../src/core/queue/queue.module.js';
 import { jobs } from '../src/jobs/index.js';
 import { HeartbeatJob } from '../src/jobs/system/heartbeat.job.js';
-import { WorkerModule } from '../src/worker.module.js';
-
-/** The worker as `main.ts` builds it, on this run's test database. Close it after the test. */
-async function startWorker(): Promise<INestApplicationContext> {
-  const config = loadConfig({
-    DATABASE_QUEUE_URL: inject('queueUrl'),
-    NODE_ENV: 'test',
-    LOG_LEVEL: 'silent',
-  });
-  const moduleRef = await Test.createTestingModule({
-    imports: [WorkerModule.forRoot(config, jobs)],
-  }).compile();
-  return moduleRef.init();
-}
+import { startWorker } from './worker.js';
 
 describe('worker boot', () => {
   let worker: INestApplicationContext;
@@ -37,6 +21,12 @@ describe('worker boot', () => {
     expect(await boss.getSchedules(heartbeat.queue)).toEqual([
       expect.objectContaining({ name: heartbeat.queue, cron: heartbeat.cron }),
     ]);
+  });
+
+  it('schedules every job of the list', async () => {
+    const queues = jobs.map((job) => worker.get(job).queue);
+    expect(queues).toEqual(['system.heartbeat', 'email.send', 'system.clean-up']);
+    for (const queue of queues) expect(await boss.getSchedules(queue)).toHaveLength(1);
   });
 
   it('works a queued heartbeat job', async () => {

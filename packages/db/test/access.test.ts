@@ -1,4 +1,4 @@
-import { CURRENCY_CODES, RATE_TYPES, ROLES } from '@vertex-mizan/contracts';
+import { CURRENCY_CODES, EMAIL_KINDS, RATE_TYPES, ROLES } from '@vertex-mizan/contracts';
 import { eq, sql } from 'drizzle-orm';
 import type pg from 'pg';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -7,9 +7,11 @@ import {
   companies,
   companySettings,
   type Database,
+  emailOutbox,
   invitations,
   membershipRole,
   memberships,
+  OUTBOX_EMAIL_KINDS,
   platformAuditEntries,
   SETTINGS_CURRENCY_CODES,
   SETTINGS_RATE_TYPES,
@@ -504,5 +506,41 @@ describe('the ephemeral tables', () => {
       .from(platformAuditEntries)
       .where(eq(platformAuditEntries.sessionId, session.id));
     expect(kept).toEqual([{ action: 'user.signed_out' }]);
+  });
+
+  it('let the app role queue an email, record a failed attempt and delete it once sent', async () => {
+    expect(OUTBOX_EMAIL_KINDS).toEqual(EMAIL_KINDS);
+    const [email] = await app
+      .insert(emailOutbox)
+      .values({
+        kind: 'password_reset',
+        recipient: 'person@example.test',
+        data: { link: 'https://mizan.example.test/reset-password#token=synthetic' },
+      })
+      .returning({ id: emailOutbox.id });
+    if (!email) throw new Error('no email queued');
+    await app
+      .update(emailOutbox)
+      .set({ attempts: 1, lastErrorCode: 'ECONNREFUSED' })
+      .where(eq(emailOutbox.id, email.id));
+    const deleted = await app
+      .delete(emailOutbox)
+      .where(eq(emailOutbox.id, email.id))
+      .returning({ id: emailOutbox.id });
+    expect(deleted).toEqual([email]);
+    expect(
+      await refusal(
+        app
+          .insert(emailOutbox)
+          .values({ kind: 'newsletter', recipient: 'a@example.test', data: {} }),
+      ),
+    ).toMatch(/email_outbox_kind/);
+    expect(
+      await refusal(
+        app
+          .insert(emailOutbox)
+          .values({ kind: 'invitation', recipient: 'A@example.test', data: {} }),
+      ),
+    ).toMatch(/email_outbox_recipient_shape/);
   });
 });

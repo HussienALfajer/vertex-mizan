@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { ApiOkResponse, ApiServiceUnavailableResponse, ApiTags } from '@nestjs/swagger';
 import { type HealthResponse, healthResponseSchema } from '@vertex-mizan/contracts';
+import { Public } from '../access/access.js';
 import { HealthService } from './health.service.js';
 
 /** For the load balancer and the deployment's start check: no session, no company data. */
@@ -16,6 +17,7 @@ export class HealthController {
   constructor(@Inject(HealthService) private readonly health: HealthService) {}
 
   @Get()
+  @Public()
   @SerializeOptions({ schema: healthResponseSchema })
   @ApiOkResponse({
     description: 'The API and its database answer',

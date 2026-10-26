@@ -7,6 +7,8 @@ import {
   meSchema,
   passwordSchema,
   reauthenticateSchema,
+  requestPasswordResetSchema,
+  resetPasswordSchema,
   signInSchema,
   totpCodeSchema,
 } from './people.js';
@@ -59,6 +61,18 @@ describe('people schemas', () => {
     expect(meSchema.safeParse({ ...me, permissions: ['everything'] }).success).toBe(false);
   });
 
+  it('take a reset link token and a new password, and an email in any case', () => {
+    const token = 'A'.repeat(43);
+    expect(resetPasswordSchema.safeParse({ token, password: 'a'.repeat(12) }).success).toBe(true);
+    expect(resetPasswordSchema.safeParse({ token, password: 'short' }).success).toBe(false);
+    expect(
+      resetPasswordSchema.safeParse({ token: 'not/a+token', password: 'a'.repeat(12) }).success,
+    ).toBe(false);
+    expect(requestPasswordResetSchema.parse({ email: ' Person@Example.TEST' })).toEqual({
+      email: 'person@example.test',
+    });
+  });
+
   it('convert to JSON Schema with their ids', () => {
     const { schemas } = z.toJSONSchema(z.globalRegistry, {
       target: 'draft-2020-12',
@@ -77,6 +91,15 @@ describe('people schemas', () => {
         'EnterCompany',
         'MyMembership',
         'Me',
+        'SignInResult',
+        'LinkToken',
+        'RequestPasswordReset',
+        'ResetPassword',
+        'BackupCodes',
+        'VerifyTotp',
+        'VerifyBackupCode',
+        'EnableTwoFactor',
+        'TwoFactorSetup',
         'Role',
         'Permission',
       ]),

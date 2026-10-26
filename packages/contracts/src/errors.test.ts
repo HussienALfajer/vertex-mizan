@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { DomainError, errorCodeSchema, errorCodes, errorStatus } from './errors.js';
+import {
+  DomainError,
+  errorCodeSchema,
+  errorCodes,
+  errorResponseSchema,
+  errorStatus,
+} from './errors.js';
 
 describe('error codes', () => {
   it('are upper snake case and unique', () => {
@@ -67,5 +73,18 @@ describe('DomainError', () => {
     expect(error.code).toBe('RATE_MISSING');
     expect(error.message).toBe('No bulletin rate');
     expect(error.details).toEqual({ on: '2026-10-20' });
+  });
+
+  it('answer with the status, a known code and the failed fields', () => {
+    const answer = {
+      statusCode: 422,
+      code: 'VALIDATION_FAILED',
+      message: 'Validation failed',
+      issues: [{ path: ['email'], message: 'Invalid email address' }],
+    };
+    expect(errorResponseSchema.parse(answer)).toEqual(answer);
+    expect(errorResponseSchema.safeParse({ ...answer, code: 'SOMETHING_ELSE' }).success).toBe(
+      false,
+    );
   });
 });
