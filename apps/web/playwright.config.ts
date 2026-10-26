@@ -22,10 +22,11 @@ export default defineConfig({
     trace: 'on-first-retry',
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
-  // Serves the production build: `pnpm verify` and CI build it first.
+  // Serves the production build: `pnpm verify` and CI build it first. Never a server already on
+  // the port: it could serve another checkout's build, so Playwright fails instead of testing it.
   webServer: {
     command: 'pnpm preview',
     url: baseURL,
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: false,
   },
 });
