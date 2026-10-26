@@ -70,23 +70,37 @@ export interface GridSummaryLabels {
   readonly kinds: Readonly<Record<AmountKind, string>>;
 }
 
-type GridProps<Row> = Omit<ComponentProps<'div'>, 'children' | 'onCopy' | 'onPaste'> & {
-  rows: readonly Row[];
-  columns: readonly GridColumnDef<Row>[];
-  rowKey: (row: Row, index: number) => string;
-  /**
-   * Called with every edit of a commit, paste, fill down or clear, all checked first: the app
-   * applies them to its rows. Without it the grid is read-only (it still selects and copies).
-   */
-  onEdit?: ((edits: readonly CellEdit[]) => void) | undefined;
-  /** The text of a refusal, shown beside the grid with an icon (i18n `grid.problems`). */
-  describeProblem: (problem: GridProblem) => string;
-  summaryLabels: GridSummaryLabels;
-  /** The first column stays at the start edge while the grid scrolls, as each row's header. */
-  stickyStartColumn?: boolean;
-  /** Shown when there is no row. */
-  empty?: ReactNode;
-};
+/** An editable grid takes both callbacks; without them it is read-only (it selects and copies). */
+type GridEditing =
+  | {
+      /**
+       * Called with every edit of a commit, paste, fill down or clear, all checked first: the app
+       * applies them to its rows.
+       */
+      onEdit: (edits: readonly CellEdit[]) => void;
+      /**
+       * Called with the refusal when a cell's editor commits text the cell refuses, and with
+       * `null` once that editor commits or cancels. The refused text stays in the editor while the
+       * cell keeps its last committed value, so the app must not save or post while the last call
+       * reported a refusal (ADR 0010 §4).
+       */
+      onEditError: (problem: GridProblem | null) => void;
+    }
+  | { onEdit?: undefined; onEditError?: undefined };
+
+type GridProps<Row> = Omit<ComponentProps<'div'>, 'children' | 'onCopy' | 'onPaste'> &
+  GridEditing & {
+    rows: readonly Row[];
+    columns: readonly GridColumnDef<Row>[];
+    rowKey: (row: Row, index: number) => string;
+    /** The text of a refusal, shown beside the grid with an icon (i18n `grid.problems`). */
+    describeProblem: (problem: GridProblem) => string;
+    summaryLabels: GridSummaryLabels;
+    /** The first column stays at the start edge while the grid scrolls, as each row's header. */
+    stickyStartColumn?: boolean;
+    /** Shown when there is no row. */
+    empty?: ReactNode;
+  };
 
 interface Editing {
   readonly position: CellPosition;
@@ -120,6 +134,7 @@ function Grid<Row>({
   columns,
   rowKey,
   onEdit,
+  onEditError,
   describeProblem,
   summaryLabels,
   stickyStartColumn = false,
@@ -135,6 +150,8 @@ function Grid<Row>({
   const tableRef = useRef<HTMLTableElement>(null);
   const startHeadRef = useRef<HTMLTableCellElement>(null);
   const focusPending = useRef(false);
+  // Whether the app was last told that the open editor holds refused text.
+  const editorRefused = useRef(false);
   const [selection, setSelection] = useState<GridSelection>(() =>
     selectCell({ row: 0, column: 0 }),
   );
@@ -217,15 +234,24 @@ function Grid<Row>({
     setEditing({ position, initial, text: typed ?? initial });
   }
 
+  /** Tells the app whether the open editor holds refused text, once per change. */
+  function reportEditor(refusal: GridProblem | null) {
+    if (refusal === null && !editorRefused.current) return;
+    editorRefused.current = refusal !== null;
+    onEditError?.(refusal);
+  }
+
   /** Commits the editor; on success it closes and the active cell moves. False keeps it open. */
   function commit(move?: GridMove, focus = true): boolean {
     if (!edited) return true;
-    if (
-      edited.text !== edited.initial &&
-      !apply(planCellEdit(rows, cells, edited.position, edited.text))
-    ) {
-      return false;
+    if (edited.text !== edited.initial) {
+      const plan = planCellEdit(rows, cells, edited.position, edited.text);
+      if (!apply(plan)) {
+        if (!plan.ok) reportEditor(plan);
+        return false;
+      }
     }
+    reportEditor(null);
     setEditing(null);
     if (!edited.text || edited.text === edited.initial) setProblem(null);
     const at = selectCell(edited.position);
@@ -238,6 +264,7 @@ function Grid<Row>({
 
   function cancel() {
     if (!edited) return;
+    reportEditor(null);
     setEditing(null);
     setProblem(null);
     select(selectCell(edited.position));
@@ -453,7 +480,11 @@ function Grid<Row>({
                           // Focus stays in the editor until its commit, which a refused text never passes.
                           if (edited && !same(edited.position, position)) event.preventDefault();
                         }}
-                        onDoubleClick={() => startEditing(position)}
+                        onDoubleClick={() => {
+                          // A double-click inside an open editor selects a word; it never reopens
+                          // the cell or drops the text being edited, refused or not.
+                          if (!edited) startEditing(position);
+                        }}
                       >
                         {editor ? (
                           <GridCellEditor

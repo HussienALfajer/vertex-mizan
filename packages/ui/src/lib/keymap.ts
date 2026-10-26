@@ -13,7 +13,8 @@ export const keymap = {
   editCell: defineShortcut({ key: 'F2', scope: 'component' }),
   selectAll: defineShortcut({ key: 'a', mod: true, scope: 'component' }),
   selectRows: defineShortcut({ key: ' ', shift: true, scope: 'component' }),
-  selectColumns: defineShortcut({ key: ' ', mod: true, scope: 'component' }),
+  // Ctrl+Space on every platform: ⌘Space is Spotlight on macOS.
+  selectColumns: defineShortcut({ key: ' ', ctrl: true, scope: 'component' }),
   fillDown: defineShortcut({ key: 'd', mod: true, scope: 'component' }),
   copyAbove: defineShortcut({ key: 'F8', scope: 'component' }),
   insertLine: defineShortcut({ key: 'Insert', mod: true, scope: 'component' }),

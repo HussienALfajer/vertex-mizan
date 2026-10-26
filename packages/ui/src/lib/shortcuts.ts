@@ -1,7 +1,7 @@
 /*
  * The shortcut registry (ADR 0010 §4): a shortcut is defined once, and its matching, its displayed
  * keys and its `aria-keyshortcuts` come from that definition. `mod` is Ctrl on Windows and Linux
- * and ⌘ on macOS. Keys match `KeyboardEvent.key` when it is Latin, and the physical key
+ * and ⌘ on macOS; `ctrl` is the Control key itself on every platform. Keys match `KeyboardEvent.key` when it is Latin, and the physical key
  * (`KeyboardEvent.code`) otherwise, so a shortcut works while an Arabic layout is active.
  */
 
@@ -9,6 +9,11 @@ export interface Shortcut {
   /** A letter, digit or punctuation key (`k`, `/`), or a named key (`Enter`, `F8`, `ArrowDown`). */
   readonly key: string;
   readonly mod?: boolean;
+  /**
+   * The Control key on every platform (⌃ on macOS), for what macOS keeps under ⌘: ⌘Space is
+   * Spotlight, so a grid selects columns with Ctrl+Space everywhere, as Excel for Mac does.
+   */
+  readonly ctrl?: boolean;
   readonly alt?: boolean;
   readonly shift?: boolean;
   /**
@@ -54,16 +59,22 @@ const PUNCTUATION_CODES: Record<string, string> = {
 /**
  * A shortcut, checked when it is defined: a key without Ctrl/⌘ or Alt only inside its component
  * (WCAG 2.1.4), Escape aside; Ctrl/⌘ with a key the browser keeps never, and with a browser feature's
- * key only inside a component.
+ * key only inside a component; never ⌘ with a key macOS keeps (⌘Space).
  */
 export function defineShortcut(shortcut: Shortcut): Shortcut {
   const key = shortcut.key.length === 1 ? shortcut.key.toLowerCase() : shortcut.key;
   const global = shortcut.scope !== 'component';
-  if (global && !shortcut.mod && !shortcut.alt && key !== 'Escape') {
+  if (shortcut.mod && shortcut.ctrl) {
+    throw new Error(`"${key}" names both mod and ctrl: on Windows they are the same key`);
+  }
+  if (global && !shortcut.mod && !shortcut.ctrl && !shortcut.alt && key !== 'Escape') {
     // A bare key page-wide would take `t` from every input or Enter from every form.
     throw new Error(`A global shortcut on "${key}" needs Ctrl/⌘ or Alt (WCAG 2.1.4)`);
   }
-  const plainMod = shortcut.mod && !shortcut.alt;
+  if (shortcut.mod && key === ' ') {
+    throw new Error('⌘Space belongs to macOS (Spotlight): use ctrl for Ctrl+Space');
+  }
+  const plainMod = (shortcut.mod || shortcut.ctrl) && !shortcut.alt;
   if (plainMod && BROWSER_ONLY.has(key)) {
     throw new Error(`Ctrl/⌘+${key.toUpperCase()} belongs to the browser`);
   }
@@ -89,12 +100,13 @@ export function matchesShortcut(
   shortcut: Shortcut,
   platform: Platform = detectPlatform(),
 ): boolean {
-  const mod = platform === 'mac' ? event.metaKey : event.ctrlKey;
-  const other = platform === 'mac' ? event.ctrlKey : event.metaKey;
+  const mac = platform === 'mac';
+  const meta = mac && Boolean(shortcut.mod);
+  const ctrl = mac ? Boolean(shortcut.ctrl) : Boolean(shortcut.mod || shortcut.ctrl);
   return (
     eventKey(event) === shortcut.key &&
-    mod === Boolean(shortcut.mod) &&
-    !other &&
+    event.metaKey === meta &&
+    event.ctrlKey === ctrl &&
     event.altKey === Boolean(shortcut.alt) &&
     // Shift is part of a punctuation key's character (`?` is Shift+/): only checked for letters,
     // digits, Space and named keys (Shift+Space selects rows, Space alone does not).
@@ -122,6 +134,7 @@ export function shortcutKeys(shortcut: Shortcut, platform: Platform = detectPlat
   const mac = platform === 'mac';
   const keys: string[] = [];
   if (shortcut.mod) keys.push(mac ? '⌘' : 'Ctrl');
+  if (shortcut.ctrl) keys.push(mac ? '⌃' : 'Ctrl');
   if (shortcut.alt) keys.push(mac ? '⌥' : 'Alt');
   if (shortcut.shift) keys.push(mac ? '⇧' : 'Shift');
   const named = NAMED[shortcut.key];
@@ -136,6 +149,7 @@ export function ariaKeyShortcuts(
 ): string {
   const keys: string[] = [];
   if (shortcut.mod) keys.push(platform === 'mac' ? 'Meta' : 'Control');
+  if (shortcut.ctrl) keys.push('Control');
   if (shortcut.alt) keys.push('Alt');
   if (shortcut.shift) keys.push('Shift');
   if (shortcut.key === ' ') keys.push('Space');

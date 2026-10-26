@@ -72,10 +72,12 @@ function Harness({
   direction = 'rtl',
   editable = true,
   onEdit = () => {},
+  onEditError = () => {},
 }: {
   direction?: 'rtl' | 'ltr';
   editable?: boolean;
   onEdit?: (edits: readonly CellEdit[]) => void;
+  onEditError?: (problem: GridProblem | null) => void;
 }) {
   const [lines, setLines] = useState(initialLines);
   const apply = (edits: readonly CellEdit[]) => {
@@ -98,7 +100,7 @@ function Harness({
         rows={lines}
         columns={columns}
         rowKey={(line) => line.id}
-        onEdit={editable ? apply : undefined}
+        {...(editable ? { onEdit: apply, onEditError } : {})}
         describeProblem={problemText}
         summaryLabels={ar.grid.summary}
         stickyStartColumn
@@ -276,6 +278,45 @@ describe('Grid', () => {
     ]);
     expect(screen.queryByRole('textbox')).toBeNull();
     expect(document.activeElement).toBe(cell(2, 1));
+  });
+
+  it('tells the app while refused text stands in an editor, and when it no longer does', () => {
+    const onEditError = vi.fn();
+    render(<Harness onEditError={onEditError} />);
+    focusCell(0, 1);
+    press('F2');
+    fireEvent.change(editor(), { target: { value: '1,500.505' } });
+    // Leaving the grid (towards a Post button) commits on blur: the app hears the refusal.
+    fireEvent.blur(editor());
+    expect(onEditError).toHaveBeenLastCalledWith({
+      ok: false,
+      problem: 'INVALID_CELLS',
+      cells: [{ row: 0, column: 1, reason: 'AMOUNT', error: 'TOO_MANY_DECIMALS' }],
+    });
+    expect(editor().value).toBe('1,500.505');
+    fireEvent.keyDown(editor(), { key: 'Escape' });
+    expect(onEditError).toHaveBeenLastCalledWith(null);
+    expect(onEditError).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps the editor and its text through a double-click, inside it or on another cell', () => {
+    const onEdit = vi.fn();
+    render(<Harness onEdit={onEdit} />);
+    focusCell(0, 1);
+    press('F2');
+    fireEvent.change(editor(), { target: { value: '12.345' } });
+    fireEvent.keyDown(editor(), { key: 'Enter' });
+    const refusal = alertText();
+    fireEvent.doubleClick(editor());
+    expect(editor().value).toBe('12.345');
+    expect(alertText()).toBe(refusal);
+    fireEvent.pointerDown(cell(2, 1), { button: 0 });
+    fireEvent.pointerDown(cell(2, 1), { button: 0 });
+    fireEvent.doubleClick(cell(2, 1));
+    expect(screen.getAllByRole('textbox')).toHaveLength(1);
+    expect(editor().value).toBe('12.345');
+    expect(cell(0, 1).contains(editor())).toBe(true);
+    expect(onEdit).not.toHaveBeenCalled();
   });
 
   it('commits text on Tab and moves to the next cell', () => {

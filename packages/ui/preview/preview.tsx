@@ -296,6 +296,8 @@ function DataGridSample() {
       columns={columns}
       rowKey={(line) => line.id}
       onEdit={apply}
+      // The preview saves nothing; an app blocks saving and posting while this reports a refusal.
+      onEditError={() => {}}
       describeProblem={gridProblemText}
       summaryLabels={ar.grid.summary}
       stickyStartColumn

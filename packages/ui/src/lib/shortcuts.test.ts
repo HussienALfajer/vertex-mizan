@@ -31,6 +31,11 @@ describe('defineShortcut', () => {
     expect(defineShortcut({ key: 'n', alt: true })).toEqual({ key: 'n', alt: true });
   });
 
+  it('refuses ⌘Space, which macOS keeps, and a shortcut naming both mod and ctrl', () => {
+    expect(() => defineShortcut({ key: ' ', mod: true, scope: 'component' })).toThrow(/Spotlight/);
+    expect(() => defineShortcut({ key: 'k', mod: true, ctrl: true })).toThrow(/both/);
+  });
+
   it('allows a focused component its spreadsheet keys and its unmodified keys', () => {
     expect(defineShortcut({ key: 'D', mod: true, scope: 'component' }).key).toBe('d');
     expect(defineShortcut({ key: 't', scope: 'component' })).toEqual({
@@ -96,6 +101,15 @@ describe('matchesShortcut', () => {
     ).toBe(true);
   });
 
+  it('matches ctrl as the Control key on every platform, never ⌘', () => {
+    const columns = defineShortcut({ key: ' ', ctrl: true, scope: 'component' });
+    const space = press({ key: ' ', code: 'Space' });
+    expect(matchesShortcut({ ...space, ctrlKey: true }, columns, 'mac')).toBe(true);
+    expect(matchesShortcut({ ...space, metaKey: true }, columns, 'mac')).toBe(false);
+    expect(matchesShortcut({ ...space, ctrlKey: true }, columns, 'other')).toBe(true);
+    expect(matchesShortcut({ ...space, metaKey: true }, columns, 'other')).toBe(false);
+  });
+
   it('checks Shift on Space, so Space alone is not Shift+Space', () => {
     const rows = defineShortcut({ key: ' ', shift: true, scope: 'component' });
     const space = press({ key: ' ', code: 'Space' });
@@ -113,8 +127,10 @@ describe('displayed keys', () => {
     );
     expect(ariaKeyShortcuts(palette, 'other')).toBe('Control+K');
     expect(ariaKeyShortcuts(palette, 'mac')).toBe('Meta+K');
-    const columns = defineShortcut({ key: ' ', mod: true, scope: 'component' });
+    const columns = defineShortcut({ key: ' ', ctrl: true, scope: 'component' });
     expect(shortcutKeys(columns, 'other')).toEqual(['Ctrl', 'Space']);
+    expect(shortcutKeys(columns, 'mac')).toEqual(['⌃', 'Space']);
     expect(ariaKeyShortcuts(columns, 'other')).toBe('Control+Space');
+    expect(ariaKeyShortcuts(columns, 'mac')).toBe('Control+Space');
   });
 });

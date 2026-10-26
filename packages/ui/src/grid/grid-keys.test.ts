@@ -91,6 +91,10 @@ describe('gridCommand', () => {
     expect(command({ key: 'ش', code: 'KeyA', ctrlKey: true })).toEqual({ type: 'selectAll' });
     expect(command({ key: ' ', code: 'Space', shiftKey: true })).toEqual({ type: 'selectRows' });
     expect(command({ key: ' ', code: 'Space', ctrlKey: true })).toEqual({ type: 'selectColumns' });
+    // Ctrl+Space on macOS too, where ⌘Space is Spotlight.
+    expect(gridCommand(press({ key: ' ', code: 'Space', ctrlKey: true }), 'rtl', 'mac')).toEqual({
+      type: 'selectColumns',
+    });
     expect(command({ key: 'F2', code: 'F2' })).toEqual({ type: 'edit' });
     expect(command({ key: 'd', code: 'KeyD', ctrlKey: true })).toEqual({ type: 'fillDown' });
     expect(command({ key: 'Delete', code: 'Delete' })).toEqual({ type: 'clear' });
