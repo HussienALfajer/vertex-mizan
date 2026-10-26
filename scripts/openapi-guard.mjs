@@ -5,6 +5,13 @@
 // checked by `apps/api/test/openapi.test.ts`. Run by CI (`pnpm check:openapi --base <ref>`); tested
 // by `packages/config/test/openapi-guard.test.ts`.
 //
+// oasdiff reports some changes that break a client only as `info`; `oasdiff-severity-levels.txt`
+// (which cannot hold comments) raises them to errors: a documented error answer removed (Hub tells
+// `409 IDEMPOTENCY_CONFLICT` from a posting), an optional response field removed (Hub reads it when
+// present), an `operationId` or a component schema removed (generated clients and the JSON Schemas
+// Hub imports name them), and a route removed even after its deprecation (ADR 0006: `/v1` only
+// grows; a change of meaning is a new version).
+//
 // Needs the oasdiff binary: on the PATH, or named by `OASDIFF`. CI installs the pinned release with
 // `scripts/install-oasdiff.sh`.
 //
@@ -58,7 +65,17 @@ function main(args) {
     writeFileSync(published, baseDocument);
     const result = spawnSync(
       oasdiff,
-      ['breaking', published, head, '--fail-on', 'WARN', '--format', 'text'],
+      [
+        'breaking',
+        published,
+        head,
+        '--fail-on',
+        'WARN',
+        '--severity-levels',
+        fileURLToPath(new URL('oasdiff-severity-levels.txt', import.meta.url)),
+        '--format',
+        'text',
+      ],
       { encoding: 'utf8' },
     );
     if (result.error) {

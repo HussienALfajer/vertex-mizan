@@ -1,0 +1,6 @@
+response-non-success-status-removed ERR
+response-optional-property-removed ERR
+api-operation-id-removed ERR
+api-schema-removed ERR
+api-removed-with-deprecation ERR
+api-path-removed-with-deprecation ERR

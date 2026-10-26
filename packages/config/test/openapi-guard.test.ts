@@ -111,6 +111,31 @@ describe.runIf(available || process.env.CI)('openapi guard', () => {
     expect(guard(PUBLISHED, fewer).status).toBe(1);
   });
 
+  // oasdiff reports these as `info`; scripts/oasdiff-severity-levels.txt raises them.
+  it('fails when an answer loses an optional field', () => {
+    const optional = document({
+      type: 'object',
+      properties: { status, version: { type: 'string' } },
+      required: ['status'],
+    });
+    expect(guard(optional, PUBLISHED).status).toBe(1);
+  });
+
+  it('fails when a documented error answer is removed', () => {
+    const withError = PUBLISHED.replace(
+      '"200": {',
+      '"409": {\n            "description": "Conflict"\n          },\n          "200": {',
+    );
+    expect(withError).not.toBe(PUBLISHED);
+    expect(guard(withError, PUBLISHED).status).toBe(1);
+  });
+
+  it('fails when an operation id is removed', () => {
+    const withId = PUBLISHED.replace('"get": {', '"get": {\n        "operationId": "health",');
+    expect(withId).not.toBe(PUBLISHED);
+    expect(guard(withId, PUBLISHED).status).toBe(1);
+  });
+
   it('fails when the document itself is removed', () => {
     expect(guard(PUBLISHED, null)).toMatchObject({
       status: 1,

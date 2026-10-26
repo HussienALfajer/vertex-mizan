@@ -21,4 +21,16 @@ describe('loadConfig', () => {
     expect(load).not.toThrow(/secret-value/);
     expect(() => loadConfig({})).toThrow('Invalid API environment: DATABASE_APP_URL');
   });
+
+  it('connects as the app role only', () => {
+    for (const url of [
+      'postgres://mizan_owner:secret-value@127.0.0.1:55417/vertex_mizan',
+      'postgres://mizan_jobs:secret-value@127.0.0.1:55417/vertex_mizan',
+      `${DATABASE_APP_URL}?user=mizan_owner`,
+    ]) {
+      const load = () => loadConfig({ DATABASE_APP_URL: url });
+      expect(load).toThrow('Invalid API environment: DATABASE_APP_URL');
+      expect(load).not.toThrow(/secret-value/);
+    }
+  });
 });

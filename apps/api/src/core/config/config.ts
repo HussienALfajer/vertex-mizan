@@ -1,5 +1,8 @@
 import { z } from 'zod';
 
+/** The role the API connects as (`packages/db/CLAUDE.md`). */
+export const APP_ROLE = 'mizan_app';
+
 /**
  * The API's environment, checked once at start-up: a missing or malformed value stops the process
  * before it serves anything. Error messages name the variable, never its value (the database URL
@@ -7,8 +10,15 @@ import { z } from 'zod';
  */
 const configSchema = z
   .object({
-    /** The app role (ADR 0008); `createDatabase` refuses any other. */
-    DATABASE_APP_URL: z.url({ protocol: /^postgres(ql)?$/ }),
+    /**
+     * The app role (ADR 0003, ADR 0008): never the owner, and never `mizan_jobs`, which
+     * `createDatabase` also accepts but which reaches across companies through its own policies.
+     */
+    DATABASE_APP_URL: z.url({ protocol: /^postgres(ql)?$/ }).refine((url) => {
+      const parsed = new URL(url);
+      // node-postgres lets a `user` query parameter override the URL's user.
+      return parsed.username === APP_ROLE && !parsed.searchParams.has('user');
+    }),
     API_HOST: z.string().min(1).default('127.0.0.1'),
     API_PORT: z.coerce.number().int().min(1).max(65535).default(3300),
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
