@@ -299,6 +299,31 @@ describe('Grid', () => {
     expect(onEditError).toHaveBeenCalledTimes(2);
   });
 
+  it('commits before Post (Ctrl+Enter) reaches the app, and stops it behind refused text', () => {
+    const order: string[] = [];
+    const onEditError = vi.fn((problem: GridProblem | null) => {
+      order.push(problem ? 'refused' : 'clear');
+    });
+    const onPost = vi.fn(() => order.push('post'));
+    render(
+      // biome-ignore lint/a11y/noStaticElementInteractions: a test stand-in for an app's Post key.
+      <div onKeyDown={(event) => event.ctrlKey && event.key === 'Enter' && onPost()}>
+        <Harness onEdit={() => order.push('edit')} onEditError={onEditError} />
+      </div>,
+    );
+    focusCell(0, 1);
+    press('F2');
+    fireEvent.change(editor(), { target: { value: '12.345' } });
+    fireEvent.keyDown(editor(), { key: 'Enter', ctrlKey: true });
+    expect(order).toEqual(['refused']);
+    expect(editor().value).toBe('12.345');
+    fireEvent.change(editor(), { target: { value: '12.34' } });
+    fireEvent.keyDown(editor(), { key: 'Enter', ctrlKey: true });
+    expect(order).toEqual(['refused', 'edit', 'clear', 'post']);
+    expect(screen.queryByRole('textbox')).toBeNull();
+    expect(cell(0, 1).textContent).toBe('12.34');
+  });
+
   it('keeps the editor and its text through a double-click, inside it or on another cell', () => {
     const onEdit = vi.fn();
     render(<Harness onEdit={onEdit} />);

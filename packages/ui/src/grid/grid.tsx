@@ -17,6 +17,8 @@ import {
 } from 'react';
 import { Amount } from '../accounting/amount';
 import { cn } from '../lib/cn';
+import { keymap } from '../lib/keymap';
+import { matchesShortcut } from '../lib/shortcuts';
 import {
   type AmountKind,
   type CellEdit,
@@ -331,6 +333,13 @@ function Grid<Row>({
       event.preventDefault();
       event.stopPropagation();
       cancel();
+    } else if (matchesShortcut(event.nativeEvent, keymap.post)) {
+      // Post (Ctrl/⌘+Enter) is the app's, but the editor commits first: its edits reach `onEdit`
+      // before the key reaches the app, and refused text stops the key, already reported.
+      if (!commit()) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
     } else if (event.key === 'Enter' && !event.ctrlKey && !event.metaKey && !event.altKey) {
       event.preventDefault();
       commit(event.shiftKey ? 'up' : 'down');
