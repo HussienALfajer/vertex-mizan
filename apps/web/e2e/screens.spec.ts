@@ -31,7 +31,7 @@ for (const colorScheme of ['light', 'dark'] as const) {
           'aria-current',
           'page',
         );
-        await screenshot(page, testInfo, `navigation-${colorScheme}-${width}`);
+        await screenshot(page, testInfo, `navigation-${colorScheme}-${width}`, { fullPage: false });
       });
 
       test('design system', async ({ page }, testInfo) => {
@@ -40,6 +40,16 @@ for (const colorScheme of ['light', 'dark'] as const) {
         await expect(page.getByRole('grid', { name: ar.designSystem.grid.label })).toBeVisible();
         await expectNoPageOverflow(page);
         await screenshot(page, testInfo, `design-system-${colorScheme}-${width}`);
+      });
+
+      test('design system: sheet', async ({ page }, testInfo) => {
+        await page.goto('/design-system');
+        await page.getByRole('button', { name: ar.designSystem.sheet.open }).click();
+        const sheet = page.getByRole('dialog', { name: ar.designSystem.sheet.heading });
+        await expect(sheet).toBeVisible();
+        await screenshot(page, testInfo, `sheet-${colorScheme}-${width}`, { fullPage: false });
+        await sheet.getByRole('button', { name: ar.common.close }).click();
+        await expect(sheet).toBeHidden();
       });
 
       test('page not found', async ({ page }, testInfo) => {

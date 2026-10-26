@@ -11,6 +11,7 @@ import {
   AccountLabel,
   Amount,
   AmountInput,
+  AscentLines,
   Badge,
   Button,
   Card,
@@ -32,6 +33,12 @@ import {
   LedgerSwitch,
   PageHeader,
   PeriodBadge,
+  PoweredBy,
+  Sheet,
+  SheetClose,
+  SheetContent,
+  SheetTitle,
+  SheetTrigger,
   Table,
   TableBody,
   TableCell,
@@ -41,6 +48,7 @@ import {
   ToggleGroup,
   ToggleGroupItem,
   useDensity,
+  VertexMizanLogo,
 } from '@vertex-mizan/ui';
 import { CheckIcon, DownloadIcon, SearchIcon } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
@@ -502,7 +510,7 @@ function Shortcuts() {
 
 /**
  * The design system's page (`/design-system`): every component of `packages/ui` with synthetic
- * data, in the shell. The screenshot tests photograph it in both themes at 360, 768 and 1280 px.
+ * data, in the shell (the sidebar and command palette are the shell's own). The screenshot tests photograph it in both themes at 360, 768 and 1280 px.
  */
 export function DesignSystemPage() {
   const { preference, setDensity } = useDensity();
@@ -586,6 +594,35 @@ export function DesignSystemPage() {
             {t.controls.search}
           </Button>
         </div>
+      </Section>
+
+      <Section id="sheet" title={t.sheet.title}>
+        <p className="text-muted-foreground">{t.sheet.hint}</p>
+        <Sheet>
+          <SheetTrigger render={<Button variant="outline" className="w-fit" />}>
+            {t.sheet.open}
+          </SheetTrigger>
+          <SheetContent className="gap-3 p-6">
+            <SheetTitle>{t.sheet.heading}</SheetTitle>
+            <AccountLabel code="1110.02" name={t.accounts.bank} />
+            <p className="text-muted-foreground">{t.sheet.body}</p>
+            <SheetClose render={<Button variant="secondary" className="w-fit" />}>
+              {common.close}
+            </SheetClose>
+          </SheetContent>
+        </Sheet>
+      </Section>
+
+      <Section id="brand" title={t.brand.title}>
+        <p className="text-muted-foreground">{t.brand.hint}</p>
+        <Card className="flex-row items-center justify-between gap-4 overflow-hidden">
+          <VertexMizanLogo
+            label={common.productName}
+            className="h-20 w-auto min-w-0 text-primary"
+          />
+          <AscentLines className="h-16 w-40 shrink-0 text-accent" />
+        </Card>
+        <PoweredBy label={common.poweredBy} />
       </Section>
 
       <Section id="shortcuts" title={ar.shortcuts.title}>

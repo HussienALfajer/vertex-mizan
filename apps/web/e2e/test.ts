@@ -42,11 +42,31 @@ export const test = base.extend<{ health: HealthMock }>({
 /** The widths every screen is checked at (AGENTS.md: responsive from 360 px). */
 export const widths = [360, 768, 1280] as const;
 
-/** Attaches a screenshot of the whole page, after the fonts load: the design review evidence. */
-export async function screenshot(page: Page, testInfo: TestInfo, name: string): Promise<void> {
+/**
+ * Attaches a screenshot after the fonts load: the design review evidence. The whole page, or only
+ * the viewport (`fullPage: false`) while a fixed overlay (a dialog, a sheet) is open. The whole
+ * page is taken by growing the viewport to the page's height, as Vertex Hub does: Playwright's
+ * `fullPage` capture of a tall page intermittently fails in Chromium ("Unable to capture
+ * screenshot").
+ */
+export async function screenshot(
+  page: Page,
+  testInfo: TestInfo,
+  name: string,
+  { fullPage = true }: { fullPage?: boolean } = {},
+): Promise<void> {
   await page.evaluate(() => document.fonts.ready);
   const path = testInfo.outputPath(`${name}.png`);
-  await page.screenshot({ path, fullPage: true, animations: 'disabled' });
+  const viewport = page.viewportSize();
+  if (fullPage && viewport) {
+    const height = await page.evaluate(() => document.documentElement.scrollHeight);
+    await page.setViewportSize({
+      width: viewport.width,
+      height: Math.max(height, viewport.height),
+    });
+  }
+  await page.screenshot({ path, animations: 'disabled' });
+  if (fullPage && viewport) await page.setViewportSize(viewport);
   await testInfo.attach(name, { path, contentType: 'image/png' });
 }
 
