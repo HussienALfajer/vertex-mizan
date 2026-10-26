@@ -9,5 +9,9 @@ if (existsSync(env)) process.loadEnvFile(env);
 export default defineConfig({
   test: {
     globalSetup: ['test/global-setup.ts'],
+    // One file at a time: the boot test's worker runs the scheduled jobs on the same database the
+    // jobs test fills, and must be stopped before it starts.
+    fileParallelism: false,
+    testTimeout: 30_000,
   },
 });

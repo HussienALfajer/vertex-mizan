@@ -1,6 +1,6 @@
 # packages/i18n
 
-The Arabic text of every front end (ADR 0009): plain catalogs and locale constants, no i18n library and no I/O. The web app reads `ar` directly, with typed keys; no text needs interpolation yet. Copied from Vertex Food's `packages/i18n` and adapted.
+The Arabic text of every front end (ADR 0009): plain catalogs and locale constants, no i18n library and no I/O. The web app reads `ar` directly, with typed keys; only the emails' text has placeholders, filled by `apps/worker`. Copied from Vertex Food's `packages/i18n` and adapted.
 
 ## Layout
 - `src/ar/<namespace>.ts`, collected in `src/ar/index.ts` (`ar`, `Catalog`):
@@ -11,7 +11,9 @@ The Arabic text of every front end (ADR 0009): plain catalogs and locale constan
   - `shortcuts`: the name of every action of `packages/ui`'s keymap;
   - `errors`: the text of each error code of `packages/contracts`;
   - `designSystem`: the design-system page's headings and synthetic examples;
-  - `shell`: the web app's shell (navigation, skip link, system status, home, not-found page).
+  - `shell`: the web app's shell (navigation, skip link, system status, home, not-found page);
+  - `roles`: the name of each membership role (S01);
+  - `email`: the emails the worker sends (S01), with `{name}` placeholders the worker fills from the email's data.
 - `src/locale.ts`: `defaultLanguage` (`ar`), `textDirection` (`rtl`), `formatLocale` (`ar-SY-u-nu-latn`: Syrian month names, Latin digits; pinned by `locale.test.ts`) for dates and counts, `displayTimeZone` (`Asia/Damascus`).
 - `src/catalog.test.ts`: no empty text, no Arabic-Indic digit, a text for every error code and every amount-input reason.
 

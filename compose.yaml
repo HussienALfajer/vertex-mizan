@@ -1,6 +1,7 @@
-# The local PostgreSQL 17 for development and the database tests (packages/db/CLAUDE.md): a
-# disposable container, reachable from this machine only. The admin password is a fake shared with
-# .env.example; `pnpm db:setup-local` then creates the roles and the development database.
+# The local PostgreSQL 17 for development and the database tests (packages/db/CLAUDE.md), and a
+# local email catcher for the worker: disposable containers, reachable from this machine only. The
+# admin password is a fake shared with .env.example; `pnpm db:setup-local` then creates the roles
+# and the development database.
 # Start: docker compose up -d · stop: docker compose stop · dispose of it: docker compose down -v
 name: vertex-mizan
 
@@ -18,6 +19,14 @@ services:
       interval: 2s
       timeout: 2s
       retries: 30
+
+  # Catches the worker's emails locally (invitations, password resets): SMTP on 1025, the inbox
+  # at http://127.0.0.1:8025. Nothing leaves this machine.
+  mailpit:
+    image: axllent/mailpit:v1.27
+    ports:
+      - 127.0.0.1:1025:1025
+      - 127.0.0.1:8025:8025
 
 volumes:
   postgres-data:

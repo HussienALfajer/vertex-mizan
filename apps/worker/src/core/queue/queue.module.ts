@@ -67,7 +67,7 @@ export class QueueModule implements OnModuleInit, OnApplicationShutdown {
     this.boss.on('error', (error) => this.logger.error(describeForLog(error)));
     await this.boss.start();
     for (const job of this.jobs) {
-      await this.boss.createQueue(job.queue);
+      await this.boss.createQueue(job.queue, job.queueOptions);
       await this.boss.schedule(job.queue, job.cron);
       await this.boss.work(job.queue, async () => {
         await job.run();

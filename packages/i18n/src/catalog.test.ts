@@ -1,4 +1,4 @@
-import { errorCodes } from '@vertex-mizan/contracts';
+import { errorCodes, ROLES } from '@vertex-mizan/contracts';
 import { describe, expect, it } from 'vitest';
 import { ar, formatLocale } from './index.js';
 
@@ -23,6 +23,10 @@ describe('Arabic catalog', () => {
     for (const [path, text] of all) {
       expect(text, path).not.toMatch(/[٠-٩۰-۹]/);
     }
+  });
+
+  it('names every role', () => {
+    expect(Object.keys(ar.roles)).toEqual([...ROLES]);
   });
 
   it('has a text for every error code', () => {
