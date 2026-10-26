@@ -613,4 +613,20 @@ describe('re-enrolment needs a fresh code, keyed on the person', () => {
       'RATE_LIMITED',
     );
   });
+
+  it('takes a backup code at the sign-in step only, never as an enrolment', async () => {
+    const person = await createPerson(db);
+    const browser = new Browser(app);
+    await signIn(browser, person);
+    const enabled = await browser.post('/api/auth/two-factor/enable', {
+      password: person.password,
+    });
+    expect(enabled.status).toBe(200);
+    const [code] = enabled.body.backupCodes as string[];
+    const response = await browser.post('/api/auth/two-factor/verify-backup-code', { code });
+    expect(response.status).toBe(401);
+    expect(response.body.code).toBe('INVALID_TWO_FACTOR_CODE');
+    expect(await actions(person.id)).not.toContain('user.two_factor_enrolled');
+    expect((await browser.get('/api/me')).body.person.twoFactorEnabled).toBe(false);
+  });
 });

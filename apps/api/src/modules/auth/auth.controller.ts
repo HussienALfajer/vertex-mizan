@@ -55,6 +55,9 @@ const CODE_BY_STATUS: Partial<Record<number, ErrorCode>> = {
   401: 'UNAUTHENTICATED',
   403: 'FORBIDDEN',
   404: 'NOT_FOUND',
+  // Better Auth writes a used backup code with a compare-and-swap; a concurrent change of the
+  // codes makes it answer 409, and the code was not accepted.
+  409: 'INVALID_TWO_FACTOR_CODE',
   429: 'RATE_LIMITED',
 };
 

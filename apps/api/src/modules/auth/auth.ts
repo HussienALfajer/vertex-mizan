@@ -318,6 +318,14 @@ export function createAuth(db: Database, config: Config) {
           const person = await secondStepUserId(ctx);
           if (!person || !ctx.request) return;
           const { code } = ctx.body as { code: string };
+          // A backup code is a second sign-in step only; with a session it would be used outside
+          // the person's lock and could be read as an enrolment (S01 "API": the pending sign-in).
+          if (ctx.path === '/two-factor/verify-backup-code' && !person.signIn) {
+            throw new APIError('UNAUTHORIZED', {
+              code: 'INVALID_TWO_FACTOR_CODE',
+              message: 'A backup code completes a sign-in only',
+            });
+          }
           // An authenticator code is accepted once (S01 "Code replay").
           if (
             ctx.path === '/two-factor/verify-totp' &&
@@ -332,7 +340,8 @@ export function createAuth(db: Database, config: Config) {
             .select({ verified: twoFactors.verified })
             .from(twoFactors)
             .where(eq(twoFactors.userId, person.userId));
-          let enrolling = !person.signIn && current?.verified === false;
+          let enrolling =
+            ctx.path === '/two-factor/verify-totp' && !person.signIn && current?.verified === false;
           // A re-enrolment's first code: checked against the waiting authenticator, which then
           // replaces the old one; Better Auth checks it again against the person's row.
           // Only beside a verified authenticator: a first enrolment never consults a slot.
