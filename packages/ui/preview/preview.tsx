@@ -1,7 +1,21 @@
-import type { AmountTextError, CurrencyCode, Ledger } from '@vertex-mizan/contracts';
+import {
+  type AmountTextError,
+  type CurrencyCode,
+  type Ledger,
+  money,
+  summarizeAmounts,
+} from '@vertex-mizan/contracts';
 import { ar } from '@vertex-mizan/i18n';
 import type { DensityPreference } from '@vertex-mizan/tokens';
-import { CheckIcon, DownloadIcon, SearchIcon } from 'lucide-react';
+import {
+  ArrowDownIcon,
+  CheckIcon,
+  DownloadIcon,
+  MoonIcon,
+  RowsIcon,
+  SearchIcon,
+  SunIcon,
+} from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import {
   AccountLabel,
@@ -14,18 +28,25 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
+  type CellEdit,
+  CommandPalette,
   Field,
   FieldDescription,
   FieldError,
   FieldLabel,
+  Grid,
+  type GridColumnDef,
+  type GridProblem,
   Input,
   Kbd,
   type KeymapAction,
   keymap,
   LedgerSwitch,
   PageHeader,
+  type PaletteCommand,
   PeriodBadge,
   PoweredBy,
+  setTheme,
   Table,
   TableBody,
   TableCell,
@@ -74,9 +95,9 @@ const ledgers = {
   parallel: { label: accounting.ledger.parallel, currency: 'USD' },
 } as const;
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+function Section({ id, title, children }: { id: string; title: string; children: ReactNode }) {
   return (
-    <section className="flex min-w-0 flex-col gap-3">
+    <section id={id} className="flex min-w-0 scroll-mt-4 flex-col gap-3">
       <h2 className="text-lg font-bold text-foreground">{title}</h2>
       {children}
     </section>
@@ -129,6 +150,159 @@ function EntryTable() {
         </TableRow>
       </TableBody>
     </Table>
+  );
+}
+
+/** Synthetic lines for the data grid: a transaction amount in its own currency, both ledgers. */
+interface GridLine {
+  readonly id: string;
+  readonly account: string;
+  readonly currency: CurrencyCode;
+  readonly amount: bigint | null;
+  readonly book: bigint | null;
+  readonly parallel: bigint | null;
+  readonly posted?: boolean;
+}
+
+/** One balanced entry: the bank side of the SYP line is posted, so it is locked. */
+const gridLines: GridLine[] = [
+  {
+    id: '1',
+    account: `1110.02 ${t.accounts.bank}`,
+    currency: 'USD',
+    amount: 1_000_000n,
+    book: 130_000_000n,
+    parallel: 1_000_000n,
+  },
+  {
+    id: '2',
+    account: `1210 ${t.accounts.receivables}`,
+    currency: 'USD',
+    amount: -1_000_000n,
+    book: -130_000_000n,
+    parallel: -1_000_000n,
+  },
+  {
+    id: '3',
+    account: `5110.01 ${t.accounts.fees}`,
+    currency: 'SYP',
+    amount: 1_250_050n,
+    book: 1_250_050n,
+    parallel: 9_616n,
+  },
+  {
+    id: '4',
+    account: `1110.02 ${t.accounts.bank}`,
+    currency: 'SYP',
+    amount: -1_250_050n,
+    book: -1_250_050n,
+    parallel: -9_616n,
+    posted: true,
+  },
+];
+
+/** The text of a grid refusal, from i18n (an app writes the same). */
+function gridProblemText(problem: GridProblem): string {
+  if (problem.problem !== 'INVALID_CELLS') return ar.grid.problems[problem.problem];
+  const first = problem.cells[0];
+  if (!first) return ar.grid.problems.nothingChanged;
+  const reason =
+    first.reason === 'AMOUNT'
+      ? accounting.amountInput[first.error]
+      : first.reason === 'TEXT'
+        ? first.error
+        : ar.grid.problems[first.reason];
+  return `${ar.grid.problems.nothingChanged} ${reason}`;
+}
+
+/** A ledger column's total, through the money module. */
+function ledgerTotal(
+  lines: readonly GridLine[],
+  pick: (line: GridLine) => bigint | null,
+  currency: CurrencyCode,
+) {
+  const amounts = lines.flatMap((line) => {
+    const value = pick(line);
+    return value === null ? [] : [money(value, currency)];
+  });
+  const [summary] = summarizeAmounts(amounts);
+  return <Amount value={summary?.sumMinor ?? 0n} currency={currency} strong />;
+}
+
+function DataGridSample() {
+  const [lines, setLines] = useState(gridLines);
+  const locked = (line: GridLine) => Boolean(line.posted);
+  const columns: GridColumnDef<GridLine>[] = [
+    {
+      id: 'account',
+      type: 'text',
+      header: t.grid.account,
+      value: (line) => line.account,
+      readOnly: locked,
+      footer: t.grid.total,
+    },
+    {
+      id: 'currency',
+      type: 'text',
+      header: t.grid.currency,
+      value: (line) => line.currency,
+      readOnly: true,
+      render: (line) => <bdi dir="ltr">{line.currency}</bdi>,
+    },
+    {
+      id: 'amount',
+      type: 'amount',
+      kind: 'transaction',
+      header: t.grid.transaction,
+      valueMinor: (line) => line.amount,
+      currency: (line) => line.currency,
+      readOnly: locked,
+    },
+    {
+      id: 'book',
+      type: 'amount',
+      kind: 'book',
+      header: `${t.grid.book} (SYP)`,
+      valueMinor: (line) => line.book,
+      currency: () => 'SYP',
+      readOnly: true,
+      footer: ledgerTotal(lines, (line) => line.book, 'SYP'),
+    },
+    {
+      id: 'parallel',
+      type: 'amount',
+      kind: 'parallel',
+      header: `${t.grid.parallel} (USD)`,
+      valueMinor: (line) => line.parallel,
+      currency: () => 'USD',
+      readOnly: true,
+      footer: ledgerTotal(lines, (line) => line.parallel, 'USD'),
+    },
+  ];
+  const apply = (edits: readonly CellEdit[]) =>
+    setLines((current) => {
+      const next = current.map((line) => ({ ...line }));
+      for (const edit of edits) {
+        const line = next[edit.row] as { -readonly [K in keyof GridLine]: GridLine[K] };
+        if (edit.type === 'text') line.account = edit.text;
+        else line.amount = edit.amountMinor;
+      }
+      return next;
+    });
+  return (
+    <Grid
+      aria-label={t.grid.label}
+      rows={lines}
+      columns={columns}
+      rowKey={(line) => line.id}
+      onEdit={apply}
+      // The preview saves nothing; an app blocks saving and posting while this reports a refusal.
+      onEditError={() => {}}
+      describeProblem={gridProblemText}
+      summaryLabels={ar.grid.summary}
+      stickyStartColumn
+      className="max-h-80"
+    />
   );
 }
 
@@ -303,7 +477,18 @@ const keymapGroups: [string, KeymapAction[]][] = [
   [ar.shortcuts.global, ['commandPalette', 'cheatSheet', 'newEntry']],
   [
     ar.shortcuts.grid,
-    ['editCell', 'fillDown', 'copyAbove', 'insertLine', 'deleteLine', 'lookup', 'post'],
+    [
+      'editCell',
+      'selectAll',
+      'selectRows',
+      'selectColumns',
+      'fillDown',
+      'copyAbove',
+      'insertLine',
+      'deleteLine',
+      'lookup',
+      'post',
+    ],
   ],
   [ar.shortcuts.date, ['today']],
 ];
@@ -330,6 +515,55 @@ function Shortcuts() {
   );
 }
 
+/** The preview's own commands: its sections and its display settings, with search words. */
+const sectionCommands = [
+  ['densities', t.densities, ['density']],
+  ['entry', t.entry.title, ['journal entry']],
+  ['grid', t.grid.title, ['data grid', 'excel']],
+  ['report', t.report.title, ['trial balance']],
+  ['amounts', t.amounts.title, ['amount']],
+  ['input', t.input.title, ['amount input']],
+  ['states', t.states.title, ['period']],
+  ['shortcuts', ar.shortcuts.title, ['keyboard shortcuts']],
+] as const;
+
+function previewCommands(setDensity: (next: DensityPreference) => void): PaletteCommand[] {
+  return [
+    ...sectionCommands.map(([id, label, keywords]) => ({
+      id: `go-${id}`,
+      label,
+      group: t.palette.sections,
+      keywords,
+      icon: <ArrowDownIcon />,
+      run: () => document.getElementById(id)?.scrollIntoView({ block: 'start' }),
+    })),
+    {
+      id: 'dark',
+      label: common.theme.toDark,
+      group: t.palette.display,
+      keywords: ['dark theme'],
+      icon: <MoonIcon />,
+      run: () => setTheme('dark'),
+    },
+    {
+      id: 'light',
+      label: common.theme.toLight,
+      group: t.palette.display,
+      keywords: ['light theme'],
+      icon: <SunIcon />,
+      run: () => setTheme('light'),
+    },
+    ...(['auto', 'compact', 'comfortable'] as const).map((option) => ({
+      id: `density-${option}`,
+      label: `${common.density.label}: ${common.density[option]}`,
+      group: t.palette.display,
+      keywords: ['density', option],
+      icon: <RowsIcon />,
+      run: () => setDensity(option),
+    })),
+  ];
+}
+
 export function Preview() {
   const { preference, setDensity } = useDensity();
   return (
@@ -354,19 +588,20 @@ export function Preview() {
                 ))}
               </ToggleGroup>
               <ThemeToggle labels={common.theme} />
+              <CommandPalette commands={previewCommands(setDensity)} labels={ar.commandPalette} />
             </>
           }
         />
       </div>
 
-      <Section title={t.densities}>
+      <Section id="densities" title={t.densities}>
         <div className="grid gap-4">
           <DensitySample density="compact" />
           <DensitySample density="comfortable" />
         </div>
       </Section>
 
-      <Section title={t.entry.title}>
+      <Section id="entry" title={t.entry.title}>
         <Card>
           <CardHeader>
             <CardTitle className="flex flex-wrap items-center gap-3">
@@ -383,16 +618,21 @@ export function Preview() {
         </Card>
       </Section>
 
+      <Section id="grid" title={t.grid.title}>
+        <p className="text-muted-foreground">{t.grid.hint}</p>
+        <DataGridSample />
+      </Section>
+
       <div className="grid gap-8 lg:grid-cols-2 [&>*]:min-w-0">
-        <Section title={t.report.title}>
+        <Section id="report" title={t.report.title}>
           <TrialBalance />
         </Section>
-        <Section title={t.amounts.title}>
+        <Section id="amounts" title={t.amounts.title}>
           <AmountGallery />
         </Section>
       </div>
 
-      <Section title={t.input.title}>
+      <Section id="input" title={t.input.title}>
         <Card>
           <CardHeader>
             <CardDescription>{t.input.hint}</CardDescription>
@@ -404,7 +644,7 @@ export function Preview() {
         </Card>
       </Section>
 
-      <Section title={t.states.title}>
+      <Section id="states" title={t.states.title}>
         <div className="flex flex-wrap items-center gap-3">
           <PeriodBadge state="open" label={accounting.period.open} />
           <PeriodBadge state="closed" label={accounting.period.closed} />
@@ -416,7 +656,7 @@ export function Preview() {
         </div>
       </Section>
 
-      <Section title={ar.shortcuts.title}>
+      <Section id="shortcuts" title={ar.shortcuts.title}>
         <Shortcuts />
       </Section>
 

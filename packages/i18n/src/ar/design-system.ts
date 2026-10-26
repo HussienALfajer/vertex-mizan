@@ -51,6 +51,17 @@ export const designSystem = {
     sentenceAfter: 'في نهاية الفترة.',
     strong: 'مجموع بخط عريض: الفواصل بوزن عادي فتبقى الأرقام على استقامة واحدة',
   },
+  grid: {
+    title: 'جدول البيانات',
+    label: 'سطور القيد',
+    hint: 'حدّد بالأسهم مع Shift أو بالسحب، وانسخ والصق مع Excel، واكتب لتستبدل محتوى الخلية، وF2 للتعديل، وCtrl+D للتعبئة للأسفل. السطر المرحّل لا يقبل التعديل.',
+    account: 'الحساب',
+    currency: 'العملة',
+    transaction: 'مبلغ المعاملة',
+    book: 'مبلغ الدفاتر',
+    parallel: 'المبلغ الموازي',
+    total: 'المجموع',
+  },
   input: {
     title: 'إدخال المبالغ',
     free: 'مبلغ (يقبل السالب)',
@@ -68,5 +79,9 @@ export const designSystem = {
   },
   states: {
     title: 'الحالات',
+  },
+  palette: {
+    sections: 'أقسام الصفحة',
+    display: 'العرض',
   },
 };

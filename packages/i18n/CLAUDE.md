@@ -6,6 +6,8 @@ The Arabic text of every front end (ADR 0009): plain catalogs and locale constan
 - `src/ar/<namespace>.ts`, collected in `src/ar/index.ts` (`ar`, `Catalog`):
   - `common`: shared text (product name, theme and density labels);
   - `accounting`: the accounting components' text (debit, credit, ledgers, period states, account kinds, SYP's printed name) and `amountInput`, the reason for every `AmountTextError` of the money module;
+  - `grid`: the data grid's summary bar labels and the text of each refusal of the grid core (`packages/ui/src/grid/grid.test.tsx` checks every refusal has one);
+  - `commandPalette`: the command palette's own labels (its commands' names come with their specs);
   - `shortcuts`: the name of every action of `packages/ui`'s keymap;
   - `errors`: the text of each error code of `packages/contracts`;
   - `designSystem`: the design-system page's headings and synthetic examples.
