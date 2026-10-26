@@ -1,5 +1,6 @@
+import { createOTP } from '@better-auth/utils/otp';
 import { Inject, Injectable } from '@nestjs/common';
-import type { BackupCodes } from '@vertex-mizan/contracts';
+import type { BackupCodes, TwoFactorSetup } from '@vertex-mizan/contracts';
 import {
   accounts,
   type Database,
@@ -10,6 +11,7 @@ import {
 } from '@vertex-mizan/db';
 import { and, eq, gt, sql } from 'drizzle-orm';
 import { actorOf, type RequestAccess, type SignedInAccess } from '../../core/access/access.js';
+import { freshlyAuthenticated } from '../../core/access/session-activity.js';
 import { writePlatformAudit } from '../../core/audit/audit.js';
 import type { Config } from '../../core/config/config.js';
 import { CONFIG } from '../../core/config/config.module.js';
@@ -18,13 +20,15 @@ import { queueEmail } from '../../core/email/outbox.js';
 import { CodedException } from '../../core/errors/coded-exception.js';
 import { linkWithToken, newLinkToken, tokenIdentifier } from '../../core/http/link-tokens.js';
 import { consumeLimit, LIMITS } from '../../core/limits/limits.js';
-import { hashPassword } from './password.js';
+import { TOTP_ISSUER } from './auth.js';
+import { hashPassword, verifyPassword } from './password.js';
 import {
   claimCode,
   encryptBackupCodes,
   enrolledTwoFactor,
   generateBackupCodes,
   isLocked,
+  newWaitingAuthenticator,
   recordCodeFailure,
   releaseCode,
   resetCodeFailures,
@@ -84,6 +88,33 @@ export class AccountService {
       .update(sessions)
       .set({ reauthenticatedAt: new Date() })
       .where(eq(sessions.id, access.session.id));
+  }
+
+  /**
+   * `POST /api/auth/two-factor/enable` for a person who has an authenticator (S01 rule 7): a
+   * fresh code and the password, then a new authenticator that waits for its first code (checked
+   * at `verify-totp`); the old one and its backup codes stay in force until then.
+   */
+  async startReenrolment(access: SignedInAccess, password: string): Promise<TwoFactorSetup> {
+    const { person } = access;
+    if (!freshlyAuthenticated(access.session.reauthenticatedAt)) {
+      throw new CodedException('REAUTHENTICATION_REQUIRED', 'Type a fresh code first');
+    }
+    if (!(await consumeLimit(this.db, `reenrol:${person.id}`, LIMITS.perIpPerMinute))) {
+      throw new CodedException('RATE_LIMITED', 'Too many attempts');
+    }
+    const [account] = await this.db
+      .select({ password: accounts.password })
+      .from(accounts)
+      .where(and(eq(accounts.userId, person.id), eq(accounts.providerId, 'credential')));
+    if (!account?.password || !(await verifyPassword({ hash: account.password, password }))) {
+      throw new CodedException('INVALID_CREDENTIALS', 'Wrong password');
+    }
+    const fresh = await newWaitingAuthenticator(this.db, person.id, this.config.authSecret);
+    return {
+      totpURI: createOTP(fresh.secret, { digits: 6, period: 30 }).url(TOTP_ISSUER, person.email),
+      backupCodes: fresh.backupCodes,
+    };
   }
 
   /** Ten new backup codes, shown once; the old set is void (S01 rule 3). */

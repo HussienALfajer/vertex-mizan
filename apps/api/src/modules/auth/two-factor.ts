@@ -1,7 +1,7 @@
 import { randomInt } from 'node:crypto';
 import { createOTP } from '@better-auth/utils/otp';
 import { type Database, type Transaction, twoFactors, verifications } from '@vertex-mizan/db';
-import { symmetricDecrypt, symmetricEncrypt } from 'better-auth/crypto';
+import { generateRandomString, symmetricDecrypt, symmetricEncrypt } from 'better-auth/crypto';
 import { and, eq, gt, lte, sql } from 'drizzle-orm';
 import { tokenIdentifier } from '../../core/http/link-tokens.js';
 
@@ -59,48 +59,35 @@ const WAITING_HOURS = 24;
 const waitingKey = (userId: string) => `reenrol:${userId}`;
 
 /**
- * Re-enrolment (S01 rules 3 and 7): Better Auth wrote the new authenticator into the person's
- * row; it moves to a waiting slot (still encrypted) and the old one goes back, verified, so the
- * old one stays in force until the new one's first code. A newer waiting one replaces an older.
+ * Re-enrolment (S01 rules 3 and 7): a new authenticator and backup codes for a person who has
+ * one. They wait, encrypted, in a slot of their own (a newer one replaces an older one); the
+ * person's row, and so the old authenticator and codes, stay as they are until the new one's
+ * first code. Answers the plain secret and codes, to show once.
  */
-export async function setNewAuthenticatorWaiting(
-  db: Database,
-  userId: string,
-  old: StoredAuthenticator,
-): Promise<void> {
-  await db.transaction(async (tx) => {
-    const [written] = await tx
-      .select({ secret: twoFactors.secret, backupCodes: twoFactors.backupCodes })
-      .from(twoFactors)
-      .where(eq(twoFactors.userId, userId))
-      .for('update');
-    if (!written) return;
-    const waiting = {
-      identifier: waitingKey(userId),
-      value: JSON.stringify(written),
-      expiresAt: new Date(Date.now() + WAITING_HOURS * 60 * 60 * 1000),
-    };
-    await tx
-      .insert(verifications)
-      .values(waiting)
-      .onConflictDoUpdate({
-        target: verifications.identifier,
-        set: { value: waiting.value, expiresAt: waiting.expiresAt },
-      });
-    await restoreAuthenticator(tx, userId, old);
-  });
-}
-
-/** Puts an authenticator back into the person's row, verified. */
-export async function restoreAuthenticator(
+export async function newWaitingAuthenticator(
   db: Executor,
   userId: string,
-  old: StoredAuthenticator,
-): Promise<void> {
+  authSecret: string,
+): Promise<{ secret: string; backupCodes: string[] }> {
+  const secret = generateRandomString(32);
+  const backupCodes = generateBackupCodes();
+  const waiting: StoredAuthenticator = {
+    secret: await symmetricEncrypt({ key: authSecret, data: secret }),
+    backupCodes: await encryptBackupCodes(backupCodes, authSecret),
+  };
+  const row = {
+    identifier: waitingKey(userId),
+    value: JSON.stringify(waiting),
+    expiresAt: new Date(Date.now() + WAITING_HOURS * 60 * 60 * 1000),
+  };
   await db
-    .update(twoFactors)
-    .set({ secret: old.secret, backupCodes: old.backupCodes, verified: true })
-    .where(eq(twoFactors.userId, userId));
+    .insert(verifications)
+    .values(row)
+    .onConflictDoUpdate({
+      target: verifications.identifier,
+      set: { value: row.value, expiresAt: row.expiresAt },
+    });
+  return { secret, backupCodes };
 }
 
 /** The new authenticator waiting for its first code, if any and not expired. */
@@ -120,19 +107,44 @@ export async function waitingAuthenticator(
   return row ? (JSON.parse(row.value) as StoredAuthenticator) : null;
 }
 
-/** The waiting authenticator's first code verified: it replaces the old one in the person's row. */
+/**
+ * The waiting authenticator's first code verified: in one transaction the slot is consumed and
+ * the new secret and backup codes replace the old ones in the person's row, which must still be
+ * there. False when the slot is gone or changed meanwhile (a reset, a newer re-enrolment).
+ */
 export async function promoteWaitingAuthenticator(
   db: Database,
   userId: string,
-  waiting: StoredAuthenticator,
-): Promise<void> {
-  await db.transaction(async (tx) => {
-    await restoreAuthenticator(tx, userId, waiting);
-    await dropWaitingAuthenticator(tx, userId);
+  checked: StoredAuthenticator,
+): Promise<boolean> {
+  return db.transaction(async (tx) => {
+    const [consumed] = await tx
+      .delete(verifications)
+      .where(
+        and(
+          eq(verifications.identifier, waitingKey(userId)),
+          eq(verifications.value, JSON.stringify(checked)),
+        ),
+      )
+      .returning({ id: verifications.id });
+    if (!consumed) return false;
+    const replaced = await tx
+      .update(twoFactors)
+      .set({
+        secret: checked.secret,
+        backupCodes: checked.backupCodes,
+        verified: true,
+        failedVerificationCount: 0,
+        lockedUntil: null,
+      })
+      .where(eq(twoFactors.userId, userId))
+      .returning({ id: twoFactors.id });
+    if (replaced.length === 0) throw new Error('No authenticator to replace');
+    return true;
   });
 }
 
-/** Drops a waiting authenticator: when it takes effect, and at every two-factor reset. */
+/** Drops a waiting authenticator, at every two-factor reset. */
 export async function dropWaitingAuthenticator(db: Executor, userId: string): Promise<void> {
   await db.delete(verifications).where(eq(verifications.identifier, waitingKey(userId)));
 }

@@ -15,11 +15,7 @@ import { APIError, createAuthMiddleware, getSessionFromCtx } from 'better-auth/a
 import { twoFactor } from 'better-auth/plugins';
 import { and, eq, isNull } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
-import {
-  freshlyAuthenticated,
-  keepActive,
-  SESSION_LIMITS,
-} from '../../core/access/session-activity.js';
+import { keepActive, SESSION_LIMITS } from '../../core/access/session-activity.js';
 import {
   type AuditActor,
   type RequestFacts,
@@ -37,13 +33,9 @@ import {
 import { hashPassword, verifyDecoy, verifyPassword } from './password.js';
 import {
   claimCode,
-  enrolledTwoFactor,
   generateBackupCodes,
   promoteWaitingAuthenticator,
   releaseCode,
-  restoreAuthenticator,
-  type StoredAuthenticator,
-  setNewAuthenticatorWaiting,
   TWO_FACTOR_LOCKOUT,
   totpMatches,
   waitingAuthenticator,
@@ -53,6 +45,9 @@ import {
 export const AUTH = Symbol('AUTH');
 
 export const AUTH_BASE_PATH = '/api/auth';
+
+/** The issuer an authenticator app shows beside the account. */
+export const TOTP_ISSUER = 'Vertex Mizan';
 
 /**
  * The session cookie is `__Host-mizan.session_token`: `Secure`, `HttpOnly`, `SameSite=Strict`,
@@ -105,8 +100,6 @@ interface SecondStep {
 export function createAuth(db: Database, config: Config) {
   /** What the before hook learned about a second step, for the after hook of the same request. */
   const secondSteps = new WeakMap<Request, SecondStep>();
-  /** A re-enrolment in this request: the person and their old authenticator. */
-  const reenrolments = new WeakMap<Request, { userId: string; old: StoredAuthenticator }>();
   /** Sign-ins the before hook refused and audited itself, so the after hook does not count them. */
   const refusedEarly = new WeakSet<Request>();
 
@@ -215,7 +208,7 @@ export function createAuth(db: Database, config: Config) {
     },
     plugins: [
       twoFactor({
-        issuer: 'Vertex Mizan',
+        issuer: TOTP_ISSUER,
         skipVerificationOnEnable: false,
         backupCodeOptions: {
           customBackupCodesGenerate: () => generateBackupCodes(),
@@ -300,49 +293,21 @@ export function createAuth(db: Database, config: Config) {
         }
 
         if (ctx.path === '/two-factor/enable') {
-          // Re-enrolment (S01 rule 7) of a person who has an authenticator: it needs a fresh
-          // code, keyed on the person and not on the row, and the password, checked here. Better
-          // Auth then writes the new authenticator; the after hook moves it to a waiting slot and
-          // puts the old one back, so the old one stays in force until the new one's first code.
+          // Better Auth writes the person's authenticator row, so it enrols only a person who has
+          // none yet. Re-enrolment never reaches it: `AccountService.startReenrolment` leaves the
+          // row as it is until the new authenticator's first code (S01 rules 3 and 7).
           const found = await getSessionFromCtx(ctx);
           if (!found) return;
           const [person] = await db
             .select({ twoFactorEnabled: users.twoFactorEnabled })
             .from(users)
             .where(eq(users.id, found.user.id));
-          if (!person?.twoFactorEnabled) return;
-          const session = found.session as typeof found.session & {
-            reauthenticatedAt: Date | null;
-          };
-          if (
-            !freshlyAuthenticated(
-              session.reauthenticatedAt ? new Date(session.reauthenticatedAt) : null,
-            )
-          ) {
+          if (person?.twoFactorEnabled) {
             throw new APIError('FORBIDDEN', {
-              code: 'REAUTHENTICATION_REQUIRED',
-              message: 'Type a fresh code first',
+              code: 'FORBIDDEN',
+              message: 'Re-enrolment goes through the account service',
             });
           }
-          const [account] = await db
-            .select({ password: accounts.password })
-            .from(accounts)
-            .where(and(eq(accounts.userId, found.user.id), eq(accounts.providerId, 'credential')));
-          const { password } = ctx.body as { password: string };
-          if (!account?.password || !(await verifyPassword({ hash: account.password, password }))) {
-            throw invalidCredentials();
-          }
-          const current = await enrolledTwoFactor(db, found.user.id);
-          if (current && ctx.request) {
-            reenrolments.set(ctx.request, {
-              userId: found.user.id,
-              old: { secret: current.secret, backupCodes: current.backupCodes },
-            });
-          }
-          await db
-            .update(twoFactors)
-            .set({ verified: false })
-            .where(eq(twoFactors.userId, found.user.id));
           return;
         }
 
@@ -375,14 +340,16 @@ export function createAuth(db: Database, config: Config) {
               ? await waitingAuthenticator(db, person.userId)
               : null;
           if (waiting) {
-            if (!(await totpMatches(waiting, code, config.authSecret))) {
+            if (
+              !(await totpMatches(waiting, code, config.authSecret)) ||
+              !(await promoteWaitingAuthenticator(db, person.userId, waiting))
+            ) {
               await releaseCode(db, person.userId, code);
               throw new APIError('UNAUTHORIZED', {
                 code: 'INVALID_TWO_FACTOR_CODE',
                 message: 'Not a code of the new authenticator',
               });
             }
-            await promoteWaitingAuthenticator(db, person.userId, waiting);
             enrolling = true;
           }
           secondSteps.set(ctx.request, { ...person, code, enrolling });
@@ -402,15 +369,6 @@ export function createAuth(db: Database, config: Config) {
       after: createAuthMiddleware(async (ctx) => {
         const failed = ctx.context.returned instanceof APIError;
         const facts = factsOf(ctx.headers);
-
-        if (ctx.path === '/two-factor/enable' && ctx.request) {
-          const reenrolment = reenrolments.get(ctx.request);
-          if (!reenrolment) return;
-          // Refused: the old authenticator goes back as it was. Written: the new one waits.
-          if (failed) await restoreAuthenticator(db, reenrolment.userId, reenrolment.old);
-          else await setNewAuthenticatorWaiting(db, reenrolment.userId, reenrolment.old);
-          return;
-        }
 
         if (ctx.path === '/sign-in/email') {
           const { email } = ctx.body as { email: string };

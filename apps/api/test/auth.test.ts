@@ -9,6 +9,7 @@ import {
 } from '@vertex-mizan/db';
 import { and, desc, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { resetTwoFactorByVertex } from '../src/admin/commands.js';
 import { createTestApp } from './app.js';
 import { Browser } from './browser.js';
 import {
@@ -411,13 +412,52 @@ describe('my sign-ins', () => {
 });
 
 describe('re-enrolment', () => {
-  it('replaces the authenticator after a fresh code; the old one stops working', async () => {
+  it('replaces the authenticator and its backup codes at the first code; the old ones stop working', async () => {
     const { browser, person } = await signedInPerson(app, db);
-    const oldSecret = person.secret;
+    const old = { ...person, backupCodes: [...person.backupCodes] };
     await reauthenticate(browser, person);
     await enrol(browser, person);
-    expect(person.secret).not.toBe(oldSecret);
+    expect(person.secret).not.toBe(old.secret);
     await signIn(new Browser(app), person);
+    expect(await actions(person.id)).toContain('user.two_factor_enrolled');
+
+    // The old authenticator's code and an old backup code, at sign-in and at re-authentication.
+    const viaOldCode = new Browser(app);
+    await viaOldCode.post('/api/auth/sign-in/email', {
+      email: person.email,
+      password: person.password,
+    });
+    const oldCode = await viaOldCode.post('/api/auth/two-factor/verify-totp', {
+      code: await freshCode(old),
+    });
+    expect(oldCode.body.code).toBe('INVALID_TWO_FACTOR_CODE');
+    const [oldBackup] = old.backupCodes;
+    const viaOldBackup = new Browser(app);
+    await viaOldBackup.post('/api/auth/sign-in/email', {
+      email: person.email,
+      password: person.password,
+    });
+    const backupAtSignIn = await viaOldBackup.post('/api/auth/two-factor/verify-backup-code', {
+      code: oldBackup,
+    });
+    expect(backupAtSignIn.body.code).toBe('INVALID_TWO_FACTOR_CODE');
+    const backupAtReauthentication = await browser.post('/api/auth/reauthenticate', {
+      code: oldBackup,
+    });
+    expect(backupAtReauthentication.body.code).toBe('INVALID_TWO_FACTOR_CODE');
+  });
+
+  it('leaves nothing waiting after a two-factor reset: the person enrols afresh', async () => {
+    const { browser, person } = await signedInPerson(app, db);
+    await reauthenticate(browser, person);
+    expect(
+      (await browser.post('/api/auth/two-factor/enable', { password: person.password })).status,
+    ).toBe(200);
+    await resetTwoFactorByVertex(db, { email: person.email, reason: 'اختبار' });
+    const again = new Browser(app);
+    await signIn(again, person);
+    await enrol(again, person);
+    expect((await again.get('/api/me')).body.person.twoFactorEnabled).toBe(true);
   });
 });
 
@@ -485,14 +525,5 @@ describe('re-enrolment needs a fresh code, keyed on the person', () => {
       code: await freshCode(person),
     });
     expect(response.body.code).toBe('INVALID_TWO_FACTOR_CODE');
-  });
-
-  it('keeps the new authenticator once its first code verifies', async () => {
-    const { browser, person } = await signedInPerson(app, db);
-    const oldSecret = person.secret;
-    await reauthenticate(browser, person);
-    await enrol(browser, person);
-    expect(person.secret).not.toBe(oldSecret);
-    await signIn(new Browser(app), person);
   });
 });

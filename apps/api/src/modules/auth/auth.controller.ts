@@ -19,11 +19,18 @@ import {
 import { fromNodeHeaders } from 'better-auth/node';
 import type { Request, Response } from 'express';
 import { factsOf } from '../../core/access/access.guard.js';
-import { Public, SignedIn } from '../../core/access/access.js';
+import {
+  Access,
+  Public,
+  type RequestAccess,
+  SignedIn,
+  signedIn,
+} from '../../core/access/access.js';
 import type { Config } from '../../core/config/config.js';
 import { CONFIG } from '../../core/config/config.module.js';
 import { CodedException } from '../../core/errors/coded-exception.js';
 import { ApiErrors } from '../../core/http/api-errors.js';
+import { AccountService } from './account.service.js';
 import { AUTH, AUTH_BASE_PATH, type Auth } from './auth.js';
 
 /** Better Auth's error codes, as ours (S01 "API": every error answer carries one of our codes). */
@@ -75,6 +82,7 @@ export class AuthController {
   constructor(
     @Inject(AUTH) private readonly auth: Auth,
     @Inject(CONFIG) private readonly config: Config,
+    @Inject(AccountService) private readonly account: AccountService,
   ) {}
 
   @Post('sign-in/email')
@@ -142,8 +150,14 @@ export class AuthController {
   async enable(
     @Req() request: Request,
     @Res() response: Response,
+    @Access() access: RequestAccess,
     @Body({ schema: enableTwoFactorSchema }) body: EnableTwoFactor,
   ): Promise<void> {
+    const signed = signedIn(access);
+    if (signed.person.twoFactorEnabled) {
+      response.status(200).json(await this.account.startReenrolment(signed, body.password));
+      return;
+    }
     const answer = (await this.forward(
       request,
       response,
