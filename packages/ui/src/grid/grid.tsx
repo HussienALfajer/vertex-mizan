@@ -104,11 +104,31 @@ type GridProps<Row> = Omit<ComponentProps<'div'>, 'children' | 'onCopy' | 'onPas
     empty?: ReactNode;
   };
 
+/**
+ * The open editor. Its row is held by `rowKey`, not by index, so a line inserted or deleted
+ * while it is open never sends its text to another line.
+ */
 interface Editing {
-  readonly position: CellPosition;
+  readonly rowKey: string;
+  readonly column: number;
   readonly initial: string;
   readonly text: string;
 }
+
+/**
+ * Keys an app or an entry grid acts on with the whole rows (post, insert or delete a line, copy
+ * the cell above, open a lookup): pressed in an editor, it commits first, and the key reaches the
+ * app only once the app has rendered the committed edit.
+ */
+const ROW_KEYS = [
+  keymap.post,
+  keymap.insertLine,
+  keymap.deleteLine,
+  keymap.copyAbove,
+  keymap.lookup,
+] as const;
+
+type KeyInit = Pick<KeyboardEvent, 'key' | 'code' | 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'>;
 
 interface Problem {
   readonly message: string;
@@ -154,6 +174,8 @@ function Grid<Row>({
   const focusPending = useRef(false);
   // Whether the app was last told that the open editor holds refused text.
   const editorRefused = useRef(false);
+  // A row key held back until the app has rendered the edit its editor committed.
+  const replay = useRef<KeyInit | null>(null);
   const [selection, setSelection] = useState<GridSelection>(() =>
     selectCell({ row: 0, column: 0 }),
   );
@@ -169,11 +191,20 @@ function Grid<Row>({
   const hasCells = shape.rowCount > 0 && shape.columnCount > 0;
   const current = hasCells ? clampSelection(selection, shape) : undefined;
   const range = current && selectionRange(current);
+  const editedRow = editing ? rows.findIndex((row, r) => rowKey(row, r) === editing.rowKey) : -1;
   const edited =
-    editing && editing.position.row < shape.rowCount && editing.position.column < shape.columnCount
-      ? editing
+    editing && editedRow >= 0 && editing.column < shape.columnCount
+      ? { ...editing, position: { row: editedRow, column: editing.column } }
       : null;
   const hasFooter = columns.some((column) => column.footer !== undefined);
+
+  // The edited line is gone (deleted, or the data reloaded): its editor closes with it.
+  useEffect(() => {
+    if (!editing || edited) return;
+    reportEditor(null);
+    setEditing(null);
+    setProblem(null);
+  });
 
   useEffect(() => {
     if (!focusPending.current || !current || edited) return;
@@ -183,6 +214,18 @@ function Grid<Row>({
     );
     cell?.focus({ preventScroll: true });
     cell?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+  });
+
+  // A row key held back by an editor's commit goes on to the app now that it has rendered the edit.
+  useEffect(() => {
+    const init = replay.current;
+    if (!init || !current || edited) return;
+    replay.current = null;
+    tableRef.current
+      ?.querySelector<HTMLElement>(
+        `[data-row="${current.active.row}"][data-column="${current.active.column}"]`,
+      )
+      ?.dispatchEvent(new KeyboardEvent('keydown', { ...init, bubbles: true, cancelable: true }));
   });
 
   // The sticky start column reserves its width as scroll padding, so it never hides the focused
@@ -233,7 +276,12 @@ function Grid<Row>({
     }
     const initial = cellText(column, row, { grouping: true });
     setProblem(null);
-    setEditing({ position, initial, text: typed ?? initial });
+    setEditing({
+      rowKey: rowKey(row, position.row),
+      column: position.column,
+      initial,
+      text: typed ?? initial,
+    });
   }
 
   /** Tells the app whether the open editor holds refused text, once per change. */
@@ -333,12 +381,18 @@ function Grid<Row>({
       event.preventDefault();
       event.stopPropagation();
       cancel();
-    } else if (matchesShortcut(event.nativeEvent, keymap.post)) {
-      // Post (Ctrl/⌘+Enter) is the app's, but the editor commits first: its edits reach `onEdit`
-      // before the key reaches the app, and refused text stops the key, already reported.
-      if (!commit()) {
+    } else if (ROW_KEYS.some((shortcut) => matchesShortcut(event.nativeEvent, shortcut))) {
+      // The app's key, after a commit: refused text stops it (already reported); a changed cell
+      // holds it until the app has rendered the edit, so the app never acts on the old rows.
+      const changed = edited !== null && edited.text !== edited.initial;
+      const committed = commit();
+      if (!committed || changed) {
         event.preventDefault();
         event.stopPropagation();
+      }
+      if (committed && changed) {
+        const { key, code, ctrlKey, metaKey, altKey, shiftKey } = event.nativeEvent;
+        replay.current = { key, code, ctrlKey, metaKey, altKey, shiftKey };
       }
     } else if (event.key === 'Enter' && !event.ctrlKey && !event.metaKey && !event.altKey) {
       event.preventDefault();
@@ -501,7 +555,7 @@ function Grid<Row>({
                             value={edited.text}
                             invalid={refused(position)}
                             describedBy={problem ? problemId : undefined}
-                            onValueChange={(text) => setEditing({ ...edited, text })}
+                            onValueChange={(text) => editing && setEditing({ ...editing, text })}
                             onKeyDown={onEditorKeyDown}
                             onBlur={() => commit(undefined, false)}
                           />

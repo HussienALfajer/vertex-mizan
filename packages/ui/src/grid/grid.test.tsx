@@ -6,6 +6,8 @@ import type { CurrencyCode } from '@vertex-mizan/contracts';
 import { ar } from '@vertex-mizan/i18n';
 import { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { keymap } from '../lib/keymap';
+import { matchesShortcut } from '../lib/shortcuts';
 import type { CellEdit } from './cells';
 import { Grid, type GridColumnDef, type GridProblem } from './grid';
 
@@ -73,13 +75,20 @@ function Harness({
   editable = true,
   onEdit = () => {},
   onEditError = () => {},
+  onPost = () => {},
 }: {
   direction?: 'rtl' | 'ltr';
   editable?: boolean;
   onEdit?: (edits: readonly CellEdit[]) => void;
   onEditError?: (problem: GridProblem | null) => void;
+  onPost?: (lines: readonly Line[]) => void;
 }) {
   const [lines, setLines] = useState(initialLines);
+  const insertFirst = () =>
+    setLines((current) => [
+      { id: `new-${current.length}`, account: '', currency: 'USD', amount: null, parallel: null },
+      ...current,
+    ]);
   const apply = (edits: readonly CellEdit[]) => {
     onEdit(edits);
     setLines((current) => {
@@ -93,18 +102,32 @@ function Harness({
       return next;
     });
   };
+  // An app's line keys, on an ancestor as component keys are: post the lines, insert a line.
+  const onKeyDown = (event: React.KeyboardEvent) => {
+    if (matchesShortcut(event.nativeEvent, keymap.post, 'other')) onPost(lines);
+    if (matchesShortcut(event.nativeEvent, keymap.insertLine, 'other')) insertFirst();
+  };
   return (
     <DirectionProvider direction={direction}>
-      <Grid
-        aria-label="قيد"
-        rows={lines}
-        columns={columns}
-        rowKey={(line) => line.id}
-        {...(editable ? { onEdit: apply, onEditError } : {})}
-        describeProblem={problemText}
-        summaryLabels={ar.grid.summary}
-        stickyStartColumn
-      />
+      {/* biome-ignore lint/a11y/noStaticElementInteractions: a test stand-in for an app's line keys. */}
+      <div onKeyDown={onKeyDown}>
+        <button type="button" onClick={insertFirst}>
+          insert
+        </button>
+        <button type="button" onClick={() => setLines((current) => current.slice(1))}>
+          delete first
+        </button>
+        <Grid
+          aria-label="قيد"
+          rows={lines}
+          columns={columns}
+          rowKey={(line) => line.id}
+          {...(editable ? { onEdit: apply, onEditError } : {})}
+          describeProblem={problemText}
+          summaryLabels={ar.grid.summary}
+          stickyStartColumn
+        />
+      </div>
     </DirectionProvider>
   );
 }
@@ -299,29 +322,67 @@ describe('Grid', () => {
     expect(onEditError).toHaveBeenCalledTimes(2);
   });
 
-  it('commits before Post (Ctrl+Enter) reaches the app, and stops it behind refused text', () => {
-    const order: string[] = [];
-    const onEditError = vi.fn((problem: GridProblem | null) => {
-      order.push(problem ? 'refused' : 'clear');
-    });
-    const onPost = vi.fn(() => order.push('post'));
-    render(
-      // biome-ignore lint/a11y/noStaticElementInteractions: a test stand-in for an app's Post key.
-      <div onKeyDown={(event) => event.ctrlKey && event.key === 'Enter' && onPost()}>
-        <Harness onEdit={() => order.push('edit')} onEditError={onEditError} />
-      </div>,
-    );
+  it('commits before Post (Ctrl+Enter), which reaches the app only with the edited rows', () => {
+    const onEditError = vi.fn();
+    const onPost = vi.fn();
+    render(<Harness onEditError={onEditError} onPost={onPost} />);
     focusCell(0, 1);
     press('F2');
     fireEvent.change(editor(), { target: { value: '12.345' } });
     fireEvent.keyDown(editor(), { key: 'Enter', ctrlKey: true });
-    expect(order).toEqual(['refused']);
+    // Refused text stops Post, already reported.
+    expect(onPost).not.toHaveBeenCalled();
+    expect(onEditError).toHaveBeenLastCalledWith(expect.objectContaining({ ok: false }));
     expect(editor().value).toBe('12.345');
     fireEvent.change(editor(), { target: { value: '12.34' } });
     fireEvent.keyDown(editor(), { key: 'Enter', ctrlKey: true });
-    expect(order).toEqual(['refused', 'edit', 'clear', 'post']);
+    expect(onEditError).toHaveBeenLastCalledWith(null);
+    expect(onPost).toHaveBeenCalledTimes(1);
+    // The app posts the lines it rendered after the edit, never the old ones.
+    expect(onPost.mock.calls[0]?.[0][0].amount).toBe(1234n);
     expect(screen.queryByRole('textbox')).toBeNull();
-    expect(cell(0, 1).textContent).toBe('12.34');
+  });
+
+  it('commits before the app inserts a line, and the text stays on its own line', () => {
+    render(<Harness />);
+    focusCell(2, 1);
+    press('2');
+    fireEvent.change(editor(), { target: { value: '250' } });
+    fireEvent.keyDown(editor(), { key: 'Insert', code: 'Insert', ctrlKey: true });
+    // The line inserted above moved line c down one row, with its new amount.
+    expect(cell(0, 0).textContent).toBe('');
+    expect(cell(3, 0).textContent).toBe('1200 بنك');
+    expect(cell(3, 1).textContent).toBe('250.00');
+  });
+
+  it('keeps an open editor on its own line when lines move under it, and closes it with its line', () => {
+    const onEdit = vi.fn();
+    const onEditError = vi.fn();
+    render(<Harness onEdit={onEdit} onEditError={onEditError} />);
+    focusCell(1, 1);
+    press('F2');
+    fireEvent.change(editor(), { target: { value: 'abc' } });
+    fireEvent.blur(editor());
+    fireEvent.click(screen.getByRole('button', { name: 'insert' }));
+    // Line b is now row 2, and its editor with it.
+    expect(cell(2, 1).contains(editor())).toBe(true);
+    fireEvent.change(editor(), { target: { value: '7' } });
+    fireEvent.keyDown(editor(), { key: 'Enter' });
+    expect(onEdit).toHaveBeenLastCalledWith([
+      { row: 2, column: 1, type: 'amount', amountMinor: 700n },
+    ]);
+    expect(cell(2, 0).textContent).toBe('4100 إيرادات');
+    expect(cell(2, 1).textContent).toBe('7.00');
+    // An editor whose line is deleted closes, and the app hears that nothing is refused any more.
+    focusCell(1, 1);
+    press('F2');
+    fireEvent.change(editor(), { target: { value: 'abc' } });
+    fireEvent.blur(editor());
+    expect(onEditError).toHaveBeenLastCalledWith(expect.objectContaining({ ok: false }));
+    fireEvent.click(screen.getByRole('button', { name: 'delete first' }));
+    fireEvent.click(screen.getByRole('button', { name: 'delete first' }));
+    expect(screen.queryByRole('textbox')).toBeNull();
+    expect(onEditError).toHaveBeenLastCalledWith(null);
   });
 
   it('keeps the editor and its text through a double-click, inside it or on another cell', () => {
