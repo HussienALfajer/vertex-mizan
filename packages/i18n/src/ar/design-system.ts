@@ -80,4 +80,8 @@ export const designSystem = {
   states: {
     title: 'الحالات',
   },
+  palette: {
+    sections: 'أقسام الصفحة',
+    display: 'العرض',
+  },
 };

@@ -7,7 +7,15 @@ import {
 } from '@vertex-mizan/contracts';
 import { ar } from '@vertex-mizan/i18n';
 import type { DensityPreference } from '@vertex-mizan/tokens';
-import { CheckIcon, DownloadIcon, SearchIcon } from 'lucide-react';
+import {
+  ArrowDownIcon,
+  CheckIcon,
+  DownloadIcon,
+  MoonIcon,
+  RowsIcon,
+  SearchIcon,
+  SunIcon,
+} from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import {
   AccountLabel,
@@ -21,6 +29,7 @@ import {
   CardHeader,
   CardTitle,
   type CellEdit,
+  CommandPalette,
   Field,
   FieldDescription,
   FieldError,
@@ -34,8 +43,10 @@ import {
   keymap,
   LedgerSwitch,
   PageHeader,
+  type PaletteCommand,
   PeriodBadge,
   PoweredBy,
+  setTheme,
   Table,
   TableBody,
   TableCell,
@@ -84,9 +95,9 @@ const ledgers = {
   parallel: { label: accounting.ledger.parallel, currency: 'USD' },
 } as const;
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+function Section({ id, title, children }: { id: string; title: string; children: ReactNode }) {
   return (
-    <section className="flex min-w-0 flex-col gap-3">
+    <section id={id} className="flex min-w-0 scroll-mt-4 flex-col gap-3">
       <h2 className="text-lg font-bold text-foreground">{title}</h2>
       {children}
     </section>
@@ -502,6 +513,55 @@ function Shortcuts() {
   );
 }
 
+/** The preview's own commands: its sections and its display settings, with search words. */
+const sectionCommands = [
+  ['densities', t.densities, ['density']],
+  ['entry', t.entry.title, ['journal entry']],
+  ['grid', t.grid.title, ['data grid', 'excel']],
+  ['report', t.report.title, ['trial balance']],
+  ['amounts', t.amounts.title, ['amount']],
+  ['input', t.input.title, ['amount input']],
+  ['states', t.states.title, ['period']],
+  ['shortcuts', ar.shortcuts.title, ['keyboard shortcuts']],
+] as const;
+
+function previewCommands(setDensity: (next: DensityPreference) => void): PaletteCommand[] {
+  return [
+    ...sectionCommands.map(([id, label, keywords]) => ({
+      id: `go-${id}`,
+      label,
+      group: t.palette.sections,
+      keywords,
+      icon: <ArrowDownIcon />,
+      run: () => document.getElementById(id)?.scrollIntoView({ block: 'start' }),
+    })),
+    {
+      id: 'dark',
+      label: common.theme.toDark,
+      group: t.palette.display,
+      keywords: ['dark theme'],
+      icon: <MoonIcon />,
+      run: () => setTheme('dark'),
+    },
+    {
+      id: 'light',
+      label: common.theme.toLight,
+      group: t.palette.display,
+      keywords: ['light theme'],
+      icon: <SunIcon />,
+      run: () => setTheme('light'),
+    },
+    ...(['auto', 'compact', 'comfortable'] as const).map((option) => ({
+      id: `density-${option}`,
+      label: `${common.density.label}: ${common.density[option]}`,
+      group: t.palette.display,
+      keywords: ['density', option],
+      icon: <RowsIcon />,
+      run: () => setDensity(option),
+    })),
+  ];
+}
+
 export function Preview() {
   const { preference, setDensity } = useDensity();
   return (
@@ -526,19 +586,20 @@ export function Preview() {
                 ))}
               </ToggleGroup>
               <ThemeToggle labels={common.theme} />
+              <CommandPalette commands={previewCommands(setDensity)} labels={ar.commandPalette} />
             </>
           }
         />
       </div>
 
-      <Section title={t.densities}>
+      <Section id="densities" title={t.densities}>
         <div className="grid gap-4">
           <DensitySample density="compact" />
           <DensitySample density="comfortable" />
         </div>
       </Section>
 
-      <Section title={t.entry.title}>
+      <Section id="entry" title={t.entry.title}>
         <Card>
           <CardHeader>
             <CardTitle className="flex flex-wrap items-center gap-3">
@@ -555,21 +616,21 @@ export function Preview() {
         </Card>
       </Section>
 
-      <Section title={t.grid.title}>
+      <Section id="grid" title={t.grid.title}>
         <p className="text-muted-foreground">{t.grid.hint}</p>
         <DataGridSample />
       </Section>
 
       <div className="grid gap-8 lg:grid-cols-2 [&>*]:min-w-0">
-        <Section title={t.report.title}>
+        <Section id="report" title={t.report.title}>
           <TrialBalance />
         </Section>
-        <Section title={t.amounts.title}>
+        <Section id="amounts" title={t.amounts.title}>
           <AmountGallery />
         </Section>
       </div>
 
-      <Section title={t.input.title}>
+      <Section id="input" title={t.input.title}>
         <Card>
           <CardHeader>
             <CardDescription>{t.input.hint}</CardDescription>
@@ -581,7 +642,7 @@ export function Preview() {
         </Card>
       </Section>
 
-      <Section title={t.states.title}>
+      <Section id="states" title={t.states.title}>
         <div className="flex flex-wrap items-center gap-3">
           <PeriodBadge state="open" label={accounting.period.open} />
           <PeriodBadge state="closed" label={accounting.period.closed} />
@@ -593,7 +654,7 @@ export function Preview() {
         </div>
       </Section>
 
-      <Section title={ar.shortcuts.title}>
+      <Section id="shortcuts" title={ar.shortcuts.title}>
         <Shortcuts />
       </Section>
 
