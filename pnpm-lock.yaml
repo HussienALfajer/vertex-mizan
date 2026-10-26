@@ -420,9 +420,15 @@ importers:
       '@vertex-mizan/config':
         specifier: workspace:*
         version: link:../config
+      '@vertex-mizan/contracts':
+        specifier: workspace:*
+        version: link:../contracts
       drizzle-kit:
         specifier: 0.31.11
         version: 0.31.11
+      fast-check:
+        specifier: 4.10.2
+        version: 4.10.2
       typescript:
         specifier: 6.0.3
         version: 6.0.3

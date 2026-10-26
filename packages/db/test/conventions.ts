@@ -28,7 +28,10 @@ export const RULES = {
   'minor-bigint': 'A *_minor amount column is bigint (ADR 0007).',
   'created-at': 'created_at is a timestamptz, not null, defaulting to now().',
   'kind-timestamps':
-    'Append-only: no updated_at or archived_at; business: both; queue and draft: updated_at.',
+    'Append-only: no updated_at or archived_at; business: both; queue and draft: updated_at; ephemeral: updated_at, no archived_at.',
+  'ephemeral-scope': 'An ephemeral table is a platform table: no company data is ever deleted.',
+  'ephemeral-reference':
+    'No foreign key references an ephemeral table, whose rows are deleted (the audit logs keep their ids without one).',
   'company-scope': 'company_id (uuid, not null) exactly on company tables.',
   'foreign-key-index': 'Every foreign key is covered by a full index.',
   'foreign-key-composite':
@@ -38,7 +41,7 @@ export const RULES = {
     'A company table has one permissive policy: company_isolation, for every role and command.',
   'index-company-first': 'Every secondary index of a company table starts with company_id.',
   'app-privilege':
-    'The app role has no TRUNCATE, TRIGGER, MAINTAIN or REFERENCES, and DELETE on no table (archive instead).',
+    'The app role has no TRUNCATE, TRIGGER, MAINTAIN or REFERENCES, and DELETE on ephemeral tables only (archive instead).',
   'append-only-grant': 'No role but the owner may UPDATE or DELETE an append-only table.',
   'role-privilege': 'The jobs and queue roles and PUBLIC hold no privilege on any table.',
   'append-only-trigger':
@@ -98,16 +101,23 @@ export type PinnedFunction = {
 };
 
 /**
- * A guard trigger a table must keep: on INSERT, with no WHEN condition, calling a pinned function;
- * `deferred` ones are constraint triggers, checked at commit (ADR 0008).
+ * A guard trigger a table must keep: a row trigger on at least the events `on`, with no WHEN
+ * condition and no column list, calling a pinned function; `deferred` ones are constraint
+ * triggers, checked at commit (ADR 0008).
  */
-export type GuardTrigger = { table: string; name: string; function: string; deferred: boolean };
+export type GuardTrigger = {
+  table: string;
+  name: string;
+  function: string;
+  deferred: boolean;
+  on: ('INSERT' | 'UPDATE')[];
+};
 
 export type Guards = { functions: PinnedFunction[]; triggers: GuardTrigger[] };
 
 /**
- * The guards of the migrations: every guard function, pinned, and every deferred guard trigger.
- * The ledger's balance, reversal, open-item and period guards join them with S03.
+ * The guards of the migrations: every guard function, pinned, and every guard trigger (S01's
+ * settings lock). The ledger's balance, reversal, open-item and period guards join them with S03.
  */
 export const GUARDS: Guards = {
   functions: [
@@ -144,8 +154,50 @@ BEGIN
 END
 `,
     },
+    {
+      name: 'company_settings_lock',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+BEGIN
+  IF OLD.books_started_at IS NOT NULL AND (
+    NEW.company_id IS DISTINCT FROM OLD.company_id
+    OR NEW.book_currency IS DISTINCT FROM OLD.book_currency
+    OR NEW.book_rate_type IS DISTINCT FROM OLD.book_rate_type
+    OR NEW.book_accepts_transaction_rate IS DISTINCT FROM OLD.book_accepts_transaction_rate
+    OR NEW.parallel_currency IS DISTINCT FROM OLD.parallel_currency
+    OR NEW.parallel_rate_type IS DISTINCT FROM OLD.parallel_rate_type
+    OR NEW.parallel_accepts_transaction_rate IS DISTINCT FROM OLD.parallel_accepts_transaction_rate
+    OR NEW.fiscal_year_start_month IS DISTINCT FROM OLD.fiscal_year_start_month
+    OR NEW.books_started_at IS DISTINCT FROM OLD.books_started_at
+  ) THEN
+    RAISE EXCEPTION 'company_settings of company % are locked since its first posted entry',
+      OLD.company_id
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  RETURN NEW;
+END
+`,
+    },
   ],
-  triggers: [],
+  triggers: [
+    // The settings lock (S01 rule 11): before every update of a company's ledger settings.
+    {
+      table: 'company_settings',
+      name: 'company_settings_lock',
+      function: 'company_settings_lock',
+      deferred: false,
+      on: ['UPDATE'],
+    },
+  ],
 };
 
 type Table = { schema: string; name: string; owner: string; rls: boolean; forced: boolean };
@@ -373,12 +425,17 @@ export async function checkConventions(
       const ok =
         info.kind === 'append-only'
           ? !updated && !archived
-          : hasUpdated && (info.kind !== 'business' || hasArchived);
+          : info.kind === 'ephemeral'
+            ? hasUpdated && !archived
+            : hasUpdated && (info.kind !== 'business' || hasArchived);
       if (!ok) fail('kind-timestamps', name, `${info.kind}: updated_at, archived_at as found`);
 
       const company = column(name, 'company_id');
       if (info.scope === 'company' ? company?.type !== 'uuid' || company.nullable : company) {
         fail('company-scope', name, `${info.scope} table, company_id ${company?.type ?? 'absent'}`);
+      }
+      if (info.kind === 'ephemeral' && info.scope !== 'platform') {
+        fail('ephemeral-scope', name, `${info.scope} table`);
       }
     }
 
@@ -392,6 +449,9 @@ export async function checkConventions(
             (index.columns[0] === 'company_id' && startsWith(index.columns.slice(1), fk.columns))),
       );
       if (!covered) fail('foreign-key-index', name, fk.definition);
+      if (fk.references && registry[fk.references]?.kind === 'ephemeral') {
+        fail('ephemeral-reference', name, fk.definition);
+      }
       if (
         isCompany(name) &&
         isCompany(fk.references) &&
@@ -422,6 +482,7 @@ export async function checkConventions(
     }
 
     const appendOnly = info?.kind === 'append-only';
+    const ephemeral = info?.kind === 'ephemeral';
     for (const p of privileges.filter((p) => p.table === name)) {
       if (
         p.role === APP_ROLE &&
@@ -430,7 +491,7 @@ export async function checkConventions(
           p.maintain ||
           p.references ||
           p.referencesColumn ||
-          (p.delete && !appendOnly))
+          (p.delete && !appendOnly && !ephemeral))
       ) {
         fail('app-privilege', name, JSON.stringify(p));
       }
@@ -508,12 +569,14 @@ export async function checkConventions(
       throw new Error(`Guard trigger ${guard.name} calls ${guard.function}(), which is not pinned`);
     }
     const found = triggers.find((t) => t.table === guard.table && t.name === guard.name);
+    const events = guard.on.reduce((all, event) => all | (event === 'INSERT' ? INSERT : UPDATE), 0);
     if (
       !found ||
       found.function !== guard.function ||
       !found.unconditional ||
       found.constraint !== guard.deferred ||
-      !(found.type & INSERT)
+      !(found.type & ROW) ||
+      (found.type & events) !== events
     ) {
       fail('guard-trigger', guard.table, `${guard.name}: ${JSON.stringify(found ?? null)}`);
     }

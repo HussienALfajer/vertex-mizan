@@ -7,6 +7,7 @@ export const fixtureRegistry = {
   fixture_entries: { module: 'fixtures', scope: 'company', kind: 'append-only' },
   fixture_lines: { module: 'fixtures', scope: 'company', kind: 'append-only' },
   fixture_settings: { module: 'fixtures', scope: 'platform', kind: 'business' },
+  fixture_tokens: { module: 'fixtures', scope: 'platform', kind: 'ephemeral' },
 } as const satisfies Record<string, TableInfo>;
 
 /** The deferred guard of the fixture tables (`guards.sql`), pinned and required like a real one. */
@@ -58,12 +59,14 @@ END
       name: 'fixture_entries_balance',
       function: 'fixture_entry_balances',
       deferred: true,
+      on: ['INSERT'],
     },
     {
       table: 'fixture_lines',
       name: 'fixture_lines_balance',
       function: 'fixture_entry_balances',
       deferred: true,
+      on: ['INSERT'],
     },
   ],
 };
