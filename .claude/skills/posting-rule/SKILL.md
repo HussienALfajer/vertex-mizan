@@ -39,10 +39,10 @@ Rule: **$ARGUMENTS**. Rules: ADR 0007 (money, book and parallel ledgers), ADR 00
 ## 4. Implement
 - Put the rule in `packages/ledger` as pure functions (no I/O), and register it where its event or job is dispatched.
 - The posting function in `packages/db` stays the only writer.
-- Run the scenario through the runner. It must pass without editing the expected values. If the code disagrees with the approved numbers, the code is wrong unless the owner approves a change.
+- Run the scenario through the runner: `pnpm verify docs/scenarios/<area>/<scenario>.md` runs the scenario book. It must pass without editing the expected values. If the code disagrees with the approved numbers, the code is wrong unless the owner approves a change.
 
 ## 5. Property tests
-Add fast-check properties for the rule:
+Add fast-check properties for the rule, and run their files with `pnpm verify <files>`:
 - the entries it builds balance in both currencies;
 - its reversal nets to zero;
 - its allocations sum exactly;
@@ -50,5 +50,5 @@ Add fast-check properties for the rule:
 - replaying its input posts nothing new.
 
 ## 6. Review and finish
-- Run the `accountant-reviewer` with the scenario paths (and the `reviewer` when code beyond `packages/ledger` changed). Fix every blocking finding.
-- Run the checks through `checker`, then finish the PR following "Finishing a task" in `AGENTS.md`. A posting-rule PR waits for the owner's approval before auto-merge.
+- Verify the branch once with both reviews at the same time: `pnpm verify` through the `checker`, the `accountant-reviewer` with the scenario paths, and the `reviewer` when code beyond `packages/ledger` changed. Edit nothing while they run.
+- Fix every blocking finding and every failure together, run `pnpm verify` once more, then finish the PR following "Finishing a task" in `AGENTS.md`. A posting-rule PR waits for the owner's approval before auto-merge.

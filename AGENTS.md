@@ -25,6 +25,7 @@ Copy and adapt; never import across repositories.
 | `docs/open-questions.md` | Unresolved decisions. Never guess an answer to one: ask. |
 | `docs/research/` | Market, legal and currency research with confidence labels; the approved working method |
 | `docs/workflow.md` | How work is run with Claude Code |
+| `docs/testing.md` | How checks run: `pnpm verify`, what runs locally and what in CI, the test databases, the E2E rules, the measurements |
 | `<app or package>/CLAUDE.md` | Local rules and the pattern to copy; each arrives with its folder |
 
 Read these on demand. For a feature, read its spec, the ADRs it lists and its section of the scope.
@@ -42,6 +43,7 @@ The PR that adds a command adds it here and keeps it true. Run from the reposito
 | Command | Does |
 |---|---|
 | `pnpm lint` · `pnpm lint:fix` | Biome check of the repository · apply its fixes |
+| `pnpm verify` · `pnpm verify <file>...` | Each check once: lint; typecheck, test, build and the scenario book (Turborepo replays unchanged packages); migration drift and guard when the schema's sources changed; the error-code guard; the OpenAPI guard when the API changed; the changed E2E specs. Summary on the console, logs in `.verify/` (`docs/testing.md`) · only some test files (paths from the root; a `docs/scenarios/` file runs the book; `--grep <title>` for part of a spec). Needs the local database below |
 | `pnpm typecheck` · `pnpm test` · `pnpm build` | Every package through Turborepo; one package: `pnpm --filter @vertex-mizan/<name> test`. The `db` tests need the local database below |
 | `pnpm test:scenarios` | The scenario book on a fresh test database: `Approved` cases run, `Proposed` ones are skipped and listed (`packages/scenarios/CLAUDE.md`); needs the local database below |
 | `docker compose up -d` | The local PostgreSQL 17 (`compose.yaml`, `127.0.0.1:55417`); copy `.env.example` to `.env` first |
@@ -96,7 +98,7 @@ The PR that adds a command adds it here and keeps it true. Run from the reposito
   - a decision belongs to the owner: scope, accounting treatment, business rules, anything in `open-questions.md`;
   - a spec or scenario is ambiguous in a way that changes the numbers;
   - an action is destructive or outward-facing: deleting data, dropping tables, posting to a real company's books, force-push, production changes.
-- A task is done only when its checks pass and `TASKS.md` has no open items for it. Show the evidence instead of asserting success.
+- A task is done only when `pnpm verify` passes on its final state, CI is green and `TASKS.md` has no open items for it. Show the evidence (the verify summary) instead of asserting success.
 - Fix root causes. Never silence a failing test, type error, lint rule or database guard.
 - For multi-step work keep a checklist in `TASKS.md`. Commit each layer when its gate passes.
 - Mark anything you could not confirm and say where you looked.
@@ -106,7 +108,7 @@ The PR that adds a command adds it here and keeps it true. Run from the reposito
 
 - Search before reading, then read only the relevant range.
 - Never read generated or lock files: `pnpm-lock.yaml`, `**/migrations/meta/`, `routeTree.gen.ts`, `dist/`, `.turbo/`.
-- Run the narrowest check first and the full set once before the PR.
+- Checks (`docs/testing.md`): while building, run only the tests you work on (`pnpm verify <file>`); before the PR, `pnpm verify` once, and again only after a change. Each check runs once: read its failures in the summary and in `.verify/`, never run a suite again to see its output, and rerun only the files that failed. One test run at a time, and no edits while it runs: the `test-guard` hook refuses a second run, the whole E2E suite and `timeout` around tests. CI runs everything.
 - In replies, point to `path:line` instead of pasting files or diffs.
 
 ## Git
@@ -123,10 +125,10 @@ Stop and report at the first step that fails.
 1. **Branch** is not `main`; `TASKS.md` has no open items for this PR.
 2. **Docs:** update `docs/ROADMAP.md` and every doc the change made stale, including the commands table above.
 3. **Secrets and data:** `git status` and `git diff --stat` show no `.env`, key or real data.
-4. **Checks:** run lint, typecheck, test (property tests and the scenario book included) and build through the `checker` subagent. Add migration drift when `packages/db` changed, the OpenAPI check when the API changed, and E2E when a front end changed. Documentation-only changes run no checks.
+4. **Checks:** `pnpm verify` passes on the final tree (lint, typecheck, tests with properties, the scenario book, build, the migration, error-code and OpenAPI guards, the changed E2E specs). A green run on the same tree counts; after a fix run it again, and Turborepo replays what the fix did not touch. Documentation-only changes run no checks (CI skips them too). CI runs everything, the whole E2E suite included.
 5. **Review:** the `reviewer` subagent has run on every feature. The `accountant-reviewer` has run in parallel on any change to the ledger, money, posting rules, periods, reports or the API contract. Their blocking findings are fixed.
 6. **Commit:** intended files only; a Conventional Commit subject and a body with what and why, ending with the session's attribution line.
-7. **Pull request:** `git push -u origin <branch>`, then `gh pr create --base main` with `## Summary` and `## Test plan`, ending with the attribution line, then `gh pr merge <number> --auto --merge`.
+7. **Pull request:** `git push -u origin <branch>`, then `gh pr create --base main` with `## Summary` and `## Test plan`, ending with the attribution line, then `gh pr merge <number> --auto --merge`. If CI fails, read `gh run view <run-id> --log-failed`, fix the cause on the branch and push: auto-merge waits for green.
    - **The owner approves before auto-merge** when the PR changes the scope, an ADR, a ledger invariant, the money module, a posting rule or an expected value in the scenario book. Exception: when the PR only writes down decisions the owner has just given in the conversation, those answers are the approval; it merges at once and the PR body quotes the decisions.
 8. **Report** in the format below.
 
