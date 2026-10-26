@@ -62,7 +62,7 @@ IDs are referred to by specs, the roadmap and the scenario book.
 ### F01 Companies, users and access
 - Companies with their book currency (default SYP), optional parallel currency, the rate policy of each ledger, the policy note, the fiscal year start and enabled modules (all optional modules are off in phase 1).
 - Users with membership in several companies; a company switcher; the roles in §3.
-- Sign-in with two-factor authentication required for owner, accountant and approver roles.
+- Sign-in with two-factor authentication required for every role (owner, 2026-10-26; S01).
 - Isolation enforced by the database (forced row-level security); every endpoint tested with a user of another company.
 - An audit log that can only be appended to, showing who did what, when and from where, with before and after values.
 

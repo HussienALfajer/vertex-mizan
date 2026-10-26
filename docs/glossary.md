@@ -7,6 +7,17 @@ One name per concept. Code, contracts and tables use the English term; the Arabi
 | الشركة | company | A legal entity with its own books; the tenant (`company_id`) |
 | العضوية | membership | A person's role in one company |
 | عميل الربط | API client | A machine identity of a connected system in one company, with scoped keys |
+| الدعوة | invitation | An emailed, single-use link that adds a person to a company with a role |
+| الدور | role | What a membership may do: owner, accountant, approver, viewer, auditor |
+| الصلاحية | permission | One action key in the permission map (`members.manage`); roles hold permissions |
+| المالك / المحاسب / المعتمِد / القارئ / المدقق | owner / accountant / approver / viewer / auditor | The five roles of phase 1 (phase 1 scope §3) |
+| صلاحية الفترات | period permission | The owner's grant to one accountant to close and reopen periods (`canClosePeriods`) |
+| المصادقة الثنائية / رمز احتياطي | two-factor authentication / backup code | The authenticator-app code required at sign-in for every role / a single-use code for a lost authenticator |
+| الجلسة / الشركة النشطة | session / active company | A signed-in browser / the company every request of that session runs in |
+| سجل التدقيق | audit log | Append-only record of who did what, when and from where, with before and after values |
+| إعدادات الدفاتر | ledger settings | Book and parallel currency, each ledger's rate policy and the fiscal year start; locked at the first posted entry |
+| مذكرة السياسة | policy note | The company's written IAS 21.9–12 basis for its book currency |
+| أرشفة | archive | Making a company or membership read-only or inactive without deleting it |
 | دليل الحسابات | chart of accounts | The company's tree of accounts |
 | حساب رئيسي | header account | A grouping account; never posted to |
 | حساب فرعي / حساب ترحيل | postable account | An account lines are posted to |

@@ -14,9 +14,11 @@ Decisions not yet made. Never guess an answer to one: ask the owner. Each has a 
 | Q6 | Phase order: the audit proposes cheques and notes, fixed assets and the Al-Ameen import in phase 2, and a pilot with two accounting offices before the phone-shop vertical (audit M8) | Decide when phase 2 is detailed (owner, 2026-10-20) | Phase 2 detailing |
 | Q7 | The hosting location and the data-residency statement for customers (the server is abroad) | Decide later (owner, 2026-10-20); the deployment ADR records the location | Phase 4 |
 | Q8 | The tax authority's procedure for approving an accounting program and its electronic linkage specification | Open the inquiry with the General Commission for Taxes and Fees during phase 1 | Before any tax posting rule |
+| Q9 | Which roles maintain the posting-rule account mapping: phase 1 scope §3 gives posting rules to the owner, F10 says the accountant maintains the mapping | Owner and accountant, every change audited with before and after | S05 |
 
 ## Resolved
 
 | # | Question | Answer | Date |
 |---|---|---|---|
 | — | Phase 1 product questions Q1–Q18 | `docs/product/phase-1-scope.md` §10 | 2026-10-20 |
+| — | S01 access questions: two-factor for every role, email invitations and resets, company creation, the settings lock, sessions, the period permission, audited reads, archiving | `docs/specs/S01-companies-people-access.md` (rules 2, 5, 6, 9, 11, 12, 15, 24; the period permission) | 2026-10-26 |
