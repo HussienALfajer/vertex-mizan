@@ -12,7 +12,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { resetTwoFactorByVertex } from '../src/admin/commands.js';
 import { AccountService } from '../src/modules/auth/account.service.js';
 import { newWaitingAuthenticator } from '../src/modules/auth/two-factor.js';
-import { createTestApp } from './app.js';
+import { createTestApp, TEST_AUTH_SECRET } from './app.js';
 import { Browser } from './browser.js';
 import {
   createPerson,
@@ -593,7 +593,7 @@ describe('re-enrolment needs a fresh code, keyed on the person', () => {
     ).rejects.toMatchObject({ code: 'TWO_FACTOR_REQUIRED' });
 
     // As if such a re-enrolment had written its slot after the reset: enrolling ignores it.
-    await newWaitingAuthenticator(db, person.id, 'synthetic-test-secret-of-at-least-32-characters');
+    await newWaitingAuthenticator(db, person.id, TEST_AUTH_SECRET);
     await enrol(again, person);
     expect((await again.get('/api/me')).body.person.twoFactorEnabled).toBe(true);
   });
