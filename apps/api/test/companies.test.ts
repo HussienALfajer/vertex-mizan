@@ -393,3 +393,15 @@ describe('writes to an archived company', () => {
     expect(response.body.code).toBe('FORBIDDEN');
   });
 });
+
+describe('two profile edits at once', () => {
+  it('run one after the other, without a deadlock', async () => {
+    const owner = await signedInPerson(app, db);
+    await newCompany(owner.browser);
+    const answers = await Promise.all([
+      owner.browser.patch('/api/company', { name: 'الاسم الأول' }),
+      owner.browser.patch('/api/company', { name: 'الاسم الثاني' }),
+    ]);
+    expect(answers.map((answer) => answer.status)).toEqual([200, 200]);
+  });
+});

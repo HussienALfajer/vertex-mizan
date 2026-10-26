@@ -1,12 +1,6 @@
 import { randomInt } from 'node:crypto';
 import { createOTP } from '@better-auth/utils/otp';
-import {
-  type Database,
-  type Transaction,
-  twoFactors,
-  users,
-  verifications,
-} from '@vertex-mizan/db';
+import { type Database, type Transaction, twoFactors, verifications } from '@vertex-mizan/db';
 import { symmetricDecrypt, symmetricEncrypt } from 'better-auth/crypto';
 import { and, eq, lte, sql } from 'drizzle-orm';
 import { tokenIdentifier } from '../../core/http/link-tokens.js';
@@ -41,20 +35,64 @@ type Executor = Database | Transaction;
 
 export type TwoFactorRow = typeof twoFactors.$inferSelect;
 
-/**
- * The authenticator of a person who has enrolled, or null before enrolment or after a reset. A
- * re-enrolment in progress counts: its new authenticator and backup codes are the person's now.
- */
+/** The person's verified authenticator, or null before enrolment or after a reset. */
 export async function enrolledTwoFactor(
   db: Executor,
   userId: string,
 ): Promise<TwoFactorRow | null> {
   const [row] = await db
-    .select({ twoFactor: twoFactors })
+    .select()
     .from(twoFactors)
-    .innerJoin(users, eq(users.id, twoFactors.userId))
-    .where(and(eq(twoFactors.userId, userId), eq(users.twoFactorEnabled, true)));
-  return row?.twoFactor ?? null;
+    .where(and(eq(twoFactors.userId, userId), eq(twoFactors.verified, true)));
+  return row ?? null;
+}
+
+/**
+ * How long the old authenticator is kept aside during a re-enrolment (S01 rule 7): until the new
+ * one's first code, or the person's next sign-in or re-authentication, whichever comes first.
+ */
+const REENROLMENT_DAYS = 30;
+
+const reenrolmentKey = (userId: string) => `reenrol:${userId}`;
+
+/**
+ * Keeps a person's verified authenticator and backup codes aside (still encrypted) before a
+ * re-enrolment replaces them, so the new authenticator takes effect only when its first code
+ * verifies (S01 rule 3). An earlier copy is kept: it is the last verified one.
+ */
+export async function keepAuthenticatorAside(db: Executor, row: TwoFactorRow): Promise<void> {
+  await db
+    .insert(verifications)
+    .values({
+      identifier: reenrolmentKey(row.userId),
+      value: JSON.stringify({ secret: row.secret, backupCodes: row.backupCodes }),
+      expiresAt: new Date(Date.now() + REENROLMENT_DAYS * 24 * 60 * 60 * 1000),
+    })
+    .onConflictDoNothing({ target: verifications.identifier });
+}
+
+/** The new authenticator verified: the old one kept aside is dropped. */
+export async function dropAuthenticatorAside(db: Executor, userId: string): Promise<void> {
+  await db.delete(verifications).where(eq(verifications.identifier, reenrolmentKey(userId)));
+}
+
+/**
+ * An abandoned re-enrolment ends at the person's next sign-in or re-authentication: the old
+ * authenticator and backup codes come back, verified, and the unconfirmed new ones are dropped.
+ */
+export async function restoreAbandonedReenrolment(db: Database, userId: string): Promise<void> {
+  await db.transaction(async (tx) => {
+    const [kept] = await tx
+      .delete(verifications)
+      .where(eq(verifications.identifier, reenrolmentKey(userId)))
+      .returning({ value: verifications.value });
+    if (!kept) return;
+    const old = JSON.parse(kept.value) as { secret: string; backupCodes: string };
+    await tx
+      .update(twoFactors)
+      .set({ secret: old.secret, backupCodes: old.backupCodes, verified: true })
+      .where(and(eq(twoFactors.userId, userId), eq(twoFactors.verified, false)));
+  });
 }
 
 export function isLocked(row: TwoFactorRow, now = new Date()): boolean {

@@ -35,7 +35,16 @@ import {
   limitReached,
 } from '../../core/limits/limits.js';
 import { hashPassword, verifyDecoy, verifyPassword } from './password.js';
-import { claimCode, generateBackupCodes, releaseCode, TWO_FACTOR_LOCKOUT } from './two-factor.js';
+import {
+  claimCode,
+  dropAuthenticatorAside,
+  enrolledTwoFactor,
+  generateBackupCodes,
+  keepAuthenticatorAside,
+  releaseCode,
+  restoreAbandonedReenrolment,
+  TWO_FACTOR_LOCKOUT,
+} from './two-factor.js';
 
 /** Injection token for the Better Auth instance. */
 export const AUTH = Symbol('AUTH');
@@ -264,7 +273,7 @@ export function createAuth(db: Database, config: Config) {
         if (ctx.path === '/sign-in/email') {
           const { email, password } = ctx.body as { email: string; password: string };
           const [user] = await db
-            .select({ archivedAt: users.archivedAt })
+            .select({ id: users.id, archivedAt: users.archivedAt })
             .from(users)
             .where(eq(users.email, email));
           // A locked or archived account answers like a wrong password, after the same work.
@@ -282,14 +291,16 @@ export function createAuth(db: Database, config: Config) {
             if (ctx.request) refusedEarly.add(ctx.request);
             throw invalidCredentials();
           }
+          if (user) await restoreAbandonedReenrolment(db, user.id);
           return;
         }
 
         if (ctx.path === '/two-factor/enable') {
           // Re-enrolment (S01 rule 7) replaces the authenticator of a person who has one: it
-          // needs a fresh code, keyed on the person and not on the row, so an abandoned
-          // re-enrolment never opens it without one. The password is checked here, before the
-          // old authenticator is set aside for Better Auth to replace.
+          // needs a fresh code, keyed on the person and not on the row. The password is checked
+          // here; then the old authenticator is kept aside and Better Auth writes the new one,
+          // which takes effect at its first code. An abandoned one ends at the next sign-in or
+          // re-authentication, which bring the old one back.
           const found = await getSessionFromCtx(ctx);
           if (!found) return;
           const [person] = await db
@@ -318,6 +329,8 @@ export function createAuth(db: Database, config: Config) {
           if (!account?.password || !(await verifyPassword({ hash: account.password, password }))) {
             throw invalidCredentials();
           }
+          const current = await enrolledTwoFactor(db, found.user.id);
+          if (current) await keepAuthenticatorAside(db, current);
           await db
             .update(twoFactors)
             .set({ verified: false })
@@ -418,6 +431,7 @@ export function createAuth(db: Database, config: Config) {
           if (actor.kind === 'person') await enterOnlyCompany(actor);
         } else if (step.enrolling) {
           // The first code of a new authenticator: enrolment (or re-enrolment) took effect.
+          await dropAuthenticatorAside(db, step.userId);
           await writePlatformAudit(db, { action: 'user.two_factor_enrolled', actor });
         }
       }),

@@ -179,7 +179,7 @@ Internal web API under `/api` (not `/v1`, which is the integration contract of A
 | `GET /api/invitations` | `members.read` | — | pending invitations | — |
 | `POST /api/invitations` | `members.manage` `@Reauthenticated` | `{ email, role, canClosePeriods }` | the invitation | `INVITATION_EXISTS`, `MEMBERSHIP_EXISTS`, `COMPANY_ARCHIVED`, `COMPANY_SWITCHED`, `VALIDATION_FAILED` |
 | `POST /api/invitations/:id/revoke` | `members.manage` | — | `204` | `NOT_FOUND`, `COMPANY_SWITCHED` |
-| `GET /api/invitations/lookup` · `POST /api/invitations/accept` | Public (with the token) | `{ token }` / `{ token, name?, password? }` | the company name and role / the membership | `LINK_INVALID`, `INVITATION_EMAIL_MISMATCH`, `VALIDATION_FAILED` |
+| `POST /api/invitations/lookup` · `POST /api/invitations/accept` | Public (with the token) | `{ token }` in the body, never the URL / `{ token, name?, password? }` | the company name and role / the membership | `LINK_INVALID`, `INVITATION_EMAIL_MISMATCH`, `VALIDATION_FAILED` |
 | `GET /api/audit` | `audit.read` | filters: date range, actor, action, entity; cursor | audit entries | `COMPANY_NOT_SELECTED` |
 
 Another company's member, invitation or entity id answers `NOT_FOUND`, exactly like an unknown id. Writes in S01 are protected against double submits by their own rules (unique keys and state checks) rather than an idempotency key, which is the posting API's mechanism (ADR 0006).

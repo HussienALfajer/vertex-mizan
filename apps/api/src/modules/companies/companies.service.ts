@@ -93,7 +93,8 @@ export class CompaniesService {
     const companyId = access.company.id;
     const actor = actorOf(access);
     return withCompany(this.db, companyId, async (tx) => {
-      await lockCompanyForWrite(tx, companyId);
+      // Exclusive: the update below changes this row, and two shared locks would deadlock.
+      await lockCompanyForWrite(tx, companyId, 'exclusive');
       const [company] = await tx.select().from(companies).where(eq(companies.id, companyId));
       const [settings] = await this.settings(tx, companyId);
       if (!company || !settings) throw new CodedException('NOT_FOUND', 'No such company');
