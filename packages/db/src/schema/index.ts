@@ -3,3 +3,4 @@
 export * from './access.js';
 export * from './audit.js';
 export * from './companies.js';
+export * from './email.js';

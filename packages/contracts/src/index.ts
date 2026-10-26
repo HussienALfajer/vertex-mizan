@@ -1,6 +1,7 @@
 export * from './access.js';
 export * from './audit.js';
 export * from './companies.js';
+export * from './email.js';
 export * from './errors.js';
 export * from './health.js';
 export * from './members.js';

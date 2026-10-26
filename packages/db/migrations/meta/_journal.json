@@ -36,6 +36,20 @@
       "when": 1793047020945,
       "tag": "0004_company_settings_never_deleted",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1793048077709,
+      "tag": "0005_normal_morbius",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793048092071,
+      "tag": "0006_email_outbox_grants",
+      "breakpoints": true
     }
   ]
 }

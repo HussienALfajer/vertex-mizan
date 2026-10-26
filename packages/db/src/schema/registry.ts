@@ -19,7 +19,8 @@
  * - `draft`: `created_at` and `updated_at`; documents being prepared, which can change until they
  *   are posted (ADR 0005, drafts are not ledger).
  * - `ephemeral`: `created_at` and `updated_at`, no `archived_at`; rows deleted when they expire or
- *   are used (sessions, one-time tokens, two-factor secrets, rate-limit counters; S01). Platform
+ *   are used or sent (sessions, one-time tokens, two-factor secrets, rate-limit counters, the email
+ *   outbox; S01). Platform
  *   scope only, the one kind the app role may `DELETE` from, and no table references one by
  *   foreign key: the audit logs keep their ids without one. No company or ledger data is ever
  *   ephemeral.
@@ -44,6 +45,8 @@ export const tableRegistry = {
   // audit (S01, ADR 0005).
   platform_audit_entries: { module: 'audit', scope: 'platform', kind: 'append-only' },
   audit_entries: { module: 'audit', scope: 'company', kind: 'append-only' },
+  // email (S01): the outbox the worker sends and deletes.
+  email_outbox: { module: 'email', scope: 'platform', kind: 'ephemeral' },
 } as const satisfies Record<string, TableInfo>;
 
 export type TableScope = 'company' | 'platform';
