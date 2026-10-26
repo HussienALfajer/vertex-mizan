@@ -48,3 +48,24 @@ it('refers only to schemas the document holds', () => {
     expect(document.components?.schemas, reference).toHaveProperty([id]);
   }
 });
+
+// This build emits no decorator metadata; `createOpenApiDocument` declares the parameter types so
+// bodies come from their contracts, and `ApiQueryFrom`/`ApiParamsFrom` document the rest.
+it('documents request bodies, path and query parameters from their contracts', () => {
+  expect(document.paths['/api/companies']?.post?.requestBody).toMatchObject({
+    content: { 'application/json': { schema: { $ref: '#/components/schemas/CreateCompany' } } },
+  });
+  expect(document.paths['/api/members/{id}']?.patch?.parameters).toEqual([
+    expect.objectContaining({ name: 'id', in: 'path', required: true }),
+  ]);
+  const query = document.paths['/api/audit']?.get?.parameters ?? [];
+  expect(query.map((parameter) => ('name' in parameter ? parameter.name : ''))).toEqual([
+    'from',
+    'to',
+    'actorUserId',
+    'action',
+    'entityType',
+    'entityId',
+    'cursor',
+  ]);
+});

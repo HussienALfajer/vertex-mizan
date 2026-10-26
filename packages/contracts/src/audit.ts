@@ -86,6 +86,13 @@ export type AuditEntry = z.infer<typeof auditEntrySchema>;
 /** An opaque position in a page of entries, returned as `nextCursor`. */
 export const cursorSchema = z.string().min(1).max(200).meta({ id: 'Cursor' });
 
+/** A page request with only a cursor (`GET /api/me/sign-ins`). */
+export const pageQuerySchema = z
+  .object({ cursor: cursorSchema.optional() })
+  .meta({ id: 'PageQuery' });
+
+export type PageQuery = z.infer<typeof pageQuerySchema>;
+
 /** `GET /api/audit` filters; pages of 100 by `(created_at, id)`, newest first. */
 export const auditQuerySchema = z
   .object({

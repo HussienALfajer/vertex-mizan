@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { acceptsPeriodPermission, type MembershipAccess, roleSchema } from './access.js';
-import { emailSchema, passwordSchema, personNameSchema } from './people.js';
+import { emailSchema, linkTokenSchema, passwordSchema, personNameSchema } from './people.js';
 
 /** A role with the period permission, which only an accountant may carry (S01). */
 const roleAssignmentShape = { role: roleSchema, canClosePeriods: z.boolean() };
@@ -13,6 +13,11 @@ const periodPermissionOnAccountantOnly = {
 function periodPermissionFits(assignment: MembershipAccess): boolean {
   return !assignment.canClosePeriods || acceptsPeriodPermission(assignment.role);
 }
+
+/** The id of a member or an invitation in a path. */
+export const idParamSchema = z.object({ id: z.uuid() }).meta({ id: 'IdParam' });
+
+export type IdParam = z.infer<typeof idParamSchema>;
 
 /** A member of the active company (`GET /api/members`). */
 export const memberSchema = z
@@ -63,10 +68,14 @@ export const invitationSchema = z
 export type Invitation = z.infer<typeof invitationSchema>;
 
 /** The invitation token from the link's fragment (base64url). */
-export const invitationTokenSchema = z
-  .string()
-  .regex(/^[A-Za-z0-9_-]{32,128}$/)
-  .meta({ id: 'InvitationToken' });
+export const invitationTokenSchema = linkTokenSchema;
+
+/** `GET /api/invitations/lookup`: the token, from the link's fragment. */
+export const invitationLookupQuerySchema = z
+  .object({ token: invitationTokenSchema })
+  .meta({ id: 'InvitationLookupQuery' });
+
+export type InvitationLookupQuery = z.infer<typeof invitationLookupQuerySchema>;
 
 /** `GET /api/invitations/lookup`: what the link invites to, before accepting. */
 export const invitationLookupSchema = z

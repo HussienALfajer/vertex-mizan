@@ -1,22 +1,33 @@
 # apps/api
 
-NestJS 12 HTTP API with the Express adapter, a modular monolith (ADR 0002). Toolchain copied from Vertex Food's `apps/api` (plain `tsc`, no decorator metadata); logging, Standard Schema validation, the OpenAPI document and the health check follow Vertex Hub's `apps/api`. Phase 0 holds the core only; the first module arrives with S01.
+NestJS 12 HTTP API with the Express adapter, a modular monolith (ADR 0002). Toolchain copied from Vertex Food's `apps/api` (plain `tsc`, no decorator metadata); logging, Standard Schema validation, the OpenAPI document, the health check and Better Auth's setup follow Vertex Hub's `apps/api`. S01 brought the access core and the first modules.
 
 ## Layout
 - `src/main.ts`: loads the config from the environment, builds the app, listens on `API_HOST:API_PORT` (default `127.0.0.1:3300`).
-- `src/app.module.ts`: `AppModule.forRoot(config)`: config, nestjs-pino, the database, the global `StandardSchemaValidationPipe` and `StandardSchemaSerializerInterceptor`, then the modules.
-- `src/app.ts`: `configureApp(app, config)` (logger, `/api` prefix, no `x-powered-by`, shutdown hooks, Swagger UI at `/api/docs` outside production) and `createOpenApiDocument(app)`. Production and the tests both go through it.
-- `src/core/config/`: `loadConfig(env)` (Zod; errors name the variable, never its value) and `ConfigModule` (`CONFIG` token).
+- `src/app.module.ts`: `AppModule.forRoot(config)`: config, nestjs-pino (a request ID per request, in the `x-request-id` answer header), the database, the global `StandardSchemaValidationPipe` (422 `VALIDATION_FAILED` with the failed fields), `StandardSchemaSerializerInterceptor` and `ErrorFilter`, then the modules, `AuthModule` last.
+- `src/app.ts`: `configureApp(app, config)` (logger, `trust proxy` for loopback, the same-origin check, `/api` prefix, no `x-powered-by`, shutdown hooks, Swagger UI at `/api/docs` outside production) and `createOpenApiDocument(app)`, which declares each route's parameter types for Swagger (this build emits no decorator metadata). Production and the tests both go through it.
+- `src/core/config/`: `loadConfig(env)` (Zod; errors name the variable, never its value; `AUTH_SECRET` of 32+ characters and not the example value; `APP_URL`, the web app's origin) and `ConfigModule` (`CONFIG` token).
 - `src/core/database/`: `DatabaseModule`, one pool as `mizan_app` through `createDatabase` (`DATABASE` token), closed on shutdown. It connects on first use.
 - `src/core/health/`: `GET /api/health` with `healthResponseSchema` from contracts: 200 when the database answers `select 1`, 503 with the same body and `database: 'down'` otherwise.
+- `src/core/access/`: the access decorators (`@Public()`, `@SignedIn()`, `@CompanyRoute(...permissions)`, `@Reauthenticated()`, `@WhileArchived()`), `@Access()` and the narrowing helpers (`signedIn`, `inCompany`, `actorOf`), the global `AccessGuard` (S01 "Rules of the guard") and `session-activity.ts` (the 30-minute idle limit, the 5-minute re-authentication window).
+- `src/core/audit/audit.ts`: `writeCompanyAudit` (inside `withCompany`, same transaction) and `writePlatformAudit`, with `AUDITED_FIELDS`, the allow-list of fields per entity.
+- `src/core/email/outbox.ts`: `queueEmail(tx, kind, recipient, data)`, the email in the transaction of its change (`email_outbox`, sent by the worker).
+- `src/core/errors/`: `CodedException` and `ErrorFilter`: every error answer is an `ErrorResponse` with a code.
+- `src/core/http/`: `same-origin.ts` (Hub's CSRF check), `link-tokens.ts` (one-time tokens stored as `<purpose>:<sha256>`), `cursor.ts` (pages by `(created_at, id)`), `api-errors.ts` (`@ApiErrors(...codes)`), `api-parameters.ts` (`@ApiQueryFrom`, `@ApiParamsFrom`).
+- `src/core/limits/limits.ts`: the per-email, per-address and per-IP limits in `rate_limits`.
+- `src/modules/auth/`: Better Auth (`auth.ts`: email and password, the two-factor plugin, database rate limits, the `__Host-` cookie, session hooks and the audit of its steps), `auth.controller.ts` (the five Better Auth routes S01 uses, mapped to our codes; every other path answers `NOT_FOUND`), `account.*` (re-authentication, backup codes, the password reset), `password.ts` (Argon2id through `node:crypto`, with a decoy), `two-factor.ts` (codes once, backup codes, the lock).
+- `src/modules/<module>/`: `me` (+ `session/session.controller.ts`), `companies`, `members`, `invitations`, `audit`: a controller and a service each (S01 "API").
+- `src/admin/`: the server commands `admin:create-company` and `admin:reset-two-factor` (`commands.ts`, tested in `test/admin.test.ts`), run as the app role after `pnpm build`.
 - `openapi.json`: the committed OpenAPI document (Hub and the web app read it; ADR 0006). Generated, never edited; Biome skips it.
-- `test/`: `app.ts` (`createTestApp()`, the app as production builds it on the run's test database), `global-setup.ts` (a fresh migrated database per run), `health.test.ts`, `openapi.test.ts`.
+- `test/`: `app.ts` (`createTestApp()`, the app as production builds it on the run's test database; `TEST_LOG_LEVEL` shows its logs), `global-setup.ts` (a fresh migrated database per run), `browser.ts` (a cookie-keeping client with its own address and the company header), `people.ts` (people, sign-in, enrolment, fresh TOTP codes, companies), one test file per module, `architecture.test.ts` (one access decorator per route), `health.test.ts`, `openapi.test.ts`.
 
 ## Rules
 - Injection is explicit: `@Inject(Token)` on every constructor parameter, classes included (no decorator metadata, so the build and Vitest behave the same; `packages/config/tsconfig/nest.json`).
 - A controller declares its parameters with `{ schema }` from `@vertex-mizan/contracts`, its response with `@SerializeOptions({ schema })` and documents each answer with `@Api*Response({ standardSchema })`, then makes one call to its service. Schemas live in contracts with `.meta({ id })`.
 - After changing a route or a contract it uses, regenerate the document with `pnpm --filter @vertex-mizan/api test -u` and commit `openapi.json` with the change; the test fails until it matches. CI's `pnpm check:openapi` refuses a breaking change against the base branch (ADR 0006: `/v1` is additive only).
-- Every endpoint will declare its permission (AGENTS.md); the access guard and its decorators arrive with S01. `/api/health` is the one public route and returns no company data.
+- Every route declares exactly one access decorator; the guard fails closed and `test/architecture.test.ts` fails on a route without one. Public routes are listed in that test. A company route's handler works only inside `withCompany(db, access.company.id, …)`; the company never comes from the request (`X-Mizan-Company` is only checked against it).
+- A list answer is serialized item by item: `@SerializeOptions({ schema: itemSchema })`, `@ApiOkResponse({ standardSchema: z.array(itemSchema) })`.
+- Every change to company data writes its audit row in the same transaction; fields go through `AUDITED_FIELDS`, never a secret.
 - The company context comes from the session or the API key through `withCompany`, never from input (ADR 0003). The API never connects as the owner role (ADR 0008).
 - Logs through the Nest logger (pino); `authorization`, `cookie` and `set-cookie` headers are redacted. Never `console.log`.
 - ESM: relative imports end in `.js`.

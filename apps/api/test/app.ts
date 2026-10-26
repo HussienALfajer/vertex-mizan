@@ -12,8 +12,10 @@ export async function createTestApp(
 ): Promise<INestApplication> {
   const config = loadConfig({
     DATABASE_APP_URL: options.databaseUrl ?? inject('databaseUrl'),
+    AUTH_SECRET: 'synthetic-test-secret-of-at-least-32-characters',
+    APP_URL: 'http://mizan.test',
     NODE_ENV: 'test',
-    LOG_LEVEL: 'silent',
+    LOG_LEVEL: process.env.TEST_LOG_LEVEL ?? 'silent',
   });
   const moduleRef = await Test.createTestingModule({
     imports: [AppModule.forRoot(config)],

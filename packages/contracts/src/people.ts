@@ -74,6 +74,40 @@ export const myMembershipSchema = z
 
 export type MyMembership = z.infer<typeof myMembershipSchema>;
 
+/** The first step's answer: whether the second step (an authenticator or backup code) follows. */
+export const signInResultSchema = z
+  .object({ twoFactorRequired: z.boolean() })
+  .meta({ id: 'SignInResult' });
+
+export type SignInResult = z.infer<typeof signInResultSchema>;
+
+/** A one-time token from a link's fragment (base64url): an invitation or a password reset. */
+export const linkTokenSchema = z
+  .string()
+  .regex(/^[A-Za-z0-9_-]{32,128}$/)
+  .meta({ id: 'LinkToken' });
+
+/** `POST /api/auth/request-password-reset`: answered alike whether the email exists or not. */
+export const requestPasswordResetSchema = z
+  .object({ email: emailSchema })
+  .meta({ id: 'RequestPasswordReset' });
+
+export type RequestPasswordReset = z.infer<typeof requestPasswordResetSchema>;
+
+/** `POST /api/auth/reset-password`: the link's token and the new password. */
+export const resetPasswordSchema = z
+  .object({ token: linkTokenSchema, password: passwordSchema })
+  .meta({ id: 'ResetPassword' });
+
+export type ResetPassword = z.infer<typeof resetPasswordSchema>;
+
+/** A new set of single-use backup codes, shown once (S01 rule 3). */
+export const backupCodesSchema = z
+  .object({ backupCodes: z.array(z.string()).length(10) })
+  .meta({ id: 'BackupCodes' });
+
+export type BackupCodes = z.infer<typeof backupCodesSchema>;
+
 /** `GET /api/me`: the signed-in person, their companies and what they may do in the active one. */
 export const meSchema = z
   .object({

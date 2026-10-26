@@ -530,12 +530,16 @@ describe('the ephemeral tables', () => {
     expect(deleted).toEqual([email]);
     expect(
       await refusal(
-        app.insert(emailOutbox).values({ kind: 'newsletter', recipient: 'a@example.test', data: {} }),
+        app
+          .insert(emailOutbox)
+          .values({ kind: 'newsletter', recipient: 'a@example.test', data: {} }),
       ),
     ).toMatch(/email_outbox_kind/);
     expect(
       await refusal(
-        app.insert(emailOutbox).values({ kind: 'invitation', recipient: 'A@example.test', data: {} }),
+        app
+          .insert(emailOutbox)
+          .values({ kind: 'invitation', recipient: 'A@example.test', data: {} }),
       ),
     ).toMatch(/email_outbox_recipient_shape/);
   });
