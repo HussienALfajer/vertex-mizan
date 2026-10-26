@@ -77,7 +77,8 @@ type GridEditing =
   | {
       /**
        * Called with every edit of a commit, paste, fill down or clear, all checked first: the app
-       * applies them to its rows.
+       * applies them to its rows in the same event (a state update, not a request), so a row key
+       * held back by an editor's commit reaches the app on the rendered edit.
        */
       onEdit: (edits: readonly CellEdit[]) => void;
       /**
@@ -216,11 +217,12 @@ function Grid<Row>({
     cell?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
   });
 
-  // A row key held back by an editor's commit goes on to the app now that it has rendered the edit.
+  // A row key held back by an editor's commit goes on to the app now that it has rendered the edit,
+  // or is dropped: it never waits for a later render (a post long after the key was pressed).
   useEffect(() => {
     const init = replay.current;
-    if (!init || !current || edited) return;
     replay.current = null;
+    if (!init || !current || edited) return;
     tableRef.current
       ?.querySelector<HTMLElement>(
         `[data-row="${current.active.row}"][data-column="${current.active.column}"]`,

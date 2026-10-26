@@ -343,6 +343,47 @@ describe('Grid', () => {
     expect(screen.queryByRole('textbox')).toBeNull();
   });
 
+  it('drops a held row key when the edit empties the grid, never sending it later', () => {
+    const onPost = vi.fn();
+    /** An app showing unmatched lines only: an amount entered matches the line and hides it. */
+    function Unmatched() {
+      const [lines, setLines] = useState(initialLines.slice(1, 2));
+      return (
+        <DirectionProvider direction="rtl">
+          {/* biome-ignore lint/a11y/noStaticElementInteractions: a test stand-in for an app's Post key. */}
+          <div
+            onKeyDown={(event) =>
+              matchesShortcut(event.nativeEvent, keymap.post, 'other') && onPost()
+            }
+          >
+            <button type="button" onClick={() => setLines(initialLines.slice(0, 2))}>
+              reload
+            </button>
+            <Grid
+              aria-label="قيد"
+              rows={lines}
+              columns={columns}
+              rowKey={(line) => line.id}
+              onEdit={() => setLines([])}
+              onEditError={() => {}}
+              describeProblem={problemText}
+              summaryLabels={ar.grid.summary}
+            />
+          </div>
+        </DirectionProvider>
+      );
+    }
+    render(<Unmatched />);
+    focusCell(0, 1);
+    press('F2');
+    fireEvent.change(editor(), { target: { value: '30' } });
+    fireEvent.keyDown(editor(), { key: 'Enter', ctrlKey: true });
+    expect(grid().querySelectorAll('[data-slot="grid-cell"]')).toHaveLength(0);
+    fireEvent.click(screen.getByRole('button', { name: 'reload' }));
+    expect(grid().querySelectorAll('[data-slot="grid-cell"]')).toHaveLength(6);
+    expect(onPost).not.toHaveBeenCalled();
+  });
+
   it('commits before the app inserts a line, and the text stays on its own line', () => {
     render(<Harness />);
     focusCell(2, 1);
