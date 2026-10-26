@@ -9,6 +9,6 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["**", "!**/migrations/meta", "!**/*.gen.ts", "!docs"]
+    "includes": ["**", "!**/migrations/meta", "!**/*.gen.ts", "!apps/api/openapi.json", "!docs"]
   }
 }

@@ -90,6 +90,14 @@ jobs:
         env:
           BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
         run: pnpm check:error-codes --base "$BASE"
+      # The published OpenAPI document changes additively only (ADR 0006); apps/api/test/openapi.test.ts
+      # checks that the committed document is the API's own.
+      - name: Install oasdiff
+        run: bash scripts/install-oasdiff.sh
+      - name: The OpenAPI document has no breaking change
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: pnpm check:openapi --base "$BASE"
       # The cache only grows (each run adds its new task results): start over past 1.5 GB.
       - name: Keep the Turborepo cache small
         if: always()
@@ -137,6 +145,9 @@ jobs:
           path: .turbo/cache
           key: turbo-${{ github.job }}-${{ github.sha }}
           restore-keys: turbo-${{ github.job }}-
+      # The OpenAPI guard's tests (packages/config) run only where oasdiff is, and must run here.
+      - name: Install oasdiff
+        run: bash scripts/install-oasdiff.sh
       - name: Database roles and development database
         run: pnpm db:setup-local
       # The development database migrated as a server is; the tests then migrate a fresh database
@@ -148,6 +159,12 @@ jobs:
       # Proposed cases are skipped and listed, never counted.
       - name: Scenario book
         run: pnpm test:scenarios
+      # The built API and worker start as a server starts them: the API answers its health check on
+      # the migrated development database; the worker runs pg-boss as mizan_queue and schedules its jobs.
+      - name: The built API and worker start
+        run: |
+          pnpm build
+          pnpm check:boot
       # The cache only grows (each run adds its new task results): start over past 1.5 GB.
       - name: Keep the Turborepo cache small
         if: always()

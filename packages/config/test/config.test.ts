@@ -31,6 +31,14 @@ describe('shared tsconfig', () => {
     });
   });
 
+  it('nest extends node with the legacy decorators and no decorator metadata', () => {
+    const config = readJson('tsconfig/nest.json');
+    expect(config.extends).toBe('./node.json');
+    // Without emitted metadata, injection is explicit (@Inject(token)) and behaves the same in the
+    // build and under Vitest, whose transform may not emit it.
+    expect(config.compilerOptions).toEqual({ experimentalDecorators: true });
+  });
+
   it('react extends base and resolves modules as a bundler does, with the DOM and JSX', () => {
     const config = readJson('tsconfig/react.json');
     expect(config.extends).toBe('./base.json');
