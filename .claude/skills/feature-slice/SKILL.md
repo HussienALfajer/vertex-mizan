@@ -31,34 +31,30 @@ Implement **$ARGUMENTS**. This skill orders the work and names the gates; the ru
 - Show the owner the PR split and the task list in a few lines, in Arabic, then **stop and wait for approval**.
 
 ## 2. Build, one layer at a time
-Finish a layer and run its gate through the `checker` subagent. Fix root causes, tick the item in `TASKS.md`, and **commit the layer** (`feat(<id>): <layer> …`) before starting the next one. Never start a layer while the previous gate fails.
+Finish a layer and run its gate. Fix root causes, tick the item in `TASKS.md`, and **commit the layer** (`feat(<id>): <layer> …`) before starting the next one. Never start a layer while the previous gate fails. A gate runs the layer's own test files with `pnpm verify <files>` (paths from the root; `docs/testing.md`) and typechecks with `pnpm typecheck` (Turborepo replays untouched packages); when one fails, fix it and rerun only the files its summary names. Never run the whole suite at a gate.
 
 | # | Layer | Build | Gate |
 |---|---|---|---|
-| 1 | contracts | Schemas and types, error codes, permissions, audit actions, Hub event contracts, money helpers with unit tests | `contracts` tests, root typecheck |
-| 2 | ledger | Pure accounting logic in `packages/ledger` from the approved scenarios; property tests | `ledger` tests (unit and properties) |
-| 3 | db | Run `/db-migration`: schema, RLS, ledger guards, generated migration, SQL review; the posting function's new paths with concurrency and invariant tests; the scenario runner | `db` tests, scenario book, migration drift |
-| 4 | api | Module, controllers, service: permission declarations, company context, audit in the transaction, postings only through the posting function, idempotency, held events, coded errors; `test/<module>.test.ts` with another company and a missing permission | the module's tests, architecture test, `api` typecheck |
-| 5 | worker | Jobs safe to run twice (releases, revaluation preview, retries, reconciliation), per company inside the company context | `worker` tests and typecheck |
+| 1 | contracts | Schemas and types, error codes, permissions, audit actions, Hub event contracts, money helpers with unit tests | `pnpm verify` on the changed `packages/contracts/src/*.test.ts`, `pnpm typecheck` |
+| 2 | ledger | Pure accounting logic in `packages/ledger` from the approved scenarios; property tests | `pnpm verify` on the changed `packages/ledger/src/*.test.ts` (unit and properties) |
+| 3 | db | Run `/db-migration`: schema, RLS, ledger guards, generated migration, SQL review; the posting function's new paths with concurrency and invariant tests; the scenario runner | `pnpm verify packages/db/test/conventions.test.ts packages/db/test/invariants.test.ts` and the layer's new test files, then `pnpm verify docs/scenarios/<the spec's scenario>.md` (the scenario book); migration drift (`pnpm db:generate` writes nothing) and `pnpm check:migrations` |
+| 4 | api | Module, controllers, service: permission declarations, company context, audit in the transaction, postings only through the posting function, idempotency, held events, coded errors; `test/<module>.test.ts` with another company and a missing permission | `pnpm verify` on the module's test files and the architecture test, `api` typecheck |
+| 5 | worker | Jobs safe to run twice (releases, revaluation preview, retries, reconciliation), per company inside the company context | `pnpm verify` on the worker's changed test files, `worker` typecheck |
 | 6 | bridge | `pnpm build`, OpenAPI export and its breaking-change check, generated client types | web typecheck |
-| 7 | web | First, every component the screens need that `packages/ui` lacks, built there as a general component (ADR 0010 §7: tested, both densities, on the design-system page); then the screens from design-system components only, i18n keys, loading, empty and error states, amounts with currencies, drill-down to entries, Excel and PDF exports | `ui` tests, the app's typecheck, lint, tests |
-| 8 | e2e | The spec's flows; RTL screenshots (light and dark) at phone, tablet and desktop widths | `pnpm test:e2e`; open the new screenshots and look at them |
+| 7 | web | First, every component the screens need that `packages/ui` lacks, built there as a general component (ADR 0010 §7: tested, both densities, on the design-system page); then the screens from design-system components only, i18n keys, loading, empty and error states, amounts with currencies, drill-down to entries, Excel and PDF exports | `pnpm verify` on the changed `packages/ui` and app test files, the app's typecheck, lint |
+| 8 | e2e | The spec's flows; RTL screenshots (light and dark) at phone, tablet and desktop widths | `pnpm verify apps/web/e2e/<flow>.spec.ts` (the changed specs only, never `pnpm test:e2e`: the whole suite runs in CI); open the new screenshots and look at them |
 
 Layers a PR does not include are skipped. Helpers arrive with their first real use.
 
 ## 3. Close each PR
 1. Walk the wiring checklist in `wiring.md` against the diff (`git diff main...HEAD --stat`).
-2. Start the full checks through `checker` in the background:
-   - lint, typecheck, test (properties and scenarios included) and build;
-   - migration drift when `packages/db` changed;
-   - the OpenAPI check when the API changed;
-   - E2E when the web app changed.
-3. While they run, run the `reviewer` subagent with the spec path, and the `accountant-reviewer` in parallel when the PR touches the ledger, money, postings, periods, reports or the API contract. Fix every blocking finding and every failure, commit the fixes, and run the checks again.
+2. Verify the branch once, with both reviews at the same time: `pnpm verify` (lint, typecheck, tests with properties, the scenario book, build, the migration, error-code and OpenAPI guards, the changed E2E specs) through the `checker`, to keep its output out of the context; the `reviewer` subagent with the spec path; and the `accountant-reviewer` in parallel when the PR touches the ledger, money, postings, periods, reports or the API contract. Edit nothing until all three are done.
+3. Fix every blocking finding and every failure of step 2 together, commit the fixes, then run `pnpm verify` once more: Turborepo replays what the fixes did not touch.
 4. Owner acceptance, in Arabic:
    - **PR with screens:** turn the spec's "Acceptance" section into numbered steps: how to start the apps, which test account and company, what to enter, and which entries and figures to see. Ask before `pnpm db:migrate` on the dev database.
    - **PR without screens:** summarise the endpoints, jobs and postings with one worked example in numbers.
 
-   Fix what the owner reports in the same session, then run the checks and the reviewers on the fix.
+   Fix what the owner reports in the same session, then run `pnpm verify` and the reviewers on the fix.
 5. Tick the PR's items in `TASKS.md`, then, as soon as the owner accepts, finish the PR in the same turn: follow "Finishing a task" in `AGENTS.md`.
 
 ## Stop and ask when

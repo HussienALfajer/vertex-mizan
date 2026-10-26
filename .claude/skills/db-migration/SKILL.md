@@ -36,7 +36,7 @@ Schema change: **$ARGUMENTS**. Rules: `packages/db/CLAUDE.md` (when it exists), 
    The CI migration check refuses guard-weakening SQL (ADR 0008).
 
    Contract steps ship in a later release. Data backfills go in a custom migration and never touch append-only rows.
-7. **Test:** run the `db` package tests (migrations, the convention test, the invariant tests as each role), then the tests of every package that uses the tables, through the `checker` subagent.
+7. **Test:** `pnpm verify packages/db/test/conventions.test.ts packages/db/test/invariants.test.ts packages/db/test/roles.test.ts` (migrations, the convention test, the invariant tests as each role), then the test files of the packages that use the tables, with `pnpm verify <files>`, and `pnpm check:migrations`.
 8. **Confirm no drift:** running `pnpm db:generate` again reports nothing to migrate.
 9. **Dev database:** `pnpm db:migrate` changes the owner's local data, so ask before running it.
 

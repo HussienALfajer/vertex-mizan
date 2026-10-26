@@ -12,7 +12,7 @@ Drizzle schema, migrations, row-level security, the database roles and the compa
 - `migrations/`: generated SQL plus custom migrations (RLS, triggers, grants, backfills). The pattern for a custom migration: `0000_foundation.sql` (`current_company_id()`, `refuse_change()`, the `pgboss` schema); `test/fixtures/guards.sql` shows a table's policy, triggers and grants. Never read or edit `migrations/meta/`.
 - `scripts/setup-local.ts`: the local PostgreSQL setup (`pnpm db:setup-local`).
 - `src/testing.ts` (`@vertex-mizan/db/testing`): `createTestDatabase()`, a fresh migrated database for one test run, for this package's and the apps' test global setups.
-- `test/`: run against a fresh database per run (`test/global-setup.ts`), one file at a time.
+- `test/`: run against a fresh database per run (`test/global-setup.ts`), one file at a time, in one worker without isolation (`vitest.config.ts`): modules load once for the run, each file opens and closes its own pools (`connections.ts`), and `restore-env.ts` puts `process.env` back after each file. A test leaves nothing in module state.
   - `fixtures/schema.ts`, `fixtures/registry.ts`, `fixtures/guards.sql`: the test-only tables (a company business table, two append-only tables with a deferred balance trigger, a platform table), created in the run's database only, from the Drizzle schema through drizzle-kit, so the column helpers are what the conventions check.
   - `conventions.ts`: `checkConventions(db, registry, guards)`, every rule of ADR 0003, 0005 and 0008 read from the catalog, and `GUARDS`, the pinned guard functions and the required guard triggers. `conventions.test.ts` runs it as `mizan_app` on the migrated database, then proves each rule: a mutation breaks a fixture table, a function, a schema or a role in a rolled-back transaction, and exactly that rule must fail. A rule without a mutation fails the test.
   - `invariants.test.ts`: the append-only and deferred guards as the app role, the owner and a superuser in a replica session. `company-isolation.test.ts`, `roles.test.ts`, `client.test.ts`: isolation between two companies, what each role cannot do, the pool and its deadlines.
@@ -42,4 +42,4 @@ Drizzle schema, migrations, row-level security, the database roles and the compa
 
 The tests need the admin, owner, app, jobs and queue URLs: each run creates `mizan_test_<time>_<random>` as the owner, migrates it, adds the fixture tables and drops it. The superuser URL reaches that database only, for what only a superuser can try (a replica session, role attributes). Turborepo passes only the URLs listed in `passThroughEnv` of the `test` task in `turbo.json`.
 
-Run: `pnpm --filter @vertex-mizan/db test`.
+Run: `pnpm verify packages/db/test/<file>.test.ts` (some files) · `pnpm --filter @vertex-mizan/db test` (the package).

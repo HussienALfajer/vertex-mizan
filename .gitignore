@@ -20,6 +20,7 @@ coverage/
 *.tsbuildinfo
 
 # Test output
+.verify/
 test-results/
 playwright-report/
 blob-report/

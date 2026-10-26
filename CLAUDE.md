@@ -13,7 +13,7 @@
 
 ## Delegation
 
-- **`checker`** (Haiku 5.5): runs lint, typecheck, tests (property tests and the scenario book included), build and drift checks, and returns only the failures.
+- **`checker`** (Haiku 5.5): runs `pnpm verify` (the branch, or the test files you name) and returns its summary. `pnpm verify` already prints only a summary, so run it yourself when you wait for the result anyway; use the checker to keep a long run out of the main context, for example while the reviewers read the branch. Edit nothing while a check runs, and start no second one. Give a foreground run a Bash timeout of 600000 ms, or run it in the background and wait for its notification.
 - **`reviewer`** (Opus 5.5, fresh context): reviews the branch against its spec and the rules. It covers isolation, access, the API contract, data, tests and spec coverage, and reports blocking issues only.
 - **`accountant-reviewer`** (Opus 5.5, fresh context): reviews accounting correctness:
   - balanced entries with the right accounts and signs;
@@ -39,10 +39,12 @@
   5. the `accountant-reviewer`.
 - `/feature-slice <id>`: implement an approved spec layer by layer, committing at each passing gate, with both reviewers and the owner's acceptance, then open the PR.
 - `/db-migration <change>`: change the schema with RLS and the ledger guards, generate and review the migration, and test it.
+- Every task ends by opening its PR with auto-merge ("Finishing a task" in `AGENTS.md`). In the desktop app, turn on the PR's Auto-fix afterwards, so a failing CI run comes back to the session to fix.
 
 ## Hooks
 
 - Biome formats and lint-fixes every edited file; remaining problems come back to fix. It does nothing until dependencies are installed.
+- A test guard (Bash and PowerShell) refuses a second test run while one is going (a `pnpm verify` lock or a Vitest or Playwright process of this repository), the whole E2E suite outside `pnpm verify --e2e-all`, and `timeout` around a test run (`docs/testing.md`).
 - A git guard refuses `git commit` on `main`, `git commit -a` or `.`, pushes to `main`, broad staging (`git add -A`, `.`, `./`, `:/`) and `--no-verify`.
 - The two reviewers run Bash through a hook that allows only read-only git commands.
 - At session start, a note shows the branch, uncommitted files and the open items of `TASKS.md`: continue from them.

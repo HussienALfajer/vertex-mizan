@@ -4,6 +4,7 @@
   "agentGuidance": false,
   "globalDependencies": [".node-version"],
   "globalPassThroughEnv": ["CI"],
+  "remoteCache": { "signature": true },
   "tasks": {
     "build": {
       "dependsOn": ["^build"],

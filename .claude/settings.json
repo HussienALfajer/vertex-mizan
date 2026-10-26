@@ -14,6 +14,8 @@
       "Bash(pnpm check:migrations*)",
       "Bash(pnpm typecheck*)",
       "Bash(pnpm test*)",
+      "Bash(pnpm verify*)",
+      "Bash(pnpm --silent verify*)",
       "Bash(pnpm build*)",
       "Bash(pnpm dev*)",
       "Bash(pnpm db:generate*)",
@@ -147,6 +149,16 @@
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/git-guard.mjs\"",
             "timeout": 15,
             "statusMessage": "Git guard"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/test-guard.mjs\"",
+            "timeout": 30
           }
         ]
       }

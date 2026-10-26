@@ -62,8 +62,8 @@ After a spec's backend PR is merged, its screens can be built in a separate sess
 | Folder rules | `<app or package>/CLAUDE.md` | When the agent reads a file in that folder |
 | Product, decisions, scenarios | `docs/product/`, `docs/decisions/`, `docs/specs/`, `docs/scenarios/`, `docs/glossary.md` | On demand |
 | Workflows | `.claude/skills/`: `spec`, `posting-rule`, `feature-slice`, `db-migration` | When invoked |
-| Subagents | `.claude/agents/`: `checker` (Haiku 5.5), `reviewer` and `accountant-reviewer` (Opus 5.5), `explorer` (Sonnet 5.5) | In their own context; only their summary returns |
-| Enforcement | Database guards, hooks (Biome, git guard, session start, read-only git for reviewers), convention, invariant and property tests, the scenario book, the migration guard check, CI, gitleaks | Always, without costing context |
+| Subagents | `.claude/agents/`: `checker` (Haiku 5.5, runs `pnpm verify` and returns its summary), `reviewer` and `accountant-reviewer` (Opus 5.5), `explorer` (Sonnet 5.5) | In their own context; only their summary returns |
+| Enforcement | Database guards, hooks (Biome, git guard, test guard, session start, read-only git for reviewers), convention, invariant and property tests, the scenario book, the migration guard check, CI, gitleaks | Always, without costing context |
 | Guard rails | `.claude/settings.json`: model and effort, permissions, denied reads, read-only references | Always |
 
 ## Models and effort by task
@@ -75,7 +75,7 @@ After a spec's backend PR is merged, its screens can be built in a separate sess
 | A clearly specified feature outside those areas, screens | Opus 5.5 | `medium` |
 | Deploys, mechanical edits | Opus 5.5 | `low` |
 | Searching code, docs, standards or the web | `explorer` (Sonnet 5.5) | — |
-| Running checks, reading logs and test output | `checker` (Haiku 5.5) | — |
+| Running a long `pnpm verify` while other work goes on (the reviewers) | `checker` (Haiku 5.5) | — |
 | A problem that failed twice at `xhigh` | Fable 5.1, for that problem only | — |
 
 Sonnet and Haiku never write code.
@@ -87,7 +87,7 @@ Sonnet and Haiku never write code.
 3. `/compact <what to keep>` at natural breaks; `/rewind` to abandon a failed path.
 4. After two failed corrections on the same issue, `/clear` and start again with a better request.
 5. Side questions: the built-in `/btw` command.
-6. Let `checker` run long checks.
+6. Run checks with `pnpm verify` (`docs/testing.md`): it prints a short summary and keeps the whole output in `.verify/`, so long output never enters the context. Delegate a long run to the `checker` when the reviewers run meanwhile, never edits.
 7. Prune the instruction files once per phase.
 
 ## What changed from Vertex Food
