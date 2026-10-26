@@ -96,9 +96,9 @@ export function matchesShortcut(
     mod === Boolean(shortcut.mod) &&
     !other &&
     event.altKey === Boolean(shortcut.alt) &&
-    // Shift is part of a punctuation key's character (`?` is Shift+/): only checked for letters
-    // and named keys.
-    (shortcut.key.length > 1 || /[a-z\d]/.test(shortcut.key)
+    // Shift is part of a punctuation key's character (`?` is Shift+/): only checked for letters,
+    // digits, Space and named keys (Shift+Space selects rows, Space alone does not).
+    (shortcut.key.length > 1 || /[a-z\d ]/.test(shortcut.key)
       ? event.shiftKey === Boolean(shortcut.shift)
       : true)
   );
@@ -114,6 +114,7 @@ const NAMED: Record<string, [mac: string, other: string]> = {
   Delete: ['⌦', 'Delete'],
   Backspace: ['⌫', 'Backspace'],
   Insert: ['Insert', 'Insert'],
+  ' ': ['Space', 'Space'],
 };
 
 /** The keys to show, in order: `['Ctrl', 'K']` on Windows, `['⌘', 'K']` on macOS. */
@@ -137,7 +138,8 @@ export function ariaKeyShortcuts(
   if (shortcut.mod) keys.push(platform === 'mac' ? 'Meta' : 'Control');
   if (shortcut.alt) keys.push('Alt');
   if (shortcut.shift) keys.push('Shift');
-  keys.push(shortcut.key.length === 1 ? shortcut.key.toUpperCase() : shortcut.key);
+  if (shortcut.key === ' ') keys.push('Space');
+  else keys.push(shortcut.key.length === 1 ? shortcut.key.toUpperCase() : shortcut.key);
   return keys.join('+');
 }
 

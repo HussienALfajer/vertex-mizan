@@ -303,7 +303,18 @@ const keymapGroups: [string, KeymapAction[]][] = [
   [ar.shortcuts.global, ['commandPalette', 'cheatSheet', 'newEntry']],
   [
     ar.shortcuts.grid,
-    ['editCell', 'fillDown', 'copyAbove', 'insertLine', 'deleteLine', 'lookup', 'post'],
+    [
+      'editCell',
+      'selectAll',
+      'selectRows',
+      'selectColumns',
+      'fillDown',
+      'copyAbove',
+      'insertLine',
+      'deleteLine',
+      'lookup',
+      'post',
+    ],
   ],
   [ar.shortcuts.date, ['today']],
 ];

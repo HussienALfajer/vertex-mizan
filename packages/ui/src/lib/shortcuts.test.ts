@@ -95,6 +95,13 @@ describe('matchesShortcut', () => {
       matchesShortcut(press({ key: 'ArrowDown', code: 'ArrowDown', altKey: true }), lookup),
     ).toBe(true);
   });
+
+  it('checks Shift on Space, so Space alone is not Shift+Space', () => {
+    const rows = defineShortcut({ key: ' ', shift: true, scope: 'component' });
+    const space = press({ key: ' ', code: 'Space' });
+    expect(matchesShortcut({ ...space, shiftKey: true }, rows, 'other')).toBe(true);
+    expect(matchesShortcut(space, rows, 'other')).toBe(false);
+  });
 });
 
 describe('displayed keys', () => {
@@ -106,5 +113,8 @@ describe('displayed keys', () => {
     );
     expect(ariaKeyShortcuts(palette, 'other')).toBe('Control+K');
     expect(ariaKeyShortcuts(palette, 'mac')).toBe('Meta+K');
+    const columns = defineShortcut({ key: ' ', mod: true, scope: 'component' });
+    expect(shortcutKeys(columns, 'other')).toEqual(['Ctrl', 'Space']);
+    expect(ariaKeyShortcuts(columns, 'other')).toBe('Control+Space');
   });
 });

@@ -33,6 +33,11 @@ export * from './components/theme-toggle';
 export * from './components/toast';
 export * from './components/toggle-group';
 export * from './components/tooltip';
+export * from './grid/cells';
+export * from './grid/grid-keys';
+export * from './grid/selection';
+export * from './grid/summary';
+export { parseTsv, toHtmlTable, toTsv } from './grid/tsv';
 export { cn } from './lib/cn';
 export { type KeymapAction, keymap } from './lib/keymap';
 export {
