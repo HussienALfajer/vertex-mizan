@@ -12,8 +12,7 @@ import { AUTH, createAuth } from './auth.js';
 
 /**
  * Sign-in and access (S01): Better Auth at `/api/auth`, our account routes beside it, and the
- * global access guard every route passes. `AccountController` is listed before `AuthController`,
- * whose catch-all route must come last.
+ * global access guard every route passes.
  */
 @Global()
 @Module({

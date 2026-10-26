@@ -57,7 +57,9 @@ it('keeps the public routes to the ones the spec names', () => {
   expect(open).toEqual([
     'AccountController.requestPasswordReset',
     'AccountController.resetPassword',
-    'AuthController.handle',
+    'AuthController.signIn',
+    'AuthController.verifyBackupCode',
+    'AuthController.verifyTotp',
     'HealthController.check',
     'InvitationsController.accept',
     'InvitationsController.lookup',

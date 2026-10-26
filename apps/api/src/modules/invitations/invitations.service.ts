@@ -20,6 +20,7 @@ import {
 import { and, asc, eq, gt, isNull, lte, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { actorOf, type CompanyRouteAccess, type RequestAccess } from '../../core/access/access.js';
+import { lockCompanyForWrite } from '../../core/access/company-lock.js';
 import { type AuditActor, writeCompanyAudit } from '../../core/audit/audit.js';
 import type { Config } from '../../core/config/config.js';
 import { CONFIG } from '../../core/config/config.module.js';
@@ -173,22 +174,24 @@ export class InvitationsService {
   /** `POST /api/invitations`. */
   async create(access: CompanyRouteAccess, input: CreateInvitation): Promise<Invitation> {
     const actor = actorOf(access);
-    return withCompany(this.db, access.company.id, (tx) =>
-      createInvitation(tx, this.config.appUrl, actor, {
+    return withCompany(this.db, access.company.id, async (tx) => {
+      await lockCompanyForWrite(tx, access.company.id);
+      return createInvitation(tx, this.config.appUrl, actor, {
         companyId: access.company.id,
         companyName: access.company.name,
         email: input.email,
         role: input.role,
         canClosePeriods: input.canClosePeriods,
         invitedBy: { id: access.person.id, name: access.person.name },
-      }),
-    );
+      });
+    });
   }
 
   /** `POST /api/invitations/:id/revoke`: a pending invitation; its link dies with it. */
   async revoke(access: CompanyRouteAccess, id: string): Promise<void> {
     const companyId = access.company.id;
     await withCompany(this.db, companyId, async (tx) => {
+      await lockCompanyForWrite(tx, companyId);
       const [revoked] = await tx
         .update(invitations)
         .set({ revokedAt: new Date() })
@@ -206,7 +209,7 @@ export class InvitationsService {
     });
   }
 
-  /** `GET /api/invitations/lookup`: what a live link invites to, before accepting. */
+  /** `POST /api/invitations/lookup`: what a live link invites to, before accepting. */
   async lookup(access: RequestAccess, token: string): Promise<InvitationLookup> {
     await this.limitPerIp(access);
     const found = await this.live(this.db, token);

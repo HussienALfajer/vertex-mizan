@@ -93,6 +93,8 @@ interface SecondStep {
 export function createAuth(db: Database, config: Config) {
   /** What the before hook learned about a second step, for the after hook of the same request. */
   const secondSteps = new WeakMap<Request, SecondStep>();
+  /** Sign-ins the before hook refused and audited itself, so the after hook does not count them. */
+  const refusedEarly = new WeakSet<Request>();
 
   async function personActor(
     userId: string,
@@ -277,21 +279,24 @@ export function createAuth(db: Database, config: Config) {
               email,
               details: { step: 'password' },
             });
+            if (ctx.request) refusedEarly.add(ctx.request);
             throw invalidCredentials();
           }
           return;
         }
 
         if (ctx.path === '/two-factor/enable') {
-          // Re-enrolment of an enrolled person (S01 rule 7) replaces the authenticator: it needs a
-          // fresh code, and the new one takes effect only when verified.
+          // Re-enrolment (S01 rule 7) replaces the authenticator of a person who has one: it
+          // needs a fresh code, keyed on the person and not on the row, so an abandoned
+          // re-enrolment never opens it without one. The password is checked here, before the
+          // old authenticator is set aside for Better Auth to replace.
           const found = await getSessionFromCtx(ctx);
           if (!found) return;
-          const [enrolled] = await db
-            .select({ id: twoFactors.id })
-            .from(twoFactors)
-            .where(and(eq(twoFactors.userId, found.user.id), eq(twoFactors.verified, true)));
-          if (!enrolled) return;
+          const [person] = await db
+            .select({ twoFactorEnabled: users.twoFactorEnabled })
+            .from(users)
+            .where(eq(users.id, found.user.id));
+          if (!person?.twoFactorEnabled) return;
           const session = found.session as typeof found.session & {
             reauthenticatedAt: Date | null;
           };
@@ -305,10 +310,18 @@ export function createAuth(db: Database, config: Config) {
               message: 'Type a fresh code first',
             });
           }
+          const [account] = await db
+            .select({ password: accounts.password })
+            .from(accounts)
+            .where(and(eq(accounts.userId, found.user.id), eq(accounts.providerId, 'credential')));
+          const { password } = ctx.body as { password: string };
+          if (!account?.password || !(await verifyPassword({ hash: account.password, password }))) {
+            throw invalidCredentials();
+          }
           await db
             .update(twoFactors)
             .set({ verified: false })
-            .where(eq(twoFactors.id, enrolled.id));
+            .where(eq(twoFactors.userId, found.user.id));
           return;
         }
 
@@ -355,6 +368,7 @@ export function createAuth(db: Database, config: Config) {
         if (ctx.path === '/sign-in/email') {
           const { email } = ctx.body as { email: string };
           if (failed) {
+            if (ctx.request && refusedEarly.has(ctx.request)) return;
             if ((ctx.context.returned as APIError).statusCode === 401) {
               await consumeLimit(db, failuresKey(email), LIMITS.signInFailures);
               await writePlatformAudit(db, {

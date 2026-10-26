@@ -6,7 +6,6 @@ import {
   Inject,
   Param,
   Post,
-  Query,
   SerializeOptions,
 } from '@nestjs/common';
 import { ApiCreatedResponse, ApiNoContentResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
@@ -18,11 +17,11 @@ import {
   type IdParam,
   type Invitation,
   type InvitationLookup,
-  type InvitationLookupQuery,
   idParamSchema,
-  invitationLookupQuerySchema,
   invitationLookupSchema,
   invitationSchema,
+  type LookupInvitation,
+  lookupInvitationSchema,
   type MyMembership,
   myMembershipSchema,
 } from '@vertex-mizan/contracts';
@@ -36,7 +35,7 @@ import {
   type RequestAccess,
 } from '../../core/access/access.js';
 import { ApiErrors } from '../../core/http/api-errors.js';
-import { ApiParamsFrom, ApiQueryFrom } from '../../core/http/api-parameters.js';
+import { ApiParamsFrom } from '../../core/http/api-parameters.js';
 import { InvitationsService } from './invitations.service.js';
 
 const invitationsSchema = z.array(invitationSchema);
@@ -83,8 +82,9 @@ export class InvitationsController {
     return this.invitations.create(inCompany(access), body);
   }
 
-  @Get('lookup')
-  @ApiQueryFrom(invitationLookupQuerySchema)
+  // POST: the token stays out of the URL, so no server or proxy log keeps it (S01 "Abuse").
+  @Post('lookup')
+  @HttpCode(200)
   @Public()
   @SerializeOptions({ schema: invitationLookupSchema })
   @ApiOkResponse({
@@ -94,9 +94,9 @@ export class InvitationsController {
   @ApiErrors('LINK_INVALID', 'RATE_LIMITED', 'VALIDATION_FAILED')
   async lookup(
     @Access() access: RequestAccess,
-    @Query({ schema: invitationLookupQuerySchema }) query: InvitationLookupQuery,
+    @Body({ schema: lookupInvitationSchema }) body: LookupInvitation,
   ): Promise<InvitationLookup> {
-    return this.invitations.lookup(access, query.token);
+    return this.invitations.lookup(access, body.token);
   }
 
   @Post('accept')

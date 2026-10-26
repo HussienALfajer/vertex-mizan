@@ -1,6 +1,12 @@
 import { randomInt } from 'node:crypto';
 import { createOTP } from '@better-auth/utils/otp';
-import { type Database, type Transaction, twoFactors, verifications } from '@vertex-mizan/db';
+import {
+  type Database,
+  type Transaction,
+  twoFactors,
+  users,
+  verifications,
+} from '@vertex-mizan/db';
 import { symmetricDecrypt, symmetricEncrypt } from 'better-auth/crypto';
 import { and, eq, lte, sql } from 'drizzle-orm';
 import { tokenIdentifier } from '../../core/http/link-tokens.js';
@@ -35,16 +41,20 @@ type Executor = Database | Transaction;
 
 export type TwoFactorRow = typeof twoFactors.$inferSelect;
 
-/** The person's enrolled authenticator, or null before enrolment or after a reset. */
+/**
+ * The authenticator of a person who has enrolled, or null before enrolment or after a reset. A
+ * re-enrolment in progress counts: its new authenticator and backup codes are the person's now.
+ */
 export async function enrolledTwoFactor(
   db: Executor,
   userId: string,
 ): Promise<TwoFactorRow | null> {
   const [row] = await db
-    .select()
+    .select({ twoFactor: twoFactors })
     .from(twoFactors)
-    .where(and(eq(twoFactors.userId, userId), eq(twoFactors.verified, true)));
-  return row ?? null;
+    .innerJoin(users, eq(users.id, twoFactors.userId))
+    .where(and(eq(twoFactors.userId, userId), eq(users.twoFactorEnabled, true)));
+  return row?.twoFactor ?? null;
 }
 
 export function isLocked(row: TwoFactorRow, now = new Date()): boolean {

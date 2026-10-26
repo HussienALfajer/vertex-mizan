@@ -67,7 +67,7 @@ describe('accepting an invitation', () => {
         'CreateInvitation',
         'Invitation',
         'LinkToken',
-        'InvitationLookupQuery',
+        'LookupInvitation',
         'IdParam',
         'InvitationLookup',
         'AcceptInvitation',

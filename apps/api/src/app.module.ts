@@ -58,7 +58,6 @@ export class AppModule {
         MembersModule,
         InvitationsModule,
         AuditModule,
-        // Last: its Better Auth catch-all under `/api/auth` must follow every other route.
         AuthModule,
       ],
       providers: [

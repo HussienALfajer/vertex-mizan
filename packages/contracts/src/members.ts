@@ -70,14 +70,17 @@ export type Invitation = z.infer<typeof invitationSchema>;
 /** The invitation token from the link's fragment (base64url). */
 export const invitationTokenSchema = linkTokenSchema;
 
-/** `GET /api/invitations/lookup`: the token, from the link's fragment. */
-export const invitationLookupQuerySchema = z
+/**
+ * `POST /api/invitations/lookup`: the token from the link's fragment, in the body so it never
+ * reaches a server or proxy log as a query string (S01 "Invitation link leaked").
+ */
+export const lookupInvitationSchema = z
   .object({ token: invitationTokenSchema })
-  .meta({ id: 'InvitationLookupQuery' });
+  .meta({ id: 'LookupInvitation' });
 
-export type InvitationLookupQuery = z.infer<typeof invitationLookupQuerySchema>;
+export type LookupInvitation = z.infer<typeof lookupInvitationSchema>;
 
-/** `GET /api/invitations/lookup`: what the link invites to, before accepting. */
+/** `POST /api/invitations/lookup`: what the link invites to, before accepting. */
 export const invitationLookupSchema = z
   .object({
     companyName: z.string(),

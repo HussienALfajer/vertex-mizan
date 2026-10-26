@@ -11,6 +11,7 @@ import {
 } from '@vertex-mizan/db';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { lockCompanyForWrite } from '../src/core/access/company-lock.js';
 import { createTestApp } from './app.js';
 import { Browser } from './browser.js';
 import {
@@ -362,5 +363,33 @@ describe('archive and restore', () => {
       .from(companies)
       .where(and(eq(companies.id, company.id)));
     expect(row?.archivedAt).toBeNull();
+  });
+});
+
+describe('writes to an archived company', () => {
+  it('are refused inside their transaction too, whatever the guard saw', async () => {
+    const owner = await signedInPerson(app, db);
+    const company = await newCompany(owner.browser);
+    await withCompany(db, company.id, (tx) => lockCompanyForWrite(tx, company.id));
+    await db
+      .update(companies)
+      .set({ archivedAt: new Date(), archivedReason: 'اختبار' })
+      .where(eq(companies.id, company.id));
+    await expect(
+      withCompany(db, company.id, (tx) => lockCompanyForWrite(tx, company.id)),
+    ).rejects.toMatchObject({ code: 'COMPANY_ARCHIVED' });
+  });
+
+  it('refuse the ledgers to an accountant', async () => {
+    const owner = await signedInPerson(app, db);
+    const company = await newCompany(owner.browser);
+    const accountant = await joinCompany(app, db, company.id, 'accountant');
+    await reauthenticate(accountant.browser, accountant.person);
+    const response = await accountant.browser.put('/api/company/ledgers', {
+      ledgers: company.ledgers,
+      fiscalYearStartMonth: 1,
+    });
+    expect(response.status).toBe(403);
+    expect(response.body.code).toBe('FORBIDDEN');
   });
 });

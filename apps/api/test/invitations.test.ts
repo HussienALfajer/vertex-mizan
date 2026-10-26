@@ -137,7 +137,7 @@ describe('accepting', () => {
     const email = newEmail();
     const { token } = await invite(owner.browser, email, 'accountant', true);
     const visitor = new Browser(app);
-    const lookup = await visitor.get('/api/invitations/lookup', { token });
+    const lookup = await visitor.post('/api/invitations/lookup', { token });
     expect(lookup.body).toEqual({
       companyName: owner.company.name,
       role: 'accountant',
@@ -189,7 +189,7 @@ describe('accepting', () => {
     const existing = await createPerson(db);
     const { token } = await invite(owner.browser, existing.email, 'viewer');
     expect(
-      (await new Browser(app).get('/api/invitations/lookup', { token })).body.personExists,
+      (await new Browser(app).post('/api/invitations/lookup', { token })).body.personExists,
     ).toBe(true);
     const anonymous = await new Browser(app).post('/api/invitations/accept', { token });
     expect(anonymous.body.code).toBe('UNAUTHENTICATED');
@@ -225,7 +225,7 @@ describe('accepting', () => {
       await db.select().from(verifications).where(eq(verifications.value, revoked.invitation.id)),
     ).toEqual([]);
     for (const token of [expired.token, revoked.token, 'B'.repeat(43)]) {
-      const response = await new Browser(app).get('/api/invitations/lookup', { token });
+      const response = await new Browser(app).post('/api/invitations/lookup', { token });
       expect(response.status).toBe(410);
       expect(response.body.code).toBe('LINK_INVALID');
     }
@@ -259,6 +259,28 @@ describe('POST /api/invitations/:id/revoke', () => {
     const response = await owner.browser.post(`/api/invitations/${invitation.id}/revoke`);
     expect(response.status).toBe(404);
     expect(response.body.code).toBe('NOT_FOUND');
+    const [row] = await db
+      .select({ revokedAt: invitations.revokedAt })
+      .from(invitations)
+      .where(eq(invitations.id, invitation.id));
+    expect(row?.revokedAt).toBeNull();
+  });
+});
+
+describe('the documented refusals of invitation writes', () => {
+  it('refuse a role without members.manage and a switched tab', async () => {
+    const owner = await ownerWithCompany();
+    const { invitation } = await invite(owner.browser, newEmail());
+    const auditor = await joinCompany(app, db, owner.company.id, 'auditor');
+    const revoke = await auditor.browser.post(`/api/invitations/${invitation.id}/revoke`);
+    expect(revoke.status).toBe(403);
+    expect(revoke.body.code).toBe('FORBIDDEN');
+    const switched = await owner.browser.post(
+      '/api/invitations',
+      { email: newEmail(), role: 'viewer', canClosePeriods: false },
+      { 'x-mizan-company': invitation.id },
+    );
+    expect(switched.body.code).toBe('COMPANY_SWITCHED');
     const [row] = await db
       .select({ revokedAt: invitations.revokedAt })
       .from(invitations)

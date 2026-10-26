@@ -1,7 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { Member, UpdateMember } from '@vertex-mizan/contracts';
 import {
-  companies,
   type Database,
   memberships,
   sessions,
@@ -12,6 +11,7 @@ import {
 } from '@vertex-mizan/db';
 import { and, asc, count, eq, isNull, ne } from 'drizzle-orm';
 import { actorOf, type CompanyRouteAccess } from '../../core/access/access.js';
+import { lockCompanyForWrite } from '../../core/access/company-lock.js';
 import { freshlyAuthenticated } from '../../core/access/session-activity.js';
 import { changedFields, writeCompanyAudit } from '../../core/audit/audit.js';
 import { DATABASE } from '../../core/database/database.module.js';
@@ -52,7 +52,7 @@ export class MembersService {
   async update(access: CompanyRouteAccess, id: string, change: UpdateMember): Promise<Member> {
     const companyId = access.company.id;
     await withCompany(this.db, companyId, async (tx) => {
-      await this.lockCompany(tx, companyId);
+      await lockCompanyForWrite(tx, companyId, 'exclusive');
       const target = await this.activeMembership(tx, companyId, id);
       if (target.role === 'owner' && change.role !== 'owner') {
         await this.refuseLastOwner(tx, companyId, target.id);
@@ -86,7 +86,7 @@ export class MembersService {
   async remove(access: CompanyRouteAccess, id: string, reason: string): Promise<void> {
     const companyId = access.company.id;
     await withCompany(this.db, companyId, async (tx) => {
-      await this.lockCompany(tx, companyId);
+      await lockCompanyForWrite(tx, companyId, 'exclusive');
       const target = await this.activeMembership(tx, companyId, id);
       const leaving = target.userId === access.person.id;
       if (!leaving) {
@@ -125,10 +125,20 @@ export class MembersService {
   async resetTwoFactor(access: CompanyRouteAccess, id: string, reason: string): Promise<void> {
     const companyId = access.company.id;
     await withCompany(this.db, companyId, async (tx) => {
+      await lockCompanyForWrite(tx, companyId);
       const target = await this.activeMembership(tx, companyId, id);
       if (target.userId === access.person.id) {
         throw new CodedException('RESET_NOT_ALLOWED', 'Use your backup codes or ask Vertex');
       }
+      // Rule 21 holds until commit: the person's row is locked, so a membership added meanwhile
+      // (its foreign key takes `FOR KEY SHARE` on it) waits, and the resetting owner's owner
+      // memberships are locked against a demotion.
+      const [person] = await tx
+        .select({ email: users.email, twoFactorEnabled: users.twoFactorEnabled })
+        .from(users)
+        .where(eq(users.id, target.userId))
+        .for('update');
+      if (!person) throw new CodedException('NOT_FOUND', 'No such member');
       const theirs = await tx
         .select({ companyId: memberships.scopeCompanyId })
         .from(memberships)
@@ -145,16 +155,12 @@ export class MembersService {
                 isNull(memberships.archivedAt),
               ),
             )
+            .for('share')
         ).map((row) => row.companyId),
       );
       if (!theirs.every((row) => owned.has(row.companyId))) {
         throw new CodedException('RESET_NOT_ALLOWED', 'The person belongs to another company');
       }
-      const [person] = await tx
-        .select({ email: users.email, twoFactorEnabled: users.twoFactorEnabled })
-        .from(users)
-        .where(eq(users.id, target.userId));
-      if (!person) throw new CodedException('NOT_FOUND', 'No such member');
       await tx.delete(twoFactors).where(eq(twoFactors.userId, target.userId));
       await tx.update(users).set({ twoFactorEnabled: false }).where(eq(users.id, target.userId));
       await tx.delete(sessions).where(eq(sessions.userId, target.userId));
@@ -168,19 +174,6 @@ export class MembersService {
         after: { twoFactorEnabled: false },
       });
     });
-  }
-
-  /**
-   * Locks the company row, so concurrent owner changes run one after the other and one of two
-   * owners demoting each other gets `LAST_OWNER` (S01 edge case 1). `FOR NO KEY UPDATE`: audit
-   * inserts take `FOR KEY SHARE` through their foreign key and are not blocked by it.
-   */
-  private async lockCompany(tx: Transaction, companyId: string): Promise<void> {
-    await tx
-      .select({ id: companies.id })
-      .from(companies)
-      .where(eq(companies.id, companyId))
-      .for('no key update');
   }
 
   /** An active membership of the company; another company's id answers like an unknown one. */

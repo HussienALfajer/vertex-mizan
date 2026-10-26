@@ -18,6 +18,7 @@ import {
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import { actorOf, type CompanyRouteAccess, type SignedInAccess } from '../../core/access/access.js';
+import { lockCompanyForWrite } from '../../core/access/company-lock.js';
 import {
   type AuditActor,
   changedFields,
@@ -92,11 +93,8 @@ export class CompaniesService {
     const companyId = access.company.id;
     const actor = actorOf(access);
     return withCompany(this.db, companyId, async (tx) => {
-      const [company] = await tx
-        .select()
-        .from(companies)
-        .where(eq(companies.id, companyId))
-        .for('no key update');
+      await lockCompanyForWrite(tx, companyId);
+      const [company] = await tx.select().from(companies).where(eq(companies.id, companyId));
       const [settings] = await this.settings(tx, companyId);
       if (!company || !settings) throw new CodedException('NOT_FOUND', 'No such company');
 
@@ -141,6 +139,7 @@ export class CompaniesService {
   async updateLedgers(access: CompanyRouteAccess, input: UpdateCompanyLedgers): Promise<Company> {
     const companyId = access.company.id;
     return withCompany(this.db, companyId, async (tx) => {
+      await lockCompanyForWrite(tx, companyId);
       const [settings] = await this.settings(tx, companyId).for('update');
       if (!settings) throw new CodedException('NOT_FOUND', 'No such company');
       if (settings.booksStartedAt) {

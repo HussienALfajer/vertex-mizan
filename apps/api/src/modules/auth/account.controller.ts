@@ -21,7 +21,7 @@ import {
 import { ApiErrors } from '../../core/http/api-errors.js';
 import { AccountService } from './account.service.js';
 
-/** S01's own routes under `/api/auth`, registered before Better Auth's catch-all. */
+/** S01's own routes under `/api/auth`, beside the Better Auth routes of `auth.controller.ts`. */
 @ApiTags('auth')
 @Controller('auth')
 export class AccountController {

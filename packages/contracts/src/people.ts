@@ -81,6 +81,38 @@ export const signInResultSchema = z
 
 export type SignInResult = z.infer<typeof signInResultSchema>;
 
+/** `POST /api/auth/two-factor/verify-totp`: the second step, or the first code of enrolment. */
+export const verifyTotpSchema = z.object({ code: totpCodeSchema }).meta({ id: 'VerifyTotp' });
+
+export type VerifyTotp = z.infer<typeof verifyTotpSchema>;
+
+/** `POST /api/auth/two-factor/verify-backup-code`: the second step with a backup code. */
+export const verifyBackupCodeSchema = z
+  .object({ code: backupCodeSchema })
+  .meta({ id: 'VerifyBackupCode' });
+
+export type VerifyBackupCode = z.infer<typeof verifyBackupCodeSchema>;
+
+/** `POST /api/auth/two-factor/enable`: the password again, before a new authenticator. */
+export const enableTwoFactorSchema = z
+  .object({ password: z.string().min(1).max(128) })
+  .meta({ id: 'EnableTwoFactor' });
+
+export type EnableTwoFactor = z.infer<typeof enableTwoFactorSchema>;
+
+/**
+ * A new authenticator to add (S01 rule 3): its `otpauth://` URI for the QR code (the secret is in
+ * it, shown as text too) and the 10 backup codes, shown once after the first code verifies.
+ */
+export const twoFactorSetupSchema = z
+  .object({
+    totpURI: z.string().startsWith('otpauth://'),
+    backupCodes: z.array(z.string()).length(10),
+  })
+  .meta({ id: 'TwoFactorSetup' });
+
+export type TwoFactorSetup = z.infer<typeof twoFactorSetupSchema>;
+
 /** A one-time token from a link's fragment (base64url): an invitation or a password reset. */
 export const linkTokenSchema = z
   .string()

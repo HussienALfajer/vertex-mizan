@@ -12,6 +12,7 @@ import {
 import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createTestApp } from './app.js';
+import { Browser } from './browser.js';
 import { joinCompany, newCompany, reauthenticate, signedInPerson, testDatabase } from './people.js';
 
 // Memberships (S01 rules 14–18, 21): the list, role changes, removal and leaving under the
@@ -255,5 +256,79 @@ describe('POST /api/members/:id/reset-two-factor', () => {
       { reason: 'لا' },
     );
     expect(response.body.code).toBe('RESET_NOT_ALLOWED');
+  });
+});
+
+describe('the documented refusals of remove and reset-two-factor', () => {
+  async function stale(personId: string) {
+    await db
+      .update(sessions)
+      .set({ reauthenticatedAt: new Date(Date.now() - 10 * 60 * 1000) })
+      .where(eq(sessions.userId, personId));
+  }
+
+  it("answer another company's member as unknown and change nothing", async () => {
+    const owner = await ownerWithCompany();
+    const stranger = await ownerWithCompany();
+    const theirs = await joinCompany(app, db, stranger.company.id, 'viewer');
+    for (const path of [
+      `/api/members/${theirs.membershipId}/remove`,
+      `/api/members/${theirs.membershipId}/reset-two-factor`,
+    ]) {
+      const response = await owner.browser.post(path, { reason: 'لا' });
+      expect(response.status, path).toBe(404);
+      expect(response.body.code).toBe('NOT_FOUND');
+    }
+    const [row] = await db
+      .select({ archivedAt: memberships.archivedAt })
+      .from(memberships)
+      .where(eq(memberships.id, theirs.membershipId));
+    expect(row?.archivedAt).toBeNull();
+    expect((await theirs.browser.get('/api/me')).status).toBe(200);
+    expect(
+      await db.select().from(twoFactors).where(eq(twoFactors.userId, theirs.person.id)),
+    ).toHaveLength(1);
+  });
+
+  it('need a fresh code to remove another member or reset their two-factor', async () => {
+    const owner = await ownerWithCompany();
+    const viewer = await joinCompany(app, db, owner.company.id, 'viewer');
+    await stale(owner.person.id);
+    for (const path of [
+      `/api/members/${viewer.membershipId}/remove`,
+      `/api/members/${viewer.membershipId}/reset-two-factor`,
+    ]) {
+      const response = await owner.browser.post(path, { reason: 'سبب' });
+      expect(response.status, path).toBe(403);
+      expect(response.body.code).toBe('REAUTHENTICATION_REQUIRED');
+    }
+    expect((await viewer.browser.get('/api/company')).status).toBe(200);
+  });
+
+  it('refuse a role without members.manage, a switched tab and no session', async () => {
+    const owner = await ownerWithCompany();
+    const auditor = await joinCompany(app, db, owner.company.id, 'auditor');
+    await reauthenticate(auditor.browser, auditor.person);
+    const forbidden = await auditor.browser.post(
+      `/api/members/${owner.membershipId}/reset-two-factor`,
+      { reason: 'لا' },
+    );
+    expect(forbidden.body.code).toBe('FORBIDDEN');
+    const viewer = await joinCompany(app, db, owner.company.id, 'viewer');
+    for (const path of [
+      `/api/members/${viewer.membershipId}/remove`,
+      `/api/members/${viewer.membershipId}/reset-two-factor`,
+    ]) {
+      const switched = await owner.browser.post(
+        path,
+        { reason: 'سبب' },
+        { 'x-mizan-company': auditor.membershipId },
+      );
+      expect(switched.status, path).toBe(409);
+      expect(switched.body.code).toBe('COMPANY_SWITCHED');
+      const anonymous = await new Browser(app).post(path, { reason: 'سبب' });
+      expect(anonymous.status).toBe(401);
+      expect(anonymous.body.code).toBe('UNAUTHENTICATED');
+    }
   });
 });

@@ -420,3 +420,42 @@ describe('re-enrolment', () => {
     await signIn(new Browser(app), person);
   });
 });
+
+describe('re-enrolment needs a fresh code, keyed on the person', () => {
+  it('refuses a new authenticator without one, and keeps the old one after a wrong password', async () => {
+    const { browser, person } = await signedInPerson(app, db);
+    await db
+      .update(sessions)
+      .set({ reauthenticatedAt: new Date(Date.now() - 10 * 60 * 1000) })
+      .where(eq(sessions.userId, person.id));
+    const stale = await browser.post('/api/auth/two-factor/enable', { password: person.password });
+    expect(stale.status).toBe(403);
+    expect(stale.body.code).toBe('REAUTHENTICATION_REQUIRED');
+    await reauthenticate(browser, person);
+    const wrong = await browser.post('/api/auth/two-factor/enable', {
+      password: 'not the password',
+    });
+    expect(wrong.body.code).toBe('INVALID_CREDENTIALS');
+    await signIn(new Browser(app), person);
+  });
+
+  it('still asks for a fresh code after an abandoned re-enrolment', async () => {
+    const { browser, person } = await signedInPerson(app, db);
+    await reauthenticate(browser, person);
+    const started = await browser.post('/api/auth/two-factor/enable', {
+      password: person.password,
+    });
+    expect(started.status).toBe(200);
+    const newBackupCodes: string[] = started.body.backupCodes;
+    // The person walks away without typing the new authenticator's first code.
+    await db
+      .update(sessions)
+      .set({ reauthenticatedAt: new Date(Date.now() - 10 * 60 * 1000) })
+      .where(eq(sessions.userId, person.id));
+    const again = await browser.post('/api/auth/two-factor/enable', { password: person.password });
+    expect(again.body.code).toBe('REAUTHENTICATION_REQUIRED');
+    // The new backup codes are theirs now: one re-authenticates them.
+    const [code] = newBackupCodes;
+    expect((await browser.post('/api/auth/reauthenticate', { code })).status).toBe(204);
+  });
+});

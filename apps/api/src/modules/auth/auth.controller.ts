@@ -1,35 +1,30 @@
-import { All, Controller, Inject, Req, Res } from '@nestjs/common';
-import { ApiExcludeController } from '@nestjs/swagger';
+import { Body, Controller, HttpCode, Inject, Post, Req, Res } from '@nestjs/common';
+import { ApiNoContentResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import {
-  backupCodeSchema,
+  type EnableTwoFactor,
   type ErrorCode,
+  enableTwoFactorSchema,
   errorStatus,
+  type SignIn,
+  type SignInResult,
+  signInResultSchema,
   signInSchema,
-  totpCodeSchema,
+  type TwoFactorSetup,
+  twoFactorSetupSchema,
+  type VerifyBackupCode,
+  type VerifyTotp,
+  verifyBackupCodeSchema,
+  verifyTotpSchema,
 } from '@vertex-mizan/contracts';
 import { fromNodeHeaders } from 'better-auth/node';
 import type { Request, Response } from 'express';
-import { z } from 'zod';
 import { factsOf } from '../../core/access/access.guard.js';
-import { Public } from '../../core/access/access.js';
+import { Public, SignedIn } from '../../core/access/access.js';
 import type { Config } from '../../core/config/config.js';
 import { CONFIG } from '../../core/config/config.module.js';
-import { CodedException, issuesOf } from '../../core/errors/coded-exception.js';
+import { CodedException } from '../../core/errors/coded-exception.js';
+import { ApiErrors } from '../../core/http/api-errors.js';
 import { AUTH, AUTH_BASE_PATH, type Auth } from './auth.js';
-
-/**
- * The Better Auth routes S01 uses, each with the body it takes; every other path of Better Auth
- * answers `NOT_FOUND` without reaching it (sign-up, social sign-in, profile and email changes,
- * session lists, two-factor disable and email codes, "trust this device"). Unknown fields are
- * dropped by the schemas, so `trustDevice` never reaches it either.
- */
-const ROUTES: Record<string, z.ZodType> = {
-  '/sign-in/email': signInSchema,
-  '/sign-out': z.object({}),
-  '/two-factor/enable': z.object({ password: z.string().min(1).max(128) }),
-  '/two-factor/verify-totp': z.object({ code: totpCodeSchema }),
-  '/two-factor/verify-backup-code': z.object({ code: backupCodeSchema }),
-};
 
 /** Better Auth's error codes, as ours (S01 "API": every error answer carries one of our codes). */
 const CODES: Record<string, ErrorCode> = {
@@ -66,13 +61,15 @@ function codeOf(status: number, body: unknown): ErrorCode | undefined {
 }
 
 /**
- * Mounts Better Auth at `/api/auth` (ADR 0002, S01 "API") behind our access guard, filters and
- * same-origin check: it checks the body, hands Better Auth a request with the request ID and the
- * client address Express resolved, and answers in our shapes. Success bodies never carry the
- * session token, which lives only in its `HttpOnly` cookie. Our own routes under `/api/auth`
- * (re-authentication, password reset, backup codes) are registered before this one and win.
+ * The Better Auth routes S01 uses (ADR 0002, S01 "API"), one handler each, behind our access guard,
+ * filters and same-origin check. Each checks its body with its contract (unknown fields such as
+ * `trustDevice` are dropped), hands Better Auth a request with the request ID and the client
+ * address Express resolved, and answers in our shapes and codes. Success bodies never carry the
+ * session token, which lives only in its `HttpOnly` cookie. Every other Better Auth path (sign-up,
+ * social sign-in, profile and email changes, session lists, two-factor disable and email codes)
+ * has no route here and answers `NOT_FOUND`.
  */
-@ApiExcludeController()
+@ApiTags('auth')
 @Controller('auth')
 export class AuthController {
   constructor(
@@ -80,23 +77,103 @@ export class AuthController {
     @Inject(CONFIG) private readonly config: Config,
   ) {}
 
-  @All('*path')
+  @Post('sign-in/email')
+  @HttpCode(200)
   @Public()
-  async handle(@Req() request: Request, @Res() response: Response): Promise<void> {
-    const path = request.path.slice(AUTH_BASE_PATH.length);
-    const schema = ROUTES[path];
-    if (!schema || request.method !== 'POST') {
-      throw new CodedException('NOT_FOUND', 'No such route');
-    }
-    const parsed = schema.safeParse(request.body ?? {});
-    if (!parsed.success) {
-      throw new CodedException(
-        'VALIDATION_FAILED',
-        'Validation failed',
-        issuesOf(parsed.error.issues),
-      );
-    }
+  @ApiOkResponse({
+    description: 'Whether a code is needed next; without one, a session that reaches enrolment',
+    standardSchema: signInResultSchema,
+  })
+  @ApiErrors('INVALID_CREDENTIALS', 'RATE_LIMITED', 'VALIDATION_FAILED')
+  async signIn(
+    @Req() request: Request,
+    @Res() response: Response,
+    @Body({ schema: signInSchema }) body: SignIn,
+  ): Promise<void> {
+    const answer = await this.forward(request, response, '/sign-in/email', body);
+    const result: SignInResult = {
+      twoFactorRequired: (answer as { twoFactorRedirect?: unknown }).twoFactorRedirect === true,
+    };
+    response.status(200).json(result);
+  }
 
+  @Post('two-factor/verify-totp')
+  @HttpCode(204)
+  @Public()
+  @ApiNoContentResponse({ description: 'Signed in (the session cookie), or enrolment done' })
+  @ApiErrors('INVALID_TWO_FACTOR_CODE', 'RATE_LIMITED', 'VALIDATION_FAILED')
+  async verifyTotp(
+    @Req() request: Request,
+    @Res() response: Response,
+    @Body({ schema: verifyTotpSchema }) body: VerifyTotp,
+  ): Promise<void> {
+    await this.forward(request, response, '/two-factor/verify-totp', body);
+    response.status(204).end();
+  }
+
+  @Post('two-factor/verify-backup-code')
+  @HttpCode(204)
+  @Public()
+  @ApiNoContentResponse({ description: 'Signed in with a backup code, which is now used' })
+  @ApiErrors('INVALID_TWO_FACTOR_CODE', 'RATE_LIMITED', 'VALIDATION_FAILED')
+  async verifyBackupCode(
+    @Req() request: Request,
+    @Res() response: Response,
+    @Body({ schema: verifyBackupCodeSchema }) body: VerifyBackupCode,
+  ): Promise<void> {
+    await this.forward(request, response, '/two-factor/verify-backup-code', body);
+    response.status(204).end();
+  }
+
+  @Post('two-factor/enable')
+  @HttpCode(200)
+  @SignedIn({ beforeEnrolment: true })
+  @ApiOkResponse({
+    description: 'A new authenticator, effective once its first code verifies',
+    standardSchema: twoFactorSetupSchema,
+  })
+  @ApiErrors(
+    'UNAUTHENTICATED',
+    'INVALID_CREDENTIALS',
+    'REAUTHENTICATION_REQUIRED',
+    'RATE_LIMITED',
+    'VALIDATION_FAILED',
+  )
+  async enable(
+    @Req() request: Request,
+    @Res() response: Response,
+    @Body({ schema: enableTwoFactorSchema }) body: EnableTwoFactor,
+  ): Promise<void> {
+    const answer = (await this.forward(
+      request,
+      response,
+      '/two-factor/enable',
+      body,
+    )) as TwoFactorSetup;
+    const setup: TwoFactorSetup = { totpURI: answer.totpURI, backupCodes: answer.backupCodes };
+    response.status(200).json(setup);
+  }
+
+  @Post('sign-out')
+  @HttpCode(204)
+  @SignedIn({ beforeEnrolment: true })
+  @ApiNoContentResponse({ description: 'The session ended' })
+  @ApiErrors('UNAUTHENTICATED')
+  async signOut(@Req() request: Request, @Res() response: Response): Promise<void> {
+    await this.forward(request, response, '/sign-out', {});
+    response.status(204).end();
+  }
+
+  /**
+   * Hands one checked request to Better Auth and passes its cookies on: a refusal becomes our
+   * coded error, a success returns Better Auth's body for the handler to reshape.
+   */
+  private async forward(
+    request: Request,
+    response: Response,
+    path: string,
+    body: object,
+  ): Promise<unknown> {
     const facts = factsOf(request);
     const headers = fromNodeHeaders(request.headers);
     headers.delete('content-length');
@@ -108,33 +185,19 @@ export class AuthController {
     if (facts.ipAddress) headers.set('x-forwarded-for', facts.ipAddress);
     else headers.delete('x-forwarded-for');
     const answer = await this.auth.handler(
-      new Request(new URL(request.originalUrl, `http://${request.get('host') ?? 'localhost'}`), {
+      new Request(`http://${request.get('host') ?? 'localhost'}${AUTH_BASE_PATH}${path}`, {
         method: 'POST',
         headers,
-        body: JSON.stringify(parsed.data),
+        body: JSON.stringify(body),
       }),
     );
-
     for (const cookie of answer.headers.getSetCookie()) response.append('set-cookie', cookie);
-    const body: unknown = await answer.json().catch(() => null);
+    const answered: unknown = await answer.json().catch(() => null);
     if (!answer.ok) {
-      const code = codeOf(answer.status, body);
+      const code = codeOf(answer.status, answered);
       if (!code) throw new Error(`Better Auth answered ${answer.status} on ${path}`);
       throw new CodedException(code, 'Refused by the sign-in');
     }
-    switch (path) {
-      case '/sign-in/email':
-        response.status(200).json({
-          twoFactorRequired: (body as { twoFactorRedirect?: unknown }).twoFactorRedirect === true,
-        });
-        return;
-      case '/two-factor/enable': {
-        const { totpURI, backupCodes } = body as { totpURI: string; backupCodes: string[] };
-        response.status(200).json({ totpURI, backupCodes });
-        return;
-      }
-      default:
-        response.status(204).end();
-    }
+    return answered;
   }
 }

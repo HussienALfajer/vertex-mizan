@@ -1094,19 +1094,19 @@
       }
     },
     "/api/invitations/lookup": {
-      "get": {
+      "post": {
         "operationId": "InvitationsController_lookup",
-        "parameters": [
-          {
-            "name": "token",
-            "required": true,
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "pattern": "^[A-Za-z0-9_-]{32,128}$"
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LookupInvitation"
+              }
             }
           }
-        ],
+        },
         "responses": {
           "200": {
             "description": "What the link invites to",
@@ -1656,6 +1656,270 @@
           },
           "429": {
             "description": "RATE_LIMITED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/sign-in/email": {
+      "post": {
+        "operationId": "AuthController_signIn",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SignIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Whether a code is needed next; without one, a session that reaches enrolment",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignInResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "INVALID_CREDENTIALS",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_FAILED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "RATE_LIMITED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/two-factor/verify-totp": {
+      "post": {
+        "operationId": "AuthController_verifyTotp",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyTotp"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Signed in (the session cookie), or enrolment done"
+          },
+          "401": {
+            "description": "INVALID_TWO_FACTOR_CODE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_FAILED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "RATE_LIMITED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/two-factor/verify-backup-code": {
+      "post": {
+        "operationId": "AuthController_verifyBackupCode",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyBackupCode"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Signed in with a backup code, which is now used"
+          },
+          "401": {
+            "description": "INVALID_TWO_FACTOR_CODE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_FAILED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "RATE_LIMITED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/two-factor/enable": {
+      "post": {
+        "operationId": "AuthController_enable",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EnableTwoFactor"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "A new authenticator, effective once its first code verifies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TwoFactorSetup"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED, INVALID_CREDENTIALS",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "REAUTHENTICATION_REQUIRED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_FAILED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "RATE_LIMITED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/sign-out": {
+      "post": {
+        "operationId": "AuthController_signOut",
+        "parameters": [],
+        "responses": {
+          "204": {
+            "description": "The session ended"
+          },
+          "401": {
+            "description": "UNAUTHENTICATED",
             "content": {
               "application/json": {
                 "schema": {
@@ -2450,7 +2714,7 @@
       "Email": {
         "type": "string"
       },
-      "InvitationLookupQuery": {
+      "LookupInvitation": {
         "type": "object",
         "properties": {
           "token": {
@@ -2765,6 +3029,93 @@
           "token",
           "password"
         ]
+      },
+      "SignIn": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "$ref": "#/components/schemas/Email"
+          },
+          "password": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "email",
+          "password"
+        ]
+      },
+      "SignInResult": {
+        "type": "object",
+        "properties": {
+          "twoFactorRequired": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "twoFactorRequired"
+        ],
+        "additionalProperties": false
+      },
+      "VerifyTotp": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "$ref": "#/components/schemas/TotpCode"
+          }
+        },
+        "required": [
+          "code"
+        ]
+      },
+      "VerifyBackupCode": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "$ref": "#/components/schemas/BackupCode"
+          }
+        },
+        "required": [
+          "code"
+        ]
+      },
+      "EnableTwoFactor": {
+        "type": "object",
+        "properties": {
+          "password": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "password"
+        ]
+      },
+      "TwoFactorSetup": {
+        "type": "object",
+        "properties": {
+          "totpURI": {
+            "type": "string",
+            "format": "starts_with",
+            "pattern": "^otpauth:\\/\\/.*"
+          },
+          "backupCodes": {
+            "minItems": 10,
+            "maxItems": 10,
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "totpURI",
+          "backupCodes"
+        ],
+        "additionalProperties": false
       }
     }
   }
