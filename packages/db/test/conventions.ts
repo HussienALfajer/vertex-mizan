@@ -531,11 +531,7 @@ export async function checkConventions(
       ) {
         fail('app-privilege', name, JSON.stringify(p));
       }
-      if (
-        ephemeral &&
-        p.role === APP_ROLE &&
-        !(p.select && p.insert && p.update && p.delete)
-      ) {
+      if (ephemeral && p.role === APP_ROLE && !(p.select && p.insert && p.update && p.delete)) {
         fail('ephemeral-grant', name, JSON.stringify(p));
       }
       if (appendOnly && (p.update || p.updateColumn || p.delete)) {
