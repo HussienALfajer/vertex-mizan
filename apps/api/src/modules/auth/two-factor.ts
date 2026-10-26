@@ -2,7 +2,7 @@ import { randomInt } from 'node:crypto';
 import { createOTP } from '@better-auth/utils/otp';
 import { type Database, type Transaction, twoFactors, verifications } from '@vertex-mizan/db';
 import { symmetricDecrypt, symmetricEncrypt } from 'better-auth/crypto';
-import { and, eq, lte, sql } from 'drizzle-orm';
+import { and, eq, gt, lte, sql } from 'drizzle-orm';
 import { tokenIdentifier } from '../../core/http/link-tokens.js';
 
 /** Five wrong codes lock the second step for 15 minutes (S01 rule 8). */
@@ -47,52 +47,94 @@ export async function enrolledTwoFactor(
   return row ?? null;
 }
 
-/**
- * How long the old authenticator is kept aside during a re-enrolment (S01 rule 7): until the new
- * one's first code, or the person's next sign-in or re-authentication, whichever comes first.
- */
-const REENROLMENT_DAYS = 30;
-
-const reenrolmentKey = (userId: string) => `reenrol:${userId}`;
-
-/**
- * Keeps a person's verified authenticator and backup codes aside (still encrypted) before a
- * re-enrolment replaces them, so the new authenticator takes effect only when its first code
- * verifies (S01 rule 3). An earlier copy is kept: it is the last verified one.
- */
-export async function keepAuthenticatorAside(db: Executor, row: TwoFactorRow): Promise<void> {
-  await db
-    .insert(verifications)
-    .values({
-      identifier: reenrolmentKey(row.userId),
-      value: JSON.stringify({ secret: row.secret, backupCodes: row.backupCodes }),
-      expiresAt: new Date(Date.now() + REENROLMENT_DAYS * 24 * 60 * 60 * 1000),
-    })
-    .onConflictDoNothing({ target: verifications.identifier });
+/** The encrypted secret and backup codes of an authenticator, as `two_factors` holds them. */
+export interface StoredAuthenticator {
+  secret: string;
+  backupCodes: string;
 }
 
-/** The new authenticator verified: the old one kept aside is dropped. */
-export async function dropAuthenticatorAside(db: Executor, userId: string): Promise<void> {
-  await db.delete(verifications).where(eq(verifications.identifier, reenrolmentKey(userId)));
-}
+/** A new authenticator waits this long for its first code; the old one stays in force meanwhile. */
+const WAITING_HOURS = 24;
+
+const waitingKey = (userId: string) => `reenrol:${userId}`;
 
 /**
- * An abandoned re-enrolment ends at the person's next sign-in or re-authentication: the old
- * authenticator and backup codes come back, verified, and the unconfirmed new ones are dropped.
+ * Re-enrolment (S01 rules 3 and 7): Better Auth wrote the new authenticator into the person's
+ * row; it moves to a waiting slot (still encrypted) and the old one goes back, verified, so the
+ * old one stays in force until the new one's first code. A newer waiting one replaces an older.
  */
-export async function restoreAbandonedReenrolment(db: Database, userId: string): Promise<void> {
+export async function setNewAuthenticatorWaiting(
+  db: Database,
+  userId: string,
+  old: StoredAuthenticator,
+): Promise<void> {
   await db.transaction(async (tx) => {
-    const [kept] = await tx
-      .delete(verifications)
-      .where(eq(verifications.identifier, reenrolmentKey(userId)))
-      .returning({ value: verifications.value });
-    if (!kept) return;
-    const old = JSON.parse(kept.value) as { secret: string; backupCodes: string };
+    const [written] = await tx
+      .select({ secret: twoFactors.secret, backupCodes: twoFactors.backupCodes })
+      .from(twoFactors)
+      .where(eq(twoFactors.userId, userId))
+      .for('update');
+    if (!written) return;
+    const waiting = {
+      identifier: waitingKey(userId),
+      value: JSON.stringify(written),
+      expiresAt: new Date(Date.now() + WAITING_HOURS * 60 * 60 * 1000),
+    };
     await tx
-      .update(twoFactors)
-      .set({ secret: old.secret, backupCodes: old.backupCodes, verified: true })
-      .where(and(eq(twoFactors.userId, userId), eq(twoFactors.verified, false)));
+      .insert(verifications)
+      .values(waiting)
+      .onConflictDoUpdate({
+        target: verifications.identifier,
+        set: { value: waiting.value, expiresAt: waiting.expiresAt },
+      });
+    await restoreAuthenticator(tx, userId, old);
   });
+}
+
+/** Puts an authenticator back into the person's row, verified. */
+export async function restoreAuthenticator(
+  db: Executor,
+  userId: string,
+  old: StoredAuthenticator,
+): Promise<void> {
+  await db
+    .update(twoFactors)
+    .set({ secret: old.secret, backupCodes: old.backupCodes, verified: true })
+    .where(eq(twoFactors.userId, userId));
+}
+
+/** The new authenticator waiting for its first code, if any and not expired. */
+export async function waitingAuthenticator(
+  db: Executor,
+  userId: string,
+): Promise<StoredAuthenticator | null> {
+  const [row] = await db
+    .select({ value: verifications.value })
+    .from(verifications)
+    .where(
+      and(
+        eq(verifications.identifier, waitingKey(userId)),
+        gt(verifications.expiresAt, sql`now()`),
+      ),
+    );
+  return row ? (JSON.parse(row.value) as StoredAuthenticator) : null;
+}
+
+/** The waiting authenticator's first code verified: it replaces the old one in the person's row. */
+export async function promoteWaitingAuthenticator(
+  db: Database,
+  userId: string,
+  waiting: StoredAuthenticator,
+): Promise<void> {
+  await db.transaction(async (tx) => {
+    await restoreAuthenticator(tx, userId, waiting);
+    await dropWaitingAuthenticator(tx, userId);
+  });
+}
+
+/** Drops a waiting authenticator: when it takes effect, and at every two-factor reset. */
+export async function dropWaitingAuthenticator(db: Executor, userId: string): Promise<void> {
+  await db.delete(verifications).where(eq(verifications.identifier, waitingKey(userId)));
 }
 
 export function isLocked(row: TwoFactorRow, now = new Date()): boolean {
@@ -101,7 +143,7 @@ export function isLocked(row: TwoFactorRow, now = new Date()): boolean {
 
 /** Whether `code` is the authenticator's code for this step or the next or previous one. */
 export async function totpMatches(
-  row: TwoFactorRow,
+  row: Pick<TwoFactorRow, 'secret'>,
   code: string,
   secret: string,
 ): Promise<boolean> {

@@ -37,13 +37,16 @@ import {
 import { hashPassword, verifyDecoy, verifyPassword } from './password.js';
 import {
   claimCode,
-  dropAuthenticatorAside,
   enrolledTwoFactor,
   generateBackupCodes,
-  keepAuthenticatorAside,
+  promoteWaitingAuthenticator,
   releaseCode,
-  restoreAbandonedReenrolment,
+  restoreAuthenticator,
+  type StoredAuthenticator,
+  setNewAuthenticatorWaiting,
   TWO_FACTOR_LOCKOUT,
+  totpMatches,
+  waitingAuthenticator,
 } from './two-factor.js';
 
 /** Injection token for the Better Auth instance. */
@@ -102,6 +105,8 @@ interface SecondStep {
 export function createAuth(db: Database, config: Config) {
   /** What the before hook learned about a second step, for the after hook of the same request. */
   const secondSteps = new WeakMap<Request, SecondStep>();
+  /** A re-enrolment in this request: the person and their old authenticator. */
+  const reenrolments = new WeakMap<Request, { userId: string; old: StoredAuthenticator }>();
   /** Sign-ins the before hook refused and audited itself, so the after hook does not count them. */
   const refusedEarly = new WeakSet<Request>();
 
@@ -291,16 +296,14 @@ export function createAuth(db: Database, config: Config) {
             if (ctx.request) refusedEarly.add(ctx.request);
             throw invalidCredentials();
           }
-          if (user) await restoreAbandonedReenrolment(db, user.id);
           return;
         }
 
         if (ctx.path === '/two-factor/enable') {
-          // Re-enrolment (S01 rule 7) replaces the authenticator of a person who has one: it
-          // needs a fresh code, keyed on the person and not on the row. The password is checked
-          // here; then the old authenticator is kept aside and Better Auth writes the new one,
-          // which takes effect at its first code. An abandoned one ends at the next sign-in or
-          // re-authentication, which bring the old one back.
+          // Re-enrolment (S01 rule 7) of a person who has an authenticator: it needs a fresh
+          // code, keyed on the person and not on the row, and the password, checked here. Better
+          // Auth then writes the new authenticator; the after hook moves it to a waiting slot and
+          // puts the old one back, so the old one stays in force until the new one's first code.
           const found = await getSessionFromCtx(ctx);
           if (!found) return;
           const [person] = await db
@@ -330,7 +333,12 @@ export function createAuth(db: Database, config: Config) {
             throw invalidCredentials();
           }
           const current = await enrolledTwoFactor(db, found.user.id);
-          if (current) await keepAuthenticatorAside(db, current);
+          if (current && ctx.request) {
+            reenrolments.set(ctx.request, {
+              userId: found.user.id,
+              old: { secret: current.secret, backupCodes: current.backupCodes },
+            });
+          }
           await db
             .update(twoFactors)
             .set({ verified: false })
@@ -359,7 +367,24 @@ export function createAuth(db: Database, config: Config) {
             .select({ verified: twoFactors.verified })
             .from(twoFactors)
             .where(eq(twoFactors.userId, person.userId));
-          const enrolling = !person.signIn && current?.verified === false;
+          let enrolling = !person.signIn && current?.verified === false;
+          // A re-enrolment's first code: checked against the waiting authenticator, which then
+          // replaces the old one; Better Auth checks it again against the person's row.
+          const waiting =
+            !person.signIn && ctx.path === '/two-factor/verify-totp'
+              ? await waitingAuthenticator(db, person.userId)
+              : null;
+          if (waiting) {
+            if (!(await totpMatches(waiting, code, config.authSecret))) {
+              await releaseCode(db, person.userId, code);
+              throw new APIError('UNAUTHORIZED', {
+                code: 'INVALID_TWO_FACTOR_CODE',
+                message: 'Not a code of the new authenticator',
+              });
+            }
+            await promoteWaitingAuthenticator(db, person.userId, waiting);
+            enrolling = true;
+          }
           secondSteps.set(ctx.request, { ...person, code, enrolling });
           return;
         }
@@ -377,6 +402,15 @@ export function createAuth(db: Database, config: Config) {
       after: createAuthMiddleware(async (ctx) => {
         const failed = ctx.context.returned instanceof APIError;
         const facts = factsOf(ctx.headers);
+
+        if (ctx.path === '/two-factor/enable' && ctx.request) {
+          const reenrolment = reenrolments.get(ctx.request);
+          if (!reenrolment) return;
+          // Refused: the old authenticator goes back as it was. Written: the new one waits.
+          if (failed) await restoreAuthenticator(db, reenrolment.userId, reenrolment.old);
+          else await setNewAuthenticatorWaiting(db, reenrolment.userId, reenrolment.old);
+          return;
+        }
 
         if (ctx.path === '/sign-in/email') {
           const { email } = ctx.body as { email: string };
@@ -431,7 +465,6 @@ export function createAuth(db: Database, config: Config) {
           if (actor.kind === 'person') await enterOnlyCompany(actor);
         } else if (step.enrolling) {
           // The first code of a new authenticator: enrolment (or re-enrolment) took effect.
-          await dropAuthenticatorAside(db, step.userId);
           await writePlatformAudit(db, { action: 'user.two_factor_enrolled', actor });
         }
       }),

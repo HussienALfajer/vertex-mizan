@@ -19,6 +19,7 @@ import { eq } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import { type AuditActor, SYSTEM_NAME, writePlatformAudit } from '../core/audit/audit.js';
 import { queueEmail } from '../core/email/outbox.js';
+import { dropWaitingAuthenticator } from '../modules/auth/two-factor.js';
 import { ledgerColumns } from '../modules/companies/company-shape.js';
 import { createInvitation } from '../modules/invitations/invitations.service.js';
 
@@ -163,6 +164,7 @@ export async function resetTwoFactorByVertex(
       .where(eq(users.email, input.email));
     if (!person) throw new Error('No person with that email');
     await tx.delete(twoFactors).where(eq(twoFactors.userId, person.id));
+    await dropWaitingAuthenticator(tx, person.id);
     await tx.update(users).set({ twoFactorEnabled: false }).where(eq(users.id, person.id));
     await tx.delete(sessions).where(eq(sessions.userId, person.id));
     await queueEmail(tx, 'two_factor_reset', input.email, { companyName: null });

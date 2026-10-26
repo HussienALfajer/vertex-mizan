@@ -439,34 +439,30 @@ describe('re-enrolment needs a fresh code, keyed on the person', () => {
     await signIn(new Browser(app), person);
   });
 
-  it('still asks for a fresh code after an abandoned re-enrolment', async () => {
+  it('keeps the old authenticator in force when a re-enrolment is abandoned', async () => {
     const { browser, person } = await signedInPerson(app, db);
     await reauthenticate(browser, person);
     const started = await browser.post('/api/auth/two-factor/enable', {
       password: person.password,
     });
     expect(started.status).toBe(200);
-    const newBackupCodes: string[] = started.body.backupCodes;
-    // The person walks away without typing the new authenticator's first code.
+    const [unconfirmed] = started.body.backupCodes as string[];
+    // The person walks away; someone who knows only the email tries to sign in meanwhile.
+    await new Browser(app).post('/api/auth/sign-in/email', {
+      email: person.email,
+      password: 'a wrong password',
+    });
     await db
       .update(sessions)
       .set({ reauthenticatedAt: new Date(Date.now() - 10 * 60 * 1000) })
       .where(eq(sessions.userId, person.id));
+    const refused = await browser.post('/api/auth/reauthenticate', { code: unconfirmed });
+    expect(refused.status).toBe(401);
+    expect(refused.body.code).toBe('INVALID_TWO_FACTOR_CODE');
     const again = await browser.post('/api/auth/two-factor/enable', { password: person.password });
     expect(again.body.code).toBe('REAUTHENTICATION_REQUIRED');
-    // The old authenticator still works: re-authenticating ends the abandoned re-enrolment.
+    // The old authenticator and its backup codes still work, at re-authentication and sign-in.
     await reauthenticate(browser, person);
-    const [unconfirmed] = newBackupCodes;
-    const refused = await new Browser(app).post('/api/auth/reauthenticate', { code: unconfirmed });
-    expect(refused.status).toBe(401);
-  });
-
-  it('brings the old authenticator back at the next sign-in after an abandoned re-enrolment', async () => {
-    const { browser, person } = await signedInPerson(app, db);
-    await reauthenticate(browser, person);
-    expect(
-      (await browser.post('/api/auth/two-factor/enable', { password: person.password })).status,
-    ).toBe(200);
     await signIn(new Browser(app), person);
     const [code] = person.backupCodes;
     const backup = new Browser(app);
@@ -477,6 +473,18 @@ describe('re-enrolment needs a fresh code, keyed on the person', () => {
     expect((await backup.post('/api/auth/two-factor/verify-backup-code', { code })).status).toBe(
       204,
     );
+  });
+
+  it('refuses a code of the old authenticator as the first code of the new one', async () => {
+    const { browser, person } = await signedInPerson(app, db);
+    await reauthenticate(browser, person);
+    expect(
+      (await browser.post('/api/auth/two-factor/enable', { password: person.password })).status,
+    ).toBe(200);
+    const response = await browser.post('/api/auth/two-factor/verify-totp', {
+      code: await freshCode(person),
+    });
+    expect(response.body.code).toBe('INVALID_TWO_FACTOR_CODE');
   });
 
   it('keeps the new authenticator once its first code verifies', async () => {

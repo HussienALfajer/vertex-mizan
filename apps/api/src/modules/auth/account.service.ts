@@ -28,7 +28,6 @@ import {
   recordCodeFailure,
   releaseCode,
   resetCodeFailures,
-  restoreAbandonedReenrolment,
   totpMatches,
   useBackupCode,
 } from './two-factor.js';
@@ -57,7 +56,6 @@ export class AccountService {
     if (!(await consumeLimit(this.db, `reauthenticate:${person.id}`, LIMITS.perIpPerMinute))) {
       throw new CodedException('RATE_LIMITED', 'Too many attempts');
     }
-    await restoreAbandonedReenrolment(this.db, person.id);
     const row = await enrolledTwoFactor(this.db, person.id);
     if (!row)
       throw new CodedException('TWO_FACTOR_REQUIRED', 'Enrol two-factor authentication first');

@@ -17,6 +17,7 @@ import { changedFields, writeCompanyAudit } from '../../core/audit/audit.js';
 import { DATABASE } from '../../core/database/database.module.js';
 import { queueEmail } from '../../core/email/outbox.js';
 import { CodedException } from '../../core/errors/coded-exception.js';
+import { dropWaitingAuthenticator } from '../auth/two-factor.js';
 
 type MembershipRow = typeof memberships.$inferSelect;
 
@@ -162,6 +163,7 @@ export class MembersService {
         throw new CodedException('RESET_NOT_ALLOWED', 'The person belongs to another company');
       }
       await tx.delete(twoFactors).where(eq(twoFactors.userId, target.userId));
+      await dropWaitingAuthenticator(tx, target.userId);
       await tx.update(users).set({ twoFactorEnabled: false }).where(eq(users.id, target.userId));
       await tx.delete(sessions).where(eq(sessions.userId, target.userId));
       await queueEmail(tx, 'two_factor_reset', person.email, { companyName: access.company.name });

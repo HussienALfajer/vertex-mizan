@@ -103,7 +103,7 @@ export type EnableTwoFactor = z.infer<typeof enableTwoFactorSchema>;
 /**
  * A new authenticator to add (S01 rule 3): its `otpauth://` URI for the QR code (the secret is in
  * it, shown as text too) and its 10 backup codes, which the web shows once, after the first code
- * verifies; until then a person re-enrolling keeps their old authenticator and codes.
+ * verifies. A person re-enrolling keeps their old authenticator and codes in force until then.
  */
 export const twoFactorSetupSchema = z
   .object({
