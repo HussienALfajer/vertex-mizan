@@ -5,7 +5,7 @@ import type { GridMove } from './selection';
 /*
  * The keys of a grid in navigation mode (ADR 0010 §4), as commands the grid applies. Arrows move
  * visually, as APG describes them: Left is the next column in RTL and the previous one in LTR.
- * Editing mode (typing, Enter, Escape) belongs to the cell being edited.
+ * Editing mode (typing, Enter, Escape while a cell is edited) belongs to the cell's editor.
  */
 
 export type GridCommand =
@@ -56,6 +56,8 @@ export function gridCommand(
   if (event.key === 'Home') return { type: 'move', move: mod ? 'gridStart' : 'rowStart', extend };
   if (event.key === 'End') return { type: 'move', move: mod ? 'gridEnd' : 'rowEnd', extend };
   if (mod) return undefined;
+  // Enter moves down and Shift+Enter up, as in a spreadsheet; F2 or typing edits.
+  if (event.key === 'Enter') return { type: 'move', move: extend ? 'up' : 'down', extend: false };
   const vertical = VERTICAL[event.key];
   if (vertical) return { type: 'move', move: vertical, extend };
   if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {

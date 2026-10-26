@@ -34,6 +34,7 @@ export * from './components/toast';
 export * from './components/toggle-group';
 export * from './components/tooltip';
 export * from './grid/cells';
+export * from './grid/grid';
 export * from './grid/grid-keys';
 export * from './grid/selection';
 export * from './grid/summary';

@@ -5,7 +5,13 @@ import {
   type Ledger,
   parseAmount,
 } from '@vertex-mizan/contracts';
-import { type CellRange, type GridSelection, rangeCells, selectionRange } from './selection';
+import {
+  type CellPosition,
+  type CellRange,
+  type GridSelection,
+  rangeCells,
+  selectionRange,
+} from './selection';
 import { parseTsv, toHtmlTable, toTsv } from './tsv';
 
 /*
@@ -88,15 +94,23 @@ function isReadOnly<Row>(column: GridColumn<Row>, row: Row): boolean {
 }
 
 /**
- * A cell as clipboard text: amounts without grouping (`-1250.50`), Latin digits and an ASCII minus,
- * so Excel reads a number whatever its locale's thousands separator; empty for an empty amount.
+ * A cell as text. For the clipboard (the default) amounts are ungrouped (`-1250.50`), Latin digits
+ * and an ASCII minus, so Excel reads a number whatever its locale's thousands separator; an editor
+ * shows them grouped. An empty amount is empty text.
  */
-export function cellText<Row>(column: GridColumn<Row>, row: Row): string {
+export function cellText<Row>(
+  column: GridColumn<Row>,
+  row: Row,
+  { grouping = false }: { grouping?: boolean } = {},
+): string {
   if (column.type === 'text') return column.value(row);
   const amountMinor = column.valueMinor(row);
-  return amountMinor === null
-    ? ''
-    : formatMinor(amountMinor, column.currency(row), { grouping: false });
+  return amountMinor === null ? '' : formatMinor(amountMinor, column.currency(row), { grouping });
+}
+
+/** Whether a cell can be edited at all (a read-only column or a locked row cannot). */
+export function isCellEditable<Row>(column: GridColumn<Row>, row: Row): boolean {
+  return !isReadOnly(column, row);
 }
 
 /** The selection as TSV and as an HTML table (Ctrl+C). */
@@ -147,6 +161,21 @@ function plan(results: readonly (CellEdit | CellProblem)[], range: CellRange): E
   const cells = results.filter((result): result is CellProblem => 'reason' in result);
   if (cells.length > 0) return { ok: false, problem: 'INVALID_CELLS', cells };
   return { ok: true, edits: results as readonly CellEdit[], range };
+}
+
+/** Text typed into one cell, committed from its editor: the edit, or why the cell refuses it. */
+export function planCellEdit<Row>(
+  rows: Rows<Row>,
+  columns: Columns<Row>,
+  { row, column }: CellPosition,
+  text: string,
+): EditPlan {
+  return plan([editFromText(rows, columns, row, column, text)], {
+    firstRow: row,
+    lastRow: row,
+    firstColumn: column,
+    lastColumn: column,
+  });
 }
 
 /**

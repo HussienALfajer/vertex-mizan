@@ -5,6 +5,7 @@ import {
   type CellEdit,
   copyRange,
   type GridColumn,
+  planCellEdit,
   planClear,
   planFillDown,
   planPaste,
@@ -263,6 +264,28 @@ describe('planFillDown', () => {
         }
       }),
     );
+  });
+});
+
+describe('planCellEdit', () => {
+  it('takes typed text as it is, never as clipboard cells', () => {
+    expect(planCellEdit(lines, columns, at(1, 0), '"quoted"	memo')).toEqual({
+      ok: true,
+      range: { firstRow: 1, lastRow: 1, firstColumn: 0, lastColumn: 0 },
+      edits: [{ row: 1, column: 0, type: 'text', text: '"quoted"	memo' }],
+    });
+  });
+
+  it('parses an amount in the row’s currency, and refuses a locked cell', () => {
+    const plan = planCellEdit(lines, columns, at(2, 1), '=1250*2');
+    expect(plan.ok && plan.edits).toEqual([
+      { row: 2, column: 1, type: 'amount', amountMinor: 250000n },
+    ]);
+    expect(planCellEdit(lines, columns, at(3, 1), '1')).toEqual({
+      ok: false,
+      problem: 'INVALID_CELLS',
+      cells: [{ row: 3, column: 1, reason: 'READ_ONLY' }],
+    });
   });
 });
 

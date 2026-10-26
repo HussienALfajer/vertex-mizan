@@ -63,6 +63,13 @@ describe('gridCommand', () => {
     );
   });
 
+  it('moves down on Enter and up on Shift+Enter, as a spreadsheet, never extending', () => {
+    expect(gridCommand(press({ key: 'Enter' }), 'rtl', 'other')).toEqual(move('down'));
+    expect(gridCommand(press({ key: 'Enter', shiftKey: true }), 'rtl', 'other')).toEqual(
+      move('up'),
+    );
+  });
+
   it('extends with Shift and jumps with Ctrl (⌘ on macOS)', () => {
     expect(gridCommand(press({ key: 'ArrowDown', shiftKey: true }), 'rtl', 'other')).toEqual(
       move('down', true),
@@ -95,7 +102,7 @@ describe('gridCommand', () => {
       { key: 'ArrowDown', altKey: true },
       { key: 'ArrowLeft', ctrlKey: true },
       { key: 'Delete', ctrlKey: true },
-      { key: 'Enter' },
+      { key: 'Enter', ctrlKey: true },
       { key: 'x' },
     ]) {
       expect(gridCommand(press(init), 'rtl', 'other'), init.key).toBeUndefined();
