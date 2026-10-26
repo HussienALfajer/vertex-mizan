@@ -53,7 +53,8 @@ export const invitationSchema = z
     email: z.string(),
     role: roleSchema,
     canClosePeriods: z.boolean(),
-    invitedBy: z.object({ id: z.uuid(), name: z.string() }),
+    /** Null for the first owner's invitation, sent by the server command (S01 rule 9). */
+    invitedBy: z.object({ id: z.uuid(), name: z.string() }).nullable(),
     expiresAt: z.iso.datetime({ offset: true }),
     createdAt: z.iso.datetime({ offset: true }),
   })

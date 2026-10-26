@@ -30,6 +30,8 @@ export const RULES = {
   'kind-timestamps':
     'Append-only: no updated_at or archived_at; business: both; queue and draft: updated_at; ephemeral: updated_at, no archived_at.',
   'ephemeral-scope': 'An ephemeral table is a platform table: no company data is ever deleted.',
+  'ephemeral-grant':
+    'The app role holds SELECT, INSERT, UPDATE and DELETE on an ephemeral table, so used tokens are deleted.',
   'ephemeral-reference':
     'No foreign key references an ephemeral table, whose rows are deleted (the audit logs keep their ids without one).',
   'company-scope': 'company_id (uuid, not null) exactly on company tables.',
@@ -54,7 +56,7 @@ export const RULES = {
   'pinned-function':
     'Every guard function (current_company_id(), refuse_change(), the deferred checks) is exactly as its migration made it.',
   'guard-trigger':
-    'Every listed guard trigger is on its table, on INSERT, unconditional, calling its pinned function.',
+    'Every listed guard trigger is on its table, on its events, unconditional, row-level (statement-level for TRUNCATE), calling its pinned function.',
   inheritance:
     'No table inherits from another or is a partition, which would add rows past its guards.',
   'database-privilege':
@@ -101,16 +103,16 @@ export type PinnedFunction = {
 };
 
 /**
- * A guard trigger a table must keep: a row trigger on at least the events `on`, with no WHEN
- * condition and no column list, calling a pinned function; `deferred` ones are constraint
- * triggers, checked at commit (ADR 0008).
+ * A guard trigger a table must keep: on at least the events `on`, with no WHEN condition and no
+ * column list, calling a pinned function, row-level (statement-level for TRUNCATE, the only way
+ * PostgreSQL fires on it); `deferred` ones are constraint triggers, checked at commit (ADR 0008).
  */
 export type GuardTrigger = {
   table: string;
   name: string;
   function: string;
   deferred: boolean;
-  on: ('INSERT' | 'UPDATE')[];
+  on: ('INSERT' | 'UPDATE' | 'DELETE' | 'TRUNCATE')[];
 };
 
 export type Guards = { functions: PinnedFunction[]; triggers: GuardTrigger[] };
@@ -187,6 +189,25 @@ BEGIN
 END
 `,
     },
+    {
+      name: 'refuse_delete',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+BEGIN
+  RAISE EXCEPTION '% is never deleted: % refused', TG_TABLE_NAME, TG_OP
+    USING ERRCODE = 'restrict_violation';
+END
+`,
+    },
   ],
   triggers: [
     // The settings lock (S01 rule 11): before every update of a company's ledger settings.
@@ -196,6 +217,21 @@ END
       function: 'company_settings_lock',
       deferred: false,
       on: ['UPDATE'],
+    },
+    // company_settings is never deleted, which would also undo the lock.
+    {
+      table: 'company_settings',
+      name: 'company_settings_refuse_delete',
+      function: 'refuse_delete',
+      deferred: false,
+      on: ['DELETE'],
+    },
+    {
+      table: 'company_settings',
+      name: 'company_settings_refuse_truncate',
+      function: 'refuse_delete',
+      deferred: false,
+      on: ['TRUNCATE'],
     },
   ],
 };
@@ -495,6 +531,13 @@ export async function checkConventions(
       ) {
         fail('app-privilege', name, JSON.stringify(p));
       }
+      if (
+        ephemeral &&
+        p.role === APP_ROLE &&
+        !(p.select && p.insert && p.update && p.delete)
+      ) {
+        fail('ephemeral-grant', name, JSON.stringify(p));
+      }
       if (appendOnly && (p.update || p.updateColumn || p.delete)) {
         fail('append-only-grant', name, `${p.role}: ${JSON.stringify(p)}`);
       }
@@ -569,13 +612,15 @@ export async function checkConventions(
       throw new Error(`Guard trigger ${guard.name} calls ${guard.function}(), which is not pinned`);
     }
     const found = triggers.find((t) => t.table === guard.table && t.name === guard.name);
-    const events = guard.on.reduce((all, event) => all | (event === 'INSERT' ? INSERT : UPDATE), 0);
+    const bits = { INSERT, UPDATE, DELETE, TRUNCATE };
+    const events = guard.on.reduce((all, event) => all | bits[event], 0);
+    const rowLevel = !guard.on.includes('TRUNCATE');
     if (
       !found ||
       found.function !== guard.function ||
       !found.unconditional ||
       found.constraint !== guard.deferred ||
-      !(found.type & ROW) ||
+      Boolean(found.type & ROW) !== rowLevel ||
       (found.type & events) !== events
     ) {
       fail('guard-trigger', guard.table, `${guard.name}: ${JSON.stringify(found ?? null)}`);

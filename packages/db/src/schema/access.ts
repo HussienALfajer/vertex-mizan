@@ -249,9 +249,8 @@ export const invitations = pgTable(
     email: text().notNull(),
     role: membershipRole().notNull(),
     canClosePeriods: boolean().notNull().default(false),
-    invitedByUserId: uuid()
-      .notNull()
-      .references(() => users.id),
+    /** Null for the first owner's invitation, sent by the server command (S01 rule 9). */
+    invitedByUserId: uuid().references(() => users.id),
     verificationIdentifier: text().notNull(),
     expiresAt: timestamptz().notNull(),
     acceptedAt: timestamptz(),

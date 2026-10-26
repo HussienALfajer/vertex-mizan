@@ -34,9 +34,8 @@ export const companies = pgTable(
     nameLatin: text(),
     /** `pool` in phase 1; `silo` is ADR 0003's dedicated-database option. */
     dataLocation: text().notNull().default('pool'),
-    createdByUserId: uuid()
-      .notNull()
-      .references(() => users.id),
+    /** Null for a company the server command `admin:create-company` made (S01 rule 9). */
+    createdByUserId: uuid().references(() => users.id),
     archivedReason: text(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),

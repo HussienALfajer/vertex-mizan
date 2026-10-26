@@ -196,6 +196,31 @@ describe('the settings lock', () => {
     );
     expect((await settingsOf(app, id))?.policyNote).toBe('مذكرة معدّلة.');
   });
+
+  it('cannot be undone by deleting the settings and inserting them again, for any role', async () => {
+    const id = await company(personId);
+    await startBooks(id);
+    expect(await refusal(withCompany(app, id, (tx) => tx.delete(companySettings)))).toMatch(DENIED);
+    expect(await refusal(withCompany(owner, id, (tx) => tx.delete(companySettings)))).toBe(
+      'company_settings is never deleted: DELETE refused',
+    );
+    expect(await refusal(owner.execute(sql`truncate company_settings`))).toBe(
+      'company_settings is never deleted: TRUNCATE refused',
+    );
+    const client: pg.PoolClient = await superuser.connect();
+    try {
+      await client.query('begin');
+      await client.query("set local session_replication_role = 'replica'");
+      await client.query(`select set_config('app.company_id', $1, true)`, [id]);
+      expect(await refusal(client.query('delete from company_settings'))).toBe(
+        'company_settings is never deleted: DELETE refused',
+      );
+    } finally {
+      await client.query('rollback');
+      client.release();
+    }
+    expect((await settingsOf(app, id))?.booksStartedAt).not.toBeNull();
+  });
 });
 
 describe('the settings checks', () => {
@@ -411,6 +436,22 @@ describe('memberships and invitations', () => {
       .set({ revokedAt: new Date() })
       .where(eq(invitations.verificationIdentifier, 'invite:a'));
     await app.insert(invitations).values(invitation('invite:b'));
+  });
+
+  it('let the server command create a company and invite its first owner, with no person behind them', async () => {
+    const [made] = await app
+      .insert(companies)
+      .values({ name: 'شركة أولى', createdByUserId: null })
+      .returning({ id: companies.id });
+    if (!made) throw new Error('no company inserted');
+    await app.insert(invitations).values({
+      scopeCompanyId: made.id,
+      email: 'first.owner@example.test',
+      role: 'owner',
+      invitedByUserId: null,
+      verificationIdentifier: 'invite:first-owner',
+      expiresAt: new Date('2026-11-02T09:00:00Z'),
+    });
   });
 
   it('never delete a membership, an invitation, a person or a company', async () => {

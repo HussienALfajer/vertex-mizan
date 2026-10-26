@@ -166,6 +166,11 @@ const MUTATIONS: Mutation[] = [
     },
   },
   {
+    name: 'an ephemeral table the app role cannot delete from, so used tokens stay usable',
+    rules: ['ephemeral-grant'],
+    sql: 'revoke delete on fixture_tokens from mizan_app',
+  },
+  {
     name: 'a foreign key to an ephemeral table, whose rows are deleted',
     rules: ['ephemeral-reference'],
     sql: `alter table fixture_settings add column token_id uuid references fixture_tokens (id);
@@ -367,6 +372,30 @@ const MUTATIONS: Mutation[] = [
           create trigger company_settings_lock before update of book_currency on company_settings
             for each row execute function company_settings_lock();
           alter table company_settings enable always trigger company_settings_lock`,
+  },
+  {
+    name: 'the settings lock made statement-level, where OLD is NULL and every change passes',
+    rules: ['guard-trigger'],
+    sql: `drop trigger company_settings_lock on company_settings;
+          create trigger company_settings_lock before update on company_settings
+            for each statement execute function company_settings_lock();
+          alter table company_settings enable always trigger company_settings_lock`,
+  },
+  {
+    name: 'company_settings deletable again',
+    rules: ['guard-trigger'],
+    sql: 'drop trigger company_settings_refuse_delete on company_settings',
+  },
+  {
+    name: 'company_settings truncatable again',
+    rules: ['guard-trigger'],
+    sql: 'drop trigger company_settings_refuse_truncate on company_settings',
+  },
+  {
+    name: 'refuse_delete() replaced to let the delete through',
+    rules: ['pinned-function'],
+    sql: `create or replace function refuse_delete() returns trigger language plpgsql
+            as $$ BEGIN RETURN OLD; END $$`,
   },
   {
     name: 'the settings lock dropped',
