@@ -37,6 +37,46 @@ export const errorStatus = {
    * above an invoice's open amount (ADR 0005, invariant 9).
    */
   RELEASE_EXCEEDS_BALANCE: 422,
+
+  // Companies, people and access (S01).
+  /** The request does not match its schema (ADR 0008: validation answers 422). */
+  VALIDATION_FAILED: 422,
+  /** No valid session. */
+  UNAUTHENTICATED: 401,
+  /** Wrong email or password, or a locked or archived account: one answer for all. */
+  INVALID_CREDENTIALS: 401,
+  /** A wrong, reused or expired authenticator or backup code. */
+  INVALID_TWO_FACTOR_CODE: 401,
+  /** The person must enrol two-factor first. */
+  TWO_FACTOR_REQUIRED: 403,
+  /** A sensitive action without a fresh authenticator or backup code (5 minutes). */
+  REAUTHENTICATION_REQUIRED: 403,
+  /** The membership lacks the route's permission. */
+  FORBIDDEN: 403,
+  /** Unknown, or belongs to another company: the two answer alike. */
+  NOT_FOUND: 404,
+  /** No active company on the session. */
+  COMPANY_NOT_SELECTED: 409,
+  /** The `X-Mizan-Company` header differs from the session's active company. */
+  COMPANY_SWITCHED: 409,
+  /** A write to an archived company. */
+  COMPANY_ARCHIVED: 409,
+  /** A change to the currencies, rate policies or fiscal year after the first posted entry. */
+  COMPANY_SETTINGS_LOCKED: 409,
+  /** The change would leave the company without an active owner. */
+  LAST_OWNER: 409,
+  /** The invited email already belongs to a member of the company. */
+  MEMBERSHIP_EXISTS: 409,
+  /** A pending invitation exists for the email and company. */
+  INVITATION_EXISTS: 409,
+  /** An invitation or reset link that is expired, used or revoked. */
+  LINK_INVALID: 410,
+  /** The signed-in person is not the invited email. */
+  INVITATION_EMAIL_MISMATCH: 403,
+  /** The person belongs to a company where the resetting owner is not an owner. */
+  RESET_NOT_ALLOWED: 403,
+  /** Too many attempts. */
+  RATE_LIMITED: 429,
 } as const satisfies Record<string, number>;
 
 export type ErrorCode = keyof typeof errorStatus;

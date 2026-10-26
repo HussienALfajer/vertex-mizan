@@ -30,6 +30,26 @@ describe('error codes', () => {
       ['ENTRY_UNBALANCED', 422],
       ['ENTRY_TOO_FEW_LINES', 422],
       ['RELEASE_EXCEEDS_BALANCE', 422],
+      // S01, companies, people and access
+      ['VALIDATION_FAILED', 422],
+      ['UNAUTHENTICATED', 401],
+      ['INVALID_CREDENTIALS', 401],
+      ['INVALID_TWO_FACTOR_CODE', 401],
+      ['TWO_FACTOR_REQUIRED', 403],
+      ['REAUTHENTICATION_REQUIRED', 403],
+      ['FORBIDDEN', 403],
+      ['NOT_FOUND', 404],
+      ['COMPANY_NOT_SELECTED', 409],
+      ['COMPANY_SWITCHED', 409],
+      ['COMPANY_ARCHIVED', 409],
+      ['COMPANY_SETTINGS_LOCKED', 409],
+      ['LAST_OWNER', 409],
+      ['MEMBERSHIP_EXISTS', 409],
+      ['INVITATION_EXISTS', 409],
+      ['LINK_INVALID', 410],
+      ['INVITATION_EMAIL_MISMATCH', 403],
+      ['RESET_NOT_ALLOWED', 403],
+      ['RATE_LIMITED', 429],
     ]);
   });
 

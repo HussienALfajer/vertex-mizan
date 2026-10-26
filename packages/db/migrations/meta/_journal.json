@@ -8,6 +8,34 @@
       "when": 1792528068310,
       "tag": "0000_foundation",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1793046216523,
+      "tag": "0001_access",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793046217714,
+      "tag": "0002_access_guards",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1793047019137,
+      "tag": "0003_bootstrap_nullable",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793047020945,
+      "tag": "0004_company_settings_never_deleted",
+      "breakpoints": true
     }
   ]
 }

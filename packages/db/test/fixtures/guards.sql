@@ -87,3 +87,8 @@ ALTER TABLE fixture_lines ENABLE ALWAYS TRIGGER fixture_lines_balance;
 -- fixture_settings: platform business table; the app role reads only.
 REVOKE ALL ON fixture_settings FROM PUBLIC;
 GRANT SELECT ON fixture_settings TO mizan_app;
+
+-- fixture_tokens: platform ephemeral table; the app role also deletes, as Better Auth does with
+-- expired sessions and used tokens.
+REVOKE ALL ON fixture_tokens FROM PUBLIC;
+GRANT SELECT, INSERT, UPDATE, DELETE ON fixture_tokens TO mizan_app;

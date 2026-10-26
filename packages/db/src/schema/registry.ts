@@ -18,15 +18,36 @@
  *   the outbox), their payloads never.
  * - `draft`: `created_at` and `updated_at`; documents being prepared, which can change until they
  *   are posted (ADR 0005, drafts are not ledger).
+ * - `ephemeral`: `created_at` and `updated_at`, no `archived_at`; rows deleted when they expire or
+ *   are used (sessions, one-time tokens, two-factor secrets, rate-limit counters; S01). Platform
+ *   scope only, the one kind the app role may `DELETE` from, and no table references one by
+ *   foreign key: the audit logs keep their ids without one. No company or ledger data is ever
+ *   ephemeral.
  *
  * The convention test fails when a table is missing here or does not follow its scope and kind.
  * The migration guard (`scripts/migration-guard.mjs`) loads this file with Node's type stripping to
  * refuse `UPDATE`, `DELETE` and `TRUNCATE` of the append-only tables, so it imports nothing.
  */
-export const tableRegistry = {} as const satisfies Record<string, TableInfo>;
+export const tableRegistry = {
+  // access (S01): Better Auth's tables, memberships and invitations.
+  users: { module: 'access', scope: 'platform', kind: 'business' },
+  accounts: { module: 'access', scope: 'platform', kind: 'business' },
+  sessions: { module: 'access', scope: 'platform', kind: 'ephemeral' },
+  verifications: { module: 'access', scope: 'platform', kind: 'ephemeral' },
+  two_factors: { module: 'access', scope: 'platform', kind: 'ephemeral' },
+  rate_limits: { module: 'access', scope: 'platform', kind: 'ephemeral' },
+  memberships: { module: 'access', scope: 'platform', kind: 'business' },
+  invitations: { module: 'access', scope: 'platform', kind: 'queue' },
+  // companies (S01).
+  companies: { module: 'companies', scope: 'platform', kind: 'business' },
+  company_settings: { module: 'companies', scope: 'company', kind: 'business' },
+  // audit (S01, ADR 0005).
+  platform_audit_entries: { module: 'audit', scope: 'platform', kind: 'append-only' },
+  audit_entries: { module: 'audit', scope: 'company', kind: 'append-only' },
+} as const satisfies Record<string, TableInfo>;
 
 export type TableScope = 'company' | 'platform';
 
-export type TableKind = 'business' | 'append-only' | 'queue' | 'draft';
+export type TableKind = 'business' | 'append-only' | 'queue' | 'draft' | 'ephemeral';
 
 export type TableInfo = { module: string; scope: TableScope; kind: TableKind };

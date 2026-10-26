@@ -34,7 +34,9 @@
     "@types/node": "24.19.2",
     "@types/pg": "8.23.1",
     "@vertex-mizan/config": "workspace:*",
+    "@vertex-mizan/contracts": "workspace:*",
     "drizzle-kit": "0.31.11",
+    "fast-check": "4.10.2",
     "typescript": "6.0.3",
     "vitest": "5.0.5"
   }

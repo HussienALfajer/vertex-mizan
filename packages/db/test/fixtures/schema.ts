@@ -99,3 +99,15 @@ export const fixtureSettings = pgTable(
   },
   (t) => [idIsUuidV7('fixture_settings', t.id)],
 );
+
+/** A platform ephemeral table: rows are deleted once used or expired, and nothing references it. */
+export const fixtureTokens = pgTable(
+  'fixture_tokens',
+  {
+    id: id(),
+    value: text().notNull(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [idIsUuidV7('fixture_tokens', t.id)],
+);
