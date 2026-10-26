@@ -76,6 +76,9 @@ export class AccountService {
       if (!accepted) await releaseCode(this.db, person.id, code);
     } else {
       accepted = await this.db.transaction(async (tx) => {
+        // The person's lock first, as every two-factor change takes it: the audit insert below
+        // takes `FOR KEY SHARE` on the same row, so the other order could deadlock.
+        await lockTwoFactorOf(tx, person.id);
         const used = await useBackupCode(tx, person.id, code, this.config.authSecret);
         if (used) await writePlatformAudit(tx, { action: 'user.backup_code_used', actor });
         return used;

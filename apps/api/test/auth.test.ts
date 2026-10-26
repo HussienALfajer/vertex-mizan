@@ -563,16 +563,18 @@ describe('re-enrolment needs a fresh code, keyed on the person', () => {
       (await browser.post('/api/auth/two-factor/enable', { password: person.password })).status,
     ).toBe(200);
     await resetTwoFactorByVertex(db, { email: person.email, reason: 'اختبار' });
-    // As if a re-enrolment that started before the reset wrote its slot after it.
-    await newWaitingAuthenticator(db, person.id, 'synthetic-test-secret-of-at-least-32-characters');
+
+    // A re-enrolment that passed the guard before the reset is refused under the person's lock:
+    // a live session of the person, but no authenticator to replace.
     const again = new Browser(app);
     await signIn(again, person);
-    await enrol(again, person);
-    expect((await again.get('/api/me')).body.person.twoFactorEnabled).toBe(true);
-    // The stale re-enrolment itself is refused: the person has no authenticator to replace.
-    const stale = app.get(AccountService);
+    const [live] = await db
+      .select({ id: sessions.id })
+      .from(sessions)
+      .where(eq(sessions.userId, person.id));
+    if (!live) throw new Error('no session');
     await expect(
-      stale.startReenrolment(
+      app.get(AccountService).startReenrolment(
         {
           requestId: 'test',
           ipAddress: null,
@@ -580,7 +582,7 @@ describe('re-enrolment needs a fresh code, keyed on the person', () => {
           company: null,
           person: { id: person.id, name: person.name, email: person.email, twoFactorEnabled: true },
           session: {
-            id: '019a2b3c-0000-7000-8000-000000000000',
+            id: live.id,
             activeCompanyId: null,
             twoFactorVerifiedAt: new Date(),
             reauthenticatedAt: new Date(),
@@ -589,5 +591,26 @@ describe('re-enrolment needs a fresh code, keyed on the person', () => {
         person.password,
       ),
     ).rejects.toMatchObject({ code: 'TWO_FACTOR_REQUIRED' });
+
+    // As if such a re-enrolment had written its slot after the reset: enrolling ignores it.
+    await newWaitingAuthenticator(db, person.id, 'synthetic-test-secret-of-at-least-32-characters');
+    await enrol(again, person);
+    expect((await again.get('/api/me')).body.person.twoFactorEnabled).toBe(true);
+  });
+
+  it('runs new backup codes and a backup-code re-authentication at once without a deadlock', async () => {
+    const { browser, person } = await signedInPerson(app, db);
+    await reauthenticate(browser, person);
+    const [code] = person.backupCodes;
+    const [regenerated, reauthenticated] = await Promise.all([
+      browser.post('/api/auth/two-factor/generate-backup-codes'),
+      browser.post('/api/auth/reauthenticate', { code }),
+    ]);
+    expect(regenerated.status).toBe(200);
+    // Either order is right: the code was used before the new set, or the new set voided it.
+    expect([204, 401]).toContain(reauthenticated.status);
+    expect(reauthenticated.status === 401 ? reauthenticated.body.code : null).not.toBe(
+      'RATE_LIMITED',
+    );
   });
 });
