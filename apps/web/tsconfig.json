@@ -1,0 +1,10 @@
+{
+  "extends": "@vertex-mizan/config/tsconfig/react.json",
+  "compilerOptions": {
+    "types": ["vite/client", "node"],
+    // `vite.config.ts` imports `@vertex-mizan/ui/vite`, a TypeScript source whose imports name
+    // `.ts` files (Vite loads it in Node).
+    "allowImportingTsExtensions": true
+  },
+  "include": ["src", "e2e", "playwright.config.ts", "vite.config.ts"]
+}

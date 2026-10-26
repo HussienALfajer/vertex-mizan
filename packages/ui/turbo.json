@@ -3,7 +3,7 @@
   "extends": ["//"],
   "tasks": {
     "test": {
-      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/brand/**"]
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/brand/**", "$TURBO_ROOT$/apps/web/src/**"]
     }
   }
 }

@@ -1,6 +1,6 @@
 /**
- * The design system's own page (`packages/ui/preview`, then `apps/web`'s design-system page): its
- * headings and its synthetic examples. No real company, account or amount (AGENTS.md).
+ * The design-system page of `apps/web` (`/design-system`): its headings and its
+ * synthetic examples. No real company, account or amount (AGENTS.md).
  */
 export const designSystem = {
   title: 'نظام التصميم',
@@ -80,8 +80,15 @@ export const designSystem = {
   states: {
     title: 'الحالات',
   },
-  palette: {
-    sections: 'أقسام الصفحة',
-    display: 'العرض',
+  sheet: {
+    title: 'اللوحة الجانبية',
+    hint: 'تنزلق من بداية السطر (اليمين)، وتُغلق بـ Esc أو بالنقر خارجها. هي قائمة التنقل على الهاتف.',
+    open: 'افتح اللوحة',
+    heading: 'تفاصيل الحساب',
+    body: 'محتوى قصير يرافق الصفحة دون أن يغادرها المستخدم.',
+  },
+  brand: {
+    title: 'الهوية',
+    hint: 'الشعار، والخطوط المائلة بزاوية الشعار (60°) بجانب المحتوى لا خلفه، وعبارة «بدعم من».',
   },
 };

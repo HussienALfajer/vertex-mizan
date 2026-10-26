@@ -25,6 +25,7 @@ export * from './components/kbd';
 export * from './components/page-header';
 export * from './components/popover';
 export * from './components/select';
+export * from './components/sheet';
 export * from './components/skeleton';
 export * from './components/switch';
 export * from './components/table';

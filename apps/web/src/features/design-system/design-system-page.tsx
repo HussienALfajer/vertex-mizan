@@ -8,16 +8,6 @@ import {
 import { ar } from '@vertex-mizan/i18n';
 import type { DensityPreference } from '@vertex-mizan/tokens';
 import {
-  ArrowDownIcon,
-  CheckIcon,
-  DownloadIcon,
-  MoonIcon,
-  RowsIcon,
-  SearchIcon,
-  SunIcon,
-} from 'lucide-react';
-import { type ReactNode, useState } from 'react';
-import {
   AccountLabel,
   Amount,
   AmountInput,
@@ -29,7 +19,6 @@ import {
   CardHeader,
   CardTitle,
   type CellEdit,
-  CommandPalette,
   Field,
   FieldDescription,
   FieldError,
@@ -43,22 +32,26 @@ import {
   keymap,
   LedgerSwitch,
   PageHeader,
-  type PaletteCommand,
   PeriodBadge,
   PoweredBy,
-  setTheme,
+  Sheet,
+  SheetClose,
+  SheetContent,
+  SheetTitle,
+  SheetTrigger,
   Table,
   TableBody,
   TableCell,
   TableHead,
   TableHeader,
   TableRow,
-  ThemeToggle,
   ToggleGroup,
   ToggleGroupItem,
   useDensity,
-  VertexMizanMark,
-} from '../src/index';
+  VertexMizanLogo,
+} from '@vertex-mizan/ui';
+import { CheckIcon, DownloadIcon, SearchIcon } from 'lucide-react';
+import { type ReactNode, useState } from 'react';
 
 const t = ar.designSystem;
 const { accounting, common } = ar;
@@ -515,84 +508,31 @@ function Shortcuts() {
   );
 }
 
-/** The preview's own commands: its sections and its display settings, with search words. */
-const sectionCommands = [
-  ['densities', t.densities, ['density']],
-  ['entry', t.entry.title, ['journal entry']],
-  ['grid', t.grid.title, ['data grid', 'excel']],
-  ['report', t.report.title, ['trial balance']],
-  ['amounts', t.amounts.title, ['amount']],
-  ['input', t.input.title, ['amount input']],
-  ['states', t.states.title, ['period']],
-  ['shortcuts', ar.shortcuts.title, ['keyboard shortcuts']],
-] as const;
-
-function previewCommands(setDensity: (next: DensityPreference) => void): PaletteCommand[] {
-  return [
-    ...sectionCommands.map(([id, label, keywords]) => ({
-      id: `go-${id}`,
-      label,
-      group: t.palette.sections,
-      keywords,
-      icon: <ArrowDownIcon />,
-      run: () => document.getElementById(id)?.scrollIntoView({ block: 'start' }),
-    })),
-    {
-      id: 'dark',
-      label: common.theme.toDark,
-      group: t.palette.display,
-      keywords: ['dark theme'],
-      icon: <MoonIcon />,
-      run: () => setTheme('dark'),
-    },
-    {
-      id: 'light',
-      label: common.theme.toLight,
-      group: t.palette.display,
-      keywords: ['light theme'],
-      icon: <SunIcon />,
-      run: () => setTheme('light'),
-    },
-    ...(['auto', 'compact', 'comfortable'] as const).map((option) => ({
-      id: `density-${option}`,
-      label: `${common.density.label}: ${common.density[option]}`,
-      group: t.palette.display,
-      keywords: ['density', option],
-      icon: <RowsIcon />,
-      run: () => setDensity(option),
-    })),
-  ];
-}
-
-export function Preview() {
+/**
+ * The design system's page (`/design-system`): every component of `packages/ui` with synthetic
+ * data, in the shell (the sidebar and command palette are the shell's own). The screenshot tests photograph it in both themes at 360, 768 and 1280 px.
+ */
+export function DesignSystemPage() {
   const { preference, setDensity } = useDensity();
   return (
-    <main className="mx-auto flex max-w-6xl min-w-0 flex-col gap-8 px-4 py-6 sm:px-6">
-      <div className="relative flex flex-col gap-4">
-        <VertexMizanMark label={common.productName} className="w-10 text-primary" />
-        <AscentLines className="pointer-events-none absolute inset-y-0 end-0 h-full w-40 text-accent opacity-40" />
-        <PageHeader
-          title={t.title}
-          description={t.subtitle}
-          actions={
-            <>
-              <ToggleGroup<DensityPreference>
-                aria-label={common.density.label}
-                value={[preference]}
-                onValueChange={([next]) => next && setDensity(next)}
-              >
-                {(['auto', 'compact', 'comfortable'] as const).map((option) => (
-                  <ToggleGroupItem key={option} value={option}>
-                    {common.density[option]}
-                  </ToggleGroupItem>
-                ))}
-              </ToggleGroup>
-              <ThemeToggle labels={common.theme} />
-              <CommandPalette commands={previewCommands(setDensity)} labels={ar.commandPalette} />
-            </>
-          }
-        />
-      </div>
+    <>
+      <PageHeader
+        title={t.title}
+        description={t.subtitle}
+        actions={
+          <ToggleGroup<DensityPreference>
+            aria-label={common.density.label}
+            value={[preference]}
+            onValueChange={([next]) => next && setDensity(next)}
+          >
+            {(['auto', 'compact', 'comfortable'] as const).map((option) => (
+              <ToggleGroupItem key={option} value={option}>
+                {common.density[option]}
+              </ToggleGroupItem>
+            ))}
+          </ToggleGroup>
+        }
+      />
 
       <Section id="densities" title={t.densities}>
         <div className="grid gap-4">
@@ -656,13 +596,38 @@ export function Preview() {
         </div>
       </Section>
 
+      <Section id="sheet" title={t.sheet.title}>
+        <p className="text-muted-foreground">{t.sheet.hint}</p>
+        <Sheet>
+          <SheetTrigger render={<Button variant="outline" className="w-fit" />}>
+            {t.sheet.open}
+          </SheetTrigger>
+          <SheetContent className="gap-3 p-6">
+            <SheetTitle>{t.sheet.heading}</SheetTitle>
+            <AccountLabel code="1110.02" name={t.accounts.bank} />
+            <p className="text-muted-foreground">{t.sheet.body}</p>
+            <SheetClose render={<Button variant="secondary" className="w-fit" />}>
+              {common.close}
+            </SheetClose>
+          </SheetContent>
+        </Sheet>
+      </Section>
+
+      <Section id="brand" title={t.brand.title}>
+        <p className="text-muted-foreground">{t.brand.hint}</p>
+        <Card className="flex-row items-center justify-between gap-4 overflow-hidden">
+          <VertexMizanLogo
+            label={common.productName}
+            className="h-20 w-auto min-w-0 text-primary"
+          />
+          <AscentLines className="h-16 w-40 shrink-0 text-accent" />
+        </Card>
+        <PoweredBy label={common.poweredBy} />
+      </Section>
+
       <Section id="shortcuts" title={ar.shortcuts.title}>
         <Shortcuts />
       </Section>
-
-      <footer className="border-t border-border pt-4">
-        <PoweredBy label={common.poweredBy} />
-      </footer>
-    </main>
+    </>
   );
 }

@@ -37,7 +37,7 @@ const lockFile = join(tmpdir(), 'vertex-mizan-verify.lock');
 // Longer than any real run (`--e2e-all` included): past it, the lock is a leftover.
 const LOCK_MAX_AGE_MS = 30 * 60_000;
 // The built API (`pnpm --filter @vertex-mizan/api start`) and Vite's dev server (apps/web).
-const DEV_PORTS = [3300, 5173];
+const DEV_PORTS = [3300, 5173, 4173];
 // An E2E spec: apps/<app>/e2e/**/*.spec.ts, run by that app's Playwright.
 const E2E_SPEC = /^(apps\/[\w-]+)\/e2e\/.+\.spec\.ts$/;
 // The scenario book is one Vitest file with its own config; the Markdown it reads is its input.

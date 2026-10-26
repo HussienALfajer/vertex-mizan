@@ -54,7 +54,9 @@ The PR that adds a command adds it here and keeps it true. Run from the reposito
 | `pnpm check:openapi` | The OpenAPI guard: `apps/api/openapi.json` has no breaking change against `origin/main` (or `--base <ref>`), through oasdiff (on the PATH or `OASDIFF`; `scripts/install-oasdiff.sh` pins it) (ADR 0006). The test of `apps/api` keeps the file equal to the API: regenerate with `pnpm --filter @vertex-mizan/api test -u` |
 | `pnpm check:boot` | Starts the built API and worker as a server does and checks `/api/health` answers 200 and the worker schedules its jobs; after `pnpm build` and `pnpm db:migrate` |
 | `pnpm --filter @vertex-mizan/api start` · `pnpm --filter @vertex-mizan/worker start` | Run the built API (`127.0.0.1:3300`, Swagger UI at `/api/docs` outside production) or the worker with the root `.env` |
-| `pnpm --filter @vertex-mizan/ui preview` | The design system's preview page (Vite, until `apps/web`); `preview:build` writes `.preview/ui` |
+| `pnpm --filter @vertex-mizan/web dev` | The web app on `127.0.0.1:5173` (Vite), `/api` proxied to the API; the design-system page at `/design-system`. Stop it before `pnpm verify` |
+| `pnpm test:e2e [--shard=<n>/<total>]` | CI only: every app's whole Playwright suite after its build, through Turborepo (arguments go to Playwright); the test guard refuses it in a session |
+| `pnpm verify apps/web/e2e/<file>.spec.ts` · `pnpm verify --e2e-all` | Playwright specs on the web app's production build (`apps/web/CLAUDE.md`) · the whole suite, which otherwise runs only in CI on two shards. Needs Chromium once: `pnpm --filter @vertex-mizan/web exec playwright install chromium` |
 
 ## Non-negotiable conventions
 

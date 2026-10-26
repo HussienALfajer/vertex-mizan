@@ -34,6 +34,10 @@
         "DATABASE_JOBS_URL",
         "DATABASE_QUEUE_URL"
       ]
+    },
+    "test:e2e": {
+      "dependsOn": ["build"],
+      "outputs": ["playwright-report/**", "test-results/**"]
     }
   }
 }

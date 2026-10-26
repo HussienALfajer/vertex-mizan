@@ -11,7 +11,7 @@ Each check runs once, in the place where it is cheapest. The session checks what
 | While writing | Biome on each edited file (hook), the test file you are working on | `pnpm verify <file>` | seconds |
 | A layer's gate | That layer's test files, `pnpm typecheck` | `pnpm verify <files>` | under a minute |
 | Before the PR, once | Lint; typecheck, test, build and the scenario book of every package (Turborepo replays the unchanged ones); the guards; the changed E2E specs | `pnpm verify` | under a minute, seconds when nothing changed |
-| CI, before the merge | Everything, the whole E2E suite included once `apps/web` has one | — | under a minute |
+| CI, before the merge | Everything, the whole E2E suite included (two shards) | — | a few minutes |
 
 The whole E2E suite never runs in a session unless asked for (`pnpm verify --e2e-all`): CI runs it.
 
@@ -23,7 +23,7 @@ The whole E2E suite never runs in a session unless asked for (`pnpm verify --e2e
 - `pnpm verify <file>...`: only those test files, paths from the repository root. Vitest files run in their package after `turbo run build --filter=<package>^...` (a stale dependency `dist` gives failures that are not in the code). A path under `docs/scenarios/`, or `packages/scenarios/test/scenario-book.test.ts`, runs the scenario book with its own config. A spec under `apps/<app>/e2e/` runs with that app's Playwright after its build; `--grep "<title>"` picks tests of a spec.
 - Changed files are those that differ from the merge base with `origin/main` (committed, uncommitted or new); `--base <ref>` compares with another ref. Changed E2E specs are any `apps/<app>/e2e/**/*.spec.ts` among them: an app that adds a Playwright suite there needs no change to the script.
 - Output: the whole output of each step in `.verify/<step>.log` (git-ignored); the console and `.verify/summary.md` get only the summary: each step's result and time, the tasks Turborepo ran rather than replayed, the scenario book's counts (`Proposed` cases are skipped), each failure with its file and line, and the command that reruns only the failed files.
-- Exit code 0 when everything passed, 1 when a check failed, 3 when it refused to start: another `pnpm verify` is running on the machine (lock file `vertex-mizan-verify.lock` in the temp folder; a lock left by a killed run expires after 30 minutes), a dev server is up (port 3300, the built API, or 5173, Vite's dev server: the build replaces the `dist` it runs from; `--allow-dev` overrides), or a file does not exist.
+- Exit code 0 when everything passed, 1 when a check failed, 3 when it refused to start: another `pnpm verify` is running on the machine (lock file `vertex-mizan-verify.lock` in the temp folder; a lock left by a killed run expires after 30 minutes), a dev server is up (port 3300, the built API, 5173, Vite's dev server, or 4173, the web app's `vite preview`: the build replaces the `dist` it runs from, and Playwright (which never reuses a server, so a spec run fails on a busy 4173) needs the port; `--allow-dev` overrides), or a file does not exist.
 
 ## Rules, and what enforces them
 
@@ -52,7 +52,7 @@ The hook is `.claude/hooks/test-guard.mjs` (PreToolUse on Bash and PowerShell), 
 
 ## E2E
 
-The rules the web app (`apps/web`, PR 8) follows when it adds Playwright:
+The rules the web app's Playwright suite (`apps/web/e2e`, PR 8; `apps/web/CLAUDE.md`) follows:
 
 - Traces are recorded on the first retry only (`trace: 'on-first-retry'`), and CI retries a failed test once, so the retry keeps its trace. Recording one for every test made Hub's suite 30% slower and kept the antivirus scanning each trace file. Debug locally with `--trace on`.
 - Locally, only the changed specs run (`pnpm verify` picks them; `pnpm verify apps/web/e2e/<file>.spec.ts [--grep <title>]`). The whole suite runs in CI, split over parallel shards (`--shard`, with `fullyParallel`), behind the `Typecheck, lint, test, build` gate.
@@ -68,10 +68,11 @@ The rules the web app (`apps/web`, PR 8) follows when it adds Playwright:
 | Changes | Decides whether the checks are needed |
 | Lint, typecheck, build | Audit, Biome, typecheck, build, migration drift, the migration, error-code and OpenAPI guards |
 | Tests | The database roles and migrations, every package's tests, the scenario book, the built API and worker starting |
-| Typecheck, lint, test, build | The gate the `main` ruleset requires |
+| Playwright shard 1, 2 | The whole E2E suite of `apps/web` on its production build, split with `--shard` |
+| Typecheck, lint, test, build | The gate the `main` ruleset requires, behind every job above |
 | Secret scan | gitleaks |
 
-The whole run takes under a minute, so nothing is split yet. E2E arrives with `apps/web` as its own sharded job behind the gate.
+Only E2E is split; each shard uploads its report and screenshots (`playwright-report-<n>`).
 
 Turborepo's cache is kept between runs with `actions/cache`, per job. A pull request reads its own runs' cache and `main`'s; `main` cannot read a pull request's (GitHub keeps caches per branch), so after a merge `main` runs what the pull request changed once more.
 
@@ -82,7 +83,7 @@ The workflow is ready for Turborepo's remote cache, which removes that repeat: `
 1. A remote cache: Vercel's (a token from the Vercel account settings; check Vercel's current terms) or a self-hosted server that implements the same API (for example `ducktors/turborepo-remote-cache`; then set the variable `TURBO_API` to its URL).
 2. Repository secrets `TURBO_TOKEN` and `TURBO_REMOTE_CACHE_SIGNATURE_KEY` (a long random string; `turbo.json` has `remoteCache.signature`, so artifacts are signed and checked), and the repository variable `TURBO_TEAM` (the team slug).
 
-Only the two jobs that run turbo get these values. Pull requests from forks and from Dependabot get no secrets and keep the per-job cache.
+Only the jobs that run turbo (static, `Tests`, the Playwright shards) get these values. Pull requests from forks and from Dependabot get no secrets and keep the per-job cache.
 
 ## The local machine (Windows)
 
