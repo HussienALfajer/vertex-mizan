@@ -102,11 +102,13 @@ test.describe('sign-in', () => {
       },
     });
 
-    // `//host`, a backslash, and a tab the browser drops while parsing: each would leave the origin.
+    // `//host`, a backslash, a tab the browser drops, and dot segments that resolve to `//host`.
     for (const crafted of [
       '%2F%2Fevil.example%2F',
       '%2F%5Cevil.example',
       '%2F%09%2Fevil.example',
+      '%2F.%2F%2Fevil.example',
+      '%2Fx%2F..%2F%2Fevil.example',
     ]) {
       test(`never leaves the app: ${crafted}`, async ({ page }) => {
         await page.goto(`/sign-in/two-factor?redirect=${crafted}`);

@@ -32,7 +32,8 @@ export function safeRedirect(target: unknown): string | undefined {
   } catch {
     return undefined;
   }
-  if (url.origin !== window.location.origin) return undefined;
+  // `/.//host` resolves on this origin to the path `//host`, which would mean another site.
+  if (url.origin !== window.location.origin || url.pathname.startsWith('//')) return undefined;
   return `${url.pathname}${url.search}${url.hash}`;
 }
 
