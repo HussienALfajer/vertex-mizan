@@ -19,8 +19,14 @@ export type ScenarioDatabase = { app: Database; jobs: Database };
 /** One case's company in the run's database. */
 export type CaseContext = { database: ScenarioDatabase; companyId: string; company: CaseCompany };
 
-/** What a step did: posted (or ran) everything it had to, or was held or refused with a code. */
-export type StepResult = { status: 'done' } | { status: 'held' | 'refused'; reason: string };
+/**
+ * What a step did: posted (or ran) everything it had to, or was held or refused with a code. A
+ * rate correction's answer also lists the entries that converted at the superseded row, by their
+ * number in the company's posting order (S02 rule 15).
+ */
+export type StepResult =
+  | { status: 'done'; usedBy?: readonly number[] }
+  | { status: 'held' | 'refused'; reason: string };
 
 export type StepExecutor<Kind extends StepKind> = (
   context: CaseContext,
@@ -66,12 +72,15 @@ export type LedgerReader = {
 
 /**
  * What runs a case. Each part plugs in with the feature that brings it: the company setup, the
- * ledger reader and manual entries with the posting function (S03), Hub events with the event
- * inbox (S05), jobs with month-end and close (S07). An `Approved` case that needs a part not yet
- * here fails (`run.ts`).
+ * ledger reader, manual entries and reversals with the posting function (S03), rate steps with the
+ * rate table (S02, registered with S03's setup), Hub events with the event inbox (S05), jobs with
+ * month-end and close (S07). An `Approved` case that needs a part not yet here fails (`run.ts`).
  */
 export type ScenarioHarness = {
-  /** Creates the case's company (ledgers, template, closed periods) and its rates; its id. */
+  /**
+   * Creates the case's company (ledgers, template, closed periods, bulletin calendar) and its
+   * rates; its id.
+   */
   setUp?: (
     database: ScenarioDatabase,
     company: CaseCompany,

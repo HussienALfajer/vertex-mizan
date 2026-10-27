@@ -49,17 +49,24 @@ company:
                                     # book_accepts_transaction_rate: false unless stated; only market accepts
   template: service-agency          # chart-of-accounts template (optional)
   closed_periods: []                # e.g. [2026-10]
+  bulletin_days_off: [5, 6]         # ISO weekdays without a bulletin; default Friday and Saturday
+  bulletin_holidays: []             # e.g. [2026-11-08]: dates the accountant marked (S02 rules 16–17)
 rates:                              # company rate table rows; source: manual unless stated (hub, import)
   - { date: 2026-11-03, base: USD, quote: SYP, rate: "120.0000", type: bulletin }
-steps:                              # in order; each is a Hub event, a manual entry, or a job
+steps:                              # in order; a Hub event, a manual entry, a reversal, a job or a rate
   - event: <type>                   # Hub event (ADR 0006, 0008), payload as Hub sends it
     accounting_date: 2026-11-03
     payload: { ... }
   - manual: <what it records>       # a manual entry; payload as the manual-entry form sends it (S03)
     accounting_date: 2026-11-03
     payload: { ... }
+  - reversal: 1                     # reverses the case's entry 1 (posting order) at its amounts
+    accounting_date: 2026-11-04
   - job: month_end_revaluation      # or month_end_release, close_period, ...
     period: 2026-11
+  - rate: { date: 2026-11-03, base: USD, quote: SYP, rate: "121.0000", type: bulletin,
+            reason: "Mistyped" }    # a row recorded now; a second row of a pair, type and date
+                                    # is a correction and needs its reason (S02 rule 15)
 expect:
   entries:                          # the exact set posted, in posting order; every line of every entry
     - source: <event type | job | manual>
@@ -70,6 +77,8 @@ expect:
     - { account: "1210", book: 0, parallel: 0 }
   open_items:                       # optional: what remains of each document on its control account
     - { item: INV-2026-1, account: "1210", dims: { client: C1 }, currency: USD, amount: 0, book: 0, parallel: 0 }
+  corrections:                      # optional: per correction step, the entries its answer lists
+    - { step: 5, used_by: [1] }     # as converted at the superseded row (posting order)
   outcome:                          # optional: the last step's hold or refusal (held | refused)
     status: held
     reason: PERIOD_CLOSED
@@ -94,7 +103,8 @@ The runner is `packages/scenarios` (`pnpm test:scenarios`, in CI).
   - every amount in both ledgers;
   - one audit row per posting;
   - the stated account and open-item balances: an open item by its document and account, with its dimensions, currency and remaining amounts;
-  - the outcomes: every step completes, except the last when the case states an `outcome`, which it must match exactly.
+  - the outcomes: every step completes, except the last when the case states an `outcome`, which it must match exactly;
+  - each stated correction's answer: exactly the entries it lists as converted at the superseded row.
 - It runs on a fresh test database through the real posting function, never through a mock. Each case has a company of its own.
 
 ## Examples

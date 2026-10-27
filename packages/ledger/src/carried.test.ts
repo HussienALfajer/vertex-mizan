@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { clearOpenItem, moveRunningBalance, openItemCarrying, reverseLines } from './carried.js';
 import { type CarriedAmounts, carriedLine } from './lines.js';
 import { measuredLine } from './measure.js';
-import { rate, refusal, sypUsd } from './test-fixtures.js';
+import { calendar, rate, refusal, sypUsd } from './test-fixtures.js';
 
 /** A USD 100.00 receivable measured at a bulletin of 121.3333: 12 133.33 SYP, 100.00 USD. */
 const receivable: CarriedAmounts = {
@@ -140,7 +140,7 @@ describe('reverseLines', () => {
     const lines = [
       measuredLine(
         { account: '1210', dimensions: { client: 'C1' }, amount: money(10_000n, 'USD') },
-        { ledgers: sypUsd, on: '2026-11-03', rates: [bulletin] },
+        { ledgers: sypUsd, on: '2026-11-03', calendar, rates: [bulletin] },
       ),
       carriedLine({
         account: '2310',

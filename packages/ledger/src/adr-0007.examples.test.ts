@@ -10,7 +10,7 @@ import {
 } from './carried.js';
 import { type CarriedAmounts, carriedLine, type Line, negate } from './lines.js';
 import { type MeasureContext, measuredLine } from './measure.js';
-import { hubRate, rate, refusal, sypOnly, sypUsd, usdSyp } from './test-fixtures.js';
+import { calendar, hubRate, rate, refusal, sypOnly, sypUsd, usdSyp } from './test-fixtures.js';
 
 /**
  * The worked examples of ADR 0007 and `docs/scenarios/README.md`, built with the ledger's
@@ -44,8 +44,8 @@ function context(
   transactionRate?: ExchangeRate,
 ): MeasureContext {
   return transactionRate === undefined
-    ? { ledgers, on, rates }
-    : { ledgers, on, rates, transactionRate };
+    ? { ledgers, on, rates, calendar }
+    : { ledgers, on, rates, calendar, transactionRate };
 }
 
 /** An invoice: Dr receivable / Cr revenue, both new measurements. */
@@ -178,7 +178,7 @@ describe('currency shapes', () => {
 
   it('third: a TRY invoice, the book at the TRY bulletin, the parallel crossed at market', () => {
     const rates = [
-      rate('TRY', 'SYP', '2.9500', 'bulletin', '2026-11-02'),
+      rate('TRY', 'SYP', '2.9500', 'bulletin', '2026-11-05'),
       // Effective after the entry date: not in force.
       rate('TRY', 'SYP', '2.9900', 'bulletin', '2026-11-09'),
       rate('TRY', 'SYP', '3.1000', 'market', '2026-11-04'),
@@ -208,11 +208,12 @@ describe('currency shapes', () => {
     }
   });
 
-  it('usd-syp: a USD book crosses a weekly TRY bulletin with a daily USD bulletin', () => {
-    const weekly = rate('TRY', 'SYP', '2.9500', 'bulletin', '2026-11-02');
+  it('usd-syp: a USD book crosses the TRY bulletin with the USD bulletin of the day', () => {
+    // Each quote of the cross is of the entry date (ADR 0011; a weekly TRY bulletin is Q10).
+    const tryBulletin = rate('TRY', 'SYP', '2.9500', 'bulletin', '2026-11-05');
     const daily = rate('USD', 'SYP', '120.0000', 'bulletin', '2026-11-05');
     const at = context(usdSyp, '2026-11-05', [
-      weekly,
+      tryBulletin,
       daily,
       rate('TRY', 'SYP', '3.1000', 'market', '2026-11-04'),
     ]);
@@ -225,7 +226,7 @@ describe('currency shapes', () => {
     const [line] = entry;
     expect(line?.kind === 'measured' && line.conversions.book).toEqual({
       basis: 'policy',
-      rate: { on: '2026-11-05', legs: [weekly, daily] },
+      rate: { on: '2026-11-05', legs: [tryBulletin, daily] },
     });
   });
 
@@ -347,5 +348,220 @@ describe('carried amounts', () => {
       bookMinor: 0n,
       parallelMinor: 0n,
     });
+  });
+});
+
+/**
+ * The cases of `docs/scenarios/currency/bulletin-rate-of-the-day.md` and
+ * `rate-correction-after-use.md` (ADR 0011, S02 rules 15–16), with the service-agency template's
+ * codes the scenarios use: 531001 rent, 531004 software, 531006 repairs, 532002 bank charges,
+ * 111003 bank SYP, 111004 bank USD, 211003 other payables. Each is a manual entry of two lines in
+ * one currency; the scenario book runs them through the posting function from S03.
+ */
+describe('docs/scenarios/currency: the bulletin rate of the day', () => {
+  const usdSypBulletin = (on: string, value: string) => rate('USD', 'SYP', value, 'bulletin', on);
+
+  /** Dr `debit` / Cr `credit`, both measured new on `on`. */
+  function paid(at: MeasureContext, debit: string, credit: string, amount: Money): readonly Row[] {
+    const lines = [
+      measuredLine({ account: debit, amount }, at),
+      measuredLine({ account: credit, amount: money(-amount.amountMinor, amount.currency) }, at),
+    ];
+    return rows(balanceEntry({ on: at.on, ledgers: at.ledgers, lines, rounding }));
+  }
+
+  const on = (
+    ledgers: CompanyLedgers,
+    date: string,
+    rates: readonly ExchangeRate[],
+    at = calendar,
+  ): MeasureContext => ({ ledgers, on: date, rates, calendar: at });
+
+  const week = [
+    usdSypBulletin('2026-11-05', '120.0000'),
+    usdSypBulletin('2026-11-08', '121.5000'),
+    usdSypBulletin('2026-11-10', '122.2500'),
+  ];
+  const usd = (minor: bigint) => money(minor, 'USD');
+
+  it('a working day takes its own bulletin, not an older or a later one', () => {
+    expect(paid(on(sypUsd, '2026-11-08', week), '531004', '111004', usd(10_000n))).toEqual([
+      ['measured', '531004', 'USD', 10_000n, 1_215_000n, 10_000n],
+      ['measured', '111004', 'USD', -10_000n, -1_215_000n, -10_000n],
+    ]);
+  });
+
+  it("Friday and Saturday take Thursday's bulletin", () => {
+    const rates = week.slice(0, 2);
+    expect(paid(on(sypUsd, '2026-11-06', rates), '531004', '111004', usd(10_000n))).toEqual([
+      ['measured', '531004', 'USD', 10_000n, 1_200_000n, 10_000n],
+      ['measured', '111004', 'USD', -10_000n, -1_200_000n, -10_000n],
+    ]);
+    expect(paid(on(sypUsd, '2026-11-07', rates), '532002', '111004', usd(2_550n))).toEqual([
+      ['measured', '532002', 'USD', 2_550n, 306_000n, 2_550n],
+      ['measured', '111004', 'USD', -2_550n, -306_000n, -2_550n],
+    ]);
+  });
+
+  it("a holiday on a Sunday takes Thursday's bulletin across the weekend", () => {
+    const rates = [week[0], week[2]].filter((row) => row !== undefined);
+    const holiday = { daysOff: [5, 6], holidays: ['2026-11-08'] };
+    expect(
+      paid(on(sypUsd, '2026-11-08', rates, holiday), '531004', '111004', usd(10_000n)),
+    ).toEqual([
+      ['measured', '531004', 'USD', 10_000n, 1_200_000n, 10_000n],
+      ['measured', '111004', 'USD', -10_000n, -1_200_000n, -10_000n],
+    ]);
+    // Without the holiday, the 8th is a working day with no bulletin of its own.
+    expect(
+      refusal(() => paid(on(sypUsd, '2026-11-08', rates), '531004', '111004', usd(10_000n))),
+    ).toBe('RATE_MISSING');
+  });
+
+  it('a working day without its bulletin is refused, never converted at the day before', () => {
+    const rates = week.slice(0, 2);
+    expect(
+      refusal(() => paid(on(sypUsd, '2026-11-09', rates), '531004', '111004', usd(10_000n))),
+    ).toBe('RATE_MISSING');
+  });
+
+  it('Friday 1 January takes the bulletin of Thursday 31 December', () => {
+    const rates = [usdSypBulletin('2026-12-31', '123.0000')];
+    expect(paid(on(sypUsd, '2027-01-01', rates), '531004', '111004', usd(7_500n))).toEqual([
+      ['measured', '531004', 'USD', 7_500n, 922_500n, 7_500n],
+      ['measured', '111004', 'USD', -7_500n, -922_500n, -7_500n],
+    ]);
+  });
+
+  it("USD books: Saturday takes Thursday's bulletin, Sunday its own, Monday none", () => {
+    const rent = money(1_000_000n, 'SYP');
+    const rates = week.slice(0, 2);
+    // 10,000.00 SYP / 120 = 83.333… → 83.33 USD; / 121.5 = 82.304… → 82.30 USD.
+    expect(paid(on(usdSyp, '2026-11-07', rates), '531001', '111003', rent)).toEqual([
+      ['measured', '531001', 'SYP', 1_000_000n, 8_333n, 1_000_000n],
+      ['measured', '111003', 'SYP', -1_000_000n, -8_333n, -1_000_000n],
+    ]);
+    expect(paid(on(usdSyp, '2026-11-08', rates), '531001', '111003', rent)).toEqual([
+      ['measured', '531001', 'SYP', 1_000_000n, 8_230n, 1_000_000n],
+      ['measured', '111003', 'SYP', -1_000_000n, -8_230n, -1_000_000n],
+    ]);
+    expect(
+      refusal(() => paid(on(usdSyp, '2026-11-08', week.slice(0, 1)), '531001', '111003', rent)),
+    ).toBe('RATE_MISSING');
+  });
+
+  it('third: a TRY expense crosses through USD when both quotes are of the day', () => {
+    const tryLeg = rate('USD', 'TRY', '41.0000', 'bulletin', '2026-11-10');
+    const rates = [
+      rate('TRY', 'SYP', '2.9000', 'bulletin', '2026-11-05'),
+      tryLeg,
+      rate('USD', 'SYP', '122.0000', 'bulletin', '2026-11-10'),
+      rate('USD', 'TRY', '41.2000', 'market', '2026-11-10'),
+    ];
+    const repair = money(410_000n, 'TRY');
+    // Book: 4,100.00 TRY / 41 × 122 = 12,200.00 SYP; parallel: / 41.2 = 99.514… → 99.51 USD.
+    expect(paid(on(sypUsd, '2026-11-10', rates), '531006', '211003', repair)).toEqual([
+      ['measured', '531006', 'TRY', 410_000n, 1_220_000n, 9_951n],
+      ['measured', '211003', 'TRY', -410_000n, -1_220_000n, -9_951n],
+    ]);
+    // One quote of the 8th: neither the direct rate nor the cross is in force.
+    const stale = [
+      rate('TRY', 'SYP', '2.9500', 'bulletin', '2026-11-08'),
+      tryLeg,
+      rate('USD', 'SYP', '121.5000', 'bulletin', '2026-11-08'),
+      rate('USD', 'TRY', '41.2000', 'market', '2026-11-10'),
+    ];
+    expect(refusal(() => paid(on(sypUsd, '2026-11-10', stale), '531006', '211003', repair))).toBe(
+      'RATE_MISSING',
+    );
+  });
+
+  it('a corrected bulletin leaves the posted entry; the reversal carries it, the repost converts anew', () => {
+    const mistyped = usdSypBulletin('2026-11-08', '112.5000');
+    const subscription = (rates: readonly ExchangeRate[]) =>
+      balanceEntry({
+        on: '2026-11-08',
+        ledgers: sypUsd,
+        lines: [
+          measuredLine(
+            { account: '531004', amount: usd(10_000n) },
+            on(sypUsd, '2026-11-08', rates),
+          ),
+          measuredLine(
+            { account: '111004', amount: usd(-10_000n) },
+            on(sypUsd, '2026-11-08', rates),
+          ),
+        ],
+        rounding,
+      });
+    const first = subscription([mistyped]);
+    // The correction is a newer row of the same date, recorded last (rule 15).
+    const corrected = [mistyped, usdSypBulletin('2026-11-08', '121.5000')];
+    expect(rows(first)).toEqual([
+      ['measured', '531004', 'USD', 10_000n, 1_125_000n, 10_000n],
+      ['measured', '111004', 'USD', -10_000n, -1_125_000n, -10_000n],
+    ]);
+    expect(paid(on(sypUsd, '2026-11-08', corrected), '532002', '111004', usd(5_000n))).toEqual([
+      ['measured', '532002', 'USD', 5_000n, 607_500n, 5_000n],
+      ['measured', '111004', 'USD', -5_000n, -607_500n, -5_000n],
+    ]);
+    expect(rows(reverseLines(first))).toEqual([
+      ['measured', '531004', 'USD', -10_000n, -1_125_000n, -10_000n],
+      ['measured', '111004', 'USD', 10_000n, 1_125_000n, 10_000n],
+    ]);
+    expect(rows(subscription(corrected))).toEqual([
+      ['measured', '531004', 'USD', 10_000n, 1_215_000n, 10_000n],
+      ['measured', '111004', 'USD', -10_000n, -1_215_000n, -10_000n],
+    ]);
+  });
+
+  it("a day off converted at Thursday's superseded row; Saturday takes the correction", () => {
+    const wrong = usdSypBulletin('2026-11-05', '102.0000');
+    const right = usdSypBulletin('2026-11-05', '120.0000');
+    expect(paid(on(sypUsd, '2026-11-06', [wrong]), '531004', '111004', usd(10_000n))).toEqual([
+      ['measured', '531004', 'USD', 10_000n, 1_020_000n, 10_000n],
+      ['measured', '111004', 'USD', -10_000n, -1_020_000n, -10_000n],
+    ]);
+    expect(
+      paid(on(sypUsd, '2026-11-07', [wrong, right]), '531004', '111004', usd(10_000n)),
+    ).toEqual([
+      ['measured', '531004', 'USD', 10_000n, 1_200_000n, 10_000n],
+      ['measured', '111004', 'USD', -10_000n, -1_200_000n, -10_000n],
+    ]);
+  });
+
+  it('USD books: the reversal carries 98.04, the repost 83.33', () => {
+    const wrong = usdSypBulletin('2026-11-05', '102.0000');
+    const right = usdSypBulletin('2026-11-05', '120.0000');
+    const rent = (rates: readonly ExchangeRate[]) =>
+      balanceEntry({
+        on: '2026-11-05',
+        ledgers: usdSyp,
+        lines: [
+          measuredLine(
+            { account: '531001', amount: money(1_000_000n, 'SYP') },
+            on(usdSyp, '2026-11-05', rates),
+          ),
+          measuredLine(
+            { account: '111003', amount: money(-1_000_000n, 'SYP') },
+            on(usdSyp, '2026-11-05', rates),
+          ),
+        ],
+        rounding,
+      });
+    const first = rent([wrong]);
+    // 10,000.00 SYP / 102 = 98.039… → 98.04 USD.
+    expect(rows(first)).toEqual([
+      ['measured', '531001', 'SYP', 1_000_000n, 9_804n, 1_000_000n],
+      ['measured', '111003', 'SYP', -1_000_000n, -9_804n, -1_000_000n],
+    ]);
+    expect(rows(reverseLines(first))).toEqual([
+      ['measured', '531001', 'SYP', -1_000_000n, -9_804n, -1_000_000n],
+      ['measured', '111003', 'SYP', 1_000_000n, 9_804n, 1_000_000n],
+    ]);
+    expect(rows(rent([wrong, right]))).toEqual([
+      ['measured', '531001', 'SYP', 1_000_000n, 8_333n, 1_000_000n],
+      ['measured', '111003', 'SYP', -1_000_000n, -8_333n, -1_000_000n],
+    ]);
   });
 });
