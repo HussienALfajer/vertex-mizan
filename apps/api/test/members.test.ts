@@ -1,4 +1,5 @@
 import type { INestApplication } from '@nestjs/common';
+import { effectivePermissions, rolePermissions } from '@vertex-mizan/contracts';
 import {
   auditEntries,
   type Database,
@@ -75,17 +76,19 @@ describe('PATCH /api/members/:id', () => {
   it('changes a role and the period permission, read on the next request', async () => {
     const owner = await ownerWithCompany();
     const accountant = await joinCompany(app, db, owner.company.id, 'accountant');
-    expect((await accountant.browser.get('/api/me')).body.permissions).toEqual(['company.read']);
+    expect((await accountant.browser.get('/api/me')).body.permissions).toEqual(
+      rolePermissions.accountant,
+    );
     const changed = await owner.browser.patch(`/api/members/${accountant.membershipId}`, {
       role: 'accountant',
       canClosePeriods: true,
     });
     expect(changed.status).toBe(200);
     expect(changed.body).toMatchObject({ role: 'accountant', canClosePeriods: true });
-    expect((await accountant.browser.get('/api/me')).body.permissions).toEqual([
-      'company.read',
-      'periods.close',
-    ]);
+    expect((await accountant.browser.get('/api/me')).body.permissions).toEqual(
+      effectivePermissions({ role: 'accountant', canClosePeriods: true }),
+    );
+    expect((await accountant.browser.get('/api/me')).body.permissions).toContain('periods.close');
     const viewer = await owner.browser.patch(`/api/members/${accountant.membershipId}`, {
       role: 'viewer',
       canClosePeriods: true,
