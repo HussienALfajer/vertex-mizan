@@ -12,14 +12,14 @@
     "admin:reset-two-factor": "node --env-file-if-exists=../../.env dist/admin/reset-two-factor.js"
   },
   "dependencies": {
-    "@better-auth/utils": "0.4.2",
+    "@better-auth/utils": "0.5.1",
     "@nestjs/common": "12.2.0",
     "@nestjs/core": "12.2.0",
     "@nestjs/platform-express": "12.2.0",
     "@nestjs/swagger": "12.0.4",
     "@vertex-mizan/contracts": "workspace:*",
     "@vertex-mizan/db": "workspace:*",
-    "better-auth": "1.7.6",
+    "better-auth": "1.7.13",
     "drizzle-orm": "0.45.4",
     "nestjs-pino": "5.3.1",
     "pg": "8.23.1",
