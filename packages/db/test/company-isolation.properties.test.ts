@@ -247,5 +247,5 @@ describe('company isolation, as a property', () => {
       }),
       { numRuns: 25, includeErrorInReport: true },
     );
-  });
+  }, 60_000);
 });

@@ -332,29 +332,62 @@ describe('the chart tree (S02 rules 2–3)', () => {
 });
 
 describe('the lock after first use (S02 check 5) as the app role', () => {
-  const locked: [string, Partial<NewAccount>][] = [
+  // 111008 is a plain asset account (no currency, no flags), so each change below is otherwise
+  // valid and only the lock refuses it.
+  const LOCK = /locked since its first use/;
+  let otherHeader = '';
+  const locked = (): [string, Partial<NewAccount>][] => [
     ['code', { code: '111009' }],
-    ['parent', { parentId: null }],
-    ['level', { level: 3 }],
+    ['parent (a move with a valid code)', { parentId: otherHeader, code: '112008' }],
     ['kind', { kind: 'header', statementLine: null }],
-    ['class', { class: 'liability', statementLine: 'bs.trade_payables' }],
     ['normal balance', { normalBalance: 'credit' }],
     ['currency', { currency: 'SYP' }],
     ['control flag', { isControl: true }],
-    ['monetary flag', { isMonetary: false }],
+    ['monetary flag', { isMonetary: true }],
     ['first use', { firstPostedAt: new Date('2026-11-05T09:00:00Z') }],
   ];
 
   beforeAll(async () => {
-    await addAccount('111', { code: '111008', currency: 'USD', isMonetary: true });
+    await addAccount('111', { code: '111008' });
+    otherHeader = (await accountByCode('112')).id;
     // Set as the posting function will at the first posted line (S03).
     await updateAccount('111008', { firstPostedAt: new Date('2026-11-04T09:00:00Z') });
   });
 
-  it.each(locked)('refuses a change of the %s', async (_field, change) => {
-    expect(await refusal(updateAccount('111008', change))).toMatch(
-      /locked since its first use|chart_accounts:|violates check constraint/,
-    );
+  it('refuses a change of each locked field by the lock itself', async () => {
+    for (const [field, change] of locked()) {
+      expect(await refusal(updateAccount('111008', change)), field).toMatch(LOCK);
+    }
+  });
+
+  it('accepts the same changes on an unused account', async () => {
+    await addAccount('111', { code: '111010' });
+    const changes: [Partial<NewAccount>, Partial<NewAccount>][] = [
+      [{ code: '111011' }, { code: '111010' }],
+      [
+        { kind: 'header', statementLine: null },
+        { kind: 'postable', statementLine: 'bs.cash' },
+      ],
+      [{ normalBalance: 'credit' }, { normalBalance: 'debit' }],
+      [{ currency: 'SYP' }, { currency: null }],
+      [{ isControl: true }, { isControl: false }],
+      [{ isMonetary: true }, { isMonetary: false }],
+    ];
+    for (const [change, undo] of changes) {
+      await updateAccount('111010', change);
+      await updateAccount(change.code ?? '111010', undo);
+    }
+  });
+
+  it('refuses a change of the level or class, which the code fixes, from the checks or the lock', async () => {
+    for (const change of [
+      { level: 3 },
+      { class: 'liability', statementLine: 'bs.trade_payables' },
+    ]) {
+      expect(await refusal(updateAccount('111008', change))).toMatch(
+        /locked since its first use|violates check constraint/,
+      );
+    }
   });
 
   it('keeps the names, the statement line and blocking editable', async () => {
@@ -473,6 +506,20 @@ describe('required dimensions and account roles', () => {
     expect(
       await refusal(updateAccount('421001', { blockedAt: new Date(), blockedReason: 'سبب' })),
     ).toMatch(GUARD);
+    // An unused role account moved to an expense code would no longer fit its gain role.
+    await addAccount('5', { code: '54', kind: 'header' });
+    await addAccount('54', { code: '541', kind: 'header' });
+    const lossHeader = await accountByCode('541');
+    expect(
+      await refusal(
+        updateAccount('421001', {
+          parentId: lossHeader.id,
+          code: '541009',
+          class: 'expense',
+          normalBalance: 'debit',
+        }),
+      ),
+    ).toMatch(/would no longer fit/);
     expect(
       await refusal(updateAccount('421001', { archivedAt: new Date(), archivedReason: 'سبب' })),
     ).toMatch(GUARD);

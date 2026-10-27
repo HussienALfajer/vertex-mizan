@@ -200,8 +200,9 @@ ALTER TABLE bulletin_holidays ENABLE ALWAYS TRIGGER bulletin_holidays_refuse_tru
 -- - the lock after first use: once first_posted_at is set, the code, parent, level, kind, class,
 --   normal balance, currency and flags never change, nor first_posted_at; a header is locked the
 --   same way once it has a child (so it never becomes postable with children);
--- - an archived account has no unarchived child, and an account in an active role is neither
---   blocked nor archived nor a header;
+-- - an archived account has no unarchived child;
+-- - an account in an active role stays a postable, unblocked, unarchived account of a class that
+--   fits the role (rule 7), so moving an unused role account to another class is refused;
 -- - a header has no active required dimension.
 -- The API checks first and answers with S02's codes; this is the database's own guard.
 CREATE FUNCTION chart_account_rules() RETURNS trigger
@@ -257,12 +258,23 @@ BEGIN
     RAISE EXCEPTION 'chart_accounts: account % has unarchived children', NEW.code
       USING ERRCODE = 'restrict_violation';
   END IF;
-  IF (NEW.archived_at IS NOT NULL OR NEW.blocked_at IS NOT NULL OR NEW.kind <> 'postable')
-    AND EXISTS (
-      SELECT 1 FROM public.account_roles r
-      WHERE r.company_id = NEW.company_id AND r.account_id = NEW.id AND r.archived_at IS NULL
-    ) THEN
-    RAISE EXCEPTION 'chart_accounts: account % holds an account role', NEW.code
+  IF EXISTS (
+    SELECT 1 FROM public.account_roles r
+    WHERE r.company_id = NEW.company_id AND r.account_id = NEW.id AND r.archived_at IS NULL
+      AND NOT (
+        NEW.kind = 'postable' AND NEW.blocked_at IS NULL AND NEW.archived_at IS NULL
+        AND CASE r.role
+          WHEN 'conversion_rounding' THEN NEW.class IN ('revenue', 'expense')
+          WHEN 'fx_realised_gain' THEN NEW.class = 'revenue'
+          WHEN 'fx_unrealised_gain' THEN NEW.class = 'revenue'
+          WHEN 'fx_realised_loss' THEN NEW.class = 'expense'
+          WHEN 'fx_unrealised_loss' THEN NEW.class = 'expense'
+          WHEN 'retained_earnings' THEN NEW.class = 'equity'
+          ELSE false
+        END
+      )
+  ) THEN
+    RAISE EXCEPTION 'chart_accounts: account % holds an account role it would no longer fit', NEW.code
       USING ERRCODE = 'restrict_violation';
   END IF;
   IF NEW.kind <> 'postable' AND EXISTS (

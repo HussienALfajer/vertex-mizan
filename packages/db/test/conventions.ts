@@ -297,12 +297,23 @@ BEGIN
     RAISE EXCEPTION 'chart_accounts: account % has unarchived children', NEW.code
       USING ERRCODE = 'restrict_violation';
   END IF;
-  IF (NEW.archived_at IS NOT NULL OR NEW.blocked_at IS NOT NULL OR NEW.kind <> 'postable')
-    AND EXISTS (
-      SELECT 1 FROM public.account_roles r
-      WHERE r.company_id = NEW.company_id AND r.account_id = NEW.id AND r.archived_at IS NULL
-    ) THEN
-    RAISE EXCEPTION 'chart_accounts: account % holds an account role', NEW.code
+  IF EXISTS (
+    SELECT 1 FROM public.account_roles r
+    WHERE r.company_id = NEW.company_id AND r.account_id = NEW.id AND r.archived_at IS NULL
+      AND NOT (
+        NEW.kind = 'postable' AND NEW.blocked_at IS NULL AND NEW.archived_at IS NULL
+        AND CASE r.role
+          WHEN 'conversion_rounding' THEN NEW.class IN ('revenue', 'expense')
+          WHEN 'fx_realised_gain' THEN NEW.class = 'revenue'
+          WHEN 'fx_unrealised_gain' THEN NEW.class = 'revenue'
+          WHEN 'fx_realised_loss' THEN NEW.class = 'expense'
+          WHEN 'fx_unrealised_loss' THEN NEW.class = 'expense'
+          WHEN 'retained_earnings' THEN NEW.class = 'equity'
+          ELSE false
+        END
+      )
+  ) THEN
+    RAISE EXCEPTION 'chart_accounts: account % holds an account role it would no longer fit', NEW.code
       USING ERRCODE = 'restrict_violation';
   END IF;
   IF NEW.kind <> 'postable' AND EXISTS (
