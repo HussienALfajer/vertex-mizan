@@ -549,7 +549,10 @@ function AccessSample() {
           <span id="sample-code" className="text-control font-medium text-foreground">
             {t.access.code}
           </span>
-          <OtpField aria-labelledby="sample-code" slotLabel={t.access.slot} />
+          <OtpField
+            aria-labelledby="sample-code"
+            slotLabel={(position) => `${t.access.slot} ${position}`}
+          />
         </div>
         <QrCode value={sampleOtpUri} label={t.access.qr} className="self-center" />
       </div>

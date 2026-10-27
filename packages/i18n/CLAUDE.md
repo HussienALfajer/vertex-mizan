@@ -13,6 +13,7 @@ The Arabic text of every front end (ADR 0009): plain catalogs and locale constan
   - `designSystem`: the design-system page's headings and synthetic examples;
   - `shell`: the web app's shell (navigation, skip link, system status, home, not-found page);
   - `roles`: the name of each membership role (S01);
+  - `auth`: signing in, two-factor, passwords, invitations, enrolment, re-authentication and the account security page, with the name of each platform audit action a person sees there (S01);
   - `email`: the emails the worker sends (S01), with `{name}` placeholders the worker fills from the email's data.
 - `src/locale.ts`: `defaultLanguage` (`ar`), `textDirection` (`rtl`), `formatLocale` (`ar-SY-u-nu-latn`: Syrian month names, Latin digits; pinned by `locale.test.ts`) for dates and counts, `displayTimeZone` (`Asia/Damascus`).
 - `src/catalog.test.ts`: no empty text, no Arabic-Indic digit, a text for every error code and every amount-input reason.

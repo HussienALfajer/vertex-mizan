@@ -9,12 +9,24 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as IndexRouteImport } from './routes/index'
+import { Route as AppRouteImport } from './routes/_app'
+import { Route as AuthRouteImport } from './routes/_auth'
 import { Route as DesignSystemRouteImport } from './routes/design-system'
+import { Route as AppIndexRouteImport } from './routes/_app/index'
+import { Route as AuthForgotPasswordRouteImport } from './routes/_auth/forgot-password'
+import { Route as AuthInvitationRouteImport } from './routes/_auth/invitation'
+import { Route as AuthResetPasswordRouteImport } from './routes/_auth/reset-password'
+import { Route as AppAccountSecurityRouteImport } from './routes/_app/account/security'
+import { Route as AuthSignInIndexRouteImport } from './routes/_auth/sign-in/index'
+import { Route as AuthSignInTwoFactorRouteImport } from './routes/_auth/sign-in/two-factor'
+import { Route as AuthTwoFactorEnrolRouteImport } from './routes/_auth/two-factor/enrol'
 
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
+const AppRoute = AppRouteImport.update({
+  id: '/_app',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthRoute = AuthRouteImport.update({
+  id: '/_auth',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DesignSystemRoute = DesignSystemRouteImport.update({
@@ -22,40 +34,141 @@ const DesignSystemRoute = DesignSystemRouteImport.update({
   path: '/design-system',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AppIndexRoute = AppIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AuthForgotPasswordRoute = AuthForgotPasswordRouteImport.update({
+  id: '/forgot-password',
+  path: '/forgot-password',
+  getParentRoute: () => AuthRoute,
+} as any)
+const AuthInvitationRoute = AuthInvitationRouteImport.update({
+  id: '/invitation',
+  path: '/invitation',
+  getParentRoute: () => AuthRoute,
+} as any)
+const AuthResetPasswordRoute = AuthResetPasswordRouteImport.update({
+  id: '/reset-password',
+  path: '/reset-password',
+  getParentRoute: () => AuthRoute,
+} as any)
+const AppAccountSecurityRoute = AppAccountSecurityRouteImport.update({
+  id: '/account/security',
+  path: '/account/security',
+  getParentRoute: () => AppRoute,
+} as any)
+const AuthSignInIndexRoute = AuthSignInIndexRouteImport.update({
+  id: '/sign-in/',
+  path: '/sign-in/',
+  getParentRoute: () => AuthRoute,
+} as any)
+const AuthSignInTwoFactorRoute = AuthSignInTwoFactorRouteImport.update({
+  id: '/sign-in/two-factor',
+  path: '/sign-in/two-factor',
+  getParentRoute: () => AuthRoute,
+} as any)
+const AuthTwoFactorEnrolRoute = AuthTwoFactorEnrolRouteImport.update({
+  id: '/two-factor/enrol',
+  path: '/two-factor/enrol',
+  getParentRoute: () => AuthRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
-  '/': typeof IndexRoute
+  '/': typeof AppIndexRoute
   '/design-system': typeof DesignSystemRoute
+  '/forgot-password': typeof AuthForgotPasswordRoute
+  '/invitation': typeof AuthInvitationRoute
+  '/reset-password': typeof AuthResetPasswordRoute
+  '/account/security': typeof AppAccountSecurityRoute
+  '/sign-in/two-factor': typeof AuthSignInTwoFactorRoute
+  '/two-factor/enrol': typeof AuthTwoFactorEnrolRoute
+  '/sign-in/': typeof AuthSignInIndexRoute
 }
 export interface FileRoutesByTo {
-  '/': typeof IndexRoute
+  '/': typeof AppIndexRoute
   '/design-system': typeof DesignSystemRoute
+  '/forgot-password': typeof AuthForgotPasswordRoute
+  '/invitation': typeof AuthInvitationRoute
+  '/reset-password': typeof AuthResetPasswordRoute
+  '/account/security': typeof AppAccountSecurityRoute
+  '/sign-in/two-factor': typeof AuthSignInTwoFactorRoute
+  '/two-factor/enrol': typeof AuthTwoFactorEnrolRoute
+  '/sign-in': typeof AuthSignInIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
-  '/': typeof IndexRoute
+  '/_app': typeof AppRouteWithChildren
+  '/_auth': typeof AuthRouteWithChildren
   '/design-system': typeof DesignSystemRoute
+  '/_auth/forgot-password': typeof AuthForgotPasswordRoute
+  '/_auth/invitation': typeof AuthInvitationRoute
+  '/_auth/reset-password': typeof AuthResetPasswordRoute
+  '/_app/': typeof AppIndexRoute
+  '/_app/account/security': typeof AppAccountSecurityRoute
+  '/_auth/sign-in/two-factor': typeof AuthSignInTwoFactorRoute
+  '/_auth/two-factor/enrol': typeof AuthTwoFactorEnrolRoute
+  '/_auth/sign-in/': typeof AuthSignInIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/design-system'
+  fullPaths:
+    | '/'
+    | '/design-system'
+    | '/forgot-password'
+    | '/invitation'
+    | '/reset-password'
+    | '/account/security'
+    | '/sign-in/two-factor'
+    | '/two-factor/enrol'
+    | '/sign-in/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/design-system'
-  id: '__root__' | '/' | '/design-system'
+  to:
+    | '/'
+    | '/design-system'
+    | '/forgot-password'
+    | '/invitation'
+    | '/reset-password'
+    | '/account/security'
+    | '/sign-in/two-factor'
+    | '/two-factor/enrol'
+    | '/sign-in'
+  id:
+    | '__root__'
+    | '/_app'
+    | '/_auth'
+    | '/design-system'
+    | '/_auth/forgot-password'
+    | '/_auth/invitation'
+    | '/_auth/reset-password'
+    | '/_app/'
+    | '/_app/account/security'
+    | '/_auth/sign-in/two-factor'
+    | '/_auth/two-factor/enrol'
+    | '/_auth/sign-in/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
-  IndexRoute: typeof IndexRoute
+  AppRoute: typeof AppRouteWithChildren
+  AuthRoute: typeof AuthRouteWithChildren
   DesignSystemRoute: typeof DesignSystemRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/': {
-      id: '/'
-      path: '/'
+    '/_app': {
+      id: '/_app'
+      path: ''
       fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
+      preLoaderRoute: typeof AppRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_auth': {
+      id: '/_auth'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof AuthRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/design-system': {
@@ -65,11 +178,100 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DesignSystemRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_app/': {
+      id: '/_app/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof AppIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_auth/forgot-password': {
+      id: '/_auth/forgot-password'
+      path: '/forgot-password'
+      fullPath: '/forgot-password'
+      preLoaderRoute: typeof AuthForgotPasswordRouteImport
+      parentRoute: typeof AuthRoute
+    }
+    '/_auth/invitation': {
+      id: '/_auth/invitation'
+      path: '/invitation'
+      fullPath: '/invitation'
+      preLoaderRoute: typeof AuthInvitationRouteImport
+      parentRoute: typeof AuthRoute
+    }
+    '/_auth/reset-password': {
+      id: '/_auth/reset-password'
+      path: '/reset-password'
+      fullPath: '/reset-password'
+      preLoaderRoute: typeof AuthResetPasswordRouteImport
+      parentRoute: typeof AuthRoute
+    }
+    '/_app/account/security': {
+      id: '/_app/account/security'
+      path: '/account/security'
+      fullPath: '/account/security'
+      preLoaderRoute: typeof AppAccountSecurityRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_auth/sign-in/': {
+      id: '/_auth/sign-in/'
+      path: '/sign-in'
+      fullPath: '/sign-in/'
+      preLoaderRoute: typeof AuthSignInIndexRouteImport
+      parentRoute: typeof AuthRoute
+    }
+    '/_auth/sign-in/two-factor': {
+      id: '/_auth/sign-in/two-factor'
+      path: '/sign-in/two-factor'
+      fullPath: '/sign-in/two-factor'
+      preLoaderRoute: typeof AuthSignInTwoFactorRouteImport
+      parentRoute: typeof AuthRoute
+    }
+    '/_auth/two-factor/enrol': {
+      id: '/_auth/two-factor/enrol'
+      path: '/two-factor/enrol'
+      fullPath: '/two-factor/enrol'
+      preLoaderRoute: typeof AuthTwoFactorEnrolRouteImport
+      parentRoute: typeof AuthRoute
+    }
   }
 }
 
+interface AppRouteChildren {
+  AppIndexRoute: typeof AppIndexRoute
+  AppAccountSecurityRoute: typeof AppAccountSecurityRoute
+}
+
+const AppRouteChildren: AppRouteChildren = {
+  AppIndexRoute: AppIndexRoute,
+  AppAccountSecurityRoute: AppAccountSecurityRoute,
+}
+
+const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
+
+interface AuthRouteChildren {
+  AuthForgotPasswordRoute: typeof AuthForgotPasswordRoute
+  AuthInvitationRoute: typeof AuthInvitationRoute
+  AuthResetPasswordRoute: typeof AuthResetPasswordRoute
+  AuthSignInTwoFactorRoute: typeof AuthSignInTwoFactorRoute
+  AuthTwoFactorEnrolRoute: typeof AuthTwoFactorEnrolRoute
+  AuthSignInIndexRoute: typeof AuthSignInIndexRoute
+}
+
+const AuthRouteChildren: AuthRouteChildren = {
+  AuthForgotPasswordRoute: AuthForgotPasswordRoute,
+  AuthInvitationRoute: AuthInvitationRoute,
+  AuthResetPasswordRoute: AuthResetPasswordRoute,
+  AuthSignInTwoFactorRoute: AuthSignInTwoFactorRoute,
+  AuthTwoFactorEnrolRoute: AuthTwoFactorEnrolRoute,
+  AuthSignInIndexRoute: AuthSignInIndexRoute,
+}
+
+const AuthRouteWithChildren = AuthRoute._addFileChildren(AuthRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
-  IndexRoute: IndexRoute,
+  AppRoute: AppRouteWithChildren,
+  AuthRoute: AuthRouteWithChildren,
   DesignSystemRoute: DesignSystemRoute,
 }
 export const routeTree = rootRouteImport

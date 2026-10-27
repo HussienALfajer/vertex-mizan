@@ -1,0 +1,156 @@
+import type { PlatformAuditAction } from '@vertex-mizan/contracts';
+
+/**
+ * Signing in, two-factor authentication, passwords, invitations and the account's security page
+ * (S01). Error codes keep their text in `errors`.
+ */
+export const auth = {
+  validation: {
+    required: 'هذا الحقل مطلوب.',
+    email: 'أدخل بريدًا إلكترونيًا صحيحًا.',
+    passwordLength: 'كلمة المرور بين 12 و128 حرفًا.',
+    passwordIsEmail: 'كلمة المرور يجب ألا تساوي بريدك الإلكتروني.',
+    passwordMismatch: 'كلمتا المرور غير متطابقتين.',
+    code: 'أدخل الأرقام الستة.',
+  },
+  fields: {
+    email: 'البريد الإلكتروني',
+    password: 'كلمة المرور',
+    newPassword: 'كلمة المرور الجديدة',
+    confirmPassword: 'أعد كتابة كلمة المرور',
+    currentPassword: 'كلمة المرور الحالية',
+    name: 'الاسم',
+    showPassword: 'إظهار كلمة المرور',
+    hidePassword: 'إخفاء كلمة المرور',
+    passwordRule: 'بين 12 و128 حرفًا، ولا تساوي بريدك الإلكتروني. العبارة الطويلة أسهل حفظًا.',
+    code: 'الرمز من تطبيق المصادقة',
+    slot: 'الخانة',
+    backupCode: 'الرمز الاحتياطي',
+  },
+  codes: {
+    copy: 'انسخ',
+    copied: 'نُسخ',
+    print: 'اطبع الرموز',
+  },
+  signIn: {
+    title: 'تسجيل الدخول',
+    description: 'ادخل إلى دفاتر شركاتك.',
+    submit: 'دخول',
+    forgot: 'نسيت كلمة المرور؟',
+  },
+  twoFactor: {
+    title: 'التحقق بخطوتين',
+    description: 'أدخل الرمز المكوّن من 6 أرقام الذي يعرضه تطبيق المصادقة على هاتفك.',
+    backupDescription: 'أدخل أحد رموزك الاحتياطية. يُستخدم كل رمز مرة واحدة.',
+    submit: 'تحقّق',
+    useBackup: 'لا أستطيع الوصول إلى هاتفي',
+    useApp: 'استخدم تطبيق المصادقة',
+    expired: 'انتهت خطوة الدخول الأولى. سجّل الدخول من جديد.',
+    backToSignIn: 'العودة إلى تسجيل الدخول',
+  },
+  forgot: {
+    title: 'نسيت كلمة المرور',
+    description: 'أدخل بريدك الإلكتروني وسنرسل إليه رابطًا لتعيين كلمة مرور جديدة.',
+    submit: 'أرسل الرابط',
+    sentTitle: 'تحقّق من بريدك',
+    sentBody:
+      'إن كان هذا البريد مسجّلًا لدينا فسيصله رابط خلال دقائق. الرابط صالح لساعة واحدة ويُستخدم مرة واحدة.',
+    back: 'العودة إلى تسجيل الدخول',
+  },
+  reset: {
+    title: 'كلمة مرور جديدة',
+    description: 'اختر كلمة مرور جديدة لحسابك.',
+    submit: 'احفظ كلمة المرور',
+    doneTitle: 'تغيّرت كلمة المرور',
+    doneBody: 'سجّل الدخول بكلمة المرور الجديدة، ثم أدخل رمز تطبيق المصادقة كالمعتاد.',
+    missingTitle: 'الرابط غير مكتمل',
+    missingBody: 'افتح الرابط من الرسالة كما هو، أو اطلب رابطًا جديدًا.',
+    requestNew: 'اطلب رابطًا جديدًا',
+    signIn: 'تسجيل الدخول',
+  },
+  invitation: {
+    title: 'دعوة للانضمام',
+    invitedTo: 'الشركة',
+    asRole: 'الدور',
+    sentTo: 'البريد الإلكتروني',
+    newPerson: 'أنشئ حسابك: اكتب اسمك واختر كلمة مرور، ثم أعدّ المصادقة الثنائية.',
+    existingPerson: 'لديك حساب بهذا البريد. سجّل الدخول لقبول الدعوة.',
+    signInToAccept: 'سجّل الدخول للقبول',
+    accept: 'اقبل الدعوة',
+    invalidTitle: 'لا يمكن استخدام هذه الدعوة',
+    acceptedTitle: 'انضممت إلى الشركة',
+    continue: 'متابعة',
+  },
+  enrol: {
+    title: 'إعداد المصادقة الثنائية',
+    description:
+      'المصادقة الثنائية مطلوبة لكل من يدخل إلى ميزان: كلمة المرور وحدها لا تكفي لحماية الدفاتر.',
+    passwordStep: 'أكّد كلمة مرورك للبدء.',
+    start: 'ابدأ',
+    scanStep:
+      'امسح الرمز بتطبيق مصادقة على هاتفك، مثل Google Authenticator أو Microsoft Authenticator.',
+    qr: 'رمز QR لإضافة حسابك إلى تطبيق المصادقة',
+    secretStep: 'لا تستطيع المسح؟ أدخل هذا المفتاح في التطبيق يدويًا.',
+    secret: 'المفتاح',
+    codeStep: 'ثم أدخل الرمز الذي يعرضه التطبيق.',
+    verify: 'تحقّق وفعّل',
+    backupTitle: 'رموزك الاحتياطية',
+    backupBody:
+      'إن فقدت هاتفك فكل رمز من هذه الرموز يُدخلك مرة واحدة. احفظها في مكان آمن: لن تظهر مرة أخرى.',
+    backupCodes: 'الرموز الاحتياطية',
+    saved: 'حفظت الرموز في مكان آمن',
+    finish: 'متابعة',
+  },
+  security: {
+    title: 'أمان الحساب',
+    description: 'كلمة المرور، والمصادقة الثنائية، وعمليات الدخول إلى حسابك.',
+    password: {
+      title: 'تغيير كلمة المرور',
+      description: 'ينهي التغيير كل جلساتك، وتسجّل الدخول بعده من جديد.',
+      submit: 'غيّر كلمة المرور',
+    },
+    backupCodes: {
+      title: 'الرموز الاحتياطية',
+      description: 'إنشاء رموز جديدة يُلغي الرموز السابقة كلها.',
+      regenerate: 'أنشئ رموزًا جديدة',
+      newCodes: 'رموزك الجديدة',
+    },
+    authenticator: {
+      title: 'تطبيق المصادقة',
+      description:
+        'غيّرت هاتفك؟ أضف حسابك إلى تطبيق المصادقة من جديد. يبقى التطبيق الحالي فعّالًا حتى تتحقق من الجديد.',
+      action: 'أعد إعداد التطبيق',
+    },
+    signIns: {
+      title: 'عمليات الدخول الأخيرة',
+      time: 'الوقت',
+      event: 'الحدث',
+      ipAddress: 'عنوان IP',
+      device: 'الجهاز',
+      unknown: 'غير معروف',
+      empty: 'لا توجد عمليات دخول مسجّلة بعد.',
+      more: 'عرض المزيد',
+    },
+    signOut: 'تسجيل الخروج',
+  },
+  reauth: {
+    title: 'أكّد هويتك',
+    description: 'هذا إجراء حساس. أدخل الرمز الحالي من تطبيق المصادقة.',
+    submit: 'تأكيد',
+    cancel: 'إلغاء',
+  },
+  /** The person's own platform audit entries, as the security page lists them. */
+  events: {
+    'user.signed_in': 'دخول',
+    'user.sign_in_failed': 'محاولة دخول فاشلة',
+    'user.signed_out': 'خروج',
+    'user.password_reset_requested': 'طلب إعادة تعيين كلمة المرور',
+    'user.password_changed': 'تغيير كلمة المرور',
+    'user.two_factor_enrolled': 'إعداد المصادقة الثنائية',
+    'user.backup_code_used': 'دخول برمز احتياطي',
+    'user.backup_codes_regenerated': 'إنشاء رموز احتياطية جديدة',
+    'company.created': 'إنشاء شركة',
+    'user.two_factor_reset': 'إعادة تعيين المصادقة الثنائية',
+  } satisfies Record<PlatformAuditAction, string>,
+  nav: 'أمان الحساب',
+};

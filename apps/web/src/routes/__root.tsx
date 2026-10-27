@@ -14,12 +14,9 @@ export const Route = createRootRouteWithContext<RouterContext>()({
   notFoundComponent: NotFound,
 });
 
+/** The pages choose their frame: the app's shell (`_app`) or the sign-in card (`_auth`). */
 function Root() {
-  return (
-    <AppShell>
-      <Outlet />
-    </AppShell>
-  );
+  return <Outlet />;
 }
 
 function RootError() {
@@ -35,10 +32,12 @@ function RootError() {
 function NotFound() {
   const t = ar.shell.notFound;
   return (
-    <EmptyState
-      title={t.title}
-      description={t.description}
-      action={<Button render={<Link to="/" />}>{t.backHome}</Button>}
-    />
+    <AppShell>
+      <EmptyState
+        title={t.title}
+        description={t.description}
+        action={<Button render={<Link to="/" />}>{t.backHome}</Button>}
+      />
+    </AppShell>
   );
 }
