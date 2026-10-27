@@ -68,9 +68,7 @@ describe('admin:create-company', () => {
       ownerEmail: 'first.owner@example.test',
     });
     const base = ['--name', 'x', '--policy-note', 'y', '--owner-email', 'a@example.test'];
-    expect(parseCreateCompany([...base, '--template', 'general']).company.template).toBe(
-      'general',
-    );
+    expect(parseCreateCompany([...base, '--template', 'general']).company.template).toBe('general');
     expect(parseCreateCompany([...base, '--template', 'none']).company.template).toBeNull();
     expect(() => parseCreateCompany([...base, '--template', 'retail'])).toThrow();
     expect(() =>

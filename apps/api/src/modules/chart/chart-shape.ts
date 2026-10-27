@@ -67,8 +67,9 @@ async function linksOf(
   tx: Transaction,
   accountIds?: readonly string[],
 ): Promise<{ dimensions: Map<string, string[]>; roles: Map<string, AccountRole[]> }> {
-  const only = (column: typeof accountRoles.accountId | typeof accountRequiredDimensions.accountId) =>
-    accountIds === undefined ? undefined : inArray(column, [...accountIds]);
+  const only = (
+    column: typeof accountRoles.accountId | typeof accountRequiredDimensions.accountId,
+  ) => (accountIds === undefined ? undefined : inArray(column, [...accountIds]));
   const dimensionRows = await tx
     .select({
       accountId: accountRequiredDimensions.accountId,

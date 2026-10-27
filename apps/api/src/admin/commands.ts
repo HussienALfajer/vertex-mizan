@@ -93,8 +93,7 @@ export function parseCreateCompany(argv: string[]): CreateCompanyCommand {
     },
     fiscalYearStartMonth: Number(values['fiscal-year-start-month']),
     policyNote: values['policy-note'],
-    template:
-      values.template === 'none' ? null : chartTemplateIdSchema.parse(values.template),
+    template: values.template === 'none' ? null : chartTemplateIdSchema.parse(values.template),
   });
   return { company, ownerEmail: emailSchema.parse(values['owner-email']) };
 }

@@ -230,10 +230,9 @@ describe('POST /api/accounts (rule 2)', () => {
       owner.browser.post('/api/accounts', euroBank(cash.id)),
       accountant.browser.post('/api/accounts', euroBank(cash.id)),
     ]);
-    expect(answers.map((answer) => (answer.status === 201 ? 201 : answer.body.code)).sort()).toEqual([
-      201,
-      'ACCOUNT_CODE_TAKEN',
-    ]);
+    expect(
+      answers.map((answer) => (answer.status === 201 ? 201 : answer.body.code)).sort(),
+    ).toEqual([201, 'ACCOUNT_CODE_TAKEN']);
   });
 });
 
