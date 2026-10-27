@@ -1,5 +1,6 @@
 import { ar } from '@vertex-mizan/i18n';
 import { linkToken, newPersonInvitation, notEnrolled, setup, signIns } from './access-mocks';
+import { chartReads, roots } from './chart-mocks';
 import { archivedCompany, archivedOwner, company, companyReads, owner } from './company-mocks';
 import { expect, expectNoPageOverflow, screenshot, test, widths } from './test';
 
@@ -197,6 +198,56 @@ for (const colorScheme of ['light', 'dark'] as const) {
           await screenshot(page, testInfo, `audit-entry-${colorScheme}-${width}`, {
             fullPage: false,
           });
+        });
+      });
+
+      test.describe('chart screens', () => {
+        test.use({ me: owner, api: chartReads });
+
+        test('chart of accounts', async ({ page }, testInfo) => {
+          await page.goto('/chart');
+          await expect(page.getByRole('heading', { level: 1 })).toHaveText(ar.chart.title);
+          await expect(
+            page.getByRole('treegrid', { name: ar.chart.tree.label }).getByText('111001'),
+          ).toBeVisible();
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `chart-${colorScheme}-${width}`);
+        });
+
+        test('account sheet', async ({ page }, testInfo) => {
+          await page.goto('/chart');
+          await page.getByRole('button', { name: `${ar.chart.tree.menu}: 111001` }).click();
+          await page.getByRole('menuitem', { name: ar.chart.actions.edit }).click();
+          await expect(page.getByRole('dialog', { name: ar.chart.sheet.editTitle })).toBeVisible();
+          await screenshot(page, testInfo, `account-sheet-${colorScheme}-${width}`, {
+            fullPage: false,
+          });
+        });
+
+        test('account roles', async ({ page }, testInfo) => {
+          await page.goto('/chart/roles');
+          await expect(page.getByRole('heading', { level: 1 })).toHaveText(
+            ar.chart.roleSettings.title,
+          );
+          await expect(
+            page.getByRole('cell', { name: ar.chart.roles.retained_earnings, exact: true }),
+          ).toBeVisible();
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `account-roles-${colorScheme}-${width}`);
+        });
+      });
+
+      test.describe('empty chart', () => {
+        test.use({
+          me: owner,
+          api: { ...chartReads, 'GET /api/accounts': { status: 200, json: roots } },
+        });
+
+        test('chart templates', async ({ page }, testInfo) => {
+          await page.goto('/chart');
+          await expect(page.getByText(ar.chart.empty.title)).toBeVisible();
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `chart-empty-${colorScheme}-${width}`);
         });
       });
 

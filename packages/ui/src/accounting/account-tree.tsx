@@ -220,6 +220,7 @@ function AccountTree<Node extends AccountTreeNode>({
                       name={node.name}
                       kind="header"
                       kindLabel={labels.header}
+                      markDisplay="icon"
                     />
                   ) : node.blocked ? (
                     <AccountLabel

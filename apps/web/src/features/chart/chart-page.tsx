@@ -96,7 +96,7 @@ const columns: AccountTreeColumn<ChartNode>[] = [
     header: t.tree.flags,
     hideBelow: 'md',
     cell: (account) => (
-      <span className="flex flex-wrap gap-1">
+      <span className="flex gap-1">
         {account.isControl && <Badge tone="info">{t.flags.control}</Badge>}
         {account.isMonetary && <Badge tone="gold">{t.flags.monetary}</Badge>}
         {account.currency && (

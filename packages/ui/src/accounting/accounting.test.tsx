@@ -31,6 +31,25 @@ describe('AccountLabel', () => {
   });
 });
 
+describe('AccountLabel in narrow rows', () => {
+  it('shows the mark as an icon with its text for screen readers and as a tooltip', () => {
+    const { container } = render(
+      <AccountLabel
+        code="111"
+        name="النقد"
+        kind="header"
+        kindLabel="حساب رئيسي"
+        markDisplay="icon"
+      />,
+    );
+    expect(container.querySelector('[data-slot="badge"]')).toBeNull();
+    const text = screen.getByText('حساب رئيسي');
+    expect(text.className).toContain('sr-only');
+    expect(text.parentElement?.getAttribute('title')).toBe('حساب رئيسي');
+    expect(text.parentElement?.querySelector('svg')).not.toBeNull();
+  });
+});
+
 describe('PeriodBadge', () => {
   it('shows each state with its own icon and text', () => {
     const states = ['open', 'closed', 'reopened'] as const;
