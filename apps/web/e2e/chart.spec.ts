@@ -181,6 +181,7 @@ test.describe('the chart', () => {
     );
     await page.goto('/chart');
     await expect(row(page, '111002').getByText(t.tree.blocked)).toBeVisible();
+    await expect(row(page, '111003')).toHaveCount(0);
     await page.getByText(t.filters.showArchived).click();
     await expect(row(page, '111003').getByText(t.tree.archived)).toBeVisible();
     expect(includeArchived).toBe('true');
@@ -259,6 +260,77 @@ test.describe('the chart', () => {
     await search.fill(t.newAccount);
     await search.press('Enter');
     await expect(page.getByRole('dialog', { name: s.createTitle })).toBeVisible();
+  });
+
+  test('follows a new parent with its code, kind and normal balance (rule 2)', async ({ page }) => {
+    const create = recorder({ status: 201, json: accountOf('211001') });
+    await page.route('**/api/accounts', (route) =>
+      route.request().method() === 'POST'
+        ? route.fulfill({ status: 201, json: create.mock(route.request()).json })
+        : route.fallback(),
+    );
+    await page.goto('/chart?new=true');
+    const sheet = page.getByRole('dialog', { name: s.createTitle });
+    // Under the root of assets: a level-2 header, debit.
+    await expect(sheet.getByRole('combobox', { name: s.kind })).toBeDisabled();
+    await expect(sheet.getByRole('combobox', { name: s.kind })).toHaveText(t.kinds.header);
+    await expect(sheet.getByRole('combobox', { name: s.normalBalance })).toHaveText(
+      t.normalBalances.debit,
+    );
+    await choose(page, s.parent, `21 ${accountOf('21').name}`);
+    await expect(sheet.getByLabel(s.code)).toHaveValue('216');
+    await expect(sheet.getByRole('combobox', { name: s.kind })).toHaveText(t.kinds.postable);
+    await expect(sheet.getByRole('combobox', { name: s.normalBalance })).toHaveText(
+      t.normalBalances.credit,
+    );
+    await sheet.getByLabel(s.name).fill('أمانات إعلانات العملاء');
+    await choose(page, s.statementLine, 'أمانات العملاء');
+    await sheet.getByRole('button', { name: s.create }).click();
+    await expect(sheet).toHaveCount(0);
+    expect(create.seen[0]?.postDataJSON()).toMatchObject({
+      parentId: accountOf('21').id,
+      code: '216',
+      kind: 'postable',
+      normalBalance: 'credit',
+      statementLine: 'bs.client_money',
+    });
+  });
+});
+
+test.describe('archived accounts', () => {
+  const archived = { at: '2026-10-26T09:00:00.000Z', reason: 'مثال' };
+  test.use({
+    me: owner,
+    api: {
+      ...chartReads,
+      'GET /api/accounts': {
+        status: 200,
+        json: [
+          ...chart.map((account) =>
+            account.code === '113001' ? { ...account, archived } : account,
+          ),
+          {
+            ...accountOf('111001'),
+            id: '01900000-0000-7000-8002-000000111007',
+            code: '111007',
+            archived,
+          },
+        ],
+      },
+    },
+  });
+
+  test('still hold their codes and lock their parent, as the API counts them', async ({ page }) => {
+    await page.goto('/chart');
+    await rowAction(page, '111', t.actions.addChild);
+    let sheet = page.getByRole('dialog', { name: s.createTitle });
+    await expect(sheet.getByLabel(s.code)).toHaveValue('111008');
+    await page.keyboard.press('Escape');
+    await rowAction(page, '113', t.actions.edit);
+    sheet = page.getByRole('dialog', { name: s.editTitle });
+    await expect(sheet.getByText(s.headerLockedTitle)).toBeVisible();
+    await expect(sheet.getByLabel(s.code)).toBeDisabled();
+    await expect(sheet.getByLabel(s.name)).toBeEnabled();
   });
 });
 

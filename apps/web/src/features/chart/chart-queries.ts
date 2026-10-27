@@ -7,7 +7,7 @@ import {
 } from '@vertex-mizan/contracts';
 import { api, listOf } from '../../lib/api';
 
-/** `GET /api/accounts`: the whole tree, archived accounts on request. */
+/** `GET /api/accounts`: the whole tree, archived accounts on request (the chart page always asks). */
 export function accountsQuery(companyId: string, includeArchived = false) {
   return queryOptions({
     queryKey: ['chart', companyId, 'accounts', includeArchived],

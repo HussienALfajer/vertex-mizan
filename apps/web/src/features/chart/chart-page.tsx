@@ -123,7 +123,9 @@ export function ChartPage() {
   const navigate = useNavigate();
   const manage = can(me, 'accounts.manage') && !membership.company.archived;
   const [showArchived, setShowArchived] = useState(false);
-  const accounts = useQuery(accountsQuery(companyId, showArchived));
+  // Archived accounts always load: they hold codes, keep their parent locked and make the chart
+  // non-empty as the API counts them (rules 1–3, check 5); the switch only shows them.
+  const accounts = useQuery(accountsQuery(companyId, true));
   const [text, setText] = useState('');
   const [accountClass, setAccountClass] = useState<AccountClass | 'all'>('all');
   const [flag, setFlag] = useState<Flag>('all');
@@ -142,15 +144,17 @@ export function ChartPage() {
 
   const nodes = useMemo(
     () =>
-      (accounts.data ?? []).map(
-        (account): ChartNode => ({
-          ...account,
-          blocked: account.blocked !== null,
-          archived: account.archived !== null,
-          source: account,
-        }),
-      ),
-    [accounts.data],
+      (accounts.data ?? [])
+        .filter((account) => showArchived || account.archived === null)
+        .map(
+          (account): ChartNode => ({
+            ...account,
+            blocked: account.blocked !== null,
+            archived: account.archived !== null,
+            source: account,
+          }),
+        ),
+    [accounts.data, showArchived],
   );
   const match = useMemo(() => {
     if (text.trim() === '' && accountClass === 'all' && flag === 'all') return undefined;

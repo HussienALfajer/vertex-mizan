@@ -57,7 +57,8 @@ interface AccountForm {
   kind: AccountKind;
   name: string;
   nameLatin: string;
-  normalBalance: NormalBalance;
+  /** Null: the class's default, which follows the class as the parent or code changes (rule 2). */
+  normalBalance: NormalBalance | null;
   statementLine: string | null;
   currency: CurrencyCode | null;
   isControl: boolean;
@@ -81,16 +82,13 @@ export function nextChildCode(parent: Account, accounts: readonly Account[]): st
 
 function formOf(mode: AccountSheetMode, accounts: readonly Account[]): AccountForm {
   if (mode.kind === 'create') {
-    const code = nextChildCode(mode.parent, accounts) ?? mode.parent.code;
-    // Levels 1 and 2 hold headers; a level-3 parent's children (level 4) are postable.
-    const kind: AccountKind = mode.parent.level >= 2 ? 'postable' : 'header';
     return {
       parentId: mode.parent.id,
-      code,
-      kind,
+      code: nextChildCode(mode.parent, accounts) ?? mode.parent.code,
+      kind: defaultKind(mode.parent.level + 1),
       name: '',
       nameLatin: '',
-      normalBalance: defaultNormalBalance(mode.parent.class),
+      normalBalance: null,
       statementLine: null,
       currency: null,
       isControl: false,
@@ -105,7 +103,9 @@ function formOf(mode: AccountSheetMode, accounts: readonly Account[]): AccountFo
     kind: account.kind,
     name: account.name,
     nameLatin: account.nameLatin ?? '',
-    normalBalance: account.normalBalance,
+    // A contra account keeps its chosen balance; any other follows its class.
+    normalBalance:
+      account.normalBalance === defaultNormalBalance(account.class) ? null : account.normalBalance,
     statementLine: account.statementLine,
     currency: account.currency,
     isControl: account.isControl,
@@ -114,12 +114,25 @@ function formOf(mode: AccountSheetMode, accounts: readonly Account[]): AccountFo
   };
 }
 
+/** A new account's kind at a level: headers at levels 1 and 2 (check 2), postable below. */
+function defaultKind(level: number): AccountKind {
+  return level <= 2 ? 'header' : 'postable';
+}
+
+/** The kind a level allows, or null when both are allowed (level 3). */
+function fixedKind(level: number): AccountKind | null {
+  return level <= 2 ? 'header' : level === 4 ? 'postable' : null;
+}
+
+/** The form as sent: the kind the level allows and the normal balance resolved by class. */
+type ResolvedForm = Omit<AccountForm, 'normalBalance'> & { normalBalance: NormalBalance };
+
 function classOf(code: string, fallback: AccountClass): AccountClass {
   return accountCodeLevel(code) === null ? fallback : accountClassOfCode(code);
 }
 
 /** The fields a postable account sends, emptied on a header (S02 check 4). */
-function shaped(form: AccountForm, accountClass: AccountClass) {
+function shaped(form: ResolvedForm, accountClass: AccountClass) {
   const postable = form.kind === 'postable';
   const flags = postable && (accountClass === 'asset' || accountClass === 'liability');
   return {
@@ -132,7 +145,7 @@ function shaped(form: AccountForm, accountClass: AccountClass) {
 }
 
 /** The changed fields of an edit, nothing else: a locked account refuses even an unchanged one. */
-function changes(account: Account, form: AccountForm, accountClass: AccountClass): UpdateAccount {
+function changes(account: Account, form: ResolvedForm, accountClass: AccountClass): UpdateAccount {
   const next = { ...form, ...shaped(form, accountClass), nameLatin: form.nameLatin.trim() || null };
   const change: Record<string, unknown> = {};
   if (next.parentId !== (account.parentId ?? '')) change.parentId = next.parentId;
@@ -199,6 +212,13 @@ export function AccountSheet({
     ? accounts.some((candidate) => candidate.parentId === account.id)
     : false;
   const isRoot = account?.level === 1;
+  const level = isRoot ? 1 : (parent?.level ?? 0) + 1;
+  const kindFixed = fixedKind(level);
+  const resolved: ResolvedForm = {
+    ...form,
+    kind: kindFixed ?? form.kind,
+    normalBalance: form.normalBalance ?? defaultNormalBalance(accountClass),
+  };
   const readOnly = !manage || account?.archived != null;
   // S02 check 5: the place, kind and class of a used account, or a header with children, stay.
   const placeLocked = readOnly || used || hasChildren || isRoot;
@@ -239,11 +259,12 @@ export function AccountSheet({
         found.code = ar.errors.ACCOUNT_CODE_INVALID;
       }
     }
-    if (form.kind === 'postable' && !form.statementLine) found.line = t.validation.statementLine;
+    if (resolved.kind === 'postable' && !form.statementLine)
+      found.line = t.validation.statementLine;
     setErrors(found);
     if (Object.keys(found).length > 0) return;
     if (account) {
-      const change = changes(account, form, accountClass);
+      const change = changes(account, resolved, accountClass);
       if (Object.keys(change).length === 0) {
         setUnchanged(true);
         return;
@@ -254,11 +275,11 @@ export function AccountSheet({
     save.mutate({
       parentId: form.parentId,
       code: form.code,
-      kind: form.kind,
+      kind: resolved.kind,
       name: form.name,
       nameLatin: form.nameLatin.trim() || null,
-      normalBalance: form.normalBalance,
-      ...shaped(form, accountClass),
+      normalBalance: resolved.normalBalance,
+      ...shaped(resolved, accountClass),
     });
   }
 
@@ -329,7 +350,21 @@ export function AccountSheet({
                 label: `${candidate.code} ${candidate.name}`,
               }))}
               disabled={placeLocked}
-              onValueChange={(value) => set('parentId', value)}
+              onValueChange={(value) => {
+                const next = accounts.find((candidate) => candidate.id === value);
+                setUnchanged(false);
+                // A new account follows its new parent: the next free code and the level's kind.
+                setForm((current) =>
+                  account || !next
+                    ? { ...current, parentId: value }
+                    : {
+                        ...current,
+                        parentId: value,
+                        code: nextChildCode(next, accounts) ?? next.code,
+                        kind: defaultKind(next.level + 1),
+                      },
+                );
+              }}
             />
           )}
           <div className="grid gap-4 sm:grid-cols-2">
@@ -355,9 +390,9 @@ export function AccountSheet({
           {!isRoot && (
             <SelectField
               label={s.kind}
-              value={form.kind}
+              value={resolved.kind}
               options={kindOptions}
-              disabled={placeLocked}
+              disabled={placeLocked || kindFixed !== null}
               onValueChange={(value) => set('kind', value)}
             />
           )}
@@ -381,12 +416,12 @@ export function AccountSheet({
           </Field>
           <SelectField
             label={s.normalBalance}
-            value={form.normalBalance}
+            value={resolved.normalBalance}
             options={balanceOptions}
             disabled={placeLocked}
             onValueChange={(value) => set('normalBalance', value)}
           />
-          {form.kind === 'postable' && (
+          {resolved.kind === 'postable' && (
             <>
               <SelectField
                 label={s.statementLine}
