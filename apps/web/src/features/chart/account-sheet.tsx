@@ -438,9 +438,17 @@ export function AccountSheet({
                 options={currencyOptions}
                 description={s.currencyHint}
                 disabled={used}
-                onValueChange={(value) =>
-                  set('currency', value === noCurrency ? null : (value as CurrencyCode))
-                }
+                onValueChange={(value) => {
+                  const currency = value === noCurrency ? null : (value as CurrencyCode);
+                  setUnchanged(false);
+                  // Q12 (owner, 2026-10-27): an asset or liability held in one currency is
+                  // monetary by default, so the month-end revaluation (IAS 21.23) never skips it.
+                  setForm((current) => ({
+                    ...current,
+                    currency,
+                    isMonetary: currency !== null && flagsFit ? true : current.isMonetary,
+                  }));
+                }}
               />
               {flagsFit && (
                 <>

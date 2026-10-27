@@ -17,7 +17,6 @@ Decisions not yet made. Never guess an answer to one: ask the owner. Each has a 
 | Q9 | Which roles maintain the posting-rule account mapping: phase 1 scope §3 gives posting rules to the owner, F10 says the accountant maintains the mapping | Owner and accountant, every change audited with before and after | S05 |
 | Q10 | The bulletin schedule of a third-currency pair (TRY, EUR), which may be published weekly (S02 rule 16 requires a daily bulletin) | Each bulletin pair carries its schedule (daily, or weekly on a weekday), decided when a company first deals in a third currency | The first company with a third currency |
 | Q11 | IFRS 18.B65 classifies exchange differences by the item that caused them, so differences on cash fall in investing for a company without a specified main business activity | S09 splits the exchange-difference line by the monetary item's category when IFRS 18 statements are first produced | IFRS 18 statements (periods from 2027-01-01) |
-| Q12 | A new asset or liability restricted to a foreign currency starts with "monetary" off: if the accountant forgets it, the month-end revaluation (IAS 21.23) skips the account, and the flag locks after first use (S02 check 5) | The account sheet turns "monetary" on when an asset or liability is restricted to a currency; the accountant can still turn it off | S07 (revaluation), and before Vertex Media's production chart |
 
 ## Resolved
 
@@ -26,3 +25,4 @@ Decisions not yet made. Never guess an answer to one: ask the owner. Each has a 
 | — | Phase 1 product questions Q1–Q18 | `docs/product/phase-1-scope.md` §10 | 2026-10-20 |
 | — | S01 access questions: two-factor for every role, email invitations and resets, company creation, the settings lock, sessions, the period permission, audited reads, archiving | `docs/specs/S01-companies-people-access.md` (rules 2, 5, 6, 9, 11, 12, 15, 24; the period permission) | 2026-10-26 |
 | — | S02 chart, dimension and rate questions: account codes, the lock after use, statements by nature with IFRS 18 categories, separate exchange gain and loss accounts, the four tax accounts, one contract dimension, manual values linked to Hub, the bulletin rate of the day, rate corrections | `docs/specs/S02-chart-dimensions-rates.md`, ADR 0011 | 2026-10-27 |
+| Q12 | A new asset or liability restricted to a currency starts with "monetary" off | The account sheet turns "monetary" on when an asset or liability is restricted to a currency; the accountant can still turn it off (S02 PR 3) | 2026-10-27 |
