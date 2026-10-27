@@ -50,6 +50,27 @@
       "when": 1793048092071,
       "tag": "0006_email_outbox_grants",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793124483463,
+      "tag": "0007_yielding_grim_reaper",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1793124561487,
+      "tag": "0008_parched_scorpion",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1793124562304,
+      "tag": "0009_s02_chart_guards",
+      "breakpoints": true
     }
   ]
 }

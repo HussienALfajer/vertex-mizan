@@ -119,7 +119,7 @@ export type Guards = { functions: PinnedFunction[]; triggers: GuardTrigger[] };
 
 /**
  * The guards of the migrations: every guard function, pinned, and every guard trigger (S01's
- * settings lock). The ledger's balance, reversal, open-item and period guards join them with S03.
+ * settings lock; S02's chart, dimension and rate rules). The ledger's balance, reversal, open-item and period guards join them with S03.
  */
 export const GUARDS: Guards = {
   functions: [
@@ -208,6 +208,393 @@ BEGIN
 END
 `,
     },
+    // S02: the chart's tree and lock, the roles' fit, the dimension and rate rules, and the
+    // roots and built-in types of every company.
+    {
+      name: 'new_uuidv7',
+      arguments: '',
+      returns: 'uuid',
+      language: 'sql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+  SELECT encode(
+    set_bit(
+      set_bit(
+        overlay(uuid_send(gen_random_uuid())
+          PLACING substring(int8send((extract(epoch FROM clock_timestamp()) * 1000)::bigint) FROM 3)
+          FROM 1 FOR 6),
+        52, 1),
+      53, 1),
+    'hex')::uuid
+`,
+    },
+    {
+      name: 'chart_account_rules',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+DECLARE
+  parent record;
+BEGIN
+  IF TG_OP = 'UPDATE' THEN
+    IF NEW.id IS DISTINCT FROM OLD.id OR NEW.company_id IS DISTINCT FROM OLD.company_id THEN
+      RAISE EXCEPTION 'chart_accounts: an account keeps its id and company'
+        USING ERRCODE = 'restrict_violation';
+    END IF;
+    IF OLD.level = 1 AND (
+      (NEW.code, NEW.level, NEW.parent_id, NEW.kind, NEW.class, NEW.normal_balance)
+        IS DISTINCT FROM (OLD.code, OLD.level, OLD.parent_id, OLD.kind, OLD.class, OLD.normal_balance)
+      OR NEW.archived_at IS NOT NULL
+    ) THEN
+      RAISE EXCEPTION 'chart_accounts: root account % is only renamed', OLD.code
+        USING ERRCODE = 'restrict_violation';
+    END IF;
+    IF (OLD.first_posted_at IS NOT NULL OR (OLD.kind = 'header' AND EXISTS (
+          SELECT 1 FROM public.chart_accounts c
+          WHERE c.company_id = OLD.company_id AND c.parent_id = OLD.id)))
+      AND (
+        (NEW.code, NEW.parent_id, NEW.level, NEW.kind, NEW.class, NEW.normal_balance,
+          NEW.currency, NEW.is_control, NEW.is_monetary)
+          IS DISTINCT FROM (OLD.code, OLD.parent_id, OLD.level, OLD.kind, OLD.class,
+            OLD.normal_balance, OLD.currency, OLD.is_control, OLD.is_monetary)
+        OR (OLD.first_posted_at IS NOT NULL
+          AND NEW.first_posted_at IS DISTINCT FROM OLD.first_posted_at)
+      ) THEN
+      RAISE EXCEPTION 'chart_accounts: account % is locked since its first use', OLD.code
+        USING ERRCODE = 'restrict_violation';
+    END IF;
+  END IF;
+  IF NEW.level > 1 THEN
+    SELECT p.code, p.level, p.kind, p.archived_at INTO parent
+    FROM public.chart_accounts p
+    WHERE p.company_id = NEW.company_id AND p.id = NEW.parent_id
+    FOR SHARE;
+    IF NOT FOUND OR parent.kind <> 'header' OR parent.level <> NEW.level - 1
+      OR left(NEW.code, char_length(parent.code)) <> parent.code
+      OR (NEW.archived_at IS NULL AND parent.archived_at IS NOT NULL) THEN
+      RAISE EXCEPTION 'chart_accounts: account % needs an unarchived header parent of the level above whose code it extends', NEW.code
+        USING ERRCODE = 'restrict_violation';
+    END IF;
+  END IF;
+  IF NEW.archived_at IS NOT NULL AND EXISTS (
+    SELECT 1 FROM public.chart_accounts c
+    WHERE c.company_id = NEW.company_id AND c.parent_id = NEW.id AND c.archived_at IS NULL
+  ) THEN
+    RAISE EXCEPTION 'chart_accounts: account % has unarchived children', NEW.code
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF (NEW.archived_at IS NOT NULL OR NEW.blocked_at IS NOT NULL OR NEW.kind <> 'postable')
+    AND EXISTS (
+      SELECT 1 FROM public.account_roles r
+      WHERE r.company_id = NEW.company_id AND r.account_id = NEW.id AND r.archived_at IS NULL
+    ) THEN
+    RAISE EXCEPTION 'chart_accounts: account % holds an account role', NEW.code
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF NEW.kind <> 'postable' AND EXISTS (
+    SELECT 1 FROM public.account_required_dimensions d
+    WHERE d.company_id = NEW.company_id AND d.account_id = NEW.id AND d.archived_at IS NULL
+  ) THEN
+    RAISE EXCEPTION 'chart_accounts: header account % requires no dimension', NEW.code
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  RETURN NEW;
+END
+`,
+    },
+    {
+      name: 'account_required_dimension_rules',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+BEGIN
+  IF TG_OP = 'UPDATE' AND (NEW.id, NEW.company_id, NEW.account_id, NEW.dimension_type_id)
+    IS DISTINCT FROM (OLD.id, OLD.company_id, OLD.account_id, OLD.dimension_type_id) THEN
+    RAISE EXCEPTION 'account_required_dimensions: a row keeps its account and type'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF NEW.archived_at IS NULL AND (
+    NOT EXISTS (
+      SELECT 1 FROM public.chart_accounts a
+      WHERE a.company_id = NEW.company_id AND a.id = NEW.account_id AND a.kind = 'postable'
+      FOR SHARE
+    )
+    OR NOT EXISTS (
+      SELECT 1 FROM public.dimension_types t
+      WHERE t.company_id = NEW.company_id AND t.id = NEW.dimension_type_id
+        AND t.archived_at IS NULL
+      FOR SHARE
+    )
+  ) THEN
+    RAISE EXCEPTION 'account_required_dimensions: a postable account and an unarchived type'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  RETURN NEW;
+END
+`,
+    },
+    {
+      name: 'account_role_rules',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+BEGIN
+  IF TG_OP = 'UPDATE' AND (NEW.id, NEW.company_id, NEW.role)
+    IS DISTINCT FROM (OLD.id, OLD.company_id, OLD.role) THEN
+    RAISE EXCEPTION 'account_roles: a row keeps its role'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF NEW.archived_at IS NULL AND NOT EXISTS (
+    SELECT 1 FROM public.chart_accounts a
+    WHERE a.company_id = NEW.company_id AND a.id = NEW.account_id
+      AND a.kind = 'postable' AND a.blocked_at IS NULL AND a.archived_at IS NULL
+      AND CASE NEW.role
+        WHEN 'conversion_rounding' THEN a.class IN ('revenue', 'expense')
+        WHEN 'fx_realised_gain' THEN a.class = 'revenue'
+        WHEN 'fx_unrealised_gain' THEN a.class = 'revenue'
+        WHEN 'fx_realised_loss' THEN a.class = 'expense'
+        WHEN 'fx_unrealised_loss' THEN a.class = 'expense'
+        WHEN 'retained_earnings' THEN a.class = 'equity'
+        ELSE false
+      END
+    FOR SHARE
+  ) THEN
+    RAISE EXCEPTION 'account_roles: the account does not fit role %', NEW.role
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  RETURN NEW;
+END
+`,
+    },
+    {
+      name: 'dimension_type_rules',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+BEGIN
+  IF TG_OP = 'UPDATE' AND (NEW.id, NEW.company_id, NEW.code, NEW.builtin, NEW.parent_type_id)
+    IS DISTINCT FROM (OLD.id, OLD.company_id, OLD.code, OLD.builtin, OLD.parent_type_id) THEN
+    RAISE EXCEPTION 'dimension_types: a type keeps its code, built-in mark and parent type'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF NEW.archived_at IS NOT NULL AND EXISTS (
+    SELECT 1 FROM public.account_required_dimensions d
+    WHERE d.company_id = NEW.company_id AND d.dimension_type_id = NEW.id
+      AND d.archived_at IS NULL
+  ) THEN
+    RAISE EXCEPTION 'dimension_types: type % is required by an account', NEW.code
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF NEW.archived_at IS NULL AND (TG_OP = 'INSERT' OR OLD.archived_at IS NOT NULL) THEN
+    PERFORM 1 FROM public.company_settings s WHERE s.company_id = NEW.company_id FOR UPDATE;
+    IF (SELECT count(*) FROM public.dimension_types t
+        WHERE t.company_id = NEW.company_id AND t.archived_at IS NULL AND t.id <> NEW.id) >= 10 THEN
+      RAISE EXCEPTION 'dimension_types: at most 10 active types'
+        USING ERRCODE = 'restrict_violation';
+    END IF;
+  END IF;
+  RETURN NEW;
+END
+`,
+    },
+    {
+      name: 'dimension_value_rules',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+DECLARE
+  value_type record;
+BEGIN
+  IF TG_OP = 'UPDATE' THEN
+    IF (NEW.id, NEW.company_id, NEW.type_id) IS DISTINCT FROM (OLD.id, OLD.company_id, OLD.type_id)
+    THEN
+      RAISE EXCEPTION 'dimension_values: a value keeps its type'
+        USING ERRCODE = 'restrict_violation';
+    END IF;
+    IF OLD.external_id IS NOT NULL AND (NEW.external_source, NEW.external_id)
+      IS DISTINCT FROM (OLD.external_source, OLD.external_id) THEN
+      RAISE EXCEPTION 'dimension_values: value % is linked to % for good', OLD.id, OLD.external_id
+        USING ERRCODE = 'restrict_violation';
+    END IF;
+  END IF;
+  SELECT t.code, t.builtin, t.parent_type_id INTO value_type
+  FROM public.dimension_types t
+  WHERE t.company_id = NEW.company_id AND t.id = NEW.type_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'dimension_values: unknown type' USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF (NEW.contract_kind IS NOT NULL) <> (value_type.builtin AND value_type.code = 'contract') THEN
+    RAISE EXCEPTION 'dimension_values: a contract kind exactly on contract values'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF NEW.parent_value_id IS NOT NULL AND (value_type.parent_type_id IS NULL OR NOT EXISTS (
+    SELECT 1 FROM public.dimension_values p
+    WHERE p.company_id = NEW.company_id AND p.id = NEW.parent_value_id
+      AND p.type_id = value_type.parent_type_id
+  )) THEN
+    RAISE EXCEPTION 'dimension_values: the parent is a value of the parent type'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF NEW.parent_value_id IS NULL AND NEW.external_source = 'hub'
+    AND value_type.parent_type_id IS NOT NULL THEN
+    RAISE EXCEPTION 'dimension_values: a Hub contract names its client'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  RETURN NEW;
+END
+`,
+    },
+    {
+      name: 'rate_pair_rules',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+BEGIN
+  IF (NEW.id, NEW.company_id, NEW.base, NEW.quote)
+    IS DISTINCT FROM (OLD.id, OLD.company_id, OLD.base, OLD.quote) THEN
+    RAISE EXCEPTION 'rate_pairs: a pair keeps its currencies and orientation'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  RETURN NEW;
+END
+`,
+    },
+    {
+      name: 'exchange_rate_rules',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+BEGIN
+  IF NEW.supersedes_rate_id IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM public.exchange_rates r
+    WHERE r.company_id = NEW.company_id AND r.id = NEW.supersedes_rate_id
+      AND r.base = NEW.base AND r.quote = NEW.quote AND r.type = NEW.type
+      AND r.effective_on = NEW.effective_on
+  ) THEN
+    RAISE EXCEPTION 'exchange_rates: a correction supersedes a row of its pair, type and date'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  RETURN NEW;
+END
+`,
+    },
+    {
+      name: 'create_company_chart_roots',
+      arguments: 'company uuid',
+      returns: 'void',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+DECLARE
+  client_type uuid := public.new_uuidv7();
+BEGIN
+  INSERT INTO public.chart_accounts
+    (id, company_id, code, level, parent_id, kind, class, name, name_latin, normal_balance)
+  VALUES
+    (public.new_uuidv7(), company, '1', 1, NULL, 'header', 'asset', 'الأصول', 'Assets', 'debit'),
+    (public.new_uuidv7(), company, '2', 1, NULL, 'header', 'liability', 'الخصوم', 'Liabilities', 'credit'),
+    (public.new_uuidv7(), company, '3', 1, NULL, 'header', 'equity', 'حقوق الملكية', 'Equity', 'credit'),
+    (public.new_uuidv7(), company, '4', 1, NULL, 'header', 'revenue', 'الإيرادات', 'Revenue', 'credit'),
+    (public.new_uuidv7(), company, '5', 1, NULL, 'header', 'expense', 'المصاريف', 'Expenses', 'debit');
+  INSERT INTO public.dimension_types
+    (id, company_id, code, builtin, parent_type_id, name, name_latin, position)
+  VALUES (client_type, company, 'client', true, NULL, 'العميل', 'Client', 1);
+  INSERT INTO public.dimension_types
+    (id, company_id, code, builtin, parent_type_id, name, name_latin, position)
+  VALUES
+    (public.new_uuidv7(), company, 'contract', true, client_type, 'العقد', 'Contract', 2),
+    (public.new_uuidv7(), company, 'department', true, NULL, 'القسم', 'Department', 3),
+    (public.new_uuidv7(), company, 'service', true, NULL, 'الخدمة', 'Service', 4);
+END
+`,
+    },
+    {
+      name: 'company_settings_create_chart',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+BEGIN
+  PERFORM public.create_company_chart_roots(NEW.company_id);
+  RETURN NULL;
+END
+`,
+    },
   ],
   triggers: [
     // The settings lock (S01 rule 11): before every update of a company's ledger settings.
@@ -232,6 +619,176 @@ END
       function: 'refuse_delete',
       deferred: false,
       on: ['TRUNCATE'],
+    },
+    // S02's tables (0009): the rate table is append-only, the business tables are never deleted,
+    // and each carries its rules; company_settings makes the chart roots of a new company.
+    {
+      table: 'exchange_rates',
+      name: 'exchange_rates_refuse_change',
+      function: 'refuse_change',
+      deferred: false,
+      on: ['UPDATE', 'DELETE'],
+    },
+    {
+      table: 'exchange_rates',
+      name: 'exchange_rates_refuse_truncate',
+      function: 'refuse_change',
+      deferred: false,
+      on: ['TRUNCATE'],
+    },
+    {
+      table: 'chart_accounts',
+      name: 'chart_accounts_refuse_delete',
+      function: 'refuse_delete',
+      deferred: false,
+      on: ['DELETE'],
+    },
+    {
+      table: 'chart_accounts',
+      name: 'chart_accounts_refuse_truncate',
+      function: 'refuse_delete',
+      deferred: false,
+      on: ['TRUNCATE'],
+    },
+    {
+      table: 'account_required_dimensions',
+      name: 'account_required_dimensions_refuse_delete',
+      function: 'refuse_delete',
+      deferred: false,
+      on: ['DELETE'],
+    },
+    {
+      table: 'account_required_dimensions',
+      name: 'account_required_dimensions_refuse_truncate',
+      function: 'refuse_delete',
+      deferred: false,
+      on: ['TRUNCATE'],
+    },
+    {
+      table: 'account_roles',
+      name: 'account_roles_refuse_delete',
+      function: 'refuse_delete',
+      deferred: false,
+      on: ['DELETE'],
+    },
+    {
+      table: 'account_roles',
+      name: 'account_roles_refuse_truncate',
+      function: 'refuse_delete',
+      deferred: false,
+      on: ['TRUNCATE'],
+    },
+    {
+      table: 'dimension_types',
+      name: 'dimension_types_refuse_delete',
+      function: 'refuse_delete',
+      deferred: false,
+      on: ['DELETE'],
+    },
+    {
+      table: 'dimension_types',
+      name: 'dimension_types_refuse_truncate',
+      function: 'refuse_delete',
+      deferred: false,
+      on: ['TRUNCATE'],
+    },
+    {
+      table: 'dimension_values',
+      name: 'dimension_values_refuse_delete',
+      function: 'refuse_delete',
+      deferred: false,
+      on: ['DELETE'],
+    },
+    {
+      table: 'dimension_values',
+      name: 'dimension_values_refuse_truncate',
+      function: 'refuse_delete',
+      deferred: false,
+      on: ['TRUNCATE'],
+    },
+    {
+      table: 'rate_pairs',
+      name: 'rate_pairs_refuse_delete',
+      function: 'refuse_delete',
+      deferred: false,
+      on: ['DELETE'],
+    },
+    {
+      table: 'rate_pairs',
+      name: 'rate_pairs_refuse_truncate',
+      function: 'refuse_delete',
+      deferred: false,
+      on: ['TRUNCATE'],
+    },
+    {
+      table: 'bulletin_holidays',
+      name: 'bulletin_holidays_refuse_delete',
+      function: 'refuse_delete',
+      deferred: false,
+      on: ['DELETE'],
+    },
+    {
+      table: 'bulletin_holidays',
+      name: 'bulletin_holidays_refuse_truncate',
+      function: 'refuse_delete',
+      deferred: false,
+      on: ['TRUNCATE'],
+    },
+    {
+      table: 'chart_accounts',
+      name: 'chart_account_rules',
+      function: 'chart_account_rules',
+      deferred: false,
+      on: ['INSERT', 'UPDATE'],
+    },
+    {
+      table: 'account_required_dimensions',
+      name: 'account_required_dimension_rules',
+      function: 'account_required_dimension_rules',
+      deferred: false,
+      on: ['INSERT', 'UPDATE'],
+    },
+    {
+      table: 'account_roles',
+      name: 'account_role_rules',
+      function: 'account_role_rules',
+      deferred: false,
+      on: ['INSERT', 'UPDATE'],
+    },
+    {
+      table: 'dimension_types',
+      name: 'dimension_type_rules',
+      function: 'dimension_type_rules',
+      deferred: false,
+      on: ['INSERT', 'UPDATE'],
+    },
+    {
+      table: 'dimension_values',
+      name: 'dimension_value_rules',
+      function: 'dimension_value_rules',
+      deferred: false,
+      on: ['INSERT', 'UPDATE'],
+    },
+    {
+      table: 'rate_pairs',
+      name: 'rate_pair_rules',
+      function: 'rate_pair_rules',
+      deferred: false,
+      on: ['UPDATE'],
+    },
+    {
+      table: 'exchange_rates',
+      name: 'exchange_rate_rules',
+      function: 'exchange_rate_rules',
+      deferred: false,
+      on: ['INSERT'],
+    },
+    {
+      table: 'company_settings',
+      name: 'company_settings_create_chart',
+      function: 'company_settings_create_chart',
+      deferred: false,
+      on: ['INSERT'],
     },
   ],
 };

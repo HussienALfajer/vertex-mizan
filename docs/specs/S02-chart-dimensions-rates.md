@@ -46,13 +46,13 @@ All tables are company tables: `company_id`, forced RLS with `company_isolation`
 
 | Table | Kind | Fields (all `not null` unless marked) | Keys and checks |
 |---|---|---|---|
-| `accounts` | business | `id`, `company_id`, `code` (text), `level` (smallint 1–4), `parent_id` (null at level 1) → accounts, `kind` (`header` · `postable`), `class` (`asset` · `liability` · `equity` · `revenue` · `expense`), `name` (Arabic, 1–200), `name_latin` (null, 1–200), `normal_balance` (`debit` · `credit`), `statement_line` (text, null on headers), `currency` (null; a currency restriction), `is_control` (bool), `is_monetary` (bool), `blocked_at` (null), `blocked_reason` (null), `first_posted_at` (null; set by the posting function, S03), `created_at`, `updated_at`, `archived_at` (null), `archived_reason` (null) | unique `(company_id, code)`; `(company_id, parent_id)` → `(company_id, id)`; checks below |
-| `account_required_dimensions` | business | `id`, `company_id`, `account_id` → accounts, `dimension_type_id` → dimension_types, `created_at`, `updated_at`, `archived_at` (null) | unique `(company_id, account_id, dimension_type_id)` where `archived_at is null` |
-| `account_roles` | business | `id`, `company_id`, `role` (enum `account_role`), `account_id` → accounts, `created_at`, `updated_at`, `archived_at` (null) | unique `(company_id, role)` where `archived_at is null` |
+| `chart_accounts` | business | `id`, `company_id`, `code` (text), `level` (smallint 1–4), `parent_id` (null at level 1) → accounts, `kind` (`header` · `postable`), `class` (`asset` · `liability` · `equity` · `revenue` · `expense`), `name` (Arabic, 1–200), `name_latin` (null, 1–200), `normal_balance` (`debit` · `credit`), `statement_line` (text, null on headers), `currency` (null; a currency restriction), `is_control` (bool), `is_monetary` (bool), `blocked_at` (null), `blocked_reason` (null), `first_posted_at` (null; set by the posting function, S03), `created_at`, `updated_at`, `archived_at` (null), `archived_reason` (null) | unique `(company_id, code)`; `(company_id, parent_id)` → `(company_id, id)`; checks below. Named apart from Better Auth's `accounts` table (S01) |
+| `account_required_dimensions` | business | `id`, `company_id`, `account_id` → chart_accounts, `dimension_type_id` → dimension_types, `created_at`, `updated_at`, `archived_at` (null) | unique `(company_id, account_id, dimension_type_id)` where `archived_at is null` |
+| `account_roles` | business | `id`, `company_id`, `role` (enum `account_role`), `account_id` → chart_accounts, `created_at`, `updated_at`, `archived_at` (null) | unique `(company_id, role)` where `archived_at is null` |
 
 `account_role` is the enum `conversion_rounding`, `fx_realised_gain`, `fx_realised_loss`, `fx_unrealised_gain`, `fx_unrealised_loss`, `retained_earnings`; values are never renamed.
 
-`accounts` checks (each a constraint or a `BEFORE` trigger with `ENABLE ALWAYS`, pinned in `GUARDS`):
+`chart_accounts` checks (each a constraint or a `BEFORE` trigger with `ENABLE ALWAYS`, pinned in `GUARDS`):
 1. **Code shape** (ADR 0011): level 1 is one digit `1`–`5`; level 2 two digits, level 3 three digits, each starting with the parent's code and adding one digit `1`–`9`; level 4 six digits, the parent's three digits then `001`–`999`. `class` follows the first digit: 1 asset, 2 liability, 3 equity, 4 revenue, 5 expense.
 2. Levels 1 and 2 are headers. A postable account is a leaf at level 3 or 4; a header may have no children yet. A child's parent is a header of the level above.
 3. `statement_line` is set exactly on postable accounts and is a code of the catalogue whose statement fits the class (balance sheet for 1–3, income statement for 4–5).
@@ -252,7 +252,7 @@ Per company: 100–2,000 accounts; up to 50,000 dimension values (clients and co
 - `packages/contracts` gains `chart.ts` (statement lines, templates, account schemas), `dimensions.ts`, `rates.ts` (record, pair and calendar schemas), the permission keys and the error codes, appended.
 - `packages/ledger`: `rateInForce()` and `policyRate()` take the calendar (rule 16); existing callers and tests pass an empty calendar for `market` only. `checkLineAgainstChart()` is new.
 - S01's company creation (web form and command) gains the template choice. `/v1` is untouched; `openapi.json` gains the `/api` routes (additive).
-- **S03 must** store on each converted line the rate row (or both rows of a cross) it used, and set `accounts.first_posted_at` at an account's first posted line, in the posting transaction.
+- **S03 must** store on each converted line the rate row (or both rows of a cross) it used, and set `chart_accounts.first_posted_at` at an account's first posted line, in the posting transaction.
 
 ## Arabic strings and number formats
 - New namespaces: `ar.chart`, `ar.dimensions`, `ar.rates`, with the account classes, normal balances, statement lines, role names, dimension types and the new error codes in `ar.errors`.

@@ -78,6 +78,12 @@ export const companySettings = pgTable(
     fiscalYearStartMonth: smallint().notNull().default(1),
     policyNote: text().notNull(),
     booksStartedAt: timestamptz(),
+    /**
+     * The ISO weekdays the bulletin is not published (S02 rule 16): Friday and Saturday by
+     * default, UNVERIFIED as the Central Bank's days, so a setting. Not part of the settings lock:
+     * it decides which bulletin a future posting needs, never a posted amount.
+     */
+    bulletinDaysOff: smallint().array().notNull().default(sql`'{5,6}'`),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
     archivedAt: archivedAt(),
@@ -113,6 +119,13 @@ export const companySettings = pgTable(
     check(
       'company_settings_fiscal_year_start_month',
       sql`${t.fiscalYearStartMonth} between 1 and 12`,
+    ),
+    // Weekdays 1–7; six at most, so one weekday at least is a publication day.
+    check(
+      'company_settings_bulletin_days_off',
+      sql`${t.bulletinDaysOff} <@ '{1,2,3,4,5,6,7}'::smallint[]
+        and cardinality(${t.bulletinDaysOff}) <= 6
+        and array_position(${t.bulletinDaysOff}, null) is null`,
     ),
     check(
       'company_settings_policy_note_length',

@@ -1,11 +1,20 @@
 import { CURRENCY_CODES } from '@vertex-mizan/contracts';
-import { inArray } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import {
+  accountRequiredDimensions,
+  accountRoles,
   auditEntries,
+  bulletinHolidays,
+  chartAccounts,
   companies,
   companySettings,
+  dimensionTypes,
+  dimensionValues,
+  exchangeRates,
+  ratePairs,
+  type Transaction,
   tableRegistry,
   users,
   withCompany,
@@ -18,7 +27,18 @@ import { connect } from './connections.js';
 // does.
 
 const { app } = connect();
-const COVERED = ['company_settings', 'audit_entries'];
+const COVERED = [
+  'company_settings',
+  'audit_entries',
+  'chart_accounts',
+  'account_required_dimensions',
+  'account_roles',
+  'dimension_types',
+  'dimension_values',
+  'rate_pairs',
+  'exchange_rates',
+  'bulletin_holidays',
+];
 
 const auditRow = fc.record({
   action: fc.constantFrom('company.updated', 'membership.created', 'session.company_entered'),
@@ -36,9 +56,115 @@ const companyData = fc.record({
   fiscalYearStartMonth: fc.integer({ min: 1, max: 12 }),
   policyNote: fc.string({ minLength: 1, maxLength: 80 }).filter((note) => note.trim() !== ''),
   audit: fc.array(auditRow, { maxLength: 6 }),
+  headers: fc.subarray(['11', '12', '21', '31']),
+  clients: fc.array(
+    fc.record({
+      name: fc
+        .string({ minLength: 1, maxLength: 40 })
+        .filter((name) => name.trim() === name && name !== ''),
+      hub: fc.boolean(),
+    }),
+    { maxLength: 5 },
+  ),
+  rates: fc.uniqueArray(
+    fc.record({
+      day: fc.integer({ min: 1, max: 28 }),
+      rate: fc.integer({ min: 1, max: 999_999 }).map((value) => `${value}.0000`),
+    }),
+    { maxLength: 5, selector: (row) => row.day },
+  ),
+  holidays: fc.uniqueArray(fc.integer({ min: 1, max: 28 }), { maxLength: 4 }),
 });
 
 type CompanyData = typeof companyData extends fc.Arbitrary<infer T> ? T : never;
+
+const day = (value: number) => `2026-11-${String(value).padStart(2, '0')}`;
+
+/** An account under the company's account of `parentCode`. */
+async function addAccount(
+  tx: Transaction,
+  companyId: string,
+  parentCode: string,
+  values: Partial<typeof chartAccounts.$inferInsert> & { code: string },
+): Promise<string> {
+  const [parent] = await tx
+    .select()
+    .from(chartAccounts)
+    .where(and(eq(chartAccounts.companyId, companyId), eq(chartAccounts.code, parentCode)));
+  if (!parent) throw new Error(`no account ${parentCode}`);
+  const [row] = await tx
+    .insert(chartAccounts)
+    .values({
+      companyId,
+      parentId: parent.id,
+      level: values.code.length === 6 ? 4 : values.code.length,
+      kind: 'header',
+      class: parent.class,
+      name: 'حساب مولّد',
+      normalBalance: parent.normalBalance,
+      ...values,
+    })
+    .returning({ id: chartAccounts.id });
+  if (!row) throw new Error('no account inserted');
+  return row.id;
+}
+
+/** S02's rows: headers, a revenue account with a role and a required client, clients, rates. */
+async function seedChart(tx: Transaction, companyId: string, userId: string, data: CompanyData) {
+  for (const code of data.headers) await addAccount(tx, companyId, code[0] as string, { code });
+  await addAccount(tx, companyId, '4', { code: '41' });
+  await addAccount(tx, companyId, '41', { code: '411' });
+  const revenue = await addAccount(tx, companyId, '411', {
+    code: '411001',
+    kind: 'postable',
+    statementLine: 'is.revenue',
+  });
+  await tx.insert(accountRoles).values({ companyId, role: 'fx_realised_gain', accountId: revenue });
+  const [client] = await tx
+    .select()
+    .from(dimensionTypes)
+    .where(and(eq(dimensionTypes.companyId, companyId), eq(dimensionTypes.code, 'client')));
+  if (!client) throw new Error('no client type');
+  await tx
+    .insert(accountRequiredDimensions)
+    .values({ companyId, accountId: revenue, dimensionTypeId: client.id });
+  for (const [index, value] of data.clients.entries()) {
+    await tx.insert(dimensionValues).values({
+      companyId,
+      typeId: client.id,
+      name: value.name,
+      ...(value.hub ? { externalSource: 'hub', externalId: `generated-${index}` } : {}),
+    });
+  }
+  await tx.insert(ratePairs).values({ companyId, base: 'USD', quote: 'SYP' });
+  for (const row of data.rates) {
+    await tx.insert(exchangeRates).values({
+      companyId,
+      effectiveOn: day(row.day),
+      base: 'USD',
+      quote: 'SYP',
+      rate: row.rate,
+      type: 'bulletin',
+      source: 'manual',
+      recordedByUserId: userId,
+    });
+  }
+  for (const holiday of data.holidays) {
+    await tx.insert(bulletinHolidays).values({ companyId, holidayOn: day(holiday), note: 'عطلة' });
+  }
+}
+
+/** The rows each S02 table holds for a company seeded with `data`. */
+const expectedRows = (data: CompanyData): Record<string, number> => ({
+  chart_accounts: 5 + data.headers.length + 3,
+  account_required_dimensions: 1,
+  account_roles: 1,
+  dimension_types: 4,
+  dimension_values: data.clients.length,
+  rate_pairs: 1,
+  exchange_rates: data.rates.length,
+  bulletin_holidays: data.holidays.length,
+});
 
 async function seed(userId: string, data: CompanyData): Promise<string> {
   const [row] = await app
@@ -66,6 +192,7 @@ async function seed(userId: string, data: CompanyData): Promise<string> {
         ...entry,
       });
     }
+    await seedChart(tx, row.id, userId, data);
   });
   return row.id;
 }
@@ -78,7 +205,7 @@ describe('company isolation, as a property', () => {
     expect(company.sort()).toEqual([...COVERED].sort());
   });
 
-  it("never shows one company the other's settings or audit entries", async () => {
+  it("never shows one company the other's rows", async () => {
     const [user] = await app
       .insert(users)
       .values({ email: 'generated@example.test', name: 'شخص مولّد' })
@@ -103,6 +230,19 @@ describe('company isolation, as a property', () => {
           expect(seen.settings).toEqual([{ companyId: id, note: data.policyNote }]);
           expect(seen.audit).toHaveLength(data.audit.length);
           for (const row of seen.audit) expect(row.companyId).toBe(id);
+          const listed = sql.join(
+            ids.map((value) => sql`${value}::uuid`),
+            sql`, `,
+          );
+          for (const [table, count] of Object.entries(expectedRows(data))) {
+            const rows = await withCompany(app, id, (tx) =>
+              tx.execute<{ company_id: string }>(
+                sql`select company_id from ${sql.identifier(table)} where company_id in (${listed})`,
+              ),
+            );
+            expect(rows.rows, table).toHaveLength(count);
+            for (const row of rows.rows) expect(row.company_id).toBe(id);
+          }
         }
       }),
       { numRuns: 25, includeErrorInReport: true },

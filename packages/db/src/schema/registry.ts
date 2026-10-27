@@ -47,6 +47,17 @@ export const tableRegistry = {
   audit_entries: { module: 'audit', scope: 'company', kind: 'append-only' },
   // email (S01): the outbox the worker sends and deletes.
   email_outbox: { module: 'email', scope: 'platform', kind: 'ephemeral' },
+  // chart (S02): the chart of accounts, required dimensions and account roles.
+  chart_accounts: { module: 'chart', scope: 'company', kind: 'business' },
+  account_required_dimensions: { module: 'chart', scope: 'company', kind: 'business' },
+  account_roles: { module: 'chart', scope: 'company', kind: 'business' },
+  // dimensions (S02).
+  dimension_types: { module: 'dimensions', scope: 'company', kind: 'business' },
+  dimension_values: { module: 'dimensions', scope: 'company', kind: 'business' },
+  // rates (S02, ADR 0007): the rate table is append-only; a correction is a newer row.
+  rate_pairs: { module: 'rates', scope: 'company', kind: 'business' },
+  exchange_rates: { module: 'rates', scope: 'company', kind: 'append-only' },
+  bulletin_holidays: { module: 'rates', scope: 'company', kind: 'business' },
 } as const satisfies Record<string, TableInfo>;
 
 export type TableScope = 'company' | 'platform';
