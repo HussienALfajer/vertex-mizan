@@ -6,7 +6,7 @@ import { requireEnrolled } from '../lib/session';
 export const Route = createFileRoute('/_app')({
   beforeLoad: async (args) => ({ me: await requireEnrolled(args) }),
   component: () => (
-    <AppShell>
+    <AppShell signedIn>
       <Outlet />
     </AppShell>
   ),

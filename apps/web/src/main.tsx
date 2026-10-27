@@ -1,13 +1,28 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MutationCache, QueryCache, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createRouter, RouterProvider } from '@tanstack/react-router';
 import { ar, textDirection } from '@vertex-mizan/i18n';
 import { DirectionProvider } from '@vertex-mizan/ui';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
+import { hasCode } from './lib/api';
+import { meQuery } from './lib/session';
 import { routeTree } from './routeTree.gen';
 import './styles.css';
 
-const queryClient = new QueryClient();
+/**
+ * A company request that finds no active company (the member was removed, S01 edge case 7):
+ * the person loads again, and the company pages send them to `/companies`.
+ */
+function onCompanyLost(error: unknown) {
+  if (hasCode(error, 'COMPANY_NOT_SELECTED')) {
+    void queryClient.invalidateQueries({ queryKey: meQuery.queryKey });
+  }
+}
+
+const queryClient = new QueryClient({
+  queryCache: new QueryCache({ onError: onCompanyLost }),
+  mutationCache: new MutationCache({ onError: onCompanyLost }),
+});
 
 const router = createRouter({
   routeTree,

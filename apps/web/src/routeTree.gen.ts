@@ -12,14 +12,20 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as AuthRouteImport } from './routes/_auth'
 import { Route as DesignSystemRouteImport } from './routes/design-system'
-import { Route as AppIndexRouteImport } from './routes/_app/index'
+import { Route as AppCompanyRouteImport } from './routes/_app/_company'
 import { Route as AuthForgotPasswordRouteImport } from './routes/_auth/forgot-password'
 import { Route as AuthInvitationRouteImport } from './routes/_auth/invitation'
 import { Route as AuthResetPasswordRouteImport } from './routes/_auth/reset-password'
+import { Route as AppCompanyIndexRouteImport } from './routes/_app/_company/index'
 import { Route as AppAccountSecurityRouteImport } from './routes/_app/account/security'
+import { Route as AppCompaniesIndexRouteImport } from './routes/_app/companies/index'
+import { Route as AppCompaniesNewRouteImport } from './routes/_app/companies/new'
 import { Route as AuthSignInIndexRouteImport } from './routes/_auth/sign-in/index'
 import { Route as AuthSignInTwoFactorRouteImport } from './routes/_auth/sign-in/two-factor'
 import { Route as AuthTwoFactorEnrolRouteImport } from './routes/_auth/two-factor/enrol'
+import { Route as AppCompanySettingsAuditRouteImport } from './routes/_app/_company/settings/audit'
+import { Route as AppCompanySettingsCompanyRouteImport } from './routes/_app/_company/settings/company'
+import { Route as AppCompanySettingsMembersRouteImport } from './routes/_app/_company/settings/members'
 
 const AppRoute = AppRouteImport.update({
   id: '/_app',
@@ -34,9 +40,8 @@ const DesignSystemRoute = DesignSystemRouteImport.update({
   path: '/design-system',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AppIndexRoute = AppIndexRouteImport.update({
-  id: '/',
-  path: '/',
+const AppCompanyRoute = AppCompanyRouteImport.update({
+  id: '/_company',
   getParentRoute: () => AppRoute,
 } as any)
 const AuthForgotPasswordRoute = AuthForgotPasswordRouteImport.update({
@@ -54,9 +59,24 @@ const AuthResetPasswordRoute = AuthResetPasswordRouteImport.update({
   path: '/reset-password',
   getParentRoute: () => AuthRoute,
 } as any)
+const AppCompanyIndexRoute = AppCompanyIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AppCompanyRoute,
+} as any)
 const AppAccountSecurityRoute = AppAccountSecurityRouteImport.update({
   id: '/account/security',
   path: '/account/security',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppCompaniesIndexRoute = AppCompaniesIndexRouteImport.update({
+  id: '/companies/',
+  path: '/companies/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppCompaniesNewRoute = AppCompaniesNewRouteImport.update({
+  id: '/companies/new',
+  path: '/companies/new',
   getParentRoute: () => AppRoute,
 } as any)
 const AuthSignInIndexRoute = AuthSignInIndexRouteImport.update({
@@ -74,42 +94,75 @@ const AuthTwoFactorEnrolRoute = AuthTwoFactorEnrolRouteImport.update({
   path: '/two-factor/enrol',
   getParentRoute: () => AuthRoute,
 } as any)
+const AppCompanySettingsAuditRoute = AppCompanySettingsAuditRouteImport.update({
+  id: '/settings/audit',
+  path: '/settings/audit',
+  getParentRoute: () => AppCompanyRoute,
+} as any)
+const AppCompanySettingsCompanyRoute =
+  AppCompanySettingsCompanyRouteImport.update({
+    id: '/settings/company',
+    path: '/settings/company',
+    getParentRoute: () => AppCompanyRoute,
+  } as any)
+const AppCompanySettingsMembersRoute =
+  AppCompanySettingsMembersRouteImport.update({
+    id: '/settings/members',
+    path: '/settings/members',
+    getParentRoute: () => AppCompanyRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
-  '/': typeof AppIndexRoute
+  '/': typeof AppCompanyIndexRoute
   '/design-system': typeof DesignSystemRoute
   '/forgot-password': typeof AuthForgotPasswordRoute
   '/invitation': typeof AuthInvitationRoute
   '/reset-password': typeof AuthResetPasswordRoute
   '/account/security': typeof AppAccountSecurityRoute
+  '/companies/new': typeof AppCompaniesNewRoute
   '/sign-in/two-factor': typeof AuthSignInTwoFactorRoute
   '/two-factor/enrol': typeof AuthTwoFactorEnrolRoute
+  '/companies/': typeof AppCompaniesIndexRoute
   '/sign-in/': typeof AuthSignInIndexRoute
+  '/settings/audit': typeof AppCompanySettingsAuditRoute
+  '/settings/company': typeof AppCompanySettingsCompanyRoute
+  '/settings/members': typeof AppCompanySettingsMembersRoute
 }
 export interface FileRoutesByTo {
-  '/': typeof AppIndexRoute
+  '/': typeof AppCompanyIndexRoute
   '/design-system': typeof DesignSystemRoute
   '/forgot-password': typeof AuthForgotPasswordRoute
   '/invitation': typeof AuthInvitationRoute
   '/reset-password': typeof AuthResetPasswordRoute
   '/account/security': typeof AppAccountSecurityRoute
+  '/companies/new': typeof AppCompaniesNewRoute
   '/sign-in/two-factor': typeof AuthSignInTwoFactorRoute
   '/two-factor/enrol': typeof AuthTwoFactorEnrolRoute
+  '/companies': typeof AppCompaniesIndexRoute
   '/sign-in': typeof AuthSignInIndexRoute
+  '/settings/audit': typeof AppCompanySettingsAuditRoute
+  '/settings/company': typeof AppCompanySettingsCompanyRoute
+  '/settings/members': typeof AppCompanySettingsMembersRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_app': typeof AppRouteWithChildren
   '/_auth': typeof AuthRouteWithChildren
   '/design-system': typeof DesignSystemRoute
+  '/_app/_company': typeof AppCompanyRouteWithChildren
   '/_auth/forgot-password': typeof AuthForgotPasswordRoute
   '/_auth/invitation': typeof AuthInvitationRoute
   '/_auth/reset-password': typeof AuthResetPasswordRoute
-  '/_app/': typeof AppIndexRoute
   '/_app/account/security': typeof AppAccountSecurityRoute
+  '/_app/companies/new': typeof AppCompaniesNewRoute
   '/_auth/sign-in/two-factor': typeof AuthSignInTwoFactorRoute
   '/_auth/two-factor/enrol': typeof AuthTwoFactorEnrolRoute
+  '/_app/_company/': typeof AppCompanyIndexRoute
+  '/_app/companies/': typeof AppCompaniesIndexRoute
   '/_auth/sign-in/': typeof AuthSignInIndexRoute
+  '/_app/_company/settings/audit': typeof AppCompanySettingsAuditRoute
+  '/_app/_company/settings/company': typeof AppCompanySettingsCompanyRoute
+  '/_app/_company/settings/members': typeof AppCompanySettingsMembersRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -120,9 +173,14 @@ export interface FileRouteTypes {
     | '/invitation'
     | '/reset-password'
     | '/account/security'
+    | '/companies/new'
     | '/sign-in/two-factor'
     | '/two-factor/enrol'
+    | '/companies/'
     | '/sign-in/'
+    | '/settings/audit'
+    | '/settings/company'
+    | '/settings/members'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -131,22 +189,33 @@ export interface FileRouteTypes {
     | '/invitation'
     | '/reset-password'
     | '/account/security'
+    | '/companies/new'
     | '/sign-in/two-factor'
     | '/two-factor/enrol'
+    | '/companies'
     | '/sign-in'
+    | '/settings/audit'
+    | '/settings/company'
+    | '/settings/members'
   id:
     | '__root__'
     | '/_app'
     | '/_auth'
     | '/design-system'
+    | '/_app/_company'
     | '/_auth/forgot-password'
     | '/_auth/invitation'
     | '/_auth/reset-password'
-    | '/_app/'
     | '/_app/account/security'
+    | '/_app/companies/new'
     | '/_auth/sign-in/two-factor'
     | '/_auth/two-factor/enrol'
+    | '/_app/_company/'
+    | '/_app/companies/'
     | '/_auth/sign-in/'
+    | '/_app/_company/settings/audit'
+    | '/_app/_company/settings/company'
+    | '/_app/_company/settings/members'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -178,11 +247,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DesignSystemRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/_app/': {
-      id: '/_app/'
-      path: '/'
+    '/_app/_company': {
+      id: '/_app/_company'
+      path: ''
       fullPath: '/'
-      preLoaderRoute: typeof AppIndexRouteImport
+      preLoaderRoute: typeof AppCompanyRouteImport
       parentRoute: typeof AppRoute
     }
     '/_auth/forgot-password': {
@@ -206,11 +275,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthResetPasswordRouteImport
       parentRoute: typeof AuthRoute
     }
+    '/_app/_company/': {
+      id: '/_app/_company/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof AppCompanyIndexRouteImport
+      parentRoute: typeof AppCompanyRoute
+    }
     '/_app/account/security': {
       id: '/_app/account/security'
       path: '/account/security'
       fullPath: '/account/security'
       preLoaderRoute: typeof AppAccountSecurityRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/companies/': {
+      id: '/_app/companies/'
+      path: '/companies'
+      fullPath: '/companies/'
+      preLoaderRoute: typeof AppCompaniesIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/companies/new': {
+      id: '/_app/companies/new'
+      path: '/companies/new'
+      fullPath: '/companies/new'
+      preLoaderRoute: typeof AppCompaniesNewRouteImport
       parentRoute: typeof AppRoute
     }
     '/_auth/sign-in/': {
@@ -234,17 +324,60 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthTwoFactorEnrolRouteImport
       parentRoute: typeof AuthRoute
     }
+    '/_app/_company/settings/audit': {
+      id: '/_app/_company/settings/audit'
+      path: '/settings/audit'
+      fullPath: '/settings/audit'
+      preLoaderRoute: typeof AppCompanySettingsAuditRouteImport
+      parentRoute: typeof AppCompanyRoute
+    }
+    '/_app/_company/settings/company': {
+      id: '/_app/_company/settings/company'
+      path: '/settings/company'
+      fullPath: '/settings/company'
+      preLoaderRoute: typeof AppCompanySettingsCompanyRouteImport
+      parentRoute: typeof AppCompanyRoute
+    }
+    '/_app/_company/settings/members': {
+      id: '/_app/_company/settings/members'
+      path: '/settings/members'
+      fullPath: '/settings/members'
+      preLoaderRoute: typeof AppCompanySettingsMembersRouteImport
+      parentRoute: typeof AppCompanyRoute
+    }
   }
 }
 
+interface AppCompanyRouteChildren {
+  AppCompanyIndexRoute: typeof AppCompanyIndexRoute
+  AppCompanySettingsAuditRoute: typeof AppCompanySettingsAuditRoute
+  AppCompanySettingsCompanyRoute: typeof AppCompanySettingsCompanyRoute
+  AppCompanySettingsMembersRoute: typeof AppCompanySettingsMembersRoute
+}
+
+const AppCompanyRouteChildren: AppCompanyRouteChildren = {
+  AppCompanyIndexRoute: AppCompanyIndexRoute,
+  AppCompanySettingsAuditRoute: AppCompanySettingsAuditRoute,
+  AppCompanySettingsCompanyRoute: AppCompanySettingsCompanyRoute,
+  AppCompanySettingsMembersRoute: AppCompanySettingsMembersRoute,
+}
+
+const AppCompanyRouteWithChildren = AppCompanyRoute._addFileChildren(
+  AppCompanyRouteChildren,
+)
+
 interface AppRouteChildren {
-  AppIndexRoute: typeof AppIndexRoute
+  AppCompanyRoute: typeof AppCompanyRouteWithChildren
   AppAccountSecurityRoute: typeof AppAccountSecurityRoute
+  AppCompaniesNewRoute: typeof AppCompaniesNewRoute
+  AppCompaniesIndexRoute: typeof AppCompaniesIndexRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
-  AppIndexRoute: AppIndexRoute,
+  AppCompanyRoute: AppCompanyRouteWithChildren,
   AppAccountSecurityRoute: AppAccountSecurityRoute,
+  AppCompaniesNewRoute: AppCompaniesNewRoute,
+  AppCompaniesIndexRoute: AppCompaniesIndexRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
