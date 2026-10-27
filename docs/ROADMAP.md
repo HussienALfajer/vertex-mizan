@@ -29,6 +29,8 @@ Scope: `docs/product/phase-1-scope.md`. One spec per line, each through `/spec` 
 - [~] S01 Companies, people and access: F01 (`docs/specs/S01-companies-people-access.md`)
   - [x] PR 1 contracts and database: the permission map, the access schemas and S01's error codes; the identity, membership, company, settings and audit tables with the `ephemeral` kind, forced RLS, append-only audit logs and the settings lock
   - [x] PR 2 API and worker: Better Auth with two-factor, the access guard, the S01 endpoints, the email outbox (owner decision 2026-10-26) and the clean-up job, the server commands
+  - [x] PR 3 access screens: sign-in in two steps, forgot and reset password, invitations, enrolment with backup codes, account security; `OtpField`, `PasswordInput`, `QrCode`, `SecretCodeList` in `packages/ui`
+  - [ ] PR 4 company screens: companies, new company, company settings, members and invitations, audit log, the company switcher (owner, 2026-10-27: the screens split in two PRs)
   - [ ] PR 3 screens and E2E
 - [ ] S02 Chart of accounts, dimensions and rates: F02 · F03 · F04 (the service-agency template, Q3)
 - [ ] S03 Journal entries and the posting function: F05 · F14 (period balances, `posted_at`, the daily anchor)
