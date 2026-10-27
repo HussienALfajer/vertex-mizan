@@ -7,6 +7,11 @@ type AccountLabelProps = Omit<ComponentProps<'span'>, 'children'> & {
   code: string;
   /** The account's name as the company wrote it: Arabic, English or both. */
   name: string;
+  /**
+   * How a marked account shows its mark: the icon with its text (`badge`), or the icon alone with
+   * the text for screen readers and as a tooltip (`icon`), where rows are narrow (the tree).
+   */
+  markDisplay?: 'badge' | 'icon';
 } & (
     | { kind?: 'postable'; kindLabel?: never }
     | {
@@ -29,6 +34,7 @@ function AccountLabel({
   name,
   kind = 'postable',
   kindLabel,
+  markDisplay = 'badge',
   className,
   ...props
 }: AccountLabelProps) {
@@ -44,7 +50,13 @@ function AccountLabel({
         {code}
       </bdi>
       <bdi className={cn('min-w-0 truncate', kind === 'header' && 'font-medium')}>{name}</bdi>
-      {Icon && (
+      {Icon && markDisplay === 'icon' && (
+        <span title={kindLabel} className="inline-flex self-center text-muted-foreground">
+          <Icon aria-hidden="true" className="size-3.5" />
+          <span className="sr-only">{kindLabel}</span>
+        </span>
+      )}
+      {Icon && markDisplay === 'badge' && (
         <Badge tone={kind === 'blocked' ? 'danger' : 'neutral'} className="self-center">
           <Icon aria-hidden="true" />
           {kindLabel}

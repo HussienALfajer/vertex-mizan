@@ -32,11 +32,14 @@ import {
   BuildingIcon,
   CheckIcon,
   ChevronDownIcon,
+  FolderTreeIcon,
   HouseIcon,
+  KeyRoundIcon,
   LandmarkIcon,
   type LucideIcon,
   MenuIcon,
   MoonIcon,
+  PlusIcon,
   RowsIcon,
   ScrollTextIcon,
   ShieldCheckIcon,
@@ -66,6 +69,13 @@ interface NavItem {
 const navItems: NavItem[] = [
   { to: '/', label: t.nav.home, icon: HouseIcon, exact: true },
   { to: '/companies', label: ar.company.nav.companies, icon: BuildingIcon },
+  { to: '/chart', label: ar.chart.nav, icon: FolderTreeIcon, permission: 'accounts.read' },
+  {
+    to: '/chart/roles',
+    label: ar.chart.roleSettings.nav,
+    icon: KeyRoundIcon,
+    permission: 'accounts.read',
+  },
   {
     to: '/settings/company',
     label: ar.company.nav.settings,
@@ -220,6 +230,18 @@ function useShellCommands(me: Me | null | undefined): PaletteCommand[] {
       icon: <ArrowLeftIcon />,
       run: () => void router.navigate({ to }),
     })),
+    ...(me && can(me, 'accounts.manage')
+      ? [
+          {
+            id: 'new-account',
+            label: ar.chart.newAccount,
+            group: t.palette.navigation,
+            keywords: ['new account', 'chart'],
+            icon: <PlusIcon />,
+            run: () => void router.navigate({ to: '/chart', search: { new: true } }),
+          },
+        ]
+      : []),
     {
       id: 'dark',
       label: common.theme.toDark,

@@ -23,6 +23,8 @@ import { Route as AppCompaniesNewRouteImport } from './routes/_app/companies/new
 import { Route as AuthSignInIndexRouteImport } from './routes/_auth/sign-in/index'
 import { Route as AuthSignInTwoFactorRouteImport } from './routes/_auth/sign-in/two-factor'
 import { Route as AuthTwoFactorEnrolRouteImport } from './routes/_auth/two-factor/enrol'
+import { Route as AppCompanyChartIndexRouteImport } from './routes/_app/_company/chart/index'
+import { Route as AppCompanyChartRolesRouteImport } from './routes/_app/_company/chart/roles'
 import { Route as AppCompanySettingsAuditRouteImport } from './routes/_app/_company/settings/audit'
 import { Route as AppCompanySettingsCompanyRouteImport } from './routes/_app/_company/settings/company'
 import { Route as AppCompanySettingsMembersRouteImport } from './routes/_app/_company/settings/members'
@@ -94,6 +96,16 @@ const AuthTwoFactorEnrolRoute = AuthTwoFactorEnrolRouteImport.update({
   path: '/two-factor/enrol',
   getParentRoute: () => AuthRoute,
 } as any)
+const AppCompanyChartIndexRoute = AppCompanyChartIndexRouteImport.update({
+  id: '/chart/',
+  path: '/chart/',
+  getParentRoute: () => AppCompanyRoute,
+} as any)
+const AppCompanyChartRolesRoute = AppCompanyChartRolesRouteImport.update({
+  id: '/chart/roles',
+  path: '/chart/roles',
+  getParentRoute: () => AppCompanyRoute,
+} as any)
 const AppCompanySettingsAuditRoute = AppCompanySettingsAuditRouteImport.update({
   id: '/settings/audit',
   path: '/settings/audit',
@@ -124,9 +136,11 @@ export interface FileRoutesByFullPath {
   '/two-factor/enrol': typeof AuthTwoFactorEnrolRoute
   '/companies/': typeof AppCompaniesIndexRoute
   '/sign-in/': typeof AuthSignInIndexRoute
+  '/chart/roles': typeof AppCompanyChartRolesRoute
   '/settings/audit': typeof AppCompanySettingsAuditRoute
   '/settings/company': typeof AppCompanySettingsCompanyRoute
   '/settings/members': typeof AppCompanySettingsMembersRoute
+  '/chart/': typeof AppCompanyChartIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof AppCompanyIndexRoute
@@ -140,9 +154,11 @@ export interface FileRoutesByTo {
   '/two-factor/enrol': typeof AuthTwoFactorEnrolRoute
   '/companies': typeof AppCompaniesIndexRoute
   '/sign-in': typeof AuthSignInIndexRoute
+  '/chart/roles': typeof AppCompanyChartRolesRoute
   '/settings/audit': typeof AppCompanySettingsAuditRoute
   '/settings/company': typeof AppCompanySettingsCompanyRoute
   '/settings/members': typeof AppCompanySettingsMembersRoute
+  '/chart': typeof AppCompanyChartIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -160,9 +176,11 @@ export interface FileRoutesById {
   '/_app/_company/': typeof AppCompanyIndexRoute
   '/_app/companies/': typeof AppCompaniesIndexRoute
   '/_auth/sign-in/': typeof AuthSignInIndexRoute
+  '/_app/_company/chart/roles': typeof AppCompanyChartRolesRoute
   '/_app/_company/settings/audit': typeof AppCompanySettingsAuditRoute
   '/_app/_company/settings/company': typeof AppCompanySettingsCompanyRoute
   '/_app/_company/settings/members': typeof AppCompanySettingsMembersRoute
+  '/_app/_company/chart/': typeof AppCompanyChartIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -178,9 +196,11 @@ export interface FileRouteTypes {
     | '/two-factor/enrol'
     | '/companies/'
     | '/sign-in/'
+    | '/chart/roles'
     | '/settings/audit'
     | '/settings/company'
     | '/settings/members'
+    | '/chart/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -194,9 +214,11 @@ export interface FileRouteTypes {
     | '/two-factor/enrol'
     | '/companies'
     | '/sign-in'
+    | '/chart/roles'
     | '/settings/audit'
     | '/settings/company'
     | '/settings/members'
+    | '/chart'
   id:
     | '__root__'
     | '/_app'
@@ -213,9 +235,11 @@ export interface FileRouteTypes {
     | '/_app/_company/'
     | '/_app/companies/'
     | '/_auth/sign-in/'
+    | '/_app/_company/chart/roles'
     | '/_app/_company/settings/audit'
     | '/_app/_company/settings/company'
     | '/_app/_company/settings/members'
+    | '/_app/_company/chart/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -324,6 +348,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthTwoFactorEnrolRouteImport
       parentRoute: typeof AuthRoute
     }
+    '/_app/_company/chart/': {
+      id: '/_app/_company/chart/'
+      path: '/chart'
+      fullPath: '/chart/'
+      preLoaderRoute: typeof AppCompanyChartIndexRouteImport
+      parentRoute: typeof AppCompanyRoute
+    }
+    '/_app/_company/chart/roles': {
+      id: '/_app/_company/chart/roles'
+      path: '/chart/roles'
+      fullPath: '/chart/roles'
+      preLoaderRoute: typeof AppCompanyChartRolesRouteImport
+      parentRoute: typeof AppCompanyRoute
+    }
     '/_app/_company/settings/audit': {
       id: '/_app/_company/settings/audit'
       path: '/settings/audit'
@@ -350,16 +388,20 @@ declare module '@tanstack/react-router' {
 
 interface AppCompanyRouteChildren {
   AppCompanyIndexRoute: typeof AppCompanyIndexRoute
+  AppCompanyChartRolesRoute: typeof AppCompanyChartRolesRoute
   AppCompanySettingsAuditRoute: typeof AppCompanySettingsAuditRoute
   AppCompanySettingsCompanyRoute: typeof AppCompanySettingsCompanyRoute
   AppCompanySettingsMembersRoute: typeof AppCompanySettingsMembersRoute
+  AppCompanyChartIndexRoute: typeof AppCompanyChartIndexRoute
 }
 
 const AppCompanyRouteChildren: AppCompanyRouteChildren = {
   AppCompanyIndexRoute: AppCompanyIndexRoute,
+  AppCompanyChartRolesRoute: AppCompanyChartRolesRoute,
   AppCompanySettingsAuditRoute: AppCompanySettingsAuditRoute,
   AppCompanySettingsCompanyRoute: AppCompanySettingsCompanyRoute,
   AppCompanySettingsMembersRoute: AppCompanySettingsMembersRoute,
+  AppCompanyChartIndexRoute: AppCompanyChartIndexRoute,
 }
 
 const AppCompanyRouteWithChildren = AppCompanyRoute._addFileChildren(

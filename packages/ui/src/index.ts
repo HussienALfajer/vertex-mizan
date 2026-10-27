@@ -1,6 +1,8 @@
 export { CSPProvider } from '@base-ui/react/csp-provider';
 export { DirectionProvider } from '@base-ui/react/direction-provider';
 export * from './accounting/account-label';
+export * from './accounting/account-picker';
+export * from './accounting/account-tree';
 export * from './accounting/amount';
 export * from './accounting/amount-input';
 export * from './accounting/ledger-switch';

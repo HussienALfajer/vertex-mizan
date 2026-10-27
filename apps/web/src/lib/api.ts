@@ -77,3 +77,22 @@ export function listOf<T>(item: { parse(value: unknown): T }): { parse(value: un
     },
   };
 }
+
+/**
+ * Downloads a file answer (an export) with the session cookie and the company header, then hands
+ * it to the browser under the name the API gave in `Content-Disposition`.
+ */
+export async function download(path: string, { company }: { company: string }): Promise<void> {
+  const response = await fetch(`/api${path}`, {
+    credentials: 'same-origin',
+    headers: { 'x-mizan-company': company },
+  });
+  if (!response.ok) throw await refusal(response);
+  const name = /filename="([^"]+)"/.exec(response.headers.get('content-disposition') ?? '')?.[1];
+  const url = URL.createObjectURL(await response.blob());
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = name ?? 'export';
+  link.click();
+  URL.revokeObjectURL(url);
+}
