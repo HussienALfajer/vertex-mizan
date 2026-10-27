@@ -63,6 +63,7 @@ One name per concept. Code, contracts and tables use the English term; the Arabi
 | مبلغ المعاملة | transaction amount | A line's amount in its own currency |
 | سعر الصرف | exchange rate | Quote-currency units per 1 base-currency unit, stored as quoted |
 | سعر السوق / سعر النشرة | market rate / bulletin rate | The rate the company deals at / the Central Bank of Syria bulletin rate |
+| يقبل سعر العملية | accepts the transaction's rate | A market-rate ledger that takes the rate a connected system dealt at instead of the day's rate (`acceptsTransactionRate`, ADR 0007) |
 | الليرة السورية الجديدة | new Syrian pound | `SYP` since 2026-01-01 (100 old = 1 new) |
 | فرق صرف محقق | realised exchange difference | Gain or loss when a foreign-currency item is settled (IAS 21.28) |
 | فرق صرف غير محقق / إعادة التقييم | unrealised exchange difference / revaluation | Month-end remeasurement of monetary foreign-currency balances (IAS 21.23) |
