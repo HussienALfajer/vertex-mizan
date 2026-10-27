@@ -25,19 +25,22 @@ const currency = (code: 'USD' | 'SYP') => `${code} · ${ar.accounting.currencies
 async function choose(page: Page, label: string, option: string) {
   const trigger = page.getByRole('combobox', { name: label, exact: true });
   // The list opens on its chosen item, so an option above it can sit out of view: by keyboard,
-  // as a person would, moving through the currencies in their order.
+  // as a person would. A pointer resting where the list opens would move its highlight by hover.
+  await page.mouse.move(0, 0);
   await trigger.focus();
   await page.keyboard.press('ArrowDown');
   const items = page.getByRole('option');
-  await expect(items.first()).toBeVisible();
-  const names = await items.allTextContents();
-  const target = names.indexOf(option);
-  const current = await items.evaluateAll((all) =>
-    all.findIndex((item) => item.hasAttribute('data-highlighted')),
-  );
-  const key = target < current ? 'ArrowUp' : 'ArrowDown';
-  for (let step = 0; step < Math.abs(target - current); step += 1) await page.keyboard.press(key);
-  await expect(items.nth(target)).toHaveAttribute('data-highlighted', '');
+  await expect(page.locator('[role="option"][data-highlighted]')).toHaveCount(1);
+  const target = (await items.allTextContents()).indexOf(option);
+  // One arrow toward the option, then look again: the list takes focus a moment after it opens,
+  // so a key can be lost, never doubled.
+  await expect(async () => {
+    const current = await items.evaluateAll((all) =>
+      all.findIndex((item) => item.hasAttribute('data-highlighted')),
+    );
+    if (current !== target) await page.keyboard.press(current > target ? 'ArrowUp' : 'ArrowDown');
+    await expect(items.nth(target)).toHaveAttribute('data-highlighted', '', { timeout: 200 });
+  }).toPass({ timeout: 5000 });
   await page.keyboard.press('Enter');
   await expect(trigger).toHaveText(option);
 }
