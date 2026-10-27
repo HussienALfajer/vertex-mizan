@@ -2,6 +2,8 @@
 
 Status: Proposed
 
+The expected entries were approved by the owner on 2026-10-27. The file stays `Proposed` until S03 registers the setup, the ledger reader and the step executors the runner needs; the PR that does so marks it `Approved (owner, 2026-10-27)` without changing an expected value. Until then `packages/ledger`'s `adr-0007.examples.test.ts` builds every case. A correction dated inside a closed period (S02 rule 18) is added here with S07, which brings period close (owner, 2026-10-27).
+
 ## Rule
 
 A wrong rate is corrected by recording a newer row for the same pair, type and date, with a reason; it supersedes the old row for every conversion from then on. A posted entry is never changed by a correction: Mizan lists the entries that converted at the superseded row, and the accountant reverses and reposts those they judge wrong. The reversal carries the original entry's amounts exactly (it is not converted again); the repost converts at the rate now in force.

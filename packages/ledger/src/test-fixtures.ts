@@ -6,6 +6,7 @@ import type {
   RateType,
 } from '@vertex-mizan/contracts';
 import { DomainError } from '@vertex-mizan/contracts';
+import type { PublicationCalendar } from './rates.js';
 
 /**
  * Synthetic companies and rates for the tests (no real rates, companies or amounts). Not part of
@@ -24,6 +25,9 @@ export function rate(
 ): ExchangeRate {
   return { effectiveOn, base, quote, rate: value, type, source };
 }
+
+/** The default bulletin calendar: no bulletin on Friday or Saturday, and no holiday. */
+export const calendar: PublicationCalendar = { daysOff: [5, 6], holidays: [] };
 
 /** Hub's own SYP-per-USD rate on an event, as the transaction rate. */
 export function hubRate(value: string, on: string): ExchangeRate {

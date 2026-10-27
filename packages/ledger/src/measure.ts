@@ -9,15 +9,20 @@ import {
   type Money,
 } from '@vertex-mizan/contracts';
 import type { Conversion, Dimensions, Line } from './lines.js';
-import { policyRate, quotesPair } from './rates.js';
+import { type PublicationCalendar, policyRate, quotesPair } from './rates.js';
 
-/** What a new measurement needs: the company's ledgers, the entry date and the rates. */
+/**
+ * What a new measurement needs: the company's ledgers, the entry date, the rates and the bulletin
+ * publication calendar.
+ */
 export interface MeasureContext {
   readonly ledgers: CompanyLedgers;
   /** The entry date: each ledger converts at the rate of its policy in force on it. */
   readonly on: string;
   /** The company rate table, in recording order (`rateInForce`). */
   readonly rates: readonly ExchangeRate[];
+  /** The company's bulletin publication calendar: which bulletin is in force (`rateInForce`). */
+  readonly calendar: PublicationCalendar;
   /**
    * The rate the transaction was dealt at (a connected system's own rate, such as Hub's SYP per
    * USD). A ledger uses it only when its policy accepts it and it quotes the pair to convert.
@@ -64,13 +69,11 @@ function measureIn(
     };
   }
   const via = crossVia(context.ledgers, ledger);
-  const rate = policyRate(context.rates, {
-    type: rateType,
-    from: amount.currency,
-    to,
-    on: context.on,
-    via,
-  });
+  const rate = policyRate(
+    context.rates,
+    { type: rateType, from: amount.currency, to, on: context.on, via },
+    context.calendar,
+  );
   if (rate === null) {
     throw new DomainError(
       'RATE_MISSING',

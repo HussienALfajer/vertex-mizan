@@ -2,6 +2,8 @@
 
 Status: Proposed
 
+The expected entries were approved by the owner on 2026-10-27. The file stays `Proposed` until S03 registers the setup, the ledger reader and the step executors the runner needs; the PR that does so marks it `Approved (owner, 2026-10-27)` without changing an expected value. Until then `packages/ledger`'s `adr-0007.examples.test.ts` builds every case.
+
 ## Rule
 
 A ledger whose policy is the Central Bank bulletin converts a new amount at the bulletin in force on the entry date: the newest bulletin row effective on or before that date, and only if it is effective on or after the latest publication day on or before it. A publication day is any day that is not one of the company's weekly days off (Friday and Saturday by default) and not a holiday the accountant has marked. So a working day needs its own bulletin, a day off or a holiday takes the last published one, and a working day without its bulletin is refused with `RATE_MISSING`, never converted at yesterday's rate. A cross applies the rule to each of its two quotes.

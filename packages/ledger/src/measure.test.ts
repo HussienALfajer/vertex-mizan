@@ -1,7 +1,7 @@
 import { money } from '@vertex-mizan/contracts';
 import { describe, expect, it } from 'vitest';
 import { measure, measuredLine } from './measure.js';
-import { hubRate, rate, refusal, sypOnly, sypUsd, usdSyp } from './test-fixtures.js';
+import { calendar, hubRate, rate, refusal, sypOnly, sypUsd, usdSyp } from './test-fixtures.js';
 
 const bulletin = rate('USD', 'SYP', '120.0000', 'bulletin', '2026-11-03');
 const market = rate('USD', 'SYP', '125.0000', 'market', '2026-11-03');
@@ -11,7 +11,12 @@ describe('measure', () => {
   it('uses an amount as is in a ledger of its own currency, with no rate', () => {
     // 100.00 USD in the USD parallel ledger needs no rate; the book converts at the bulletin.
     expect(
-      measure(money(10_000n, 'USD'), { ledgers: sypUsd, on: '2026-11-03', rates: [bulletin] }),
+      measure(money(10_000n, 'USD'), {
+        ledgers: sypUsd,
+        on: '2026-11-03',
+        calendar,
+        rates: [bulletin],
+      }),
     ).toEqual({
       bookMinor: 1_200_000n,
       parallelMinor: 10_000n,
@@ -24,6 +29,7 @@ describe('measure', () => {
     const measured = measure(money(1_220_000n, 'SYP'), {
       ledgers: sypUsd,
       on: '2026-11-03',
+      calendar,
       rates: [bulletin, market],
       transactionRate: hub,
     });
@@ -40,6 +46,7 @@ describe('measure', () => {
     const measured = measure(money(10_000n, 'USD'), {
       ledgers: sypUsd,
       on: '2026-11-03',
+      calendar,
       rates: [bulletin],
       transactionRate: hub,
     });
@@ -56,6 +63,7 @@ describe('measure', () => {
     const parallel = measure(money(1_250_000n, 'SYP'), {
       ledgers: declining,
       on: '2026-11-03',
+      calendar,
       rates: [market],
       transactionRate: hub,
     });
@@ -65,7 +73,13 @@ describe('measure', () => {
 
   it('refuses a missing rate with RATE_MISSING, even when another rate exists', () => {
     // The bulletin of 2026-11-03 is not in force on 2026-11-02, and Hub's rate is not accepted.
-    const context = { ledgers: sypUsd, on: '2026-11-02', rates: [bulletin], transactionRate: hub };
+    const context = {
+      ledgers: sypUsd,
+      on: '2026-11-02',
+      calendar,
+      rates: [bulletin],
+      transactionRate: hub,
+    };
     expect(() => measure(money(10_000n, 'USD'), context)).toThrow(
       expect.objectContaining({
         name: 'DomainError',
@@ -76,14 +90,19 @@ describe('measure', () => {
     // A market row does not stand in for a missing bulletin.
     expect(
       refusal(() =>
-        measure(money(10_000n, 'USD'), { ledgers: sypUsd, on: '2026-11-03', rates: [market] }),
+        measure(money(10_000n, 'USD'), {
+          ledgers: sypUsd,
+          on: '2026-11-03',
+          calendar,
+          rates: [market],
+        }),
       ),
     ).toBe('RATE_MISSING');
   });
 
   it('crosses a third currency through the other ledger currency', () => {
     const rates = [
-      rate('TRY', 'SYP', '2.9500', 'bulletin', '2026-11-02'),
+      rate('TRY', 'SYP', '2.9500', 'bulletin', '2026-11-05'),
       rate('TRY', 'SYP', '3.1000', 'market', '2026-11-04'),
       rate('USD', 'SYP', '125.0000', 'market', '2026-11-05'),
     ];
@@ -92,6 +111,7 @@ describe('measure', () => {
       ledgers: sypUsd,
       on: '2026-11-05',
       rates,
+      calendar,
       transactionRate: hubRate('124.0000', '2026-11-05'),
     });
     // Book: 1 234.56 TRY × 2.95 = 3 641.952 SYP → 3 641.95.
@@ -105,19 +125,20 @@ describe('measure', () => {
   });
 
   it('crosses in the book ledger of a USD book through its SYP parallel currency', () => {
-    const weeklyTry = rate('TRY', 'SYP', '2.9500', 'bulletin', '2026-11-02');
+    const tryBulletin = rate('TRY', 'SYP', '2.9500', 'bulletin', '2026-11-05');
     const dailyUsd = rate('USD', 'SYP', '120.0000', 'bulletin', '2026-11-05');
     const measured = measure(money(100_000n, 'TRY'), {
       ledgers: usdSyp,
       on: '2026-11-05',
-      rates: [weeklyTry, dailyUsd, rate('TRY', 'SYP', '3.1000', 'market', '2026-11-04')],
+      calendar,
+      rates: [tryBulletin, dailyUsd, rate('TRY', 'SYP', '3.1000', 'market', '2026-11-04')],
     });
     // Book: 1 000.00 TRY × 2.95 ÷ 120 = 24.5833 USD → 24.58; parallel: × 3.1 = 3 100.00 SYP.
     expect(measured.bookMinor).toBe(2_458n);
     expect(measured.parallelMinor).toBe(310_000n);
     expect(measured.conversions.book).toEqual({
       basis: 'policy',
-      rate: { on: '2026-11-05', legs: [weeklyTry, dailyUsd] },
+      rate: { on: '2026-11-05', legs: [tryBulletin, dailyUsd] },
     });
   });
 
@@ -125,6 +146,7 @@ describe('measure', () => {
     const measured = measure(money(10_000n, 'USD'), {
       ledgers: sypOnly,
       on: '2026-11-03',
+      calendar,
       rates: [bulletin],
     });
     expect(measured).toEqual({
@@ -137,7 +159,9 @@ describe('measure', () => {
       rate('USD', 'SYP', '120.0000', 'bulletin', '2026-11-01'),
     ];
     expect(
-      refusal(() => measure(money(100_000n, 'TRY'), { ledgers: sypOnly, on: '2026-11-03', rates })),
+      refusal(() =>
+        measure(money(100_000n, 'TRY'), { ledgers: sypOnly, on: '2026-11-03', rates, calendar }),
+      ),
     ).toBe('RATE_MISSING');
   });
 });
@@ -146,7 +170,7 @@ describe('measuredLine', () => {
   it('is a measured line with the amount, its ledger amounts and their conversions', () => {
     const line = measuredLine(
       { account: '1210', dimensions: { client: 'C1' }, amount: money(10_000n, 'USD') },
-      { ledgers: sypUsd, on: '2026-11-03', rates: [bulletin] },
+      { ledgers: sypUsd, on: '2026-11-03', calendar, rates: [bulletin] },
     );
     expect(line).toEqual({
       kind: 'measured',

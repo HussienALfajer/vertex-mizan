@@ -28,10 +28,12 @@ import {
   ledgerCurrency,
 } from './lines.js';
 import { type MeasureContext, measuredLine } from './measure.js';
-import { refusal } from './test-fixtures.js';
+import { lastPublicationDay, type PublicationCalendar, rateInForce } from './rates.js';
+import { calendar, refusal } from './test-fixtures.js';
 
 /**
- * The ADR 0007 properties of the ledger mechanics, and the integrity chain's (ADR 0005). The
+ * The ADR 0007 properties of the ledger mechanics, the bulletin rate of the day's (ADR 0011, S02
+ * rule 16) and the integrity chain's (ADR 0005). The
  * inverse property of a conversion is a property of `convert()`, tested in `packages/contracts`.
  * Expected values are computed here from the generated inputs, not by the code under test.
  */
@@ -69,7 +71,8 @@ const amount = fc.bigInt({ min: -(10n ** 9n), max: 10n ** 9n });
 const nonZero = amount.filter((value) => value !== 0n);
 
 function row(base: CurrencyCode, quote: CurrencyCode, value: string, type: ExchangeRate['type']) {
-  return { effectiveOn: '2026-11-01', base, quote, rate: value, type, source: 'manual' } as const;
+  // Dated the entry date, so a bulletin row is the day's own (ADR 0011).
+  return { effectiveOn: '2026-11-15', base, quote, rate: value, type, source: 'manual' } as const;
 }
 
 /** How each ledger gets its rate for `from`: a direct quote either way round, or a cross. */
@@ -122,6 +125,7 @@ const newMeasurements = fc
     const context: MeasureContext = {
       ledgers: company,
       on: '2026-11-15',
+      calendar,
       rates: rateTable(company, from, choices),
       ...(ownRate !== null && parallel !== undefined && parallel !== from
         ? { transactionRate: { ...row(from, parallel, ownRate, 'market'), source: 'hub' } }
@@ -143,6 +147,139 @@ function converted(lines: readonly Line[], ledger: Ledger): number {
   return lines.filter((line) => line.kind === 'measured' && line.conversions[ledger] !== null)
     .length;
 }
+
+/** A day of November and December 2026 (`offset` days after 1 November), as `YYYY-MM-DD`. */
+const day = (offset: number) => new Date(Date.UTC(2026, 10, 1 + offset)).toISOString().slice(0, 10);
+const offset = fc.integer({ min: 0, max: 60 });
+
+/** A USD–SYP rate table of both types, in recording order, either orientation per row. */
+const rateRows = fc
+  .array(
+    fc.record({
+      on: offset,
+      value: rateValue,
+      type: fc.constantFrom('bulletin', 'market') as fc.Arbitrary<ExchangeRate['type']>,
+      flip: fc.boolean(),
+    }),
+    { maxLength: 12 },
+  )
+  .map((rows) =>
+    rows.map(
+      ({ on, value, type, flip }): ExchangeRate => ({
+        effectiveOn: day(on),
+        base: flip ? 'SYP' : 'USD',
+        quote: flip ? 'USD' : 'SYP',
+        rate: value,
+        type,
+        source: 'manual',
+      }),
+    ),
+  );
+
+const publicationCalendar: fc.Arbitrary<PublicationCalendar> = fc.record({
+  daysOff: fc.uniqueArray(fc.integer({ min: 1, max: 7 }), { maxLength: 7 }),
+  holidays: fc.uniqueArray(offset.map(day), { maxLength: 10 }),
+});
+
+const lookup = (
+  rates: readonly ExchangeRate[],
+  type: ExchangeRate['type'],
+  on: string,
+  at: PublicationCalendar,
+) => rateInForce(rates, { type, from: 'USD', to: 'SYP', on }, at);
+
+/** ADR 0007's lookup, written out: the newest row on or before the date, the last recorded on a tie. */
+function newestOnOrBefore(rates: readonly ExchangeRate[], type: ExchangeRate['type'], on: string) {
+  let found: ExchangeRate | null = null;
+  for (const rate of rates) {
+    if (rate.type !== type || rate.effectiveOn > on) continue;
+    if (found === null || rate.effectiveOn >= found.effectiveOn) found = rate;
+  }
+  return found;
+}
+
+describe('the bulletin rate of the day', () => {
+  it('leaves a market lookup unchanged: the newest row on or before the date, any calendar', () => {
+    fc.assert(
+      fc.property(rateRows, offset, publicationCalendar, (rates, on, at) => {
+        expect(lookup(rates, 'market', day(on), at)).toBe(
+          newestOnOrBefore(rates, 'market', day(on)),
+        );
+      }),
+      { numRuns: 1_000 },
+    );
+  });
+
+  it('on a publication day returns only a row of that day', () => {
+    fc.assert(
+      fc.property(rateRows, offset, publicationCalendar, (rates, on, at) => {
+        fc.pre(lastPublicationDay(day(on), at) === day(on));
+        const found = lookup(rates, 'bulletin', day(on), at);
+        expect(found === null || found.effectiveOn === day(on)).toBe(true);
+        expect(found).toBe(
+          rates.some((rate) => rate.type === 'bulletin' && rate.effectiveOn === day(on))
+            ? newestOnOrBefore(rates, 'bulletin', day(on))
+            : null,
+        );
+      }),
+      { numRuns: 1_000 },
+    );
+  });
+
+  it('on a day off equals the lookup on the last publication day, unless a later row exists', () => {
+    fc.assert(
+      fc.property(rateRows, offset, publicationCalendar, (rates, on, at) => {
+        const published = lastPublicationDay(day(on), at);
+        if (published === null) {
+          expect(lookup(rates, 'bulletin', day(on), at)).toBe(null);
+          return;
+        }
+        const later = rates.some(
+          (rate) =>
+            rate.type === 'bulletin' && rate.effectiveOn > published && rate.effectiveOn <= day(on),
+        );
+        fc.pre(!later);
+        expect(lookup(rates, 'bulletin', day(on), at)).toBe(
+          lookup(rates, 'bulletin', published, at),
+        );
+      }),
+      { numRuns: 1_000 },
+    );
+  });
+
+  it('never makes a found bulletin missing when a holiday is added', () => {
+    fc.assert(
+      fc.property(rateRows, offset, publicationCalendar, offset, (rates, on, at, holiday) => {
+        const found = lookup(rates, 'bulletin', day(on), at);
+        fc.pre(found !== null);
+        const more = { ...at, holidays: [...new Set([...at.holidays, day(holiday)])] };
+        expect(lookup(rates, 'bulletin', day(on), more)).not.toBe(null);
+      }),
+      { numRuns: 1_000 },
+    );
+  });
+
+  it('finds the latest publication day on or before the date, with none between', () => {
+    fc.assert(
+      fc.property(offset, publicationCalendar, (on, at) => {
+        const published = lastPublicationDay(day(on), at);
+        const isPublication = (date: string) =>
+          !at.daysOff.includes(((new Date(`${date}T00:00:00Z`).getUTCDay() + 6) % 7) + 1) &&
+          !at.holidays.includes(date);
+        if (at.daysOff.length === 7) {
+          expect(published).toBe(null);
+          return;
+        }
+        expect(published).not.toBe(null);
+        expect(published !== null && published <= day(on) && isPublication(published)).toBe(true);
+        for (let back = on; day(back) > (published ?? ''); back -= 1) {
+          expect(isPublication(day(back))).toBe(false);
+        }
+      }),
+      { numRuns: 1_000 },
+    );
+  });
+});
 
 describe('built entries', () => {
   it('balance in every ledger, each rounding line within half a minor unit per converted line', () => {
@@ -262,6 +399,7 @@ describe('settlements', () => {
           const at = (on: string, choices: typeof issued): MeasureContext => ({
             ledgers: company,
             on,
+            calendar,
             rates: rateTable(company, from, choices).map((rate) => ({ ...rate, effectiveOn: on })),
           });
           const item = measuredLine(

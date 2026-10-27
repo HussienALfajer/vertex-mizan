@@ -4,7 +4,7 @@ import { balanceEntry, differenceLine, exchangeDifferenceLines, ledgerTotal } fr
 import { clearOpenItem } from './carried.js';
 import { carriedLine, type Line } from './lines.js';
 import { type MeasureContext, measuredLine } from './measure.js';
-import { rate, refusal, sypOnly, sypUsd } from './test-fixtures.js';
+import { calendar, rate, refusal, sypOnly, sypUsd } from './test-fixtures.js';
 
 const rounding = { account: '5920' };
 const gainOrLoss = { account: '5910' };
@@ -23,6 +23,7 @@ describe('balanceEntry', () => {
   const usdBulletin = {
     ledgers: sypUsd,
     on: '2026-11-03',
+    calendar,
     rates: [rate('USD', 'SYP', '121.5000', 'bulletin', '2026-11-03')],
   };
 
@@ -71,6 +72,7 @@ describe('balanceEntry', () => {
         {
           ledgers: sypUsd,
           on: '2026-11-20',
+          calendar,
           rates: [rate('USD', 'SYP', '123.0000', 'bulletin', '2026-11-20')],
         },
       ),
@@ -127,6 +129,7 @@ describe('balanceEntry', () => {
     const at = {
       ledgers: sypUsd,
       on: '2026-11-20',
+      calendar,
       rates: [rate('USD', 'SYP', '123.0000', 'bulletin', '2026-11-20')],
     };
     const paid = [
@@ -186,6 +189,7 @@ describe('balanceEntry', () => {
     const at = {
       ledgers: sypUsd,
       on: '2026-11-20',
+      calendar,
       rates: [rate('USD', 'SYP', '123.0000', 'bulletin', '2026-11-20')],
     };
     const settlement = [
@@ -319,6 +323,7 @@ describe('difference lines', () => {
     const context = {
       ledgers: sypUsd,
       on: '2026-11-20',
+      calendar,
       rates: [
         rate('TRY', 'SYP', '3.0000', 'bulletin', '2026-11-20'),
         rate('TRY', 'SYP', '3.2000', 'market', '2026-11-20'),
