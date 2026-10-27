@@ -99,7 +99,10 @@ function DimensionPicker({
         isItemEqualToValue={(a, b) => a.id === b.id}
         autoHighlight
         onInputValueChange={(text, details) => {
-          if (details.reason !== 'item-press') onQueryChange?.(text.trim());
+          // Only what the person typed or pasted is a query: the label shown for a choice is not.
+          if (['input-change', 'input-paste', 'input-clear'].includes(details.reason)) {
+            onQueryChange?.(text.trim());
+          }
         }}
         onValueChange={(next) => onValueChange(next ? next.id : null)}
       >

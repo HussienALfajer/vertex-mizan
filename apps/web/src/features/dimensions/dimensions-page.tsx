@@ -52,7 +52,7 @@ import {
   TabsTrigger,
 } from '@vertex-mizan/ui';
 import { EllipsisIcon, InfoIcon, LinkIcon, PlusIcon, TagsIcon } from 'lucide-react';
-import { useDeferredValue, useState } from 'react';
+import { useDeferredValue, useMemo, useState } from 'react';
 import { ConfirmDialog } from '../../components/confirm-dialog';
 import { FormError } from '../../components/form-error';
 import { api } from '../../lib/api';
@@ -160,16 +160,28 @@ function Loading() {
   );
 }
 
-/** The client values a contract tab shows and offers, archived ones included for their names. */
-function useClients(companyId: string, types: readonly DimensionType[], type: DimensionType) {
-  const parentTypeId = type.parentTypeId ?? '';
-  const clients = useInfiniteQuery({
-    ...dimensionValuesQuery(companyId, parentTypeId, { includeArchived: true }),
-    enabled: type.parentTypeId !== null,
+/**
+ * The parent type's values the picker offers (a contract's client), searched on the server so any
+ * of them can be found, with the chosen one kept even when the search does not return it.
+ */
+function useParentOptions(
+  companyId: string,
+  parentType: DimensionType | undefined,
+  chosen: DimensionPickerOption | null,
+) {
+  const [query, setQuery] = useState('');
+  const q = useDeferredValue(query);
+  const found = useInfiniteQuery({
+    ...dimensionValuesQuery(companyId, parentType?.id ?? '', { q }),
+    enabled: parentType !== undefined,
   });
-  const parentType = types.find((candidate) => candidate.id === type.parentTypeId);
-  const values = clients.data?.pages.flatMap((page) => page.values) ?? [];
-  return { parentType, values };
+  const options = useMemo(() => {
+    const listed = (found.data?.pages.flatMap((page) => page.values) ?? []).map(pickerOption);
+    return chosen && !listed.some((option) => option.id === chosen.id)
+      ? [chosen, ...listed]
+      : listed;
+  }, [found.data, chosen]);
+  return { options, setQuery };
 }
 
 const pickerOption = (value: DimensionValue): DimensionPickerOption => ({
@@ -200,8 +212,7 @@ function TypePanel({
   const values = useInfiniteQuery(
     dimensionValuesQuery(companyId, type.id, { q, includeArchived: showArchived }),
   );
-  const { parentType, values: parents } = useClients(companyId, types, type);
-  const parentNames = new Map(parents.map((value) => [value.id, value.name]));
+  const parentType = types.find((candidate) => candidate.id === type.parentTypeId);
   const [valueDialog, setValueDialog] = useState<ValueDialog | null>(null);
   const [linking, setLinking] = useState<DimensionValue | null>(null);
   const [confirm, setConfirm] = useState<Confirm | null>(null);
@@ -301,7 +312,7 @@ function TypePanel({
                   )}
                   {contract && (
                     <TableCell className="max-md:hidden">
-                      {value.parentValueId && <bdi>{parentNames.get(value.parentValueId)}</bdi>}
+                      {value.parentName && <bdi>{value.parentName}</bdi>}
                     </TableCell>
                   )}
                   <TableCell className="max-sm:hidden">
@@ -348,7 +359,6 @@ function TypePanel({
           mode={valueDialog}
           type={type}
           parentType={parentType}
-          parents={parents}
           onClose={() => setValueDialog(null)}
         />
       )}
@@ -438,13 +448,11 @@ function ValueFormDialog({
   mode,
   type,
   parentType,
-  parents,
   onClose,
 }: {
   mode: ValueDialog;
   type: DimensionType;
   parentType: DimensionType | undefined;
-  parents: readonly DimensionValue[];
   onClose: () => void;
 }) {
   const { companyId } = useCompany();
@@ -460,6 +468,17 @@ function ValueFormDialog({
   const [errors, setErrors] = useState<Partial<Record<keyof ValueForm, string>>>({});
   const [unchanged, setUnchanged] = useState(false);
   const contract = isContractType(type);
+  // The chosen client's id and name, kept while the search shows other clients.
+  const [chosenParent, setChosenParent] = useState<DimensionPickerOption | null>(
+    current?.parentValueId && current.parentName
+      ? { id: current.parentValueId, name: current.parentName }
+      : null,
+  );
+  const parentOptions = useParentOptions(
+    companyId,
+    contract ? parentType : undefined,
+    chosenParent,
+  );
   const set = (change: Partial<ValueForm>) => {
     setForm({ ...form, ...change });
     setUnchanged(false);
@@ -585,9 +604,13 @@ function ValueFormDialog({
           {contract && parentType && (
             <DimensionPicker
               label={parentType.name}
-              values={parents.map(pickerOption)}
+              values={parentOptions.options}
+              onQueryChange={parentOptions.setQuery}
               value={form.parentValueId}
-              onValueChange={(id) => set({ parentValueId: id })}
+              onValueChange={(id) => {
+                setChosenParent(parentOptions.options.find((option) => option.id === id) ?? null);
+                set({ parentValueId: id });
+              }}
               labels={t.picker}
               description={t.value.clientHint}
             />

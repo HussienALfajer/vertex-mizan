@@ -22,6 +22,7 @@ const value = (
     nameLatin: null,
     contractKind: null,
     parentValueId: null,
+    parentName: null,
     externalSource: null,
     externalId: null,
     archivedAt: null,
@@ -52,6 +53,7 @@ export const hubContract = value(4, {
   name: 'حملة تجريبية',
   contractKind: 'retainer',
   parentValueId: hubClient.id,
+  parentName: hubClient.name,
   externalSource: 'hub',
   externalId: '01900000-0000-7000-9000-000000000002',
 });

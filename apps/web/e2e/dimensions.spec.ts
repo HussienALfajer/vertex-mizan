@@ -223,6 +223,70 @@ test.describe('dimensions', () => {
   });
 });
 
+test.describe('a company with more than a page of clients', () => {
+  // 100 newer clients fill the first page; the manual client is older, on a later page.
+  const newer = Array.from({ length: 100 }, (_, index) => ({
+    ...hubClient,
+    id: `01900000-0000-7000-8009-${String(index).padStart(12, '0')}`,
+    name: `عميل أحدث ${index + 1}`,
+    externalId: `01900000-0000-7000-9001-${String(index).padStart(12, '0')}`,
+  }));
+  const olderContract = {
+    ...hubContract,
+    id: '01900000-0000-7000-8004-000000000010',
+    name: 'مشروع قديم',
+    contractKind: 'project' as const,
+    parentValueId: manualClient.id,
+    parentName: manualClient.name,
+    externalSource: null,
+    externalId: null,
+  };
+  test.use({
+    me: owner,
+    api: {
+      ...dimensionReads,
+      'GET /api/dimension-values': (request) => {
+        const url = new URL(request.url());
+        const q = url.searchParams.get('q');
+        if (url.searchParams.get('typeId') === typeOf('contract').id) {
+          return { status: 200, json: { values: [olderContract], nextCursor: null } };
+        }
+        const values = q
+          ? [...newer, manualClient].filter((value) => value.name.includes(q))
+          : newer;
+        return { status: 200, json: { values, nextCursor: q ? null : 'next-page' } };
+      },
+    },
+  });
+
+  test("shows and finds a contract's client beyond the first page (rule 9)", async ({ page }) => {
+    const update = recorder({ status: 200, json: olderContract });
+    await page.route('**/api/dimension-values/*', (route) =>
+      route.request().method() === 'PATCH'
+        ? route.fulfill(update.mock(route.request()))
+        : route.fallback(),
+    );
+    await page.goto('/dimensions');
+    await page.getByRole('tab', { name: typeOf('contract').name }).click();
+    const row = page.getByRole('row').filter({ hasText: olderContract.name });
+    await expect(row.getByText(manualClient.name)).toBeVisible();
+
+    await valueAction(page, olderContract.name, t.actions.edit);
+    const dialog = page.getByRole('dialog', { name: t.value.editTitle });
+    const client = dialog.getByRole('combobox', { name: typeOf('client').name });
+    await expect(client).toHaveValue(manualClient.name);
+    // Clearing and searching again finds the older client on the server.
+    await client.fill('تجريبي');
+    await page.getByRole('option', { name: /عميل تجريبي/ }).click();
+    await expect(client).toHaveValue('C-001 عميل تجريبي');
+    await dialog.getByLabel(t.value.name, { exact: true }).fill('مشروع قديم معدّل');
+    await dialog.getByRole('button', { name: t.value.save }).click();
+    await expect(dialog).toHaveCount(0);
+    // The client is unchanged, so only the name is sent.
+    expect(update.seen[0]?.postDataJSON()).toEqual({ name: 'مشروع قديم معدّل' });
+  });
+});
+
 test.describe('dimensions for a reader', () => {
   test.use({ me: reader, api: dimensionReads });
 
