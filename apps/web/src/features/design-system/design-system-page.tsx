@@ -9,6 +9,9 @@ import { ar } from '@vertex-mizan/i18n';
 import type { DensityPreference } from '@vertex-mizan/tokens';
 import {
   AccountLabel,
+  AccountPicker,
+  AccountTree,
+  type AccountTreeNode,
   Amount,
   AmountInput,
   AscentLines,
@@ -619,6 +622,67 @@ function AccessSample() {
   );
 }
 
+/** A synthetic corner of a chart (ADR 0011 codes): headers, a blocked and an archived account. */
+const sampleChart: (AccountTreeNode & { nameLatin?: string })[] = [
+  { id: '1', parentId: null, code: '1', name: t.accountTree.assets, kind: 'header' },
+  { id: '11', parentId: '1', code: '11', name: t.accountTree.current, kind: 'header' },
+  { id: '111', parentId: '11', code: '111', name: t.accountTree.cash, kind: 'header' },
+  { id: '111001', parentId: '111', code: '111001', name: t.accountTree.box, kind: 'postable' },
+  {
+    id: '111002',
+    parentId: '111',
+    code: '111002',
+    name: t.accountTree.bank,
+    kind: 'postable',
+    blocked: true,
+  },
+  {
+    id: '111003',
+    parentId: '111',
+    code: '111003',
+    name: t.accountTree.wallet,
+    kind: 'postable',
+    archived: true,
+  },
+  { id: '112', parentId: '11', code: '112', name: t.accountTree.receivables, kind: 'header' },
+  { id: '4', parentId: null, code: '4', name: t.accountTree.revenue, kind: 'header' },
+  { id: '41', parentId: '4', code: '41', name: t.accountTree.revenue, kind: 'header' },
+  { id: '411', parentId: '41', code: '411', name: t.accountTree.revenue, kind: 'header' },
+  { id: '411001', parentId: '411', code: '411001', name: t.accountTree.services, kind: 'postable' },
+];
+
+function AccountTreeSample() {
+  const [picked, setPicked] = useState<string | null>('111001');
+  return (
+    <div className="flex min-w-0 flex-col gap-4">
+      <AccountTree
+        nodes={sampleChart}
+        labels={{ ...ar.chart.tree, label: t.accountTree.title, header: ar.chart.kinds.header }}
+        columns={[
+          {
+            id: 'class',
+            header: ar.chart.tree.class,
+            hideBelow: 'sm',
+            cell: (node) => ar.chart.classes[node.code.startsWith('4') ? 'revenue' : 'asset'],
+          },
+        ]}
+      />
+      <AccountPicker
+        label={t.accountTree.picker}
+        accounts={sampleChart}
+        value={picked}
+        onValueChange={setPicked}
+        labels={{
+          ...ar.chart.picker,
+          header: ar.chart.kinds.header,
+          blocked: ar.chart.tree.blocked,
+        }}
+        className="max-w-md"
+      />
+    </div>
+  );
+}
+
 export function DesignSystemPage() {
   const { preference, setDensity } = useDensity();
   return (
@@ -728,6 +792,11 @@ export function DesignSystemPage() {
       <Section id="changes" title={t.changes.title}>
         <p className="text-muted-foreground">{t.changes.hint}</p>
         <ChangesSample />
+      </Section>
+
+      <Section id="account-tree" title={t.accountTree.title}>
+        <p className="text-muted-foreground">{t.accountTree.hint}</p>
+        <AccountTreeSample />
       </Section>
 
       <Section id="brand" title={t.brand.title}>
