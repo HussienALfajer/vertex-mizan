@@ -135,7 +135,7 @@ The `audit_entries` table follows ADR 0005 invariant 10: the app role has `SELEC
 21. **Two-factor reset by an owner** (owner, 2026-10-26): it removes the member's two-factor and backup codes, ends their sessions, emails them a notice, and is written to the company audit log with a reason. It is allowed only when **every** active membership of that person is in a company where the resetting owner is also an owner, so an owner of one company cannot weaken the sign-in protecting another company's books. Otherwise it is done by Vertex with the server command `admin:reset-two-factor`, written to the platform audit log.
 
 ### Writes across tabs
-22. Every company write from the web carries the header `X-Mizan-Company` with the company the page was showing. The API compares it with the session's active company and refuses a mismatch (`COMPANY_SWITCHED`) without changing anything. The header is never the source of the company context, only a check, so a switch in one tab never sends another tab's form into a different company's books.
+22. Every company write from the web carries the header `X-Mizan-Company` with the company the page was showing. The API compares it with the session's active company and refuses a mismatch (`COMPANY_SWITCHED`) without changing anything. The header is never the source of the company context, only a check, so a switch in one tab never sends another tab's form into a different company's books. A company read may carry it too, and the web app always sends it: a read naming another company than the session's is refused the same way, so a page never shows one company's data under another's name (added in PR 4 after review, 2026-10-27; the owner approves it with the PR).
 
 ### Audit (owner, 2026-10-26)
 23. Every change to company data writes one `audit_entries` row in the same transaction, with before and after values of the changed fields: company profile, settings and policy note, archive and restore, invitations, memberships, roles, the period permission, two-factor resets, and (later specs) every business change.
@@ -169,19 +169,19 @@ Internal web API under `/api` (not `/v1`, which is the integration contract of A
 | `POST /api/me/sessions/revoke-others` | `@SignedIn` `@Reauthenticated` | — | `204`: every other session of the person ends, this one stays (owner, 2026-10-27) | `REAUTHENTICATION_REQUIRED` |
 | `POST /api/session/company` | `@SignedIn` | `{ companyId }` | `meSchema` | `NOT_FOUND` (not a member), `TWO_FACTOR_REQUIRED` |
 | `POST /api/companies` | `@SignedIn` | `createCompanySchema` | the company | `TWO_FACTOR_REQUIRED`, `VALIDATION_FAILED` |
-| `GET /api/company` | `company.read` | — | `companySchema` (profile, `companyLedgersSchema`, fiscal year start, policy note, `booksStarted`, archived) | `COMPANY_NOT_SELECTED` |
+| `GET /api/company` | `company.read` | — | `companySchema` (profile, `companyLedgersSchema`, fiscal year start, policy note, `booksStarted`, archived) | `COMPANY_NOT_SELECTED`, `COMPANY_SWITCHED` |
 | `PATCH /api/company` | `company.settings` | `updateCompanyProfileSchema` (names, policy note) | `companySchema` | `COMPANY_ARCHIVED`, `COMPANY_SWITCHED`, `VALIDATION_FAILED` |
 | `PUT /api/company/ledgers` | `company.settings` `@Reauthenticated` | `{ ledgers: companyLedgersSchema, fiscalYearStartMonth }` | `companySchema` | `COMPANY_SETTINGS_LOCKED`, `COMPANY_ARCHIVED`, `COMPANY_SWITCHED`, `REAUTHENTICATION_REQUIRED`, `VALIDATION_FAILED` |
 | `POST /api/company/archive` · `…/restore` | `company.archive` `@Reauthenticated` | `{ reason }` | `companySchema` | `COMPANY_SWITCHED`, `REAUTHENTICATION_REQUIRED`, `VALIDATION_FAILED` |
-| `GET /api/members` | `members.read` | — | members with role, period permission, two-factor enrolled, joined date | `COMPANY_NOT_SELECTED` |
+| `GET /api/members` | `members.read` | — | members with role, period permission, two-factor enrolled, joined date | `COMPANY_NOT_SELECTED`, `COMPANY_SWITCHED` |
 | `PATCH /api/members/:id` | `members.manage` `@Reauthenticated` | `{ role, canClosePeriods }` | the member | `NOT_FOUND`, `LAST_OWNER`, `COMPANY_ARCHIVED`, `COMPANY_SWITCHED`, `VALIDATION_FAILED` |
 | `POST /api/members/:id/remove` | `members.manage` `@Reauthenticated`; or the member themself (leave) | `{ reason }` | `204` | `NOT_FOUND`, `LAST_OWNER`, `COMPANY_SWITCHED` |
 | `POST /api/members/:id/reset-two-factor` | `members.manage` `@Reauthenticated` | `{ reason }` | `204` | `NOT_FOUND`, `RESET_NOT_ALLOWED`, `COMPANY_SWITCHED` |
-| `GET /api/invitations` | `members.read` | — | pending invitations | — |
+| `GET /api/invitations` | `members.read` | — | pending invitations | `COMPANY_NOT_SELECTED`, `COMPANY_SWITCHED` |
 | `POST /api/invitations` | `members.manage` `@Reauthenticated` | `{ email, role, canClosePeriods }` | the invitation | `INVITATION_EXISTS`, `MEMBERSHIP_EXISTS`, `COMPANY_ARCHIVED`, `COMPANY_SWITCHED`, `VALIDATION_FAILED` |
 | `POST /api/invitations/:id/revoke` | `members.manage` | — | `204` | `NOT_FOUND`, `COMPANY_SWITCHED` |
 | `POST /api/invitations/lookup` · `POST /api/invitations/accept` | Public (with the token) | `{ token }` in the body, never the URL / `{ token, name?, password? }` | the company name and role / the membership | `LINK_INVALID`, `INVITATION_EMAIL_MISMATCH`, `VALIDATION_FAILED` |
-| `GET /api/audit` | `audit.read` | filters: date range, actor, action, entity; cursor | audit entries | `COMPANY_NOT_SELECTED` |
+| `GET /api/audit` | `audit.read` | filters: date range, actor, action, entity; cursor | audit entries | `COMPANY_NOT_SELECTED`, `COMPANY_SWITCHED` |
 
 Another company's member, invitation or entity id answers `NOT_FOUND`, exactly like an unknown id. Writes in S01 are protected against double submits by their own rules (unique keys and state checks) rather than an idempotency key, which is the posting API's mechanism (ADR 0006).
 
@@ -198,7 +198,7 @@ New error codes, appended to `errorStatus` in this order, each with its Arabic t
 | `FORBIDDEN` | 403 | The role lacks the permission |
 | `NOT_FOUND` | 404 | Unknown, or belongs to another company |
 | `COMPANY_NOT_SELECTED` | 409 | No active company on the session |
-| `COMPANY_SWITCHED` | 409 | `X-Mizan-Company` differs from the active company |
+| `COMPANY_SWITCHED` | 409 | `X-Mizan-Company` (required on writes, optional on reads) differs from the active company |
 | `COMPANY_ARCHIVED` | 409 | A write to an archived company |
 | `COMPANY_SETTINGS_LOCKED` | 409 | Ledger settings after the first posted entry |
 | `LAST_OWNER` | 409 | The change would leave no active owner |

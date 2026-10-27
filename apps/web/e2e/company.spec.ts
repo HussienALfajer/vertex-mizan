@@ -250,6 +250,34 @@ test.describe('a new company', () => {
   });
 });
 
+test.describe('a new company whose opening fails', () => {
+  test.use({ me: owner });
+
+  test('retries only the opening, never creating a second company', async ({ page }) => {
+    const created = recorder({ status: 201, json: { ...company, id: secondCompanyId } });
+    let switches = 0;
+    await page.route('**/api/companies', (route) =>
+      route.fulfill({ status: 201, json: created.mock(route.request()).json }),
+    );
+    await page.route('**/api/session/company', (route) => {
+      switches += 1;
+      return switches === 1
+        ? route.fulfill({ status: 500, json: { statusCode: 500, message: 'down' } })
+        : route.fulfill({ status: 200, json: inSecondCompany });
+    });
+    await page.goto('/companies/new');
+    await page.getByLabel(ar.company.fields.name).fill('شركة جديدة');
+    await page.getByLabel(ar.company.fields.policyNote).fill('أساس العملة الوظيفية (مثال).');
+    await page.getByRole('button', { name: ar.company.create.submit }).click();
+    await expect(page.getByText(ar.company.create.created)).toBeVisible();
+    await expect(page.getByLabel(ar.company.fields.name)).toBeDisabled();
+    await page.getByRole('button', { name: ar.company.create.open }).click();
+    await expect(page).toHaveURL(/\/$/);
+    expect(created.seen).toHaveLength(1);
+    expect(switches).toBe(2);
+  });
+});
+
 test.describe('members', () => {
   test.use({ me: owner, api: companyReads });
 

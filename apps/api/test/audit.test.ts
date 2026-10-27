@@ -1,5 +1,6 @@
 import type { INestApplication } from '@nestjs/common';
 import { auditEntries, type Database, withCompany } from '@vertex-mizan/db';
+import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createTestApp } from './app.js';
 import { joinCompany, newCompany, signedInPerson, testDatabase } from './people.js';
@@ -81,5 +82,27 @@ describe('GET /api/audit', () => {
     const refused = await accountant.browser.get('/api/audit');
     expect(refused.status).toBe(403);
     expect(refused.body.code).toBe('FORBIDDEN');
+  });
+
+  it('refuses a read naming the company the session left, and logs no opening', async () => {
+    const owner = await signedInPerson(app, db);
+    const company = await newCompany(owner.browser);
+    const other = await newCompany(owner.browser, { name: 'شركة ثانية' });
+    const openings = () =>
+      withCompany(db, other.id, (tx) =>
+        tx
+          .select({ id: auditEntries.id })
+          .from(auditEntries)
+          .where(
+            and(eq(auditEntries.companyId, other.id), eq(auditEntries.action, 'audit.viewed')),
+          ),
+      );
+    const before = (await openings()).length;
+    const stale = await owner.browser.get('/api/audit', undefined, {
+      'x-mizan-company': company.id,
+    });
+    expect(stale.status).toBe(409);
+    expect(stale.body.code).toBe('COMPANY_SWITCHED');
+    expect((await openings()).length).toBe(before);
   });
 });

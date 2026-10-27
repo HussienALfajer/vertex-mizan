@@ -3,6 +3,7 @@ import { companySchema, createCompanySchema } from '@vertex-mizan/contracts';
 import { ar } from '@vertex-mizan/i18n';
 import {
   Button,
+  Callout,
   Card,
   Field,
   FieldDescription,
@@ -12,6 +13,7 @@ import {
   PageHeader,
   Textarea,
 } from '@vertex-mizan/ui';
+import { CircleCheckIcon } from 'lucide-react';
 import { useState } from 'react';
 import { FormError } from '../../components/form-error';
 import { api } from '../../lib/api';
@@ -61,6 +63,7 @@ export function NewCompanyPage() {
       open.mutate(company.id);
     },
   });
+  const created = create.data !== undefined;
 
   return (
     <>
@@ -71,6 +74,11 @@ export function NewCompanyPage() {
           className="flex flex-col gap-6"
           onSubmit={(event) => {
             event.preventDefault();
+            // Created already, the switch failed: retry only the switch, never a second company.
+            if (create.data) {
+              open.mutate(create.data.id);
+              return;
+            }
             const found = {
               name: nameError(name),
               policyNote: policyNoteError(policyNote),
@@ -78,47 +86,56 @@ export function NewCompanyPage() {
             };
             setErrors(found);
             if (found.name || found.policyNote || found.latin || ledgerFormError(ledgers)) return;
-            // Created already, the switch failed: retry only the switch, never a second company.
-            if (create.data) open.mutate(create.data.id);
-            else create.mutate();
+            create.mutate();
           }}
         >
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field invalid={errors.name !== undefined}>
-              <FieldLabel>{t.fields.name}</FieldLabel>
-              <Input
-                value={name}
-                maxLength={200}
-                onChange={(event) => setName(event.target.value)}
+          {/* Once created, the values are the company's: nothing typed after it is sent. */}
+          <fieldset disabled={created} className="flex min-w-0 flex-col gap-6">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field invalid={errors.name !== undefined}>
+                <FieldLabel>{t.fields.name}</FieldLabel>
+                <Input
+                  value={name}
+                  maxLength={200}
+                  onChange={(event) => setName(event.target.value)}
+                />
+                <FieldError match={errors.name !== undefined}>{errors.name}</FieldError>
+              </Field>
+              <Field invalid={errors.latin !== undefined}>
+                <FieldLabel>{t.fields.nameLatin}</FieldLabel>
+                <Input
+                  dir="ltr"
+                  value={nameLatin}
+                  maxLength={200}
+                  onChange={(event) => setNameLatin(event.target.value)}
+                />
+                <FieldDescription>{t.fields.nameLatinHint}</FieldDescription>
+                <FieldError match={errors.latin !== undefined}>{errors.latin}</FieldError>
+              </Field>
+            </div>
+            <LedgerFields value={ledgers} onChange={setLedgers} />
+            <Field invalid={errors.policyNote !== undefined}>
+              <FieldLabel>{t.fields.policyNote}</FieldLabel>
+              <Textarea
+                value={policyNote}
+                maxLength={4000}
+                onChange={(event) => setPolicyNote(event.target.value)}
               />
-              <FieldError match={errors.name !== undefined}>{errors.name}</FieldError>
+              <FieldDescription>{t.fields.policyNoteHint}</FieldDescription>
+              <FieldError match={errors.policyNote !== undefined}>{errors.policyNote}</FieldError>
             </Field>
-            <Field invalid={errors.latin !== undefined}>
-              <FieldLabel>{t.fields.nameLatin}</FieldLabel>
-              <Input
-                dir="ltr"
-                value={nameLatin}
-                maxLength={200}
-                onChange={(event) => setNameLatin(event.target.value)}
-              />
-              <FieldDescription>{t.fields.nameLatinHint}</FieldDescription>
-              <FieldError match={errors.latin !== undefined}>{errors.latin}</FieldError>
-            </Field>
-          </div>
-          <LedgerFields value={ledgers} onChange={setLedgers} />
-          <Field invalid={errors.policyNote !== undefined}>
-            <FieldLabel>{t.fields.policyNote}</FieldLabel>
-            <Textarea
-              value={policyNote}
-              maxLength={4000}
-              onChange={(event) => setPolicyNote(event.target.value)}
+          </fieldset>
+          {created && (
+            <Callout
+              role="status"
+              tone="info"
+              icon={<CircleCheckIcon />}
+              title={t.create.created}
             />
-            <FieldDescription>{t.fields.policyNoteHint}</FieldDescription>
-            <FieldError match={errors.policyNote !== undefined}>{errors.policyNote}</FieldError>
-          </Field>
+          )}
           <FormError error={create.error ?? open.error} />
           <Button type="submit" className="w-fit" loading={create.isPending || open.isPending}>
-            {t.create.submit}
+            {created ? t.create.open : t.create.submit}
           </Button>
         </form>
       </Card>
