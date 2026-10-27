@@ -25,6 +25,16 @@ const newCompany = {
 };
 
 describe('createCompanySchema', () => {
+  it('takes a chart template, none by default', () => {
+    expect(createCompanySchema.parse(newCompany).template).toBeNull();
+    expect(createCompanySchema.parse({ ...newCompany, template: 'service-agency' }).template).toBe(
+      'service-agency',
+    );
+    expect(createCompanySchema.safeParse({ ...newCompany, template: 'retail' }).success).toBe(
+      false,
+    );
+  });
+
   it('accepts every currency shape of S01 and trims the names', () => {
     expect(createCompanySchema.parse(newCompany).name).toBe('شركة اختبار');
     const shapes: CompanyLedgers[] = [

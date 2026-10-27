@@ -97,10 +97,14 @@ export function defaultNormalBalance(accountClass: AccountClass): NormalBalance 
   return accountClass === 'asset' || accountClass === 'expense' ? 'debit' : 'credit';
 }
 
-/** An account code as typed: 1 to 6 digits; its shape is checked against its parent. */
+/**
+ * An account code as typed: digits only. Its shape (1, 2, 3 or 6 digits extending the parent's) is
+ * checked against its parent by `checkAccountCode`, so a code of the wrong length answers
+ * `ACCOUNT_CODE_INVALID` like any other misfit (S02 "Acceptance" step 2).
+ */
 export const accountCodeSchema = z
   .string()
-  .regex(/^\d{1,6}$/, 'Expected 1 to 6 digits')
+  .regex(/^\d{1,12}$/, 'Expected digits')
   .meta({ id: 'AccountCode' });
 
 /** The parent an account is placed under, as the chart holds it. */
@@ -593,9 +597,12 @@ export const applyChartTemplateSchema = z
 
 export type ApplyChartTemplate = z.infer<typeof applyChartTemplateSchema>;
 
-/** `GET /api/chart/export`: the chart as a file. */
+/**
+ * `GET /api/chart/export`: the chart as a file. Excel for now; the PDF joins with the worker's
+ * rendering (owner, 2026-10-27: ADR 0002 renders PDFs in the worker), an additive change.
+ */
 export const chartExportQuerySchema = z
-  .object({ format: z.enum(['xlsx', 'pdf']) })
+  .object({ format: z.enum(['xlsx']) })
   .meta({ id: 'ChartExportQuery' });
 
 export type ChartExportQuery = z.infer<typeof chartExportQuerySchema>;

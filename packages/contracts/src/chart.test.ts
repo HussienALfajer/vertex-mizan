@@ -9,6 +9,7 @@ import {
   accountCodeLevel,
   accountRoleFits,
   checkAccountCode,
+  chartExportQuerySchema,
   checkAccountShape,
   createAccountSchema,
   defaultNormalBalance,
@@ -304,5 +305,12 @@ describe('the account schemas', () => {
         'StatementLine',
       ]),
     );
+  });
+});
+
+describe('chartExportQuerySchema', () => {
+  it('takes Excel only until the worker renders PDFs (owner, 2026-10-27)', () => {
+    expect(chartExportQuerySchema.parse({ format: 'xlsx' })).toEqual({ format: 'xlsx' });
+    expect(chartExportQuerySchema.safeParse({ format: 'pdf' }).success).toBe(false);
   });
 });
