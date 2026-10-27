@@ -17,7 +17,7 @@
     "@vertex-mizan/i18n": "workspace:*",
     "drizzle-orm": "0.45.4",
     "nestjs-pino": "5.3.1",
-    "nodemailer": "10.1.0",
+    "nodemailer": "10.2.1",
     "pg-boss": "12.38.0",
     "pino": "10.4.0",
     "pino-http": "11.0.0",
