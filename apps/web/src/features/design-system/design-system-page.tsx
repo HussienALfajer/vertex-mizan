@@ -31,9 +31,13 @@ import {
   type KeymapAction,
   keymap,
   LedgerSwitch,
+  OtpField,
   PageHeader,
+  PasswordInput,
   PeriodBadge,
   PoweredBy,
+  QrCode,
+  SecretCodeList,
   Sheet,
   SheetClose,
   SheetContent,
@@ -512,6 +516,54 @@ function Shortcuts() {
  * The design system's page (`/design-system`): every component of `packages/ui` with synthetic
  * data, in the shell (the sidebar and command palette are the shell's own). The screenshot tests photograph it in both themes at 360, 768 and 1280 px.
  */
+// Synthetic: an example secret and backup codes, never a real account's.
+const sampleOtpUri =
+  'otpauth://totp/Vertex%20Mizan:owner%40example.test?secret=JBSWY3DPEHPK3PXP&issuer=Vertex%20Mizan';
+const sampleBackupCodes = [
+  'k7q2-m9xw',
+  'p3vd-h8tn',
+  'r5cz-w2jf',
+  'b6ny-t4gs',
+  'e8lu-x1ka',
+  'f2mo-q7vb',
+  'g9wr-c3hd',
+  'j4ps-n6ze',
+  'u1tk-y5ml',
+  'z3ha-d8rq',
+];
+
+function AccessSample() {
+  return (
+    <Card className="grid gap-6 p-6 md:grid-cols-2 [&>*]:min-w-0">
+      <div className="flex flex-col gap-4">
+        <Field>
+          <FieldLabel>{t.access.password}</FieldLabel>
+          <PasswordInput
+            showLabel={t.access.show}
+            hideLabel={t.access.hide}
+            autoComplete="off"
+            defaultValue="correct-horse-battery"
+          />
+        </Field>
+        <div className="flex flex-col gap-2">
+          <span id="sample-code" className="text-control font-medium text-foreground">
+            {t.access.code}
+          </span>
+          <OtpField aria-labelledby="sample-code" slotLabel={t.access.slot} />
+        </div>
+        <QrCode value={sampleOtpUri} label={t.access.qr} className="self-center" />
+      </div>
+      <SecretCodeList
+        codes={sampleBackupCodes}
+        label={t.access.codes}
+        copyLabel={t.access.copy}
+        copiedLabel={t.access.copied}
+        printLabel={t.access.print}
+      />
+    </Card>
+  );
+}
+
 export function DesignSystemPage() {
   const { preference, setDensity } = useDensity();
   return (
@@ -611,6 +663,11 @@ export function DesignSystemPage() {
             </SheetClose>
           </SheetContent>
         </Sheet>
+      </Section>
+
+      <Section id="access" title={t.access.title}>
+        <p className="text-muted-foreground">{t.access.hint}</p>
+        <AccessSample />
       </Section>
 
       <Section id="brand" title={t.brand.title}>

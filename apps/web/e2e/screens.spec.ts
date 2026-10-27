@@ -38,6 +38,7 @@ for (const colorScheme of ['light', 'dark'] as const) {
         await page.goto('/design-system');
         await expect(page.getByRole('heading', { level: 1 })).toHaveText(ar.designSystem.title);
         await expect(page.getByRole('grid', { name: ar.designSystem.grid.label })).toBeVisible();
+        await expect(page.getByRole('img', { name: ar.designSystem.access.qr })).toBeVisible();
         await expectNoPageOverflow(page);
         await screenshot(page, testInfo, `design-system-${colorScheme}-${width}`);
       });
