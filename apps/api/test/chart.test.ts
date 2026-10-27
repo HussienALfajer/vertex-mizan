@@ -448,7 +448,7 @@ describe('GET /api/chart/export', () => {
     expect(file.status).toBe(200);
     expect(file.headers['content-type']).toContain('spreadsheetml');
     const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.load(file.body as Buffer);
+    await workbook.xlsx.load(new Uint8Array(file.body as Buffer).buffer);
     const sheet = workbook.worksheets[0];
     if (!sheet) throw new Error('No sheet');
     expect(sheet.views[0]?.rightToLeft).toBe(true);

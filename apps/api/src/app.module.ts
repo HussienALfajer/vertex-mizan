@@ -14,10 +14,11 @@ import { DatabaseModule } from './core/database/database.module.js';
 import { CodedException, codeOfIssues, issuesOf } from './core/errors/coded-exception.js';
 import { ErrorFilter } from './core/errors/error.filter.js';
 import { HealthModule } from './core/health/health.module.js';
-import { ChartModule } from './modules/chart/chart.module.js';
 import { AuditModule } from './modules/audit/audit.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
+import { ChartModule } from './modules/chart/chart.module.js';
 import { CompaniesModule } from './modules/companies/companies.module.js';
+import { DimensionsModule } from './modules/dimensions/dimensions.module.js';
 import { InvitationsModule } from './modules/invitations/invitations.module.js';
 import { MeModule } from './modules/me/me.module.js';
 import { MembersModule } from './modules/members/members.module.js';
@@ -60,6 +61,7 @@ export class AppModule {
         InvitationsModule,
         AuditModule,
         ChartModule,
+        DimensionsModule,
         AuthModule,
       ],
       providers: [
