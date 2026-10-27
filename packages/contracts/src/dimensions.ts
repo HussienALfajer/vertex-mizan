@@ -102,6 +102,8 @@ export const dimensionValueSchema = z
     nameLatin: z.string().nullable(),
     contractKind: contractKindSchema.nullable(),
     parentValueId: z.uuid().nullable(),
+    /** The parent value's current name (a contract's client), so a screen never looks it up. */
+    parentName: z.string().nullable(),
     externalSource: dimensionExternalSourceSchema.nullable(),
     externalId: z.string().nullable(),
     archivedAt: timestampSchema.nullable(),

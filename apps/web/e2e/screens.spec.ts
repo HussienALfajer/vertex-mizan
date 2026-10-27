@@ -2,6 +2,8 @@ import { ar } from '@vertex-mizan/i18n';
 import { linkToken, newPersonInvitation, notEnrolled, setup, signIns } from './access-mocks';
 import { chartReads, roots } from './chart-mocks';
 import { archivedCompany, archivedOwner, company, companyReads, owner } from './company-mocks';
+import { dimensionReads, typeOf } from './dimension-mocks';
+import { rateReads, today } from './rate-mocks';
 import { expect, expectNoPageOverflow, screenshot, test, widths } from './test';
 
 // RTL screenshots of every screen in both themes at each width: the design review evidence.
@@ -234,6 +236,55 @@ for (const colorScheme of ['light', 'dark'] as const) {
           ).toBeVisible();
           await expectNoPageOverflow(page);
           await screenshot(page, testInfo, `account-roles-${colorScheme}-${width}`);
+        });
+      });
+
+      test.describe('dimension and rate screens', () => {
+        test.use({ me: owner, api: { ...dimensionReads, ...rateReads } });
+
+        test('dimensions', async ({ page }, testInfo) => {
+          await page.goto('/dimensions');
+          await expect(page.getByRole('heading', { level: 1 })).toHaveText(ar.dimensions.title);
+          await expect(page.getByText('عميل تجريبي', { exact: true })).toBeVisible();
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `dimensions-${colorScheme}-${width}`);
+        });
+
+        test('dimension contracts', async ({ page }, testInfo) => {
+          await page.goto('/dimensions');
+          await page.getByRole('tab', { name: typeOf('contract').name }).click();
+          await expect(page.getByText('حملة تجريبية')).toBeVisible();
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `dimension-contracts-${colorScheme}-${width}`);
+        });
+
+        test('rates', async ({ page }, testInfo) => {
+          await page.clock.setFixedTime(today);
+          await page.goto('/rates');
+          await expect(page.getByRole('heading', { level: 1 })).toHaveText(ar.rates.title);
+          await expect(page.getByRole('list', { name: ar.rates.status.label })).toBeVisible();
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `rates-${colorScheme}-${width}`);
+        });
+
+        test('record rate', async ({ page }, testInfo) => {
+          await page.clock.setFixedTime(today);
+          await page.goto('/rates');
+          await page.getByRole('button', { name: ar.rates.recordBulletin }).click();
+          await expect(
+            page.getByRole('dialog', { name: ar.rates.record.bulletinTitle }),
+          ).toBeVisible();
+          await screenshot(page, testInfo, `record-rate-${colorScheme}-${width}`, {
+            fullPage: false,
+          });
+        });
+
+        test('rate calendar', async ({ page }, testInfo) => {
+          await page.goto('/rates/calendar');
+          await expect(page.getByRole('heading', { level: 1 })).toHaveText(ar.rates.calendar.title);
+          await expect(page.getByText('عطلة تجريبية')).toBeVisible();
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `rate-calendar-${colorScheme}-${width}`);
         });
       });
 

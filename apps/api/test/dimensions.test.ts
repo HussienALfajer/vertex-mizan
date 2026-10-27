@@ -172,7 +172,17 @@ describe('dimension values (rules 10–13)', () => {
       parentValueId: added.body.id,
     });
     expect(project.status).toBe(201);
-    expect(project.body).toMatchObject({ contractKind: 'project', parentValueId: added.body.id });
+    expect(project.body).toMatchObject({
+      contractKind: 'project',
+      parentValueId: added.body.id,
+      parentName: added.body.name,
+    });
+    // A page names each contract's client, whichever page the client sits on.
+    const contracts = await browser.get(`/api/dimension-values?typeId=${contract.id}`);
+    expect(contracts.body.values).toContainEqual(
+      expect.objectContaining({ id: project.body.id, parentName: added.body.name }),
+    );
+    expect(added.body.parentName).toBeNull();
     const noKind = await browser.post('/api/dimension-values', {
       typeId: contract.id,
       name: 'عقد بلا نوع',

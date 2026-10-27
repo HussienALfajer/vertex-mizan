@@ -29,7 +29,9 @@ import {
 import {
   ArchiveIcon,
   ArrowLeftIcon,
+  ArrowLeftRightIcon,
   BuildingIcon,
+  CalendarDaysIcon,
   CheckIcon,
   ChevronDownIcon,
   FolderTreeIcon,
@@ -45,6 +47,7 @@ import {
   ShieldCheckIcon,
   SunIcon,
   SwatchBookIcon,
+  TagsIcon,
   UsersIcon,
 } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
@@ -75,6 +78,20 @@ const navItems: NavItem[] = [
     label: ar.chart.roleSettings.nav,
     icon: KeyRoundIcon,
     permission: 'accounts.read',
+  },
+  { to: '/dimensions', label: ar.dimensions.nav, icon: TagsIcon, permission: 'dimensions.read' },
+  {
+    to: '/rates',
+    label: ar.rates.nav,
+    icon: ArrowLeftRightIcon,
+    exact: true,
+    permission: 'rates.read',
+  },
+  {
+    to: '/rates/calendar',
+    label: ar.rates.calendar.nav,
+    icon: CalendarDaysIcon,
+    permission: 'rates.read',
   },
   {
     to: '/settings/company',
@@ -239,6 +256,18 @@ function useShellCommands(me: Me | null | undefined): PaletteCommand[] {
             keywords: ['new account', 'chart'],
             icon: <PlusIcon />,
             run: () => void router.navigate({ to: '/chart', search: { new: true } }),
+          },
+        ]
+      : []),
+    ...(me && can(me, 'rates.manage')
+      ? [
+          {
+            id: 'record-bulletin',
+            label: ar.rates.recordBulletin,
+            group: t.palette.navigation,
+            keywords: ['bulletin rate', 'exchange rate', 'سعر الصرف'],
+            icon: <PlusIcon />,
+            run: () => void router.navigate({ to: '/rates', search: { record: 'bulletin' } }),
           },
         ]
       : []),

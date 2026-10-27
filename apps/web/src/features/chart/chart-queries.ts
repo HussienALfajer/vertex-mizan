@@ -3,7 +3,6 @@ import {
   accountRoleAssignmentSchema,
   accountSchema,
   chartTemplateSummarySchema,
-  dimensionTypeSchema,
 } from '@vertex-mizan/contracts';
 import { api, listOf } from '../../lib/api';
 
@@ -41,14 +40,5 @@ export function accountRolesQuery(companyId: string) {
         company: companyId,
         schema: listOf(accountRoleAssignmentSchema),
       }),
-  });
-}
-
-/** `GET /api/dimension-types`: the types an account can require. */
-export function dimensionTypesQuery(companyId: string) {
-  return queryOptions({
-    queryKey: ['dimensions', companyId, 'types'],
-    queryFn: () =>
-      api('GET', '/dimension-types', { company: companyId, schema: listOf(dimensionTypeSchema) }),
   });
 }

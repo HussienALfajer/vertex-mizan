@@ -41,7 +41,7 @@ import { useState } from 'react';
 import { FormError } from '../../components/form-error';
 import { api } from '../../lib/api';
 import { useCompany } from '../../lib/session';
-import { dimensionTypesQuery } from './chart-queries';
+import { dimensionTypesQuery } from '../dimensions/dimension-queries';
 
 const t = ar.chart;
 const s = t.sheet;

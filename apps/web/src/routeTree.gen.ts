@@ -17,6 +17,7 @@ import { Route as AuthForgotPasswordRouteImport } from './routes/_auth/forgot-pa
 import { Route as AuthInvitationRouteImport } from './routes/_auth/invitation'
 import { Route as AuthResetPasswordRouteImport } from './routes/_auth/reset-password'
 import { Route as AppCompanyIndexRouteImport } from './routes/_app/_company/index'
+import { Route as AppCompanyDimensionsRouteImport } from './routes/_app/_company/dimensions'
 import { Route as AppAccountSecurityRouteImport } from './routes/_app/account/security'
 import { Route as AppCompaniesIndexRouteImport } from './routes/_app/companies/index'
 import { Route as AppCompaniesNewRouteImport } from './routes/_app/companies/new'
@@ -25,6 +26,8 @@ import { Route as AuthSignInTwoFactorRouteImport } from './routes/_auth/sign-in/
 import { Route as AuthTwoFactorEnrolRouteImport } from './routes/_auth/two-factor/enrol'
 import { Route as AppCompanyChartIndexRouteImport } from './routes/_app/_company/chart/index'
 import { Route as AppCompanyChartRolesRouteImport } from './routes/_app/_company/chart/roles'
+import { Route as AppCompanyRatesIndexRouteImport } from './routes/_app/_company/rates/index'
+import { Route as AppCompanyRatesCalendarRouteImport } from './routes/_app/_company/rates/calendar'
 import { Route as AppCompanySettingsAuditRouteImport } from './routes/_app/_company/settings/audit'
 import { Route as AppCompanySettingsCompanyRouteImport } from './routes/_app/_company/settings/company'
 import { Route as AppCompanySettingsMembersRouteImport } from './routes/_app/_company/settings/members'
@@ -64,6 +67,11 @@ const AuthResetPasswordRoute = AuthResetPasswordRouteImport.update({
 const AppCompanyIndexRoute = AppCompanyIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => AppCompanyRoute,
+} as any)
+const AppCompanyDimensionsRoute = AppCompanyDimensionsRouteImport.update({
+  id: '/dimensions',
+  path: '/dimensions',
   getParentRoute: () => AppCompanyRoute,
 } as any)
 const AppAccountSecurityRoute = AppAccountSecurityRouteImport.update({
@@ -106,6 +114,16 @@ const AppCompanyChartRolesRoute = AppCompanyChartRolesRouteImport.update({
   path: '/chart/roles',
   getParentRoute: () => AppCompanyRoute,
 } as any)
+const AppCompanyRatesIndexRoute = AppCompanyRatesIndexRouteImport.update({
+  id: '/rates/',
+  path: '/rates/',
+  getParentRoute: () => AppCompanyRoute,
+} as any)
+const AppCompanyRatesCalendarRoute = AppCompanyRatesCalendarRouteImport.update({
+  id: '/rates/calendar',
+  path: '/rates/calendar',
+  getParentRoute: () => AppCompanyRoute,
+} as any)
 const AppCompanySettingsAuditRoute = AppCompanySettingsAuditRouteImport.update({
   id: '/settings/audit',
   path: '/settings/audit',
@@ -130,6 +148,7 @@ export interface FileRoutesByFullPath {
   '/forgot-password': typeof AuthForgotPasswordRoute
   '/invitation': typeof AuthInvitationRoute
   '/reset-password': typeof AuthResetPasswordRoute
+  '/dimensions': typeof AppCompanyDimensionsRoute
   '/account/security': typeof AppAccountSecurityRoute
   '/companies/new': typeof AppCompaniesNewRoute
   '/sign-in/two-factor': typeof AuthSignInTwoFactorRoute
@@ -137,10 +156,12 @@ export interface FileRoutesByFullPath {
   '/companies/': typeof AppCompaniesIndexRoute
   '/sign-in/': typeof AuthSignInIndexRoute
   '/chart/roles': typeof AppCompanyChartRolesRoute
+  '/rates/calendar': typeof AppCompanyRatesCalendarRoute
   '/settings/audit': typeof AppCompanySettingsAuditRoute
   '/settings/company': typeof AppCompanySettingsCompanyRoute
   '/settings/members': typeof AppCompanySettingsMembersRoute
   '/chart/': typeof AppCompanyChartIndexRoute
+  '/rates/': typeof AppCompanyRatesIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof AppCompanyIndexRoute
@@ -148,6 +169,7 @@ export interface FileRoutesByTo {
   '/forgot-password': typeof AuthForgotPasswordRoute
   '/invitation': typeof AuthInvitationRoute
   '/reset-password': typeof AuthResetPasswordRoute
+  '/dimensions': typeof AppCompanyDimensionsRoute
   '/account/security': typeof AppAccountSecurityRoute
   '/companies/new': typeof AppCompaniesNewRoute
   '/sign-in/two-factor': typeof AuthSignInTwoFactorRoute
@@ -155,10 +177,12 @@ export interface FileRoutesByTo {
   '/companies': typeof AppCompaniesIndexRoute
   '/sign-in': typeof AuthSignInIndexRoute
   '/chart/roles': typeof AppCompanyChartRolesRoute
+  '/rates/calendar': typeof AppCompanyRatesCalendarRoute
   '/settings/audit': typeof AppCompanySettingsAuditRoute
   '/settings/company': typeof AppCompanySettingsCompanyRoute
   '/settings/members': typeof AppCompanySettingsMembersRoute
   '/chart': typeof AppCompanyChartIndexRoute
+  '/rates': typeof AppCompanyRatesIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -169,6 +193,7 @@ export interface FileRoutesById {
   '/_auth/forgot-password': typeof AuthForgotPasswordRoute
   '/_auth/invitation': typeof AuthInvitationRoute
   '/_auth/reset-password': typeof AuthResetPasswordRoute
+  '/_app/_company/dimensions': typeof AppCompanyDimensionsRoute
   '/_app/account/security': typeof AppAccountSecurityRoute
   '/_app/companies/new': typeof AppCompaniesNewRoute
   '/_auth/sign-in/two-factor': typeof AuthSignInTwoFactorRoute
@@ -177,10 +202,12 @@ export interface FileRoutesById {
   '/_app/companies/': typeof AppCompaniesIndexRoute
   '/_auth/sign-in/': typeof AuthSignInIndexRoute
   '/_app/_company/chart/roles': typeof AppCompanyChartRolesRoute
+  '/_app/_company/rates/calendar': typeof AppCompanyRatesCalendarRoute
   '/_app/_company/settings/audit': typeof AppCompanySettingsAuditRoute
   '/_app/_company/settings/company': typeof AppCompanySettingsCompanyRoute
   '/_app/_company/settings/members': typeof AppCompanySettingsMembersRoute
   '/_app/_company/chart/': typeof AppCompanyChartIndexRoute
+  '/_app/_company/rates/': typeof AppCompanyRatesIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -190,6 +217,7 @@ export interface FileRouteTypes {
     | '/forgot-password'
     | '/invitation'
     | '/reset-password'
+    | '/dimensions'
     | '/account/security'
     | '/companies/new'
     | '/sign-in/two-factor'
@@ -197,10 +225,12 @@ export interface FileRouteTypes {
     | '/companies/'
     | '/sign-in/'
     | '/chart/roles'
+    | '/rates/calendar'
     | '/settings/audit'
     | '/settings/company'
     | '/settings/members'
     | '/chart/'
+    | '/rates/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -208,6 +238,7 @@ export interface FileRouteTypes {
     | '/forgot-password'
     | '/invitation'
     | '/reset-password'
+    | '/dimensions'
     | '/account/security'
     | '/companies/new'
     | '/sign-in/two-factor'
@@ -215,10 +246,12 @@ export interface FileRouteTypes {
     | '/companies'
     | '/sign-in'
     | '/chart/roles'
+    | '/rates/calendar'
     | '/settings/audit'
     | '/settings/company'
     | '/settings/members'
     | '/chart'
+    | '/rates'
   id:
     | '__root__'
     | '/_app'
@@ -228,6 +261,7 @@ export interface FileRouteTypes {
     | '/_auth/forgot-password'
     | '/_auth/invitation'
     | '/_auth/reset-password'
+    | '/_app/_company/dimensions'
     | '/_app/account/security'
     | '/_app/companies/new'
     | '/_auth/sign-in/two-factor'
@@ -236,10 +270,12 @@ export interface FileRouteTypes {
     | '/_app/companies/'
     | '/_auth/sign-in/'
     | '/_app/_company/chart/roles'
+    | '/_app/_company/rates/calendar'
     | '/_app/_company/settings/audit'
     | '/_app/_company/settings/company'
     | '/_app/_company/settings/members'
     | '/_app/_company/chart/'
+    | '/_app/_company/rates/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -306,6 +342,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppCompanyIndexRouteImport
       parentRoute: typeof AppCompanyRoute
     }
+    '/_app/_company/dimensions': {
+      id: '/_app/_company/dimensions'
+      path: '/dimensions'
+      fullPath: '/dimensions'
+      preLoaderRoute: typeof AppCompanyDimensionsRouteImport
+      parentRoute: typeof AppCompanyRoute
+    }
     '/_app/account/security': {
       id: '/_app/account/security'
       path: '/account/security'
@@ -362,6 +405,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppCompanyChartRolesRouteImport
       parentRoute: typeof AppCompanyRoute
     }
+    '/_app/_company/rates/': {
+      id: '/_app/_company/rates/'
+      path: '/rates'
+      fullPath: '/rates/'
+      preLoaderRoute: typeof AppCompanyRatesIndexRouteImport
+      parentRoute: typeof AppCompanyRoute
+    }
+    '/_app/_company/rates/calendar': {
+      id: '/_app/_company/rates/calendar'
+      path: '/rates/calendar'
+      fullPath: '/rates/calendar'
+      preLoaderRoute: typeof AppCompanyRatesCalendarRouteImport
+      parentRoute: typeof AppCompanyRoute
+    }
     '/_app/_company/settings/audit': {
       id: '/_app/_company/settings/audit'
       path: '/settings/audit'
@@ -387,21 +444,27 @@ declare module '@tanstack/react-router' {
 }
 
 interface AppCompanyRouteChildren {
+  AppCompanyDimensionsRoute: typeof AppCompanyDimensionsRoute
   AppCompanyIndexRoute: typeof AppCompanyIndexRoute
   AppCompanyChartRolesRoute: typeof AppCompanyChartRolesRoute
+  AppCompanyRatesCalendarRoute: typeof AppCompanyRatesCalendarRoute
   AppCompanySettingsAuditRoute: typeof AppCompanySettingsAuditRoute
   AppCompanySettingsCompanyRoute: typeof AppCompanySettingsCompanyRoute
   AppCompanySettingsMembersRoute: typeof AppCompanySettingsMembersRoute
   AppCompanyChartIndexRoute: typeof AppCompanyChartIndexRoute
+  AppCompanyRatesIndexRoute: typeof AppCompanyRatesIndexRoute
 }
 
 const AppCompanyRouteChildren: AppCompanyRouteChildren = {
+  AppCompanyDimensionsRoute: AppCompanyDimensionsRoute,
   AppCompanyIndexRoute: AppCompanyIndexRoute,
   AppCompanyChartRolesRoute: AppCompanyChartRolesRoute,
+  AppCompanyRatesCalendarRoute: AppCompanyRatesCalendarRoute,
   AppCompanySettingsAuditRoute: AppCompanySettingsAuditRoute,
   AppCompanySettingsCompanyRoute: AppCompanySettingsCompanyRoute,
   AppCompanySettingsMembersRoute: AppCompanySettingsMembersRoute,
   AppCompanyChartIndexRoute: AppCompanyChartIndexRoute,
+  AppCompanyRatesIndexRoute: AppCompanyRatesIndexRoute,
 }
 
 const AppCompanyRouteWithChildren = AppCompanyRoute._addFileChildren(

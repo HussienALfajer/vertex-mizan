@@ -9,6 +9,8 @@ export class ApiError extends Error {
     readonly status: number,
     readonly code: ErrorCode | undefined,
     readonly issues: ErrorResponse['issues'],
+    /** Facts the refusal names, such as the publication day of `RATE_MISSING`. */
+    readonly details: ErrorResponse['details'] = undefined,
   ) {
     super(code ?? `HTTP ${status}`);
   }
@@ -64,7 +66,7 @@ export async function api<T = void>(
 async function refusal(response: Response): Promise<ApiError> {
   const parsed = errorResponseSchema.safeParse(await response.json().catch(() => null));
   return parsed.success
-    ? new ApiError(response.status, parsed.data.code, parsed.data.issues)
+    ? new ApiError(response.status, parsed.data.code, parsed.data.issues, parsed.data.details)
     : new ApiError(response.status, undefined, undefined);
 }
 

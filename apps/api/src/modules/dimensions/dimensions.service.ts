@@ -19,7 +19,7 @@ import {
   type Transaction,
   withCompany,
 } from '@vertex-mizan/db';
-import { and, asc, count, desc, eq, ilike, isNull, lt, max, or } from 'drizzle-orm';
+import { and, asc, count, desc, eq, ilike, inArray, isNull, lt, max, or } from 'drizzle-orm';
 import { actorOf, type CompanyRouteAccess } from '../../core/access/access.js';
 import { lockCompanyForWrite } from '../../core/access/company-lock.js';
 import { type AuditActor, changedFields, writeCompanyAudit } from '../../core/audit/audit.js';
@@ -48,7 +48,7 @@ function dimensionTypeOf(row: TypeRow): DimensionType {
   };
 }
 
-function dimensionValueOf(row: ValueRow): DimensionValue {
+function dimensionValueOf(row: ValueRow, parentName: string | null): DimensionValue {
   return {
     id: row.id,
     typeId: row.typeId,
@@ -57,11 +57,30 @@ function dimensionValueOf(row: ValueRow): DimensionValue {
     nameLatin: row.nameLatin,
     contractKind: row.contractKind as DimensionValue['contractKind'],
     parentValueId: row.parentValueId,
+    parentName,
     externalSource: row.externalSource as DimensionValue['externalSource'],
     externalId: row.externalId,
     archivedAt: row.archivedAt?.toISOString() ?? null,
     createdAt: row.createdAt.toISOString(),
   };
+}
+
+/** Values with their parents' current names, read in one query. */
+async function valuesWithParents(tx: Transaction, rows: ValueRow[]): Promise<DimensionValue[]> {
+  const parentIds = [
+    ...new Set(rows.flatMap((row) => (row.parentValueId ? [row.parentValueId] : []))),
+  ];
+  const parents =
+    parentIds.length === 0
+      ? []
+      : await tx
+          .select({ id: dimensionValues.id, name: dimensionValues.name })
+          .from(dimensionValues)
+          .where(inArray(dimensionValues.id, parentIds));
+  const names = new Map(parents.map((parent) => [parent.id, parent.name]));
+  return rows.map((row) =>
+    dimensionValueOf(row, row.parentValueId ? (names.get(row.parentValueId) ?? null) : null),
+  );
 }
 
 /** The `LIKE` pattern of a search text, its wildcards taken literally. */
@@ -237,8 +256,8 @@ export class DimensionsService {
         )
         .orderBy(desc(dimensionValues.createdAt), desc(dimensionValues.id))
         .limit(PAGE_SIZE + 1);
-      const page = pageOf(rows, PAGE_SIZE, dimensionValueOf);
-      return { values: page.entries, nextCursor: page.nextCursor };
+      const page = pageOf(rows, PAGE_SIZE, (row) => row);
+      return { values: await valuesWithParents(tx, page.entries), nextCursor: page.nextCursor };
     });
   }
 
@@ -295,7 +314,8 @@ export class DimensionsService {
           parentValueId: row.parentValueId,
         },
       });
-      return dimensionValueOf(row);
+      const [value] = await valuesWithParents(tx, [row]);
+      return value as DimensionValue;
     });
   }
 
@@ -491,7 +511,8 @@ export class DimensionsService {
       await work(tx, row, actorOf(access));
       const [after] = await read();
       if (!after) throw new CodedException('NOT_FOUND', 'No such dimension value');
-      return dimensionValueOf(after);
+      const [value] = await valuesWithParents(tx, [after]);
+      return value as DimensionValue;
     });
   }
 }

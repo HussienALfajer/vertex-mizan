@@ -6,11 +6,13 @@ import { commandPalette } from './command-palette.js';
 import { common } from './common.js';
 import { company } from './company.js';
 import { designSystem } from './design-system.js';
+import { dimensions } from './dimensions.js';
 import { email } from './email.js';
 import { errors } from './errors.js';
 import { grid } from './grid.js';
 import { members } from './members.js';
 import { permissions } from './permissions.js';
+import { rates } from './rates.js';
 import { roles } from './roles.js';
 import { shell } from './shell.js';
 import { shortcuts } from './shortcuts.js';
@@ -33,6 +35,8 @@ export const ar = {
   permissions,
   audit,
   chart,
+  dimensions,
+  rates,
 };
 
 export type Catalog = typeof ar;
