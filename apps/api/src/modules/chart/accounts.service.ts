@@ -161,7 +161,12 @@ export class AccountsService {
         next.currency !== row.currency ||
         next.isControl !== row.isControl ||
         next.isMonetary !== row.isMonetary;
-      if (row.level === 1 && (structural || next.statementLine !== row.statementLine)) {
+      if (
+        row.level === 1 &&
+        (structural ||
+          next.statementLine !== row.statementLine ||
+          next.requiredDimensionTypeIds.length > 0)
+      ) {
         throw new CodedException('ACCOUNT_LOCKED', 'A root account is only renamed');
       }
       if (row.kind === 'header' && next.kind === 'postable' && hasChildren) {
@@ -470,13 +475,16 @@ export class AccountsService {
     }
   }
 
-  /** Every required dimension type exists in the company and is not archived. */
+  /** Every required dimension type exists in the company and is not archived (`NOT_FOUND`). */
   private async checkDimensionTypes(tx: Transaction, typeIds: readonly string[]): Promise<void> {
     if (typeIds.length === 0) return;
+    // Read FOR SHARE, as the database's own check does, so an archive at the same time waits and
+    // this check answers instead of the trigger.
     const found = await tx
       .select({ id: dimensionTypes.id })
       .from(dimensionTypes)
-      .where(and(inArray(dimensionTypes.id, [...typeIds]), isNull(dimensionTypes.archivedAt)));
+      .where(and(inArray(dimensionTypes.id, [...typeIds]), isNull(dimensionTypes.archivedAt)))
+      .for('share');
     if (found.length !== typeIds.length) {
       throw new CodedException('NOT_FOUND', 'No such dimension type');
     }

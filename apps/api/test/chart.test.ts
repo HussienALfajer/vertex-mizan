@@ -388,6 +388,83 @@ describe('block, archive and restore (rules 5–6)', () => {
   });
 });
 
+describe("another company's ids on every account route", () => {
+  it('answer NOT_FOUND and change nothing', async () => {
+    const owner = await ownerWith('service-agency');
+    const stranger = await ownerWith('service-agency');
+    const theirs = await tree(stranger.browser);
+    const theirAccount = byCode(theirs, '111001');
+    const theirHeader = byCode(theirs, '112');
+    const theirRoles = (await stranger.browser.get('/api/account-roles')).body;
+    const theirGain = theirs.find((account) => account.roles.includes('fx_realised_gain'));
+    if (!theirGain) throw new Error('No gain account');
+    const theirType = (await stranger.browser.get('/api/dimension-types')).body[0].id as string;
+    const mine = await tree(owner.browser);
+    const myCash = byCode(mine, '111');
+    const created = await owner.browser.post('/api/accounts', euroBank(myCash.id));
+    const id = created.body.id as string;
+    const answers = [
+      await owner.browser.post(`/api/accounts/${theirAccount.id}/unblock`),
+      await owner.browser.post(`/api/accounts/${theirAccount.id}/restore`, { reason: 'س' }),
+      await owner.browser.put('/api/account-roles', {
+        role: 'fx_realised_gain',
+        accountId: theirGain.id,
+      }),
+      await owner.browser.patch(`/api/accounts/${id}`, {
+        parentId: theirHeader.id,
+        code: '112009',
+        statementLine: 'bs.trade_receivables',
+      }),
+      await owner.browser.patch(`/api/accounts/${id}`, { requiredDimensionTypeIds: [theirType] }),
+      await owner.browser.post('/api/accounts', {
+        ...euroBank(myCash.id),
+        code: '111008',
+        requiredDimensionTypeIds: [theirType],
+      }),
+    ];
+    for (const answer of answers) expect(answer.body.code).toBe('NOT_FOUND');
+    expect(await tree(stranger.browser)).toEqual(theirs);
+    expect((await stranger.browser.get('/api/account-roles')).body).toEqual(theirRoles);
+  });
+
+  it('refuse a child or a restore under an archived parent, and required dimensions on a root', async () => {
+    const owner = await ownerWith(null);
+    const assets = byCode(await tree(owner.browser), '1');
+    const header = await owner.browser.post('/api/accounts', {
+      parentId: assets.id,
+      code: '11',
+      kind: 'header',
+      name: 'متداولة',
+    });
+    const leaf = await owner.browser.post('/api/accounts', {
+      parentId: header.body.id,
+      code: '111',
+      kind: 'postable',
+      name: 'الصندوق',
+      statementLine: 'bs.cash',
+    });
+    await owner.browser.post(`/api/accounts/${leaf.body.id}/archive`, { reason: 'س' });
+    await owner.browser.post(`/api/accounts/${header.body.id}/archive`, { reason: 'س' });
+    const under = await owner.browser.post('/api/accounts', {
+      parentId: header.body.id,
+      code: '112',
+      kind: 'postable',
+      name: 'ذمم',
+      statementLine: 'bs.trade_receivables',
+    });
+    expect(under.body.code).toBe('ACCOUNT_ARCHIVED');
+    const restore = await owner.browser.post(`/api/accounts/${leaf.body.id}/restore`, {
+      reason: 'س',
+    });
+    expect(restore.body.code).toBe('ACCOUNT_ARCHIVED');
+    const type = (await owner.browser.get('/api/dimension-types')).body[0].id as string;
+    const root = await owner.browser.patch(`/api/accounts/${assets.id}`, {
+      requiredDimensionTypeIds: [type],
+    });
+    expect(root.body.code).toBe('ACCOUNT_LOCKED');
+  });
+});
+
 describe('account roles (rule 7)', () => {
   it('moves a role to a fitting account and refuses one that does not fit', async () => {
     const owner = await ownerWith('service-agency');

@@ -1,6 +1,6 @@
 import type { INestApplication } from '@nestjs/common';
 import type { CreateCompany } from '@vertex-mizan/contracts';
-import { auditEntries, type Database, withCompany } from '@vertex-mizan/db';
+import { auditEntries, type Database, exchangeRates, withCompany } from '@vertex-mizan/db';
 import { v7 as uuidv7 } from 'uuid';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createTestApp } from './app.js';
@@ -194,6 +194,71 @@ describe('recording and correcting (acceptance step 7, rules 14–15)', () => {
     ]);
     const log = await actions(company.id);
     expect(log.filter((action) => action === 'rate.corrected')).toHaveLength(2);
+  });
+
+  it('keeps the head of the chain in force whatever the recording times', async () => {
+    const { browser, company, person } = await owner();
+    const first = await browser.post('/api/rates', bulletin('2026-11-04', '120'));
+    const at = new Date(first.body.rate.createdAt).getTime();
+    // Two corrections whose transactions took the pair's lock in the other order of their
+    // start times: the later correction has the earlier created_at.
+    const [corrected, latest] = await withCompany(db, company.id, async (tx) => {
+      const row = (values: { rate: string; supersedes: string; createdAt: Date }) =>
+        tx
+          .insert(exchangeRates)
+          .values({
+            companyId: company.id,
+            effectiveOn: '2026-11-04',
+            base: 'USD',
+            quote: 'SYP',
+            rate: values.rate,
+            type: 'bulletin',
+            source: 'manual',
+            supersedesRateId: values.supersedes,
+            reason: 'تصحيح',
+            recordedByUserId: person.id,
+            createdAt: values.createdAt,
+          })
+          .returning({ id: exchangeRates.id });
+      const [one] = await row({
+        rate: '121',
+        supersedes: first.body.rate.id,
+        createdAt: new Date(at + 2000),
+      });
+      if (!one) throw new Error('no row');
+      const [two] = await row({
+        rate: '121.5',
+        supersedes: one.id,
+        createdAt: new Date(at + 1000),
+      });
+      return [one, two];
+    });
+    const answer = await inForce(browser, 'bulletin', '2026-11-04');
+    expect(answer.body.rows[0]).toMatchObject({ id: latest?.id, rate: '121.5' });
+    const third = await browser.post(
+      '/api/rates',
+      bulletin('2026-11-04', '122', { reason: 'تصحيح ثالث' }),
+    );
+    expect(third.status, JSON.stringify(third.body)).toBe(201);
+    expect(third.body.rate.supersedesRateId).toBe(latest?.id);
+    expect(corrected?.id).toBeDefined();
+  });
+
+  it('chains two corrections sent at once, then takes a third', async () => {
+    const { browser } = await owner();
+    await browser.post('/api/rates', bulletin('2026-11-04', '120'));
+    const answers = await Promise.all([
+      browser.post('/api/rates', bulletin('2026-11-04', '121', { reason: 'أ' })),
+      browser.post('/api/rates', bulletin('2026-11-04', '122', { reason: 'ب' })),
+    ]);
+    expect(answers.map((answer) => answer.status)).toEqual([201, 201]);
+    const [early, late] = answers
+      .map((answer) => answer.body.rate)
+      .sort((a, b) => (a.supersedesRateId === b.id ? 1 : -1));
+    expect(late.supersedesRateId).toBe(early.id);
+    expect((await inForce(browser, 'bulletin', '2026-11-04')).body.rows[0].id).toBe(late.id);
+    const third = await browser.post('/api/rates', bulletin('2026-11-04', '123', { reason: 'ج' }));
+    expect(third.body.rate.supersedesRateId).toBe(late.id);
   });
 
   it('refuses an SYP rate before the new pound, a currency quoted in itself and a zero rate', async () => {

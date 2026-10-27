@@ -149,7 +149,7 @@ export class RatesService {
       if (via !== null) legs.push([query.from, via], [via, query.to]);
       const newest = new Map<ExchangeRate, RateRow>();
       for (const [a, b] of legs) {
-        // Only the newest row of a pair can be in force; a later-recorded row of its date wins.
+        // Only the newest row of a pair can be in force: the head of its date's correction chain.
         const [row] = await this.readRows(
           tx,
           [
@@ -476,8 +476,11 @@ export class RatesService {
 
   /**
    * Rate rows with who recorded each and whether a newer row corrects it. `recorded` orders newest
-   * recorded first (the list); `effective` newest effective date first, then newest recorded (the
-   * row in force).
+   * recorded first (the list). `effective` reads only the head of each date's correction chain (the
+   * row no other row supersedes; one per pair, type and date) with the newest effective date first:
+   * the row in force and the row a correction supersedes. The chain decides, never `created_at`,
+   * which is the transaction's start and can disagree with the order two corrections took the
+   * pair's lock in (S02 rules 15–16).
    */
   private async readRows(
     tx: Transaction,
@@ -485,15 +488,12 @@ export class RatesService {
     order: 'recorded' | 'effective' = 'recorded',
     limit = PAGE_SIZE + 1,
   ): Promise<({ stored: StoredRate; entry: RateRow } & { createdAt: Date; id: string })[]> {
+    const superseded = sql<boolean>`exists (select 1 from ${exchangeRates} as later where later.company_id = ${exchangeRates.companyId} and later.supersedes_rate_id = ${exchangeRates.id})`;
     const rows = await tx
-      .select({
-        stored: exchangeRates,
-        recorderName: users.name,
-        superseded: sql<boolean>`exists (select 1 from ${exchangeRates} as later where later.company_id = ${exchangeRates.companyId} and later.supersedes_rate_id = ${exchangeRates.id})`,
-      })
+      .select({ stored: exchangeRates, recorderName: users.name, superseded })
       .from(exchangeRates)
       .leftJoin(users, eq(users.id, exchangeRates.recordedByUserId))
-      .where(and(...where))
+      .where(and(...where, order === 'effective' ? sql`not ${superseded}` : undefined))
       .orderBy(
         ...(order === 'effective' ? [desc(exchangeRates.effectiveOn)] : []),
         desc(exchangeRates.createdAt),

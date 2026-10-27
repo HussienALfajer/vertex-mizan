@@ -321,6 +321,64 @@ describe('dimension values (rules 10–13)', () => {
     expect(after.body.values).toEqual([value.body]);
   });
 
+  it("answers another company's ids on the other routes as unknown", async () => {
+    const mine = await owner();
+    const theirs = await owner();
+    const theirClient = await typeByCode(theirs.browser, 'client');
+    const theirValue = await theirs.browser.post('/api/dimension-values', {
+      typeId: theirClient.id,
+      name: 'عميلهم',
+    });
+    const custom = await theirs.browser.post('/api/dimension-types', {
+      code: 'their_type',
+      name: 'نوعهم',
+    });
+    const myContract = await typeByCode(mine.browser, 'contract');
+    const myClient = await typeByCode(mine.browser, 'client');
+    const myContractValue = await mine.browser.post('/api/dimension-values', {
+      typeId: myContract.id,
+      name: 'عقدي',
+      contractKind: 'project',
+    });
+    const answers = [
+      await mine.browser.post(`/api/dimension-types/${custom.body.id}/archive`),
+      await mine.browser.post(`/api/dimension-types/${custom.body.id}/restore`),
+      await mine.browser.patch(`/api/dimension-values/${theirValue.body.id}`, { name: 'س' }),
+      await mine.browser.post(`/api/dimension-values/${theirValue.body.id}/restore`),
+      await mine.browser.post('/api/dimension-values', {
+        typeId: myContract.id,
+        name: 'عقد',
+        contractKind: 'retainer',
+        parentValueId: theirValue.body.id,
+      }),
+      await mine.browser.patch(`/api/dimension-values/${myContractValue.body.id}`, {
+        parentValueId: theirValue.body.id,
+      }),
+    ];
+    for (const answer of answers) expect(answer.body.code).toBe('NOT_FOUND');
+    expect((await theirs.browser.get('/api/dimension-types')).body).toContainEqual(custom.body);
+    const after = await theirs.browser.get('/api/dimension-values', { typeId: theirClient.id });
+    expect(after.body.values).toEqual([theirValue.body]);
+    expect(myClient.id).not.toBe(theirClient.id);
+  });
+
+  it('gives one Hub ID to one value when two links claim it at once (edge case 2)', async () => {
+    const { browser } = await owner();
+    const client = await typeByCode(browser, 'client');
+    const values = await Promise.all(
+      ['أ', 'ب'].map((name) => browser.post('/api/dimension-values', { typeId: client.id, name })),
+    );
+    const hubId = uuidv7();
+    const answers = await Promise.all(
+      values.map((value) =>
+        browser.post(`/api/dimension-values/${value.body.id}/link`, { externalId: hubId }),
+      ),
+    );
+    expect(
+      answers.map((answer) => (answer.status === 200 ? 200 : answer.body.code)).sort(),
+    ).toEqual([200, 'DIMENSION_LINK_TAKEN']);
+  });
+
   it('lets every role read and only the owner and accountant write', async () => {
     const { browser, company } = await owner();
     const client = await typeByCode(browser, 'client');
