@@ -1,5 +1,10 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { companySchema, createCompanySchema } from '@vertex-mizan/contracts';
+import {
+  CHART_TEMPLATE_IDS,
+  type ChartTemplateId,
+  companySchema,
+  createCompanySchema,
+} from '@vertex-mizan/contracts';
 import { ar } from '@vertex-mizan/i18n';
 import {
   Button,
@@ -11,6 +16,8 @@ import {
   FieldLabel,
   Input,
   PageHeader,
+  SelectField,
+  type SelectOption,
   Textarea,
 } from '@vertex-mizan/ui';
 import { CircleCheckIcon } from 'lucide-react';
@@ -30,6 +37,12 @@ import { nameError, policyNoteError } from './validation';
 
 const t = ar.company;
 
+const noTemplate = 'none' as const;
+const templateOptions: SelectOption<ChartTemplateId | typeof noTemplate>[] = [
+  ...CHART_TEMPLATE_IDS.map((id) => ({ value: id, label: ar.chart.templates[id] })),
+  { value: noTemplate, label: ar.chart.templateNone },
+];
+
 /**
  * `/companies/new` (S01 rules 9–10): a company with its ledger settings, Vertex Media's shape
  * pre-filled. The creator becomes its owner, and it becomes the active company.
@@ -39,6 +52,8 @@ export function NewCompanyPage() {
   const [nameLatin, setNameLatin] = useState('');
   const [policyNote, setPolicyNote] = useState('');
   const [ledgers, setLedgers] = useState<LedgerForm>(vertexMediaLedgers);
+  // The chart template (S02 rule 1): Vertex Media's service-agency chart by default.
+  const [template, setTemplate] = useState<ChartTemplateId | typeof noTemplate>('service-agency');
   const [errors, setErrors] = useState<{
     name?: string | undefined;
     policyNote?: string | undefined;
@@ -55,6 +70,7 @@ export function NewCompanyPage() {
           ledgers: ledgersOf(ledgers),
           fiscalYearStartMonth: ledgers.fiscalYearStartMonth,
           policyNote,
+          template: template === noTemplate ? null : template,
         }),
         schema: companySchema,
       }),
@@ -114,6 +130,13 @@ export function NewCompanyPage() {
               </Field>
             </div>
             <LedgerFields value={ledgers} onChange={setLedgers} />
+            <SelectField
+              label={t.fields.template}
+              value={template}
+              options={templateOptions}
+              description={ar.chart.templateHint}
+              onValueChange={setTemplate}
+            />
             <Field invalid={errors.policyNote !== undefined}>
               <FieldLabel>{t.fields.policyNote}</FieldLabel>
               <Textarea
