@@ -19,11 +19,15 @@ import { companyReads, owner } from './company-mocks';
 /** A synthetic UUIDv7-shaped id per account code, stable across specs. */
 const idOf = (code: string) => `01900000-0000-7000-8002-${code.padStart(12, '0')}`;
 
-export const dimensionTypes: DimensionType[] = BUILTIN_DIMENSION_TYPES.map((type, index) => ({
-  id: `01900000-0000-7000-8003-00000000000${index + 1}`,
+const builtinTypeId = (code: string) =>
+  `01900000-0000-7000-8003-00000000000${BUILTIN_DIMENSION_TYPES.findIndex((type) => type.code === code) + 1}`;
+
+export const dimensionTypes: DimensionType[] = BUILTIN_DIMENSION_TYPES.map((type) => ({
+  id: builtinTypeId(type.code),
   code: type.code,
   builtin: true,
-  parentTypeId: null,
+  // A contract's values belong to a client (S02 rule 9).
+  parentTypeId: type.parentCode === null ? null : builtinTypeId(type.parentCode),
   name: type.name,
   nameLatin: type.nameLatin,
   position: type.position,
