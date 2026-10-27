@@ -114,5 +114,12 @@ describe('DomainError', () => {
     expect(errorResponseSchema.safeParse({ ...answer, code: 'SOMETHING_ELSE' }).success).toBe(
       false,
     );
+    const missing = {
+      statusCode: 422,
+      code: 'RATE_MISSING',
+      message: 'No bulletin',
+      details: { publicationDay: '2026-11-08' },
+    };
+    expect(errorResponseSchema.parse(missing)).toEqual(missing);
   });
 });

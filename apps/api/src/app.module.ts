@@ -11,15 +11,18 @@ import { LoggerModule } from 'nestjs-pino';
 import type { Config } from './core/config/config.js';
 import { ConfigModule } from './core/config/config.module.js';
 import { DatabaseModule } from './core/database/database.module.js';
-import { CodedException, issuesOf } from './core/errors/coded-exception.js';
+import { CodedException, codeOfIssues, issuesOf } from './core/errors/coded-exception.js';
 import { ErrorFilter } from './core/errors/error.filter.js';
 import { HealthModule } from './core/health/health.module.js';
 import { AuditModule } from './modules/audit/audit.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
+import { ChartModule } from './modules/chart/chart.module.js';
 import { CompaniesModule } from './modules/companies/companies.module.js';
+import { DimensionsModule } from './modules/dimensions/dimensions.module.js';
 import { InvitationsModule } from './modules/invitations/invitations.module.js';
 import { MeModule } from './modules/me/me.module.js';
 import { MembersModule } from './modules/members/members.module.js';
+import { RatesModule } from './modules/rates/rates.module.js';
 
 /**
  * The API: the core (configuration, logging, the database, request validation and response
@@ -58,16 +61,20 @@ export class AppModule {
         MembersModule,
         InvitationsModule,
         AuditModule,
+        ChartModule,
+        DimensionsModule,
+        RatesModule,
         AuthModule,
       ],
       providers: [
         // Validates every parameter declared with `{ schema }` (Zod through Standard Schema).
-        // A failure answers 422 `VALIDATION_FAILED` with the failed fields (ADR 0008, S01).
+        // A failure answers 422 `VALIDATION_FAILED` with the failed fields (ADR 0008, S01), or the
+        // one money code its custom issues name (`INVALID_RATE`, `SYP_BEFORE_REDENOMINATION`).
         {
           provide: APP_PIPE,
           useValue: new StandardSchemaValidationPipe({
             exceptionFactory: (issues) =>
-              new CodedException('VALIDATION_FAILED', 'Validation failed', issuesOf(issues)),
+              new CodedException(codeOfIssues(issues), 'Validation failed', issuesOf(issues)),
           }),
         },
         // Shapes responses declared with `@SerializeOptions({ schema })`, dropping unknown fields.

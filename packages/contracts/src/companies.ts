@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { chartTemplateIdSchema } from './chart.js';
 import { companyLedgersSchema } from './money.js';
 
 /** A company's Arabic name, or its optional Latin name: 1–200 characters after trimming. */
@@ -27,7 +28,11 @@ export const reasonSchema = z
 
 export type Reason = z.infer<typeof reasonSchema>;
 
-/** `POST /api/companies`: a new company, whose creator becomes its owner. */
+/**
+ * `POST /api/companies`: a new company, whose creator becomes its owner. `template` is the chart
+ * template applied over the five roots in the creation transaction (S02 rule 1); null keeps the
+ * roots alone, to which a template can be applied later.
+ */
 export const createCompanySchema = z
   .object({
     name: companyNameSchema,
@@ -35,6 +40,7 @@ export const createCompanySchema = z
     ledgers: companyLedgersSchema,
     fiscalYearStartMonth: fiscalYearStartMonthSchema,
     policyNote: policyNoteSchema,
+    template: chartTemplateIdSchema.nullable().default(null),
   })
   .meta({ id: 'CreateCompany', description: 'A new company with its ledger settings' });
 

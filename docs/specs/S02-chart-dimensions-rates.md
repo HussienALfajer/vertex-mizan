@@ -175,7 +175,7 @@ Internal web API under `/api` (S01's access guard, `X-Mizan-Company`, request ID
 | `GET /api/chart/templates` | `accounts.read` | — | the templates (id, version, names, account count) | `COMPANY_NOT_SELECTED` |
 | `POST /api/chart/apply-template` | `accounts.manage` | `{ templateId }` | the tree | `CHART_NOT_EMPTY`, `NOT_FOUND`, `COMPANY_SWITCHED` |
 | `GET /api/chart/statement-lines` | `accounts.read` | — | `STATEMENT_LINES` | — |
-| `GET /api/chart/export` | `accounts.read` | `?format=xlsx\|pdf` | the file | `COMPANY_NOT_SELECTED` |
+| `GET /api/chart/export` | `accounts.read` | `?format=xlsx` (`pdf` joins with the worker's PDF rendering, ADR 0002; owner, 2026-10-27) | the file | `COMPANY_NOT_SELECTED` |
 | `GET /api/account-roles` · `PUT /api/account-roles` | `accounts.read` · `accounts.manage` | — · `{ role, accountId }` | the six roles | `ACCOUNT_ROLE_INVALID`, `NOT_FOUND`, `COMPANY_SWITCHED` |
 | `GET /api/dimension-types` · `POST` · `PATCH /:id` · `POST /:id/archive` · `…/restore` | `dimensions.read` · `dimensions.manage` | `createDimensionTypeSchema`, `updateDimensionTypeSchema` | `dimensionTypeSchema` | `DIMENSION_TYPE_LIMIT`, `DIMENSION_TYPE_IN_USE`, `DIMENSION_CODE_TAKEN`, `NOT_FOUND`, `COMPANY_SWITCHED`, `VALIDATION_FAILED` |
 | `GET /api/dimension-values` | `dimensions.read` | `?typeId&q&includeArchived&cursor` (search by code or name) | a cursor page of `dimensionValueSchema` | `NOT_FOUND` |
@@ -416,7 +416,7 @@ Dimension types: the four built-in types; no account requires contract, departme
   5. In `/rates/calendar`, keep Friday and Saturday off and add a holiday on a Thursday.
   6. In `/rates`, record USD/SYP bulletin 120.0000 on Wednesday 2026-11-04 and market 125.5000 the same day. Ask the rate in force: Thursday (holiday) and Friday answer Wednesday's bulletin; the following Sunday answers `RATE_MISSING`; the market rate on Sunday answers 125.5000.
   7. Record SYP/USD (inverted): `RATE_ORIENTATION`. Record 121.0000 for Wednesday again: asked for a reason; with one, the row supersedes the first and the audit log shows both.
-  8. Export the chart to Excel and PDF; the audit log shows `export.chart`.
+  8. Export the chart to Excel; the audit log shows `export.chart` (PDF joins with the worker's rendering, owner 2026-10-27).
 - **Tests:**
   - API: for every endpoint, success, `401`, `403` (a viewer writing), another company's member (`NOT_FOUND`, nothing changed), `COMPANY_SWITCHED`, `COMPANY_ARCHIVED` on writes, and each documented error code;
   - unit and property tests: the code shape and class for every level; the lock after use for every locked field (database tests as `mizan_app`); `checkLineAgainstChart` for every rule 8 refusal; rule 16 properties (Currencies section) and the market lookup unchanged; template data: every postable account has a statement line fitting its class, roles fit rule 7, codes fit the shape, Arabic and English names present;

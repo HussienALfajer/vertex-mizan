@@ -143,8 +143,8 @@ export const errorCodeSchema = z.enum(errorCodes).meta({ id: 'ErrorCode' });
 
 /**
  * Every error answer of the API (S01): the status, the stable code (absent only on an unexpected
- * server error), an English message for logs and, for `VALIDATION_FAILED`, the fields that failed
- * (paths and messages, never the values sent).
+ * server error), an English message for logs, for `VALIDATION_FAILED` the fields that failed
+ * (paths and messages, never the values sent) and, on some refusals, `details`.
  */
 export const errorResponseSchema = z
   .object({
@@ -154,6 +154,8 @@ export const errorResponseSchema = z
     issues: z
       .array(z.object({ path: z.array(z.union([z.string(), z.number()])), message: z.string() }))
       .optional(),
+    /** Facts a refusal names for its reader, such as the publication day of `RATE_MISSING`. */
+    details: z.record(z.string(), z.string()).optional(),
   })
   .meta({ id: 'ErrorResponse' });
 

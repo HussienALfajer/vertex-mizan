@@ -245,6 +245,8 @@ test.describe('a new company', () => {
       },
       fiscalYearStartMonth: 1,
       policyNote: 'أساس العملة الوظيفية (مثال).',
+      // No chart template until the form offers the choice (S02 PR 3): the five roots alone.
+      template: null,
     });
     expect(switched.seen[0]?.postDataJSON()).toEqual({ companyId: secondCompanyId });
   });

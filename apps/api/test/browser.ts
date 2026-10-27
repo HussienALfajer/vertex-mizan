@@ -49,6 +49,11 @@ export class Browser {
     return this.send('put', path, body, undefined, headers);
   }
 
+  /** A GET whose answer is a file: its body as a `Buffer`, whatever its type. */
+  download(path: string, query?: Record<string, string>): Promise<Response> {
+    return this.send('get', path, undefined, query, {}, true);
+  }
+
   /** The value of a cookie this browser holds. */
   cookie(name: string): string | undefined {
     return this.cookies.get(name);
@@ -64,6 +69,7 @@ export class Browser {
     body?: object,
     query?: Record<string, string>,
     headers: Record<string, string> = {},
+    binary = false,
   ): Promise<Response> {
     let call = request(this.app.getHttpServer())
       [method](path)
@@ -78,6 +84,13 @@ export class Browser {
     if (method !== 'get' && this.companyId) call = call.set('x-mizan-company', this.companyId);
     for (const [name, value] of Object.entries(headers)) call = call.set(name, value);
     if (query) call = call.query(query);
+    if (binary) {
+      call = call.buffer(true).parse((answer, done) => {
+        const chunks: Buffer[] = [];
+        answer.on('data', (chunk: Buffer) => chunks.push(chunk));
+        answer.on('end', () => done(null, Buffer.concat(chunks)));
+      });
+    }
     const response = await (body === undefined ? call : call.send(body));
     this.keep(response);
     return response;
