@@ -330,5 +330,11 @@ describe('the documented refusals of remove and reset-two-factor', () => {
       expect(anonymous.status).toBe(401);
       expect(anonymous.body.code).toBe('UNAUTHENTICATED');
     }
+    // A read naming another company than the session's is refused too (rule 22).
+    const staleRead = await owner.browser.get('/api/members', undefined, {
+      'x-mizan-company': auditor.membershipId,
+    });
+    expect(staleRead.status).toBe(409);
+    expect(staleRead.body.code).toBe('COMPANY_SWITCHED');
   });
 });

@@ -281,6 +281,11 @@ describe('the documented refusals of invitation writes', () => {
       { 'x-mizan-company': invitation.id },
     );
     expect(switched.body.code).toBe('COMPANY_SWITCHED');
+    const staleRead = await owner.browser.get('/api/invitations', undefined, {
+      'x-mizan-company': invitation.id,
+    });
+    expect(staleRead.status).toBe(409);
+    expect(staleRead.body.code).toBe('COMPANY_SWITCHED');
     const [row] = await db
       .select({ revokedAt: invitations.revokedAt })
       .from(invitations)

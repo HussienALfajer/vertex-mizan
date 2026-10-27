@@ -243,6 +243,16 @@ describe('PATCH /api/company', () => {
       .from(companies)
       .where(eq(companies.id, other.id));
     expect(row?.name).toBe('شركة ثانية');
+
+    // A read that names its company is refused after a switch; one that names none answers.
+    const staleRead = await owner.browser.get('/api/company', undefined, {
+      'x-mizan-company': company.id,
+    });
+    expect(staleRead.status).toBe(409);
+    expect(staleRead.body.code).toBe('COMPANY_SWITCHED');
+    const read = await owner.browser.get('/api/company');
+    expect(read.status).toBe(200);
+    expect(read.body.id).toBe(other.id);
   });
 });
 

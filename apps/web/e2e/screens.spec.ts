@@ -1,5 +1,6 @@
 import { ar } from '@vertex-mizan/i18n';
 import { linkToken, newPersonInvitation, notEnrolled, setup, signIns } from './access-mocks';
+import { archivedCompany, archivedOwner, company, companyReads, owner } from './company-mocks';
 import { expect, expectNoPageOverflow, screenshot, test, widths } from './test';
 
 // RTL screenshots of every screen in both themes at each width: the design review evidence.
@@ -135,6 +136,81 @@ for (const colorScheme of ['light', 'dark'] as const) {
           ).toBeVisible();
           await expectNoPageOverflow(page);
           await screenshot(page, testInfo, `account-security-${colorScheme}-${width}`);
+        });
+      });
+
+      test.describe('company screens', () => {
+        test.use({ me: owner, api: companyReads });
+
+        test('companies', async ({ page }, testInfo) => {
+          await page.goto('/companies');
+          await expect(page.getByRole('heading', { level: 1 })).toHaveText(ar.company.list.title);
+          await expect(page.getByRole('cell', { name: 'شركة ثانية', exact: true })).toBeVisible();
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `companies-${colorScheme}-${width}`);
+        });
+
+        test('company switcher', async ({ page }, testInfo) => {
+          await page.goto('/');
+          await page.getByRole('button', { name: new RegExp(ar.company.switcher.open) }).click();
+          await expect(page.getByRole('menu')).toBeVisible();
+          await screenshot(page, testInfo, `switcher-${colorScheme}-${width}`, { fullPage: false });
+        });
+
+        test('new company', async ({ page }, testInfo) => {
+          await page.goto('/companies/new');
+          await expect(page.getByRole('heading', { level: 1 })).toHaveText(ar.company.create.title);
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `new-company-${colorScheme}-${width}`);
+        });
+
+        test('company settings', async ({ page }, testInfo) => {
+          await page.goto('/settings/company');
+          await expect(page.getByRole('heading', { level: 1 })).toHaveText(
+            ar.company.settings.title,
+          );
+          await expect(page.getByLabel(ar.company.fields.name)).toHaveValue(company.name);
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `company-settings-${colorScheme}-${width}`);
+        });
+
+        test('members', async ({ page }, testInfo) => {
+          await page.goto('/settings/members');
+          await expect(page.getByRole('heading', { level: 1 })).toHaveText(ar.members.title);
+          await expect(
+            page.getByRole('cell', { name: 'viewer@example.test', exact: true }),
+          ).toBeVisible();
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `members-${colorScheme}-${width}`);
+        });
+
+        test('audit log', async ({ page }, testInfo) => {
+          await page.goto('/settings/audit');
+          await expect(page.getByRole('heading', { level: 1 })).toHaveText(ar.audit.title);
+          await expect(
+            page.getByRole('cell', { name: ar.audit.actions['company.ledgers_updated'] }),
+          ).toBeVisible();
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `audit-${colorScheme}-${width}`);
+          await page.getByRole('button', { name: ar.audit.table.details }).first().click();
+          await expect(page.getByRole('dialog')).toBeVisible();
+          await screenshot(page, testInfo, `audit-entry-${colorScheme}-${width}`, {
+            fullPage: false,
+          });
+        });
+      });
+
+      test.describe('archived company', () => {
+        test.use({
+          me: archivedOwner,
+          api: { ...companyReads, 'GET /api/company': { status: 200, json: archivedCompany } },
+        });
+
+        test('archived company settings', async ({ page }, testInfo) => {
+          await page.goto('/settings/company');
+          await expect(page.getByText(ar.company.archivedBanner.title)).toBeVisible();
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `company-archived-${colorScheme}-${width}`);
         });
       });
 

@@ -26,6 +26,7 @@ export class AuditController {
     'TWO_FACTOR_REQUIRED',
     'FORBIDDEN',
     'COMPANY_NOT_SELECTED',
+    'COMPANY_SWITCHED',
     'VALIDATION_FAILED',
   )
   async page(

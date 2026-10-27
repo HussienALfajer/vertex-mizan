@@ -29,8 +29,12 @@ export class Browser {
     readonly address = newAddress(),
   ) {}
 
-  get(path: string, query?: Record<string, string>): Promise<Response> {
-    return this.send('get', path, undefined, query);
+  get(
+    path: string,
+    query?: Record<string, string>,
+    headers: Record<string, string> = {},
+  ): Promise<Response> {
+    return this.send('get', path, undefined, query, headers);
   }
 
   post(path: string, body?: object, headers: Record<string, string> = {}): Promise<Response> {

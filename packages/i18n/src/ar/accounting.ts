@@ -1,4 +1,4 @@
-import type { AmountTextError } from '@vertex-mizan/contracts';
+import type { AmountTextError, CurrencyCode } from '@vertex-mizan/contracts';
 
 /** The accounting components' text (ADR 0010 §5); terms from `docs/glossary.md`. */
 export const accounting = {
@@ -18,6 +18,13 @@ export const accounting = {
     header: 'حساب رئيسي',
     blocked: 'حساب موقوف',
   },
+  /** Each currency of the money module's table, on screen (printed SYP: `sypPrintedName`). */
+  currencies: {
+    USD: 'الدولار الأمريكي',
+    SYP: 'الليرة السورية',
+    TRY: 'الليرة التركية',
+    EUR: 'اليورو',
+  } satisfies Record<CurrencyCode, string>,
   /** SYP on printed output (ADR 0007, ADR 0009). */
   sypPrintedName: 'الليرة السورية الجديدة',
   /** Why typed text is not an amount (`AmountTextError` of the money module). */

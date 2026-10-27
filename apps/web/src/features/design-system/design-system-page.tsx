@@ -19,6 +19,9 @@ import {
   CardHeader,
   CardTitle,
   type CellEdit,
+  ChangeList,
+  type DateRange,
+  DateRangeField,
   Field,
   FieldDescription,
   FieldError,
@@ -38,11 +41,13 @@ import {
   PoweredBy,
   QrCode,
   SecretCodeList,
+  SelectField,
   Sheet,
   SheetClose,
   SheetContent,
   SheetTitle,
   SheetTrigger,
+  SwitchField,
   Table,
   TableBody,
   TableCell,
@@ -532,6 +537,53 @@ const sampleBackupCodes = [
   'z3ha-d8rq',
 ];
 
+function ChangesSample() {
+  const c = t.changes;
+  const [range, setRange] = useState<DateRange>({ from: '2026-10-01', to: '' });
+  const [rateType, setRateType] = useState<'market' | 'bulletin'>('market');
+  const [accepts, setAccepts] = useState(true);
+  return (
+    <Card className="grid gap-6 p-6 md:grid-cols-2 [&>*]:min-w-0">
+      <ChangeList
+        aria-label={c.label}
+        beforeLabel={c.before}
+        afterLabel={c.after}
+        changes={[
+          { id: 'role', label: c.role, before: c.viewer, after: c.accountant },
+          { id: 'canClosePeriods', label: c.periods, before: c.no, after: c.yes },
+        ]}
+      />
+      <div className="flex flex-col gap-4">
+        <DateRangeField
+          value={range}
+          onValueChange={setRange}
+          label={c.range}
+          fromLabel={c.from}
+          toLabel={c.to}
+          orderError={c.order}
+        />
+        <SelectField
+          label={c.rateType}
+          description={c.rateHint}
+          value={rateType}
+          options={[
+            { value: 'market', label: c.market },
+            { value: 'bulletin', label: c.bulletin },
+          ]}
+          onValueChange={setRateType}
+        />
+        <SwitchField
+          label={c.accepts}
+          description={c.acceptsHint}
+          checked={rateType === 'market' && accepts}
+          disabled={rateType !== 'market'}
+          onCheckedChange={setAccepts}
+        />
+      </div>
+    </Card>
+  );
+}
+
 function AccessSample() {
   return (
     <Card className="grid gap-6 p-6 md:grid-cols-2 [&>*]:min-w-0">
@@ -671,6 +723,11 @@ export function DesignSystemPage() {
       <Section id="access" title={t.access.title}>
         <p className="text-muted-foreground">{t.access.hint}</p>
         <AccessSample />
+      </Section>
+
+      <Section id="changes" title={t.changes.title}>
+        <p className="text-muted-foreground">{t.changes.hint}</p>
+        <ChangesSample />
       </Section>
 
       <Section id="brand" title={t.brand.title}>

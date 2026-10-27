@@ -1,6 +1,6 @@
 import { queryOptions } from '@tanstack/react-query';
-import { redirect } from '@tanstack/react-router';
-import { type Me, meSchema } from '@vertex-mizan/contracts';
+import { getRouteApi, redirect } from '@tanstack/react-router';
+import { type Me, type MyMembership, meSchema, type Permission } from '@vertex-mizan/contracts';
 import type { RouterContext } from '../routes/__root';
 import { ApiError, api } from './api';
 
@@ -69,4 +69,42 @@ export async function requireEnrolled(args: GuardArgs): Promise<Me> {
     throw redirect({ to: '/two-factor/enrol', search: { redirect: args.location.href } });
   }
   return me;
+}
+
+/** The membership of the session's active company, or `undefined` without one. */
+export function activeMembership(me: Me): MyMembership | undefined {
+  return me.memberships.find((membership) => membership.company.id === me.activeCompanyId);
+}
+
+/** Whether the person holds a permission in the active company: to hide what they cannot do. */
+export function can(me: Me, permission: Permission): boolean {
+  return me.permissions.includes(permission);
+}
+
+/** The company a page works in: the session's active company when the page loaded. */
+export interface CompanyContext {
+  companyId: string;
+  membership: MyMembership;
+}
+
+/**
+ * A page of the active company (S01 rule 20): without one, the person chooses on `/companies`.
+ * The id is kept for the page's life and sent with its writes (rule 22).
+ */
+export function requireCompany(me: Me): CompanyContext {
+  const membership = activeMembership(me);
+  if (!membership) throw redirect({ to: '/companies' });
+  return { companyId: membership.company.id, membership };
+}
+
+/** A page that needs a permission: anyone else goes to the company's first page. */
+export function requirePermission(me: Me, permission: Permission): void {
+  if (!can(me, permission)) throw redirect({ to: '/' });
+}
+
+const companyRoute = getRouteApi('/_app/_company');
+
+/** The company a page of `/_app/_company` works in, with the person as the page loaded them. */
+export function useCompany(): CompanyContext & { me: Me } {
+  return companyRoute.useRouteContext();
 }

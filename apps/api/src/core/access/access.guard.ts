@@ -85,8 +85,14 @@ export class AccessGuard implements CanActivate {
       if (!rule.permissions.every((permission) => held.includes(permission))) {
         throw new CodedException('FORBIDDEN', 'The role lacks the permission');
       }
+      const shown = request.get(COMPANY_HEADER);
+      // A write always names the company its page shows (rule 22); a read may, so that a switch
+      // in another tab refuses it instead of answering with the other company's data.
+      if (shown !== undefined && shown !== company.id) {
+        throw new CodedException('COMPANY_SWITCHED', 'The active company changed');
+      }
       if (!SAFE_METHODS.has(request.method)) {
-        if (request.get(COMPANY_HEADER) !== company.id) {
+        if (shown !== company.id) {
           throw new CodedException('COMPANY_SWITCHED', 'The active company changed');
         }
         const whileArchived = this.reflector.get<boolean | undefined>(WHILE_ARCHIVED, handler);

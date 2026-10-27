@@ -64,7 +64,13 @@ export class CompanyController {
   @CompanyRoute('company.read')
   @SerializeOptions({ schema: companySchema })
   @ApiOkResponse({ description: 'The active company', standardSchema: companySchema })
-  @ApiErrors('UNAUTHENTICATED', 'TWO_FACTOR_REQUIRED', 'FORBIDDEN', 'COMPANY_NOT_SELECTED')
+  @ApiErrors(
+    'UNAUTHENTICATED',
+    'TWO_FACTOR_REQUIRED',
+    'FORBIDDEN',
+    'COMPANY_NOT_SELECTED',
+    'COMPANY_SWITCHED',
+  )
   async get(@Access() access: RequestAccess): Promise<Company> {
     return this.companies.get(inCompany(access));
   }

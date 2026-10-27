@@ -27,6 +27,12 @@ export function errorText(error: unknown): string {
 
 interface Request<T> {
   body?: unknown;
+  /**
+   * The company the page shows, sent as `X-Mizan-Company` on every company request (S01 rule 22):
+   * the API refuses it with `COMPANY_SWITCHED` when another tab switched the session's company,
+   * so a write never lands in, and a read never answers for, another company.
+   */
+  company?: string;
   /** The answer's schema; without one the answer is ignored (204). */
   schema?: { parse(value: unknown): T };
 }
@@ -38,7 +44,7 @@ interface Request<T> {
 export async function api<T = void>(
   method: 'GET' | 'POST' | 'PATCH' | 'PUT',
   path: string,
-  { body, schema }: Request<T> = {},
+  { body, company, schema }: Request<T> = {},
 ): Promise<T> {
   const response = await fetch(`/api${path}`, {
     method,
@@ -46,6 +52,7 @@ export async function api<T = void>(
     headers: {
       accept: 'application/json',
       ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+      ...(company === undefined ? {} : { 'x-mizan-company': company }),
     },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
@@ -59,4 +66,14 @@ async function refusal(response: Response): Promise<ApiError> {
   return parsed.success
     ? new ApiError(response.status, parsed.data.code, parsed.data.issues)
     : new ApiError(response.status, undefined, undefined);
+}
+
+/** An answer that is a list: each item parsed with the contract's schema of one item. */
+export function listOf<T>(item: { parse(value: unknown): T }): { parse(value: unknown): T[] } {
+  return {
+    parse: (value) => {
+      if (!Array.isArray(value)) throw new TypeError('Expected a list');
+      return value.map((entry) => item.parse(entry));
+    },
+  };
 }
