@@ -59,8 +59,6 @@ export function CompanySettingsPage() {
         <FormError error={company.error} />
       ) : (
         <Settings
-          // A saved change gives the forms their new starting values.
-          key={company.dataUpdatedAt}
           company={company.data}
           canEdit={can(me, 'company.settings') && company.data.archived === null}
           canArchive={can(me, 'company.archive')}
@@ -358,9 +356,12 @@ function Membership() {
         <span className="text-muted-foreground">{ar.company.list.role}: </span>
         {ar.roles[membership.role]}
       </p>
-      <Button variant="outline" className="w-fit" onClick={() => setOpen(true)}>
-        {t.membership.leave}
-      </Button>
+      {/* An archived company refuses every write, leaving too (rule 12). */}
+      {!membership.company.archived && (
+        <Button variant="outline" className="w-fit" onClick={() => setOpen(true)}>
+          {t.membership.leave}
+        </Button>
+      )}
       <ReasonDialog
         open={open}
         onOpenChange={setOpen}

@@ -93,8 +93,9 @@ function CommandPalette({
         data-slot="command-palette-trigger"
       >
         <SearchIcon aria-hidden="true" />
-        {labels.open}
-        <Kbd shortcut={keymap.commandPalette} platform={platform} />
+        {/* On phones only the icon shows, leaving the top bar to the page; no keyboard, no keys. */}
+        <span className="max-sm:sr-only">{labels.open}</span>
+        <Kbd shortcut={keymap.commandPalette} platform={platform} className="max-sm:hidden" />
       </DialogPrimitive.Trigger>
       <DialogPrimitive.Portal>
         <DialogPrimitive.Backdrop className={cn('fixed inset-0 z-50 bg-overlay', overlayMotion)} />

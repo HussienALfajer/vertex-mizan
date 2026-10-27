@@ -16,7 +16,6 @@ import {
   Badge,
   Button,
   Callout,
-  Card,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -92,34 +91,32 @@ export function MembersPage() {
       ) : members.data.length === 0 ? (
         <EmptyState title={t.emptyTitle} />
       ) : (
-        <Card className="min-w-0 overflow-hidden">
-          <Table aria-label={t.table.label}>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t.table.name}</TableHead>
-                <TableHead>{t.table.email}</TableHead>
-                <TableHead>{t.table.role}</TableHead>
-                <TableHead>{t.table.periods}</TableHead>
-                <TableHead>{t.table.twoFactor}</TableHead>
-                <TableHead>{t.table.joined}</TableHead>
-                <TableHead>
-                  <span className="sr-only">{t.table.actions}</span>
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {members.data.map((member) => (
-                <MemberRow
-                  key={member.id}
-                  member={member}
-                  self={member.userId === me.person.id}
-                  manage={manage}
-                  onAction={(kind) => setAction({ kind, member })}
-                />
-              ))}
-            </TableBody>
-          </Table>
-        </Card>
+        <Table aria-label={t.table.label}>
+          <TableHeader>
+            <TableRow>
+              <TableHead>{t.table.name}</TableHead>
+              <TableHead>{t.table.email}</TableHead>
+              <TableHead>{t.table.role}</TableHead>
+              <TableHead>{t.table.periods}</TableHead>
+              <TableHead>{t.table.twoFactor}</TableHead>
+              <TableHead>{t.table.joined}</TableHead>
+              <TableHead>
+                <span className="sr-only">{t.table.actions}</span>
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {members.data.map((member) => (
+              <MemberRow
+                key={member.id}
+                member={member}
+                self={member.userId === me.person.id}
+                manage={manage}
+                onAction={(kind) => setAction({ kind, member })}
+              />
+            ))}
+          </TableBody>
+        </Table>
       )}
       <Invitations manage={manage} />
       <Dialogs action={action} onClose={() => setAction(null)} />
@@ -231,34 +228,32 @@ function Invitations({ manage }: { manage: boolean }) {
       ) : invitations.data.length === 0 ? (
         <EmptyState title={t.invitations.empty} />
       ) : (
-        <Card className="min-w-0 overflow-hidden">
-          <Table aria-label={t.invitations.label}>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t.invitations.email}</TableHead>
-                <TableHead>{t.invitations.role}</TableHead>
-                <TableHead>{t.invitations.invitedBy}</TableHead>
-                <TableHead>{t.invitations.expires}</TableHead>
-                {manage && (
-                  <TableHead>
-                    <span className="sr-only">{t.table.actions}</span>
-                  </TableHead>
-                )}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {invitations.data.map((invitation) => (
-                <InvitationRow
-                  key={invitation.id}
-                  invitation={invitation}
-                  manage={manage}
-                  revoking={revoke.isPending && revoke.variables === invitation.id}
-                  onRevoke={() => revoke.mutate(invitation.id)}
-                />
-              ))}
-            </TableBody>
-          </Table>
-        </Card>
+        <Table aria-label={t.invitations.label}>
+          <TableHeader>
+            <TableRow>
+              <TableHead>{t.invitations.email}</TableHead>
+              <TableHead>{t.invitations.role}</TableHead>
+              <TableHead>{t.invitations.invitedBy}</TableHead>
+              <TableHead>{t.invitations.expires}</TableHead>
+              {manage && (
+                <TableHead>
+                  <span className="sr-only">{t.table.actions}</span>
+                </TableHead>
+              )}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {invitations.data.map((invitation) => (
+              <InvitationRow
+                key={invitation.id}
+                invitation={invitation}
+                manage={manage}
+                revoking={revoke.isPending && revoke.variables === invitation.id}
+                onRevoke={() => revoke.mutate(invitation.id)}
+              />
+            ))}
+          </TableBody>
+        </Table>
       )}
     </section>
   );

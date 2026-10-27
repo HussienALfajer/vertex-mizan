@@ -10,6 +10,7 @@ import {
   cn,
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -197,7 +198,9 @@ function TopBar({ me }: { me: Me | null | undefined }) {
         </Sheet>
         <VertexMizanMark className="w-6 text-primary" label={common.productName} />
       </div>
-      <div className="flex min-w-0 items-center gap-2">{me && <CompanySwitcher me={me} />}</div>
+      <div className="flex min-w-0 flex-1 items-center gap-2">
+        {me && <CompanySwitcher me={me} />}
+      </div>
       <div className="flex shrink-0 items-center gap-2">
         <CommandPalette commands={commands} labels={ar.commandPalette} />
         <ThemeToggle labels={common.theme} />
@@ -256,7 +259,7 @@ function CompanySwitcher({ me }: { me: Me }) {
         render={
           <Button
             variant="outline"
-            className="max-w-44 min-w-0 sm:max-w-72"
+            className="max-w-72 min-w-0 shrink"
             aria-label={`${switcher.open}: ${active?.company.name ?? switcher.none}`}
             loading={open.isPending}
           />
@@ -272,25 +275,27 @@ function CompanySwitcher({ me }: { me: Me }) {
         <ChevronDownIcon aria-hidden="true" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="max-w-80">
-        <DropdownMenuLabel>{switcher.label}</DropdownMenuLabel>
-        {me.memberships.map((membership) => {
-          const current = membership.company.id === me.activeCompanyId;
-          return (
-            <DropdownMenuItem
-              key={membership.membershipId}
-              onClick={() => {
-                if (!current) open.mutate(membership.company.id);
-              }}
-            >
-              <CheckIcon aria-hidden="true" className={cn(!current && 'invisible')} />
-              <span className="flex min-w-0 flex-1 flex-col">
-                <bdi className="truncate">{membership.company.name}</bdi>
-                <span className="text-xs text-muted-foreground">{ar.roles[membership.role]}</span>
-              </span>
-              {membership.company.archived && <Badge tone="warning">{switcher.archived}</Badge>}
-            </DropdownMenuItem>
-          );
-        })}
+        <DropdownMenuGroup>
+          <DropdownMenuLabel>{switcher.label}</DropdownMenuLabel>
+          {me.memberships.map((membership) => {
+            const current = membership.company.id === me.activeCompanyId;
+            return (
+              <DropdownMenuItem
+                key={membership.membershipId}
+                onClick={() => {
+                  if (!current) open.mutate(membership.company.id);
+                }}
+              >
+                <CheckIcon aria-hidden="true" className={cn(!current && 'invisible')} />
+                <span className="flex min-w-0 flex-1 flex-col">
+                  <bdi className="truncate">{membership.company.name}</bdi>
+                  <span className="text-xs text-muted-foreground">{ar.roles[membership.role]}</span>
+                </span>
+                {membership.company.archived && <Badge tone="warning">{switcher.archived}</Badge>}
+              </DropdownMenuItem>
+            );
+          })}
+        </DropdownMenuGroup>
         <DropdownMenuSeparator />
         <DropdownMenuItem render={<Link to="/companies" />}>
           <BuildingIcon aria-hidden="true" />

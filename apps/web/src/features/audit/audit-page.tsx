@@ -156,44 +156,42 @@ export function AuditPage() {
         <EmptyState title={t.empty} />
       ) : (
         <>
-          <Card className="min-w-0 overflow-hidden">
-            <Table aria-label={t.table.label}>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{t.table.time}</TableHead>
-                  <TableHead>{t.table.person}</TableHead>
-                  <TableHead>{t.table.action}</TableHead>
-                  <TableHead>{t.table.entity}</TableHead>
-                  <TableHead>{t.table.reason}</TableHead>
-                  <TableHead>
-                    <span className="sr-only">{t.table.details}</span>
-                  </TableHead>
+          <Table aria-label={t.table.label}>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{t.table.time}</TableHead>
+                <TableHead>{t.table.person}</TableHead>
+                <TableHead>{t.table.action}</TableHead>
+                <TableHead>{t.table.entity}</TableHead>
+                <TableHead>{t.table.reason}</TableHead>
+                <TableHead>
+                  <span className="sr-only">{t.table.details}</span>
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((entry) => (
+                <TableRow key={entry.id}>
+                  <TableCell className="whitespace-nowrap">
+                    {formatDateTime(entry.createdAt)}
+                  </TableCell>
+                  <TableCell>
+                    <bdi>{entry.actorName}</bdi>
+                  </TableCell>
+                  <TableCell>{t.actions[entry.action]}</TableCell>
+                  <TableCell>{auditEntityLabel(entry.entityType)}</TableCell>
+                  <TableCell className="max-w-48 truncate" title={entry.reason ?? undefined}>
+                    {entry.reason ? <bdi>{entry.reason}</bdi> : t.detail.none}
+                  </TableCell>
+                  <TableCell className="text-end">
+                    <Button variant="outline" size="sm" onClick={() => setOpen(entry)}>
+                      {t.table.details}
+                    </Button>
+                  </TableCell>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rows.map((entry) => (
-                  <TableRow key={entry.id}>
-                    <TableCell className="whitespace-nowrap">
-                      {formatDateTime(entry.createdAt)}
-                    </TableCell>
-                    <TableCell>
-                      <bdi>{entry.actorName}</bdi>
-                    </TableCell>
-                    <TableCell>{t.actions[entry.action]}</TableCell>
-                    <TableCell>{auditEntityLabel(entry.entityType)}</TableCell>
-                    <TableCell className="max-w-48 truncate" title={entry.reason ?? undefined}>
-                      {entry.reason ? <bdi>{entry.reason}</bdi> : t.detail.none}
-                    </TableCell>
-                    <TableCell className="text-end">
-                      <Button variant="outline" size="sm" onClick={() => setOpen(entry)}>
-                        {t.table.details}
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </Card>
+              ))}
+            </TableBody>
+          </Table>
           {entries.hasNextPage && (
             <Button
               variant="outline"

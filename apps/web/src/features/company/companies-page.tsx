@@ -5,7 +5,6 @@ import { ar } from '@vertex-mizan/i18n';
 import {
   Badge,
   Button,
-  Card,
   EmptyState,
   PageHeader,
   Skeleton,
@@ -53,30 +52,28 @@ export function CompaniesPage() {
           action={create}
         />
       ) : (
-        <Card className="min-w-0 overflow-hidden">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{ar.company.fields.name}</TableHead>
-                <TableHead>{t.role}</TableHead>
-                <TableHead>
-                  <span className="sr-only">{t.open}</span>
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {me.data.memberships.map((membership) => (
-                <CompanyRow
-                  key={membership.membershipId}
-                  membership={membership}
-                  active={membership.company.id === me.data?.activeCompanyId}
-                  opening={open.isPending && open.variables === membership.company.id}
-                  onOpen={() => open.mutate(membership.company.id)}
-                />
-              ))}
-            </TableBody>
-          </Table>
-        </Card>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>{ar.company.fields.name}</TableHead>
+              <TableHead>{t.role}</TableHead>
+              <TableHead>
+                <span className="sr-only">{t.open}</span>
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {me.data.memberships.map((membership) => (
+              <CompanyRow
+                key={membership.membershipId}
+                membership={membership}
+                active={membership.company.id === me.data?.activeCompanyId}
+                opening={open.isPending && open.variables === membership.company.id}
+                onOpen={() => open.mutate(membership.company.id)}
+              />
+            ))}
+          </TableBody>
+        </Table>
       )}
     </>
   );
