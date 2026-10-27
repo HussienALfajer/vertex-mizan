@@ -24,7 +24,7 @@ Copy and adapt; never import across repositories.
 | `docs/specs/<id>-<name>.md` | Detailed spec per feature group, written before implementation |
 | `docs/open-questions.md` | Unresolved decisions. Never guess an answer to one: ask. |
 | `docs/research/` | Market, legal and currency research with confidence labels; the approved working method |
-| `docs/workflow.md` | How work is run with Claude Code |
+| `docs/workflow.md` | How work is run with Claude Code, locally and in cloud sessions |
 | `docs/testing.md` | How checks run: `pnpm verify`, what runs locally and what in CI, the test databases, the E2E rules, the measurements |
 | `<app or package>/CLAUDE.md` | Local rules and the pattern to copy; each arrives with its folder |
 

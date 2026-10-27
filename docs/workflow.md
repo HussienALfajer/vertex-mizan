@@ -53,6 +53,18 @@ They run in parallel, in fresh contexts, and report blocking findings only. The 
 
 After a spec's backend PR is merged, its screens can be built in a separate session. Two sessions never edit the same files. Shared packages (`contracts`, `ledger`, `db`, `ui`) change only in the backend PR or in one session at a time. Hub's side of the integration is built in Hub's own sessions against ADR 0006.
 
+## Cloud sessions
+
+Claude Code cloud sessions run in the shared cloud environment `vertex`, which this repository does not configure. It provides Node 24 (the default), Corepack with pnpm 12, Docker with the `postgres:17` and `axllent/mailpit` images, Playwright Chromium in `/opt/ms-playwright`, full network access, and the command `vertex-session [repo-dir]`.
+
+- **Setup.** A SessionStart hook runs `scripts/cloud-session.sh`. It does nothing outside the cloud (`CLAUDE_CODE_REMOTE` is not `true`); in `vertex` it runs `vertex-session "$CLAUDE_PROJECT_DIR"`, which starts PostgreSQL 17 and Mailpit (SMTP 1025, inbox 8025), runs `pnpm install --frozen-lockfile`, creates `.env` from `.env.example` if it is missing, runs `pnpm db:setup-local` and `pnpm db:migrate`, and installs the web app's Chromium. It prints `Vertex cloud session ready: …` and any problems; the full log is `/tmp/vertex-session.log`. It always exits 0, so read its output before relying on the database.
+- **Port.** `compose.yaml` is not used in the cloud. PostgreSQL listens on `127.0.0.1:5432` (superuser `postgres`/`postgres`) instead of `55417`: `vertex-session` rewrites the port in every URL of `.env`, sets the admin password, and generates `AUTH_SECRET` when it still has the example value. Everything else reads `.env` as it does locally.
+- **Several repositories.** A session with more than one repository does not run repository hooks: run `vertex-session <path-to-vertex-mizan>` yourself before the first check.
+- **OpenAPI guard.** `pnpm check:openapi` needs oasdiff: `RUNNER_TEMP=$HOME/.tools bash scripts/install-oasdiff.sh`, then `export OASDIFF=$HOME/.tools/oasdiff/oasdiff`.
+- **Reference repositories.** `D:\vertex-hub`, `D:\vertex-food`, `D:\vertex-shifa` and `D:\vertex-digital` (`AGENTS.md`, `.claude/settings.json`) are not in the cloud. Add the ones a task needs to the session; they stay read-only.
+- **Pull requests.** `gh pr create` is refused in the cloud (GitHub's GraphQL API is blocked): push the branch and open the PR with the Create PR button.
+- **What stays local.** Real secrets (the cloud `.env` holds only generated and example values) and the owner's manual acceptance test in the running app.
+
 ## How the instructions are layered
 
 | Layer | Files | Loaded |
@@ -63,7 +75,7 @@ After a spec's backend PR is merged, its screens can be built in a separate sess
 | Product, decisions, scenarios | `docs/product/`, `docs/decisions/`, `docs/specs/`, `docs/scenarios/`, `docs/glossary.md` | On demand |
 | Workflows | `.claude/skills/`: `spec`, `posting-rule`, `feature-slice`, `db-migration` | When invoked |
 | Subagents | `.claude/agents/`: `checker` (Haiku 5.5, runs `pnpm verify` and returns its summary), `reviewer` and `accountant-reviewer` (Opus 5.5), `explorer` (Sonnet 5.5) | In their own context; only their summary returns |
-| Enforcement | Database guards, hooks (Biome, git guard, test guard, session start, read-only git for reviewers), convention, invariant and property tests, the scenario book, the migration guard check, CI, gitleaks | Always, without costing context |
+| Enforcement | Database guards, hooks (Biome, git guard, test guard, session start, cloud session setup, read-only git for reviewers), convention, invariant and property tests, the scenario book, the migration guard check, CI, gitleaks | Always, without costing context |
 | Guard rails | `.claude/settings.json`: model and effort, permissions, denied reads, read-only references | Always |
 
 ## Models and effort by task
