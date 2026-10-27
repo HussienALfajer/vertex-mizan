@@ -10,7 +10,10 @@
 // `409 IDEMPOTENCY_CONFLICT` from a posting), an optional response field removed (Hub reads it when
 // present), an `operationId` or a component schema removed (generated clients and the JSON Schemas
 // Hub imports name them), and a route removed even after its deprecation (ADR 0006: `/v1` only
-// grows; a change of meaning is a new version).
+// grows; a change of meaning is a new version). It also lowers one warning to `info`: a value added
+// to an enum in an answer (an error code, an audit action, an event type appended to its list).
+// ADR 0006 counts that as additive, and clients accept values they do not know (owner,
+// 2026-10-27). A value removed from such an enum still fails.
 //
 // Needs the oasdiff binary: on the PATH, or named by `OASDIFF`. CI installs the pinned release with
 // `scripts/install-oasdiff.sh`.

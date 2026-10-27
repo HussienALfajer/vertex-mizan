@@ -77,7 +77,8 @@ A `.changed` event carries the full new state. Mizan reverses what it posted for
 - The pre-close checklist requires every day of the month to be reconciled.
 
 ### Versioning
-- **Within `/v1`, changes are additive only:** new optional fields, new event types.
+- **Within `/v1`, changes are additive only:** new optional fields, new event types, and new values appended to an enum in an answer (error codes, audit actions, event types).
+- **Clients accept values they do not know** in an enum of an answer: they treat an unknown error code by its HTTP status and show or skip an unknown action or type, never fail on it (owner, 2026-10-27). A value is never removed or renamed.
 - A breaking change needs `/v2` and an overlap period, or a new event `version` that Mizan accepts beside the old one.
 - CI fails on a breaking change to the published OpenAPI document.
 - **Stable error codes** are listed in `packages/contracts` and never reused.

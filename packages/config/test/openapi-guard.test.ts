@@ -95,6 +95,17 @@ describe.runIf(available || process.env.CI)('openapi guard', () => {
     expect(guard(PUBLISHED, added).status).toBe(0);
   });
 
+  // ADR 0006: an appended error code, audit action or event type is additive (owner, 2026-10-27).
+  it('passes a value added to an enum in an answer, and fails when one is removed', () => {
+    const more = document({
+      type: 'object',
+      properties: { status: { type: 'string', enum: ['ok', 'error', 'degraded'] } },
+      required: ['status'],
+    });
+    expect(guard(PUBLISHED, more).status).toBe(0);
+    expect(guard(more, PUBLISHED).status).toBe(1);
+  });
+
   it('fails when a route disappears', () => {
     const withRoute = document(
       { type: 'object', properties: { status }, required: ['status'] },
