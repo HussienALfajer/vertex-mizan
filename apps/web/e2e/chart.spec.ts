@@ -109,7 +109,8 @@ test.describe('the chart', () => {
       statementLine: 'bs.cash',
       currency: 'EUR',
       isControl: false,
-      isMonetary: false,
+      // Q12: a currency restriction turns the monetary flag on.
+      isMonetary: true,
       requiredDimensionTypeIds: [],
     });
     expect(create.seen[0]?.headers()['x-mizan-company']).toBe(companyId);
