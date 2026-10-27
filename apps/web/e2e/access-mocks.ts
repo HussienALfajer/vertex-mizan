@@ -1,10 +1,11 @@
+import { randomBytes } from 'node:crypto';
 import type { InvitationLookup, Me, SignInPage, TwoFactorSetup } from '@vertex-mizan/contracts';
 import { signedIn } from './test';
 
 /** Synthetic answers of the access API (S01) shared by the screen and flow specs. */
 
-/** A link token as the API mints it (base64url, 43 characters). */
-export const linkToken = 'Zk3pQ9vX2mB7tR4wY8nC1sD6fH0jL5aE-_uKoGiTqWe';
+/** A link token as the API mints it (base64url, 43 characters), made at run time: no literal. */
+export const linkToken = randomBytes(32).toString('base64url');
 
 export const notEnrolled: Me = {
   ...signedIn,
