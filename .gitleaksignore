@@ -3,3 +3,6 @@
 # The API tests' synthetic AUTH_SECRET literal of commit d3fac62 (S01 PR 2); the tests now
 # generate the key at run time (apps/api/test/app.ts, TEST_AUTH_SECRET).
 d3fac628bc445c403527c1b1fc6c8cf8b87d85fa:apps/api/test/app.ts:generic-api-key:15
+# The E2E mocks' synthetic link token literal of commit 6d0598c (S01 PR 3); the mocks now make it
+# at run time (apps/web/e2e/access-mocks.ts, linkToken).
+6d0598c7802d08e012e4264d4b0e28c1475fa7fd:apps/web/e2e/access-mocks.ts:generic-api-key:7

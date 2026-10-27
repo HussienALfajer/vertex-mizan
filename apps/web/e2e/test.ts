@@ -1,5 +1,5 @@
-import { test as base, expect, type Page, type TestInfo } from '@playwright/test';
-import type { HealthResponse } from '@vertex-mizan/contracts';
+import { test as base, expect, type Page, type Request, type TestInfo } from '@playwright/test';
+import type { ErrorCode, HealthResponse, Me } from '@vertex-mizan/contracts';
 
 /*
  * The `test` every spec uses: Playwright's, with the API mocked for the page and failing a test
@@ -15,9 +15,51 @@ export const healthy: HealthMock = {
   body: { status: 'ok', checks: { database: 'up' }, timestamp: '2026-10-21T09:30:00.000Z' },
 };
 
-export const test = base.extend<{ health: HealthMock }>({
+/** A synthetic person with two-factor enrolled, owner of one synthetic company. */
+export const signedIn: Me = {
+  person: {
+    id: '01900000-0000-7000-8000-000000000001',
+    name: 'مستخدم تجريبي',
+    email: 'owner@example.test',
+    twoFactorEnabled: true,
+  },
+  memberships: [
+    {
+      membershipId: '01900000-0000-7000-8000-000000000002',
+      company: {
+        id: '01900000-0000-7000-8000-000000000003',
+        name: 'شركة اختبار',
+        nameLatin: 'Test Company',
+        archived: false,
+      },
+      role: 'owner',
+      canClosePeriods: true,
+    },
+  ],
+  activeCompanyId: '01900000-0000-7000-8000-000000000003',
+  permissions: ['company.read'],
+};
+
+/** An API answer: a status and a JSON body (none for 204). */
+export interface ApiReply {
+  status: number;
+  json?: unknown;
+}
+
+/** Answers keyed by `METHOD /api/path` (no query string); a function sees the request. */
+export type ApiMocks = Record<string, ApiReply | ((request: Request) => ApiReply)>;
+
+/** The API's refusal with a stable code, as `errorResponseSchema` describes it. */
+export function refusal(status: number, code: ErrorCode): ApiReply {
+  return { status, json: { statusCode: status, code, message: code } };
+}
+
+export const test = base.extend<{ health: HealthMock; me: Me | null; api: ApiMocks }>({
   health: [healthy, { option: true }],
-  page: async ({ page, health }, use) => {
+  // `GET /api/me`: the person, or `null` for no session (401). An `api` mock of it wins.
+  me: [signedIn, { option: true }],
+  api: [{}, { option: true }],
+  page: async ({ page, health, me, api }, use) => {
     const failures: string[] = [];
     page.on('pageerror', (error) => failures.push(`Page error: ${error.message}`));
     page.on('console', (message) => {
@@ -27,7 +69,19 @@ export const test = base.extend<{ health: HealthMock }>({
     });
     await page.route('**/api/**', async (route) => {
       const url = new URL(route.request().url());
-      if (route.request().method() === 'GET' && url.pathname === '/api/health') {
+      const key = `${route.request().method()} ${url.pathname}`;
+      const mock = api[key];
+      if (mock) {
+        const reply = typeof mock === 'function' ? mock(route.request()) : mock;
+        return reply.json === undefined
+          ? route.fulfill({ status: reply.status })
+          : route.fulfill({ status: reply.status, json: reply.json });
+      }
+      if (key === 'GET /api/me') {
+        const reply = me ? { status: 200, json: me } : refusal(401, 'UNAUTHENTICATED');
+        return route.fulfill({ status: reply.status, json: reply.json });
+      }
+      if (key === 'GET /api/health') {
         if (health === 'unreachable') return route.abort('connectionrefused');
         return route.fulfill({ status: health.status, json: health.body });
       }

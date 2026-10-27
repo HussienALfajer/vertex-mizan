@@ -4,3 +4,5 @@ api-operation-id-removed ERR
 api-schema-removed ERR
 api-removed-with-deprecation ERR
 api-path-removed-with-deprecation ERR
+response-property-enum-value-added INFO
+response-property-enum-value-removed ERR

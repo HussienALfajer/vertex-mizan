@@ -316,6 +316,42 @@ describe('sessions', () => {
   });
 });
 
+describe('other sessions', () => {
+  it('end with a fresh code, keeping this one and other people’s', async () => {
+    const { browser, person } = await signedInPerson(app, db);
+    const other = new Browser(app);
+    await signIn(other, person);
+    const someoneElse = await signedInPerson(app, db);
+    await db
+      .update(sessions)
+      .set({ reauthenticatedAt: new Date(Date.now() - 6 * 60 * 1000) })
+      .where(eq(sessions.userId, person.id));
+    const stale = await browser.post('/api/me/sessions/revoke-others');
+    expect(stale.body.code).toBe('REAUTHENTICATION_REQUIRED');
+    expect((await other.get('/api/me')).status).toBe(200);
+    await reauthenticate(browser, person);
+    expect((await browser.post('/api/me/sessions/revoke-others')).status).toBe(204);
+    expect((await browser.get('/api/me')).status).toBe(200);
+    expect((await other.get('/api/me')).status).toBe(401);
+    expect((await someoneElse.browser.get('/api/me')).status).toBe(200);
+    const [entry] = await db
+      .select({ details: platformAuditEntries.details })
+      .from(platformAuditEntries)
+      .where(
+        and(
+          eq(platformAuditEntries.actorUserId, person.id),
+          eq(platformAuditEntries.action, 'user.other_sessions_revoked'),
+        ),
+      );
+    expect(entry?.details).toEqual({ sessionsEnded: 1 });
+  });
+
+  it('refuse without a session', async () => {
+    const answer = await new Browser(app).post('/api/me/sessions/revoke-others');
+    expect(answer.status).toBe(401);
+  });
+});
+
 describe('passwords', () => {
   it('change with the current one and a fresh code, ending every session', async () => {
     const { browser, person } = await signedInPerson(app, db);

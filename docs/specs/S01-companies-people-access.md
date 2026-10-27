@@ -57,7 +57,7 @@ One role per membership (owner, 2026-10-26).
 ### Rules of the guard
 - A global guard in `apps/api` fails closed: every route declares exactly one access decorator — `@Public()`, `@SignedIn()` (a person, no company), or `@CompanyRoute(...permissions)` (a person in their active company). S05 adds `@ApiClientRoute(...scopes)`. An architecture test fails on a route without one.
 - `@CompanyRoute` resolves the session's active company, checks the membership is active and holds every permission, and runs the handler inside `withCompany(db, activeCompanyId, …)`. The company never comes from the request.
-- Sensitive actions also declare `@Reauthenticated()`: a fresh authenticator or backup code within the last 5 minutes (`REAUTHENTICATION_REQUIRED` otherwise). They are: changing ledger settings, archiving or restoring, inviting, changing a role or the period permission, removing a member, resetting a member's two-factor, regenerating one's own backup codes, changing one's password.
+- Sensitive actions also declare `@Reauthenticated()`: a fresh authenticator or backup code within the last 5 minutes (`REAUTHENTICATION_REQUIRED` otherwise). They are: changing ledger settings, archiving or restoring, inviting, changing a role or the period permission, removing a member, resetting a member's two-factor, regenerating one's own backup codes, changing one's password, signing out of one's other sessions.
 
 ## Data
 
@@ -166,6 +166,7 @@ Internal web API under `/api` (not `/v1`, which is the integration contract of A
 | `GET /api/me` | `@SignedIn` | — | `meSchema`: person, two-factor state, memberships (company, role, archived), active company, effective permissions there | `UNAUTHENTICATED` |
 | `GET /api/me/sign-ins` | `@SignedIn` | cursor | own platform audit entries | `UNAUTHENTICATED` |
 | `POST /api/me/password` | `@SignedIn` `@Reauthenticated` | `{ currentPassword, newPassword }` | `204` | `INVALID_CREDENTIALS`, `REAUTHENTICATION_REQUIRED`, `VALIDATION_FAILED` |
+| `POST /api/me/sessions/revoke-others` | `@SignedIn` `@Reauthenticated` | — | `204`: every other session of the person ends, this one stays (owner, 2026-10-27) | `REAUTHENTICATION_REQUIRED` |
 | `POST /api/session/company` | `@SignedIn` | `{ companyId }` | `meSchema` | `NOT_FOUND` (not a member), `TWO_FACTOR_REQUIRED` |
 | `POST /api/companies` | `@SignedIn` | `createCompanySchema` | the company | `TWO_FACTOR_REQUIRED`, `VALIDATION_FAILED` |
 | `GET /api/company` | `company.read` | — | `companySchema` (profile, `companyLedgersSchema`, fiscal year start, policy note, `booksStarted`, archived) | `COMPANY_NOT_SELECTED` |
@@ -253,7 +254,7 @@ Tens of people and companies in phase 1; an accounting office later holds dozens
 - Dates and times in Damascus time with Latin digits (`apps/web/src/lib/format.ts`); currency codes with their Arabic names from the money module.
 
 ## Audit
-Rules 23–26. Platform actions: `user.signed_in`, `user.sign_in_failed`, `user.signed_out`, `user.password_reset_requested`, `user.password_changed`, `user.two_factor_enrolled`, `user.backup_code_used`, `user.backup_codes_regenerated`, `company.created`, `user.two_factor_reset` (server command). Company actions: `company.updated`, `company.ledgers_updated`, `company.policy_note_updated`, `company.archived`, `company.restored`, `invitation.created`, `invitation.revoked`, `invitation.accepted`, `membership.created`, `membership.updated`, `membership.removed`, `membership.left`, `membership.two_factor_reset`, `session.company_entered`, `audit.viewed`; later specs add `export.*` and `integrity.checked`.
+Rules 23–26. Platform actions: `user.signed_in`, `user.sign_in_failed`, `user.signed_out`, `user.password_reset_requested`, `user.password_changed`, `user.two_factor_enrolled`, `user.backup_code_used`, `user.backup_codes_regenerated`, `company.created`, `user.two_factor_reset` (server command), `user.other_sessions_revoked`. Company actions: `company.updated`, `company.ledgers_updated`, `company.policy_note_updated`, `company.archived`, `company.restored`, `invitation.created`, `invitation.revoked`, `invitation.accepted`, `membership.created`, `membership.updated`, `membership.removed`, `membership.left`, `membership.two_factor_reset`, `session.company_entered`, `audit.viewed`; later specs add `export.*` and `integrity.checked`.
 
 ## Abuse and failure cases
 - **Cross-company access:** the company comes only from the session's active company, checked against an active membership on every request; company data only inside `withCompany`; every endpoint tested as a member of another company (expects `NOT_FOUND` or nothing); the isolation property test (ADR 0003) covers `company_settings` and `audit_entries`.

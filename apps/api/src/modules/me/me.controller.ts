@@ -82,4 +82,14 @@ export class MeController {
   ): Promise<void> {
     await this.me.changePassword(signedIn(access), body.currentPassword, body.newPassword);
   }
+
+  @Post('sessions/revoke-others')
+  @HttpCode(204)
+  @SignedIn()
+  @Reauthenticated()
+  @ApiNoContentResponse({ description: 'Every other session of the person ended; this one stays' })
+  @ApiErrors('UNAUTHENTICATED', 'TWO_FACTOR_REQUIRED', 'REAUTHENTICATION_REQUIRED')
+  async revokeOtherSessions(@Access() access: RequestAccess): Promise<void> {
+    await this.me.revokeOtherSessions(signedIn(access));
+  }
 }

@@ -1,4 +1,5 @@
 import { accounting } from './accounting.js';
+import { auth } from './auth.js';
 import { commandPalette } from './command-palette.js';
 import { common } from './common.js';
 import { designSystem } from './design-system.js';
@@ -21,6 +22,7 @@ export const ar = {
   shell,
   roles,
   email,
+  auth,
 };
 
 export type Catalog = typeof ar;

@@ -189,6 +189,40 @@
         ]
       }
     },
+    "/api/me/sessions/revoke-others": {
+      "post": {
+        "operationId": "MeController_revokeOtherSessions",
+        "parameters": [],
+        "responses": {
+          "204": {
+            "description": "Every other session of the person ended; this one stays"
+          },
+          "401": {
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "TWO_FACTOR_REQUIRED, REAUTHENTICATION_REQUIRED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "me"
+        ]
+      }
+    },
     "/api/session/company": {
       "post": {
         "operationId": "SessionController_enter",
@@ -2287,7 +2321,8 @@
           "user.backup_code_used",
           "user.backup_codes_regenerated",
           "company.created",
-          "user.two_factor_reset"
+          "user.two_factor_reset",
+          "user.other_sessions_revoked"
         ]
       },
       "ChangePassword": {

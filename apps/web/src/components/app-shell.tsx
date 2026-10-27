@@ -22,6 +22,7 @@ import {
   MenuIcon,
   MoonIcon,
   RowsIcon,
+  ShieldCheckIcon,
   SunIcon,
   SwatchBookIcon,
 } from 'lucide-react';
@@ -42,6 +43,7 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { to: '/', label: t.nav.home, icon: HouseIcon, exact: true },
+  { to: '/account/security', label: ar.auth.nav, icon: ShieldCheckIcon },
   // A developer gallery (and the screenshot tests' page): listed in development only.
   {
     to: '/design-system',

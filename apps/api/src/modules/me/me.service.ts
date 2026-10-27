@@ -14,7 +14,7 @@ import {
   sessions,
   withCompany,
 } from '@vertex-mizan/db';
-import { and, asc, desc, eq, isNull, lt, or } from 'drizzle-orm';
+import { and, asc, desc, eq, isNull, lt, ne, or } from 'drizzle-orm';
 import { actorOf, type SignedInAccess } from '../../core/access/access.js';
 import { writeCompanyAudit, writePlatformAudit } from '../../core/audit/audit.js';
 import { DATABASE } from '../../core/database/database.module.js';
@@ -169,6 +169,24 @@ export class MeService {
       await tx.update(accounts).set({ password: hash }).where(eq(accounts.id, account.id));
       await tx.delete(sessions).where(eq(sessions.userId, person.id));
       await writePlatformAudit(tx, { action: 'user.password_changed', actor: actorOf(access) });
+    });
+  }
+
+  /**
+   * `POST /api/me/sessions/revoke-others`: every other session of the person ends, this one stays
+   * (S01, `/account/security`). Audited with the number ended, in the same transaction.
+   */
+  async revokeOtherSessions(access: SignedInAccess): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      const ended = await tx
+        .delete(sessions)
+        .where(and(eq(sessions.userId, access.person.id), ne(sessions.id, access.session.id)))
+        .returning({ id: sessions.id });
+      await writePlatformAudit(tx, {
+        action: 'user.other_sessions_revoked',
+        actor: actorOf(access),
+        details: { sessionsEnded: ended.length },
+      });
     });
   }
 }
