@@ -13,7 +13,8 @@
 // grows; a change of meaning is a new version). It also lowers one warning to `info`: a value added
 // to an enum in an answer (an error code, an audit action, an event type appended to its list).
 // ADR 0006 counts that as additive, and clients accept values they do not know (owner,
-// 2026-10-27). A value removed from such an enum still fails.
+// 2026-10-27). A value removed from such an enum fails: oasdiff reports it only as `info`, so it is
+// raised to an error with the others above.
 //
 // Needs the oasdiff binary: on the PATH, or named by `OASDIFF`. CI installs the pinned release with
 // `scripts/install-oasdiff.sh`.
