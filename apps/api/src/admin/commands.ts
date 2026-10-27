@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { parseArgs } from 'node:util';
 import {
   type CreateCompany,
+  chartTemplateIdSchema,
   createCompanySchema,
   emailSchema,
   reasonSchema,
@@ -20,6 +21,7 @@ import { v7 as uuidv7 } from 'uuid';
 import { type AuditActor, SYSTEM_NAME, writePlatformAudit } from '../core/audit/audit.js';
 import { queueEmail } from '../core/email/outbox.js';
 import { dropWaitingAuthenticator } from '../modules/auth/two-factor.js';
+import { applyChartTemplate } from '../modules/chart/chart-shape.js';
 import { ledgerColumns } from '../modules/companies/company-shape.js';
 import { createInvitation } from '../modules/invitations/invitations.service.js';
 
@@ -45,7 +47,8 @@ export interface CreateCompanyCommand {
 /**
  * `admin:create-company` arguments: the company, its ledgers and the first owner's email. Vertex
  * Media's shape is the default (S01 rule 10): SYP books at bulletin, USD parallel at market
- * accepting the transaction's rate, January.
+ * accepting the transaction's rate, January, and the service-agency chart (S02 rule 1);
+ * `--template none` keeps the five roots alone.
  */
 export function parseCreateCompany(argv: string[]): CreateCompanyCommand {
   const { values } = parseArgs({
@@ -63,6 +66,7 @@ export function parseCreateCompany(argv: string[]): CreateCompanyCommand {
       'fiscal-year-start-month': { type: 'string', default: '1' },
       'policy-note': { type: 'string' },
       'owner-email': { type: 'string' },
+      template: { type: 'string', default: 'service-agency' },
     },
     strict: true,
   });
@@ -89,13 +93,16 @@ export function parseCreateCompany(argv: string[]): CreateCompanyCommand {
     },
     fiscalYearStartMonth: Number(values['fiscal-year-start-month']),
     policyNote: values['policy-note'],
+    template:
+      values.template === 'none' ? null : chartTemplateIdSchema.parse(values.template),
   });
   return { company, ownerEmail: emailSchema.parse(values['owner-email']) };
 }
 
 /**
  * Creates a company with no creator and invites its first owner by email (S01 rule 9): the
- * company, its settings, the invitation with its email, and the audit rows, in one transaction.
+ * company, its settings, its chart template (S02 rule 1), the invitation with its email, and the
+ * audit rows, in one transaction.
  */
 export async function createCompanyWithOwner(
   db: Database,
@@ -122,6 +129,9 @@ export async function createCompanyWithOwner(
       actor,
       subjectCompanyId: companyId,
     });
+    if (input.company.template !== null) {
+      await applyChartTemplate(tx, companyId, input.company.template, actor);
+    }
     const invitation = await createInvitation(tx, appUrl, actor, {
       companyId,
       companyName: input.company.name,

@@ -1,6 +1,8 @@
 import type { INestApplication } from '@nestjs/common';
+import { chartTemplate } from '@vertex-mizan/contracts';
 import {
   auditEntries,
+  chartAccounts,
   companies,
   type Database,
   emailOutbox,
@@ -61,9 +63,16 @@ describe('admin:create-company', () => {
         },
         fiscalYearStartMonth: 1,
         policyNote: 'العملة الوظيفية الليرة السورية.',
+        template: 'service-agency',
       },
       ownerEmail: 'first.owner@example.test',
     });
+    const base = ['--name', 'x', '--policy-note', 'y', '--owner-email', 'a@example.test'];
+    expect(parseCreateCompany([...base, '--template', 'general']).company.template).toBe(
+      'general',
+    );
+    expect(parseCreateCompany([...base, '--template', 'none']).company.template).toBeNull();
+    expect(() => parseCreateCompany([...base, '--template', 'retail'])).toThrow();
     expect(() =>
       parseCreateCompany(['--name', 'x', '--policy-note', 'y', '--owner-email', 'not an email']),
     ).toThrow();
@@ -97,6 +106,15 @@ describe('admin:create-company', () => {
     );
     const [company] = await db.select().from(companies).where(eq(companies.id, created.companyId));
     expect(company?.createdByUserId).toBeNull();
+    // The service-agency chart in the creation transaction (S02 rule 1), audited as the system.
+    const chart = await withCompany(db, created.companyId, async (tx) => ({
+      accounts: await tx.select({ code: chartAccounts.code }).from(chartAccounts),
+      audit: await tx
+        .select({ action: auditEntries.action, actorKind: auditEntries.actorKind })
+        .from(auditEntries),
+    }));
+    expect(chart.accounts).toHaveLength(chartTemplate('service-agency').accounts.length);
+    expect(chart.audit).toContainEqual({ action: 'chart.template_applied', actorKind: 'system' });
     const [invitation] = await db
       .select()
       .from(invitations)

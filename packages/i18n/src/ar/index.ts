@@ -1,6 +1,7 @@
 import { accounting } from './accounting.js';
 import { audit } from './audit.js';
 import { auth } from './auth.js';
+import { chart } from './chart.js';
 import { commandPalette } from './command-palette.js';
 import { common } from './common.js';
 import { company } from './company.js';
@@ -31,6 +32,7 @@ export const ar = {
   members,
   permissions,
   audit,
+  chart,
 };
 
 export type Catalog = typeof ar;

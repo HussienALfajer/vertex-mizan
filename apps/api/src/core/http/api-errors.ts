@@ -23,3 +23,19 @@ export function ApiErrors(...codes: ErrorCode[]) {
     ),
   );
 }
+
+/** What the guard answers on every company read (S01 "Rules of the guard"). */
+export const COMPANY_READ_ERRORS = [
+  'UNAUTHENTICATED',
+  'TWO_FACTOR_REQUIRED',
+  'FORBIDDEN',
+  'COMPANY_NOT_SELECTED',
+  'COMPANY_SWITCHED',
+] as const satisfies readonly ErrorCode[];
+
+/** What the guard and the company lock answer on every company write, with a refused body. */
+export const COMPANY_WRITE_ERRORS = [
+  ...COMPANY_READ_ERRORS,
+  'COMPANY_ARCHIVED',
+  'VALIDATION_FAILED',
+] as const satisfies readonly ErrorCode[];

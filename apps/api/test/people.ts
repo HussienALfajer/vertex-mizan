@@ -128,6 +128,7 @@ export async function signedInPerson(
 /** Vertex Media's shape (S01 rule 10): SYP books at bulletin, USD parallel at market. */
 export function companyInput(values: Partial<CreateCompany> = {}): CreateCompany {
   return {
+    template: null,
     name: 'شركة اختبار',
     nameLatin: 'Test Company',
     ledgers: {

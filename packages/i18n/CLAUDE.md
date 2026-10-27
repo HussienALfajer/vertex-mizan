@@ -18,6 +18,7 @@ The Arabic text of every front end (ADR 0009): plain catalogs and locale constan
   - `members`: members and invitations of the active company (S01);
   - `permissions`: what each permission of the permission map allows (S01);
   - `audit`: the company audit log screen, with the name of each company audit action, audited entity and field (S01);
+  - `chart`: the chart of accounts (S02): account classes, kinds, normal balances, roles, templates and the chart export's columns;
   - `email`: the emails the worker sends (S01), with `{name}` placeholders the worker fills from the email's data.
 - `src/locale.ts`: `defaultLanguage` (`ar`), `textDirection` (`rtl`), `formatLocale` (`ar-SY-u-nu-latn`: Syrian month names, Latin digits; pinned by `locale.test.ts`) for dates and counts, `displayTimeZone` (`Asia/Damascus`).
 - `src/catalog.test.ts`: no empty text, no Arabic-Indic digit, a text for every error code and every amount-input reason.

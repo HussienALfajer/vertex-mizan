@@ -27,6 +27,7 @@ import {
 } from '../../core/audit/audit.js';
 import { DATABASE } from '../../core/database/database.module.js';
 import { CodedException } from '../../core/errors/coded-exception.js';
+import { applyChartTemplate } from '../chart/chart-shape.js';
 import { auditedLedgerFields, companyOf, ledgerColumns } from './company-shape.js';
 
 /** Companies (S01 rules 9–13): creation, profile, ledger settings with their lock, archive. */
@@ -36,7 +37,9 @@ export class CompaniesService {
 
   /**
    * `POST /api/companies`: a new company whose creator becomes its owner (rule 9), in one
-   * transaction with its settings, the owner's membership and both audit logs.
+   * transaction with its settings (whose insert makes the five root accounts and the built-in
+   * dimension types), the chart template chosen (S02 rule 1), the owner's membership and both
+   * audit logs.
    */
   async create(access: SignedInAccess, input: CreateCompany): Promise<Company> {
     const actor = actorOf(access);
@@ -76,6 +79,9 @@ export class CompaniesService {
         entityId: membership.id,
         after: { userId: access.person.id, role: 'owner', canClosePeriods: false },
       });
+      if (input.template !== null) {
+        await applyChartTemplate(tx, companyId, input.template, actor);
+      }
       return companyOf(company, settings);
     });
   }
