@@ -57,7 +57,7 @@ One role per membership (owner, 2026-10-26).
 ### Rules of the guard
 - A global guard in `apps/api` fails closed: every route declares exactly one access decorator — `@Public()`, `@SignedIn()` (a person, no company), or `@CompanyRoute(...permissions)` (a person in their active company). S05 adds `@ApiClientRoute(...scopes)`. An architecture test fails on a route without one.
 - `@CompanyRoute` resolves the session's active company, checks the membership is active and holds every permission, and runs the handler inside `withCompany(db, activeCompanyId, …)`. The company never comes from the request.
-- Sensitive actions also declare `@Reauthenticated()`: a fresh authenticator or backup code within the last 5 minutes (`REAUTHENTICATION_REQUIRED` otherwise). They are: changing ledger settings, archiving or restoring, inviting, changing a role or the period permission, removing a member, resetting a member's two-factor, regenerating one's own backup codes, changing one's password.
+- Sensitive actions also declare `@Reauthenticated()`: a fresh authenticator or backup code within the last 5 minutes (`REAUTHENTICATION_REQUIRED` otherwise). They are: changing ledger settings, archiving or restoring, inviting, changing a role or the period permission, removing a member, resetting a member's two-factor, regenerating one's own backup codes, changing one's password, signing out of one's other sessions.
 
 ## Data
 
