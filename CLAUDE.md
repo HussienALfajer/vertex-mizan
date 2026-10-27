@@ -39,7 +39,13 @@
   5. the `accountant-reviewer`.
 - `/feature-slice <id>`: implement an approved spec layer by layer, committing at each passing gate, with both reviewers and the owner's acceptance, then open the PR.
 - `/db-migration <change>`: change the schema with RLS and the ledger guards, generate and review the migration, and test it.
-- Every task ends by opening its PR with auto-merge ("Finishing a task" in `AGENTS.md`). In the desktop app, turn on the PR's Auto-fix afterwards, so a failing CI run comes back to the session to fix.
+- Every task ends by opening its PR with auto-merge ("Finishing a task" in `AGENTS.md`) without asking the owner first. In the desktop app, turn on the PR's Auto-fix afterwards, also without asking, so a failing CI run comes back to the session to fix.
+
+## Permissions
+
+- The owner grants full tool permissions (2026-10-27): the user settings run in `bypassPermissions`, and `.claude/settings.json` allows every tool with no `ask` rules, `.env` files included. Never stop to ask for permission to run a command, read or edit a file, push a branch or open a PR.
+- What still stops work: the hooks (git guard, test guard), the remaining `deny` rules (irreversible git and file deletion, generated files, the read-only reference repositories), and the owner's decisions under "How to work" in `AGENTS.md` (scope, accounting treatment, business rules). Those are decisions, not permissions.
+- `.env` holds local secrets: read and edit it when a task needs it, but never print its values, commit it or copy them into another file.
 
 ## Hooks
 
