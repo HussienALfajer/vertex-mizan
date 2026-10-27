@@ -8,7 +8,8 @@ import { meQuery } from '../../lib/session';
 export function companyQuery(companyId: string) {
   return queryOptions({
     queryKey: ['company', companyId],
-    queryFn: () => api('GET', '/company', { schema: companySchema }),
+    // Named, so a switch in another tab refuses the read instead of answering for the other company.
+    queryFn: () => api('GET', '/company', { company: companyId, schema: companySchema }),
   });
 }
 

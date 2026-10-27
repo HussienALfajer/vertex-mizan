@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { createFileRoute, Outlet, useRouter } from '@tanstack/react-router';
 import { Fragment, useEffect } from 'react';
 import { meQuery, requireCompany } from '../../lib/session';
@@ -16,11 +16,15 @@ export const Route = createFileRoute('/_app/_company')({
 function CompanyLayout() {
   const { companyId } = Route.useRouteContext();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const me = useQuery(meQuery).data;
   const current = me === undefined ? companyId : me?.activeCompanyId;
   useEffect(() => {
-    if (current !== companyId) void router.invalidate();
-  }, [current, companyId, router]);
+    if (current === companyId) return;
+    // Nothing of the old company stays cached to be shown under another's name.
+    queryClient.removeQueries({ predicate: (query) => query.queryKey[0] !== 'auth' });
+    void router.invalidate();
+  }, [current, companyId, router, queryClient]);
   return (
     <Fragment key={companyId}>
       <Outlet />

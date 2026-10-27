@@ -6,7 +6,7 @@ import {
   type RateType,
 } from '@vertex-mizan/contracts';
 import { ar } from '@vertex-mizan/i18n';
-import { SelectField, SwitchField } from '../../components/form-fields';
+import { SelectField, SwitchField } from '@vertex-mizan/ui';
 import { formatMonthName } from '../../lib/format';
 
 const t = ar.company;

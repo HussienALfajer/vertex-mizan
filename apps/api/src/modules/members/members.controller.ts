@@ -44,7 +44,13 @@ export class MembersController {
   // Nest serializes an array item by item, with the item's schema.
   @SerializeOptions({ schema: memberSchema })
   @ApiOkResponse({ description: 'The active members', standardSchema: membersSchema })
-  @ApiErrors('UNAUTHENTICATED', 'TWO_FACTOR_REQUIRED', 'FORBIDDEN', 'COMPANY_NOT_SELECTED')
+  @ApiErrors(
+    'UNAUTHENTICATED',
+    'TWO_FACTOR_REQUIRED',
+    'FORBIDDEN',
+    'COMPANY_NOT_SELECTED',
+    'COMPANY_SWITCHED',
+  )
   async list(@Access() access: RequestAccess): Promise<Member[]> {
     return this.members.list(inCompany(access));
   }

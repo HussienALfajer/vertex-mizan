@@ -391,7 +391,7 @@
             }
           },
           "409": {
-            "description": "COMPANY_NOT_SELECTED",
+            "description": "COMPANY_NOT_SELECTED, COMPANY_SWITCHED",
             "content": {
               "application/json": {
                 "schema": {
@@ -727,7 +727,7 @@
             }
           },
           "409": {
-            "description": "COMPANY_NOT_SELECTED",
+            "description": "COMPANY_NOT_SELECTED, COMPANY_SWITCHED",
             "content": {
               "application/json": {
                 "schema": {
@@ -1043,7 +1043,7 @@
             }
           },
           "409": {
-            "description": "COMPANY_NOT_SELECTED",
+            "description": "COMPANY_NOT_SELECTED, COMPANY_SWITCHED",
             "content": {
               "application/json": {
                 "schema": {
@@ -1476,7 +1476,7 @@
             }
           },
           "409": {
-            "description": "COMPANY_NOT_SELECTED",
+            "description": "COMPANY_NOT_SELECTED, COMPANY_SWITCHED",
             "content": {
               "application/json": {
                 "schema": {

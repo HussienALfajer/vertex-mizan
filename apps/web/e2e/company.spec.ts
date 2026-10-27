@@ -46,6 +46,40 @@ test.describe('the active company', () => {
     });
   });
 
+  test.describe('after a switch in another tab', () => {
+    test.use({ me: owner, api: companyReads });
+
+    test('a refused read loads the page again in the new company', async ({ page }) => {
+      let switchedElsewhere = false;
+      const shown: (string | undefined)[] = [];
+      await page.route('**/api/me', (route) =>
+        route.fulfill({ status: 200, json: switchedElsewhere ? inSecondCompany : owner }),
+      );
+      // The API refuses a read naming the company the session left (rule 22).
+      await page.route('**/api/members', (route) => {
+        const named = route.request().headers()['x-mizan-company'];
+        shown.push(named);
+        const reply =
+          switchedElsewhere && named !== secondCompanyId
+            ? refusal(409, 'COMPANY_SWITCHED')
+            : { status: 200, json: members };
+        return route.fulfill({ status: reply.status, json: reply.json });
+      });
+      await page.goto('/settings/company');
+      await expect(page.getByLabel(ar.company.fields.name)).toHaveValue(company.name);
+      switchedElsewhere = true;
+      await page
+        .getByRole('navigation', { name: ar.shell.navLabel })
+        .getByRole('link', { name: ar.members.nav })
+        .click();
+      await expect(
+        page.getByRole('button', { name: `${ar.company.switcher.open}: شركة ثانية` }),
+      ).toBeVisible();
+      await expect.poll(() => shown.at(-1)).toBe(secondCompanyId);
+      expect(shown[0]).toBe(companyId);
+    });
+  });
+
   test.describe('without an active company', () => {
     test.use({ me: noCompany });
 

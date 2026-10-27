@@ -38,7 +38,7 @@ export const company = {
     bookLedger: 'الدفاتر',
     bookLedgerHint: 'الدفاتر النظامية للشركة، بعملة الدفاتر.',
     parallelLedger: 'الدفتر الموازي',
-    parallelLedgerHint: 'دفتر كامل ثانٍ بعملة أخرى، تُحتسب فيه فروق الصرف وحدها.',
+    parallelLedgerHint: 'دفتر كامل ثانٍ بعملة أخرى، له فروق صرفه وإعادة تقييمه الخاصة.',
     hasParallel: 'للشركة دفتر موازٍ',
     currency: 'العملة',
     rateType: 'نوع السعر',

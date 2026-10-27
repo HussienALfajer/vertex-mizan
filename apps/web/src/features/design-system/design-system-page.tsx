@@ -41,11 +41,13 @@ import {
   PoweredBy,
   QrCode,
   SecretCodeList,
+  SelectField,
   Sheet,
   SheetClose,
   SheetContent,
   SheetTitle,
   SheetTrigger,
+  SwitchField,
   Table,
   TableBody,
   TableCell,
@@ -538,6 +540,8 @@ const sampleBackupCodes = [
 function ChangesSample() {
   const c = t.changes;
   const [range, setRange] = useState<DateRange>({ from: '2026-10-01', to: '' });
+  const [rateType, setRateType] = useState<'market' | 'bulletin'>('market');
+  const [accepts, setAccepts] = useState(true);
   return (
     <Card className="grid gap-6 p-6 md:grid-cols-2 [&>*]:min-w-0">
       <ChangeList
@@ -549,14 +553,33 @@ function ChangesSample() {
           { id: 'canClosePeriods', label: c.periods, before: c.no, after: c.yes },
         ]}
       />
-      <DateRangeField
-        value={range}
-        onValueChange={setRange}
-        label={c.range}
-        fromLabel={c.from}
-        toLabel={c.to}
-        orderError={c.order}
-      />
+      <div className="flex flex-col gap-4">
+        <DateRangeField
+          value={range}
+          onValueChange={setRange}
+          label={c.range}
+          fromLabel={c.from}
+          toLabel={c.to}
+          orderError={c.order}
+        />
+        <SelectField
+          label={c.rateType}
+          description={c.rateHint}
+          value={rateType}
+          options={[
+            { value: 'market', label: c.market },
+            { value: 'bulletin', label: c.bulletin },
+          ]}
+          onValueChange={setRateType}
+        />
+        <SwitchField
+          label={c.accepts}
+          description={c.acceptsHint}
+          checked={rateType === 'market' && accepts}
+          disabled={rateType !== 'market'}
+          onCheckedChange={setAccepts}
+        />
+      </div>
     </Card>
   );
 }

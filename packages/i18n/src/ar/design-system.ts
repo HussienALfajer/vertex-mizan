@@ -117,6 +117,12 @@ export const designSystem = {
     from: 'من',
     to: 'إلى',
     order: 'تاريخ النهاية قبل تاريخ البداية.',
+    rateType: 'نوع السعر',
+    market: 'سعر السوق',
+    bulletin: 'سعر النشرة',
+    rateHint: 'الدفاتر النظامية بسعر النشرة.',
+    accepts: 'يقبل سعر العملية',
+    acceptsHint: 'للسعر السوقي فقط.',
   },
   brand: {
     title: 'الهوية',

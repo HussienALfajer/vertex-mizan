@@ -32,7 +32,9 @@ import {
   FieldLabel,
   Input,
   PageHeader,
+  SelectField,
   Skeleton,
+  SwitchField,
   Table,
   TableBody,
   TableCell,
@@ -40,10 +42,15 @@ import {
   TableHeader,
   TableRow,
 } from '@vertex-mizan/ui';
-import { CircleCheckIcon, EllipsisIcon, InfoIcon, UserPlusIcon } from 'lucide-react';
+import {
+  CircleCheckIcon,
+  EllipsisIcon,
+  InfoIcon,
+  ShieldCheckIcon,
+  UserPlusIcon,
+} from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { FormError } from '../../components/form-error';
-import { SelectField, SwitchField } from '../../components/form-fields';
 import { ReasonDialog } from '../../components/reason-dialog';
 import { useSensitiveAction } from '../../components/reauth-dialog';
 import { api } from '../../lib/api';
@@ -393,14 +400,18 @@ function RoleFields({
           onCheckedChange={(next) => onChange({ role, canClosePeriods: next })}
         />
       )}
-      <div className="flex flex-col gap-1 rounded-md bg-muted px-cell py-2 text-control">
-        <span className="font-medium text-foreground">{t.rolePermissions}</span>
-        <ul className="list-inside list-disc text-muted-foreground">
-          {granted.map((permission) => (
-            <li key={permission}>{ar.permissions[permission]}</li>
-          ))}
-        </ul>
-      </div>
+      <Callout
+        tone="neutral"
+        icon={<ShieldCheckIcon />}
+        title={t.rolePermissions}
+        description={
+          <ul className="list-inside list-disc">
+            {granted.map((permission) => (
+              <li key={permission}>{ar.permissions[permission]}</li>
+            ))}
+          </ul>
+        }
+      />
     </>
   );
 }

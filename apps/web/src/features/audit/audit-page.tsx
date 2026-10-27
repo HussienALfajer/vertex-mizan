@@ -15,6 +15,7 @@ import {
   EmptyState,
   isDateRangeOrdered,
   PageHeader,
+  SelectField,
   Sheet,
   SheetClose,
   SheetContent,
@@ -29,7 +30,6 @@ import {
 } from '@vertex-mizan/ui';
 import { type ReactNode, useState } from 'react';
 import { FormError } from '../../components/form-error';
-import { SelectField } from '../../components/form-fields';
 import { api } from '../../lib/api';
 import { damascusDayBounds, formatDateTime } from '../../lib/format';
 import { useCompany } from '../../lib/session';
@@ -88,10 +88,12 @@ export function AuditPage() {
   const entries = useInfiniteQuery({
     queryKey: ['audit', companyId, filters],
     queryFn: ({ pageParam }) =>
-      api('GET', auditPath(filters, pageParam), { schema: auditPageSchema }),
+      api('GET', auditPath(filters, pageParam), { company: companyId, schema: auditPageSchema }),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (page) => page.nextCursor ?? undefined,
     enabled: ordered,
+    // Opening the log is itself logged (`audit.viewed`, rule 24): no silent reloads on focus.
+    refetchOnWindowFocus: false,
   });
   const rows = entries.data?.pages.flatMap((page) => page.entries) ?? [];
   const personOptions = [

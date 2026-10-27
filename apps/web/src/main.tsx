@@ -4,24 +4,41 @@ import { ar, textDirection } from '@vertex-mizan/i18n';
 import { DirectionProvider } from '@vertex-mizan/ui';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { hasCode } from './lib/api';
+import { ApiError, hasCode } from './lib/api';
 import { meQuery } from './lib/session';
 import { routeTree } from './routeTree.gen';
 import './styles.css';
 
 /**
- * A company request that finds no active company (the member was removed, S01 edge case 7):
- * the person loads again, and the company pages send them to `/companies`.
+ * A company request that finds no active company (the member was removed, S01 edge case 7), or a
+ * read that finds another one (a switch in another tab, rule 22): the person loads again, and the
+ * company pages follow (`_app/_company.tsx`) or send them to `/companies`. A refused write keeps
+ * its form and says to reload, so typed values are not dropped unseen.
  */
-function onCompanyLost(error: unknown) {
-  if (hasCode(error, 'COMPANY_NOT_SELECTED')) {
-    void queryClient.invalidateQueries({ queryKey: meQuery.queryKey });
-  }
+function reloadPerson() {
+  void queryClient.invalidateQueries({ queryKey: meQuery.queryKey });
 }
 
 const queryClient = new QueryClient({
-  queryCache: new QueryCache({ onError: onCompanyLost }),
-  mutationCache: new MutationCache({ onError: onCompanyLost }),
+  defaultOptions: {
+    queries: {
+      // A refusal (4xx) answers the same again: only a network or server failure is retried.
+      retry: (failures, error) =>
+        !(error instanceof ApiError && error.status < 500) && failures < 3,
+    },
+  },
+  queryCache: new QueryCache({
+    onError: (error) => {
+      if (hasCode(error, 'COMPANY_NOT_SELECTED') || hasCode(error, 'COMPANY_SWITCHED')) {
+        reloadPerson();
+      }
+    },
+  }),
+  mutationCache: new MutationCache({
+    onError: (error) => {
+      if (hasCode(error, 'COMPANY_NOT_SELECTED')) reloadPerson();
+    },
+  }),
 });
 
 const router = createRouter({

@@ -1,4 +1,4 @@
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { companySchema, createCompanySchema } from '@vertex-mizan/contracts';
 import { ar } from '@vertex-mizan/i18n';
 import {
@@ -15,6 +15,7 @@ import {
 import { useState } from 'react';
 import { FormError } from '../../components/form-error';
 import { api } from '../../lib/api';
+import { meQuery } from '../../lib/session';
 import { useSwitchCompany } from './company-queries';
 import {
   LedgerFields,
@@ -41,6 +42,7 @@ export function NewCompanyPage() {
     policyNote?: string | undefined;
     latin?: string | undefined;
   }>({});
+  const queryClient = useQueryClient();
   const open = useSwitchCompany();
   const create = useMutation({
     mutationFn: () =>
@@ -54,7 +56,10 @@ export function NewCompanyPage() {
         }),
         schema: companySchema,
       }),
-    onSuccess: (company) => open.mutate(company.id),
+    onSuccess: async (company) => {
+      await queryClient.invalidateQueries({ queryKey: meQuery.queryKey });
+      open.mutate(company.id);
+    },
   });
 
   return (
@@ -72,9 +77,10 @@ export function NewCompanyPage() {
               latin: nameLatin.trim() === '' ? undefined : nameError(nameLatin),
             };
             setErrors(found);
-            if (!found.name && !found.policyNote && !found.latin && !ledgerFormError(ledgers)) {
-              create.mutate();
-            }
+            if (found.name || found.policyNote || found.latin || ledgerFormError(ledgers)) return;
+            // Created already, the switch failed: retry only the switch, never a second company.
+            if (create.data) open.mutate(create.data.id);
+            else create.mutate();
           }}
         >
           <div className="grid gap-4 sm:grid-cols-2">

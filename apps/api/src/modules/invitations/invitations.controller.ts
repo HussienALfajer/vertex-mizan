@@ -50,7 +50,13 @@ export class InvitationsController {
   // Nest serializes an array item by item, with the item's schema.
   @SerializeOptions({ schema: invitationSchema })
   @ApiOkResponse({ description: 'Pending invitations', standardSchema: invitationsSchema })
-  @ApiErrors('UNAUTHENTICATED', 'TWO_FACTOR_REQUIRED', 'FORBIDDEN', 'COMPANY_NOT_SELECTED')
+  @ApiErrors(
+    'UNAUTHENTICATED',
+    'TWO_FACTOR_REQUIRED',
+    'FORBIDDEN',
+    'COMPANY_NOT_SELECTED',
+    'COMPANY_SWITCHED',
+  )
   async list(@Access() access: RequestAccess): Promise<Invitation[]> {
     return this.invitations.list(inCompany(access));
   }

@@ -28,8 +28,9 @@ export function errorText(error: unknown): string {
 interface Request<T> {
   body?: unknown;
   /**
-   * The company the page shows, sent as `X-Mizan-Company` on a company write (S01 rule 22): the
-   * API refuses it with `COMPANY_SWITCHED` when another tab switched the session's company.
+   * The company the page shows, sent as `X-Mizan-Company` on every company request (S01 rule 22):
+   * the API refuses it with `COMPANY_SWITCHED` when another tab switched the session's company,
+   * so a write never lands in, and a read never answers for, another company.
    */
   company?: string;
   /** The answer's schema; without one the answer is ignored (204). */

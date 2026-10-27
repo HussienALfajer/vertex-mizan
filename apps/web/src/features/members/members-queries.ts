@@ -6,7 +6,7 @@ import { api, listOf } from '../../lib/api';
 export function membersQuery(companyId: string) {
   return queryOptions({
     queryKey: ['members', companyId, 'list'],
-    queryFn: () => api('GET', '/members', { schema: listOf(memberSchema) }),
+    queryFn: () => api('GET', '/members', { company: companyId, schema: listOf(memberSchema) }),
   });
 }
 
@@ -14,6 +14,7 @@ export function membersQuery(companyId: string) {
 export function invitationsQuery(companyId: string) {
   return queryOptions({
     queryKey: ['members', companyId, 'invitations'],
-    queryFn: () => api('GET', '/invitations', { schema: listOf(invitationSchema) }),
+    queryFn: () =>
+      api('GET', '/invitations', { company: companyId, schema: listOf(invitationSchema) }),
   });
 }
