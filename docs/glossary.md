@@ -41,6 +41,7 @@ One name per concept. Code, contracts and tables use the English term; the Arabi
 | نوع البعد | dimension type | A kind of dimension: the built-in client, contract, department and service, or a custom one |
 | قيمة البعد | dimension value | One client, contract, department or service |
 | العقد | contract | A project or a retainer, as one dimension with its kind and client; contract positions are netted per contract (IFRS 15.105) |
+| مشروع / عقد دوري | project / retainer | The two kinds of a contract value (`contract_kind`): work delivered once, or a service billed in cycles |
 | الربط بـ Hub | Hub link | A dimension value's Hub ID; Hub's events find the value by it, never by name |
 | قيد يومية | journal entry | A dated set of balanced lines |
 | سطر القيد | journal line | One account, its dimensions and its amounts |

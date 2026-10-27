@@ -14,6 +14,8 @@ import {
   type AccountTreeNode,
   Amount,
   AmountInput,
+  DimensionPicker,
+  type DimensionPickerOption,
   AscentLines,
   Badge,
   Button,
@@ -43,6 +45,7 @@ import {
   PeriodBadge,
   PoweredBy,
   QrCode,
+  RateInput,
   SecretCodeList,
   SelectField,
   Sheet,
@@ -683,6 +686,37 @@ function AccountTreeSample() {
   );
 }
 
+/** Synthetic client values: coded and uncoded, with a detail line and an archived one. */
+const sampleClients: DimensionPickerOption[] = [
+  { id: 'c1', code: 'C-001', name: t.dimensionPicker.first, detail: t.dimensionPicker.project },
+  { id: 'c2', code: 'C-002', name: t.dimensionPicker.second },
+  { id: 'c3', name: t.dimensionPicker.third },
+  { id: 'c0', code: 'C-000', name: t.dimensionPicker.old, archived: true },
+];
+
+function DimensionPickerSample() {
+  const [client, setClient] = useState<string | null>('c1');
+  const [rate, setRate] = useState<string | null>('120.0000');
+  const [rateInvalid, setRateInvalid] = useState(false);
+  return (
+    <div className="grid max-w-2xl gap-4 sm:grid-cols-2">
+      <DimensionPicker
+        label={t.dimensionPicker.client}
+        values={sampleClients}
+        value={client}
+        onValueChange={setClient}
+        labels={ar.dimensions.picker}
+      />
+      <Field invalid={rateInvalid}>
+        <FieldLabel>{t.dimensionPicker.rate}</FieldLabel>
+        <RateInput value={rate} onValueChange={setRate} onTextError={setRateInvalid} />
+        <FieldDescription>{ar.rates.record.rateHint}</FieldDescription>
+        <FieldError match={rateInvalid}>{ar.rates.record.rateInvalid}</FieldError>
+      </Field>
+    </div>
+  );
+}
+
 export function DesignSystemPage() {
   const { preference, setDensity } = useDensity();
   return (
@@ -797,6 +831,11 @@ export function DesignSystemPage() {
       <Section id="account-tree" title={t.accountTree.title}>
         <p className="text-muted-foreground">{t.accountTree.hint}</p>
         <AccountTreeSample />
+      </Section>
+
+      <Section id="dimension-picker" title={t.dimensionPicker.title}>
+        <p className="text-muted-foreground">{t.dimensionPicker.hint}</p>
+        <DimensionPickerSample />
       </Section>
 
       <Section id="brand" title={t.brand.title}>
