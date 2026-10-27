@@ -24,6 +24,11 @@ One name per concept. Code, contracts and tables use the English term; the Arabi
 | طبيعة الحساب | normal balance | Debit or credit |
 | فئة الحساب | account class | Asset, liability, equity, revenue, expense |
 | بند القائمة | statement line | Where an account appears in the income statement or balance sheet |
+| رمز الحساب | account code | The account's number: 1, 2, 3 or 6 digits by level, each starting with its parent's code (ADR 0011) |
+| حساب موقوف | blocked account | An account that refuses new postings and stays in reports |
+| دور الحساب | account role | The company's account for a system purpose: conversion rounding, exchange gains and losses, retained earnings |
+| قالب دليل الحسابات | chart template | A ready chart applied to a new company: service agency or general |
+| فئة IFRS 18 | IFRS 18 category | The income-statement category of a statement line: operating, investing, financing, income taxes |
 | حساب مراقبة | control account | An account whose balance is the sum of its open items (receivables, client ad funds) |
 | بند مفتوح | open item | One document's outstanding balance in a control account (an invoice, a client's ad funds) |
 | المبلغ الدفتري | carrying amount | An item's amount in a ledger: what it was measured at, less what was cleared before; month-end revaluations reverse and are not part of it (ADR 0007) |
@@ -32,7 +37,10 @@ One name per concept. Code, contracts and tables use the English term; the Arabi
 | رصيد جارٍ | running balance | An item kept per counterparty (client ad funds), cleared at its average carrying amount; it may cross zero |
 | حساب نقدي / غير نقدي | monetary / non-monetary account | Whether foreign-currency balances are revalued (IAS 21) |
 | بُعد تحليلي | dimension | An analysis tag on a line: client, project, department, service |
-| قيمة البعد | dimension value | One client, project, department or service |
+| نوع البعد | dimension type | A kind of dimension: the built-in client, contract, department and service, or a custom one |
+| قيمة البعد | dimension value | One client, contract, department or service |
+| العقد | contract | A project or a retainer, as one dimension with its kind and client; contract positions are netted per contract (IFRS 15.105) |
+| الربط بـ Hub | Hub link | A dimension value's Hub ID; Hub's events find the value by it, never by name |
 | قيد يومية | journal entry | A dated set of balanced lines |
 | سطر القيد | journal line | One account, its dimensions and its amounts |
 | مدين / دائن | debit / credit | Positive / negative line amount |
@@ -63,6 +71,9 @@ One name per concept. Code, contracts and tables use the English term; the Arabi
 | مبلغ المعاملة | transaction amount | A line's amount in its own currency |
 | سعر الصرف | exchange rate | Quote-currency units per 1 base-currency unit, stored as quoted |
 | سعر السوق / سعر النشرة | market rate / bulletin rate | The rate the company deals at / the Central Bank of Syria bulletin rate |
+| زوج العملات | rate pair | Two currencies with the orientation every rate between them uses (base and quote) |
+| تقويم النشرة / يوم عدم نشر | publication calendar / day off | The weekly days and holidays without a bulletin; a working day needs its own bulletin (ADR 0011) |
+| تصحيح السعر | rate correction | A newer rate row with a reason that supersedes one of the same date; posted entries never change |
 | يقبل سعر العملية | accepts the transaction's rate | A market-rate ledger that takes the rate a connected system dealt at instead of the day's rate (`acceptsTransactionRate`, ADR 0007) |
 | الليرة السورية الجديدة | new Syrian pound | `SYP` since 2026-01-01 (100 old = 1 new) |
 | فرق صرف محقق | realised exchange difference | Gain or loss when a foreign-currency item is settled (IAS 21.28) |
