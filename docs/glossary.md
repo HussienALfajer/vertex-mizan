@@ -27,6 +27,7 @@ One name per concept. Code, contracts and tables use the English term; the Arabi
 | رمز الحساب | account code | The account's number: 1, 2, 3 or 6 digits by level, each starting with its parent's code (ADR 0011) |
 | حساب موقوف | blocked account | An account that refuses new postings and stays in reports |
 | دور الحساب | account role | The company's account for a system purpose: conversion rounding, exchange gains and losses, retained earnings |
+| قالب الدليل | chart template | A versioned starting chart of accounts (service agency, general) applied at company creation or to an empty chart |
 | قالب دليل الحسابات | chart template | A ready chart applied to a new company: service agency or general |
 | فئة IFRS 18 | IFRS 18 category | The income-statement category of a statement line: operating, investing, financing, income taxes |
 | حساب مراقبة | control account | An account whose balance is the sum of its open items (receivables, client ad funds) |
