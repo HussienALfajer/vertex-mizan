@@ -2,5 +2,8 @@
 // tables arrive with S03.
 export * from './access.js';
 export * from './audit.js';
+export * from './chart.js';
 export * from './companies.js';
+export * from './dimensions.js';
 export * from './email.js';
+export * from './rates.js';

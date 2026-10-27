@@ -10,7 +10,7 @@ import {
 } from './access.js';
 
 describe('the permission map', () => {
-  it('gives each role the permissions of S01', () => {
+  it('gives each role the permissions of S01 and S02', () => {
     expect(rolePermissions).toEqual({
       owner: [
         'company.read',
@@ -20,16 +20,55 @@ describe('the permission map', () => {
         'members.manage',
         'audit.read',
         'periods.close',
+        'accounts.read',
+        'accounts.manage',
+        'dimensions.read',
+        'dimensions.manage',
+        'rates.read',
+        'rates.manage',
       ],
-      accountant: ['company.read'],
-      approver: ['company.read'],
-      viewer: ['company.read'],
-      auditor: ['company.read', 'members.read', 'audit.read'],
+      accountant: [
+        'company.read',
+        'accounts.read',
+        'accounts.manage',
+        'dimensions.read',
+        'dimensions.manage',
+        'rates.read',
+        'rates.manage',
+      ],
+      approver: ['company.read', 'accounts.read', 'dimensions.read', 'rates.read'],
+      viewer: ['company.read', 'accounts.read', 'dimensions.read', 'rates.read'],
+      auditor: [
+        'company.read',
+        'members.read',
+        'audit.read',
+        'accounts.read',
+        'dimensions.read',
+        'rates.read',
+      ],
     });
   });
 
-  it('lets every role read the company profile', () => {
-    for (const role of ROLES) expect(rolePermissions[role]).toContain('company.read');
+  it('lets every role read the company profile, the chart, dimensions and rates', () => {
+    for (const role of ROLES) {
+      for (const key of [
+        'company.read',
+        'accounts.read',
+        'dimensions.read',
+        'rates.read',
+      ] as const) {
+        expect(rolePermissions[role]).toContain(key);
+      }
+    }
+  });
+
+  it('lets only the owner and the accountant keep the chart, dimensions and rates (S02)', () => {
+    for (const key of ['accounts.manage', 'dimensions.manage', 'rates.manage'] as const) {
+      expect(ROLES.filter((role) => rolePermissions[role].includes(key))).toEqual([
+        'owner',
+        'accountant',
+      ]);
+    }
   });
 
   it('keeps the role values stored in the database', () => {
@@ -40,13 +79,15 @@ describe('the permission map', () => {
 
 describe('effectivePermissions', () => {
   it('adds periods.close for an accountant with the period permission', () => {
+    const accountant = rolePermissions.accountant;
     expect(effectivePermissions({ role: 'accountant', canClosePeriods: true })).toEqual([
       'company.read',
       'periods.close',
+      ...accountant.filter((key) => key !== 'company.read'),
     ]);
-    expect(effectivePermissions({ role: 'accountant', canClosePeriods: false })).toEqual([
-      'company.read',
-    ]);
+    expect(effectivePermissions({ role: 'accountant', canClosePeriods: false })).toEqual(
+      accountant,
+    );
   });
 
   it('gives the owner periods.close without the switch', () => {

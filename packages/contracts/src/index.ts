@@ -1,6 +1,9 @@
 export * from './access.js';
 export * from './audit.js';
+export * from './chart.js';
+export * from './chart-templates.js';
 export * from './companies.js';
+export * from './dimensions.js';
 export * from './email.js';
 export * from './errors.js';
 export * from './health.js';
@@ -11,3 +14,4 @@ export { divideHalfAwayFromZero } from './money-arithmetic.js';
 export * from './money-summary.js';
 export * from './money-text.js';
 export * from './people.js';
+export * from './rates.js';

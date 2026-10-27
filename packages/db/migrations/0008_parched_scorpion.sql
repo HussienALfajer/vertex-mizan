@@ -1,0 +1,5 @@
+DROP INDEX "exchange_rates_company_supersedes_idx";--> statement-breakpoint
+CREATE UNIQUE INDEX "exchange_rates_supersedes_key" ON "exchange_rates" USING btree ("company_id","supersedes_rate_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "exchange_rates_original_key" ON "exchange_rates" USING btree ("company_id","base","quote","type","effective_on") WHERE "exchange_rates"."supersedes_rate_id" is null;--> statement-breakpoint
+ALTER TABLE "chart_accounts" ADD CONSTRAINT "chart_accounts_postable_states" CHECK ("chart_accounts"."kind" = 'postable' or ("chart_accounts"."blocked_at" is null and "chart_accounts"."first_posted_at" is null));--> statement-breakpoint
+ALTER TABLE "dimension_types" ADD CONSTRAINT "dimension_types_builtin_codes" CHECK (not "dimension_types"."builtin" or "dimension_types"."code" in ('client', 'contract', 'department', 'service'));

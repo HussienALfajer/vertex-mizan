@@ -22,6 +22,13 @@ export const PERMISSIONS = [
   'members.manage',
   'audit.read',
   'periods.close',
+  // S02: the chart of accounts, dimensions and rates.
+  'accounts.read',
+  'accounts.manage',
+  'dimensions.read',
+  'dimensions.manage',
+  'rates.read',
+  'rates.manage',
 ] as const;
 
 export const permissionSchema = z.enum(PERMISSIONS).meta({ id: 'Permission' });
@@ -34,10 +41,25 @@ export type Permission = z.infer<typeof permissionSchema>;
  */
 export const rolePermissions: Readonly<Record<Role, readonly Permission[]>> = {
   owner: PERMISSIONS,
-  accountant: ['company.read'],
-  approver: ['company.read'],
-  viewer: ['company.read'],
-  auditor: ['company.read', 'members.read', 'audit.read'],
+  accountant: [
+    'company.read',
+    'accounts.read',
+    'accounts.manage',
+    'dimensions.read',
+    'dimensions.manage',
+    'rates.read',
+    'rates.manage',
+  ],
+  approver: ['company.read', 'accounts.read', 'dimensions.read', 'rates.read'],
+  viewer: ['company.read', 'accounts.read', 'dimensions.read', 'rates.read'],
+  auditor: [
+    'company.read',
+    'members.read',
+    'audit.read',
+    'accounts.read',
+    'dimensions.read',
+    'rates.read',
+  ],
 };
 
 /** The parts of a membership that decide its permissions. */

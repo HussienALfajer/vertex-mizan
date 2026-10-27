@@ -77,6 +77,62 @@ export const errorStatus = {
   RESET_NOT_ALLOWED: 403,
   /** Too many attempts. */
   RATE_LIMITED: 429,
+
+  // Chart of accounts, dimensions and rates (S02).
+  /** The code breaks the 1-2-3-6 shape (ADR 0011) or does not start with its parent's code. */
+  ACCOUNT_CODE_INVALID: 422,
+  /** Another account of the company has the code. */
+  ACCOUNT_CODE_TAKEN: 409,
+  /** The parent is a postable account: only a header account has children. */
+  ACCOUNT_NOT_HEADER: 422,
+  /** A header account on a line, or blocked; only a postable account carries lines. */
+  ACCOUNT_NOT_POSTABLE: 422,
+  /** A change to a locked field of an account used by a posted line (S02 rule 4). */
+  ACCOUNT_LOCKED: 409,
+  /** Archiving, or making postable, a header account with children. */
+  ACCOUNT_HAS_CHILDREN: 409,
+  /** Archiving an account with a balance or open items in a ledger. */
+  ACCOUNT_HAS_BALANCE: 409,
+  /** Blocking or archiving an account that holds an account role. */
+  ACCOUNT_IN_ROLE: 409,
+  /** The account does not fit the role (S02 rule 7). */
+  ACCOUNT_ROLE_INVALID: 422,
+  /** A posting needs an account role the company has not set. */
+  ACCOUNT_ROLE_MISSING: 422,
+  /** A line on a blocked account. */
+  ACCOUNT_BLOCKED: 422,
+  /** A line on an archived account. */
+  ACCOUNT_ARCHIVED: 422,
+  /** The line's transaction currency differs from the account's currency restriction. */
+  ACCOUNT_CURRENCY_MISMATCH: 422,
+  /** An unknown statement line, or one that does not fit the account's class. */
+  STATEMENT_LINE_INVALID: 422,
+  /** A template applied to a chart that holds more than the five root accounts. */
+  CHART_NOT_EMPTY: 409,
+  /** A dimension the account requires is missing on a line. */
+  DIMENSION_REQUIRED: 422,
+  /** An archived dimension value on a manual line. */
+  DIMENSION_VALUE_ARCHIVED: 422,
+  /** The contract belongs to another client, or a value's parent is of the wrong type. */
+  DIMENSION_PARENT_MISMATCH: 422,
+  /** More than 10 active dimension types. */
+  DIMENSION_TYPE_LIMIT: 409,
+  /** Archiving a dimension type an account requires, or a built-in type. */
+  DIMENSION_TYPE_IN_USE: 409,
+  /** The dimension type or value code is used. */
+  DIMENSION_CODE_TAKEN: 409,
+  /** The dimension value already has a Hub ID; the link never changes. */
+  DIMENSION_ALREADY_LINKED: 409,
+  /** Another value of the type holds the Hub ID. */
+  DIMENSION_LINK_TAKEN: 409,
+  /** The pair is held the other way round (ADR 0011). */
+  RATE_ORIENTATION: 422,
+  /** The same rate is already in force for that pair, type and date. */
+  RATE_UNCHANGED: 409,
+  /** A correction of a rate without a reason. */
+  RATE_REASON_REQUIRED: 422,
+  /** The date is already a bulletin holiday. */
+  HOLIDAY_EXISTS: 409,
 } as const satisfies Record<string, number>;
 
 export type ErrorCode = keyof typeof errorStatus;
