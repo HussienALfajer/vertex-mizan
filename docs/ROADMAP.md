@@ -31,7 +31,7 @@ Scope: `docs/product/phase-1-scope.md`. One spec per line, each through `/spec` 
   - [x] PR 2 API and worker: Better Auth with two-factor, the access guard, the S01 endpoints, the email outbox (owner decision 2026-10-26) and the clean-up job, the server commands
   - [x] PR 3 access screens: sign-in in two steps, forgot and reset password, invitations, enrolment with backup codes, account security with signing out of other sessions (`POST /api/me/sessions/revoke-others`, owner 2026-10-27); `OtpField`, `PasswordInput`, `QrCode`, `SecretCodeList` in `packages/ui`
   - [x] PR 4 company screens: companies, new company, company settings, members and invitations, audit log, the company switcher and guard, the archived banner, `X-Mizan-Company` on company writes (owner, 2026-10-27: the screens split in two PRs); `ChangeList`, `DateRangeField` in `packages/ui`
-- [ ] S02 Chart of accounts, dimensions and rates: F02 · F03 · F04 (the service-agency template, Q3)
+- [~] S02 Chart of accounts, dimensions and rates: F02 · F03 · F04 (`docs/specs/S02-chart-dimensions-rates.md`; the templates await the accountants' review, Q3)
 - [ ] S03 Journal entries and the posting function: F05 · F14 (period balances, `posted_at`, the daily anchor)
 - [ ] S04 Open items and settlements: F06
 - [ ] S05 Posting API, event inbox and posting rules: F10
