@@ -56,29 +56,32 @@ afterAll(() => {
 });
 
 describe('git guard: commits', () => {
-  it('refuses a commit on main, however git is called', () => {
-    for (const command of [
-      `git -C "${main}" commit -m "x"`,
-      `git -c core.quotepath=false -C "${main}" commit -m x`,
-      `git --no-pager -C "${main}" commit -m x`,
-      `cd x && git -C '${main}' commit -m x`,
-      `bash -c "git -C '${main}' commit -m x"`,
-      `env GIT_TRACE=0 git -C "${main}" commit -m x`,
-      `eval "git -C '${main}' commit -m x"`,
-      `pwsh -NoProfile "git -C '${main}' commit -m x"`,
-    ]) {
-      expect(refused(command), command).toBe(true);
-    }
+  // One hook run per case: each run spawns Node and git, and a loop of them inside one test
+  // outgrew Vitest's 5 s timeout when `pnpm verify` ran every package at once.
+  // `$repo` is replaced by the throwaway repository, which exists only once `beforeAll` has run.
+  it.each([
+    'git -C "$repo" commit -m "x"',
+    'git -c core.quotepath=false -C "$repo" commit -m x',
+    'git --no-pager -C "$repo" commit -m x',
+    "cd x && git -C '$repo' commit -m x",
+    `bash -c "git -C '$repo' commit -m x"`,
+    'env GIT_TRACE=0 git -C "$repo" commit -m x',
+    `eval "git -C '$repo' commit -m x"`,
+    `pwsh -NoProfile "git -C '$repo' commit -m x"`,
+  ])('refuses a commit on main: %s', (command) => {
+    expect(refused(command.replace('$repo', main))).toBe(true);
   });
 
-  it('allows a commit on a branch, and a message that mentions git commands', () => {
-    expect(refused(`git -C "${feature}" commit -m "fix: run git add . less"`)).toBe(false);
-    expect(refused(`git -C "${feature}" commit -m "a; git add -A"`)).toBe(false);
-    expect(refused(`git -C "${feature}" commit -m "-a is refused"`)).toBe(false);
-    expect(refused(`git -C "${feature}" commit --amend --no-edit`)).toBe(false);
-    expect(refused(`git -C "${feature}" commit --author "A B <a@b.test>" -m x`)).toBe(false);
-    expect(refused(`git -C "${feature}" commit -F message.txt`)).toBe(false);
-    expect(refused(`git -C "${feature}" commit -m "<draft>"`)).toBe(false);
+  it.each([
+    'git -C "$repo" commit -m "fix: run git add . less"',
+    'git -C "$repo" commit -m "a; git add -A"',
+    'git -C "$repo" commit -m "-a is refused"',
+    'git -C "$repo" commit --amend --no-edit',
+    'git -C "$repo" commit --author "A B <a@b.test>" -m x',
+    'git -C "$repo" commit -F message.txt',
+    'git -C "$repo" commit -m "<draft>"',
+  ])('allows a commit on a branch, with a message that mentions git commands: %s', (command) => {
+    expect(refused(command.replace('$repo', feature))).toBe(false);
   });
 
   it.each([
@@ -202,19 +205,17 @@ describe('git guard: pushes', () => {
     expect(refused(command)).toBe(true);
   });
 
-  it('refuses a push of the current branch from main, allows one from a branch', () => {
-    for (const args of [
-      'push',
-      'push -u origin',
-      'push -u origin HEAD',
-      'push origin @',
-      'push -o ci.skip origin',
-      'push --push-option ci.skip origin HEAD',
-      'push origin 2>&1',
-    ]) {
-      expect(refused(`git -C "${main}" ${args}`), args).toBe(true);
-      expect(refused(`git -C "${feature}" ${args}`), args).toBe(false);
-    }
+  it.each([
+    'push',
+    'push -u origin',
+    'push -u origin HEAD',
+    'push origin @',
+    'push -o ci.skip origin',
+    'push --push-option ci.skip origin HEAD',
+    'push origin 2>&1',
+  ])('refuses git %s of the current branch from main, allows it from a branch', (args) => {
+    expect(refused(`git -C "${main}" ${args}`)).toBe(true);
+    expect(refused(`git -C "${feature}" ${args}`)).toBe(false);
   });
 
   it.each(['git push -u origin fix/audit-tooling-docs', 'git push origin feat/main-menu'])(
