@@ -22,6 +22,7 @@ import { DimensionsModule } from './modules/dimensions/dimensions.module.js';
 import { InvitationsModule } from './modules/invitations/invitations.module.js';
 import { MeModule } from './modules/me/me.module.js';
 import { MembersModule } from './modules/members/members.module.js';
+import { RatesModule } from './modules/rates/rates.module.js';
 
 /**
  * The API: the core (configuration, logging, the database, request validation and response
@@ -62,6 +63,7 @@ export class AppModule {
         AuditModule,
         ChartModule,
         DimensionsModule,
+        RatesModule,
         AuthModule,
       ],
       providers: [
