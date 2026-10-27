@@ -541,6 +541,40 @@ test.describe('account security', () => {
     });
   });
 
+  test.describe('other sessions', () => {
+    let attempts = 0;
+    let signInLists = 0;
+    test.use({
+      api: {
+        'GET /api/me/sign-ins': () => {
+          signInLists += 1;
+          return { status: 200, json: signIns };
+        },
+        'POST /api/me/sessions/revoke-others': () => {
+          attempts += 1;
+          return attempts === 1 ? refusal(403, 'REAUTHENTICATION_REQUIRED') : { status: 204 };
+        },
+        'POST /api/auth/reauthenticate': { status: 204 },
+      },
+    });
+
+    test('asks for a fresh code, ends them, keeps this session and lists the action', async ({
+      page,
+    }) => {
+      await page.goto('/account/security');
+      await page.getByRole('button', { name: t.security.otherSessions.action }).click();
+      const dialog = page.getByRole('dialog', { name: t.reauth.title });
+      await dialog.getByRole('textbox').first().click();
+      await page.keyboard.type('654321');
+      await expect(
+        page.getByRole('status').filter({ hasText: t.security.otherSessions.done }),
+      ).toBeVisible();
+      await expect(page.getByRole('heading', { level: 1 })).toHaveText(t.security.title);
+      expect(attempts).toBe(2);
+      await expect.poll(() => signInLists).toBe(2);
+    });
+  });
+
   test.describe('backup codes', () => {
     test.use({
       api: {

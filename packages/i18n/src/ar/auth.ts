@@ -121,6 +121,12 @@ export const auth = {
         'غيّرت هاتفك؟ أضف حسابك إلى تطبيق المصادقة من جديد. يبقى التطبيق الحالي فعّالًا حتى تتحقق من الجديد.',
       action: 'أعد إعداد التطبيق',
     },
+    otherSessions: {
+      title: 'الجلسات الأخرى',
+      description: 'ينهي جلساتك على الأجهزة والمتصفحات الأخرى، وتبقى هذه الجلسة.',
+      action: 'سجّل الخروج من الجلسات الأخرى',
+      done: 'انتهت جلساتك الأخرى.',
+    },
     signIns: {
       title: 'عمليات الدخول الأخيرة',
       time: 'الوقت',
@@ -151,6 +157,7 @@ export const auth = {
     'user.backup_codes_regenerated': 'إنشاء رموز احتياطية جديدة',
     'company.created': 'إنشاء شركة',
     'user.two_factor_reset': 'إعادة تعيين المصادقة الثنائية',
+    'user.other_sessions_revoked': 'تسجيل الخروج من الجلسات الأخرى',
   } satisfies Record<PlatformAuditAction, string>,
   nav: 'أمان الحساب',
 };

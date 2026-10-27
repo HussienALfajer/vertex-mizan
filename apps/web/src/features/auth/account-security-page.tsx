@@ -4,6 +4,7 @@ import { backupCodesSchema, type SignInEvent, signInPageSchema } from '@vertex-m
 import { ar } from '@vertex-mizan/i18n';
 import {
   Button,
+  Callout,
   Card,
   CardDescription,
   CardHeader,
@@ -22,7 +23,7 @@ import {
   TableHeader,
   TableRow,
 } from '@vertex-mizan/ui';
-import { LogOutIcon } from 'lucide-react';
+import { CircleCheckIcon, LogOutIcon } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { FormError } from '../../components/form-error';
 import { useSensitiveAction } from '../../components/reauth-dialog';
@@ -72,6 +73,7 @@ export function AccountSecurityPage({ email }: { email: string }) {
               {t.authenticator.action}
             </Button>
           </Section>
+          <OtherSessions />
         </div>
       </div>
       <SignIns />
@@ -193,6 +195,40 @@ function BackupCodes() {
         </Button>
       )}
       <FormError error={regenerate.error} />
+      {dialog}
+    </Section>
+  );
+}
+
+/** Ends every other session of the person; this one stays. */
+function OtherSessions() {
+  const queryClient = useQueryClient();
+  const { run, dialog } = useSensitiveAction();
+  const revoke = useMutation({
+    mutationFn: () => run(() => api('POST', '/me/sessions/revoke-others')),
+    // The action is written to the person's own log, listed below.
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['auth', 'sign-ins'] }),
+  });
+  return (
+    <Section title={t.otherSessions.title} description={t.otherSessions.description}>
+      {revoke.isSuccess ? (
+        <Callout
+          role="status"
+          tone="info"
+          icon={<CircleCheckIcon />}
+          title={t.otherSessions.done}
+        />
+      ) : (
+        <Button
+          variant="secondary"
+          className="w-fit"
+          loading={revoke.isPending}
+          onClick={() => revoke.mutate()}
+        >
+          {t.otherSessions.action}
+        </Button>
+      )}
+      <FormError error={revoke.error} />
       {dialog}
     </Section>
   );
