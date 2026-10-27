@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { parseCase, parseScenario, readBook, ScenarioFormatError, yamlBlocks } from './book.js';
-import { CASE, SYP_ONLY } from './test-fixtures.js';
+import { CASE, CORRECTION, SYP_ONLY } from './test-fixtures.js';
 
 function file(status: string, ...cases: string[]) {
   return [
@@ -206,7 +206,7 @@ describe('a case', () => {
     [
       'a step of no kind',
       CASE.replace('  - event: invoice.issued', '  - what: invoice.issued'),
-      'event, manual or job',
+      'event, manual, reversal, job or rate',
     ],
     [
       'a step of two kinds',
@@ -279,6 +279,74 @@ describe('a case', () => {
     ],
   ])('refuses %s', (_, source, problem) => {
     expect(refusal(source)).toContain(problem);
+  });
+
+  it('reads the bulletin calendar, its default days off, rate and reversal steps and corrections', () => {
+    const corrected = parseCase(CORRECTION);
+    expect(corrected.company.calendar).toEqual({ daysOff: [5, 6], holidays: ['2026-11-09'] });
+    expect(corrected.steps[1]).toEqual({
+      kind: 'rate',
+      rate: {
+        effectiveOn: '2026-11-08',
+        base: 'USD',
+        quote: 'SYP',
+        rate: '121.5000',
+        type: 'bulletin',
+        source: 'manual',
+      },
+      reason: 'Mistyped',
+    });
+    expect(corrected.steps[2]).toEqual({
+      kind: 'reversal',
+      entry: 1,
+      accountingDate: '2026-11-08',
+    });
+    expect(corrected.expect.corrections).toEqual([{ step: 2, usedBy: [1] }]);
+    const fridayOnly = CORRECTION.replace(
+      'bulletin_holidays: [2026-11-09]',
+      'bulletin_days_off: [5]',
+    );
+    expect(parseCase(fridayOnly).company.calendar).toEqual({ daysOff: [5], holidays: [] });
+  });
+
+  it.each([
+    [
+      'a day off that is no weekday',
+      ['bulletin_holidays: [2026-11-09]', 'bulletin_days_off: [8]'],
+      'from 1 to 7',
+    ],
+    [
+      'a day off stated twice',
+      ['bulletin_holidays: [2026-11-09]', 'bulletin_days_off: [5, 5]'],
+      'stated twice',
+    ],
+    ['a holiday on no date', ['[2026-11-09]', '[2026-11-31]'], 'date'],
+    ['a holiday stated twice', ['[2026-11-09]', '[2026-11-09, 2026-11-09]'], 'stated twice'],
+    ['a rate step with an unknown key', ['reason: Mistyped', 'reason: Mistyped, note: x'], 'note'],
+    [
+      'a rate step in one currency',
+      ['quote: SYP, rate: "121', 'quote: USD, rate: "121'],
+      'one currency',
+    ],
+    ['a reversal of an entry not expected', ['reversal: 1', 'reversal: 3'], 'Entry 3 is not'],
+    ['a reversal of entry 0', ['reversal: 1', 'reversal: 0'], 'from 1'],
+    [
+      'a correction of a step that is not a rate',
+      ['{ step: 2,', '{ step: 1,'],
+      'Step 1 is not a rate',
+    ],
+    ['a correction of a rate with no reason', [', reason: Mistyped', ''], 'Step 2 is not a rate'],
+    ['a correction listing an entry not expected', ['used_by: [1]', 'used_by: [1, 5]'], 'Entry 5'],
+    [
+      'a correction stated twice',
+      [
+        '    - { step: 2, used_by: [1] }',
+        '    - { step: 2, used_by: [1] }\n    - { step: 2, used_by: [] }',
+      ],
+      'stated twice',
+    ],
+  ] as const)('refuses %s', (_, [from, to], problem) => {
+    expect(refusal(CORRECTION.replace(from, to))).toContain(problem);
   });
 
   it('accepts a third-currency case with a line in TRY', () => {

@@ -5,6 +5,8 @@ import type { CaseContext, ScenarioDatabase, ScenarioHarness, StepResult } from 
 /** The feature each kind of step arrives with (`docs/ROADMAP.md`). */
 export const STEPS_ARRIVE_WITH = {
   manual: 'manual entries arrive with S03',
+  reversal: 'reversals arrive with S03',
+  rate: 'rate steps arrive with S03, on the S02 rate table',
   event: 'Hub events arrive with S05',
   job: 'jobs arrive with S07',
 } as const satisfies Record<StepKind, string>;
@@ -29,8 +31,16 @@ function executorFor(harness: ScenarioHarness, step: Step): Run | undefined {
       const execute = harness.executors.manual;
       return execute && ((context) => execute(context, step));
     }
+    case 'reversal': {
+      const execute = harness.executors.reversal;
+      return execute && ((context) => execute(context, step));
+    }
     case 'job': {
       const execute = harness.executors.job;
+      return execute && ((context) => execute(context, step));
+    }
+    case 'rate': {
+      const execute = harness.executors.rate;
       return execute && ((context) => execute(context, step));
     }
   }
@@ -42,8 +52,15 @@ function describeStep(step: Step): string {
       return `event ${step.type} on ${step.accountingDate}`;
     case 'manual':
       return `manual entry "${step.description}" on ${step.accountingDate}`;
+    case 'reversal':
+      return `reversal of entry ${step.entry} on ${step.accountingDate}`;
     case 'job':
       return `job ${step.name} for ${step.period}`;
+    case 'rate': {
+      const { type, base, quote, rate, effectiveOn } = step.rate;
+      const what = step.reason === null ? 'rate' : 'rate correction';
+      return `${what} ${type} ${base}/${quote} ${rate} on ${effectiveOn}`;
+    }
   }
 }
 
@@ -63,7 +80,7 @@ function sameResult(result: StepResult, expected: StepResult | Outcome): boolean
  * step with no executor fails the case, never skips it. Each step must be done, except the last when
  * the case states an `outcome`: then the last step must be held or refused with that reason. Then
  * the ledger must hold exactly the expected entries (`compareEntries`), the stated balances and
- * the stated open items.
+ * the stated open items, and each stated correction's answer must list exactly its entries.
  */
 export async function runCase(
   scenarioCase: ScenarioCase,
@@ -92,9 +109,21 @@ export async function runCase(
   const companyId = await harness.setUp(database, company, rates);
   const context: CaseContext = { database, companyId, company };
   const differences: string[] = [];
+  const corrections = new Map(expect.corrections.map((c) => [c.step, c.usedBy]));
 
   for (const [index, run] of runs.entries()) {
     const result = await run(context);
+    const usedBy = corrections.get(index + 1);
+    if (usedBy !== undefined && result.status === 'done') {
+      const listed = [...(result.usedBy ?? [])].sort((a, b) => a - b);
+      const stated = [...usedBy].sort((a, b) => a - b);
+      if (listed.join() !== stated.join()) {
+        differences.push(
+          `step ${index + 1} (${describeStep(steps[index] as Step)}): lists entries ` +
+            `[${listed.join(', ')}], expected [${stated.join(', ')}]`,
+        );
+      }
+    }
     const last = index === runs.length - 1;
     const expected: StepResult | Outcome = (last && expect.outcome) || { status: 'done' };
     if (!sameResult(result, expected)) {

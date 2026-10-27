@@ -10,7 +10,7 @@ import type {
   StepResult,
 } from './harness.js';
 import { runCase, ScenarioFailure } from './run.js';
-import { CASE } from './test-fixtures.js';
+import { CASE, CORRECTION } from './test-fixtures.js';
 
 // The runner against a fake harness: what the S03, S05 and S07 parts will hand it, built here from
 // the case itself so each test can break one thing. The book runs on a real database
@@ -240,6 +240,71 @@ describe('runCase with an outcome', () => {
     });
     expect(await differences(runCase(twoSteps, fake, database))).toEqual([
       'step 1 (event rate.recorded on 2026-11-02): held NO_MAPPING, expected done',
+    ]);
+  });
+});
+
+describe('runCase with a rate correction', () => {
+  const corrected = parseCase(CORRECTION);
+
+  function correctionHarness(usedBy: readonly number[] | undefined) {
+    const calls: string[] = [];
+    const fake: ScenarioHarness = {
+      setUp: async () => 'company-1',
+      executors: {
+        manual: async (_, step) => {
+          calls.push(step.description);
+          return { status: 'done' };
+        },
+        rate: async (_, step) => {
+          calls.push(`${step.rate.rate} ${step.reason}`);
+          return usedBy === undefined ? { status: 'done' } : { status: 'done', usedBy };
+        },
+        reversal: async (_, step) => {
+          calls.push(`reversal of ${step.entry}`);
+          return { status: 'done' };
+        },
+      },
+      ledger: {
+        entries: async () => asPosted(corrected),
+        balance: async () => ({ amount: null, book: 0n, parallel: 0n }),
+        openItem: async () => null,
+      },
+    };
+    return { fake, calls };
+  }
+
+  it('passes when the answer lists exactly the stated entries, and runs every step in order', async () => {
+    const { fake, calls } = correctionHarness([1]);
+    await runCase(corrected, fake, database);
+    expect(calls).toEqual(['an expense', '121.5000 Mistyped', 'reversal of 1']);
+  });
+
+  it.each([
+    [[], 'lists entries [], expected [1]'],
+    [undefined, 'lists entries [], expected [1]'],
+    [[1, 2], 'lists entries [1, 2], expected [1]'],
+  ])('fails an answer listing %o', async (usedBy, difference) => {
+    const { fake } = correctionHarness(usedBy);
+    expect(await differences(runCase(corrected, fake, database))).toEqual([
+      `step 2 (rate correction bulletin USD/SYP 121.5000 on 2026-11-08): ${difference}`,
+    ]);
+  });
+
+  it('names the reversal and rate steps that have no executor', async () => {
+    const { fake } = correctionHarness([1]);
+    const found = await differences(
+      runCase(
+        corrected,
+        { ...fake, executors: { manual: async () => ({ status: 'done' }) } },
+        database,
+      ),
+    );
+    expect(found).toEqual([
+      'step 2 (rate correction bulletin USD/SYP 121.5000 on 2026-11-08): no executor for rate ' +
+        'steps; rate steps arrive with S03, on the S02 rate table',
+      'step 3 (reversal of entry 1 on 2026-11-08): no executor for reversal steps; ' +
+        'reversals arrive with S03',
     ]);
   });
 });

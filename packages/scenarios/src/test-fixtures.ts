@@ -37,3 +37,32 @@ expect:
         - { account: "1210", currency: SYP, amount: 50000, book: 50000 }
         - { account: "4110", currency: SYP, amount: -50000, book: -50000 }
 `;
+
+export const CORRECTION = `
+case: a bulletin corrected after use
+company: { shape: syp-usd, book: SYP, parallel: USD, bulletin_holidays: [2026-11-09],
+           rate_policy: { book: bulletin, parallel: market } }
+rates:
+  - { date: 2026-11-08, base: USD, quote: SYP, rate: "112.5000", type: bulletin }
+steps:
+  - manual: an expense
+    accounting_date: 2026-11-08
+    payload: { amount: 10000 }
+  - rate: { date: 2026-11-08, base: USD, quote: SYP, rate: "121.5000", type: bulletin, reason: Mistyped }
+  - reversal: 1
+    accounting_date: 2026-11-08
+expect:
+  entries:
+    - source: manual
+      date: 2026-11-08
+      lines:
+        - { account: "531004", currency: USD, amount: 10000, book: 1125000, parallel: 10000 }
+        - { account: "111004", currency: USD, amount: -10000, book: -1125000, parallel: -10000 }
+    - source: reversal
+      date: 2026-11-08
+      lines:
+        - { account: "531004", currency: USD, amount: -10000, book: -1125000, parallel: -10000 }
+        - { account: "111004", currency: USD, amount: 10000, book: 1125000, parallel: 10000 }
+  corrections:
+    - { step: 2, used_by: [1] }
+`;

@@ -25,6 +25,15 @@ const WHEN_VALID = {
 
 const dateSchema = z.iso.date();
 
+/** A whole number the YAML reads as `bigint` (an ISO weekday, a step or entry number). */
+const countSchema = (min: number, max = Number.MAX_SAFE_INTEGER) =>
+  z
+    .bigint({ error: 'Expected a whole number' })
+    .refine((value) => value >= BigInt(min) && value <= BigInt(max), {
+      message: `Expected a whole number from ${min} to ${max}`,
+    })
+    .transform(Number);
+
 const periodSchema = z.string().regex(/^\d{4}-(?:0[1-9]|1[0-2])$/, 'Expected a period YYYY-MM');
 
 const accountSchema = z
@@ -84,6 +93,16 @@ const rawCompanySchema = z.strictObject({
   }),
   template: z.string().min(1).optional(),
   closed_periods: z.array(periodSchema).default([]),
+  // The bulletin publication calendar (S02 rules 16–17): ISO weekdays off (Friday and Saturday by
+  // default) and the holidays the accountant has marked.
+  bulletin_days_off: z
+    .array(countSchema(1, 7))
+    .refine((days) => new Set(days).size === days.length, 'A day off is stated twice')
+    .default([5, 6]),
+  bulletin_holidays: z
+    .array(dateSchema)
+    .refine((days) => new Set(days).size === days.length, 'A holiday is stated twice')
+    .default([]),
 });
 
 type RawCompany = z.output<typeof rawCompanySchema>;
@@ -155,20 +174,23 @@ const companySchema = rawCompanySchema
     ledgers: ledgersOf(company),
     template: company.template ?? null,
     closedPeriods: company.closed_periods,
+    calendar: { daysOff: company.bulletin_days_off, holidays: company.bulletin_holidays },
   }));
 
 export type CaseCompany = z.output<typeof companySchema>;
 
+const rateFields = {
+  date: dateSchema,
+  base: currencyCodeSchema,
+  quote: currencyCodeSchema,
+  rate: quotedRateSchema,
+  type: rateTypeSchema,
+  source: rateSourceSchema.default('manual'),
+};
+
 /** A row of the company rate table; `source` defaults to `manual` (entered by the accountant). */
 const rateSchema = z
-  .strictObject({
-    date: dateSchema,
-    base: currencyCodeSchema,
-    quote: currencyCodeSchema,
-    rate: quotedRateSchema,
-    type: rateTypeSchema,
-    source: rateSourceSchema.default('manual'),
-  })
+  .strictObject(rateFields)
   .transform(({ date, ...rate }) => ({ effectiveOn: date, ...rate }))
   .pipe(exchangeRateSchema);
 
@@ -191,8 +213,8 @@ const payloadSchema = z.record(z.string(), z.unknown()).superRefine((payload, co
   walk(payload, []);
 });
 
-/** A step is told apart by its one key: `event`, `manual` or `job`. */
-export const STEP_KINDS = ['event', 'manual', 'job'] as const;
+/** A step is told apart by its one key: `event`, `manual`, `reversal`, `job` or `rate`. */
+export const STEP_KINDS = ['event', 'manual', 'reversal', 'job', 'rate'] as const;
 
 export type StepKind = (typeof STEP_KINDS)[number];
 
@@ -225,6 +247,37 @@ const manualStepSchema = z
     payload: step.payload,
   }));
 
+/** The reversal of an entry the case posted, by its number in posting order (ADR 0005). */
+const reversalStepSchema = z
+  .strictObject({
+    kind: z.literal('reversal'),
+    reversal: countSchema(1),
+    accounting_date: dateSchema,
+  })
+  .transform((step) => ({
+    kind: step.kind,
+    entry: step.reversal,
+    accountingDate: step.accounting_date,
+  }));
+
+/**
+ * A rate row recorded at this point of the case, as the accountant records it (S02 rule 14). A
+ * row for a pair, type and date that already has one is a correction and carries its reason
+ * (S02 rule 15).
+ */
+const rateStepSchema = z
+  .strictObject({
+    kind: z.literal('rate'),
+    rate: z.strictObject({ ...rateFields, reason: z.string().trim().min(1).max(500).optional() }),
+  })
+  .transform(({ kind, rate: { reason, date, ...rate } }, context) => {
+    const parsed = exchangeRateSchema.safeParse({ effectiveOn: date, ...rate });
+    for (const issue of parsed.error?.issues ?? []) {
+      context.addIssue({ code: 'custom', message: issue.message, path: ['rate', ...issue.path] });
+    }
+    return parsed.success ? { kind, rate: parsed.data, reason: reason ?? null } : z.NEVER;
+  });
+
 const jobStepSchema = z
   .strictObject({ kind: z.literal('job'), job: jobNameSchema, period: periodSchema })
   .transform((step) => ({ kind: step.kind, name: step.job, period: step.period }));
@@ -235,9 +288,11 @@ const stepSchema = z.preprocess(
     const kind = STEP_KINDS.find((key) => key in value);
     return kind ? { kind, ...value } : value;
   },
-  z.discriminatedUnion('kind', [eventStepSchema, manualStepSchema, jobStepSchema], {
-    error: 'Expected a step with one of the keys event, manual or job',
-  }),
+  z.discriminatedUnion(
+    'kind',
+    [eventStepSchema, manualStepSchema, reversalStepSchema, jobStepSchema, rateStepSchema],
+    { error: 'Expected a step with one of the keys event, manual, reversal, job or rate' },
+  ),
 );
 
 export type Step = z.output<typeof stepSchema>;
@@ -319,11 +374,22 @@ const outcomeSchema = z.strictObject({
 
 export type Outcome = z.output<typeof outcomeSchema>;
 
+/**
+ * A rate correction's answer (S02 rule 15): the entries it lists as converted at the superseded
+ * row, by their number in posting order.
+ */
+const correctionSchema = z
+  .strictObject({ step: countSchema(1), used_by: z.array(countSchema(1)) })
+  .transform(({ step, used_by }) => ({ step, usedBy: used_by }));
+
+export type ExpectedCorrection = z.output<typeof correctionSchema>;
+
 const expectSchema = z
   .strictObject({
     entries: z.array(entrySchema),
     balances: z.array(balanceSchema).default([]),
     open_items: z.array(openItemSchema).default([]),
+    corrections: z.array(correctionSchema).default([]),
     outcome: outcomeSchema.optional(),
   })
   .transform(({ open_items, ...expect }) => ({
@@ -402,11 +468,35 @@ export const caseSchema = z
       items.add(key);
     }
 
+    const { steps } = scenarioCase;
+    const { entries } = scenarioCase.expect;
+    for (const [s, step] of steps.entries()) {
+      if (step.kind === 'reversal' && step.entry > entries.length) {
+        issue(`Entry ${step.entry} is not an expected entry`, ['steps', s, 'reversal']);
+      }
+    }
+    const corrected = new Set<number>();
+    for (const [c, correction] of scenarioCase.expect.corrections.entries()) {
+      const path = ['expect', 'corrections', c];
+      const step = steps[correction.step - 1];
+      if (step?.kind !== 'rate' || step.reason === null) {
+        issue(`Step ${correction.step} is not a rate step with a reason`, [...path, 'step']);
+      }
+      if (corrected.has(correction.step)) issue(`Step ${correction.step} is stated twice`, path);
+      corrected.add(correction.step);
+      for (const [u, entry] of correction.usedBy.entries()) {
+        if (entry > entries.length) {
+          issue(`Entry ${entry} is not an expected entry`, [...path, 'used_by', u]);
+        }
+      }
+    }
+
     if (scenarioCase.company.shape === 'third') {
       const ledgerCurrencies = new Set([book.currency, parallel?.currency]);
       const currencies = [
         ...scenarioCase.expect.entries.flatMap((entry) => entry.lines.map((line) => line.currency)),
         ...scenarioCase.rates.flatMap((rate) => [rate.base, rate.quote]),
+        ...steps.flatMap((step) => (step.kind === 'rate' ? [step.rate.base, step.rate.quote] : [])),
       ];
       if (currencies.every((currency) => ledgerCurrencies.has(currency))) {
         context.addIssue({
