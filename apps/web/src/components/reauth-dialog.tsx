@@ -8,6 +8,9 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  Field,
+  FieldLabel,
+  Input,
   OtpField,
 } from '@vertex-mizan/ui';
 import { type ReactNode, useRef, useState } from 'react';
@@ -76,23 +79,33 @@ function ReauthDialog({
   onConfirmed: () => void;
   onCancel: () => void;
 }) {
+  // A backup code confirms too (S01 rule 7): a person who lost the authenticator re-enrols with it.
+  const [mode, setMode] = useState<'app' | 'backup'>('app');
   const [code, setCode] = useState('');
   const submitted = useRef(false);
   const confirm = useMutation({
     mutationFn: (value: string) => api('POST', '/auth/reauthenticate', { body: { code: value } }),
     onSuccess: () => {
-      setCode('');
+      clear();
       onConfirmed();
     },
     onSettled: () => {
       submitted.current = false;
     },
   });
+  const ready = mode === 'app' ? code.length === 6 : code.trim() !== '';
+
+  function clear() {
+    setCode('');
+    setMode('app');
+    confirm.reset();
+  }
 
   function submit(value: string) {
-    if (value.length !== 6 || submitted.current) return;
+    const complete = mode === 'app' ? value.length === 6 : value.trim() !== '';
+    if (!complete || submitted.current) return;
     submitted.current = true;
-    confirm.mutate(value);
+    confirm.mutate(value.trim());
   }
 
   return (
@@ -100,8 +113,7 @@ function ReauthDialog({
       open={open}
       onOpenChange={(next) => {
         if (next) return;
-        setCode('');
-        confirm.reset();
+        clear();
         onCancel();
       }}
     >
@@ -110,33 +122,62 @@ function ReauthDialog({
           className="flex flex-col gap-4"
           onSubmit={(event) => {
             event.preventDefault();
+            // React events cross portals: the page's form around the dialog must not submit too.
+            event.stopPropagation();
             submit(code);
           }}
         >
           <DialogHeader>
             <DialogTitle>{t.reauth.title}</DialogTitle>
-            <DialogDescription>{t.reauth.description}</DialogDescription>
+            <DialogDescription>
+              {mode === 'app' ? t.reauth.description : t.twoFactor.backupDescription}
+            </DialogDescription>
           </DialogHeader>
-          <OtpField
-            aria-label={t.fields.code}
-            slotLabel={(position) => `${t.fields.slot} ${position}`}
-            value={code}
-            onValueChange={setCode}
-            onValueComplete={submit}
-            autoFocus
-            disabled={confirm.isPending}
-          />
+          {mode === 'app' ? (
+            <OtpField
+              aria-label={t.fields.code}
+              slotLabel={(position) => `${t.fields.slot} ${position}`}
+              value={code}
+              onValueChange={setCode}
+              onValueComplete={submit}
+              autoFocus
+              disabled={confirm.isPending}
+            />
+          ) : (
+            <Field>
+              <FieldLabel>{t.fields.backupCode}</FieldLabel>
+              <Input
+                dir="ltr"
+                autoComplete="off"
+                spellCheck={false}
+                value={code}
+                onChange={(event) => setCode(event.target.value)}
+                autoFocus
+              />
+            </Field>
+          )}
           <FormError error={confirm.error} />
+          <Button
+            type="button"
+            variant="link"
+            className="self-start px-0"
+            onClick={() => {
+              setMode(mode === 'app' ? 'backup' : 'app');
+              setCode('');
+              confirm.reset();
+            }}
+          >
+            {mode === 'app' ? t.twoFactor.useBackup : t.twoFactor.useApp}
+          </Button>
           <DialogFooter>
-            <Button type="submit" loading={confirm.isPending} disabled={code.length !== 6}>
+            <Button type="submit" loading={confirm.isPending} disabled={!ready}>
               {t.reauth.submit}
             </Button>
             <Button
               type="button"
               variant="ghost"
               onClick={() => {
-                setCode('');
-                confirm.reset();
+                clear();
                 onCancel();
               }}
             >

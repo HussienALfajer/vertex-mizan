@@ -5,7 +5,7 @@ import { Button, Field, FieldLabel, Input, OtpField } from '@vertex-mizan/ui';
 import { useRef, useState } from 'react';
 import { AuthHeading } from '../../components/auth-layout';
 import { FormError } from '../../components/form-error';
-import { api, hasCode } from '../../lib/api';
+import { api } from '../../lib/api';
 import { meQuery } from '../../lib/session';
 
 const t = ar.auth;
@@ -40,18 +40,6 @@ export function TwoFactorPage({ redirect }: { redirect: string | undefined }) {
     if (!ready || sent.current) return;
     sent.current = true;
     verify.mutate(value.trim());
-  }
-
-  // Without a pending first step there is nothing to verify: start again.
-  if (hasCode(verify.error, 'UNAUTHENTICATED')) {
-    return (
-      <div className="flex flex-col gap-5">
-        <AuthHeading title={t.twoFactor.title} description={t.twoFactor.expired} />
-        <Button render={<Link to="/sign-in" search={{ redirect }} />}>
-          {t.twoFactor.backToSignIn}
-        </Button>
-      </div>
-    );
   }
 
   return (
@@ -107,6 +95,13 @@ export function TwoFactorPage({ redirect }: { redirect: string | undefined }) {
       >
         {mode === 'app' ? t.twoFactor.useBackup : t.twoFactor.useApp}
       </Button>
+      {/* The first step expires, and the API then refuses every code alike: start again here. */}
+      <p className="text-center text-control text-muted-foreground">
+        {t.twoFactor.expired}{' '}
+        <Link to="/sign-in" search={{ redirect }} className="text-primary hover:underline">
+          {t.twoFactor.backToSignIn}
+        </Link>
+      </p>
     </form>
   );
 }

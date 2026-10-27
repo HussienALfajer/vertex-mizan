@@ -23,10 +23,17 @@ export const meQuery = queryOptions({
  * (`//host`, `https://…`), so a crafted link cannot send a person elsewhere.
  */
 export function safeRedirect(target: unknown): string | undefined {
-  if (typeof target !== 'string' || !target.startsWith('/') || target.startsWith('//')) {
+  if (typeof target !== 'string' || !target.startsWith('/')) return undefined;
+  // Resolve it as the browser would (which drops tabs and line breaks, so `/\t/host` is `//host`)
+  // and keep only a path on this origin.
+  let url: URL;
+  try {
+    url = new URL(target, window.location.origin);
+  } catch {
     return undefined;
   }
-  return target.includes('\\') ? undefined : target;
+  if (url.origin !== window.location.origin) return undefined;
+  return `${url.pathname}${url.search}${url.hash}`;
 }
 
 /** The `redirect` search parameter of the sign-in and enrolment pages: where to go afterwards. */

@@ -66,6 +66,21 @@ test.describe('sign-in', () => {
     });
   });
 
+  test.describe('too many attempts', () => {
+    test.use({
+      me: null,
+      api: { 'POST /api/auth/sign-in/email': refusal(429, 'RATE_LIMITED') },
+    });
+
+    test('says to wait (S01 rule 8)', async ({ page }) => {
+      await page.goto('/sign-in');
+      await page.getByLabel(t.fields.email).fill('owner@example.test');
+      await page.getByLabel(t.fields.password, { exact: true }).fill(password);
+      await page.getByRole('button', { name: t.signIn.submit }).click();
+      await expect(page.getByRole('alert')).toHaveText(ar.errors.RATE_LIMITED);
+    });
+  });
+
   test.describe('checked in the browser first', () => {
     test.use({ me: null });
 
@@ -87,13 +102,43 @@ test.describe('sign-in', () => {
       },
     });
 
-    test('never leaves the app', async ({ page }) => {
-      await page.goto('/sign-in/two-factor?redirect=%2F%2Fevil.example%2F');
+    // `//host`, a backslash, and a tab the browser drops while parsing: each would leave the origin.
+    for (const crafted of [
+      '%2F%2Fevil.example%2F',
+      '%2F%5Cevil.example',
+      '%2F%09%2Fevil.example',
+    ]) {
+      test(`never leaves the app: ${crafted}`, async ({ page }) => {
+        await page.goto(`/sign-in/two-factor?redirect=${crafted}`);
+        await page.route('**/api/me', (route) => route.fulfill({ json: signedIn }));
+        await page.getByRole('textbox').first().click();
+        await page.keyboard.type('123456');
+        await expect(page.getByRole('heading', { level: 1 })).toHaveText(ar.shell.home.title);
+        expect(new URL(page.url()).pathname).toBe('/');
+      });
+    }
+  });
+
+  test.describe('with a backup code', () => {
+    let received: unknown;
+    test.use({
+      me: null,
+      api: {
+        'POST /api/auth/two-factor/verify-backup-code': (request) => {
+          received = bodyOf(request);
+          return { status: 204 };
+        },
+      },
+    });
+
+    test('signs in when the phone is lost (S01 rule 7)', async ({ page }) => {
+      await page.goto('/sign-in/two-factor');
+      await page.getByRole('button', { name: t.twoFactor.useBackup }).click();
+      await page.getByLabel(t.fields.backupCode).fill(' k7q2-m9xw ');
       await page.route('**/api/me', (route) => route.fulfill({ json: signedIn }));
-      await page.getByRole('textbox').first().click();
-      await page.keyboard.type('123456');
+      await page.getByRole('button', { name: t.twoFactor.submit }).click();
       await expect(page.getByRole('heading', { level: 1 })).toHaveText(ar.shell.home.title);
-      expect(new URL(page.url()).pathname).toBe('/');
+      expect(received).toEqual({ code: 'k7q2-m9xw' });
     });
   });
 
@@ -102,7 +147,8 @@ test.describe('sign-in', () => {
       me: null,
       api: {
         'POST /api/auth/two-factor/verify-totp': refusal(401, 'INVALID_TWO_FACTOR_CODE'),
-        'POST /api/auth/two-factor/verify-backup-code': refusal(401, 'UNAUTHENTICATED'),
+        // The API answers an expired first step with the same code as a wrong one.
+        'POST /api/auth/two-factor/verify-backup-code': refusal(401, 'INVALID_TWO_FACTOR_CODE'),
       },
     });
 
@@ -114,13 +160,14 @@ test.describe('sign-in', () => {
       await expect(page.getByRole('textbox').first()).toHaveValue('');
     });
 
-    test('a backup code without a first step starts over', async ({ page }) => {
-      await page.goto('/sign-in/two-factor');
+    test('a refused backup code leaves the way back to sign-in', async ({ page }) => {
+      await page.goto('/sign-in/two-factor?redirect=%2Faccount%2Fsecurity');
       await page.getByRole('button', { name: t.twoFactor.useBackup }).click();
       await page.getByLabel(t.fields.backupCode).fill('k7q2-m9xw');
       await page.getByRole('button', { name: t.twoFactor.submit }).click();
-      await expect(page.getByText(t.twoFactor.expired)).toBeVisible();
-      await expect(page.getByRole('link', { name: t.twoFactor.backToSignIn })).toBeVisible();
+      await expect(page.getByRole('alert')).toHaveText(ar.errors.INVALID_TWO_FACTOR_CODE);
+      await page.getByRole('link', { name: t.twoFactor.backToSignIn }).click();
+      await expect(page).toHaveURL(/\/sign-in\?redirect=%2Faccount%2Fsecurity$/);
     });
   });
 });
@@ -172,6 +219,73 @@ test.describe('enrolment', () => {
     await page.route('**/api/me', (route) => route.fulfill({ json: signedIn }));
     await finish.click();
     await expect(page.getByRole('heading', { level: 1 })).toHaveText(ar.shell.home.title);
+  });
+
+  test.describe('a wrong first code', () => {
+    test.use({
+      api: {
+        'POST /api/auth/two-factor/enable': { status: 200, json: setup },
+        'POST /api/auth/two-factor/verify-totp': refusal(401, 'INVALID_TWO_FACTOR_CODE'),
+      },
+    });
+
+    test('is refused and the backup codes stay hidden', async ({ page }) => {
+      await page.goto('/two-factor/enrol');
+      await page.getByLabel(t.fields.password, { exact: true }).fill(password);
+      await page.getByRole('button', { name: t.enrol.start }).click();
+      await page.getByRole('textbox').first().click();
+      await page.keyboard.type('000000');
+      await expect(page.getByRole('alert')).toHaveText(ar.errors.INVALID_TWO_FACTOR_CODE);
+      await expect(page.getByRole('img', { name: t.enrol.qr })).toBeVisible();
+      await expect(page.getByRole('list', { name: t.enrol.backupCodes })).toHaveCount(0);
+    });
+  });
+
+  test.describe('again, after signing in with a backup code', () => {
+    let enables = 0;
+    let reauthCode: unknown;
+    test.use({
+      me: signedIn,
+      api: {
+        'GET /api/me/sign-ins': { status: 200, json: signIns },
+        'POST /api/auth/two-factor/enable': () => {
+          enables += 1;
+          return enables === 1
+            ? refusal(403, 'REAUTHENTICATION_REQUIRED')
+            : { status: 200, json: setup };
+        },
+        'POST /api/auth/reauthenticate': (request) => {
+          reauthCode = bodyOf(request).code;
+          return { status: 204 };
+        },
+        'POST /api/auth/two-factor/verify-totp': { status: 204 },
+      },
+    });
+
+    test('confirms with a backup code, then shows the new codes (S01 rules 3, 7)', async ({
+      page,
+    }) => {
+      await page.goto('/account/security');
+      await page.getByRole('link', { name: t.security.authenticator.action }).click();
+      await page.getByLabel(t.fields.password, { exact: true }).fill(password);
+      await page.getByRole('button', { name: t.enrol.start }).click();
+      const dialog = page.getByRole('dialog', { name: t.reauth.title });
+      await dialog.getByRole('button', { name: t.twoFactor.useBackup }).click();
+      await dialog.getByLabel(t.fields.backupCode).fill('p3vd-h8tn');
+      await dialog.getByRole('button', { name: t.reauth.submit }).click();
+      await expect(dialog).toBeHidden();
+      await expect(page.getByRole('img', { name: t.enrol.qr })).toBeVisible();
+      expect(reauthCode).toBe('p3vd-h8tn');
+      expect(enables).toBe(2);
+      await page.getByRole('textbox').first().click();
+      await page.keyboard.type('123456');
+      await expect(
+        page.getByRole('list', { name: t.enrol.backupCodes }).getByRole('listitem'),
+      ).toHaveText(setup.backupCodes);
+      await page.getByRole('checkbox').click();
+      await page.getByRole('button', { name: t.enrol.finish }).click();
+      await expect(page.getByRole('heading', { level: 1 })).toHaveText(t.security.title);
+    });
   });
 });
 
@@ -287,24 +401,48 @@ test.describe('invitation', () => {
   });
 
   test.describe('an existing person, signed out', () => {
+    let session = false;
+    const accepted: unknown[] = [];
     test.use({
-      me: null,
       api: {
+        'GET /api/me': () =>
+          session ? { status: 200, json: signedIn } : refusal(401, 'UNAUTHENTICATED'),
         'POST /api/invitations/lookup': {
           status: 200,
           json: { ...newPersonInvitation, personExists: true },
         },
+        'POST /api/auth/sign-in/email': { status: 200, json: { twoFactorRequired: true } },
+        'POST /api/auth/two-factor/verify-totp': () => {
+          session = true;
+          return { status: 204 };
+        },
+        'POST /api/invitations/accept': (request) => {
+          accepted.push(bodyOf(request));
+          return { status: 200, json: signedIn.memberships[0] };
+        },
       },
     });
 
-    test('signs in first and comes back to the same invitation', async ({ page }) => {
+    test('signs in with both steps, comes back to the invitation and accepts it', async ({
+      page,
+    }) => {
       await page.goto(`/invitation#token=${linkToken}`);
       await expect(page.getByText(t.invitation.existingPerson)).toBeVisible();
       await page.getByRole('link', { name: t.invitation.signInToAccept }).click();
       await expect(page).toHaveURL(/\/sign-in\?redirect=%2Finvitation/);
-      // Back on the invitation page without the fragment: the token waited in this tab.
-      await page.goto('/invitation');
-      await expect(page.getByText(t.invitation.existingPerson)).toBeVisible();
+      await page.getByLabel(t.fields.email).fill(newPersonInvitation.email);
+      await page.getByLabel(t.fields.password, { exact: true }).fill(password);
+      await page.getByRole('button', { name: t.signIn.submit }).click();
+      await page.getByRole('textbox').first().click();
+      await page.keyboard.type('123456');
+      // Back without the fragment: the token waited in this tab's session storage.
+      await expect(page).toHaveURL(/\/invitation$/);
+      await page.getByRole('button', { name: t.invitation.accept }).click();
+      await expect(page.getByRole('heading', { level: 1 })).toHaveText(ar.shell.home.title);
+      expect(accepted).toEqual([{ token: linkToken }]);
+      expect(
+        await page.evaluate(() => sessionStorage.getItem('mizan.pendingInvitation')),
+      ).toBeNull();
     });
   });
 
