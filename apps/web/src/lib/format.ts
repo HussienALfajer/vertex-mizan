@@ -54,3 +54,46 @@ export function damascusDayBounds(day: string): { start: string; end: string } {
   const offset = damascusOffset(day);
   return { start: `${day}T00:00:00.000${offset}`, end: `${day}T23:59:59.999${offset}` };
 }
+
+const calendarDay = new Intl.DateTimeFormat(formatLocale, { dateStyle: 'medium', timeZone: 'UTC' });
+
+/** A calendar day (`YYYY-MM-DD`: a rate's effective date, a holiday), as people in Syria read it. */
+export function formatDay(day: string): string {
+  return calendarDay.format(new Date(`${day}T00:00:00Z`));
+}
+
+const shortDay = new Intl.DateTimeFormat(formatLocale, {
+  weekday: 'short',
+  day: 'numeric',
+  month: 'numeric',
+  timeZone: 'UTC',
+});
+
+/** A calendar day with its weekday, short, for a row of days. */
+export function formatShortDay(day: string): string {
+  return shortDay.format(new Date(`${day}T00:00:00Z`));
+}
+
+const dayInDamascus = new Intl.DateTimeFormat('en-CA', {
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  timeZone: displayTimeZone,
+});
+
+/** Today in Damascus, as `YYYY-MM-DD`: the default date of a rate and of a rate lookup. */
+export function damascusToday(now: Date = new Date()): string {
+  return dayInDamascus.format(now);
+}
+
+/** A calendar day moved by whole days. */
+export function addDays(day: string, days: number): string {
+  const date = new Date(`${day}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+/** The ISO weekday of a calendar day: 1 Monday … 7 Sunday. */
+export function isoWeekday(day: string): 1 | 2 | 3 | 4 | 5 | 6 | 7 {
+  return (new Date(`${day}T00:00:00Z`).getUTCDay() || 7) as 1 | 2 | 3 | 4 | 5 | 6 | 7;
+}
