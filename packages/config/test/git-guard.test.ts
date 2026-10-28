@@ -157,7 +157,8 @@ describe('git guard: PowerShell commands', () => {
     expect(refused(commit(feature), 'PowerShell')).toBe(false);
   });
 
-  it('reads an unquoted Windows path as a path', () => {
+  // A backslash path means something only on Windows, where the PowerShell tool runs.
+  it.runIf(process.platform === 'win32')('reads an unquoted Windows path as a path', () => {
     const windows = (dir: string) => dir.replaceAll('/', '\\');
     expect(refused(`git -C ${windows(main)} commit -m x`, 'PowerShell')).toBe(true);
     expect(refused(`git -C ${windows(feature)} commit -m x`, 'PowerShell')).toBe(false);
