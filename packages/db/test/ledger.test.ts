@@ -6,7 +6,15 @@ import {
   money,
   type RateType,
 } from '@vertex-mizan/contracts';
-import { chainEntryValue, fiscalYearOf, negate, periodOf, verifyChain } from '@vertex-mizan/ledger';
+import {
+  chainEntryValue,
+  ENTRY_SOURCES,
+  fiscalYearOf,
+  type Line,
+  negate,
+  periodOf,
+  verifyChain,
+} from '@vertex-mizan/ledger';
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -22,6 +30,8 @@ import {
   dimensionTypes,
   dimensionValues,
   entryNumberCounters,
+  JOURNAL_ENTRY_SOURCES,
+  JOURNAL_LINE_KINDS,
   journalEntries,
   journalLines,
   ledgerHeads,
@@ -235,6 +245,14 @@ beforeAll(async () => {
     .returning({ id: users.id });
   if (!row) throw new Error('no user inserted');
   personId = row.id;
+});
+
+describe('the ledger schema', () => {
+  it("stores the sources and line kinds of packages/ledger's entries", () => {
+    expect([...JOURNAL_ENTRY_SOURCES]).toEqual([...ENTRY_SOURCES]);
+    const kinds: readonly Line['kind'][] = JOURNAL_LINE_KINDS;
+    expect(kinds).toEqual(['measured', 'carried', 'difference', 'rounding']);
+  });
 });
 
 describe('post(): manual entries (S03 rules 1–16)', () => {
