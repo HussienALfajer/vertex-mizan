@@ -39,7 +39,7 @@ Spec: `docs/specs/S03-journal-entries-posting.md` (Approved, owner 2026-10-28) Â
 - [x] checks and reviewer, PR with auto-merge and Auto-fix
 
 ## PR 5 â€” The integrity and export screens (web, e2e)
-- [ ] web: `/integrity` (run, anchors, a pasted anchor), `/settings/export` (request with reauthentication, states, download), "run integrity check" in the command palette; `ar.integrity`, `ar.export`
+- [x] web: `/integrity` (run, anchors, a pasted anchor), `/settings/export` (request with reauthentication, states, download), "run integrity check" in the command palette; `ar.integrity`, `ar.export`
 - [ ] e2e: the integrity page and the export page; RTL screenshots light and dark at 360, 768 and 1280 px, looked at
 - [ ] wiring, docs (`docs/ROADMAP.md`: S03 done)
 - [ ] checks and reviewer, PR with auto-merge and Auto-fix; reset this file to its "No task in progress" stub

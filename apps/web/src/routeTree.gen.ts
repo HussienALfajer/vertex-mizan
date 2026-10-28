@@ -18,6 +18,7 @@ import { Route as AuthInvitationRouteImport } from './routes/_auth/invitation'
 import { Route as AuthResetPasswordRouteImport } from './routes/_auth/reset-password'
 import { Route as AppCompanyIndexRouteImport } from './routes/_app/_company/index'
 import { Route as AppCompanyDimensionsRouteImport } from './routes/_app/_company/dimensions'
+import { Route as AppCompanyIntegrityRouteImport } from './routes/_app/_company/integrity'
 import { Route as AppAccountSecurityRouteImport } from './routes/_app/account/security'
 import { Route as AppCompaniesIndexRouteImport } from './routes/_app/companies/index'
 import { Route as AppCompaniesNewRouteImport } from './routes/_app/companies/new'
@@ -35,6 +36,7 @@ import { Route as AppCompanyRatesIndexRouteImport } from './routes/_app/_company
 import { Route as AppCompanyRatesCalendarRouteImport } from './routes/_app/_company/rates/calendar'
 import { Route as AppCompanySettingsAuditRouteImport } from './routes/_app/_company/settings/audit'
 import { Route as AppCompanySettingsCompanyRouteImport } from './routes/_app/_company/settings/company'
+import { Route as AppCompanySettingsExportRouteImport } from './routes/_app/_company/settings/export'
 import { Route as AppCompanySettingsMembersRouteImport } from './routes/_app/_company/settings/members'
 import { Route as AppCompanyAccountsIdLinesRouteImport } from './routes/_app/_company/accounts/$id/lines'
 
@@ -78,6 +80,11 @@ const AppCompanyIndexRoute = AppCompanyIndexRouteImport.update({
 const AppCompanyDimensionsRoute = AppCompanyDimensionsRouteImport.update({
   id: '/dimensions',
   path: '/dimensions',
+  getParentRoute: () => AppCompanyRoute,
+} as any)
+const AppCompanyIntegrityRoute = AppCompanyIntegrityRouteImport.update({
+  id: '/integrity',
+  path: '/integrity',
   getParentRoute: () => AppCompanyRoute,
 } as any)
 const AppAccountSecurityRoute = AppAccountSecurityRouteImport.update({
@@ -166,6 +173,12 @@ const AppCompanySettingsCompanyRoute =
     path: '/settings/company',
     getParentRoute: () => AppCompanyRoute,
   } as any)
+const AppCompanySettingsExportRoute =
+  AppCompanySettingsExportRouteImport.update({
+    id: '/settings/export',
+    path: '/settings/export',
+    getParentRoute: () => AppCompanyRoute,
+  } as any)
 const AppCompanySettingsMembersRoute =
   AppCompanySettingsMembersRouteImport.update({
     id: '/settings/members',
@@ -186,6 +199,7 @@ export interface FileRoutesByFullPath {
   '/invitation': typeof AuthInvitationRoute
   '/reset-password': typeof AuthResetPasswordRoute
   '/dimensions': typeof AppCompanyDimensionsRoute
+  '/integrity': typeof AppCompanyIntegrityRoute
   '/account/security': typeof AppAccountSecurityRoute
   '/companies/new': typeof AppCompaniesNewRoute
   '/sign-in/two-factor': typeof AuthSignInTwoFactorRoute
@@ -199,6 +213,7 @@ export interface FileRoutesByFullPath {
   '/rates/calendar': typeof AppCompanyRatesCalendarRoute
   '/settings/audit': typeof AppCompanySettingsAuditRoute
   '/settings/company': typeof AppCompanySettingsCompanyRoute
+  '/settings/export': typeof AppCompanySettingsExportRoute
   '/settings/members': typeof AppCompanySettingsMembersRoute
   '/chart/': typeof AppCompanyChartIndexRoute
   '/drafts/': typeof AppCompanyDraftsIndexRoute
@@ -213,6 +228,7 @@ export interface FileRoutesByTo {
   '/invitation': typeof AuthInvitationRoute
   '/reset-password': typeof AuthResetPasswordRoute
   '/dimensions': typeof AppCompanyDimensionsRoute
+  '/integrity': typeof AppCompanyIntegrityRoute
   '/account/security': typeof AppAccountSecurityRoute
   '/companies/new': typeof AppCompaniesNewRoute
   '/sign-in/two-factor': typeof AuthSignInTwoFactorRoute
@@ -226,6 +242,7 @@ export interface FileRoutesByTo {
   '/rates/calendar': typeof AppCompanyRatesCalendarRoute
   '/settings/audit': typeof AppCompanySettingsAuditRoute
   '/settings/company': typeof AppCompanySettingsCompanyRoute
+  '/settings/export': typeof AppCompanySettingsExportRoute
   '/settings/members': typeof AppCompanySettingsMembersRoute
   '/chart': typeof AppCompanyChartIndexRoute
   '/drafts': typeof AppCompanyDraftsIndexRoute
@@ -243,6 +260,7 @@ export interface FileRoutesById {
   '/_auth/invitation': typeof AuthInvitationRoute
   '/_auth/reset-password': typeof AuthResetPasswordRoute
   '/_app/_company/dimensions': typeof AppCompanyDimensionsRoute
+  '/_app/_company/integrity': typeof AppCompanyIntegrityRoute
   '/_app/account/security': typeof AppAccountSecurityRoute
   '/_app/companies/new': typeof AppCompaniesNewRoute
   '/_auth/sign-in/two-factor': typeof AuthSignInTwoFactorRoute
@@ -257,6 +275,7 @@ export interface FileRoutesById {
   '/_app/_company/rates/calendar': typeof AppCompanyRatesCalendarRoute
   '/_app/_company/settings/audit': typeof AppCompanySettingsAuditRoute
   '/_app/_company/settings/company': typeof AppCompanySettingsCompanyRoute
+  '/_app/_company/settings/export': typeof AppCompanySettingsExportRoute
   '/_app/_company/settings/members': typeof AppCompanySettingsMembersRoute
   '/_app/_company/chart/': typeof AppCompanyChartIndexRoute
   '/_app/_company/drafts/': typeof AppCompanyDraftsIndexRoute
@@ -273,6 +292,7 @@ export interface FileRouteTypes {
     | '/invitation'
     | '/reset-password'
     | '/dimensions'
+    | '/integrity'
     | '/account/security'
     | '/companies/new'
     | '/sign-in/two-factor'
@@ -286,6 +306,7 @@ export interface FileRouteTypes {
     | '/rates/calendar'
     | '/settings/audit'
     | '/settings/company'
+    | '/settings/export'
     | '/settings/members'
     | '/chart/'
     | '/drafts/'
@@ -300,6 +321,7 @@ export interface FileRouteTypes {
     | '/invitation'
     | '/reset-password'
     | '/dimensions'
+    | '/integrity'
     | '/account/security'
     | '/companies/new'
     | '/sign-in/two-factor'
@@ -313,6 +335,7 @@ export interface FileRouteTypes {
     | '/rates/calendar'
     | '/settings/audit'
     | '/settings/company'
+    | '/settings/export'
     | '/settings/members'
     | '/chart'
     | '/drafts'
@@ -329,6 +352,7 @@ export interface FileRouteTypes {
     | '/_auth/invitation'
     | '/_auth/reset-password'
     | '/_app/_company/dimensions'
+    | '/_app/_company/integrity'
     | '/_app/account/security'
     | '/_app/companies/new'
     | '/_auth/sign-in/two-factor'
@@ -343,6 +367,7 @@ export interface FileRouteTypes {
     | '/_app/_company/rates/calendar'
     | '/_app/_company/settings/audit'
     | '/_app/_company/settings/company'
+    | '/_app/_company/settings/export'
     | '/_app/_company/settings/members'
     | '/_app/_company/chart/'
     | '/_app/_company/drafts/'
@@ -420,6 +445,13 @@ declare module '@tanstack/react-router' {
       path: '/dimensions'
       fullPath: '/dimensions'
       preLoaderRoute: typeof AppCompanyDimensionsRouteImport
+      parentRoute: typeof AppCompanyRoute
+    }
+    '/_app/_company/integrity': {
+      id: '/_app/_company/integrity'
+      path: '/integrity'
+      fullPath: '/integrity'
+      preLoaderRoute: typeof AppCompanyIntegrityRouteImport
       parentRoute: typeof AppCompanyRoute
     }
     '/_app/account/security': {
@@ -541,6 +573,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppCompanySettingsCompanyRouteImport
       parentRoute: typeof AppCompanyRoute
     }
+    '/_app/_company/settings/export': {
+      id: '/_app/_company/settings/export'
+      path: '/settings/export'
+      fullPath: '/settings/export'
+      preLoaderRoute: typeof AppCompanySettingsExportRouteImport
+      parentRoute: typeof AppCompanyRoute
+    }
     '/_app/_company/settings/members': {
       id: '/_app/_company/settings/members'
       path: '/settings/members'
@@ -560,6 +599,7 @@ declare module '@tanstack/react-router' {
 
 interface AppCompanyRouteChildren {
   AppCompanyDimensionsRoute: typeof AppCompanyDimensionsRoute
+  AppCompanyIntegrityRoute: typeof AppCompanyIntegrityRoute
   AppCompanyIndexRoute: typeof AppCompanyIndexRoute
   AppCompanyChartRolesRoute: typeof AppCompanyChartRolesRoute
   AppCompanyDraftsIdRoute: typeof AppCompanyDraftsIdRoute
@@ -568,6 +608,7 @@ interface AppCompanyRouteChildren {
   AppCompanyRatesCalendarRoute: typeof AppCompanyRatesCalendarRoute
   AppCompanySettingsAuditRoute: typeof AppCompanySettingsAuditRoute
   AppCompanySettingsCompanyRoute: typeof AppCompanySettingsCompanyRoute
+  AppCompanySettingsExportRoute: typeof AppCompanySettingsExportRoute
   AppCompanySettingsMembersRoute: typeof AppCompanySettingsMembersRoute
   AppCompanyChartIndexRoute: typeof AppCompanyChartIndexRoute
   AppCompanyDraftsIndexRoute: typeof AppCompanyDraftsIndexRoute
@@ -578,6 +619,7 @@ interface AppCompanyRouteChildren {
 
 const AppCompanyRouteChildren: AppCompanyRouteChildren = {
   AppCompanyDimensionsRoute: AppCompanyDimensionsRoute,
+  AppCompanyIntegrityRoute: AppCompanyIntegrityRoute,
   AppCompanyIndexRoute: AppCompanyIndexRoute,
   AppCompanyChartRolesRoute: AppCompanyChartRolesRoute,
   AppCompanyDraftsIdRoute: AppCompanyDraftsIdRoute,
@@ -586,6 +628,7 @@ const AppCompanyRouteChildren: AppCompanyRouteChildren = {
   AppCompanyRatesCalendarRoute: AppCompanyRatesCalendarRoute,
   AppCompanySettingsAuditRoute: AppCompanySettingsAuditRoute,
   AppCompanySettingsCompanyRoute: AppCompanySettingsCompanyRoute,
+  AppCompanySettingsExportRoute: AppCompanySettingsExportRoute,
   AppCompanySettingsMembersRoute: AppCompanySettingsMembersRoute,
   AppCompanyChartIndexRoute: AppCompanyChartIndexRoute,
   AppCompanyDraftsIndexRoute: AppCompanyDraftsIndexRoute,

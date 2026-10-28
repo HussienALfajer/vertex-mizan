@@ -11,7 +11,9 @@ import { drafts } from './drafts.js';
 import { email } from './email.js';
 import { entries } from './entries.js';
 import { errors } from './errors.js';
+import { exportData } from './export.js';
 import { grid } from './grid.js';
+import { integrity } from './integrity.js';
 import { members } from './members.js';
 import { permissions } from './permissions.js';
 import { rates } from './rates.js';
@@ -41,6 +43,8 @@ export const ar = {
   rates,
   entries,
   drafts,
+  integrity,
+  export: exportData,
 };
 
 export type Catalog = typeof ar;
