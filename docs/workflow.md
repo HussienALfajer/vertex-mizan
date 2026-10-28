@@ -25,7 +25,7 @@ The unit of work is a spec from `docs/ROADMAP.md`. Each session ends with a merg
 
 - A small spec does sessions 3 and 4 in one PR.
 - **Each layer is committed when its gate passes,** so a crash or a wrong `/rewind` never loses a PR.
-- `TASKS.md` is local and git-ignored: it is a working checklist regenerated from the spec by `/feature-slice`, while the commits on the branch carry the work itself.
+- `TASKS.md` is committed (owner, 2026-10-28: sessions also run in the cloud): `/feature-slice` writes the spec's checklist into it and commits it with each layer, and the spec's last PR resets it to "No task in progress". One spec at a time, so two branches never edit it.
 - After each merge the owner runs the cleanup line from the report, then `/clear`.
 
 ## What waits for the owner before auto-merge
