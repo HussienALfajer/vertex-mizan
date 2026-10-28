@@ -22,13 +22,14 @@ import {
 } from '@vertex-mizan/ui';
 import { CircleCheckIcon } from 'lucide-react';
 import { useState } from 'react';
-import { FormError } from '../../components/form-error';
+import { FormError, FormErrorSummary } from '../../components/form-error';
 import { api } from '../../lib/api';
 import { meQuery } from '../../lib/session';
 import { useSwitchCompany } from './company-queries';
 import {
   LedgerFields,
   type LedgerForm,
+  ledgerErrorFieldId,
   ledgerFormError,
   ledgersOf,
   vertexMediaLedgers,
@@ -59,6 +60,7 @@ export function NewCompanyPage() {
     policyNote?: string | undefined;
     latin?: string | undefined;
   }>({});
+  const [attempt, setAttempt] = useState(0);
   const queryClient = useQueryClient();
   const open = useSwitchCompany();
   const create = useMutation({
@@ -101,14 +103,26 @@ export function NewCompanyPage() {
               latin: nameLatin.trim() === '' ? undefined : nameError(nameLatin),
             };
             setErrors(found);
-            if (found.name || found.policyNote || found.latin || ledgerFormError(ledgers)) return;
+            if (found.name || found.policyNote || found.latin || ledgerFormError(ledgers)) {
+              setAttempt((count) => count + 1);
+              return;
+            }
             create.mutate();
           }}
         >
+          <FormErrorSummary
+            attempt={attempt}
+            errors={[
+              ['new-company-name', errors.name],
+              ['new-company-name-latin', errors.latin],
+              [ledgerErrorFieldId, ledgerFormError(ledgers)],
+              ['new-company-policy-note', errors.policyNote],
+            ]}
+          />
           {/* Once created, the values are the company's: nothing typed after it is sent. */}
           <fieldset disabled={created} className="flex min-w-0 flex-col gap-6">
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field invalid={errors.name !== undefined}>
+              <Field id="new-company-name" invalid={errors.name !== undefined}>
                 <FieldLabel>{t.fields.name}</FieldLabel>
                 <Input
                   value={name}
@@ -117,7 +131,7 @@ export function NewCompanyPage() {
                 />
                 <FieldError match={errors.name !== undefined}>{errors.name}</FieldError>
               </Field>
-              <Field invalid={errors.latin !== undefined}>
+              <Field id="new-company-name-latin" invalid={errors.latin !== undefined}>
                 <FieldLabel>{t.fields.nameLatin}</FieldLabel>
                 <Input
                   dir="ltr"
@@ -137,7 +151,7 @@ export function NewCompanyPage() {
               description={ar.chart.templateHint}
               onValueChange={setTemplate}
             />
-            <Field invalid={errors.policyNote !== undefined}>
+            <Field id="new-company-policy-note" invalid={errors.policyNote !== undefined}>
               <FieldLabel>{t.fields.policyNote}</FieldLabel>
               <Textarea
                 value={policyNote}

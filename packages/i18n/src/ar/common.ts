@@ -8,6 +8,8 @@ export const common = {
   save: 'احفظ',
   errorTitle: 'حدث خطأ غير متوقع',
   errorDescription: 'لم تكتمل العملية. أعد المحاولة، وإن تكرر الخطأ فتواصل مع الدعم.',
+  /** The title of a refused form's error summary (ADR 0010 §4). */
+  errorSummary: 'راجع ما يلي قبل المتابعة',
   theme: {
     toDark: 'فعّل الوضع الداكن',
     toLight: 'فعّل الوضع الفاتح',

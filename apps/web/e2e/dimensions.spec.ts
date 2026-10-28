@@ -3,7 +3,7 @@ import type { DimensionType, Me } from '@vertex-mizan/contracts';
 import { ar } from '@vertex-mizan/i18n';
 import { companyId, owner, viewer } from './company-mocks';
 import { dimensionReads, hubClient, hubContract, manualClient, typeOf } from './dimension-mocks';
-import { type ApiReply, expect, refusal, test } from './test';
+import { type ApiReply, expect, fieldError, refusal, test } from './test';
 
 const t = ar.dimensions;
 
@@ -61,7 +61,7 @@ test.describe('dimensions', () => {
     await page.getByRole('button', { name: t.newValue }).click();
     let dialog = page.getByRole('dialog', { name: t.value.createTitle });
     await dialog.getByRole('button', { name: t.value.create }).click();
-    await expect(dialog.getByText(t.validation.required)).toBeVisible();
+    await expect(fieldError(dialog, t.validation.required)).toBeVisible();
     await dialog.getByLabel(t.value.name, { exact: true }).fill('عميل تجريبي');
     await dialog.getByLabel(t.value.code).fill('C-001');
     await dialog.getByRole('button', { name: t.value.create }).click();
@@ -98,7 +98,7 @@ test.describe('dimensions', () => {
     dialog = page.getByRole('dialog', { name: t.value.createTitle });
     await dialog.getByLabel(t.value.name, { exact: true }).fill('مشروع تجريبي');
     await dialog.getByRole('button', { name: t.value.create }).click();
-    await expect(dialog.getByText(t.validation.required)).toBeVisible();
+    await expect(fieldError(dialog, t.validation.required)).toBeVisible();
     await page.getByRole('combobox', { name: t.value.kind }).click();
     await page.getByRole('option', { name: t.contractKinds.project, exact: true }).click();
     const client = dialog.getByRole('combobox', { name: typeOf('client').name });
@@ -189,7 +189,7 @@ test.describe('dimensions', () => {
     await dialog.getByLabel(t.type.code).fill('Cost Centre');
     await dialog.getByLabel(t.type.name, { exact: true }).fill('مركز التكلفة');
     await dialog.getByRole('button', { name: t.type.create }).click();
-    await expect(dialog.getByText(t.validation.typeCode)).toBeVisible();
+    await expect(fieldError(dialog, t.validation.typeCode)).toBeVisible();
     expect(create.seen).toHaveLength(0);
     await dialog.getByLabel(t.type.code).fill('cost_centre');
     await dialog.getByRole('button', { name: t.type.create }).click();

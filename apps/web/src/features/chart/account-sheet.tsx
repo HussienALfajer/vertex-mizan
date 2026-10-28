@@ -38,7 +38,7 @@ import {
 } from '@vertex-mizan/ui';
 import { InfoIcon, LockIcon } from 'lucide-react';
 import { useState } from 'react';
-import { FormError } from '../../components/form-error';
+import { FormError, FormErrorSummary } from '../../components/form-error';
 import { api } from '../../lib/api';
 import { useCompany } from '../../lib/session';
 import { dimensionTypesQuery } from '../dimensions/dimension-queries';
@@ -203,6 +203,7 @@ export function AccountSheet({
   const types = useQuery(dimensionTypesQuery(companyId));
   const [form, setForm] = useState(() => formOf(mode, accounts));
   const [errors, setErrors] = useState<{ code?: string; name?: string; line?: string }>({});
+  const [attempt, setAttempt] = useState(0);
   const [unchanged, setUnchanged] = useState(false);
   const account = mode.kind === 'edit' ? mode.account : undefined;
   const parent = accounts.find((candidate) => candidate.id === form.parentId);
@@ -262,7 +263,10 @@ export function AccountSheet({
     if (resolved.kind === 'postable' && !form.statementLine)
       found.line = t.validation.statementLine;
     setErrors(found);
-    if (Object.keys(found).length > 0) return;
+    if (Object.keys(found).length > 0) {
+      setAttempt((count) => count + 1);
+      return;
+    }
     if (account) {
       const change = changes(account, resolved, accountClass);
       if (Object.keys(change).length === 0) {
@@ -340,6 +344,14 @@ export function AccountSheet({
             ))}
           </div>
         )}
+        <FormErrorSummary
+          attempt={attempt}
+          errors={[
+            ['account-code', errors.code],
+            ['account-name', errors.name],
+            ['account-statement-line', errors.line],
+          ]}
+        />
         <fieldset disabled={readOnly} className="flex min-w-0 flex-col gap-5">
           {!isRoot && (
             <SelectField
@@ -368,7 +380,7 @@ export function AccountSheet({
             />
           )}
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field invalid={errors.code !== undefined} disabled={placeLocked}>
+            <Field id="account-code" invalid={errors.code !== undefined} disabled={placeLocked}>
               <FieldLabel>{s.code}</FieldLabel>
               <Input
                 dir="ltr"
@@ -396,7 +408,7 @@ export function AccountSheet({
               onValueChange={(value) => set('kind', value)}
             />
           )}
-          <Field invalid={errors.name !== undefined}>
+          <Field id="account-name" invalid={errors.name !== undefined}>
             <FieldLabel>{s.name}</FieldLabel>
             <Input
               value={form.name}
@@ -424,6 +436,7 @@ export function AccountSheet({
           {resolved.kind === 'postable' && (
             <>
               <SelectField
+                id="account-statement-line"
                 label={s.statementLine}
                 value={form.statementLine}
                 placeholder={s.choose}

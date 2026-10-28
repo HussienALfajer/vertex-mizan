@@ -15,7 +15,7 @@ import {
 } from '@vertex-mizan/ui';
 import { useRef, useState } from 'react';
 import { AuthHeading } from '../../components/auth-layout';
-import { FormError } from '../../components/form-error';
+import { FormError, FormErrorSummary } from '../../components/form-error';
 import { useSensitiveAction } from '../../components/reauth-dialog';
 import { api } from '../../lib/api';
 import { meQuery } from '../../lib/session';
@@ -53,6 +53,7 @@ export function EnrolPage({ redirect }: { redirect: string | undefined }) {
 function PasswordStep({ onSetup }: { onSetup: (setup: TwoFactorSetup) => void }) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | undefined>();
+  const [attempt, setAttempt] = useState(0);
   const { run, dialog } = useSensitiveAction();
   const enable = useMutation({
     mutationFn: () =>
@@ -73,11 +74,13 @@ function PasswordStep({ onSetup }: { onSetup: (setup: TwoFactorSetup) => void })
         event.preventDefault();
         const found = password === '' ? t.validation.required : undefined;
         setError(found);
-        if (!found) enable.mutate();
+        if (found) setAttempt((count) => count + 1);
+        else enable.mutate();
       }}
     >
       <p className="text-control text-foreground">{t.enrol.passwordStep}</p>
-      <Field invalid={error !== undefined}>
+      <FormErrorSummary attempt={attempt} errors={[['enrol-password', error]]} />
+      <Field id="enrol-password" invalid={error !== undefined}>
         <FieldLabel>{t.fields.password}</FieldLabel>
         <PasswordInput
           autoComplete="current-password"

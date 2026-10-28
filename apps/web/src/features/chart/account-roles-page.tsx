@@ -30,7 +30,7 @@ import {
 } from '@vertex-mizan/ui';
 import { InfoIcon, TriangleAlertIcon } from 'lucide-react';
 import { useState } from 'react';
-import { FormError } from '../../components/form-error';
+import { FormError, FormErrorSummary } from '../../components/form-error';
 import { api, listOf } from '../../lib/api';
 import { can, useCompany } from '../../lib/session';
 import { accountRolesQuery, accountsQuery } from './chart-queries';
@@ -154,6 +154,7 @@ function RoleDialog({
   const queryClient = useQueryClient();
   const [accountId, setAccountId] = useState<string | null>(current);
   const [invalid, setInvalid] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   const save = useMutation({
     mutationFn: (id: string) =>
       api('PUT', '/account-roles', {
@@ -186,6 +187,7 @@ function RoleDialog({
             event.preventDefault();
             if (!accountId) {
               setInvalid(true);
+              setAttempt((count) => count + 1);
               return;
             }
             save.mutate(accountId);
@@ -195,7 +197,12 @@ function RoleDialog({
             <DialogTitle>{`${r.changeTitle}: ${t.roles[role]}`}</DialogTitle>
             <DialogDescription>{t.roleFits[role]}</DialogDescription>
           </DialogHeader>
+          <FormErrorSummary
+            attempt={attempt}
+            errors={[['role-account', invalid ? t.validation.required : undefined]]}
+          />
           <AccountPicker
+            id="role-account"
             label={r.picker}
             accounts={options}
             value={accountId}

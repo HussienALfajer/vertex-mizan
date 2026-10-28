@@ -31,6 +31,25 @@ test.describe('design-system page', () => {
     await expect(stored).toContainText('125050');
   });
 
+  test('a refused form: the error summary takes focus and leads to each field', async ({
+    page,
+  }) => {
+    await page.goto('/design-system');
+    const form = page.getByRole('form', { name: t.errorSummary.label });
+    await form.getByRole('button', { name: t.errorSummary.submit }).click();
+    const summary = form.getByRole('region', { name: ar.common.errorSummary });
+    await expect(summary).toBeFocused();
+    await expect(summary.getByRole('link')).toHaveCount(2);
+    await summary.getByRole('link').nth(1).click();
+    await expect(form.getByRole('textbox', { name: t.errorSummary.note })).toBeFocused();
+
+    // A second refused submit takes focus again, now with only the field still empty.
+    await form.getByRole('textbox', { name: t.errorSummary.name }).fill('الصندوق');
+    await form.getByRole('button', { name: t.errorSummary.submit }).click();
+    await expect(summary).toBeFocused();
+    await expect(summary.getByRole('link')).toHaveText([t.errorSummary.required]);
+  });
+
   test('refuses text that is not an amount and keeps the last amount', async ({ page }) => {
     await page.goto('/design-system');
     const input = page.getByLabel(t.input.debit, { exact: true });

@@ -3,7 +3,7 @@ import type { Account } from '@vertex-mizan/contracts';
 import { ar } from '@vertex-mizan/i18n';
 import { accountOf, chart, chartReads, roles, roots, templates, usedChart } from './chart-mocks';
 import { companyId, owner, viewer } from './company-mocks';
-import { type ApiReply, expect, refusal, test } from './test';
+import { type ApiReply, expect, fieldError, refusal, test } from './test';
 
 const t = ar.chart;
 const s = t.sheet;
@@ -92,7 +92,7 @@ test.describe('the chart', () => {
     await sheet.getByLabel(s.name).fill('الحساب المصرفي — يورو');
     await choose(page, s.statementLine, 'النقد وما يعادله');
     await sheet.getByRole('button', { name: s.create }).click();
-    await expect(sheet.getByText(ar.errors.ACCOUNT_CODE_INVALID)).toBeVisible();
+    await expect(fieldError(sheet, ar.errors.ACCOUNT_CODE_INVALID)).toBeVisible();
     expect(create.seen).toHaveLength(0);
 
     await sheet.getByLabel(s.code).fill('111007');
@@ -149,7 +149,7 @@ test.describe('the chart', () => {
     await rowAction(page, '111001', t.actions.archive);
     dialog = page.getByRole('dialog', { name: t.archive.title });
     await dialog.getByRole('button', { name: t.archive.submit }).click();
-    await expect(dialog.getByText(ar.company.validation.required)).toBeVisible();
+    await expect(fieldError(dialog, ar.company.validation.required)).toBeVisible();
     await dialog.getByLabel(t.archive.reason).fill('لم يعد مستخدمًا (مثال)');
     await dialog.getByRole('button', { name: t.archive.submit }).click();
     await expect(dialog).toHaveCount(0);

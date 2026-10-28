@@ -24,6 +24,7 @@ export * from './components/date-range-field';
 export * from './components/dialog';
 export * from './components/dropdown-menu';
 export * from './components/empty-state';
+export * from './components/error-summary';
 export * from './components/field';
 export * from './components/icon-button';
 export * from './components/input';

@@ -9,11 +9,11 @@ import { ar } from '@vertex-mizan/i18n';
 import { Button, Field, FieldError, FieldLabel, Input, Skeleton } from '@vertex-mizan/ui';
 import { useEffect, useState } from 'react';
 import { AuthHeading } from '../../components/auth-layout';
-import { FormError } from '../../components/form-error';
+import { FormError, FormErrorSummary } from '../../components/form-error';
 import { api, errorText } from '../../lib/api';
 import { useFragmentToken } from '../../lib/fragment-token';
 import { meQuery } from '../../lib/session';
-import { NewPasswordFields } from './new-password-fields';
+import { NewPasswordFields, newPasswordFieldIds } from './new-password-fields';
 import { newPasswordError } from './validation';
 
 const t = ar.auth;
@@ -155,6 +155,7 @@ function NewPerson({ token, email }: { token: string; email: string }) {
     password?: string | undefined;
     confirm?: string | undefined;
   }>({});
+  const [attempt, setAttempt] = useState(0);
 
   const accept = useMutation({
     mutationFn: async () => {
@@ -196,11 +197,20 @@ function NewPerson({ token, email }: { token: string; email: string }) {
           ...newPasswordError(password, confirm, email),
         };
         setErrors(found);
-        if (!found.name && !found.password && !found.confirm) accept.mutate();
+        if (found.name || found.password || found.confirm) setAttempt((count) => count + 1);
+        else accept.mutate();
       }}
     >
       <p className="text-control text-muted-foreground">{t.invitation.newPerson}</p>
-      <Field invalid={errors.name !== undefined}>
+      <FormErrorSummary
+        attempt={attempt}
+        errors={[
+          ['invitation-name', errors.name],
+          [newPasswordFieldIds.password, errors.password],
+          [newPasswordFieldIds.confirm, errors.confirm],
+        ]}
+      />
+      <Field id="invitation-name" invalid={errors.name !== undefined}>
         <FieldLabel>{t.fields.name}</FieldLabel>
         <Input
           autoComplete="name"

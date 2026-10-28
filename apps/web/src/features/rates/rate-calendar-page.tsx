@@ -32,7 +32,7 @@ import {
 import { CircleCheckIcon, InfoIcon } from 'lucide-react';
 import { useState } from 'react';
 import { ConfirmDialog } from '../../components/confirm-dialog';
-import { FormError } from '../../components/form-error';
+import { FormError, FormErrorSummary } from '../../components/form-error';
 import { api } from '../../lib/api';
 import { formatDay, isoWeekday } from '../../lib/format';
 import { can, useCompany } from '../../lib/session';
@@ -78,6 +78,7 @@ function DaysOff({ daysOff, manage }: { daysOff: readonly number[]; manage: bool
   const queryClient = useQueryClient();
   const [days, setDays] = useState<number[]>([...daysOff]);
   const [invalid, setInvalid] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   const save = useMutation({
     mutationFn: (body: unknown) =>
       api('PUT', '/rate-calendar', { company: companyId, body, schema: rateCalendarSchema }),
@@ -99,9 +100,14 @@ function DaysOff({ daysOff, manage }: { daysOff: readonly number[]; manage: bool
           const parsed = updateRateCalendarSchema.safeParse({ daysOff: [...days].sort() });
           setInvalid(!parsed.success);
           if (parsed.success) save.mutate(parsed.data);
+          else setAttempt((count) => count + 1);
         }}
       >
-        <fieldset className="flex flex-wrap gap-x-6 gap-y-3" aria-label={c.daysOff}>
+        <FormErrorSummary
+          attempt={attempt}
+          errors={[['days-off', invalid ? c.daysOffInvalid : undefined]]}
+        />
+        <fieldset id="days-off" className="flex flex-wrap gap-x-6 gap-y-3" aria-label={c.daysOff}>
           {WEEKDAYS.map((day) => (
             // biome-ignore lint/a11y/noLabelWithoutControl: Base UI's checkbox is the control.
             <label key={day} className="flex items-center gap-2 text-control text-foreground">
@@ -144,6 +150,7 @@ function Holidays({ holidays, manage }: { holidays: readonly BulletinHoliday[]; 
   const [on, setOn] = useState('');
   const [note, setNote] = useState('');
   const [errors, setErrors] = useState<{ on?: string; note?: string }>({});
+  const [attempt, setAttempt] = useState(0);
   const [removing, setRemoving] = useState<BulletinHoliday | null>(null);
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['rates', companyId] });
   const add = useMutation({
@@ -165,6 +172,13 @@ function Holidays({ holidays, manage }: { holidays: readonly BulletinHoliday[]; 
         <CardTitle>{c.holidays}</CardTitle>
       </CardHeader>
       <div className="flex min-w-0 flex-col gap-4 px-6 pb-6">
+        <FormErrorSummary
+          attempt={attempt}
+          errors={[
+            ['holiday-on', errors.on],
+            ['holiday-note', errors.note],
+          ]}
+        />
         {manage && (
           <form
             noValidate
@@ -178,13 +192,14 @@ function Holidays({ holidays, manage }: { holidays: readonly BulletinHoliday[]; 
                   ...(paths.has('on') ? { on: t.validation.required } : {}),
                   ...(paths.has('note') ? { note: t.validation.required } : {}),
                 });
+                setAttempt((count) => count + 1);
                 return;
               }
               setErrors({});
               add.mutate(parsed.data);
             }}
           >
-            <Field className="w-48" invalid={errors.on !== undefined}>
+            <Field id="holiday-on" className="w-48" invalid={errors.on !== undefined}>
               <FieldLabel>{c.holidayOn}</FieldLabel>
               <Input
                 type="date"
@@ -197,7 +212,11 @@ function Holidays({ holidays, manage }: { holidays: readonly BulletinHoliday[]; 
               />
               <FieldError match={errors.on !== undefined}>{errors.on}</FieldError>
             </Field>
-            <Field className="min-w-0 flex-1 basis-60" invalid={errors.note !== undefined}>
+            <Field
+              id="holiday-note"
+              className="min-w-0 flex-1 basis-60"
+              invalid={errors.note !== undefined}
+            >
               <FieldLabel>{c.note}</FieldLabel>
               <Input
                 value={note}

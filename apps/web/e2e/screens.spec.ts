@@ -44,6 +44,10 @@ for (const colorScheme of ['light', 'dark'] as const) {
         await expect(page.getByRole('heading', { level: 1 })).toHaveText(ar.designSystem.title);
         await expect(page.getByRole('grid', { name: ar.designSystem.grid.label })).toBeVisible();
         await expect(page.getByRole('img', { name: ar.designSystem.access.qr })).toBeVisible();
+        // The error summary shown, as a refused submit leaves it.
+        const sample = page.getByRole('form', { name: ar.designSystem.errorSummary.label });
+        await sample.getByRole('button', { name: ar.designSystem.errorSummary.submit }).click();
+        await expect(sample.getByRole('region', { name: ar.common.errorSummary })).toBeFocused();
         await expectNoPageOverflow(page);
         await screenshot(page, testInfo, `design-system-${colorScheme}-${width}`);
       });

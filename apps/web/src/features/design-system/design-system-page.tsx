@@ -27,6 +27,7 @@ import {
   DateRangeField,
   DimensionPicker,
   type DimensionPickerOption,
+  ErrorSummary,
   Field,
   FieldDescription,
   FieldError,
@@ -543,6 +544,48 @@ const sampleBackupCodes = [
   'z3ha-d8rq',
 ];
 
+/** A form refused on submit: the summary takes focus and links to each field (ADR 0010 §4). */
+function ErrorSummarySample() {
+  const e = t.errorSummary;
+  const [name, setName] = useState('');
+  const [note, setNote] = useState('');
+  const [attempt, setAttempt] = useState(0);
+  const errors = [
+    { fieldId: 'sample-name', message: name.trim() === '' ? e.required : undefined },
+    { fieldId: 'sample-note', message: note.trim() === '' ? e.required : undefined },
+  ].flatMap(({ fieldId, message }) => (message ? [{ fieldId, message }] : []));
+  const shown = (fieldId: string) =>
+    attempt > 0 && errors.some((error) => error.fieldId === fieldId);
+  return (
+    <Card className="p-6">
+      <form
+        noValidate
+        aria-label={e.label}
+        className="flex max-w-lg flex-col gap-4"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (errors.length > 0) setAttempt((count) => count + 1);
+        }}
+      >
+        <ErrorSummary title={ar.common.errorSummary} errors={errors} attempt={attempt} />
+        <Field id="sample-name" invalid={shown('sample-name')}>
+          <FieldLabel>{e.name}</FieldLabel>
+          <Input value={name} onChange={(event) => setName(event.target.value)} />
+          <FieldError match={shown('sample-name')}>{e.required}</FieldError>
+        </Field>
+        <Field id="sample-note" invalid={shown('sample-note')}>
+          <FieldLabel>{e.note}</FieldLabel>
+          <Input value={note} onChange={(event) => setNote(event.target.value)} />
+          <FieldError match={shown('sample-note')}>{e.required}</FieldError>
+        </Field>
+        <Button type="submit" className="w-fit">
+          {e.submit}
+        </Button>
+      </form>
+    </Card>
+  );
+}
+
 function ChangesSample() {
   const c = t.changes;
   const [range, setRange] = useState<DateRange>({ from: '2026-10-01', to: '' });
@@ -821,6 +864,11 @@ export function DesignSystemPage() {
       <Section id="access" title={t.access.title}>
         <p className="text-muted-foreground">{t.access.hint}</p>
         <AccessSample />
+      </Section>
+
+      <Section id="error-summary" title={t.errorSummary.title}>
+        <p className="text-muted-foreground">{t.errorSummary.hint}</p>
+        <ErrorSummarySample />
       </Section>
 
       <Section id="changes" title={t.changes.title}>

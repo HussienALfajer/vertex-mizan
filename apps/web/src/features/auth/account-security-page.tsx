@@ -11,6 +11,7 @@ import {
   CardTitle,
   EmptyState,
   Field,
+  FieldError,
   FieldLabel,
   PageHeader,
   PasswordInput,
@@ -25,11 +26,11 @@ import {
 } from '@vertex-mizan/ui';
 import { CircleCheckIcon, LogOutIcon } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
-import { FormError } from '../../components/form-error';
+import { FormError, FormErrorSummary } from '../../components/form-error';
 import { useSensitiveAction } from '../../components/reauth-dialog';
 import { api } from '../../lib/api';
 import { formatDateTime } from '../../lib/format';
-import { NewPasswordFields } from './new-password-fields';
+import { NewPasswordFields, newPasswordFieldIds } from './new-password-fields';
 import { newPasswordError } from './validation';
 
 const t = ar.auth.security;
@@ -114,6 +115,7 @@ function ChangePassword({ email }: { email: string }) {
     password?: string | undefined;
     confirm?: string | undefined;
   }>({});
+  const [attempt, setAttempt] = useState(0);
   const change = useMutation({
     mutationFn: () =>
       run(() => api('POST', '/me/password', { body: { currentPassword, newPassword } })),
@@ -135,10 +137,19 @@ function ChangePassword({ email }: { email: string }) {
             ...newPasswordError(newPassword, confirm, email),
           };
           setErrors(found);
-          if (!found.current && !found.password && !found.confirm) change.mutate();
+          if (found.current || found.password || found.confirm) setAttempt((count) => count + 1);
+          else change.mutate();
         }}
       >
-        <Field invalid={errors.current !== undefined}>
+        <FormErrorSummary
+          attempt={attempt}
+          errors={[
+            ['current-password', errors.current],
+            [newPasswordFieldIds.password, errors.password],
+            [newPasswordFieldIds.confirm, errors.confirm],
+          ]}
+        />
+        <Field id="current-password" invalid={errors.current !== undefined}>
           <FieldLabel>{fields.currentPassword}</FieldLabel>
           <PasswordInput
             autoComplete="current-password"
@@ -147,6 +158,7 @@ function ChangePassword({ email }: { email: string }) {
             value={currentPassword}
             onChange={(event) => setCurrentPassword(event.target.value)}
           />
+          <FieldError match={errors.current !== undefined}>{errors.current}</FieldError>
         </Field>
         <NewPasswordFields
           password={newPassword}
