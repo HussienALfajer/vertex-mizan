@@ -1,7 +1,7 @@
 # Phase 1 scope: the core and the posting API
 
 - **Date:** 2026-10-20 · **Status:** approved by the owner (2026-10-20); revised the same day after the foundation audit (`docs/audits/2026-10-foundation-audit.md`)
-- **Decisions:** ADR 0001, ADRs 0007 and 0008; the owner's answers to `docs/product/phase-1-analysis.md` §6 and to the audit, recorded in §10 below.
+- **Decisions:** ADR 0001, ADRs 0007, 0008 and 0011 (the chart, the contract dimension and the bulletin rate, which refine F02–F04 below); the owner's answers to `docs/product/phase-1-analysis.md` §6 and to the audit, recorded in §10 below.
 - **Labels:** Syrian legal or tax facts carry CONFIRMED, REPORTED or UNVERIFIED (`docs/research/market-syria.md`).
 
 ## 1. Goal
@@ -78,14 +78,14 @@ IDs are referred to by specs, the roadmap and the scenario book.
 - A service-agency template (used by Vertex Media) and a general template.
 
 ### F03 Dimensions
-- Dimension types per company: client, project, department and service for Vertex Media.
+- Dimension types per company: client, contract (a project or a retainer, ADR 0011), department and service for Vertex Media.
 - Values are created on the fly from Hub events with their Hub ID and name, and renamed when Hub sends a new name. The accountant can also add values by hand.
-- Required-dimension rules per account; for example, revenue requires client and service, and direct project costs require project.
+- Required-dimension rules per account; for example, revenue requires client and service, and direct project costs require contract.
 
 ### F04 Currencies and rates
 - ISO 4217 currencies; integer minor units; exact decimal rates.
 - A dated rate table per company and currency pair, with the rate type (market, Central Bank bulletin) and source (Hub, manual).
-- Hub's rate is received with each event and with each Hub rate change (type `market`). The accountant enters the bulletin rate by hand; a missing bulletin rate holds the events of that date (`RATE_MISSING`).
+- Hub's rate is received with each event and with each Hub rate change (type `market`). The accountant enters the bulletin rate by hand. A working day needs its own bulletin and a day off takes the last published one (ADR 0011); an event dated a working day without its bulletin is held (`RATE_MISSING`).
 - The rate policy per ledger (ADR 0007).
 - SYP is the new Syrian pound and is labelled "الليرة السورية الجديدة" on printed reports.
 
@@ -159,7 +159,7 @@ Every report can be exported to Excel and PDF, and every figure drills down to i
 - **General ledger and account statement,** in the account's currency too.
 - **Journal book (دفتر اليومية)** in Arabic, printed by accounting date then number, with sequential page numbers. The Commercial Code requires a chronological journal in Arabic, numbered and certified (arts. 16–19, REPORTED).
 - **Basic income statement and balance sheet** from the statement lines, with a comparative period; contract assets and liabilities netted per contract (project or retainer).
-- **Profitability by client, project, department and service.** Ad funds are outside revenue, and pass-through items are outside service profit.
+- **Profitability by client, contract (project or retainer), department and service.** Ad funds are outside revenue, and pass-through items are outside service profit.
 - **Receivables and ageing** (F06).
 - **Contract liabilities, contract assets and the revenue release schedule** (F07), with the contract position netted per contract, a project or a retainer (IFRS 15.105).
 
@@ -268,6 +268,8 @@ Hub's side is built in Hub's own sessions (Hub ADR 0035, F18). Phase 1 needs:
   10. production.
 
 ## 10. The owner's answers (2026-10-20)
+
+Other files cite these as "scope Q<n>" and "scope A<n>"; a bare `Q<n>` is a question of `docs/open-questions.md`.
 
 | # | Question | Answer |
 |---|---|---|

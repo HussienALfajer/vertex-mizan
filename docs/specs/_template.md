@@ -2,6 +2,8 @@
 
 Status: Draft | Approved · Date: YYYY-MM-DD · Features: `docs/product/phase-1-scope.md` F<nn>, F<nn> · ADRs: <list>
 
+<!-- `Approved` is set when the owner approves the spec and stays; docs/ROADMAP.md tracks its implementation. -->
+
 ## Summary
 Two or three sentences: the problem this solves for the company, its accountant or a connected system, and what this spec delivers.
 
@@ -20,7 +22,7 @@ For each entity, give:
 - the table and its fields (name, type, required, constraints);
 - relations, indexes and unique keys (idempotency keys, external references, numbers);
 - company or platform scope and RLS;
-- its kind: business (archived), append-only (ledger, audit), draft or queue.
+- its kind: business (archived), append-only (ledger, audit), draft, queue, or ephemeral (deleted once handled, like the email outbox).
 
 Money fields follow ADR 0007.
 

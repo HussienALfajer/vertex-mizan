@@ -1,29 +1,29 @@
 # Testing
 
-How the checks run, locally and in CI, and why. `AGENTS.md` holds the rules in short; this file explains them. The model is Vertex Hub's (its PR #172, 2026-10-26), adapted here before the web app and its E2E suite arrive. Measurements from 2026-10-26 are at the end.
+How the checks run, locally and in CI, and why. `AGENTS.md` holds the rules in short; this file explains them. The model is Vertex Hub's (its PR #172), adapted here on 2026-10-26 and extended on 2026-10-28 so that every check CI runs also runs before the PR. Measurements are at the end.
 
 ## Where each check runs
 
-Each check runs once, in the place where it is cheapest. The session checks what it changed; CI checks everything before a merge.
+Each check runs once, in the place where it is cheapest. While building, the session checks what it changed; before the PR it runs every check CI runs, so CI confirms instead of discovering. Until 2026-10-28, five of six CI failures came from checks that ran only in CI: the secret scan (twice), the OpenAPI guard's own tests, the dependency audit, and E2E specs the branch had not changed.
 
-| When | What runs | Command | Time today |
+| When | What runs | Command | Time (2026-10-28) |
 |---|---|---|---|
 | While writing | Biome on each edited file (hook), the test file you are working on | `pnpm verify <file>` | seconds |
 | A layer's gate | That layer's test files, `pnpm typecheck` | `pnpm verify <files>` | under a minute |
-| Before the PR, once | Lint; typecheck, test, build and the scenario book of every package (Turborepo replays the unchanged ones); the guards; the changed E2E specs | `pnpm verify` | under a minute, seconds when nothing changed |
-| CI, before the merge | Everything, the whole E2E suite included (two shards) | — | a few minutes |
+| Before the PR, once (the `checker`, while the reviewers run) | Lint; typecheck, test, build and the scenario book of every package (Turborepo replays the unchanged ones); the guards; the dependency audit; the secret scan; the whole E2E suite | `pnpm verify --e2e-all` | E2E_ALL_TIME |
+| CI, before the merge | The same, the E2E suite on two shards | — | 2–3 minutes |
 
-The whole E2E suite never runs in a session unless asked for (`pnpm verify --e2e-all`): CI runs it.
+`pnpm verify` without `--e2e-all` runs only the E2E specs the branch changed; a change elsewhere (a contract, a mock, a shared component) can break another spec, so the check before a PR runs them all.
 
 ## `pnpm verify`
 
 `scripts/verify.mjs`, from the repository root. The database tests and the scenario book need the database URLs of `.env` (`packages/db/CLAUDE.md`, "Local database").
 
-- `pnpm verify`: Biome over the repository; `turbo run typecheck test build test:scenarios` (with `--continue`, so one failure does not hide the others); when `packages/db/src`, `packages/db/migrations` or `packages/contracts/src` changed, migration drift (`drizzle-kit generate` must write nothing) and the migration guard (`pnpm check:migrations`); the error-code guard against the merge base (`pnpm check:error-codes --base <base>`); when `apps/api` or `packages/contracts/src` changed, the OpenAPI guard against the merge base where oasdiff is installed (otherwise the summary says it was skipped; CI always runs it); the E2E specs the branch changed, against the built app. A migration that `drizzle-kit generate` writes fails the run as it fails CI: review it and commit it with the schema change.
-- `pnpm verify <file>...`: only those test files, paths from the repository root. Vitest files run in their package after `turbo run build --filter=<package>^...` (a stale dependency `dist` gives failures that are not in the code). A path under `docs/scenarios/`, or `packages/scenarios/test/scenario-book.test.ts`, runs the scenario book with its own config. A spec under `apps/<app>/e2e/` runs with that app's Playwright after its build; `--grep "<title>"` picks tests of a spec.
+- `pnpm verify`: Biome over the repository; `turbo run typecheck test build test:scenarios` (with `--continue`, so one failure does not hide the others); when `packages/db/src`, `packages/db/migrations` or `packages/contracts/src` changed, migration drift (`drizzle-kit generate` must write nothing) and the migration guard (`pnpm check:migrations`); the error-code guard against the merge base (`pnpm check:error-codes --base <base>`); when `apps/api` or `packages/contracts/src` changed, the OpenAPI guard against the merge base; the dependency audit (`pnpm audit --prod --audit-level=high`, as CI); the secret scan (gitleaks with `.gitleaksignore`, as CI: the branch's commits since the base, then the staged, unstaged and new files); the E2E specs the branch changed, against the built app (`--e2e-all`: the whole suite). The pinned oasdiff and gitleaks come from `scripts/tools.mjs`, downloaded into `.tools/` on the first run; offline, the audit and the steps without their tool are skipped and the summary says so (CI runs them). A migration that `drizzle-kit generate` writes fails the run as it fails CI: review it and commit it with the schema change.
+- `pnpm verify <file>...`: only those test files, paths from the repository root; `--grep <title>` picks tests by title (Vitest's `--testNamePattern`, Playwright's `--grep`). Vitest files run in their package after `turbo run build --filter=<package>^...` (a stale dependency `dist` gives failures that are not in the code). A path under `docs/scenarios/`, or `packages/scenarios/test/scenario-book.test.ts`, runs the scenario book with its own config. A spec under `apps/<app>/e2e/` runs with that app's Playwright after its build; `--grep "<title>"` picks tests of a spec.
 - Changed files are those that differ from the merge base with `origin/main` (committed, uncommitted or new); `--base <ref>` compares with another ref. Changed E2E specs are any `apps/<app>/e2e/**/*.spec.ts` among them: an app that adds a Playwright suite there needs no change to the script.
 - Output: the whole output of each step in `.verify/<step>.log` (git-ignored); the console and `.verify/summary.md` get only the summary: each step's result and time, the tasks Turborepo ran rather than replayed, the scenario book's counts (`Proposed` cases are skipped), each failure with its file and line, and the command that reruns only the failed files.
-- Exit code 0 when everything passed, 1 when a check failed, 3 when it refused to start: another `pnpm verify` is running on the machine (lock file `vertex-mizan-verify.lock` in the temp folder; a lock left by a killed run expires after 30 minutes), a dev server is up (port 3300, the built API, 5173, Vite's dev server, or 4173, the web app's `vite preview`: the build replaces the `dist` it runs from, and Playwright (which never reuses a server, so a spec run fails on a busy 4173) needs the port; `--allow-dev` overrides), or a file does not exist.
+- Exit code 0 when everything passed, 1 when a check failed, 3 when it refused to start: another `pnpm verify` is running on the machine (lock file `vertex-mizan-verify.lock` in the temp folder; a lock left by a killed run expires after 30 minutes), a dev server is up for a branch run or an E2E spec (port 3300, the built API, 5173, Vite's dev server, or 4173, the web app's `vite preview`: the build replaces the `dist` it runs from, and Playwright (which never reuses a server, so a spec run fails on a busy 4173) needs the port; `--allow-dev` overrides), or a file does not exist.
 
 ## Rules, and what enforces them
 
@@ -33,7 +33,7 @@ The whole E2E suite never runs in a session unless asked for (`pnpm verify --e2e
 | Run once, read the log | Rerunning a suite to read its output again is the most common waste | `pnpm verify` keeps every log and prints the failures |
 | Rerun only what failed | A full rerun after a one-file fix repeats passing tests | The summary prints the rerun command; Turborepo replays untouched packages |
 | No edits while a check runs | The result no longer describes the code | Instructions (`CLAUDE.md`) |
-| No whole E2E suite in a session | Minutes locally, timeouts under load; CI runs it on shards | The `test-guard` hook (`pnpm verify --e2e-all` to run it on purpose) |
+| The whole E2E suite only through `pnpm verify --e2e-all`, once before the PR | It takes a few minutes and times out under load; run once, it catches what the changed specs miss | The `test-guard` hook refuses `pnpm test:e2e` and a bare `playwright test` |
 | No `timeout` around a test run | A killed run proves nothing and gets run again | The `test-guard` hook |
 | No checks while a dev server runs | The build replaces the `dist` it runs from | `pnpm verify` refuses |
 
@@ -52,10 +52,10 @@ The hook is `.claude/hooks/test-guard.mjs` (PreToolUse on Bash and PowerShell), 
 
 ## E2E
 
-The rules the web app's Playwright suite (`apps/web/e2e`, PR 8; `apps/web/CLAUDE.md`) follows:
+The rules the web app's Playwright suite (`apps/web/e2e`, `apps/web/CLAUDE.md`) follows:
 
 - Traces are recorded on the first retry only (`trace: 'on-first-retry'`), and CI retries a failed test once, so the retry keeps its trace. Recording one for every test made Hub's suite 30% slower and kept the antivirus scanning each trace file. Debug locally with `--trace on`.
-- Locally, only the changed specs run (`pnpm verify` picks them; `pnpm verify apps/web/e2e/<file>.spec.ts [--grep <title>]`). The whole suite runs in CI, split over parallel shards (`--shard`, with `fullyParallel`), behind the `Typecheck, lint, test, build` gate.
+- While building, only the changed specs run (`pnpm verify` picks them; `pnpm verify apps/web/e2e/<file>.spec.ts [--grep <title>]`). The whole suite runs once before the PR (`pnpm verify --e2e-all`) and in CI, split over parallel shards (`--shard`, with `fullyParallel`) that the `Typecheck, lint, test, build` gate waits for.
 - A test that tours many screens sets `test.setTimeout(90_000)`; the default stays for the rest.
 - The specs live under `apps/web/e2e/` with `playwright.config.ts` in `apps/web`, where `pnpm verify` finds them.
 
@@ -68,8 +68,8 @@ The rules the web app's Playwright suite (`apps/web/e2e`, PR 8; `apps/web/CLAUDE
 | Changes | Decides whether the checks are needed |
 | Lint, typecheck, build | Audit, Biome, typecheck, build, migration drift, the migration, error-code and OpenAPI guards |
 | Tests | The database roles and migrations, every package's tests, the scenario book, the built API and worker starting |
-| Playwright shard 1, 2 | The whole E2E suite of `apps/web` on its production build, split with `--shard` |
-| Typecheck, lint, test, build | The gate the `main` ruleset requires, behind every job above |
+| Playwright shard 1, 2 | The whole E2E suite of `apps/web` on its production build, split with `--shard`, in Playwright's image of the version `apps/web` uses (Chromium and its fonts included) |
+| Typecheck, lint, test, build | The gate the `main` ruleset requires: it waits for every job above |
 | Secret scan | gitleaks |
 
 Only E2E is split; each shard uploads its report and screenshots (`playwright-report-<n>`).

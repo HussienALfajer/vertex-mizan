@@ -6,6 +6,6 @@ Arabic-first. Vertex Media is the first company on the system and its design par
 
 ## Status
 
-Phase 0, the foundation: the monorepo scaffold, CI, the money module, the ledger core, the database foundation (roles, company isolation, the ledger guards and their tests), the scenario-book runner and the design system for accountants (ADR 0010) with its data grid and command palette, the API and worker skeletons, and the web app's RTL shell with its design-system page and Playwright suite are in place (`docs/ROADMAP.md`).
+Phase 0, the foundation, is done (except the production deploy). Phase 1 is under way: S01 (companies, people and access) and S02 (chart of accounts, dimensions and rates) are merged; S03 (journal entries and the posting function) is next. `docs/ROADMAP.md` tracks each item.
 
 Copyright © 2026 Vertex. All rights reserved. No license is granted to use, copy, modify or distribute this code.

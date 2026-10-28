@@ -1,6 +1,6 @@
 # Decision records
 
-Short records of decisions that shape the system. Each has a status: **Accepted**, **Superseded by NNNN**, or **Proposed**. To change a decision, add a new record that supersedes the old one; don't rewrite history.
+Short records of decisions that shape the system. Each has a status: **Accepted**, **Superseded by NNNN**, or **Proposed**. To change a decision, add a new record that supersedes the old one, or amends part of it (the old record then reads "Accepted (… amended by NNNN)" and stays in force for the rest); don't rewrite history.
 
 | # | Decision | Status |
 |---|---|---|

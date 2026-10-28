@@ -27,8 +27,7 @@ One name per concept. Code, contracts and tables use the English term; the Arabi
 | رمز الحساب | account code | The account's number: 1, 2, 3 or 6 digits by level, each starting with its parent's code (ADR 0011) |
 | حساب موقوف | blocked account | An account that refuses new postings and stays in reports |
 | دور الحساب | account role | The company's account for a system purpose: conversion rounding, exchange gains and losses, retained earnings |
-| قالب الدليل | chart template | A versioned starting chart of accounts (service agency, general) applied at company creation or to an empty chart |
-| قالب دليل الحسابات | chart template | A ready chart applied to a new company: service agency or general |
+| قالب دليل الحسابات | chart template | A versioned starting chart of accounts (service agency, general) applied at company creation or to an empty chart |
 | فئة IFRS 18 | IFRS 18 category | The income-statement category of a statement line: operating, investing, financing, income taxes |
 | حساب مراقبة | control account | An account whose balance is the sum of its open items (receivables, client ad funds) |
 | بند مفتوح | open item | One document's outstanding balance in a control account (an invoice, a client's ad funds) |
@@ -37,7 +36,7 @@ One name per concept. Code, contracts and tables use the English term; the Arabi
 | مبلغ محمول | carried amount | A line that releases, clears, settles or reverses a balance at that balance's own amounts; never converted again |
 | رصيد جارٍ | running balance | An item kept per counterparty (client ad funds), cleared at its average carrying amount; it may cross zero |
 | حساب نقدي / غير نقدي | monetary / non-monetary account | Whether foreign-currency balances are revalued (IAS 21) |
-| بُعد تحليلي | dimension | An analysis tag on a line: client, project, department, service |
+| بُعد تحليلي | dimension | An analysis tag on a line; the built-in types are client, contract (a project or a retainer), department and service (ADR 0011) |
 | نوع البعد | dimension type | A kind of dimension: the built-in client, contract, department and service, or a custom one |
 | قيمة البعد | dimension value | One client, contract, department or service |
 | العقد | contract | A project or a retainer, as one dimension with its kind and client; contract positions are netted per contract (IFRS 15.105) |

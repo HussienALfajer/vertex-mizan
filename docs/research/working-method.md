@@ -1,6 +1,6 @@
 # Working method with Claude Code: comparison and approved proposal
 
-- **Date:** 2026-10-20 · **Status:** approved by the owner (2026-10-20)
+- **Date:** 2026-10-20 · **Status:** approved by the owner (2026-10-20); kept as the record of that decision. The method in force is `docs/workflow.md`, which has since changed it (2026-10-28: PRs open with auto-merge without asking, the owner approves in the conversation before the PR, the acceptance test follows the merge).
 - **Purpose:** the basis for Vertex Mizan's `AGENTS.md`, `CLAUDE.md`, `docs/workflow.md` and `.claude/` files, which are written in step 4 of the project setup together with the technical ADRs.
 - **Sources read (read-only):** `D:\vertex-hub`, `D:\vertex-digital`, `D:\vertex-shifa`, `D:\vertex-food`: `AGENTS.md`, `CLAUDE.md`, `docs/workflow.md`, `.claude/` (settings, skills, agents, hooks), the engineering-conventions ADRs (Hub 0013, Digital 0011, Shifa 0020, Food 0020), money and ledger (Hub 0006, Digital 0003, Food 0014), tenancy (Food 0004), security and audit (Shifa 0016), AI-assisted development (Hub 0010, Food 0019), and CI workflows.
 

@@ -34,6 +34,6 @@ NestJS 12 HTTP API with the Express adapter, a modular monolith (ADR 0002). Tool
 - ESM: relative imports end in `.js`.
 
 ## Tests
-Integration tests over HTTP with supertest on a fresh database per run (`DATABASE_OWNER_URL` and the role URLs, `packages/db/CLAUDE.md`); unit tests sit next to their file in `src/`. A route test covers success and the failure answers it documents.
+Integration tests over HTTP with supertest on a fresh database per run (`DATABASE_OWNER_URL` and the role URLs, `packages/db/CLAUDE.md`); unit tests sit next to their file in `src/`. A route test covers success and the failure answers it documents. Test keys and secrets are made at run time (`test/app.ts`, `TEST_AUTH_SECRET`), never written as literals: the secret scan (`pnpm verify`, CI) refuses a literal that looks like one.
 
 Run: `pnpm --filter @vertex-mizan/api test` · `pnpm --filter @vertex-mizan/api typecheck` · `pnpm --filter @vertex-mizan/api start` (after `pnpm build`).

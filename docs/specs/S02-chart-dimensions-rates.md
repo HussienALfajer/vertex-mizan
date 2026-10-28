@@ -256,7 +256,7 @@ Per company: 100–2,000 accounts; up to 50,000 dimension values (clients and co
 
 ## Arabic strings and number formats
 - New namespaces: `ar.chart`, `ar.dimensions`, `ar.rates`, with the account classes, normal balances, statement lines, role names, dimension types and the new error codes in `ar.errors`.
-- Terms (glossary): دليل الحسابات، حساب رئيسي، حساب فرعي، رمز الحساب، طبيعة الحساب، فئة الحساب، بند القائمة، حساب مراقبة، حساب نقدي، حساب موقوف، دور الحساب، قالب الدليل، نوع البعد، قيمة البعد، العقد، الربط بـ Hub، زوج العملات، سعر النشرة، تصحيح السعر، تقويم النشرة، يوم عدم نشر.
+- Terms (glossary): دليل الحسابات، حساب رئيسي، حساب فرعي، رمز الحساب، طبيعة الحساب، فئة الحساب، بند القائمة، حساب مراقبة، حساب نقدي، حساب موقوف، دور الحساب، قالب دليل الحسابات، نوع البعد، قيمة البعد، العقد، الربط بـ Hub، زوج العملات، سعر النشرة، تصحيح السعر، تقويم النشرة، يوم عدم نشر.
 - Codes and rates in Latin digits as LTR isolates; rates shown with every quoted decimal; currency codes with their Arabic names from the money module.
 
 ## Audit
@@ -294,8 +294,8 @@ Accounting rules this spec introduces, each written and approved through `/posti
 
 ## Open questions
 - **Q3 (stays open, owner 2026-10-27):** the two templates below are drafts. One or two Syrian accountants review them before Vertex Media's production company is created; the code ships with them, and their changes are a new template version.
-- **Q10 (new):** the bulletin schedule of a third-currency pair (TRY or EUR), which may be published weekly. Recommendation: each bulletin pair carries its schedule (daily, or weekly on a weekday), decided when a company first deals in a third currency; no phase 1 company does.
-- **Q11 (new, for S09):** IFRS 18.B65 classifies exchange differences in the category of the item that caused them, so differences on cash fall in investing for a company without a specified main business activity. Recommendation: S09 splits `is.fx_differences` by the monetary item's category when IFRS 18 statements are first produced (periods from 2027-01-01).
+- **Q10 (`docs/open-questions.md`):** the bulletin schedule of a third-currency pair (TRY or EUR), which may be published weekly. Recommendation: each bulletin pair carries its schedule (daily, or weekly on a weekday), decided when a company first deals in a third currency; no phase 1 company does.
+- **Q11 (`docs/open-questions.md`, for S09):** IFRS 18.B65 classifies exchange differences in the category of the item that caused them, so differences on cash fall in investing for a company without a specified main business activity. Recommendation: S09 splits `is.fx_differences` by the monetary item's category when IFRS 18 statements are first produced (periods from 2027-01-01).
 - **For S05:** how a Hub event whose mapped account is blocked is held. Recommendation: `NO_MAPPING`.
 
 ## Templates (drafts, Q3)
@@ -422,4 +422,4 @@ Dimension types: the four built-in types; no account requires contract, departme
   - unit and property tests: the code shape and class for every level; the lock after use for every locked field (database tests as `mizan_app`); `checkLineAgainstChart` for every rule 8 refusal; rule 16 properties (Currencies section) and the market lookup unchanged; template data: every postable account has a statement line fitting its class, roles fit rule 7, codes fit the shape, Arabic and English names present;
   - invariant tests for the new tables: forced RLS, composite keys, append-only `exchange_rates`, `refuse_delete()` on business tables, the triggers `ENABLE ALWAYS`, the isolation property test;
   - the scenario book: the two scenarios above once S03 provides the posting executor (they are `Proposed` until then);
-  - E2E with RTL screenshots at 360 px and desktop: the chart tree, the account sheet, dimensions, rates and the calendar.
+  - E2E with RTL screenshots, light and dark, at 360, 768 and 1280 px: the chart tree, the account sheet, dimensions, rates and the calendar.

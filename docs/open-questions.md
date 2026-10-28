@@ -2,6 +2,8 @@
 
 Decisions not yet made. Never guess an answer to one: ask the owner. Each has a recommendation and the point by which it is needed.
 
+A bare `Q<n>` anywhere in the repository is a question of this file. The owner's answers of 2026-10-20 in `docs/product/phase-1-scope.md` §10 have their own numbers, cited as "scope Q<n>" (and "scope A<n>" for the audit's).
+
 ## Open
 
 | # | Question | Recommendation | Needed before |
