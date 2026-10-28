@@ -23,15 +23,20 @@
     "pino-http": "11.0.0",
     "reflect-metadata": "0.2.2",
     "rxjs": "7.8.2",
+    "uuid": "14.0.3",
+    "yazl": "3.3.1",
     "zod": "4.6.7"
   },
   "devDependencies": {
     "@nestjs/testing": "12.2.0",
     "@types/node": "24.19.2",
     "@types/nodemailer": "8.0.2",
+    "@types/yauzl": "3.4.0",
+    "@types/yazl": "3.3.1",
     "@vertex-mizan/config": "workspace:*",
     "pino-pretty": "13.2.0",
     "typescript": "6.0.3",
-    "vitest": "5.0.5"
+    "vitest": "5.0.5",
+    "yauzl": "3.4.0"
   }
 }

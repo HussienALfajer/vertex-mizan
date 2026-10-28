@@ -81,6 +81,9 @@ export const tableRegistry = {
   entry_drafts: { module: 'drafts', scope: 'company', kind: 'draft' },
   entry_draft_lines: { module: 'drafts', scope: 'company', kind: 'draft' },
   entry_attachments: { module: 'drafts', scope: 'company', kind: 'business' },
+  // trust (S03 rules 19–21): the daily anchors of the chain and the owner's full exports.
+  chain_anchors: { module: 'trust', scope: 'company', kind: 'append-only' },
+  company_exports: { module: 'trust', scope: 'company', kind: 'queue' },
 } as const satisfies Record<string, TableInfo>;
 
 export type TableScope = 'company' | 'platform';

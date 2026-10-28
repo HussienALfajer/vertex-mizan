@@ -21,4 +21,6 @@ export const permissions = {
   'entries.post': 'ترحيل القيود اليدوية وعكسها',
   'entries.approve': 'اعتماد القيود اليدوية أو رفضها',
   'entries.attach': 'إرفاق الملفات بالقيود المرحّلة',
+  'integrity.read': 'تشغيل فحص السلامة',
+  'company.export': 'تصدير بيانات الشركة',
 } satisfies Record<Permission, string>;

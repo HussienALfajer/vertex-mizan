@@ -4,7 +4,7 @@ import type { Database } from '@vertex-mizan/db';
 import { expect } from 'vitest';
 import { todayInDamascus } from '../src/core/clock/today.js';
 import type { Browser } from './browser.js';
-import { joinCompany, newCompany, signedInPerson } from './people.js';
+import { joinCompany, newCompany, signedInPerson, type TestPerson } from './people.js';
 
 // A company with books for the entry and draft tests (S03): Vertex Media's ledgers (SYP books at
 // the bulletin, a USD parallel ledger at market accepting the dealt rate), the service-agency
@@ -15,7 +15,7 @@ import { joinCompany, newCompany, signedInPerson } from './people.js';
 export const today = () => todayInDamascus();
 
 export interface Books {
-  owner: { browser: Browser };
+  owner: { browser: Browser; person: TestPerson };
   companyId: string;
   /** Account ids by code. */
   accounts: Map<string, string>;

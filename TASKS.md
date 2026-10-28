@@ -22,14 +22,14 @@ Spec: `docs/specs/S03-journal-entries-posting.md` (Approved, owner 2026-10-28) �
 - [x] checks and reviewers (`reviewer`, `accountant-reviewer`), PR with auto-merge and Auto-fix
 
 ## PR 3 — Trust and the full export (contracts, ledger, db, api, worker)
-- [ ] contracts: the integrity report, anchor and export schemas, `integrity.read`, `company.export`, `EXPORT_IN_PROGRESS`, the audit actions, the email kinds (daily anchor, export ready)
-- [ ] ledger: the integrity check's pure parts (chain, numbers, balance, period balances against the lines, anchors)
-- [ ] db (`/db-migration`): the `trust` module (`chain_anchors` append-only, `company_exports` queue); the jobs role's first policies and grants for the daily anchor
-- [ ] api: `POST /api/integrity/check`, the export routes (`@Reauthenticated` request, list, download, `LINK_INVALID` once expired)
-- [ ] worker: `ledger.daily-anchor`, `company.export`, `company.export-expire`, each safe to run twice
-- [ ] bridge: OpenAPI regenerated, breaking-change check
-- [ ] wiring, docs (`apps/worker/CLAUDE.md`, `packages/db/CLAUDE.md`, `docs/ROADMAP.md`)
-- [ ] checks and reviewers (`reviewer`, `accountant-reviewer`), PR with auto-merge and Auto-fix
+- [x] contracts: the integrity report, anchor and export schemas, `integrity.read`, `company.export`, `EXPORT_IN_PROGRESS`, the audit actions, the email kinds (daily anchor, export ready)
+- [x] ledger: the integrity check's pure parts (chain, numbers, balance, period balances against the lines, anchors)
+- [x] db (`/db-migration`): the `trust` module (`chain_anchors` append-only, `company_exports` queue); the jobs role's first policies and grants for the daily anchor
+- [x] api: `POST /api/integrity/check`, the export routes (`@Reauthenticated` request, list, download, `LINK_INVALID` once expired)
+- [x] worker: `ledger.daily-anchor`, `company.export`, `company.export-expire`, each safe to run twice
+- [x] bridge: OpenAPI regenerated, breaking-change check
+- [x] wiring, docs (`apps/worker/CLAUDE.md`, `packages/db/CLAUDE.md`, `docs/ROADMAP.md`)
+- [x] checks and reviewers (`reviewer`, `accountant-reviewer`), PR with auto-merge and Auto-fix
 
 ## PR 4 — The entry screens (ui, web, e2e)
 - [ ] ui: the general components the screens lack, built in `packages/ui` first (ADR 0010 §7), tested, both densities, on the design-system page

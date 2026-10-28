@@ -27,6 +27,7 @@ const registry: Record<string, TableInfo> = { ...tableRegistry, ...fixtureRegist
 const guards: Guards = {
   functions: [...GUARDS.functions, ...fixtureGuards.functions],
   triggers: [...GUARDS.triggers, ...fixtureGuards.triggers],
+  jobs: GUARDS.jobs,
 };
 
 type Mutation = {
@@ -260,7 +261,24 @@ const MUTATIONS: Mutation[] = [
     'grant insert on fixture_settings to mizan_queue',
     'grant maintain on fixture_entries to mizan_queue',
     'grant select on fixture_settings to public',
+    'grant select (description) on journal_entries to mizan_jobs',
+    'grant select (name_latin) on companies to mizan_jobs',
+    'grant select on users to mizan_jobs',
+    'revoke insert (data) on email_outbox from mizan_jobs',
+    'revoke select (posted_at) on journal_entries from mizan_jobs',
   ].map((sql) => ({ name: sql, rules: ['role-privilege'] as Rule[], sql })),
+  {
+    name: 'the jobs role allowed to change an anchor',
+    rules: ['append-only-grant', 'role-privilege'],
+    sql: 'grant update on chain_anchors to mizan_jobs',
+  },
+  ...[
+    'create policy jobs_open on fixture_documents for select to mizan_jobs using (true)',
+    'create policy jobs_change on chain_anchors for update to mizan_jobs using (true)',
+    `alter policy jobs_find_heads on journal_entries using (company_id is not null)`,
+    'alter policy jobs_find_exports on company_exports to mizan_jobs, mizan_app',
+    'drop policy jobs_find_exports on company_exports',
+  ].map((sql) => ({ name: sql, rules: ['company-policy'] as Rule[], sql })),
   {
     name: 'an append-only table without its TRUNCATE trigger',
     rules: ['append-only-trigger'],

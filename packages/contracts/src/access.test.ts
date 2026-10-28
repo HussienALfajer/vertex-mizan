@@ -32,6 +32,8 @@ describe('the permission map', () => {
         'entries.post',
         'entries.approve',
         'entries.attach',
+        'integrity.read',
+        'company.export',
       ],
       accountant: [
         'company.read',
@@ -66,6 +68,7 @@ describe('the permission map', () => {
         'rates.read',
         'entries.read',
         'drafts.read',
+        'integrity.read',
       ],
     });
   });
@@ -79,6 +82,8 @@ describe('the permission map', () => {
     expect(holders('entries.post')).toEqual(['owner', 'accountant']);
     expect(holders('entries.attach')).toEqual(['owner', 'accountant']);
     expect(holders('entries.approve')).toEqual(['owner', 'approver']);
+    expect(holders('integrity.read')).toEqual(['owner', 'auditor']);
+    expect(holders('company.export')).toEqual(['owner']);
   });
 
   it('lets every role read the company profile, the chart, dimensions and rates', () => {

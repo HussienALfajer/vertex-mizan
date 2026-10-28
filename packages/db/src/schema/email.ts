@@ -9,8 +9,15 @@ import { createdAt, id, idIsUuidV7, timestamptz, updatedAt } from './columns.js'
 // (ephemeral). pg-boss cannot take the row: its schema belongs to the queue role, which the app
 // role never reaches (ADR 0003).
 
-/** The emails S01 sends; `EMAIL_KINDS` in `@vertex-mizan/contracts` (a test keeps them equal). */
-export const OUTBOX_EMAIL_KINDS = ['invitation', 'password_reset', 'two_factor_reset'] as const;
+/** The emails Mizan sends; `EMAIL_KINDS` in `@vertex-mizan/contracts` (a test keeps them equal). */
+export const OUTBOX_EMAIL_KINDS = [
+  'invitation',
+  'password_reset',
+  'two_factor_reset',
+  // S03: the daily anchor and the full export.
+  'daily_anchor',
+  'export_ready',
+] as const;
 
 const listed = (values: readonly string[]) =>
   sql.raw(values.map((value) => `'${value}'`).join(', '));

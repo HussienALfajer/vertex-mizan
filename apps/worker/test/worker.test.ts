@@ -25,7 +25,14 @@ describe('worker boot', () => {
 
   it('schedules every job of the list', async () => {
     const queues = jobs.map((job) => worker.get(job).queue);
-    expect(queues).toEqual(['system.heartbeat', 'email.send', 'system.clean-up']);
+    expect(queues).toEqual([
+      'system.heartbeat',
+      'email.send',
+      'system.clean-up',
+      'ledger.daily-anchor',
+      'company.export',
+      'company.export-expire',
+    ]);
     for (const queue of queues) expect(await boss.getSchedules(queue)).toHaveLength(1);
   });
 

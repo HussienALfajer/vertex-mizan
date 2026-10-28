@@ -1,15 +1,27 @@
 import type { CurrencyCode, Ledger, RateSource, RateType } from '@vertex-mizan/contracts';
-import type { ChainConversion, ChainEntry, ChainLine, EntrySource } from '@vertex-mizan/ledger';
+import type {
+  ChainConversion,
+  ChainEntry,
+  ChainLine,
+  EntrySource,
+  StoredCounter,
+  StoredHead,
+  StoredPeriodBalance,
+} from '@vertex-mizan/ledger';
 import { asc, eq, sql } from 'drizzle-orm';
 import type { Transaction } from '../client.js';
+import { companySettings } from '../schema/companies.js';
 import {
   dimensionSets,
+  entryNumberCounters,
   journalEntries,
   journalLines,
+  ledgerHeads,
   lineConversions,
   periodBalances,
   periods,
 } from '../schema/ledger.js';
+import { chainAnchors } from '../schema/trust.js';
 
 // Reads of the ledger as stored, in the caller's company context: the chain as the integrity
 // check verifies it, and the period balances rebuilt from the lines (ADR 0008, ADR 0012).
@@ -225,4 +237,90 @@ export async function entriesUsingRate(tx: Transaction, rateId: string): Promise
     )
     .where(eq(lineConversions.rateId, rateId))
     .orderBy(asc(journalEntries.sequence));
+}
+
+/** A daily anchor as stored (`chain_anchors`). */
+export interface StoredAnchor {
+  readonly anchoredOn: string;
+  readonly entryCount: bigint;
+  readonly headEntryId: string;
+  readonly headHash: string;
+}
+
+/** What the integrity check compares with the chain, read in the caller's snapshot. */
+export interface LedgerState {
+  /** Whether the company keeps a parallel ledger, from its settings. */
+  readonly keepsParallel: boolean;
+  readonly head: StoredHead;
+  readonly counters: StoredCounter[];
+  /** Keyed by period and dimension key, as the lines carry them, with the set's id. */
+  readonly periodBalances: (StoredPeriodBalance & { readonly dimensionSetId: string })[];
+  /** Every dimension set's id by its key. */
+  readonly dimensionSetIds: ReadonlyMap<string, string>;
+  /** The daily anchors, oldest first. */
+  readonly anchors: StoredAnchor[];
+}
+
+/**
+ * The ledger state as stored (ADR 0012) and the company's anchors, for the integrity check (S03
+ * rule 19): which ledgers the company keeps, the head, the counters, the period balances and the
+ * anchors.
+ */
+export async function readLedgerState(tx: Transaction): Promise<LedgerState> {
+  const [settings] = await tx
+    .select({ parallelCurrency: companySettings.parallelCurrency })
+    .from(companySettings);
+  const [head] = await tx.select().from(ledgerHeads);
+  const counters = await tx
+    .select({
+      fiscalYear: entryNumberCounters.fiscalYear,
+      lastNumber: entryNumberCounters.lastNumber,
+    })
+    .from(entryNumberCounters);
+  const sets = await tx
+    .select({ id: dimensionSets.id, key: dimensionSets.key })
+    .from(dimensionSets);
+  const balances = await tx
+    .select({ balance: periodBalances, period: periods.period })
+    .from(periodBalances)
+    .innerJoin(
+      periods,
+      sql`${periods.companyId} = ${periodBalances.companyId} and ${periods.id} = ${periodBalances.periodId}`,
+    );
+  const keys = new Map(sets.map((set) => [set.id, set.key]));
+  const anchors = await tx
+    .select({
+      anchoredOn: chainAnchors.anchoredOn,
+      entryCount: chainAnchors.entryCount,
+      headEntryId: chainAnchors.headEntryId,
+      headHash: chainAnchors.headHash,
+    })
+    .from(chainAnchors)
+    .orderBy(asc(chainAnchors.anchoredOn));
+  return {
+    keepsParallel: (settings?.parallelCurrency ?? null) !== null,
+    head: {
+      entryCount: head?.entryCount ?? 0n,
+      lastEntryId: head?.lastEntryId ?? null,
+      lastHash: head?.lastHash ?? null,
+    },
+    counters,
+    periodBalances: balances.map(({ balance, period }) => ({
+      period,
+      accountId: balance.accountId,
+      dimensionSetId: balance.dimensionSetId,
+      // A set the table names always exists (a composite key); its id is never a key.
+      dimensionKey: keys.get(balance.dimensionSetId) ?? balance.dimensionSetId,
+      currency: balance.currency as CurrencyCode,
+      debitMinor: balance.debitMinor,
+      creditMinor: balance.creditMinor,
+      bookDebitMinor: balance.bookDebitMinor,
+      bookCreditMinor: balance.bookCreditMinor,
+      parallelDebitMinor: balance.parallelDebitMinor,
+      parallelCreditMinor: balance.parallelCreditMinor,
+      lineCount: balance.lineCount,
+    })),
+    dimensionSetIds: new Map(sets.map((set) => [set.key, set.id])),
+    anchors,
+  };
 }

@@ -1,0 +1,2 @@
+ALTER TABLE "company_exports" ADD COLUMN "attempts" integer DEFAULT 0 NOT NULL;--> statement-breakpoint
+ALTER TABLE "company_exports" ADD CONSTRAINT "company_exports_attempts" CHECK ("company_exports"."attempts" >= 0);

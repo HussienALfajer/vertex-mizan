@@ -18,7 +18,11 @@ export {
   type RuntimeRole,
   type Transaction,
 } from './client.js';
-export { COMPANY_SETTING, withCompany } from './company-context.js';
+export {
+  COMPANY_SETTING,
+  type CompanyTransactionOptions,
+  withCompany,
+} from './company-context.js';
 export { describeForLog } from './describe-for-log.js';
 export {
   type DealtRateSpec,
@@ -33,10 +37,13 @@ export {
 export {
   type EntryRef,
   entriesUsingRate,
+  type LedgerState,
   type PeriodTotals,
   readChain,
+  readLedgerState,
   readPeriodBalances,
   rebuildPeriodBalances,
+  type StoredAnchor,
   type StoredChainLink,
 } from './posting/reads.js';
 export * from './schema/index.js';

@@ -4,14 +4,14 @@ import type { Config } from './core/config/config.js';
 import { ConfigModule } from './core/config/config.module.js';
 import { DatabaseModule } from './core/database/database.module.js';
 import { EmailModule } from './core/email/email.module.js';
+import { FilesModule } from './core/files/file-store.js';
 import { QueueModule } from './core/queue/queue.module.js';
 import type { ScheduledJob } from './core/queue/scheduled-job.js';
 
 /**
  * The worker (ADR 0002): a Nest application context with no HTTP server, its configuration,
- * logging, the app role's database, the SMTP transport, pg-boss as the queue role, and the
- * scheduled jobs listed in `jobs/index.ts`. The jobs role's database joins with the first job that
- * reads across companies.
+ * logging, the app and jobs roles' databases, the files of attachments and exports, the SMTP
+ * transport, pg-boss as the queue role, and the scheduled jobs listed in `jobs/index.ts`.
  */
 @Module({})
 export class WorkerModule {
@@ -27,6 +27,7 @@ export class WorkerModule {
           },
         }),
         DatabaseModule,
+        FilesModule,
         EmailModule,
         QueueModule.forRoot(jobs),
       ],

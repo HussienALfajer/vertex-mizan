@@ -40,12 +40,13 @@ export const RULES = {
     'A foreign key between company tables leads with company_id on both sides.',
   rls: 'A company table enables and forces row-level security.',
   'company-policy':
-    'A company table has one permissive policy: company_isolation, for every role and command.',
+    'A company table has one permissive policy for every role and command, company_isolation, besides the jobs role’s own policies, exactly as pinned.',
   'index-company-first': 'Every secondary index of a company table starts with company_id.',
   'app-privilege':
     'The app role has no TRUNCATE, TRIGGER, MAINTAIN or REFERENCES, and DELETE on ephemeral tables only (archive instead).',
   'append-only-grant': 'No role but the owner may UPDATE or DELETE an append-only table.',
-  'role-privilege': 'The jobs and queue roles and PUBLIC hold no privilege on any table.',
+  'role-privilege':
+    'The queue role and PUBLIC hold no privilege on any table; the jobs role exactly the grants pinned.',
   'append-only-trigger':
     'An append-only table refuses UPDATE, DELETE and TRUNCATE through unconditional refuse_change() triggers.',
   'ledger-state-trigger':
@@ -117,7 +118,33 @@ export type GuardTrigger = {
   on: ('INSERT' | 'UPDATE' | 'DELETE' | 'TRUNCATE')[];
 };
 
-export type Guards = { functions: PinnedFunction[]; triggers: GuardTrigger[] };
+/**
+ * A privilege the jobs role holds (ADR 0003): on a whole table, or on the columns listed. Its
+ * grants are exactly these: any other, or one missing, fails the convention test.
+ */
+export type JobsGrant = {
+  table: string;
+  privilege: 'SELECT' | 'INSERT';
+  columns: string[] | null;
+};
+
+/**
+ * A permissive policy for the jobs role alone (ADR 0003): its own way across companies, for
+ * SELECT (`r`) or INSERT (`a`) only, with its expressions as `pg_get_expr` prints them.
+ */
+export type JobsPolicy = {
+  table: string;
+  name: string;
+  command: 'r' | 'a';
+  using: string | null;
+  check: string | null;
+};
+
+export type Guards = {
+  functions: PinnedFunction[];
+  triggers: GuardTrigger[];
+  jobs: { grants: JobsGrant[]; policies: JobsPolicy[] };
+};
 
 /**
  * The guards of the migrations: every guard function, pinned, and every guard trigger (S01's
@@ -1327,6 +1354,85 @@ BEGIN
 END
 `,
     },
+    {
+      name: 'chain_anchor_rules',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+DECLARE
+  day_end timestamptz := (NEW.anchored_on + 1)::timestamp AT TIME ZONE 'Asia/Damascus';
+BEGIN
+  IF NEW.anchored_on > (now() AT TIME ZONE 'Asia/Damascus')::date THEN
+    RAISE EXCEPTION 'chain_anchors: the day % has not begun in Damascus', NEW.anchored_on
+      USING ERRCODE = 'check_violation';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM public.journal_entries e
+    WHERE e.company_id = NEW.company_id AND e.id = NEW.head_entry_id
+      AND e.sequence = NEW.entry_count AND e.hash = NEW.head_hash AND e.posted_at < day_end
+  ) OR EXISTS (
+    SELECT 1 FROM public.journal_entries e
+    WHERE e.company_id = NEW.company_id AND e.sequence > NEW.entry_count
+      AND e.posted_at < day_end
+  ) THEN
+    RAISE EXCEPTION 'chain_anchors: not the head of the chain at the end of %', NEW.anchored_on
+      USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NEW;
+END;
+`,
+    },
+    {
+      name: 'company_export_rules',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    IF NEW.state <> 'queued' THEN
+      RAISE EXCEPTION 'company_exports: an export is requested queued'
+        USING ERRCODE = 'check_violation';
+    END IF;
+    RETURN NEW;
+  END IF;
+  IF (NEW.id, NEW.company_id, NEW.requested_by_user_id, NEW.created_at)
+     IS DISTINCT FROM (OLD.id, OLD.company_id, OLD.requested_by_user_id, OLD.created_at) THEN
+    RAISE EXCEPTION 'company_exports: an export keeps its identity'
+      USING ERRCODE = 'check_violation';
+  END IF;
+  IF (OLD.state, NEW.state) NOT IN (('queued', 'queued'), ('queued', 'ready'),
+                                    ('queued', 'failed'), ('ready', 'expired')) THEN
+    RAISE EXCEPTION 'company_exports: % to % refused', OLD.state, NEW.state
+      USING ERRCODE = 'check_violation';
+  END IF;
+  IF OLD.state = 'ready' AND (
+    (NEW.storage_key, NEW.size_bytes, NEW.sha256, NEW.expires_at)
+      IS DISTINCT FROM (OLD.storage_key, OLD.size_bytes, OLD.sha256, OLD.expires_at)
+    OR OLD.expires_at > now()
+  ) THEN
+    RAISE EXCEPTION 'company_exports: a ready export expires only past its time, as it was'
+      USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NEW;
+END;
+`,
+    },
   ],
   triggers: [
     // The settings lock (S01 rule 11): before every update of a company's ledger settings.
@@ -1841,7 +1947,93 @@ END
       deferred: false,
       on: ['INSERT', 'UPDATE'],
     },
+    // The trust module (S03 rules 20, 21): the anchors append-only and true to the chain, the
+    // exports' states.
+    {
+      table: 'chain_anchors',
+      name: 'chain_anchors_refuse_change',
+      function: 'refuse_change',
+      deferred: false,
+      on: ['UPDATE', 'DELETE'],
+    },
+    {
+      table: 'chain_anchors',
+      name: 'chain_anchors_refuse_truncate',
+      function: 'refuse_change',
+      deferred: false,
+      on: ['TRUNCATE'],
+    },
+    {
+      table: 'chain_anchors',
+      name: 'chain_anchors_rules',
+      function: 'chain_anchor_rules',
+      deferred: false,
+      on: ['INSERT'],
+    },
+    {
+      table: 'company_exports',
+      name: 'company_exports_rules',
+      function: 'company_export_rules',
+      deferred: false,
+      on: ['INSERT', 'UPDATE'],
+    },
   ],
+  jobs: {
+    grants: [
+      // The daily anchor (S03 rule 20): the chain heads, the anchors, the owners and the outbox.
+      {
+        table: 'journal_entries',
+        privilege: 'SELECT',
+        columns: ['company_id', 'id', 'sequence', 'hash', 'posted_at'],
+      },
+      { table: 'chain_anchors', privilege: 'SELECT', columns: ['company_id', 'anchored_on'] },
+      { table: 'chain_anchors', privilege: 'INSERT', columns: null },
+      { table: 'companies', privilege: 'SELECT', columns: ['id', 'name'] },
+      {
+        table: 'memberships',
+        privilege: 'SELECT',
+        columns: ['user_id', 'scope_company_id', 'role', 'archived_at'],
+      },
+      { table: 'users', privilege: 'SELECT', columns: ['id', 'email', 'archived_at'] },
+      { table: 'email_outbox', privilege: 'INSERT', columns: ['id', 'kind', 'recipient', 'data'] },
+      // The export jobs (S03 rule 21) find the exports to build or expire.
+      {
+        table: 'company_exports',
+        privilege: 'SELECT',
+        columns: ['company_id', 'id', 'state', 'expires_at'],
+      },
+    ],
+    policies: [
+      {
+        table: 'journal_entries',
+        name: 'jobs_find_heads',
+        command: 'r',
+        using: 'true',
+        check: null,
+      },
+      {
+        table: 'chain_anchors',
+        name: 'jobs_find_anchors',
+        command: 'r',
+        using: 'true',
+        check: null,
+      },
+      {
+        table: 'chain_anchors',
+        name: 'jobs_write_anchors',
+        command: 'a',
+        using: null,
+        check: 'true',
+      },
+      {
+        table: 'company_exports',
+        name: 'jobs_find_exports',
+        command: 'r',
+        using: 'true',
+        check: null,
+      },
+    ],
+  },
 };
 
 type Table = { schema: string; name: string; owner: string; rls: boolean; forced: boolean };
@@ -2021,6 +2213,36 @@ export async function checkConventions(
 
   for (const rule of rewriteRules) fail('rewrite-rule', rule.table, rule.name);
 
+  // The jobs role's grants, by table and by column, exactly as pinned (ADR 0003).
+  const jobsGrants = await read<{ table: string; privilege: string; column: string | null }>(
+    `select c.relname as table, a.privilege_type as privilege, null::text as column
+     from pg_class c cross join lateral aclexplode(c.relacl) a
+     where c.relnamespace = 'public'::regnamespace and c.relkind in ('r', 'p')
+       and a.grantee = $1::regrole
+     union all
+     select c.relname, a.privilege_type, t.attname::text
+     from pg_attribute t
+     join pg_class c on c.oid = t.attrelid
+     cross join lateral aclexplode(t.attacl) a
+     where c.relnamespace = 'public'::regnamespace and c.relkind in ('r', 'p')
+       and t.attnum > 0 and not t.attisdropped and a.grantee = $1::regrole`,
+    [JOBS_ROLE],
+  );
+  const grantKey = (table: string, privilege: string, column: string | null) =>
+    `${privilege} on ${table}${column === null ? '' : ` (${column})`}`;
+  const pinnedGrants = new Map(
+    guards.jobs.grants.flatMap((g) =>
+      (g.columns ?? [null]).map((column) => [grantKey(g.table, g.privilege, column), g.table]),
+    ),
+  );
+  for (const grant of jobsGrants) {
+    const key = grantKey(grant.table, grant.privilege, grant.column);
+    if (!pinnedGrants.delete(key)) fail('role-privilege', grant.table, `${JOBS_ROLE}: ${key}`);
+  }
+  for (const [key, table] of pinnedGrants) {
+    fail('role-privilege', table, `${JOBS_ROLE}: ${key} is pinned but not granted`);
+  }
+
   const tables = allTables.filter((t) => t.schema === 'public');
   const names = new Set(tables.map((t) => t.name));
   for (const name of Object.keys(registry)) {
@@ -2109,8 +2331,24 @@ export async function checkConventions(
       if (!table.rls || !table.forced) {
         fail('rls', name, `enabled ${table.rls}, forced ${table.forced}`);
       }
+      const pinnedJobs = guards.jobs.policies.filter((j) => j.table === name);
+      const isPinnedJobs = (p: Policy) =>
+        p.roles.join() === JOBS_ROLE &&
+        pinnedJobs.some(
+          (j) =>
+            j.name === p.name &&
+            j.command === p.command &&
+            j.using === p.using &&
+            j.check === p.check,
+        );
       const permissive = policies.filter((p) => p.table === name && p.permissive);
-      const isolation = permissive.length === 1 ? permissive[0] : undefined;
+      const others = permissive.filter((p) => !isPinnedJobs(p));
+      const isolation = others.length === 1 ? others[0] : undefined;
+      for (const pinned of pinnedJobs) {
+        if (!permissive.some((p) => p.name === pinned.name && isPinnedJobs(p))) {
+          fail('company-policy', name, `the jobs policy ${pinned.name} is missing or changed`);
+        }
+      }
       if (
         isolation?.name !== 'company_isolation' ||
         isolation.roles.join() !== 'public' ||
@@ -2118,7 +2356,7 @@ export async function checkConventions(
         isolation.using !== COMPANY_POLICY ||
         isolation.check !== COMPANY_POLICY
       ) {
-        fail('company-policy', name, JSON.stringify(permissive));
+        fail('company-policy', name, JSON.stringify(others));
       }
       for (const index of own.filter((i) => !i.primary && i.columns[0] !== 'company_id')) {
         fail('index-company-first', name, index.name);
@@ -2154,7 +2392,8 @@ export async function checkConventions(
         p.references ||
         p.trigger ||
         p.maintain;
-      if (p.role !== APP_ROLE && (any || p.anyColumn)) {
+      // The jobs role's grants are compared exactly with the pinned ones below.
+      if (p.role !== APP_ROLE && p.role !== JOBS_ROLE && (any || p.anyColumn)) {
         fail('role-privilege', name, `${p.role}: ${JSON.stringify(p)}`);
       }
     }

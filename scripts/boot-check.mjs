@@ -51,6 +51,7 @@ async function main() {
   const worker = start('worker', {
     SMTP_URL: 'smtp://127.0.0.1:1025',
     EMAIL_FROM: 'Mizan <mizan@example.test>',
+    MIZAN_FILES_DIR: resolve(root, '.data', 'boot-check-files'),
   });
   const apps = [api, worker];
   try {

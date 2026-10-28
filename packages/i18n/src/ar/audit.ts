@@ -100,6 +100,9 @@ export const audit = {
     'attachment.added': 'أضاف مرفقاً',
     'attachment.removed': 'أزال مرفقاً من مسودة',
     'company.settings_updated': 'عدّل إعدادات الشركة',
+    'integrity.checked': 'شغّل فحص السلامة',
+    'export.requested': 'طلب تصدير بيانات الشركة',
+    'export.downloaded': 'نزّل تصدير بيانات الشركة',
   } satisfies Record<CompanyAuditAction, string>,
   /** The audited entities (`AUDITED_FIELDS` in `packages/db`). */
   entities: {

@@ -36,6 +36,9 @@ export const PERMISSIONS = [
   'entries.post',
   'entries.approve',
   'entries.attach',
+  // S03: trust and the full export.
+  'integrity.read',
+  'company.export',
 ] as const;
 
 export const permissionSchema = z.enum(PERMISSIONS).meta({ id: 'Permission' });
@@ -81,6 +84,7 @@ export const rolePermissions: Readonly<Record<Role, readonly Permission[]>> = {
     'rates.read',
     'entries.read',
     'drafts.read',
+    'integrity.read',
   ],
 };
 

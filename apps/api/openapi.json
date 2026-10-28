@@ -1444,7 +1444,10 @@
                 "draft.discarded",
                 "attachment.added",
                 "attachment.removed",
-                "company.settings_updated"
+                "company.settings_updated",
+                "integrity.checked",
+                "export.requested",
+                "export.downloaded"
               ]
             }
           },
@@ -6203,6 +6206,273 @@
         ]
       }
     },
+    "/api/integrity/check": {
+      "post": {
+        "operationId": "IntegrityController_check",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IntegrityCheck"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The chain, numbers, balances and anchors recomputed from the first entry",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntegrityReport"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "TWO_FACTOR_REQUIRED, FORBIDDEN",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "COMPANY_NOT_SELECTED, COMPANY_SWITCHED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_FAILED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "integrity"
+        ]
+      }
+    },
+    "/api/company/exports": {
+      "post": {
+        "operationId": "ExportsController_request",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "The export, queued",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompanyExport"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "TWO_FACTOR_REQUIRED, FORBIDDEN, REAUTHENTICATION_REQUIRED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "COMPANY_NOT_SELECTED, COMPANY_SWITCHED, EXPORT_IN_PROGRESS",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "company"
+        ]
+      },
+      "get": {
+        "operationId": "ExportsController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "The newest exports first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CompanyExport"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "TWO_FACTOR_REQUIRED, FORBIDDEN",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "COMPANY_NOT_SELECTED, COMPANY_SWITCHED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "company"
+        ]
+      }
+    },
+    "/api/company/exports/{id}/download": {
+      "get": {
+        "operationId": "ExportsController_download",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The export as a ZIP, for 24 hours after it is ready",
+            "content": {
+              "application/zip": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/zip": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "TWO_FACTOR_REQUIRED, FORBIDDEN, REAUTHENTICATION_REQUIRED",
+            "content": {
+              "application/zip": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND",
+            "content": {
+              "application/zip": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "COMPANY_NOT_SELECTED, COMPANY_SWITCHED",
+            "content": {
+              "application/zip": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "LINK_INVALID",
+            "content": {
+              "application/zip": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_FAILED",
+            "content": {
+              "application/zip": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "company"
+        ]
+      }
+    },
     "/api/auth/reauthenticate": {
       "post": {
         "operationId": "AccountController_reauthenticate",
@@ -6858,7 +7128,9 @@
           "drafts.manage",
           "entries.post",
           "entries.approve",
-          "entries.attach"
+          "entries.attach",
+          "integrity.read",
+          "company.export"
         ]
       },
       "ErrorResponse": {
@@ -6994,7 +7266,8 @@
           "APPROVER_IS_PREPARER",
           "ATTACHMENT_TYPE",
           "ATTACHMENT_TOO_LARGE",
-          "ATTACHMENT_LIMIT"
+          "ATTACHMENT_LIMIT",
+          "EXPORT_IN_PROGRESS"
         ]
       },
       "PageQuery": {
@@ -7700,7 +7973,10 @@
           "draft.discarded",
           "attachment.added",
           "attachment.removed",
-          "company.settings_updated"
+          "company.settings_updated",
+          "integrity.checked",
+          "export.requested",
+          "export.downloaded"
         ]
       },
       "AuditPage": {
@@ -10583,6 +10859,404 @@
         "required": [
           "id",
           "attachmentId"
+        ]
+      },
+      "IntegrityCheck": {
+        "type": "object",
+        "properties": {
+          "anchor": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PastedAnchor"
+              }
+            ]
+          }
+        }
+      },
+      "PastedAnchor": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "hash": {
+            "$ref": "#/components/schemas/Sha256"
+          }
+        },
+        "required": [
+          "date",
+          "count",
+          "hash"
+        ],
+        "additionalProperties": false
+      },
+      "Sha256": {
+        "type": "string",
+        "pattern": "^[0-9a-f]{64}$"
+      },
+      "IntegrityReport": {
+        "type": "object",
+        "properties": {
+          "checkedAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+          },
+          "ok": {
+            "type": "boolean"
+          },
+          "entryCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "lineCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "firstBreak": {
+            "nullable": true,
+            "type": "object",
+            "properties": {
+              "sequence": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "entryId": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              "number": {
+                "$ref": "#/components/schemas/EntryNumber"
+              },
+              "reason": {
+                "type": "string",
+                "enum": [
+                  "sequence",
+                  "previous-hash",
+                  "hash"
+                ]
+              }
+            },
+            "required": [
+              "sequence",
+              "entryId",
+              "number",
+              "reason"
+            ],
+            "additionalProperties": false
+          },
+          "head": {
+            "type": "object",
+            "properties": {
+              "entryCount": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "hash": {
+                "nullable": true,
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/Sha256"
+                  }
+                ]
+              },
+              "matchesChain": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "entryCount",
+              "hash",
+              "matchesChain"
+            ],
+            "additionalProperties": false
+          },
+          "numbering": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "fiscalYear": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "number": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "problem": {
+                  "type": "string",
+                  "enum": [
+                    "missing",
+                    "duplicate",
+                    "counter"
+                  ]
+                }
+              },
+              "required": [
+                "fiscalYear",
+                "number",
+                "problem"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "unbalanced": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "entryId": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                },
+                "number": {
+                  "$ref": "#/components/schemas/EntryNumber"
+                },
+                "ledger": {
+                  "$ref": "#/components/schemas/Ledger"
+                },
+                "residualMinor": {
+                  "$ref": "#/components/schemas/MinorUnits"
+                },
+                "incompleteLines": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "entryId",
+                "number",
+                "ledger",
+                "residualMinor",
+                "incompleteLines"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "periodBalances": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "period": {
+                  "type": "string",
+                  "pattern": "^\\d{4}-(0[1-9]|1[0-2])$"
+                },
+                "accountId": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                },
+                "dimensionSetId": {
+                  "nullable": true,
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                },
+                "currency": {
+                  "$ref": "#/components/schemas/CurrencyCode"
+                },
+                "problem": {
+                  "type": "string",
+                  "enum": [
+                    "different",
+                    "missing",
+                    "unexpected"
+                  ]
+                }
+              },
+              "required": [
+                "period",
+                "accountId",
+                "dimensionSetId",
+                "currency",
+                "problem"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "anchors": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "anchoredOn": {
+                  "type": "string",
+                  "format": "date",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+                },
+                "entryCount": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "headHash": {
+                  "$ref": "#/components/schemas/Sha256"
+                },
+                "result": {
+                  "$ref": "#/components/schemas/AnchorResult"
+                }
+              },
+              "required": [
+                "anchoredOn",
+                "entryCount",
+                "headHash",
+                "result"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "pasted": {
+            "nullable": true,
+            "type": "object",
+            "properties": {
+              "anchor": {
+                "$ref": "#/components/schemas/PastedAnchor"
+              },
+              "result": {
+                "$ref": "#/components/schemas/AnchorResult"
+              },
+              "stored": {
+                "type": "string",
+                "enum": [
+                  "none",
+                  "same",
+                  "different"
+                ]
+              }
+            },
+            "required": [
+              "anchor",
+              "result",
+              "stored"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "checkedAt",
+          "ok",
+          "entryCount",
+          "lineCount",
+          "firstBreak",
+          "head",
+          "numbering",
+          "unbalanced",
+          "periodBalances",
+          "anchors",
+          "pasted"
+        ],
+        "additionalProperties": false
+      },
+      "EntryNumber": {
+        "type": "object",
+        "properties": {
+          "fiscalYear": {
+            "type": "integer",
+            "minimum": 2000,
+            "maximum": 9999
+          },
+          "number": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "fiscalYear",
+          "number"
+        ],
+        "additionalProperties": false
+      },
+      "AnchorResult": {
+        "type": "string",
+        "enum": [
+          "verified",
+          "mismatch",
+          "missing"
+        ]
+      },
+      "CompanyExport": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "state": {
+            "$ref": "#/components/schemas/ExportState"
+          },
+          "requestedBy": {
+            "$ref": "#/components/schemas/PersonRef"
+          },
+          "sizeBytes": {
+            "nullable": true,
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "sha256": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Sha256"
+              }
+            ]
+          },
+          "expiresAt": {
+            "nullable": true,
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+          }
+        },
+        "required": [
+          "id",
+          "state",
+          "requestedBy",
+          "sizeBytes",
+          "sha256",
+          "expiresAt",
+          "createdAt",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "ExportState": {
+        "type": "string",
+        "enum": [
+          "queued",
+          "ready",
+          "failed",
+          "expired"
         ]
       },
       "Reauthenticate": {

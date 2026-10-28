@@ -102,4 +102,5 @@ END
       on: ['INSERT', 'UPDATE'],
     },
   ],
+  jobs: { grants: [], policies: [] },
 };
