@@ -16,6 +16,8 @@ export interface ChartAccount {
   readonly currency: CurrencyCode | null;
   readonly blocked: boolean;
   readonly archived: boolean;
+  /** A control account, whose lines are open items (S04); no manual line until then. */
+  readonly isControl: boolean;
   readonly requiredDimensionTypeIds: readonly string[];
 }
 
@@ -30,9 +32,14 @@ export interface LineDimensionValue {
 }
 
 /**
- * A line as the chart sees it. `origin` is `hub` for a line a Hub event's posting rule built
- * (S05): Hub is the source of its records, so an archived value it names is still accepted
- * (rule 13); every other line is `manual`.
+ * A line as the chart sees it, by `origin`:
+ * - `manual`: a line the accountant typed, or the rounding or difference line of a manual entry;
+ * - `hub`: a line a Hub event's posting rule built (S05): Hub is the source of its records, so an
+ *   archived value it names is still accepted (rule 13);
+ * - `reversal`: a line that negates a posted line exactly (S03 rule 9, ADR 0005 invariant 3). Its
+ *   currency, dimensions and account are the original's, which the chart accepted then: a
+ *   required dimension added since applies to postings from then on (S02 rule 4) and an archived
+ *   value stays, so only the account's state is checked again.
  */
 export interface ChartLine {
   /** Undefined when the account id is unknown to the company. */
@@ -40,7 +47,7 @@ export interface ChartLine {
   /** The line's transaction currency; a difference line keeps its item's (ADR 0007). */
   readonly currency: CurrencyCode;
   readonly dimensions: readonly LineDimensionValue[];
-  readonly origin: 'manual' | 'hub';
+  readonly origin: 'manual' | 'hub' | 'reversal';
 }
 
 function refuse(code: ErrorCode, message: string, details: Record<string, unknown>): never {
@@ -50,7 +57,9 @@ function refuse(code: ErrorCode, message: string, details: Record<string, unknow
 /**
  * Checks a line against the chart (S02 rule 8), the refusals in this order:
  * - the account is unknown (`NOT_FOUND`), a header (`ACCOUNT_NOT_POSTABLE`), archived
- *   (`ACCOUNT_ARCHIVED`) or blocked (`ACCOUNT_BLOCKED`);
+ *   (`ACCOUNT_ARCHIVED`) or blocked (`ACCOUNT_BLOCKED`), whatever the origin;
+ * - a manual line on a control account (`ACCOUNT_IS_CONTROL`, S03 rule 16, until S04);
+ * - from here on a reversal's line is accepted: it carries a line the chart accepted;
  * - the transaction currency differs from the account's restriction (`ACCOUNT_CURRENCY_MISMATCH`);
  * - two values of one type (`VALIDATION_FAILED`);
  * - a required dimension type has no value (`DIMENSION_REQUIRED`);
@@ -69,6 +78,10 @@ export function checkLineAgainstChart(line: ChartLine): void {
   if (account.archived)
     refuse('ACCOUNT_ARCHIVED', `Account ${accountId} is archived`, { accountId });
   if (account.blocked) refuse('ACCOUNT_BLOCKED', `Account ${accountId} is blocked`, { accountId });
+  if (line.origin === 'manual' && account.isControl) {
+    refuse('ACCOUNT_IS_CONTROL', `Account ${accountId} is a control account`, { accountId });
+  }
+  if (line.origin === 'reversal') return;
   if (account.currency !== null && account.currency !== line.currency) {
     refuse(
       'ACCOUNT_CURRENCY_MISMATCH',

@@ -6,4 +6,5 @@ export * from './integrity.js';
 export * from './lines.js';
 export * from './manual.js';
 export * from './measure.js';
+export * from './periods.js';
 export * from './rates.js';
