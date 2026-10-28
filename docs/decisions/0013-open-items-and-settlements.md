@@ -1,6 +1,6 @@
 # 0013 — Open items and settlements: item kinds, manual movements, settlement in proportion to what remains
 
-Status: Proposed (with the S04 spec) · Date: 2026-10-28 (owner's answers in the S04 interview) · Amends [0007](0007-book-and-parallel-currency-ledgers.md) (partial settlements) and [0012](0012-journal-entries-and-ledger-state.md) (residuals of manual entries)
+Status: Accepted · Date: 2026-10-28 (owner's answers in the S04 interview) · Amends [0007](0007-book-and-parallel-currency-ledgers.md) (partial settlements) and [0012](0012-journal-entries-and-ledger-state.md) (residuals of manual entries)
 
 ## Context
 S04 (`docs/specs/S04-open-items-settlements.md`) builds the open items behind the control accounts and the settlements that clear them. ADR 0007 fixes how an item is carried and cleared. Four points were left open:

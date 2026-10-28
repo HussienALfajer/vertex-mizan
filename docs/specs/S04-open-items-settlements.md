@@ -1,6 +1,6 @@
 # S04 — Open items and settlements
 
-Status: Draft · Date: 2026-10-28 · Features: `docs/product/phase-1-scope.md` F06 · ADRs: 0003, 0005, 0006, 0007, 0008, 0011, 0012, 0013
+Status: Approved (owner, 2026-10-28) · Date: 2026-10-28 · Features: `docs/product/phase-1-scope.md` F06 · ADRs: 0003, 0005, 0006, 0007, 0008, 0011, 0012, 0013
 
 ## Summary
 S03 posts entries, but refuses every manual line on a control account (`ACCOUNT_IS_CONTROL`), because nothing yet says which document a receivable or a client's ad funds belong to.
