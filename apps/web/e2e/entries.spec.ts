@@ -1,5 +1,5 @@
 import type { Request } from '@playwright/test';
-import type { DraftInput, Me } from '@vertex-mizan/contracts';
+import { type DraftInput, type Me, rolePermissions } from '@vertex-mizan/contracts';
 import { ar } from '@vertex-mizan/i18n';
 import { accountOf } from './chart-mocks';
 import { company, owner, viewer } from './company-mocks';
@@ -93,7 +93,6 @@ test.describe('the keyboard entry screen', () => {
     const rate = page.getByRole('textbox', { name: /سعر الصفقة/ });
     await rate.focus();
     await page.keyboard.type('122.5');
-    await page.keyboard.press('Tab');
 
     await page.route(`**/api/drafts`, async (route) => {
       if (route.request().method() !== 'POST') return route.fallback();
@@ -104,6 +103,7 @@ test.describe('the keyboard entry screen', () => {
       const reply = post.mock(route.request());
       await route.fulfill({ status: reply.status, json: reply.json });
     });
+    // Posted from inside the rate field: the rate typed there is committed first, and sent.
     await page.keyboard.press('Control+Shift+Enter');
     await expect(page).toHaveURL(new RegExp(`/entries/${purchase.id}$`));
     expect(created.seen).toHaveLength(1);
@@ -263,6 +263,56 @@ test.describe('drafts', () => {
     });
   });
 
+  test('never shows or sends a dealt rate kept in the other orientation', async ({ page }) => {
+    const reversed = { ...ownDraft, dealtRates: [{ base: 'SYP', quote: 'USD', rate: '0.008' }] };
+    const save = recorder({ status: 200, json: ownDraft });
+    await page.route(`**/api/drafts/${ownDraft.id}`, async (route) => {
+      if (route.request().method() === 'GET') {
+        return route.fulfill({ status: 200, json: reversed });
+      }
+      save.mock(route.request());
+      return route.fulfill({ status: 200, json: { ...reversed, dealtRates: [] } });
+    });
+    await page.goto(`/drafts/${ownDraft.id}`);
+    // The company quotes USD/SYP: the field is empty, never 0.008 under the other quote.
+    await expect(page.getByRole('textbox', { name: /سعر الصفقة/ })).toHaveValue('');
+    await expect(page.getByText(te.unsaved)).toBeVisible();
+    await page.getByLabel(te.statement).focus();
+    await page.keyboard.press('Control+s');
+    await expect.poll(() => save.seen.length).toBe(1);
+    expect(save.seen[0]?.postDataJSON()).toMatchObject({ dealtRates: [] });
+  });
+
+  test('names a refused line by its row, past a blank row', async ({ page }) => {
+    await page.route(`**/api/drafts/${ownDraft.id}/preview`, (route) =>
+      route.fulfill({
+        status: 200,
+        json: {
+          ...purchasePreview,
+          lines: [],
+          refusals: [
+            {
+              code: 'ACCOUNT_BLOCKED',
+              message: 'ACCOUNT_BLOCKED',
+              lineNo: 2,
+              details: {},
+            },
+          ],
+        },
+      }),
+    );
+    await page.goto(`/drafts/${ownDraft.id}`);
+    const grid = page.getByRole('grid', { name: te.lines });
+    await grid.locator('[data-row="1"][data-column="1"]').click();
+    // A blank row inserted above the second line: the saved line 2 is row 3 now.
+    await page.keyboard.press('Control+Insert');
+    await expect(grid.locator('tbody tr')).toHaveCount(3);
+    await page.getByRole('button', { name: te.preview }).click();
+    const refused = page.getByRole('alert').filter({ hasText: ar.drafts.preview.refusals });
+    await expect(refused).toContainText(`${ar.drafts.preview.line} 3`);
+    await expect(refused).toContainText(ar.errors.ACCOUNT_BLOCKED);
+  });
+
   test('shows a rejection with its reason', async ({ page }) => {
     await page.goto(`/drafts/${rejectedDraft.id}`);
     await expect(page.getByText(te.rejectedTitle)).toBeVisible();
@@ -292,6 +342,8 @@ test.describe('approval', () => {
     });
     await page.goto(`/drafts/${submittedDraft.id}`);
     await expect(page.getByText(te.submittedNote)).toBeVisible();
+    // Only its preparer withdraws it (rule 8).
+    await expect(page.getByRole('button', { name: te.withdraw })).toHaveCount(0);
     // Submitted: read only.
     await expect(page.getByLabel(te.statement)).toHaveAttribute('readonly', '');
     await page.getByRole('button', { name: te.approve }).click();
@@ -342,6 +394,45 @@ test.describe('approval', () => {
       await expect(page.getByText(te.selfApproval)).toBeVisible();
       await expect(page.getByRole('button', { name: te.approve })).toHaveCount(0);
       await expect(page.getByRole('button', { name: te.withdraw })).toBeVisible();
+    });
+  });
+});
+
+test.describe('approval by role', () => {
+  const as = (role: 'approver' | 'accountant'): Me => ({
+    ...owner,
+    memberships: owner.memberships.map((membership) => ({ ...membership, role })),
+    permissions: [...rolePermissions[role]],
+  });
+
+  test.describe('an approver', () => {
+    test.use({
+      me: as('approver'),
+      api: { ...entryReads, 'GET /api/company': { status: 200, json: approvalCompany } },
+    });
+
+    test('approves, rejects and previews, and edits nothing', async ({ page }) => {
+      await page.goto(`/drafts/${submittedDraft.id}`);
+      await expect(page.getByRole('button', { name: te.approve })).toBeVisible();
+      await expect(page.getByRole('button', { name: te.reject })).toBeVisible();
+      await expect(page.getByRole('button', { name: te.preview })).toBeVisible();
+      for (const name of [te.withdraw, te.save, te.submit, te.discard]) {
+        await expect(page.getByRole('button', { name })).toHaveCount(0);
+      }
+    });
+  });
+
+  test.describe('an accountant', () => {
+    test.use({
+      me: as('accountant'),
+      api: { ...entryReads, 'GET /api/company': { status: 200, json: approvalCompany } },
+    });
+
+    test('cannot approve another person’s submitted draft', async ({ page }) => {
+      await page.goto(`/drafts/${submittedDraft.id}`);
+      await expect(page.getByText(te.submittedNote)).toBeVisible();
+      await expect(page.getByRole('button', { name: te.approve })).toHaveCount(0);
+      await expect(page.getByRole('button', { name: te.withdraw })).toHaveCount(0);
     });
   });
 });

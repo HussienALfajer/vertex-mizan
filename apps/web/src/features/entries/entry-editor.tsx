@@ -14,6 +14,7 @@ import {
   entryTotals,
   money,
   postedDraftSchema,
+  type RatePair,
   signedAmount,
 } from '@vertex-mizan/contracts';
 import { ar } from '@vertex-mizan/i18n';
@@ -74,7 +75,6 @@ import { ReasonDialog } from '../../components/reason-dialog';
 import { api, hasCode } from '../../lib/api';
 import { damascusToday, formatDateTime } from '../../lib/format';
 import { can, useCompany } from '../../lib/session';
-import { ratePairsQuery } from '../rates/rate-queries';
 import {
   dealtRatePairs,
   dimensionColumns,
@@ -129,12 +129,15 @@ export function EntryEditor({
   draft,
   company,
   accounts,
+  pairs,
   runPreview = false,
   onReload,
 }: {
   draft: Draft | null;
   company: Company;
   accounts: readonly Account[];
+  /** The company's rate pairs, for the orientation of a dealt rate (rule 13). */
+  pairs: readonly RatePair[];
   /** Preview at once: a new draft saved for its preview opens here with the preview asked. */
   runPreview?: boolean;
   /** Reads the draft again and starts the screen over from it (after `DRAFT_CHANGED`). */
@@ -144,13 +147,17 @@ export function EntryEditor({
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const catalog = useDimensionCatalog(companyId);
-  const pairs = useQuery(ratePairsQuery(companyId)).data ?? [];
   const startMonth = useFiscalYearStartMonth(companyId);
   const [edit, setEdit] = useState<EditDraft>(() =>
     draft ? editDraftOf(draft) : newDraft(damascusToday()),
   );
   const reversal = draft?.reversesEntryId != null;
-  const initialBody = useRef(JSON.stringify(draftInputOf(edit, reversal)));
+  /** The draft as it would be saved now: only the dealt rates of the pairs the entry has. */
+  const inputOf = (current: EditDraft) =>
+    draftInputOf(current, reversal, dealtRatePairs(current, company.ledgers, pairs));
+  // The draft as stored, every kept rate included: a rate the entry no longer offers (another
+  // orientation, a pair it left) makes the screen unsaved, so the next save clears it.
+  const initialBody = useRef(JSON.stringify(draftInputOf(edit, reversal, edit.dealtRates)));
   const saved = useRef<{ body: string; draft: Draft | null }>({
     body: draft ? initialBody.current : '',
     draft,
@@ -175,7 +182,7 @@ export function EntryEditor({
   const editable = manage && open;
   const linesEditable = editable && !reversal;
   const approval = company.manualEntryApproval;
-  const body = JSON.stringify(draftInputOf(edit, reversal));
+  const body = JSON.stringify(inputOf(edit));
   const dirty = body !== saved.current.body;
   const holdsRefusedText = gridRefusal !== null || amountErrors.size > 0 || rateErrors.size > 0;
   const preparerOrSubmitter =
@@ -378,7 +385,7 @@ export function EntryEditor({
   /** The draft saved as typed: created by the first save, then updated with its `updatedAt`. */
   async function persist(): Promise<Draft> {
     if (holdsRefusedText) throw new RefusedText();
-    const input = draftInputOf(edit, reversal);
+    const input = inputOf(edit);
     const current = saved.current;
     if (current.draft && JSON.stringify(input) === current.body) return current.draft;
     const stored = current.draft
@@ -448,7 +455,7 @@ export function EntryEditor({
       return { stored, answer };
     },
     onSuccess: async ({ stored, answer }) => {
-      if (answer) setPreview({ answer, body: JSON.stringify(draftInputOf(edit, reversal)) });
+      if (answer) setPreview({ answer, body: JSON.stringify(inputOf(edit)) });
       else await openCreated(stored, 'preview');
     },
   });
@@ -510,16 +517,26 @@ export function EntryEditor({
     }
   }
 
+  // Save and post read the screen as rendered after the key: a rate or an amount field commits
+  // its text on the same key (Enter), so the action waits for that commit to render.
+  const latest = useRef({ save: () => {}, postOrSubmit: () => {} });
+  latest.current = {
+    save: () => {
+      if (editable && !busy) save.mutate();
+    },
+    postOrSubmit,
+  };
+
   function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     const native = event.nativeEvent;
     if (matchesShortcut(native, keymap.save)) {
       event.preventDefault();
-      if (editable && !busy) save.mutate();
+      setTimeout(() => latest.current.save());
       return;
     }
     if (matchesShortcut(native, keymap.post)) {
       event.preventDefault();
-      postOrSubmit();
+      setTimeout(() => latest.current.postOrSubmit());
       return;
     }
     const cell = gridCellOf(event.target);
@@ -557,6 +574,9 @@ export function EntryEditor({
   };
   const title = draft ? (reversal ? te.reversalTitle : te.title) : te.newTitle;
   const stalePreview = preview !== null && preview.body !== body;
+  // A refusal names a line as saved, blank lines left out: the grid row it is on now.
+  const typedRows = edit.lines.flatMap((line, index) => (isBlankLine(line) ? [] : [index + 1]));
+  const rowOf = (lineNo: number) => (reversal ? lineNo : (typedRows[lineNo - 1] ?? lineNo));
 
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: the entry keys (save, post, lines) are component keys of the whole entry screen (ADR 0010 §4).
@@ -742,7 +762,7 @@ export function EntryEditor({
         </Card>
       )}
 
-      <FailureNotice error={failure} onReload={() => onReload?.()} />
+      <FailureNotice error={failure} onReload={() => onReload?.()} rowOf={rowOf} />
       {notice === 'saved' && !dirty && !failure && (
         <Callout role="status" tone="info" icon={<CircleCheckIcon />} title={te.saved} />
       )}
@@ -792,7 +812,8 @@ export function EntryEditor({
             )}
           </>
         )}
-        {draft && state === 'submitted' && manage && (
+        {/* The preparer withdraws (rule 8); the API refuses anyone else. */}
+        {draft && state === 'submitted' && manage && draft.preparedBy.id === me.person.id && (
           <Button
             variant="outline"
             loading={transition.isPending}
@@ -846,7 +867,7 @@ export function EntryEditor({
         <Callout tone="info" icon={<InfoIcon />} title={te.selfApproval} />
       )}
 
-      {preview && <PreviewPanel preview={preview.answer} stale={stalePreview} />}
+      {preview && <PreviewPanel preview={preview.answer} stale={stalePreview} rowOf={rowOf} />}
 
       {draft ? (
         <AttachmentsCard
@@ -996,7 +1017,15 @@ function gridProblemText(problem: GridProblem): string {
 }
 
 /** A refused write: a stale draft offers a reload, a posting refusal names its line. */
-function FailureNotice({ error, onReload }: { error: unknown; onReload: () => void }) {
+function FailureNotice({
+  error,
+  onReload,
+  rowOf,
+}: {
+  error: unknown;
+  onReload: () => void;
+  rowOf: (lineNo: number) => number;
+}) {
   if (!error || error instanceof RefusedText) {
     return error instanceof RefusedText ? (
       <Callout role="alert" tone="danger" icon={<TriangleAlertIcon />} title={te.fixBeforeSaving} />
@@ -1018,7 +1047,7 @@ function FailureNotice({ error, onReload }: { error: unknown; onReload: () => vo
     );
   }
   const refusal = refusalOfError(error);
-  return refusal ? <Refusals refusals={[refusal]} /> : <FormError error={error} />;
+  return refusal ? <Refusals refusals={[refusal]} rowOf={rowOf} /> : <FormError error={error} />;
 }
 
 /** A posting refusal from an API error, with the line it names. */

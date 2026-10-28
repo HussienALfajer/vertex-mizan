@@ -42,8 +42,17 @@ export function refusalText(refusal: Pick<PostingRefusal, 'code' | 'details'>): 
   return text;
 }
 
-/** The refusals of a preview or a posting, each with its line when it names one. */
-export function Refusals({ refusals }: { refusals: readonly PostingRefusal[] }) {
+/**
+ * The refusals of a preview or a posting, each with its line when it names one. `rowOf` turns a
+ * saved line number into the row the screen shows it on (blank rows are not saved).
+ */
+export function Refusals({
+  refusals,
+  rowOf = (lineNo) => lineNo,
+}: {
+  refusals: readonly PostingRefusal[];
+  rowOf?: (lineNo: number) => number;
+}) {
   return (
     <Callout
       role="alert"
@@ -61,7 +70,7 @@ export function Refusals({ refusals }: { refusals: readonly PostingRefusal[] }) 
               {refusal.lineNo !== null && (
                 <span className="font-medium">
                   {`${t.preview.line} `}
-                  <bdi dir="ltr">{refusal.lineNo}</bdi>:
+                  <bdi dir="ltr">{rowOf(refusal.lineNo)}</bdi>:
                 </span>
               )}
               <span>{refusalText(refusal)}</span>
@@ -83,7 +92,15 @@ export function Refusals({ refusals }: { refusals: readonly PostingRefusal[] }) 
  * rates and the rounding and difference lines; or why the draft cannot post. Computed by the
  * posting function's own code, with no write.
  */
-export function PreviewPanel({ preview, stale }: { preview: EntryPreview; stale: boolean }) {
+export function PreviewPanel({
+  preview,
+  stale,
+  rowOf,
+}: {
+  preview: EntryPreview;
+  stale: boolean;
+  rowOf: (lineNo: number) => number;
+}) {
   const { companyId } = useCompany();
   const dimensions = useDimensionCatalog(companyId);
   return (
@@ -95,7 +112,7 @@ export function PreviewPanel({ preview, stale }: { preview: EntryPreview; stale:
       <div className="flex min-w-0 flex-col gap-4 px-6 pb-6">
         {stale && <Callout tone="warning" icon={<TriangleAlertIcon />} title={t.preview.stale} />}
         {preview.refusals.length > 0 ? (
-          <Refusals refusals={preview.refusals} />
+          <Refusals refusals={preview.refusals} rowOf={rowOf} />
         ) : (
           <EntryLinesTable
             label={t.preview.label}

@@ -9,6 +9,7 @@ import { hasCode } from '../../lib/api';
 import { useCompany } from '../../lib/session';
 import { accountsQuery } from '../chart/chart-queries';
 import { companyQuery } from '../company/company-queries';
+import { ratePairsQuery } from '../rates/rate-queries';
 import { EntryEditor } from './entry-editor';
 import { BackLink } from './entry-parts';
 import { draftQuery } from './entry-queries';
@@ -25,22 +26,28 @@ function Loading() {
   );
 }
 
-/** What every entry screen reads first: the company (ledgers, approval) and its chart. */
+/**
+ * What every entry screen reads first: the company (ledgers, approval), its chart and its rate
+ * pairs (a dealt rate's orientation decides what the draft sends, so it is known from the start).
+ */
 function useEditorBasics() {
   const { companyId } = useCompany();
   const company = useQuery(companyQuery(companyId));
   const accounts = useQuery(accountsQuery(companyId));
-  return { company, accounts };
+  const pairs = useQuery(ratePairsQuery(companyId));
+  return { company, accounts, pairs };
 }
 
 /** `/entries/new`: a new manual entry, created as a draft by its first save. */
 export function NewEntryPage() {
-  const { company, accounts } = useEditorBasics();
-  if (company.isPending || accounts.isPending) return <Loading />;
-  if (company.isError || accounts.isError) {
-    return <FormError error={company.error ?? accounts.error} />;
+  const { company, accounts, pairs } = useEditorBasics();
+  if (company.isPending || accounts.isPending || pairs.isPending) return <Loading />;
+  if (company.isError || accounts.isError || pairs.isError) {
+    return <FormError error={company.error ?? accounts.error ?? pairs.error} />;
   }
-  return <EntryEditor draft={null} company={company.data} accounts={accounts.data} />;
+  return (
+    <EntryEditor draft={null} company={company.data} accounts={accounts.data} pairs={pairs.data} />
+  );
 }
 
 /** `/drafts/:id`: a draft on the entry screen; `?open=preview` runs its preview on opening. */
@@ -49,10 +56,12 @@ export function DraftEditorPage() {
   const { open } = draftRoute.useSearch();
   const { companyId } = useCompany();
   const queryClient = useQueryClient();
-  const { company, accounts } = useEditorBasics();
+  const { company, accounts, pairs } = useEditorBasics();
   const draft = useQuery({ ...draftQuery(companyId, id), refetchOnWindowFocus: false });
   const [reloads, setReloads] = useState(0);
-  if (draft.isPending || company.isPending || accounts.isPending) return <Loading />;
+  if (draft.isPending || company.isPending || accounts.isPending || pairs.isPending) {
+    return <Loading />;
+  }
   if (draft.isError) {
     return hasCode(draft.error, 'NOT_FOUND') || hasCode(draft.error, 'VALIDATION_FAILED') ? (
       <>
@@ -63,8 +72,8 @@ export function DraftEditorPage() {
       <FormError error={draft.error} />
     );
   }
-  if (company.isError || accounts.isError) {
-    return <FormError error={company.error ?? accounts.error} />;
+  if (company.isError || accounts.isError || pairs.isError) {
+    return <FormError error={company.error ?? accounts.error ?? pairs.error} />;
   }
   const { data } = draft;
   // A change of state (submitted, withdrawn, rejected, discarded) or a reload starts over from
@@ -76,6 +85,7 @@ export function DraftEditorPage() {
       draft={data}
       company={company.data}
       accounts={accounts.data}
+      pairs={pairs.data}
       runPreview={open === 'preview'}
       onReload={async () => {
         await queryClient.refetchQueries({ queryKey: draftQuery(companyId, id).queryKey });

@@ -115,10 +115,16 @@ export function isCompleteLine(line: EditLine): boolean {
 
 /**
  * The draft as `POST /api/drafts` and `PUT` take it: blank lines dropped, empty text as null, a
- * zero amount as none (the API refuses a zero line), only the dealt rates given. A reversal's
- * draft sends no lines: its lines are its original's.
+ * zero amount as none (the API refuses a zero line). Its dealt rates are those given among
+ * `offered`, the pairs the entry has now (`dealtRatePairs`): a rate kept for a pair the entry no
+ * longer has is never sent, since the posting refuses it. A reversal's draft sends no lines and
+ * no rates: its lines are its original's.
  */
-export function draftInputOf(edit: EditDraft, reversal: boolean): DraftInput {
+export function draftInputOf(
+  edit: EditDraft,
+  reversal: boolean,
+  offered: readonly EditDealtRate[],
+): DraftInput {
   const text = (value: string) => (value.trim() === '' ? null : value.trim());
   return {
     entryDate: edit.entryDate,
@@ -126,7 +132,7 @@ export function draftInputOf(edit: EditDraft, reversal: boolean): DraftInput {
     reference: text(edit.reference),
     dealtRates: reversal
       ? []
-      : edit.dealtRates.flatMap((rate) =>
+      : offered.flatMap((rate) =>
           rate.rate === null ? [] : [{ base: rate.base, quote: rate.quote, rate: rate.rate }],
         ),
     lines: reversal
@@ -149,7 +155,10 @@ export function draftInputOf(edit: EditDraft, reversal: boolean): DraftInput {
 /**
  * The pairs a dealt rate can be given for (rule 13): a line currency and the currency of a ledger
  * whose policy accepts a transaction's rate, in the company's orientation of the pair when it has
- * one (`RATE_ORIENTATION`), with any rate already typed for it.
+ * one (`RATE_ORIENTATION`), with the rate already typed for it in that orientation. A rate kept in
+ * the other orientation (typed before the company's pair existed) is left out, never shown or
+ * sent inverted or under the other quote (ADR 0007: rates are never inverted); the field is empty
+ * and the accountant types it again as quoted.
  */
 export function dealtRatePairs(
   edit: EditDraft,
@@ -172,11 +181,7 @@ export function dealtRatePairs(
       const base = held?.base ?? currency;
       const quote = held?.quote ?? ledger.currency;
       if (found.some((rate) => rate.base === base && rate.quote === quote)) continue;
-      const typed = edit.dealtRates.find(
-        (rate) =>
-          (rate.base === base && rate.quote === quote) ||
-          (rate.base === quote && rate.quote === base),
-      );
+      const typed = edit.dealtRates.find((rate) => rate.base === base && rate.quote === quote);
       found.push({ base, quote, rate: typed?.rate ?? null });
     }
   }
