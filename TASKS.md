@@ -11,7 +11,7 @@ Spec: `docs/specs/S03-journal-entries-posting.md` (Approved, owner 2026-10-28) Â
 - [x] db: the company creation, chart template and rate recording the scenario setup shares with the API, as transaction functions the API services call (no behaviour change)
 - [x] scenarios: `bookHarness` setup, ledger reader, `manual`, `reversal` and `rate` executors through the shared services and `post()`; the README's manual payload; the `currency/` scenarios `Approved (owner, 2026-10-27)` and the `manual/` ones `Approved (owner, 2026-10-28)`, no expected value changed, all counted as run
 - [x] wiring (Contracts, Ledger, Database), docs (`packages/db/CLAUDE.md`, `packages/scenarios/CLAUDE.md`, `packages/ledger/CLAUDE.md`, `apps/api/CLAUDE.md`, the spec's data table, `docs/ROADMAP.md`)
-- [ ] checks and reviewers (`reviewer`, `accountant-reviewer`), PR with auto-merge and Auto-fix
+- [x] checks and reviewers (`reviewer`, `accountant-reviewer`), PR with auto-merge and Auto-fix
 
 ## PR 2 â€” Manual entries: drafts, approval, reversal (contracts, db, api)
 - [ ] contracts: `entries.ts` (drafts, lines, dealt rates, entries, the preview, an account's lines, a rate row's entries), the permission keys (`entries.read`, `drafts.read`, `drafts.manage`, `entries.post`, `entries.approve`, `entries.attach`), the drafts, approval and attachment error codes and audit actions, `manualEntryApproval` in the company settings
