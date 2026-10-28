@@ -31,7 +31,7 @@ Scope: `docs/product/phase-1-scope.md`. One spec per line, each through `/spec` 
   - [x] PR 2 API and worker: Better Auth with two-factor, the access guard, the S01 endpoints, the email outbox (owner decision 2026-10-26) and the clean-up job, the server commands
   - [x] PR 3 access screens: sign-in in two steps, forgot and reset password, invitations, enrolment with backup codes, account security with signing out of other sessions (`POST /api/me/sessions/revoke-others`, owner 2026-10-27); `OtpField`, `PasswordInput`, `QrCode`, `SecretCodeList` in `packages/ui`
   - [x] PR 4 company screens: companies, new company, company settings, members and invitations, audit log, the company switcher and guard, the archived banner, `X-Mizan-Company` on company writes (owner, 2026-10-27: the screens split in two PRs); `ChangeList`, `DateRangeField` in `packages/ui`
-- [~] S02 Chart of accounts, dimensions and rates: F02 · F03 · F04 (`docs/specs/S02-chart-dimensions-rates.md`; the templates await the accountants' review, Q3)
+- [x] S02 Chart of accounts, dimensions and rates: F02 · F03 · F04 (`docs/specs/S02-chart-dimensions-rates.md`; the templates' review is its own item below, owner 2026-10-28)
   - [x] PR 1 contracts, ledger and database: the statement-line catalogue, the code shape, the account, dimension and rate schemas, the two templates (drafts, Q3), the permission keys, error codes and audit actions; `checkLineAgainstChart()` (rule 8); the chart, dimension and rate tables with forced RLS, the tree and lock after first use, the append-only rate table with its corrections, and the five roots and built-in dimension types of every company
   - [x] PR 2 API: the chart, dimension and rate endpoints, the template choice at company creation (`POST /api/companies`, `admin:create-company --template`), the chart export to Excel (PDF with the worker's rendering, owner 2026-10-27)
   - [x] PR 3 chart screens: `/chart` (the tree with filters, the account sheet with the lock notice, block, archive and restore with a reason, the template choice on an empty chart, the Excel export) and `/chart/roles`; the template choice on the new-company form (service agency by default); "new account" in the command palette; `AccountTree` and `AccountPicker` in `packages/ui`
@@ -45,6 +45,7 @@ Scope: `docs/product/phase-1-scope.md`. One spec per line, each through `/spec` 
 - [ ] S08 Daily reconciliation: F11
 - [ ] S09 Reports: F13
 - [ ] S10 Opening balances and Hub history replay: F12 (Q4)
+- [ ] The accountants' review of the chart templates, published as a new template version before Vertex Media's production company is created (Q3)
 - [ ] Inquiry with the tax authority about program approval (Q8)
 - [ ] Hub's side of the integration, in Hub's sessions (ADR 0006, 0008, Q5)
 - [ ] Deployment and backup ADR in force: point-in-time recovery, encrypted off-server copies, a restore drill (Q2); no real company data before it

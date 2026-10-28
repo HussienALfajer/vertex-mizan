@@ -27,7 +27,7 @@ Implement **$ARGUMENTS**. This skill orders the work and names the gates; the ru
   - leaves `main` broken or half-wired;
   - ships company data without isolation tests;
   - ships a posting without its scenario and balance properties.
-- Write `TASKS.md` for this spec (replace the previous one): a heading per PR, one item per layer below, the wiring items that apply, and "checks, reviewers, acceptance, PR with auto-merge" at the end of each PR.
+- Write `TASKS.md` for this spec (replace the previous one): a heading per PR, one item per layer below, the wiring items that apply, and "checks, reviewers, acceptance, PR with auto-merge" at the end of each PR. It is committed: commit it with the first layer and with each tick, so a cloud session continues from it.
 - Show the owner the PR split and the task list in a few lines, in Arabic, then **stop and wait for approval**.
 
 ## 2. Build, one layer at a time
@@ -55,7 +55,7 @@ Layers a PR does not include are skipped. Helpers arrive with their first real u
    - **PR without screens:** summarise the endpoints, jobs and postings with one worked example in numbers.
 
    Fix what the owner reports in the same session, then run `pnpm verify` and the reviewers on the fix.
-5. Tick the PR's items in `TASKS.md`, then, as soon as the owner accepts, finish the PR in the same turn: follow "Finishing a task" in `AGENTS.md`.
+5. Tick the PR's items in `TASKS.md` (on the spec's last PR, reset it instead to its "No task in progress" stub), then, as soon as the owner accepts, finish the PR in the same turn: follow "Finishing a task" in `AGENTS.md`.
 
 ## Stop and ask when
 - The spec or a scenario is ambiguous in a way that changes the numbers, or the work needs an answer from `docs/open-questions.md`.
