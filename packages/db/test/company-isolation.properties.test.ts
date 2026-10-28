@@ -3,6 +3,7 @@ import { and, eq, inArray, sql } from 'drizzle-orm';
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import {
+  type AuditActor,
   accountRequiredDimensions,
   accountRoles,
   auditEntries,
@@ -13,6 +14,7 @@ import {
   dimensionTypes,
   dimensionValues,
   exchangeRates,
+  post,
   ratePairs,
   type Transaction,
   tableRegistry,
@@ -38,6 +40,16 @@ const COVERED = [
   'rate_pairs',
   'exchange_rates',
   'bulletin_holidays',
+  'posting_requests',
+  'journal_entries',
+  'journal_lines',
+  'line_conversions',
+  'dimension_sets',
+  'dimension_set_values',
+  'ledger_heads',
+  'entry_number_counters',
+  'periods',
+  'period_balances',
 ];
 
 const auditRow = fc.record({
@@ -154,16 +166,121 @@ async function seedChart(tx: Transaction, companyId: string, userId: string, dat
   }
 }
 
-/** The rows each S02 table holds for a company seeded with `data`. */
+/**
+ * S03's rows: an expense in a foreign currency carrying a service, converted at a market rate,
+ * and its reversal, posted through the posting function.
+ */
+async function seedLedger(tx: Transaction, companyId: string, userId: string, data: CompanyData) {
+  await addAccount(tx, companyId, '5', { code: '59' });
+  await addAccount(tx, companyId, '59', { code: '591' });
+  const debit = await addAccount(tx, companyId, '591', {
+    code: '591001',
+    kind: 'postable',
+    statementLine: 'is.other_expenses',
+  });
+  const credit = await addAccount(tx, companyId, '591', {
+    code: '591002',
+    kind: 'postable',
+    statementLine: 'is.other_expenses',
+  });
+  const [service] = await tx
+    .select()
+    .from(dimensionTypes)
+    .where(and(eq(dimensionTypes.companyId, companyId), eq(dimensionTypes.code, 'service')));
+  const [value] = await tx
+    .insert(dimensionValues)
+    .values({ companyId, typeId: service?.id as string, code: 'S1', name: 'خدمة مولّدة' })
+    .returning({ id: dimensionValues.id });
+  const foreign = data.bookCurrency === 'USD' ? 'EUR' : 'USD';
+  if (data.bookCurrency !== 'SYP') {
+    await tx.insert(ratePairs).values({ companyId, base: foreign, quote: data.bookCurrency });
+  }
+  await tx.insert(exchangeRates).values({
+    companyId,
+    effectiveOn: '2026-11-01',
+    base: foreign,
+    quote: data.bookCurrency,
+    rate: '2.0000',
+    type: 'market',
+    source: 'manual',
+    recordedByUserId: userId,
+  });
+  const actor: AuditActor = {
+    kind: 'person',
+    userId,
+    name: 'شخص مولّد',
+    sessionId: null,
+    requestId: 'request-generated',
+    ipAddress: null,
+    userAgent: null,
+  };
+  const common = {
+    client: 'manual',
+    description: 'قيد مولّد',
+    reference: null,
+    draftId: null,
+    preparedByUserId: userId,
+    approvedByUserId: null,
+    actor,
+  };
+  const entry = await post(tx, {
+    ...common,
+    idempotencyKey: `generated-${companyId}`,
+    entryDate: '2026-11-02',
+    content: {
+      kind: 'manual',
+      today: '2026-11-30',
+      dealtRates: [],
+      lines: [
+        {
+          accountId: debit,
+          dimensionValueIds: [value?.id as string],
+          currency: foreign,
+          amountMinor: 10_000n,
+          memo: null,
+        },
+        {
+          accountId: credit,
+          dimensionValueIds: [],
+          currency: foreign,
+          amountMinor: -10_000n,
+          memo: null,
+        },
+      ],
+    },
+  });
+  await post(tx, {
+    ...common,
+    idempotencyKey: `reversal:${entry.id}`,
+    entryDate: '2026-11-03',
+    content: { kind: 'reversal', entryId: entry.id, today: '2026-11-30' },
+  });
+}
+
+/** The entries `seedLedger` posts, each with one audit row. */
+const POSTED = 2;
+
+/** The rows each S02 and S03 table holds for a company seeded with `data`. */
 const expectedRows = (data: CompanyData): Record<string, number> => ({
-  chart_accounts: 5 + data.headers.length + 3,
+  chart_accounts: 5 + data.headers.length + 3 + 4,
   account_required_dimensions: 1,
   account_roles: 1,
   dimension_types: 4,
-  dimension_values: data.clients.length,
-  rate_pairs: 1,
-  exchange_rates: data.rates.length,
+  dimension_values: data.clients.length + 1,
+  rate_pairs: data.bookCurrency === 'SYP' ? 1 : 2,
+  exchange_rates: data.rates.length + 1,
   bulletin_holidays: data.holidays.length,
+  posting_requests: POSTED,
+  journal_entries: POSTED,
+  journal_lines: 4,
+  // The expense's two lines convert into the book currency; the reversal carries its amounts.
+  line_conversions: 2,
+  dimension_sets: 2,
+  dimension_set_values: 1,
+  ledger_heads: 1,
+  entry_number_counters: 1,
+  periods: 1,
+  period_balances: 2,
 });
 
 async function seed(userId: string, data: CompanyData): Promise<string> {
@@ -193,6 +310,7 @@ async function seed(userId: string, data: CompanyData): Promise<string> {
       });
     }
     await seedChart(tx, row.id, userId, data);
+    await seedLedger(tx, row.id, userId, data);
   });
   return row.id;
 }
@@ -228,7 +346,7 @@ describe('company isolation, as a property', () => {
               .where(inArray(auditEntries.companyId, ids)),
           }));
           expect(seen.settings).toEqual([{ companyId: id, note: data.policyNote }]);
-          expect(seen.audit).toHaveLength(data.audit.length);
+          expect(seen.audit).toHaveLength(data.audit.length + POSTED);
           for (const row of seen.audit) expect(row.companyId).toBe(id);
           const listed = sql.join(
             ids.map((value) => sql`${value}::uuid`),

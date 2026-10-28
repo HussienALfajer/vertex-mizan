@@ -6,11 +6,15 @@ export const fixtureRegistry = {
   fixture_documents: { module: 'fixtures', scope: 'company', kind: 'business' },
   fixture_entries: { module: 'fixtures', scope: 'company', kind: 'append-only' },
   fixture_lines: { module: 'fixtures', scope: 'company', kind: 'append-only' },
+  fixture_counters: { module: 'fixtures', scope: 'company', kind: 'ledger-state' },
   fixture_settings: { module: 'fixtures', scope: 'platform', kind: 'business' },
   fixture_tokens: { module: 'fixtures', scope: 'platform', kind: 'ephemeral' },
 } as const satisfies Record<string, TableInfo>;
 
-/** The deferred guard of the fixture tables (`guards.sql`), pinned and required like a real one. */
+/**
+ * The guards of the fixture tables (`guards.sql`): the deferred balance of the entries and the
+ * counter's rule, pinned and required like real ones.
+ */
 export const fixtureGuards: Guards = {
   functions: [
     {
@@ -52,6 +56,28 @@ BEGIN
 END
 `,
     },
+    {
+      name: 'fixture_counter_rules',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+BEGIN
+  IF (TG_OP = 'INSERT' AND NEW.last_number <> 1)
+    OR (TG_OP = 'UPDATE' AND NEW.last_number IS DISTINCT FROM OLD.last_number + 1) THEN
+    RAISE EXCEPTION 'fixture counter moves by one' USING ERRCODE = 'restrict_violation';
+  END IF;
+  RETURN NEW;
+END
+`,
+    },
   ],
   triggers: [
     {
@@ -67,6 +93,13 @@ END
       function: 'fixture_entry_balances',
       deferred: true,
       on: ['INSERT'],
+    },
+    {
+      table: 'fixture_counters',
+      name: 'fixture_counter_rules',
+      function: 'fixture_counter_rules',
+      deferred: false,
+      on: ['INSERT', 'UPDATE'],
     },
   ],
 };

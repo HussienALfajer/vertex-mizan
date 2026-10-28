@@ -8,8 +8,7 @@ import {
   reasonSchema,
 } from '@vertex-mizan/contracts';
 import {
-  companies,
-  companySettings,
+  createCompanyBooks,
   type Database,
   sessions,
   twoFactors,
@@ -21,8 +20,6 @@ import { v7 as uuidv7 } from 'uuid';
 import { type AuditActor, SYSTEM_NAME, writePlatformAudit } from '../core/audit/audit.js';
 import { queueEmail } from '../core/email/outbox.js';
 import { dropWaitingAuthenticator } from '../modules/auth/two-factor.js';
-import { applyChartTemplate } from '../modules/chart/chart-shape.js';
-import { ledgerColumns } from '../modules/companies/company-shape.js';
 import { createInvitation } from '../modules/invitations/invitations.service.js';
 
 // The server commands of S01 (rule 9, rule 21): run by Vertex on the server, as the app role, never
@@ -100,8 +97,8 @@ export function parseCreateCompany(argv: string[]): CreateCompanyCommand {
 
 /**
  * Creates a company with no creator and invites its first owner by email (S01 rule 9): the
- * company, its settings, its chart template (S02 rule 1), the invitation with its email, and the
- * audit rows, in one transaction.
+ * company's books (`createCompanyBooks`: its settings and chart template, S02 rule 1), the
+ * invitation with its email, and the audit rows, in one transaction.
  */
 export async function createCompanyWithOwner(
   db: Database,
@@ -111,26 +108,7 @@ export async function createCompanyWithOwner(
 ): Promise<{ companyId: string; invitationId: string }> {
   const companyId = uuidv7();
   return withCompany(db, companyId, async (tx) => {
-    await tx.insert(companies).values({
-      id: companyId,
-      name: input.company.name,
-      nameLatin: input.company.nameLatin,
-      createdByUserId: null,
-    });
-    await tx.insert(companySettings).values({
-      companyId,
-      ...ledgerColumns(input.company.ledgers),
-      fiscalYearStartMonth: input.company.fiscalYearStartMonth,
-      policyNote: input.company.policyNote,
-    });
-    await writePlatformAudit(tx, {
-      action: 'company.created',
-      actor,
-      subjectCompanyId: companyId,
-    });
-    if (input.company.template !== null) {
-      await applyChartTemplate(tx, companyId, input.company.template, actor);
-    }
+    await createCompanyBooks(tx, companyId, { ...input.company, createdByUserId: null }, actor);
     const invitation = await createInvitation(tx, appUrl, actor, {
       companyId,
       companyName: input.company.name,

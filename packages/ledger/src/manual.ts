@@ -8,6 +8,7 @@ import { type RealisedTargets, realisedDifferenceLines } from './balance.js';
 import { reverseLines } from './carried.js';
 import { type Dimensions, keptLedgers, type Line } from './lines.js';
 import { type MeasureContext, measuredLine } from './measure.js';
+import { lastDayOfMonth, periodOf } from './periods.js';
 import { quotesPair } from './rates.js';
 
 /** A manual line as the accountant types it: a transaction amount, never a ledger amount. */
@@ -72,6 +73,24 @@ export function manualEntryLines(
   const currencies = new Set(lines.map((line) => line.transaction.currency));
   if (currencies.size < 2) return lines;
   return [...lines, ...realisedDifferenceLines(context.ledgers, lines, targets)];
+}
+
+/**
+ * Refuses a manual entry, or the accountant's reversal, dated after the last day of the current
+ * month (`ENTRY_DATE_OUT_OF_RANGE`, S03 rules 6 and 9, ADR 0012), so a month-end accrual may be
+ * dated ahead within its month. `today` is the date at the moment of posting in Asia/Damascus, from
+ * the caller's clock, not the date the draft was saved. The open period and the SYP date are the
+ * posting function's and `balanceEntry()`'s checks.
+ */
+export function checkManualEntryDate(on: string, today: string): void {
+  if (periodOf(on) > periodOf(today)) {
+    const last = lastDayOfMonth(today);
+    throw new DomainError(
+      'ENTRY_DATE_OUT_OF_RANGE',
+      `A manual entry dated ${on} is after the last day of the current month, ${last}`,
+      { on, last },
+    );
+  }
 }
 
 /** Where a posted entry came from (S03 `journal_entries.source`). */

@@ -1,0 +1,1 @@
+ALTER TABLE "dimension_values" ADD CONSTRAINT "dimension_values_company_id_id_type_key" UNIQUE("company_id","id","type_id");

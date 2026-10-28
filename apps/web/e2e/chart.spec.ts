@@ -27,8 +27,10 @@ const row = (page: Page, code: string) =>
     .filter({ has: page.getByText(code, { exact: true }) });
 
 async function rowAction(page: Page, code: string, action: string) {
+  // A menu still closing (its exit animation) holds the same items: open the next one after it.
+  await expect(page.getByRole('menu')).toHaveCount(0);
   await page.getByRole('button', { name: `${t.tree.menu}: ${code}`, exact: true }).click();
-  await page.getByRole('menuitem', { name: action }).click();
+  await page.getByRole('menu').getByRole('menuitem', { name: action }).click();
 }
 
 async function choose(page: Page, label: string, option: string) {

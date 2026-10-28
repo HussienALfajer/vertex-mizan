@@ -27,7 +27,8 @@ const CODE_BY_STATUS: Partial<Record<number, ErrorCode>> = {
 
 /**
  * Every error answer carries a stable code (S01, ADR 0006): a `CodedException` as thrown, a
- * `DomainError` with its code's status, a framework refusal with the code of its status. A
+ * `DomainError` with its code's status, the failed fields it names as `issues` and its other facts
+ * as `details`, a framework refusal with the code of its status. A
  * server-side answer (the health check's 503) keeps its own body. Anything else is a 500 whose
  * cause is logged without its message, which can quote values.
  */
@@ -43,10 +44,19 @@ export class ErrorFilter implements ExceptionFilter {
 
   private answer(exception: unknown): [number, unknown] {
     if (exception instanceof DomainError) {
+      const { issues, ...facts } = exception.details ?? {};
+      // The facts a refusal names (the ledger, pair and date of `RATE_MISSING`), as text.
+      const details = Object.fromEntries(
+        Object.entries(facts)
+          .filter(([, value]) => ['string', 'number', 'bigint'].includes(typeof value))
+          .map(([key, value]) => [key, String(value)]),
+      );
       const body: ErrorResponse = {
         statusCode: errorStatus[exception.code],
         code: exception.code,
         message: exception.message,
+        ...(Array.isArray(issues) && { issues: issues as NonNullable<ErrorResponse['issues']> }),
+        ...(Object.keys(details).length > 0 && { details }),
       };
       return [body.statusCode, body];
     }

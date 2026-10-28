@@ -63,4 +63,9 @@ export const errors = {
     'يُعكس يدوياً القيد اليدوي فقط، ولا يُعكس قيد العكس: انسخ القيد الأصلي بدلاً من ذلك.',
   ENTRY_ALREADY_REVERSED: 'هذا القيد معكوس من قبل.',
   REVERSAL_BEFORE_ORIGINAL: 'تاريخ العكس يسبق تاريخ القيد الأصلي.',
+  PERIOD_CLOSED: 'تاريخ القيد يقع في فترة مقفلة.',
+  IDEMPOTENCY_CONFLICT: 'مفتاح الطلب مستخدم من قبل لطلب مختلف.',
+  ENTRY_DATE_OUT_OF_RANGE: 'لا يجوز أن يتجاوز تاريخ القيد اليدوي آخر يوم من الشهر الحالي.',
+  ACCOUNT_IS_CONTROL:
+    'هذا حساب مراقبة تُرحَّل إليه البنود المفتوحة، ولا يقبل سطوراً يدوية في هذه المرحلة.',
 } satisfies Record<ErrorCode, string>;

@@ -1,8 +1,8 @@
 # A rate corrected after an entry used it
 
-Status: Proposed
+Status: Approved (owner, 2026-10-27)
 
-The expected entries were approved by the owner on 2026-10-27. The file stays `Proposed` until S03 registers the setup, the ledger reader and the step executors the runner needs; the PR that does so marks it `Approved (owner, 2026-10-27)` without changing an expected value. Until then `packages/ledger`'s `adr-0007.examples.test.ts` builds every case. A correction dated inside a closed period (S02 rule 18) is added here with S07, which brings period close (owner, 2026-10-27).
+The expected entries were approved by the owner on 2026-10-27. The book runs every case through the posting function since S03 brought the setup, the ledger reader and the step executors, with no expected value changed; `packages/ledger`'s `adr-0007.examples.test.ts` builds them too. A correction dated inside a closed period (S02 rule 18) is added here with S07, which brings period close (owner, 2026-10-27).
 
 ## Rule
 

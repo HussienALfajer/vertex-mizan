@@ -43,6 +43,7 @@ const clientFunds: ChartAccount = {
   currency: 'USD',
   blocked: false,
   archived: false,
+  isControl: false,
   requiredDimensionTypeIds: [CLIENT_TYPE],
 };
 
@@ -89,6 +90,29 @@ describe('checkLineAgainstChart (S02 rule 8)', () => {
     expect(refusal(line({ account: { ...clientFunds, blocked: true }, origin: 'hub' }))).toBe(
       'ACCOUNT_BLOCKED',
     );
+  });
+
+  it('refuses a manual line on a control account and accepts a Hub line on one (S03 rule 16)', () => {
+    const control = { ...clientFunds, isControl: true };
+    expect(refusal(line({ account: control }))).toBe('ACCOUNT_IS_CONTROL');
+    expect(refusal(line({ account: control, origin: 'hub' }))).toBe('accepted');
+  });
+
+  it("accepts a reversal's line as posted, and refuses it on an account now blocked or archived", () => {
+    const archived = { ...client, archived: true };
+    // The account required no dimension when the original posted (S02 rule 4).
+    expect(refusal(line({ dimensions: [], origin: 'reversal' }))).toBe('accepted');
+    expect(refusal(line({ dimensions: [archived], origin: 'reversal' }))).toBe('accepted');
+    expect(
+      refusal(line({ account: { ...clientFunds, isControl: true }, origin: 'reversal' })),
+    ).toBe('accepted');
+    expect(refusal(line({ account: { ...clientFunds, blocked: true }, origin: 'reversal' }))).toBe(
+      'ACCOUNT_BLOCKED',
+    );
+    expect(refusal(line({ account: { ...clientFunds, archived: true }, origin: 'reversal' }))).toBe(
+      'ACCOUNT_ARCHIVED',
+    );
+    expect(refusal(line({ account: undefined, origin: 'reversal' }))).toBe('NOT_FOUND');
   });
 
   it('refuses a transaction currency other than the restriction, and accepts any without one', () => {
@@ -138,6 +162,7 @@ describe('checkLineAgainstChart properties', () => {
     currency: fc.option(fc.constantFrom(...CURRENCY_CODES), { nil: null }),
     blocked: fc.constant(false),
     archived: fc.constant(false),
+    isControl: fc.constant(false),
     requiredDimensionTypeIds: fc.subarray(types),
   });
   const liveValue = (typeId: string, archived = false): LineDimensionValue => ({
@@ -195,7 +220,7 @@ describe('checkLineAgainstChart properties', () => {
       fc.property(
         accounts,
         fc.constantFrom('blocked', 'archived', 'header'),
-        fc.constantFrom('manual' as const, 'hub' as const),
+        fc.constantFrom('manual' as const, 'hub' as const, 'reversal' as const),
         (account, state, origin) => {
           const broken: ChartAccount =
             state === 'header' ? { ...account, kind: 'header' } : { ...account, [state]: true };

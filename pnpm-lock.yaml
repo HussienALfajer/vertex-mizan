@@ -443,6 +443,12 @@ importers:
 
   packages/db:
     dependencies:
+      '@vertex-mizan/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@vertex-mizan/ledger':
+        specifier: workspace:*
+        version: link:../ledger
       drizzle-orm:
         specifier: 0.45.4
         version: 0.45.4(@opentelemetry/api@1.10.0)(@types/pg@8.23.1)(kysely@0.29.7)(pg@8.23.1)
@@ -462,9 +468,6 @@ importers:
       '@vertex-mizan/config':
         specifier: workspace:*
         version: link:../config
-      '@vertex-mizan/contracts':
-        specifier: workspace:*
-        version: link:../contracts
       drizzle-kit:
         specifier: 0.31.11
         version: 0.31.11
@@ -524,6 +527,12 @@ importers:
       '@vertex-mizan/db':
         specifier: workspace:*
         version: link:../db
+      drizzle-orm:
+        specifier: 0.45.4
+        version: 0.45.4(@opentelemetry/api@1.10.0)(@types/pg@8.23.1)(kysely@0.29.7)(pg@8.23.1)
+      uuid:
+        specifier: 14.0.3
+        version: 14.0.3
       yaml:
         specifier: 2.9.1
         version: 2.9.1

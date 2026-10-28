@@ -18,6 +18,7 @@ export const tableRegistry = {
   accounts: { module: 'accounts', scope: 'company', kind: 'business' },
   journal_entries: { module: 'ledger', scope: 'company', kind: 'append-only' },
   journal_lines: { module: 'ledger', scope: 'company', kind: 'append-only' },
+  period_balances: { module: 'ledger', scope: 'company', kind: 'ledger-state' },
 } as const satisfies Record<string, TableInfo>;
 `;
 
@@ -398,10 +399,51 @@ describe('migration guard: append-only tables of the registry', () => {
     ).toEqual(['exception-refused', 'append-only-write']);
   });
 
-  it('reads the registry of packages/db by default, where nothing is append-only before S03', () => {
+  it('reads the registry of packages/db by default', () => {
     const file = join(dir, 'real-registry.sql');
     writeFileSync(file, 'UPDATE journal_lines SET memo = null;');
+    expect(run(['--decisions', decisions, file]).rules).toEqual(['append-only-write']);
+    writeFileSync(file, 'DELETE FROM period_balances;');
+    expect(run(['--decisions', decisions, file]).rules).toEqual(['ledger-state-delete']);
+    writeFileSync(file, 'UPDATE fixture_documents SET title = null;');
     expect(run(['--decisions', decisions, file]).status).toBe(0);
+  });
+});
+
+describe('migration guard: ledger-state tables of the registry', () => {
+  it.each([
+    'DELETE FROM period_balances WHERE line_count = 0;',
+    'delete from only public."period_balances";',
+    'TRUNCATE period_balances;',
+    'TRUNCATE TABLE accounts, ONLY period_balances;',
+    'MERGE INTO period_balances b USING accounts a ON false WHEN MATCHED THEN DELETE;',
+    "DO $$ BEGIN EXECUTE 'DELETE FROM period_balances'; END $$;",
+  ])('refuses deleting its rows: %s', (sql) => {
+    const result = guard(sql);
+    expect(result.rules).toEqual(['ledger-state-delete']);
+    expect(result.status).toBe(1);
+  });
+
+  it('passes what moves it forward: an update, an upsert, a refuse_delete() trigger', () => {
+    const result = guard(`
+      UPDATE period_balances SET line_count = line_count + 1;
+      INSERT INTO period_balances (id) VALUES ($1) ON CONFLICT (id) DO UPDATE SET line_count = 1;
+      CREATE TRIGGER period_balances_refuse_delete BEFORE DELETE ON period_balances
+        FOR EACH ROW EXECUTE FUNCTION refuse_delete();
+      CREATE TRIGGER period_balances_refuse_truncate BEFORE TRUNCATE ON period_balances
+        FOR EACH STATEMENT EXECUTE FUNCTION refuse_delete();
+      GRANT SELECT, INSERT, UPDATE ON period_balances TO mizan_app;
+    `);
+    expect(result.output).toContain('nothing weakens a guard');
+    expect(result.status).toBe(0);
+  });
+
+  it('allows a deletion only with an accepted ADR that names the rule', () => {
+    expect(
+      guard(
+        '-- migration-guard: allow ledger-state-delete (ADR 0100)\nDELETE FROM period_balances;',
+      ).rules,
+    ).toEqual(['exception-refused', 'ledger-state-delete']);
   });
 });
 

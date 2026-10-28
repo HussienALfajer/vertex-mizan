@@ -50,7 +50,7 @@ From S01 (the first feature). For a pattern not listed, ask the `explorer` subag
 | Layer | Copy |
 |---|---|
 | contracts | `packages/contracts/src/companies.ts` and `members.ts` (schemas with `.meta({ id })`), `access.ts` (the permission map), `errors.ts` |
-| db | `packages/db/src/schema/companies.ts` and `audit.ts`, their registry entries, the S01 custom migration (RLS, grants, guards), `test/access.test.ts` |
+| db | `packages/db/src/schema/companies.ts` and `audit.ts`, their registry entries, the S01 custom migration (RLS, grants, guards), `test/access.test.ts`; for the ledger: `src/posting/post.ts` (a new kind of posting is a new `PostingContent`), `0012_s03_ledger_guards.sql`, and `test/ledger.test.ts` (`forge()`: a write the posting function never makes, refused by the guards) |
 | api | `apps/api/src/modules/members/` (controller with one access decorator per route, `@Reauthenticated`, service with the audit in the transaction), `test/members.test.ts` (another company, a missing permission, `COMPANY_SWITCHED`) |
 | worker | `apps/worker/src/jobs/`: `email.send` and the daily clean-up (safe to run twice, as the app role) |
 | web | `apps/web/src/features/company/company-settings-page.tsx` (company writes with `company: companyId`, sensitive actions, read-only roles), `features/members/members-page.tsx` (tables, dialogs, `ReasonDialog`), routes under `_app/_company` |

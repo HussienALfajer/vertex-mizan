@@ -141,6 +141,16 @@ export const errorStatus = {
   ENTRY_ALREADY_REVERSED: 409,
   /** A reversal dated before the entry it reverses (S03 rule 9). */
   REVERSAL_BEFORE_ORIGINAL: 422,
+
+  // Journal entries and the posting function (S03).
+  /** The entry date is inside a closed period (ADR 0005 invariant 4). A Hub event is held (S05). */
+  PERIOD_CLOSED: 409,
+  /** The idempotency key was used before with another request (ADR 0005 invariant 5). */
+  IDEMPOTENCY_CONFLICT: 409,
+  /** A manual entry dated after the last day of the current month in Damascus (S03 rule 6). */
+  ENTRY_DATE_OUT_OF_RANGE: 422,
+  /** A manual line on a control account, whose lines S04's open items post (S03 rule 16). */
+  ACCOUNT_IS_CONTROL: 422,
 } as const satisfies Record<string, number>;
 
 export type ErrorCode = keyof typeof errorStatus;

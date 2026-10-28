@@ -10,16 +10,21 @@ import {
   type CurrencyCode,
   checkAccountCode,
   checkAccountShape,
-  defaultNormalBalance,
   type SetAccountRole,
   type UpdateAccount,
 } from '@vertex-mizan/contracts';
 import {
+  ACCOUNT_CODE_TAKEN,
+  type AccountRow,
   accountRequiredDimensions,
   accountRoles,
+  addRequiredDimensions,
+  auditedAccountOf,
   chartAccounts,
+  checkDimensionTypes,
+  createAccount,
   type Database,
-  dimensionTypes,
+  lockedAccount,
   type Transaction,
   withCompany,
 } from '@vertex-mizan/db';
@@ -30,29 +35,7 @@ import { type AuditActor, changedFields, writeCompanyAudit } from '../../core/au
 import { DATABASE } from '../../core/database/database.module.js';
 import { onUniqueViolation } from '../../core/database/unique-violation.js';
 import { CodedException } from '../../core/errors/coded-exception.js';
-import { type AccountRow, levelOf, readAccount, readChart } from './chart-shape.js';
-
-/** The unique key of an account's code (S02 edge case 1: two accountants, one code). */
-const CODE_TAKEN = { chart_accounts_company_id_code_key: 'ACCOUNT_CODE_TAKEN' } as const;
-
-/** The fields of an account the audit log records before and after. */
-function auditedOf(row: AccountRow, requiredDimensionTypeIds: readonly string[]) {
-  return {
-    code: row.code,
-    parentId: row.parentId,
-    level: row.level,
-    kind: row.kind,
-    class: row.class,
-    name: row.name,
-    nameLatin: row.nameLatin,
-    normalBalance: row.normalBalance,
-    statementLine: row.statementLine,
-    currency: row.currency,
-    isControl: row.isControl,
-    isMonetary: row.isMonetary,
-    requiredDimensionTypeIds: [...requiredDimensionTypeIds],
-  };
-}
+import { levelOf, readAccount, readChart } from './chart-shape.js';
 
 /** The chart of accounts and its roles (S02 rules 1–7). */
 @Injectable()
@@ -73,55 +56,7 @@ export class AccountsService {
     const companyId = access.company.id;
     return withCompany(this.db, companyId, async (tx) => {
       await lockCompanyForWrite(tx, companyId);
-      const parent = await this.accountRow(tx, input.parentId, 'share');
-      if (parent.archivedAt) throw new CodedException('ACCOUNT_ARCHIVED', 'The parent is archived');
-      const level = checkAccountCode(input.code, {
-        code: parent.code,
-        level: levelOf(parent),
-        kind: parent.kind as Account['kind'],
-      });
-      const accountClass = accountClassOfCode(input.code);
-      checkAccountShape({
-        level,
-        kind: input.kind,
-        class: accountClass,
-        statementLine: input.statementLine,
-        currency: input.currency,
-        isControl: input.isControl,
-        isMonetary: input.isMonetary,
-        requiredDimensionCount: input.requiredDimensionTypeIds.length,
-      });
-      await this.checkDimensionTypes(tx, input.requiredDimensionTypeIds);
-      const [row] = await onUniqueViolation(
-        () =>
-          tx
-            .insert(chartAccounts)
-            .values({
-              companyId,
-              code: input.code,
-              level,
-              parentId: parent.id,
-              kind: input.kind,
-              class: accountClass,
-              name: input.name,
-              nameLatin: input.nameLatin,
-              normalBalance: input.normalBalance ?? defaultNormalBalance(accountClass),
-              statementLine: input.statementLine,
-              currency: input.currency,
-              isControl: input.isControl,
-              isMonetary: input.isMonetary,
-            })
-            .returning(),
-        CODE_TAKEN,
-      );
-      if (!row) throw new Error('The account was not created');
-      await this.addDimensions(tx, companyId, row.id, [], input.requiredDimensionTypeIds);
-      await writeCompanyAudit(tx, companyId, actorOf(access), {
-        action: 'account.created',
-        entityType: 'account',
-        entityId: row.id,
-        after: auditedOf(row, input.requiredDimensionTypeIds),
-      });
+      const row = await createAccount(tx, companyId, input, actorOf(access));
       return readAccount(tx, row.id);
     });
   }
@@ -204,8 +139,8 @@ export class AccountsService {
         });
       }
       await this.checkRolesStillFit(tx, id, next.kind, accountClass);
-      await this.checkDimensionTypes(tx, next.requiredDimensionTypeIds);
-      const before = auditedOf(row, required);
+      await checkDimensionTypes(tx, next.requiredDimensionTypeIds);
+      const before = auditedAccountOf(row, required);
       // Dropped dimensions go before the account changes and added ones after it: the database
       // allows a required dimension on a postable account only, so a postable account that turns
       // into a header lets its dimensions go first, and a header that turns postable gains them last.
@@ -230,11 +165,11 @@ export class AccountsService {
             })
             .where(eq(chartAccounts.id, id))
             .returning(),
-        CODE_TAKEN,
+        ACCOUNT_CODE_TAKEN,
       );
       if (!updated) throw new CodedException('NOT_FOUND', 'No such account');
-      await this.addDimensions(tx, companyId, id, required, next.requiredDimensionTypeIds);
-      const diff = changedFields(before, auditedOf(updated, next.requiredDimensionTypeIds));
+      await addRequiredDimensions(tx, companyId, id, required, next.requiredDimensionTypeIds);
+      const diff = changedFields(before, auditedAccountOf(updated, next.requiredDimensionTypeIds));
       if (diff) {
         await writeCompanyAudit(tx, companyId, actorOf(access), {
           action: 'account.updated',
@@ -429,13 +364,7 @@ export class AccountsService {
     id: string,
     lock: 'share' | 'update',
   ): Promise<AccountRow> {
-    const [row] = await tx
-      .select()
-      .from(chartAccounts)
-      .where(eq(chartAccounts.id, id))
-      .for(lock === 'share' ? 'share' : 'no key update');
-    if (!row) throw new CodedException('NOT_FOUND', 'No such account');
-    return row;
+    return lockedAccount(tx, id, lock);
   }
 
   private async hasChildren(tx: Transaction, id: string, unarchivedOnly: boolean) {
@@ -479,21 +408,6 @@ export class AccountsService {
     }
   }
 
-  /** Every required dimension type exists in the company and is not archived (`NOT_FOUND`). */
-  private async checkDimensionTypes(tx: Transaction, typeIds: readonly string[]): Promise<void> {
-    if (typeIds.length === 0) return;
-    // Read FOR SHARE, as the database's own check does, so an archive at the same time waits and
-    // this check answers instead of the trigger.
-    const found = await tx
-      .select({ id: dimensionTypes.id })
-      .from(dimensionTypes)
-      .where(and(inArray(dimensionTypes.id, [...typeIds]), isNull(dimensionTypes.archivedAt)))
-      .for('share');
-    if (found.length !== typeIds.length) {
-      throw new CodedException('NOT_FOUND', 'No such dimension type');
-    }
-  }
-
   private async requiredOf(tx: Transaction, accountId: string): Promise<string[]> {
     const rows = await tx
       .select({ typeId: accountRequiredDimensions.dimensionTypeId })
@@ -526,20 +440,5 @@ export class AccountsService {
           isNull(accountRequiredDimensions.archivedAt),
         ),
       );
-  }
-
-  /** Adds the required types new to the account. */
-  private async addDimensions(
-    tx: Transaction,
-    companyId: string,
-    accountId: string,
-    before: readonly string[],
-    after: readonly string[],
-  ): Promise<void> {
-    const added = after.filter((typeId) => !before.includes(typeId));
-    if (added.length === 0) return;
-    await tx
-      .insert(accountRequiredDimensions)
-      .values(added.map((dimensionTypeId) => ({ companyId, accountId, dimensionTypeId })));
   }
 }

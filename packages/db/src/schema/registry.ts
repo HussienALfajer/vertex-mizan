@@ -18,6 +18,11 @@
  *   the outbox), their payloads never.
  * - `draft`: `created_at` and `updated_at`; documents being prepared, which can change until they
  *   are posted (ADR 0005, drafts are not ledger).
+ * - `ledger-state`: `created_at` and `updated_at`, no `archived_at`; rows that summarise the
+ *   append-only ledger and change only as it grows (the ledger head, the entry-number counters, the
+ *   periods, the period balances; ADR 0012). The app role has `SELECT, INSERT, UPDATE`, never
+ *   `DELETE`; `refuse_delete()` triggers refuse `DELETE` and `TRUNCATE` for every role, and a pinned
+ *   guard trigger before `INSERT` and `UPDATE` allows only the change an append makes.
  * - `ephemeral`: `created_at` and `updated_at`, no `archived_at`; rows deleted when they expire or
  *   are used or sent (sessions, one-time tokens, two-factor secrets, rate-limit counters, the email
  *   outbox; S01). Platform
@@ -27,7 +32,8 @@
  *
  * The convention test fails when a table is missing here or does not follow its scope and kind.
  * The migration guard (`scripts/migration-guard.mjs`) loads this file with Node's type stripping to
- * refuse `UPDATE`, `DELETE` and `TRUNCATE` of the append-only tables, so it imports nothing.
+ * refuse `UPDATE`, `DELETE` and `TRUNCATE` of the append-only tables and `DELETE` and `TRUNCATE` of
+ * the ledger-state tables, so it imports nothing.
  */
 export const tableRegistry = {
   // access (S01): Better Auth's tables, memberships and invitations.
@@ -58,10 +64,28 @@ export const tableRegistry = {
   rate_pairs: { module: 'rates', scope: 'company', kind: 'business' },
   exchange_rates: { module: 'rates', scope: 'company', kind: 'append-only' },
   bulletin_holidays: { module: 'rates', scope: 'company', kind: 'business' },
+  // ledger (S03, ADR 0005, ADR 0012): the append-only ledger, written by `post()` only, and the
+  // ledger state it keeps.
+  posting_requests: { module: 'ledger', scope: 'company', kind: 'append-only' },
+  journal_entries: { module: 'ledger', scope: 'company', kind: 'append-only' },
+  journal_lines: { module: 'ledger', scope: 'company', kind: 'append-only' },
+  line_conversions: { module: 'ledger', scope: 'company', kind: 'append-only' },
+  dimension_sets: { module: 'ledger', scope: 'company', kind: 'append-only' },
+  dimension_set_values: { module: 'ledger', scope: 'company', kind: 'append-only' },
+  ledger_heads: { module: 'ledger', scope: 'company', kind: 'ledger-state' },
+  entry_number_counters: { module: 'ledger', scope: 'company', kind: 'ledger-state' },
+  periods: { module: 'ledger', scope: 'company', kind: 'ledger-state' },
+  period_balances: { module: 'ledger', scope: 'company', kind: 'ledger-state' },
 } as const satisfies Record<string, TableInfo>;
 
 export type TableScope = 'company' | 'platform';
 
-export type TableKind = 'business' | 'append-only' | 'queue' | 'draft' | 'ephemeral';
+export type TableKind =
+  | 'business'
+  | 'append-only'
+  | 'ledger-state'
+  | 'queue'
+  | 'draft'
+  | 'ephemeral';
 
 export type TableInfo = { module: string; scope: TableScope; kind: TableKind };

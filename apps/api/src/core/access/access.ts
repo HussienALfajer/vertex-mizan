@@ -1,6 +1,7 @@
 import { createParamDecorator, type ExecutionContext, SetMetadata } from '@nestjs/common';
 import type { Permission, Role } from '@vertex-mizan/contracts';
-import type { AuditActor, RequestFacts } from '../audit/audit.js';
+import type { PersonActor } from '@vertex-mizan/db';
+import type { RequestFacts } from '../audit/audit.js';
 import { CodedException } from '../errors/coded-exception.js';
 
 /**
@@ -124,7 +125,7 @@ export function inCompany(access: RequestAccess): CompanyRouteAccess {
 }
 
 /** The person as the audit logs record them. */
-export function actorOf(access: SignedInAccess): AuditActor {
+export function actorOf(access: SignedInAccess): PersonActor {
   return {
     kind: 'person',
     userId: access.person.id,

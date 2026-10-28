@@ -6,7 +6,8 @@
 // stripping) and refuses statements that change or destroy the rows of an append-only table:
 // UPDATE, DELETE, TRUNCATE, MERGE or an upsert's DO UPDATE; DROP TABLE, RENAME, SET SCHEMA, a
 // dropped column, a column type change, a generated column or expression; inheritance and
-// partitions. Run over the default folder, it fails when `packages/db` has no migration,
+// partitions. On a ledger-state table (ADR 0012), whose rows only move forward with the ledger, it
+// refuses DELETE, TRUNCATE and MERGE, which can delete. Run over the default folder, it fails when `packages/db` has no migration,
 // keeps one in a subfolder (which it would not read) or has no registry. `--db <dir>` replaces
 // `packages/db`.
 //
@@ -135,7 +136,7 @@ const TABLES = String.raw`${TABLE}(?:\s*,\s*${TABLE})*`;
 const tableName = (name) =>
   name.startsWith('"') ? name.slice(1, -1).replaceAll('""', '"') : name.toLowerCase();
 
-/** The offset of the first match of `regex` whose captured table list names an append-only table. */
+/** The offset of the first match of `regex` whose captured table list names one of `tables`. */
 function namesAppendOnly(text, regex, appendOnly) {
   for (const match of text.matchAll(regex)) {
     const list = match.groups?.tables ?? '';
@@ -146,8 +147,11 @@ function namesAppendOnly(text, regex, appendOnly) {
   return -1;
 }
 
-/** The rules that need the registry's append-only tables (ADR 0005: no migration changes them). */
-function registryRules(appendOnly) {
+/**
+ * The rules that need the registry: no migration changes the append-only tables (ADR 0005) or
+ * deletes the ledger state (ADR 0012).
+ */
+function registryRules(appendOnly, ledgerState) {
   const writes = [
     new RegExp(String.raw`\bUPDATE\s+(?<tables>${TABLE})`, 'gi'),
     new RegExp(String.raw`\bDELETE\s+FROM\s+(?<tables>${TABLE})`, 'gi'),
@@ -175,9 +179,19 @@ function registryRules(appendOnly) {
     new RegExp(String.raw`\bINHERIT\s+(?<tables>${TABLE})`, 'gi'),
     new RegExp(String.raw`\bINHERITS\s*\(\s*(?<tables>${TABLES})\s*\)`, 'gi'),
   ];
+  const deletes = [
+    new RegExp(String.raw`\bDELETE\s+FROM\s+(?<tables>${TABLE})`, 'gi'),
+    new RegExp(String.raw`\bTRUNCATE\s+(?:TABLE\s+)?(?<tables>${TABLES})`, 'gi'),
+    new RegExp(String.raw`\bMERGE\s+INTO\s+(?<tables>${TABLE})`, 'gi'),
+  ];
   const first = (offsets) =>
     offsets.filter((offset) => offset !== -1).sort((a, b) => a - b)[0] ?? -1;
   return [
+    {
+      id: 'ledger-state-delete',
+      find: (text) => first(deletes.map((regex) => namesAppendOnly(text, regex, ledgerState))),
+      message: 'deletes rows of a ledger-state table (DELETE, TRUNCATE or MERGE)',
+    },
     {
       id: 'append-only-write',
       find: (text) => first(writes.map((regex) => namesAppendOnly(text, regex, appendOnly))),
@@ -368,14 +382,18 @@ const registry = join(db, 'src', 'schema', 'registry.ts');
 // Problems of the layout, each `{ path, rule, message }`.
 const problems = [];
 let appendOnly = new Set();
+let ledgerState = new Set();
 if (existsSync(db)) {
   if (existsSync(registry)) {
     const { tableRegistry } = await import(pathToFileURL(registry).href);
-    appendOnly = new Set(
-      Object.entries(tableRegistry ?? {})
-        .filter(([, info]) => info?.kind === 'append-only')
-        .map(([name]) => name),
-    );
+    const ofKind = (kind) =>
+      new Set(
+        Object.entries(tableRegistry ?? {})
+          .filter(([, info]) => info?.kind === kind)
+          .map(([name]) => name),
+      );
+    appendOnly = ofKind('append-only');
+    ledgerState = ofKind('ledger-state');
   } else {
     problems.push({
       path: registry,
@@ -402,7 +420,7 @@ if (args.length > 0) {
   }
 }
 
-const rules = [...RULES, ...registryRules(appendOnly)];
+const rules = [...RULES, ...registryRules(appendOnly, ledgerState)];
 let failed = problems.length;
 for (const problem of problems) {
   process.stderr.write(`${show(problem.path)}  ${problem.rule}  ${problem.message}

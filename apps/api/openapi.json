@@ -1433,7 +1433,8 @@
                 "rate_calendar.updated",
                 "bulletin_holiday.added",
                 "bulletin_holiday.removed",
-                "export.chart"
+                "export.chart",
+                "entry.posted"
               ]
             }
           },
@@ -4925,7 +4926,11 @@
           "DEALT_RATE_NOT_ACCEPTED",
           "ENTRY_NOT_REVERSIBLE",
           "ENTRY_ALREADY_REVERSED",
-          "REVERSAL_BEFORE_ORIGINAL"
+          "REVERSAL_BEFORE_ORIGINAL",
+          "PERIOD_CLOSED",
+          "IDEMPOTENCY_CONFLICT",
+          "ENTRY_DATE_OUT_OF_RANGE",
+          "ACCOUNT_IS_CONTROL"
         ]
       },
       "PageQuery": {
@@ -5613,7 +5618,8 @@
           "rate_calendar.updated",
           "bulletin_holiday.added",
           "bulletin_holiday.removed",
-          "export.chart"
+          "export.chart",
+          "entry.posted"
         ]
       },
       "AuditPage": {

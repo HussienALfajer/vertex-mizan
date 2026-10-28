@@ -95,6 +95,8 @@ export const dimensionValues = pgTable(
   (t) => [
     idIsUuidV7('dimension_values', t.id),
     unique('dimension_values_company_id_id_key').on(t.companyId, t.id),
+    // A dimension set names a value with its type (S03 `dimension_set_values`).
+    unique('dimension_values_company_id_id_type_key').on(t.companyId, t.id, t.typeId),
     foreignKey({
       name: 'dimension_values_type_fk',
       columns: [t.companyId, t.typeId],

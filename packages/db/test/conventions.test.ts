@@ -1,3 +1,6 @@
+import { readdirSync, readFileSync } from 'node:fs';
+import { join, relative } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, inject, it } from 'vitest';
 import { type TableInfo, tableRegistry } from '../src/index.js';
 import { connect } from './connections.js';
@@ -454,6 +457,31 @@ const MUTATIONS: Mutation[] = [
     sql,
   })),
   {
+    name: 'a ledger-state table whose rows can be deleted',
+    rules: ['ledger-state-trigger'],
+    sql: 'drop trigger fixture_counters_refuse_delete on fixture_counters',
+  },
+  {
+    name: 'a ledger-state table that can be emptied',
+    rules: ['ledger-state-trigger'],
+    sql: 'drop trigger fixture_counters_refuse_truncate on fixture_counters',
+  },
+  {
+    name: 'a ledger-state table without its guard',
+    rules: ['ledger-state-trigger', 'guard-trigger'],
+    sql: 'drop trigger fixture_counter_rules on fixture_counters',
+  },
+  {
+    name: 'a ledger-state table that is archived',
+    rules: ['kind-timestamps'],
+    sql: 'alter table fixture_counters add column archived_at timestamptz',
+  },
+  {
+    name: 'DELETE granted on a ledger-state table',
+    rules: ['app-privilege'],
+    sql: 'grant delete on fixture_counters to mizan_app',
+  },
+  {
     name: 'a role made a member of the owner role',
     rules: ['role-membership'],
     as: 'superuser',
@@ -507,5 +535,75 @@ describe('each convention, broken on purpose', () => {
   it('covers every rule', () => {
     const proven = new Set(MUTATIONS.flatMap((m) => m.rules));
     expect(Object.keys(RULES).filter((rule) => !proven.has(rule as Rule))).toEqual([]);
+  });
+});
+
+// ADR 0005 invariant 11: one way to write the ledger. Only the posting function inserts into, or
+// updates, a table of the ledger module; its guards write the period balances. Test files are left
+// out: they forge writes on purpose, to prove the guards refuse them.
+
+const root = fileURLToPath(new URL('../../../', import.meta.url));
+const WRITER = 'packages/db/src/posting/post.ts';
+const LEDGER_TABLES = Object.entries(tableRegistry)
+  .filter(([, info]) => info.module === 'ledger')
+  .map(([name]) => name);
+const camel = (name: string) =>
+  name.replace(/_([a-z])/g, (_, letter: string) => letter.toUpperCase());
+
+/** The offsets in `source` that write a ledger table, through Drizzle or in SQL. */
+function ledgerWrites(source: string): string[] {
+  const drizzle = new RegExp(
+    String.raw`\.(?:insert|update|delete)\(\s*(?:${LEDGER_TABLES.map(camel).join('|')})\b`,
+    'g',
+  );
+  const raw = new RegExp(
+    String.raw`\b(?:insert\s+into|update|delete\s+from|truncate)\s+(?:public\.)?(?:${LEDGER_TABLES.join('|')})\b`,
+    'gi',
+  );
+  return [...source.matchAll(drizzle), ...source.matchAll(raw)].map((match) => match[0]);
+}
+
+function sourceFiles(folder: string): string[] {
+  return readdirSync(folder, { recursive: true, withFileTypes: true })
+    .filter((entry) => entry.isFile() && /\.(ts|tsx|mjs)$/.test(entry.name))
+    .map((entry) => join(entry.parentPath, entry.name))
+    .filter((file) => !/[\\/](node_modules|dist|test|e2e)[\\/]/.test(file))
+    .filter((file) => !/\.test\.tsx?$/.test(file));
+}
+
+describe('one writer of the ledger (ADR 0005 invariant 11)', () => {
+  it("names the ledger module's tables", () => {
+    expect(LEDGER_TABLES).toContain('journal_lines');
+    expect(LEDGER_TABLES).toContain('period_balances');
+  });
+
+  it('finds a write through Drizzle and in SQL', () => {
+    expect(ledgerWrites('await tx.insert(journalLines).values(rows)')).toHaveLength(1);
+    expect(ledgerWrites('await tx.update( ledgerHeads ).set({})')).toHaveLength(1);
+    expect(ledgerWrites('sql`INSERT INTO public.period_balances (id) VALUES (1)`')).toHaveLength(1);
+    expect(ledgerWrites('tx.select().from(journalLines)')).toEqual([]);
+  });
+
+  it('has no write of a ledger table outside the posting function', () => {
+    const folders = ['apps', 'packages'].flatMap((top) =>
+      readdirSync(join(root, top), { withFileTypes: true })
+        .filter((entry) => entry.isDirectory())
+        .map((entry) => join(root, top, entry.name, 'src')),
+    );
+    const found = folders
+      .flatMap((folder) => {
+        try {
+          return sourceFiles(folder);
+        } catch {
+          return [];
+        }
+      })
+      .map((file) => relative(root, file).replaceAll('\\', '/'))
+      .filter((file) => file !== WRITER)
+      .flatMap((file) =>
+        ledgerWrites(readFileSync(join(root, file), 'utf8')).map((write) => `${file}: ${write}`),
+      );
+    expect(found).toEqual([]);
+    expect(ledgerWrites(readFileSync(join(root, WRITER), 'utf8')).length).toBeGreaterThan(0);
   });
 });

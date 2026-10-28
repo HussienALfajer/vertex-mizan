@@ -84,6 +84,37 @@ CREATE CONSTRAINT TRIGGER fixture_lines_balance AFTER INSERT ON fixture_lines
 ALTER TABLE fixture_entries ENABLE ALWAYS TRIGGER fixture_entries_balance;
 ALTER TABLE fixture_lines ENABLE ALWAYS TRIGGER fixture_lines_balance;
 
+-- fixture_counters: company ledger-state table (ADR 0012); the app role reads, adds and moves it,
+-- never deletes: refuse_delete() refuses DELETE and TRUNCATE for every role, and a guard before
+-- INSERT and UPDATE lets the counter start at 1 and move by one only.
+ALTER TABLE fixture_counters ENABLE ROW LEVEL SECURITY;
+ALTER TABLE fixture_counters FORCE ROW LEVEL SECURITY;
+CREATE POLICY company_isolation ON fixture_counters
+  USING (company_id = current_company_id())
+  WITH CHECK (company_id = current_company_id());
+CREATE FUNCTION fixture_counter_rules() RETURNS trigger
+  LANGUAGE plpgsql
+  AS $$
+BEGIN
+  IF (TG_OP = 'INSERT' AND NEW.last_number <> 1)
+    OR (TG_OP = 'UPDATE' AND NEW.last_number IS DISTINCT FROM OLD.last_number + 1) THEN
+    RAISE EXCEPTION 'fixture counter moves by one' USING ERRCODE = 'restrict_violation';
+  END IF;
+  RETURN NEW;
+END
+$$;
+CREATE TRIGGER fixture_counter_rules BEFORE INSERT OR UPDATE ON fixture_counters
+  FOR EACH ROW EXECUTE FUNCTION fixture_counter_rules();
+CREATE TRIGGER fixture_counters_refuse_delete BEFORE DELETE ON fixture_counters
+  FOR EACH ROW EXECUTE FUNCTION refuse_delete();
+CREATE TRIGGER fixture_counters_refuse_truncate BEFORE TRUNCATE ON fixture_counters
+  FOR EACH STATEMENT EXECUTE FUNCTION refuse_delete();
+ALTER TABLE fixture_counters ENABLE ALWAYS TRIGGER fixture_counter_rules;
+ALTER TABLE fixture_counters ENABLE ALWAYS TRIGGER fixture_counters_refuse_delete;
+ALTER TABLE fixture_counters ENABLE ALWAYS TRIGGER fixture_counters_refuse_truncate;
+REVOKE ALL ON fixture_counters FROM PUBLIC;
+GRANT SELECT, INSERT, UPDATE ON fixture_counters TO mizan_app;
+
 -- fixture_settings: platform business table; the app role reads only.
 REVOKE ALL ON fixture_settings FROM PUBLIC;
 GRANT SELECT ON fixture_settings TO mizan_app;

@@ -89,8 +89,9 @@ export const audit = {
     'bulletin_holiday.added': 'أضاف عطلة للنشرة',
     'bulletin_holiday.removed': 'أزال عطلة من النشرة',
     'export.chart': 'صدّر دليل الحسابات',
+    'entry.posted': 'رحّل قيداً',
   } satisfies Record<CompanyAuditAction, string>,
-  /** The audited entities (`AUDITED_FIELDS` in `apps/api`). */
+  /** The audited entities (`AUDITED_FIELDS` in `packages/db`). */
   entities: {
     company: 'الشركة',
     company_settings: 'إعدادات الدفاتر',
@@ -107,6 +108,7 @@ export const audit = {
     rate_pair: 'زوج العملات',
     exchange_rate: 'سعر الصرف',
     bulletin_holiday: 'عطلة النشرة',
+    journal_entry: 'القيد',
   },
   /** The audited fields, by entity field name. */
   fields: {
@@ -163,5 +165,12 @@ export const audit = {
     on: 'التاريخ',
     note: 'الملاحظة',
     removed: 'أُزيل',
+    fiscalYear: 'السنة المالية',
+    number: 'رقم القيد',
+    entryDate: 'تاريخ القيد',
+    description: 'البيان',
+    reference: 'المرجع',
+    lineCount: 'عدد السطور',
+    reverses: 'يعكس القيد',
   },
 };

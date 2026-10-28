@@ -28,7 +28,7 @@ export const RULES = {
   'minor-bigint': 'A *_minor amount column is bigint (ADR 0007).',
   'created-at': 'created_at is a timestamptz, not null, defaulting to now().',
   'kind-timestamps':
-    'Append-only: no updated_at or archived_at; business: both; queue and draft: updated_at; ephemeral: updated_at, no archived_at.',
+    'Append-only: no updated_at or archived_at; business: both; queue and draft: updated_at; ledger-state and ephemeral: updated_at, no archived_at.',
   'ephemeral-scope': 'An ephemeral table is a platform table: no company data is ever deleted.',
   'ephemeral-grant':
     'The app role holds SELECT, INSERT, UPDATE and DELETE on an ephemeral table, so used tokens are deleted.',
@@ -48,6 +48,8 @@ export const RULES = {
   'role-privilege': 'The jobs and queue roles and PUBLIC hold no privilege on any table.',
   'append-only-trigger':
     'An append-only table refuses UPDATE, DELETE and TRUNCATE through unconditional refuse_change() triggers.',
+  'ledger-state-trigger':
+    'A ledger-state table refuses DELETE and TRUNCATE through unconditional refuse_delete() triggers, and a listed guard trigger checks every INSERT and UPDATE before it (ADR 0012).',
   'trigger-always':
     'Every trigger is ENABLE ALWAYS, so a replica session cannot skip it (ADR 0008).',
   'constraint-trigger':
@@ -119,7 +121,9 @@ export type Guards = { functions: PinnedFunction[]; triggers: GuardTrigger[] };
 
 /**
  * The guards of the migrations: every guard function, pinned, and every guard trigger (S01's
- * settings lock; S02's chart, dimension and rate rules). The ledger's balance, reversal, open-item and period guards join them with S03.
+ * settings lock; S02's chart, dimension and rate rules; S03's ledger: the append-only tables, the
+ * ledger state, the entry's chain, number, period, balance and reversal, the line's validity and
+ * period balances, the dimension sets). S04 adds the open items' guards, S07 the period close.
  */
 export const GUARDS: Guards = {
   functions: [
@@ -606,6 +610,558 @@ BEGIN
 END
 `,
     },
+    // S03's ledger guards (0012): the ledger state, the entry, the line, the period balances and
+    // the dimension sets.
+    {
+      name: 'ledger_head_rules',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    IF NEW.entry_count <> 0 OR NEW.last_entry_id IS NOT NULL OR NEW.last_hash IS NOT NULL THEN
+      RAISE EXCEPTION 'ledger_heads: a head starts with no entry'
+        USING ERRCODE = 'restrict_violation';
+    END IF;
+    RETURN NEW;
+  END IF;
+  IF (NEW.id, NEW.company_id, NEW.created_at) IS DISTINCT FROM (OLD.id, OLD.company_id, OLD.created_at)
+    OR NEW.entry_count IS DISTINCT FROM OLD.entry_count + 1
+    OR NOT EXISTS (
+      SELECT 1 FROM public.journal_entries e
+      WHERE e.company_id = NEW.company_id AND e.id = NEW.last_entry_id
+        AND e.hash = NEW.last_hash AND e.sequence = NEW.entry_count
+        AND e.previous_hash IS NOT DISTINCT FROM OLD.last_hash
+    ) THEN
+    RAISE EXCEPTION 'ledger_heads: the head of company % moves by one entry that follows it',
+      OLD.company_id
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  RETURN NEW;
+END
+`,
+    },
+    {
+      name: 'entry_number_counter_rules',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    IF NEW.last_number <> 1 THEN
+      RAISE EXCEPTION 'entry_number_counters: a fiscal year''s numbers start at 1'
+        USING ERRCODE = 'restrict_violation';
+    END IF;
+    RETURN NEW;
+  END IF;
+  IF (NEW.id, NEW.company_id, NEW.fiscal_year, NEW.created_at)
+      IS DISTINCT FROM (OLD.id, OLD.company_id, OLD.fiscal_year, OLD.created_at)
+    OR NEW.last_number IS DISTINCT FROM OLD.last_number + 1 THEN
+    RAISE EXCEPTION 'entry_number_counters: a counter moves by one number at a time'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  RETURN NEW;
+END
+`,
+    },
+    {
+      name: 'entry_number_counter_used',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM public.journal_entries e
+    WHERE e.company_id = NEW.company_id AND e.fiscal_year = NEW.fiscal_year
+      AND e.number = NEW.last_number
+  ) THEN
+    RAISE EXCEPTION 'entry number % of fiscal year % was given but no entry took it',
+      NEW.last_number, NEW.fiscal_year
+      USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NULL;
+END
+`,
+    },
+    {
+      name: 'period_rules',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+DECLARE
+  start_month smallint;
+BEGIN
+  IF TG_OP = 'UPDATE' THEN
+    RAISE EXCEPTION 'periods: period % changes only through the close (S07)', OLD.period
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  SELECT s.fiscal_year_start_month INTO start_month
+  FROM public.company_settings s
+  WHERE s.company_id = NEW.company_id;
+  IF NOT FOUND OR NEW.state <> 'open'
+    OR NEW.fiscal_year <> left(NEW.period, 4)::integer
+      - (CASE WHEN right(NEW.period, 2)::integer >= start_month THEN 0 ELSE 1 END) THEN
+    RAISE EXCEPTION 'periods: period % is made open, in the fiscal year of its month', NEW.period
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  RETURN NEW;
+END
+`,
+    },
+    {
+      name: 'journal_entry_rules',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+DECLARE
+  head record;
+  settings record;
+  period_state text;
+BEGIN
+  SELECT h.entry_count, h.last_hash INTO head
+  FROM public.ledger_heads h
+  WHERE h.company_id = NEW.company_id;
+  IF NOT FOUND OR NEW.sequence IS DISTINCT FROM head.entry_count + 1
+    OR NEW.previous_hash IS DISTINCT FROM head.last_hash THEN
+    RAISE EXCEPTION 'journal_entries: an entry follows the head of its company''s chain'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM public.entry_number_counters c
+    WHERE c.company_id = NEW.company_id AND c.fiscal_year = NEW.fiscal_year
+      AND c.last_number = NEW.number
+  ) THEN
+    RAISE EXCEPTION 'journal_entries: entry % takes the number its counter has just given',
+      NEW.number
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  SELECT s.fiscal_year_start_month, s.books_started_at INTO settings
+  FROM public.company_settings s
+  WHERE s.company_id = NEW.company_id;
+  IF NOT FOUND OR settings.books_started_at IS NULL
+    OR NEW.fiscal_year <> extract(year FROM NEW.entry_date)::integer
+      - (CASE WHEN extract(month FROM NEW.entry_date) >= settings.fiscal_year_start_month
+          THEN 0 ELSE 1 END) THEN
+    RAISE EXCEPTION 'journal_entries: an entry is numbered in the fiscal year of its date, in started books'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF NEW.posted_at IS DISTINCT FROM date_trunc('milliseconds', now()) THEN
+    RAISE EXCEPTION 'journal_entries: an entry is posted at its transaction time'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  SELECT p.state INTO period_state
+  FROM public.periods p
+  WHERE p.company_id = NEW.company_id AND p.period = to_char(NEW.entry_date, 'YYYY-MM')
+  FOR SHARE;
+  IF NOT FOUND OR period_state <> 'open' THEN
+    RAISE EXCEPTION 'journal_entries: an entry dated % is in an open period', NEW.entry_date
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  RETURN NEW;
+END
+`,
+    },
+    {
+      name: 'journal_entry_balances',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+DECLARE
+  target uuid;
+  entry record;
+  totals record;
+  keeps_parallel boolean;
+BEGIN
+  IF TG_TABLE_NAME = 'journal_entries' THEN
+    target := NEW.id;
+  ELSE
+    target := NEW.entry_id;
+  END IF;
+  SELECT e.line_count, e.sequence INTO entry
+  FROM public.journal_entries e
+  WHERE e.company_id = NEW.company_id AND e.id = target;
+  SELECT count(*) AS lines, coalesce(sum(l.book_minor), 0) AS book,
+         count(l.parallel_minor) AS parallel_lines, coalesce(sum(l.parallel_minor), 0) AS parallel
+    INTO totals
+  FROM public.journal_lines l
+  WHERE l.company_id = NEW.company_id AND l.entry_id = target;
+  SELECT s.parallel_currency IS NOT NULL INTO keeps_parallel
+  FROM public.company_settings s
+  WHERE s.company_id = NEW.company_id;
+  IF entry.line_count IS NULL OR keeps_parallel IS NULL OR totals.lines < 2
+    OR totals.lines <> entry.line_count OR totals.book <> 0
+    OR totals.parallel_lines <> (CASE WHEN keeps_parallel THEN totals.lines ELSE 0 END)
+    OR totals.parallel <> 0 THEN
+    RAISE EXCEPTION 'journal entry % does not balance: % lines of %, book %, parallel %',
+      target, totals.lines, entry.line_count, totals.book, totals.parallel
+      USING ERRCODE = 'check_violation';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM public.ledger_heads h
+    WHERE h.company_id = NEW.company_id AND h.entry_count >= entry.sequence
+  ) THEN
+    RAISE EXCEPTION 'journal entry %: the chain head did not move past it', target
+      USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NULL;
+END
+`,
+    },
+    {
+      name: 'journal_entry_reverses',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+DECLARE
+  original record;
+BEGIN
+  IF NEW.reverses_entry_id IS NULL THEN
+    RETURN NULL;
+  END IF;
+  SELECT o.reverses_entry_id, o.entry_date, o.line_count INTO original
+  FROM public.journal_entries o
+  WHERE o.company_id = NEW.company_id AND o.id = NEW.reverses_entry_id;
+  IF NOT FOUND OR original.reverses_entry_id IS NOT NULL OR original.entry_date > NEW.entry_date
+    OR original.line_count <> NEW.line_count OR EXISTS (
+      SELECT l.account_id, l.dimension_set_id, l.kind, l.ledger, l.currency,
+             -l.amount_minor, -l.book_minor, -l.parallel_minor
+      FROM public.journal_lines l
+      WHERE l.company_id = NEW.company_id AND l.entry_id = NEW.reverses_entry_id
+      EXCEPT ALL
+      SELECT r.account_id, r.dimension_set_id, r.kind, r.ledger, r.currency,
+             r.amount_minor, r.book_minor, r.parallel_minor
+      FROM public.journal_lines r
+      WHERE r.company_id = NEW.company_id AND r.entry_id = NEW.id
+    ) THEN
+    RAISE EXCEPTION 'journal entry % does not reverse entry % exactly', NEW.id, NEW.reverses_entry_id
+      USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NULL;
+END
+`,
+    },
+    {
+      name: 'journal_line_rules',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+DECLARE
+  account record;
+  entry record;
+  settings record;
+BEGIN
+  SELECT a.kind, a.currency, a.first_posted_at INTO account
+  FROM public.chart_accounts a
+  WHERE a.company_id = NEW.company_id AND a.id = NEW.account_id
+  FOR SHARE;
+  IF NOT FOUND OR account.kind <> 'postable' OR account.first_posted_at IS NULL THEN
+    RAISE EXCEPTION 'journal_lines: a line posts to a postable account marked as used'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF account.currency IS NOT NULL AND account.currency <> NEW.currency THEN
+    RAISE EXCEPTION 'journal_lines: account % takes % lines, not %', NEW.account_id,
+      account.currency, NEW.currency
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  SELECT e.entry_date, e.reverses_entry_id INTO entry
+  FROM public.journal_entries e
+  WHERE e.company_id = NEW.company_id AND e.id = NEW.entry_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'journal_lines: a line belongs to an entry of its company'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  SELECT s.book_currency, s.parallel_currency INTO settings
+  FROM public.company_settings s
+  WHERE s.company_id = NEW.company_id;
+  IF entry.entry_date < date '2026-01-01'
+    AND 'SYP' IN (NEW.currency, settings.book_currency, coalesce(settings.parallel_currency, '')) THEN
+    RAISE EXCEPTION 'journal_lines: no SYP amount is dated before 2026-01-01'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF entry.reverses_entry_id IS NULL AND EXISTS (
+    SELECT 1 FROM public.account_required_dimensions r
+    WHERE r.company_id = NEW.company_id AND r.account_id = NEW.account_id
+      AND r.archived_at IS NULL
+      AND NOT EXISTS (
+        SELECT 1 FROM public.dimension_set_values v
+        WHERE v.company_id = NEW.company_id AND v.set_id = NEW.dimension_set_id
+          AND v.type_id = r.dimension_type_id
+      )
+  ) THEN
+    RAISE EXCEPTION 'journal_lines: a line carries every dimension its account % requires',
+      NEW.account_id
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  RETURN NEW;
+END
+`,
+    },
+    {
+      name: 'journal_line_period_balance',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+DECLARE
+  target_period uuid;
+BEGIN
+  SELECT p.id INTO target_period
+  FROM public.journal_entries e
+  JOIN public.periods p ON p.company_id = e.company_id AND p.period = to_char(e.entry_date, 'YYYY-MM')
+  WHERE e.company_id = NEW.company_id AND e.id = NEW.entry_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'journal_lines: the period of the line''s entry is missing'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  INSERT INTO public.period_balances AS b (
+    id, company_id, period_id, account_id, dimension_set_id, currency,
+    debit_minor, credit_minor, book_debit_minor, book_credit_minor,
+    parallel_debit_minor, parallel_credit_minor, line_count
+  ) VALUES (
+    public.new_uuidv7(), NEW.company_id, target_period, NEW.account_id, NEW.dimension_set_id,
+    NEW.currency,
+    greatest(NEW.amount_minor, 0), greatest(-NEW.amount_minor, 0),
+    greatest(NEW.book_minor, 0), greatest(-NEW.book_minor, 0),
+    CASE WHEN NEW.parallel_minor IS NULL THEN NULL ELSE greatest(NEW.parallel_minor, 0) END,
+    CASE WHEN NEW.parallel_minor IS NULL THEN NULL ELSE greatest(-NEW.parallel_minor, 0) END,
+    1
+  )
+  ON CONFLICT (company_id, period_id, account_id, dimension_set_id, currency) DO UPDATE SET
+    debit_minor = b.debit_minor + excluded.debit_minor,
+    credit_minor = b.credit_minor + excluded.credit_minor,
+    book_debit_minor = b.book_debit_minor + excluded.book_debit_minor,
+    book_credit_minor = b.book_credit_minor + excluded.book_credit_minor,
+    parallel_debit_minor = b.parallel_debit_minor + excluded.parallel_debit_minor,
+    parallel_credit_minor = b.parallel_credit_minor + excluded.parallel_credit_minor,
+    line_count = b.line_count + 1,
+    updated_at = now();
+  RETURN NULL;
+END
+`,
+    },
+    {
+      name: 'period_balance_rules',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+BEGIN
+  IF pg_trigger_depth() < 2 THEN
+    RAISE EXCEPTION 'period_balances: written only by the trigger on journal_lines'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF TG_OP = 'UPDATE' AND (
+    (NEW.id, NEW.company_id, NEW.period_id, NEW.account_id, NEW.dimension_set_id, NEW.currency,
+      NEW.created_at)
+      IS DISTINCT FROM (OLD.id, OLD.company_id, OLD.period_id, OLD.account_id,
+        OLD.dimension_set_id, OLD.currency, OLD.created_at)
+    OR NEW.debit_minor < OLD.debit_minor OR NEW.credit_minor < OLD.credit_minor
+    OR NEW.book_debit_minor < OLD.book_debit_minor OR NEW.book_credit_minor < OLD.book_credit_minor
+    OR (NEW.parallel_debit_minor IS NULL) <> (OLD.parallel_debit_minor IS NULL)
+    OR NEW.parallel_debit_minor < OLD.parallel_debit_minor
+    OR NEW.parallel_credit_minor < OLD.parallel_credit_minor
+    OR NEW.line_count <= OLD.line_count
+  ) THEN
+    RAISE EXCEPTION 'period_balances: a period balance keeps its key and only grows'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  RETURN NEW;
+END
+`,
+    },
+    {
+      name: 'dimension_set_keys',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+DECLARE
+  target uuid;
+  set_key text;
+  values_key text;
+BEGIN
+  IF TG_TABLE_NAME = 'dimension_sets' THEN
+    target := NEW.id;
+  ELSE
+    target := NEW.set_id;
+  END IF;
+  SELECT s.key INTO set_key
+  FROM public.dimension_sets s
+  WHERE s.company_id = NEW.company_id AND s.id = target;
+  SELECT coalesce(string_agg(v.type_id::text || ':' || v.value_id::text, ',' ORDER BY v.type_id), '')
+    INTO values_key
+  FROM public.dimension_set_values v
+  WHERE v.company_id = NEW.company_id AND v.set_id = target;
+  IF set_key IS NULL OR set_key <> values_key THEN
+    RAISE EXCEPTION 'dimension set % does not hold the values its key names', target
+      USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NULL;
+END
+`,
+    },
+    {
+      name: 'company_settings_create_ledger_head',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+BEGIN
+  INSERT INTO public.ledger_heads (id, company_id, entry_count)
+  VALUES (public.new_uuidv7(), NEW.company_id, 0);
+  RETURN NULL;
+END
+`,
+    },
+    // S03's review guards (0013): a conversion only on the entry being posted; a posting request
+    // only with its entry.
+    {
+      name: 'line_conversion_rules',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+DECLARE
+  line record;
+BEGIN
+  SELECT l.kind, e.sequence, e.reverses_entry_id, h.entry_count INTO line
+  FROM public.journal_lines l
+  JOIN public.journal_entries e ON e.company_id = l.company_id AND e.id = l.entry_id
+  JOIN public.ledger_heads h ON h.company_id = e.company_id
+  WHERE l.company_id = NEW.company_id AND l.id = NEW.line_id;
+  IF NOT FOUND OR line.kind <> 'measured' OR line.reverses_entry_id IS NOT NULL
+    OR line.sequence <> line.entry_count + 1 THEN
+    RAISE EXCEPTION 'line_conversions: a conversion is added only to a measured line of the entry being posted'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  RETURN NEW;
+END
+`,
+    },
+    {
+      name: 'posting_request_used',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM public.journal_entries e
+    WHERE e.company_id = NEW.company_id AND e.request_id = NEW.id
+  ) THEN
+    RAISE EXCEPTION 'posting request % was stored without its entry', NEW.id
+      USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NULL;
+END
+`,
+    },
   ],
   triggers: [
     // The settings lock (S01 rule 11): before every update of a company's ledger settings.
@@ -798,6 +1354,260 @@ END
       table: 'company_settings',
       name: 'company_settings_create_chart',
       function: 'company_settings_create_chart',
+      deferred: false,
+      on: ['INSERT'],
+    },
+    // S03's ledger (0012): the append-only ledger refuses every change, the ledger state every
+    // deletion, and each table carries its guards; company_settings makes a new company's head.
+    {
+      table: 'posting_requests',
+      name: 'posting_requests_refuse_change',
+      function: 'refuse_change',
+      deferred: false,
+      on: ['UPDATE', 'DELETE'],
+    },
+    {
+      table: 'posting_requests',
+      name: 'posting_requests_refuse_truncate',
+      function: 'refuse_change',
+      deferred: false,
+      on: ['TRUNCATE'],
+    },
+    {
+      table: 'journal_entries',
+      name: 'journal_entries_refuse_change',
+      function: 'refuse_change',
+      deferred: false,
+      on: ['UPDATE', 'DELETE'],
+    },
+    {
+      table: 'journal_entries',
+      name: 'journal_entries_refuse_truncate',
+      function: 'refuse_change',
+      deferred: false,
+      on: ['TRUNCATE'],
+    },
+    {
+      table: 'journal_lines',
+      name: 'journal_lines_refuse_change',
+      function: 'refuse_change',
+      deferred: false,
+      on: ['UPDATE', 'DELETE'],
+    },
+    {
+      table: 'journal_lines',
+      name: 'journal_lines_refuse_truncate',
+      function: 'refuse_change',
+      deferred: false,
+      on: ['TRUNCATE'],
+    },
+    {
+      table: 'line_conversions',
+      name: 'line_conversions_refuse_change',
+      function: 'refuse_change',
+      deferred: false,
+      on: ['UPDATE', 'DELETE'],
+    },
+    {
+      table: 'line_conversions',
+      name: 'line_conversions_refuse_truncate',
+      function: 'refuse_change',
+      deferred: false,
+      on: ['TRUNCATE'],
+    },
+    {
+      table: 'dimension_sets',
+      name: 'dimension_sets_refuse_change',
+      function: 'refuse_change',
+      deferred: false,
+      on: ['UPDATE', 'DELETE'],
+    },
+    {
+      table: 'dimension_sets',
+      name: 'dimension_sets_refuse_truncate',
+      function: 'refuse_change',
+      deferred: false,
+      on: ['TRUNCATE'],
+    },
+    {
+      table: 'dimension_set_values',
+      name: 'dimension_set_values_refuse_change',
+      function: 'refuse_change',
+      deferred: false,
+      on: ['UPDATE', 'DELETE'],
+    },
+    {
+      table: 'dimension_set_values',
+      name: 'dimension_set_values_refuse_truncate',
+      function: 'refuse_change',
+      deferred: false,
+      on: ['TRUNCATE'],
+    },
+    {
+      table: 'ledger_heads',
+      name: 'ledger_heads_refuse_delete',
+      function: 'refuse_delete',
+      deferred: false,
+      on: ['DELETE'],
+    },
+    {
+      table: 'ledger_heads',
+      name: 'ledger_heads_refuse_truncate',
+      function: 'refuse_delete',
+      deferred: false,
+      on: ['TRUNCATE'],
+    },
+    {
+      table: 'entry_number_counters',
+      name: 'entry_number_counters_refuse_delete',
+      function: 'refuse_delete',
+      deferred: false,
+      on: ['DELETE'],
+    },
+    {
+      table: 'entry_number_counters',
+      name: 'entry_number_counters_refuse_truncate',
+      function: 'refuse_delete',
+      deferred: false,
+      on: ['TRUNCATE'],
+    },
+    {
+      table: 'periods',
+      name: 'periods_refuse_delete',
+      function: 'refuse_delete',
+      deferred: false,
+      on: ['DELETE'],
+    },
+    {
+      table: 'periods',
+      name: 'periods_refuse_truncate',
+      function: 'refuse_delete',
+      deferred: false,
+      on: ['TRUNCATE'],
+    },
+    {
+      table: 'period_balances',
+      name: 'period_balances_refuse_delete',
+      function: 'refuse_delete',
+      deferred: false,
+      on: ['DELETE'],
+    },
+    {
+      table: 'period_balances',
+      name: 'period_balances_refuse_truncate',
+      function: 'refuse_delete',
+      deferred: false,
+      on: ['TRUNCATE'],
+    },
+    {
+      table: 'ledger_heads',
+      name: 'ledger_head_rules',
+      function: 'ledger_head_rules',
+      deferred: false,
+      on: ['INSERT', 'UPDATE'],
+    },
+    {
+      table: 'entry_number_counters',
+      name: 'entry_number_counter_rules',
+      function: 'entry_number_counter_rules',
+      deferred: false,
+      on: ['INSERT', 'UPDATE'],
+    },
+    {
+      table: 'entry_number_counters',
+      name: 'entry_number_counter_used',
+      function: 'entry_number_counter_used',
+      deferred: true,
+      on: ['INSERT', 'UPDATE'],
+    },
+    {
+      table: 'periods',
+      name: 'period_rules',
+      function: 'period_rules',
+      deferred: false,
+      on: ['INSERT', 'UPDATE'],
+    },
+    {
+      table: 'period_balances',
+      name: 'period_balance_rules',
+      function: 'period_balance_rules',
+      deferred: false,
+      on: ['INSERT', 'UPDATE'],
+    },
+    {
+      table: 'journal_entries',
+      name: 'journal_entry_rules',
+      function: 'journal_entry_rules',
+      deferred: false,
+      on: ['INSERT'],
+    },
+    {
+      table: 'journal_entries',
+      name: 'journal_entries_balance',
+      function: 'journal_entry_balances',
+      deferred: true,
+      on: ['INSERT'],
+    },
+    {
+      table: 'journal_lines',
+      name: 'journal_lines_balance',
+      function: 'journal_entry_balances',
+      deferred: true,
+      on: ['INSERT'],
+    },
+    {
+      table: 'journal_entries',
+      name: 'journal_entries_reversal',
+      function: 'journal_entry_reverses',
+      deferred: true,
+      on: ['INSERT'],
+    },
+    {
+      table: 'journal_lines',
+      name: 'journal_line_rules',
+      function: 'journal_line_rules',
+      deferred: false,
+      on: ['INSERT'],
+    },
+    {
+      table: 'journal_lines',
+      name: 'journal_line_period_balance',
+      function: 'journal_line_period_balance',
+      deferred: false,
+      on: ['INSERT'],
+    },
+    {
+      table: 'dimension_sets',
+      name: 'dimension_sets_key_matches',
+      function: 'dimension_set_keys',
+      deferred: true,
+      on: ['INSERT'],
+    },
+    {
+      table: 'dimension_set_values',
+      name: 'dimension_set_values_key_matches',
+      function: 'dimension_set_keys',
+      deferred: true,
+      on: ['INSERT'],
+    },
+    {
+      table: 'line_conversions',
+      name: 'line_conversion_rules',
+      function: 'line_conversion_rules',
+      deferred: false,
+      on: ['INSERT'],
+    },
+    {
+      table: 'posting_requests',
+      name: 'posting_requests_used',
+      function: 'posting_request_used',
+      deferred: true,
+      on: ['INSERT'],
+    },
+    {
+      table: 'company_settings',
+      name: 'company_settings_create_ledger_head',
+      function: 'company_settings_create_ledger_head',
       deferred: false,
       on: ['INSERT'],
     },
@@ -1029,7 +1839,7 @@ export async function checkConventions(
       const ok =
         info.kind === 'append-only'
           ? !updated && !archived
-          : info.kind === 'ephemeral'
+          : info.kind === 'ephemeral' || info.kind === 'ledger-state'
             ? hasUpdated && !archived
             : hasUpdated && (info.kind !== 'business' || hasArchived);
       if (!ok) fail('kind-timestamps', name, `${info.kind}: updated_at, archived_at as found`);
@@ -1132,6 +1942,29 @@ export async function checkConventions(
         .reduce((events, t) => events | (t.type & (UPDATE | DELETE | TRUNCATE)), 0);
       if (refused !== (UPDATE | DELETE | TRUNCATE)) {
         fail('append-only-trigger', name, `refuse_change() covers events ${refused}`);
+      }
+    }
+    if (info?.kind === 'ledger-state') {
+      const before = (t: Trigger) => t.unconditional && t.type & BEFORE && !(t.type & INSTEAD);
+      const refused = ownTriggers
+        .filter((t) => t.function === 'refuse_delete' && before(t))
+        .reduce((events, t) => events | (t.type & (DELETE | TRUNCATE)), 0);
+      const guarded = ownTriggers
+        .filter(
+          (t) =>
+            before(t) &&
+            t.type & ROW &&
+            guards.triggers.some(
+              (g) => g.table === name && g.name === t.name && g.function === t.function,
+            ),
+        )
+        .reduce((events, t) => events | (t.type & (INSERT | UPDATE)), 0);
+      if (refused !== (DELETE | TRUNCATE) || guarded !== (INSERT | UPDATE)) {
+        fail(
+          'ledger-state-trigger',
+          name,
+          `refuse_delete() covers events ${refused}, a guard covers events ${guarded}`,
+        );
       }
     }
     for (const trigger of ownTriggers) {
