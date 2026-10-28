@@ -2,7 +2,7 @@
 
 Status: Proposed
 
-The expected entries were approved by the owner on 2026-10-28. The file stays `Proposed` until S03 registers the setup, the ledger reader and the `manual` and `reversal` executors the runner needs; the PR that does so marks it `Approved (owner, 2026-10-28)` without changing an expected value. Until then `packages/ledger`'s `adr-0007.examples.test.ts` builds every case with `manualEntryLines()` and `balanceEntry()`.
+The expected entries were approved by the owner on 2026-10-28, except the case "USD books; USD expenses paid from the USD bank", added after review and awaiting the owner's approval. The file stays `Proposed` until S03 registers the setup, the ledger reader and the `manual` and `reversal` executors the runner needs; the PR that does so marks it `Approved (owner, 2026-10-28)` without changing an expected value. Until then `packages/ledger`'s `adr-0007.examples.test.ts` builds every case with `manualEntryLines()` and `balanceEntry()`.
 
 ## Rule
 
@@ -261,7 +261,7 @@ expect:
 
 ### USD books with an SYP parallel ledger
 
-The book ledger converts SYP into USD at the bulletin, dividing by the SYP-per-USD quote; the SYP parallel ledger keeps SYP as is.
+The book ledger converts SYP into USD at the bulletin, dividing by the SYP-per-USD quote, and keeps USD as is; the SYP parallel ledger keeps SYP as is and converts USD at the market rate.
 
 ```yaml
 case: USD books; SYP expenses paid from the SYP bank; the book conversions leave 0.01 USD, a credit
@@ -289,6 +289,36 @@ expect:
         - { account: "541003", currency: USD, amount: -1, book: -1, parallel: 0 }
   balances:
     - { account: "541003", book: -1, parallel: 0 }
+```
+
+```yaml
+case: USD books; USD expenses paid from the USD bank; the parallel conversions leave 0.01 SYP, a credit
+company: { shape: usd-syp, book: USD, parallel: SYP, template: service-agency,
+           rate_policy: { book: bulletin, parallel: market } }
+rates:
+  - { date: 2026-11-08, base: USD, quote: SYP, rate: "121.5000", type: bulletin }
+  - { date: 2026-11-08, base: USD, quote: SYP, rate: "122.5000", type: market }
+steps:
+  - manual: software and internet paid from the USD bank account
+    accounting_date: 2026-11-08
+    payload: { lines: [{ account: "531004", currency: USD, amount: 7475 },
+                       { account: "531003", currency: USD, amount: 2525 },
+                       { account: "111004", currency: USD, amount: -10000 }] }
+expect:
+  entries:
+    - source: manual
+      date: 2026-11-08
+      lines:
+        # book: USD as is; parallel: 74.75 USD × 122.5 = 9,156.875 SYP → 915,687.5 minor → 915,688
+        - { account: "531004", currency: USD, amount: 7475, book: 7475, parallel: 915688 }
+        # parallel: 25.25 USD × 122.5 = 3,093.125 SYP → 309,312.5 minor → 309,313
+        - { account: "531003", currency: USD, amount: 2525, book: 2525, parallel: 309313 }
+        # parallel: 100.00 USD × 122.5 = 12,250.00 SYP exactly
+        - { account: "111004", currency: USD, amount: -10000, book: -10000, parallel: -1225000 }
+        # parallel residual: 915,688 + 309,313 − 1,225,000 = 1 → a credit of 0.01 SYP in the parallel ledger only
+        - { account: "541003", currency: SYP, amount: -1, book: 0, parallel: -1 }
+  balances:
+    - { account: "541003", book: 0, parallel: -1 }
 ```
 
 ### A third currency: TRY rounded in both ledgers

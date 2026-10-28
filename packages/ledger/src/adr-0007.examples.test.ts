@@ -985,6 +985,20 @@ describe('docs/scenarios/manual: conversion rounding in one currency', () => {
     ]);
   });
 
+  it('USD books: a USD entry rounded in the SYP parallel ledger by 0.01 SYP', () => {
+    // Parallel: 74.75 × 122.5 = 9,156.875 → 9,156.88 SYP; 25.25 × 122.5 = 3,093.125 → 3,093.13 SYP.
+    const rates = [
+      rate('USD', 'SYP', '121.5000', 'bulletin', '2026-11-08'),
+      rate('USD', 'SYP', '122.5000', 'market', '2026-11-08'),
+    ];
+    expect(rows(posted(usdSyp, '2026-11-08', rates, softwareAndInternet))).toEqual([
+      ['measured', '531004', 'USD', 7_475n, 7_475n, 915_688n],
+      ['measured', '531003', 'USD', 2_525n, 2_525n, 309_313n],
+      ['measured', '111004', 'USD', -10_000n, -10_000n, -1_225_000n],
+      ['rounding', '541003', 'SYP', -1n, 0n, -1n],
+    ]);
+  });
+
   it('third: a TRY entry rounded in both ledgers, in opposite directions', () => {
     const rates = [
       rate('USD', 'SYP', '122.0000', 'bulletin', '2026-11-10'),
