@@ -4,8 +4,9 @@ import {
   type Me,
   rolePermissions,
 } from '@vertex-mizan/contracts';
+import { ar } from '@vertex-mizan/i18n';
 import { accountOf } from './chart-mocks';
-import { companyReads, owner } from './company-mocks';
+import { company, companyReads, owner } from './company-mocks';
 import { ownerRef, purchase } from './entry-mocks';
 
 /** Synthetic answers of the integrity check and the full export (S03 rules 19, 21). */
@@ -33,8 +34,23 @@ export const cleanReport: IntegrityReport = {
   pasted: null,
 };
 
-/** The anchor of 2026-11-09 as the daily email lists it (`ar.email.dailyAnchor.anchor`). */
-export const emailedAnchor = `شركة تجريبية\nالتاريخ: 2026-11-09\nعدد القيود: 2\nالبصمة: ${headHash}`;
+/** One company's anchor as the daily email lists it (`ar.email.dailyAnchor.anchor`). */
+function anchorText(companyName: string, entryCount: number, head: string): string {
+  return ar.email.dailyAnchor.anchor
+    .replace('{companyName}', companyName)
+    .replace('{anchoredOn}', '2026-11-09')
+    .replace('{entryCount}', String(entryCount))
+    .replace('{headHash}', head);
+}
+
+/** Another company of the same owner, its name holding digits as a company's name may. */
+export const otherCompanyAnchor = anchorText('شركة 2025 للنشر', 9, hash('d'));
+
+/**
+ * The anchors of 2026-11-09 as the daily email lists them: the other company's first, then the
+ * test company's, 2 entries ending with `headHash`.
+ */
+export const emailedAnchor = `${otherCompanyAnchor}\n\n${anchorText(company.name, 2, headHash)}`;
 
 /** The same check with the emailed anchor pasted: verified, and the same as the stored one. */
 export const verifiedReport: IntegrityReport = {

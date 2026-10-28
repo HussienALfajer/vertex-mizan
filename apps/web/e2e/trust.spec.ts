@@ -10,6 +10,7 @@ import {
   cleanReport,
   emailedAnchor,
   headHash,
+  otherCompanyAnchor,
   pastExports,
   queuedExport,
   readyExport,
@@ -53,6 +54,18 @@ async function answer(
       ? route.fulfill({ status: sent.status })
       : route.fulfill({ status: sent.status, json: sent.json });
   });
+}
+
+/** Pastes text into a field as the clipboard would. */
+async function paste(page: Page, label: string, text: string) {
+  await page.getByLabel(label, { exact: true }).focus();
+  await page.evaluate((pasted) => {
+    const data = new DataTransfer();
+    data.setData('text/plain', pasted);
+    document.activeElement?.dispatchEvent(
+      new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }),
+    );
+  }, text);
 }
 
 test.use({ me: owner, api: trustReads });
@@ -101,15 +114,9 @@ test.describe('the integrity check', () => {
     await answer(page, 'POST', '/integrity/check', check.mock);
     await page.goto('/integrity');
     await expect(page.getByRole('heading', { level: 1 })).toHaveText(ti.title);
-    // The email's anchor pasted into the date field fills all three fields.
-    await page.getByLabel(ti.pasted.date, { exact: true }).focus();
-    await page.evaluate((text) => {
-      const data = new DataTransfer();
-      data.setData('text/plain', text);
-      document.activeElement?.dispatchEvent(
-        new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }),
-      );
-    }, emailedAnchor);
+    // The whole email pasted into the date field fills the three fields with this company's anchor,
+    // never with a number from another company's name.
+    await paste(page, ti.pasted.date, emailedAnchor);
     await expect(page.getByLabel(ti.pasted.date, { exact: true })).toHaveValue('2026-11-09');
     await expect(page.getByLabel(ti.pasted.count, { exact: true })).toHaveValue('2');
     await expect(page.getByLabel(ti.pasted.hash, { exact: true })).toHaveValue(headHash);
@@ -119,6 +126,17 @@ test.describe('the integrity check', () => {
     expect(check.seen[0]?.postDataJSON()).toEqual({
       anchor: { date: '2026-11-09', count: 2, hash: headHash },
     });
+  });
+
+  test('says when the pasted anchor is of another company', async ({ page }) => {
+    const check = recorder({ status: 200, json: verifiedReport });
+    await answer(page, 'POST', '/integrity/check', check.mock);
+    await page.goto('/integrity');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(ti.title);
+    await paste(page, ti.pasted.hash, otherCompanyAnchor);
+    await expect(page.getByRole('alert')).toHaveText(ti.pasted.otherCompany);
+    await expect(page.getByLabel(ti.pasted.count, { exact: true })).toHaveValue('');
+    expect(check.seen).toHaveLength(0);
   });
 
   test('refuses a pasted anchor that is not one, before asking the server', async ({ page }) => {

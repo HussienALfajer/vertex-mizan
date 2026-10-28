@@ -385,21 +385,54 @@ function Fact({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
+/** The label before each value in the email's anchor (`ar.email.dailyAnchor.anchor`). */
+const emailLabels = Object.fromEntries(
+  ar.email.dailyAnchor.anchor.split('\n').flatMap((line) => {
+    const match = /^(.+?)\s*\{(\w+)\}$/.exec(line);
+    return match?.[1] && match[2] ? [[match[2], match[1].trim()]] : [];
+  }),
+) as Partial<Record<'anchoredOn' | 'entryCount' | 'headHash', string>>;
+
+interface EmailedAnchor {
+  date: string;
+  count: string;
+  hash: string;
+}
+
 /**
- * An anchor as the daily email lists it, pasted whole into one field: its date, its entry count
- * and its hash, in that order (`ar.email.dailyAnchor.anchor`). `null` when the text is not one.
+ * The anchor of `companyName` in text pasted from the daily email: each value read after its
+ * label, never from the company's name. The email lists one anchor per company the owner holds,
+ * each under its company's name; `other-company` when the text holds anchors of other companies
+ * only, `null` when it holds none.
  */
 export function anchorFromEmail(
   text: string,
-): { date: string; count: string; hash: string } | null {
+  companyName: string,
+): EmailedAnchor | 'other-company' | null {
   const latin = text.replace(/[٠-٩]/g, (digit) => String(digit.charCodeAt(0) - 0x0660));
-  const date = /\b(\d{4}-\d{2}-\d{2})\b/.exec(latin)?.[1];
-  const hash = /\b([0-9a-fA-F]{64})\b/.exec(latin)?.[1];
-  if (!date || !hash) return null;
-  const rest = latin.replace(date, ' ').replace(hash, ' ');
-  const count = /\b(\d{1,9})\b/.exec(rest)?.[1];
-  if (!count) return null;
-  return { date, count, hash: hash.toLowerCase() };
+  const found = latin.split(/\n\s*\n/).flatMap((block) => {
+    const values: Partial<Record<keyof typeof emailLabels, string>> = {};
+    let name: string | null = null;
+    for (const raw of block.split('\n')) {
+      const line = raw.trim();
+      if (line === '') continue;
+      const key = (Object.keys(emailLabels) as (keyof typeof emailLabels)[]).find((field) => {
+        const label = emailLabels[field];
+        return label !== undefined && line.startsWith(label);
+      });
+      if (key) values[key] = line.slice(emailLabels[key]?.length ?? 0).trim();
+      else name ??= line;
+    }
+    const { anchoredOn, entryCount, headHash } = values;
+    return anchoredOn && entryCount && headHash
+      ? [{ name, anchor: { date: anchoredOn, count: entryCount, hash: headHash.toLowerCase() } }]
+      : [];
+  });
+  if (found.length === 0) return null;
+  const own = found.find((block) => block.name === companyName.trim());
+  if (own) return own.anchor;
+  const only = found.length === 1 ? found[0] : undefined;
+  return only && only.name === null ? only.anchor : 'other-company';
 }
 
 /**
@@ -423,11 +456,15 @@ function PastedAnchorCard({
     Partial<Record<'date' | 'count' | 'hash', string | undefined>>
   >({});
   const [attempt, setAttempt] = useState(0);
+  const [otherCompany, setOtherCompany] = useState(false);
+  const companyName = useCompany().membership.company.name;
 
   function onPaste(event: ClipboardEvent<HTMLInputElement>) {
-    const parsed = anchorFromEmail(event.clipboardData.getData('text'));
+    const parsed = anchorFromEmail(event.clipboardData.getData('text'), companyName);
     if (!parsed) return;
     event.preventDefault();
+    setOtherCompany(parsed === 'other-company');
+    if (parsed === 'other-company') return;
     setDate(parsed.date);
     setCount(parsed.count);
     setHash(parsed.hash);
@@ -445,6 +482,7 @@ function PastedAnchorCard({
         className="flex min-w-0 flex-col gap-4"
         onSubmit={(event) => {
           event.preventDefault();
+          setOtherCompany(false);
           const typed = { date: date.trim(), count: count.trim(), hash: hash.trim().toLowerCase() };
           const parsed = pastedAnchorSchema.safeParse({
             date: typed.date,
@@ -465,6 +503,14 @@ function PastedAnchorCard({
           onCheck(parsed.data);
         }}
       >
+        {otherCompany && (
+          <Callout
+            role="alert"
+            tone="warning"
+            icon={<ShieldAlertIcon />}
+            title={t.pasted.otherCompany}
+          />
+        )}
         <FormErrorSummary
           attempt={attempt}
           errors={[
