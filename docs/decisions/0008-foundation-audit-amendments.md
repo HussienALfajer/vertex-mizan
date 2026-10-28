@@ -1,6 +1,6 @@
 # 0008 — Amendments after the foundation audit: journal order, hardened guards, period balances, scenario runner, API holds and tax lines
 
-Status: Accepted · Date: 2026-10-20 (owner, after the foundation audit) · Amends [0002](0002-stack-and-repository.md), [0003](0003-tenancy-and-access.md), [0005](0005-ledger-invariants.md), [0006](0006-hub-posting-api-contract.md)
+Status: Accepted, amended by [0012](0012-journal-entries-and-ledger-state.md) (the numbering year, the ledger's derived state) · Date: 2026-10-20 (owner, after the foundation audit) · Amends [0002](0002-stack-and-repository.md), [0003](0003-tenancy-and-access.md), [0005](0005-ledger-invariants.md), [0006](0006-hub-posting-api-contract.md)
 
 ## Context
 The foundation audit (`docs/audits/2026-10-foundation-audit.md`) found that ADRs 0002, 0003, 0005 and 0006 are sound in design but miss details their guarantees depend on (M3, M4, M7, M9, M10, m5, m13, m15, S5). The owner answered the audit's questions on 2026-10-20. The currency model itself is replaced by ADR 0007. Where this record and an amended ADR differ, this record wins.

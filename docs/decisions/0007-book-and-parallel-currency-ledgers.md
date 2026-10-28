@@ -1,6 +1,6 @@
 # 0007 — Money and currencies: a book currency and a parallel currency ledger, a rate policy per ledger
 
-Status: Accepted, amended by [0011](0011-chart-dimensions-and-bulletin-rate.md) (the bulletin rate of the day) · Date: 2026-10-20 (owner, after the foundation audit) · Supersedes [0004](0004-money-and-currencies.md)
+Status: Accepted, amended by [0011](0011-chart-dimensions-and-bulletin-rate.md) (the bulletin rate of the day) and [0012](0012-journal-entries-and-ledger-state.md) (manual entries' dealt rates and residuals) · Date: 2026-10-20 (owner, after the foundation audit) · Supersedes [0004](0004-money-and-currencies.md)
 
 ## Context
 ADR 0004 stored three amounts on every line: transaction, functional and "second". It required every entry to balance in the second currency, yet it defined the second amount as historical and never revalued. The foundation audit (`docs/audits/2026-10-foundation-audit.md`, B1 and B2) showed two consequences.
