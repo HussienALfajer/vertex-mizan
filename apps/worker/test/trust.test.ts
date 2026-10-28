@@ -23,7 +23,7 @@ import {
 } from '@vertex-mizan/db';
 import { asc, eq, inArray } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
-import { afterAll, beforeAll, describe, expect, inject, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, inject, it, vi } from 'vitest';
 import yauzl from 'yauzl';
 import { dayBefore, todayInDamascus } from '../src/core/clock/today.js';
 import { type Config, loadConfig } from '../src/core/config/config.js';
@@ -470,7 +470,11 @@ describe('company.export, when a build cannot finish', () => {
   it('fails an export whose builds keep dying, after three attempts', async () => {
     const companyId = await company('شركة محاولات', [people.first], 1);
     const requested = await requestExport(companyId);
-    // Three builds started and never finished (the worker was killed each time).
+    // Three builds started and never finished (the worker was killed each time), leaving their
+    // temporary files.
+    const partial = join(config.filesDir, companyId, `${requested.id}.${uuidv7()}.partial`);
+    await files.write(companyId, uuidv7(), Readable.from(['يفتح المجلد']));
+    await writeFile(partial, 'PK an archive cut short');
     await withCompany(db, companyId, (tx) =>
       tx
         .update(companyExports)
@@ -485,6 +489,35 @@ describe('company.export, when a build cannot finish', () => {
       state: 'failed',
       error: 'EXPORT_ATTEMPTS',
     });
+    await expect(stat(partial)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('opens one attachment at a time, each when the archive reaches it', async () => {
+    const companyId = await company('شركة مرفقات كثيرة', [people.first], 1);
+    const contents = [1, 2, 3].map((n) => Buffer.from(`%PDF-1.7 مرفق ${n}`));
+    for (const content of contents) await attach(companyId, content, content);
+    const events: string[] = [];
+    const open = files.open.bind(files);
+    const spy = vi.spyOn(files, 'open').mockImplementation((company, id) => {
+      events.push(`open ${id}`);
+      const stream = open(company, id);
+      stream.on('close', () => events.push(`close ${id}`));
+      return stream;
+    });
+    try {
+      await requestExport(companyId);
+      expect(await new CompanyExportJob(jobs, db, files, config).run()).toMatchObject({
+        built: 1,
+      });
+    } finally {
+      spy.mockRestore();
+    }
+    expect(events).toHaveLength(6);
+    for (let index = 0; index < events.length; index += 2) {
+      const id = events[index]?.slice('open '.length);
+      expect(events.slice(index, index + 2)).toEqual([`open ${id}`, `close ${id}`]);
+    }
+    await db.delete(emailOutbox).where(eq(emailOutbox.kind, 'export_ready'));
   });
 });
 

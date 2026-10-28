@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { createReadStream, createWriteStream, type ReadStream } from 'node:fs';
-import { mkdir, rename, rm, stat } from 'node:fs/promises';
+import { mkdir, readdir, rename, rm, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
@@ -55,6 +55,26 @@ export class FileStore {
   /** A file as a stream, read as it is consumed. */
   open(companyId: string, id: string): ReadStream {
     return createReadStream(this.pathOf(companyId, id));
+  }
+
+  /**
+   * Deletes the temporary files a write of `<company_id>/<id>` left when its process died before
+   * it could (`<id>.<uuid>.partial`); none is no error.
+   */
+  async removePartials(companyId: string, id: string): Promise<void> {
+    // Checks both ids are UUIDs, as every path does.
+    this.pathOf(companyId, id);
+    let names: string[];
+    try {
+      names = await readdir(join(this.config.filesDir, companyId));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
+      throw error;
+    }
+    const partial = new RegExp(`^${id}\\.[0-9a-f-]{36}\\.partial$`);
+    for (const name of names.filter((entry) => partial.test(entry))) {
+      await rm(join(this.config.filesDir, companyId, name), { force: true });
+    }
   }
 
   /** Deletes a file; one already gone is no error, so a second run does nothing. */

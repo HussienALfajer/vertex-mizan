@@ -62,9 +62,20 @@ export class CompanyExportJob implements ScheduledJob {
     let failed = 0;
     for (const { companyId, id } of queued) {
       const claim = await this.claim(companyId, id);
-      if (claim === 'failed') failed += 1;
-      if (claim !== 'claimed') continue;
+      if (claim === 'busy') continue;
+      if (claim === 'failed') {
+        // What the builds that died left behind is never kept.
+        await this.files
+          .removePartials(companyId, id)
+          .catch((removal) =>
+            this.logger.error(`Export ${id}'s files not deleted: ${describeForLog(removal)}`),
+          );
+        failed += 1;
+        continue;
+      }
       try {
+        // What an earlier build that died left behind, before this one starts.
+        await this.files.removePartials(companyId, id);
         if (await this.build(companyId, id)) built += 1;
       } catch (error) {
         this.logger.error(`Export ${id} failed: ${describeForLog(error)}`);

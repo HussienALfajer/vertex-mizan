@@ -251,9 +251,12 @@ export async function writeArchive(
         continue;
       }
       const path = `attachments/${attachment.id}`;
-      const stream = verified(attachmentFiles.open(attachment.id), attachment);
-      stream.on('error', fail);
-      zip.addReadStream(stream, path, { size: attachment.bytes });
+      // Opened only when the ZIP reaches it: one attachment open at a time, whatever their count.
+      zip.addReadStreamLazy(path, { size: attachment.bytes }, (opened) => {
+        const stream = verified(attachmentFiles.open(attachment.id), attachment);
+        stream.on('error', fail);
+        opened(null, stream);
+      });
       files.push({ path, bytes: attachment.bytes, sha256: attachment.sha256 });
     }
 
