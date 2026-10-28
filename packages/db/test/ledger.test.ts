@@ -1222,6 +1222,86 @@ describe('forged entries, refused by the database (ADR 0005 invariants 1–8)', 
     );
   });
 
+  it('refuses a conversion added to a posted entry, a reversal or a one-ledger line', async () => {
+    const company = await newCompany();
+    const { bulletin } = await week(company);
+    const posted = await postManual(company, {
+      lines: [
+        ['531004', 'USD', 10_000n],
+        ['111004', 'USD', -10_000n],
+      ],
+    });
+    const reversal = await reverse(company, posted.id, '2026-11-08', '2026-11-30');
+    const [measured] = await linesOf(company, posted.id);
+    const [negated] = await linesOf(company, reversal.id);
+    const conversion = (lineId: string) =>
+      refusal(
+        inCompany(company, (tx) =>
+          tx.insert(lineConversions).values({
+            companyId: company,
+            lineId,
+            ledger: 'book',
+            basis: 'policy',
+            quoteNo: 2,
+            rateId: bulletin.id,
+            base: 'USD',
+            quote: 'SYP',
+            rate: '121.5000',
+            rateType: 'bulletin',
+            rateSource: 'manual',
+            effectiveOn: '2026-11-08',
+          }),
+        ),
+      );
+    const added = /a conversion is added only to a measured line of the entry being posted/;
+    expect(await conversion(measured?.line.id as string)).toMatch(added);
+    expect(await conversion(negated?.line.id as string)).toMatch(added);
+    const forged = await forge(company, {
+      lines: [
+        DEBIT,
+        CREDIT,
+        {
+          code: '541003',
+          currency: 'SYP',
+          amount: 0n,
+          book: 0n,
+          parallel: 0n,
+          kind: 'rounding',
+          ledger: 'book',
+        },
+      ],
+    });
+    const [, , rounding] = await linesOf(company, forged);
+    expect(await conversion(rounding?.line.id as string)).toMatch(added);
+  });
+
+  it('refuses a posting request stored without its entry, which would hold its key for good', async () => {
+    const company = await newCompany(SYP);
+    const key = uuidv7();
+    expect(
+      await refusal(
+        inCompany(company, (tx) =>
+          tx.insert(postingRequests).values({
+            companyId: company,
+            client: 'manual',
+            idempotencyKey: key,
+            payloadHash: '0'.repeat(64),
+          }),
+        ),
+      ),
+    ).toMatch(/was stored without its entry/);
+    // The key stays free: the draft posts under it.
+    expect(
+      await postManual(company, {
+        key,
+        lines: [
+          ['531001', 'SYP', 1_000n],
+          ['111003', 'SYP', -1_000n],
+        ],
+      }),
+    ).toMatchObject({ number: 1, replayed: false });
+  });
+
   it('refuses a dimension set whose key names other values than it holds', async () => {
     const company = await newCompany();
     const [type, value] = await inCompany(company, async (tx) => {

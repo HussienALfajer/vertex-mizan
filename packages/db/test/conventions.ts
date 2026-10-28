@@ -1105,6 +1105,63 @@ BEGIN
 END
 `,
     },
+    // S03's review guards (0013): a conversion only on the entry being posted; a posting request
+    // only with its entry.
+    {
+      name: 'line_conversion_rules',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+DECLARE
+  line record;
+BEGIN
+  SELECT l.kind, e.sequence, e.reverses_entry_id, h.entry_count INTO line
+  FROM public.journal_lines l
+  JOIN public.journal_entries e ON e.company_id = l.company_id AND e.id = l.entry_id
+  JOIN public.ledger_heads h ON h.company_id = e.company_id
+  WHERE l.company_id = NEW.company_id AND l.id = NEW.line_id;
+  IF NOT FOUND OR line.kind <> 'measured' OR line.reverses_entry_id IS NOT NULL
+    OR line.sequence <> line.entry_count + 1 THEN
+    RAISE EXCEPTION 'line_conversions: a conversion is added only to a measured line of the entry being posted'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  RETURN NEW;
+END
+`,
+    },
+    {
+      name: 'posting_request_used',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM public.journal_entries e
+    WHERE e.company_id = NEW.company_id AND e.request_id = NEW.id
+  ) THEN
+    RAISE EXCEPTION 'posting request % was stored without its entry', NEW.id
+      USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NULL;
+END
+`,
+    },
   ],
   triggers: [
     // The settings lock (S01 rule 11): before every update of a company's ledger settings.
@@ -1530,6 +1587,20 @@ END
       table: 'dimension_set_values',
       name: 'dimension_set_values_key_matches',
       function: 'dimension_set_keys',
+      deferred: true,
+      on: ['INSERT'],
+    },
+    {
+      table: 'line_conversions',
+      name: 'line_conversion_rules',
+      function: 'line_conversion_rules',
+      deferred: false,
+      on: ['INSERT'],
+    },
+    {
+      table: 'posting_requests',
+      name: 'posting_requests_used',
+      function: 'posting_request_used',
       deferred: true,
       on: ['INSERT'],
     },
