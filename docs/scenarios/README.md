@@ -18,7 +18,7 @@ Scenarios are written through `/posting-rule`, before the rule's code.
 
 ## File format
 
-1. **Title and status:** `Status: Proposed | Approved (owner, YYYY-MM-DD)`. A case runs once it is `Approved`, so it becomes `Approved` only when the executors its steps need exist (the runner fails an `Approved` case it cannot run). Until then a case whose numbers the owner has approved stays `Proposed`, and its PR and `docs/ROADMAP.md` record the approval and its date.
+1. **Title and status:** `Status: Proposed | Approved (owner, YYYY-MM-DD)`. A case runs once it is `Approved`, so it becomes `Approved` only when the executors its steps need exist (the runner fails an `Approved` case it cannot run). Until then a case whose numbers the owner has approved stays `Proposed`, and its PR and `docs/ROADMAP.md` record the approval and its date. The PR that brings its executors switches it to `Approved (owner, <that date>)`, and the book must then count it as run.
 2. **Rule:** one or two sentences.
 3. **Basis:**
    - the standard paragraph (for example IAS 21.28);

@@ -10,7 +10,7 @@ Each check runs once, in the place where it is cheapest. While building, the ses
 |---|---|---|---|
 | While writing | Biome on each edited file (hook), the test file you are working on | `pnpm verify <file>` | seconds |
 | A layer's gate | That layer's test files, `pnpm typecheck` | `pnpm verify <files>` | under a minute |
-| Before the PR, once (the `checker`, while the reviewers run) | Lint; typecheck, test, build and the scenario book of every package (Turborepo replays the unchanged ones); the guards; the dependency audit; the secret scan; the whole E2E suite | `pnpm verify --e2e-all` | E2E_ALL_TIME |
+| Before the PR, once (the `checker`, while the reviewers run) | Lint; typecheck, test, build and the scenario book of every package (Turborepo replays the unchanged ones); the guards; the dependency audit; the secret scan; the whole E2E suite | `pnpm verify --e2e-all` | about 2 minutes with nothing cached |
 | CI, before the merge | The same, the E2E suite on two shards | — | 2–3 minutes |
 
 `pnpm verify` without `--e2e-all` runs only the E2E specs the branch changed; a change elsewhere (a contract, a mock, a shared component) can break another spec, so the check before a PR runs them all.
@@ -91,7 +91,9 @@ Only the jobs that run turbo (static, `Tests`, the Playwright shards) get these 
 - **Antivirus.** In Hub, Microsoft Defender scanned every file the tests read and wrote (4.2 CPU cores during E2E with traces on). A [Dev Drive](https://blogs.windows.com/windowsdeveloper/2023/06/01/dev-drive-performance-security-and-control-for-developers/) (ReFS, with Defender's performance mode) for the repositories and the pnpm store removes most of that; excluding the folders is the weaker alternative. Both are the owner's choice, set by hand.
 - **Dev servers.** Stop them before `pnpm verify`.
 
-## Measurements (2026-10-26)
+## Measurements
+
+### 2026-10-26: the model from Hub
 
 Local: Intel i9-14900HX (24 cores, 32 threads), 32 GB, NVMe, Windows 11, PostgreSQL 17 in Docker. Other repositories' suites ran on the machine during part of the runs, so each figure is the best of two or more runs; single runs under that load were up to four times slower in both columns.
 
@@ -105,4 +107,14 @@ Local: Intel i9-14900HX (24 cores, 32 threads), 32 GB, NVMe, Windows 11, Postgre
 | The scenario book alone | 1.9 s | 2.0 s |
 | `pnpm verify` with nothing changed since the last run | — | 20 s (lint, every task replayed but the typechecks, the guards) |
 
-Nothing here is slow yet: CI takes under a minute. The point of this change is the model, set before the web app and its E2E suite arrive.
+### 2026-10-28: before the PR as in CI
+
+On the same machine, quiet, after S01 and S02:
+
+| | Time |
+|---|---|
+| `pnpm verify --e2e-all`, nothing cached (28 tasks ran) | 1 m 48 s: the task graph 1 m 19 s (the longest task `apps/api` tests, 1 m 7 s), the whole E2E suite 24 s (255 tests), the audit 1 s, the secret scan 2 s |
+| A layer's gate (`pnpm verify <files>`), S01 sessions | 2–45 s |
+| CI before this change (31 runs, 2026-10-20 to 2026-10-28) | 1–3 minutes, except 8 runs of 8–14 minutes: one Playwright shard installing Chromium's system packages from a slow Ubuntu mirror (12 m 41 s for the install, 36 s for the tests in one run) |
+
+Two measures came from the same review of the sessions: the checks were never the slow part of finishing a PR (a full `pnpm verify` took 20 s to 1.5 min), while repeated full re-reviews were (seven rounds, 70 minutes, on S01's PR 2). Hence the one scoped re-review in `CLAUDE.md`.

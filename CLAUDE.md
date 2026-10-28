@@ -31,13 +31,13 @@
 
 - The owner grants full tool permissions (2026-10-27): the user settings run in `bypassPermissions`, and `.claude/settings.json` allows every tool with no `ask` rules, `.env` files included. Never stop to ask for permission to run a command, read or edit a file, migrate the local development database, push a branch or open a PR.
 - **Standing instruction (owner, 2026-10-28):** every task ends, in the same turn, by opening its PR, enabling GitHub auto-merge and, in the desktop app, turning on the PR's Auto-fix ("Finishing a task" in `AGENTS.md`). Never ask the owner before any of these: the owner has asked for them for every task.
-- What still stops work: the hooks (git guard, test guard), the `deny` rules (irreversible git and file deletion, generated files, the read-only reference repositories), and the owner's decisions under "How to work" in `AGENTS.md` (scope, accounting treatment, business rules). Those are decisions, not permissions.
+- What still stops work: the hooks (git guard, test guard), the `deny` rules on Bash and PowerShell (irreversible git and file deletion, generated files, the read-only reference repositories), and the owner's decisions under "How to work" in `AGENTS.md` (scope, accounting treatment, business rules). Those are decisions, not permissions.
 - `.env` holds local secrets: read and edit it when a task needs it, but never print its values, commit it or copy them into another file.
 
 ## Hooks
 
 - Biome formats and lint-fixes every edited file; remaining problems come back to fix. It does nothing until dependencies are installed.
-- The test guard and the git guard run on both Bash and PowerShell. The test guard refuses a second test run while one is going (a `pnpm verify` lock or a Vitest or Playwright process of this repository), the whole E2E suite outside `pnpm verify --e2e-all`, and `timeout` around a test run (`docs/testing.md`). The git guard refuses `git commit` on `main`, `git commit -a` or paths, pushes to `main`, broad staging (`git add -A`, `.`, `./`, `:/`) and `--no-verify`.
+- The test guard and the git guard run on both Bash and PowerShell. The test guard refuses a second test run while one is going (a `pnpm verify` lock or a Vitest or Playwright process of this repository), the whole E2E suite outside `pnpm verify --e2e-all`, and `timeout` around a test run (`docs/testing.md`). The git guard refuses `git commit` on `main`, `git commit -a` or paths, pushes to `main`, broad staging (`git add -A`, `.`, `./`, `:/`), `--no-verify`, and a commit or push in a directory whose branch it cannot read.
 - The two reviewers run Bash through a hook that allows only read-only git commands.
 - At session start, a note shows the branch, uncommitted files and the open items of `TASKS.md`: continue from them.
 

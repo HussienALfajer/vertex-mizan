@@ -85,7 +85,7 @@ IDs are referred to by specs, the roadmap and the scenario book.
 ### F04 Currencies and rates
 - ISO 4217 currencies; integer minor units; exact decimal rates.
 - A dated rate table per company and currency pair, with the rate type (market, Central Bank bulletin) and source (Hub, manual).
-- Hub's rate is received with each event and with each Hub rate change (type `market`). The accountant enters the bulletin rate by hand. A working day needs its own bulletin and a day off takes the last published one (ADR 0011); an event dated a working day without its bulletin is held (`RATE_MISSING`).
+- Hub's rate is received with each event and with each Hub rate change (type `market`). The accountant enters the bulletin rate by hand. A bulletin rate is in force on a date only if it is effective on or after the latest publication day on or before that date (ADR 0011): a working day needs its own bulletin, and a day off takes the bulletin of the last publication day before it. When that publication day has no bulletin, the rate is missing and the event is held (`RATE_MISSING`).
 - The rate policy per ledger (ADR 0007).
 - SYP is the new Syrian pound and is labelled "الليرة السورية الجديدة" on printed reports.
 

@@ -37,7 +37,7 @@ Any PR that changes:
 - a posting, recognition, revaluation or settlement rule;
 - an expected value in the scenario book.
 
-The approval is the one the owner gives in the conversation before the PR: the approved spec, a scenario's approved numbers, an answered decision (owner, 2026-10-20 and 2026-10-28). The PR body quotes it and the PR merges automatically once CI passes. Only a change of that kind the owner was not asked about keeps auto-merge off, and the report asks for the approval. Everything else merges automatically once CI passes.
+The approval is the one the owner gives in the conversation before the PR: the approved spec, a scenario's approved numbers, an answered decision (owner, 2026-10-20 and 2026-10-28). The PR body quotes it and the PR merges automatically once CI passes. Only a change of that kind the owner has not approved in its final form keeps auto-merge off, and the report asks for the approval: a fix after the approval (a review finding, a CI failure, Auto-fix) that changes an approved expected value, account or treatment needs a new one. Everything else merges automatically once CI passes.
 
 ## Two reviewers on accounting work
 
