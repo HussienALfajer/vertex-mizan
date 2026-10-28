@@ -594,6 +594,119 @@ describe('manual entries in two currencies', () => {
   });
 });
 
+/** A manual entry in one currency: debits and credits that balance in it (S03 rule 14). */
+const oneCurrency = fc
+  .record({
+    company: ledgers,
+    from: currency,
+    choices: rateChoices,
+    debits: fc.array(nonZero, { minLength: 1, maxLength: 4 }),
+    credits: fc.array(nonZero, { minLength: 1, maxLength: 4 }),
+  })
+  .map(({ company, from, choices, debits, credits }) => {
+    const context: MeasureContext = {
+      ledgers: company,
+      on: '2026-11-15',
+      calendar,
+      rates: rateTable(company, from, choices),
+    };
+    // The last credit takes what the others leave, so the entry balances in `from`.
+    const rest =
+      debits.reduce((sum, value) => sum + value, 0n) -
+      credits.reduce((sum, value) => sum + value, 0n);
+    const amounts = [...debits, ...credits.map((value) => -value), -rest].filter(
+      (value) => value !== 0n,
+    );
+    const lines = amounts.map((value, index) => ({
+      account: `A${index}`,
+      amount: money(value, from),
+    }));
+    return { company, context, entry: { lines, dealtRates: [] }, from };
+  })
+  .filter(({ entry }) => entry.lines.length >= 2);
+
+describe('manual entries in one currency', () => {
+  it('post no difference, and one rounding line per ledger within half a minor unit per conversion', () => {
+    fc.assert(
+      fc.property(oneCurrency, ({ company, context, entry }) => {
+        const lines = manualEntryLines(entry, context, realised);
+        expect(lines.every((line) => line.kind === 'measured')).toBe(true);
+        const posted = balanceEntry({ on: '2026-11-15', ledgers: company, lines, rounding });
+        expect(posted.slice(0, lines.length)).toEqual(lines);
+        for (const [ledger] of keptLedgers(company)) {
+          expect(ledgerTotal(posted, ledger)).toBe(0n);
+          const residual = -ledgerTotal(lines, ledger);
+          const added = posted.filter((line) => line.kind === 'rounding' && line.ledger === ledger);
+          // Exactly the residual, on the rounding account, in its own ledger only.
+          expect(added.length).toBe(residual === 0n ? 0 : 1);
+          for (const line of added) {
+            expect(line.account).toBe('R');
+            expect(line.transaction).toEqual(money(residual, ledgerCurrency(company, ledger)));
+            const other: Ledger = ledger === 'book' ? 'parallel' : 'book';
+            expect(ledgerAmount(line, other) ?? 0n).toBe(0n);
+            expect(2n * abs(residual) <= BigInt(converted(lines, ledger))).toBe(true);
+          }
+        }
+        expect(posted.length - lines.length).toBeLessThanOrEqual(keptLedgers(company).length);
+      }),
+      { numRuns: 1_000 },
+    );
+  });
+
+  it('reverse to lines that balance as they are and net every account to zero', () => {
+    fc.assert(
+      fc.property(oneCurrency, ({ company, context, entry }) => {
+        const lines = manualEntryLines(entry, context, realised);
+        const posted = balanceEntry({ on: '2026-11-15', ledgers: company, lines, rounding });
+        const reversal = reverseLines(posted);
+        expect(
+          balanceEntry({ on: '2026-12-01', ledgers: company, lines: reversal, rounding }),
+        ).toEqual(reversal);
+        const both = [...posted, ...reversal];
+        for (const account of new Set(both.map((line) => line.account))) {
+          const ofAccount = both.filter((line) => line.account === account);
+          for (const [ledger] of keptLedgers(company)) {
+            expect(ledgerTotal(ofAccount, ledger)).toBe(0n);
+          }
+        }
+      }),
+      { numRuns: 500 },
+    );
+  });
+
+  it('give the same lines when built again from the same input', () => {
+    fc.assert(
+      fc.property(oneCurrency, ({ company, context, entry }) => {
+        const build = () =>
+          balanceEntry({
+            on: '2026-11-15',
+            ledgers: company,
+            lines: manualEntryLines(entry, context, realised),
+            rounding,
+          });
+        expect(build()).toEqual(build());
+      }),
+      { numRuns: 300 },
+    );
+  });
+
+  it('that do not balance in their currency are refused, whatever the rounding', () => {
+    fc.assert(
+      fc.property(oneCurrency, nonZero, ({ company, context, entry, from }, offset) => {
+        const off = {
+          ...entry,
+          lines: [...entry.lines, { account: 'D', amount: money(offset, from) }],
+        };
+        const lines = manualEntryLines(off, context, realised);
+        expect(
+          refusal(() => balanceEntry({ on: '2026-11-15', ledgers: company, lines, rounding })),
+        ).toBe('ENTRY_UNBALANCED');
+      }),
+      { numRuns: 500 },
+    );
+  });
+});
+
 /** Carried amounts in one currency; a ledger in that currency carries the transaction amount. */
 const carried = fc
   .record({

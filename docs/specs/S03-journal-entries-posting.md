@@ -281,7 +281,7 @@ One `audit_entries` row per change in the same transaction (S01 rule 23): `entry
 
 ## Scenarios
 Accounting rules this spec introduces, each written and approved through `/posting-rule` before its code:
-- `docs/scenarios/manual/conversion-rounding.md`: a one-currency USD entry of three lines whose book conversions leave one minor unit: the rounding line to the conversion-rounding account, in `syp-usd` and `usd-syp`; an SYP entry in `syp` needs none.
+- `docs/scenarios/manual/conversion-rounding.md`: a one-currency entry whose conversions leave a minor unit or two: the rounding line per ledger to the conversion-rounding account, by sign, in `syp-usd` (a USD entry in the book, an SYP entry in the parallel), `syp`, `usd-syp` (an SYP entry rounded in the book, a USD entry in the SYP parallel ledger) and `third` (both ledgers); its reversal; an entry unbalanced in its currency refused; an SYP entry in `syp` needs none.
 - `docs/scenarios/manual/currency-purchase.md`: 100.00 USD bought for 12,250.00 SYP, with and without a dealt rate (the example above): realised differences per ledger to the gain or loss account by sign, in `syp-usd`, `usd-syp` and `third` (TRY sold for USD).
 - `docs/scenarios/manual/reversal.md`: a reversal in a later month after the bulletin moved carries the original amounts exactly, rounding and difference lines included; balances return to zero in both ledgers.
 

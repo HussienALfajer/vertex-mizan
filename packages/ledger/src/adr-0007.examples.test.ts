@@ -821,3 +821,202 @@ describe('docs/scenarios/manual: a currency purchase or sale', () => {
     ]);
   });
 });
+
+describe('docs/scenarios/manual: conversion rounding in one currency', () => {
+  const realised = { gain: { account: '421001' }, loss: { account: '541001' } };
+  const roundingAccount = { account: '541003' };
+  const usd = (minor: bigint) => money(minor, 'USD');
+  const syp = (minor: bigint) => money(minor, 'SYP');
+  const try_ = (minor: bigint) => money(minor, 'TRY');
+  const week = [
+    rate('USD', 'SYP', '121.5000', 'bulletin', '2026-11-08'),
+    rate('USD', 'SYP', '122.0000', 'market', '2026-11-08'),
+  ];
+
+  /** The manual entry of `lines` on `on`, with its rounding lines. */
+  function posted(
+    ledgers: CompanyLedgers,
+    on: string,
+    rates: readonly ExchangeRate[],
+    lines: readonly [string, Money][],
+  ): Line[] {
+    const at: MeasureContext = { ledgers, on, rates, calendar };
+    const entry = manualEntryLines(
+      { lines: lines.map(([account, amount]) => ({ account, amount })), dealtRates: [] },
+      at,
+      realised,
+    );
+    // In one currency the lines are the accountant's alone: never a difference line.
+    expect(entry.every((line) => line.kind === 'measured')).toBe(true);
+    return balanceEntry({ on, ledgers, lines: entry, rounding: roundingAccount });
+  }
+
+  const softwareAndInternet: readonly [string, Money][] = [
+    ['531004', usd(7_475n)],
+    ['531003', usd(2_525n)],
+    ['111004', usd(-10_000n)],
+  ];
+
+  it('a USD entry rounded in the book ledger: a 0.01 SYP credit', () => {
+    // Book: 74.75 × 121.5 = 9,082.125 → 9,082.13 SYP; 25.25 × 121.5 = 3,067.875 → 3,067.88 SYP.
+    expect(rows(posted(sypUsd, '2026-11-08', week, softwareAndInternet))).toEqual([
+      ['measured', '531004', 'USD', 7_475n, 908_213n, 7_475n],
+      ['measured', '531003', 'USD', 2_525n, 306_788n, 2_525n],
+      ['measured', '111004', 'USD', -10_000n, -1_215_000n, -10_000n],
+      ['rounding', '541003', 'SYP', -1n, -1n, 0n],
+    ]);
+  });
+
+  it('a USD expense paid from two accounts: a 0.01 SYP debit', () => {
+    const lines: [string, Money][] = [
+      ['531004', usd(10_000n)],
+      ['111004', usd(-2_525n)],
+      ['111006', usd(-7_475n)],
+    ];
+    expect(rows(posted(sypUsd, '2026-11-08', week, lines))).toEqual([
+      ['measured', '531004', 'USD', 10_000n, 1_215_000n, 10_000n],
+      ['measured', '111004', 'USD', -2_525n, -306_788n, -2_525n],
+      ['measured', '111006', 'USD', -7_475n, -908_213n, -7_475n],
+      ['rounding', '541003', 'SYP', 1n, 1n, 0n],
+    ]);
+  });
+
+  it('four lines each rounded up by half a minor unit: one rounding line of 0.02 SYP', () => {
+    const lines: [string, Money][] = [
+      ['531004', usd(2_525n)],
+      ['531003', usd(2_525n)],
+      ['532002', usd(2_525n)],
+      ['531005', usd(2_425n)],
+      ['111004', usd(-10_000n)],
+    ];
+    expect(rows(posted(sypUsd, '2026-11-08', week, lines))).toEqual([
+      ['measured', '531004', 'USD', 2_525n, 306_788n, 2_525n],
+      ['measured', '531003', 'USD', 2_525n, 306_788n, 2_525n],
+      ['measured', '532002', 'USD', 2_525n, 306_788n, 2_525n],
+      ['measured', '531005', 'USD', 2_425n, 294_638n, 2_425n],
+      ['measured', '111004', 'USD', -10_000n, -1_215_000n, -10_000n],
+      ['rounding', '541003', 'SYP', -2n, -2n, 0n],
+    ]);
+  });
+
+  it('an SYP entry rounded in the parallel ledger: a 0.01 USD credit', () => {
+    // Parallel: 1,000.00 SYP / 122 = 8.196… → 8.20 USD; 2,000.00 SYP / 122 = 16.393… → 16.39 USD.
+    const lines: [string, Money][] = [
+      ['531002', syp(100_000n)],
+      ['531003', syp(100_000n)],
+      ['111003', syp(-200_000n)],
+    ];
+    expect(rows(posted(sypUsd, '2026-11-08', week, lines))).toEqual([
+      ['measured', '531002', 'SYP', 100_000n, 100_000n, 820n],
+      ['measured', '531003', 'SYP', 100_000n, 100_000n, 820n],
+      ['measured', '111003', 'SYP', -200_000n, -200_000n, -1_639n],
+      ['rounding', '541003', 'USD', -1n, 0n, -1n],
+    ]);
+  });
+
+  it('the USD entry reversed the next month carries its rounding line, not the new bulletin', () => {
+    const entry = posted(sypUsd, '2026-11-08', week, softwareAndInternet);
+    const reversal = reverseLines(entry);
+    expect(
+      balanceEntry({
+        on: '2026-12-01',
+        ledgers: sypUsd,
+        lines: reversal,
+        rounding: roundingAccount,
+      }),
+    ).toEqual(reversal);
+    expect(rows(reversal)).toEqual([
+      ['measured', '531004', 'USD', -7_475n, -908_213n, -7_475n],
+      ['measured', '531003', 'USD', -2_525n, -306_788n, -2_525n],
+      ['measured', '111004', 'USD', 10_000n, 1_215_000n, 10_000n],
+      ['rounding', '541003', 'SYP', 1n, 1n, 0n],
+    ]);
+    const both = [...entry, ...reversal];
+    for (const account of ['531004', '531003', '111004', '541003']) {
+      const lines = both.filter((line) => line.account === account);
+      expect([ledgerTotal(lines, 'book'), ledgerTotal(lines, 'parallel')]).toEqual([0n, 0n]);
+    }
+  });
+
+  it('a USD entry 0.01 USD short is refused, never balanced by a rounding line', () => {
+    expect(
+      refusal(() =>
+        posted(sypUsd, '2026-11-08', week, [
+          ['531004', usd(10_000n)],
+          ['111004', usd(-9_999n)],
+        ]),
+      ),
+    ).toBe('ENTRY_UNBALANCED');
+  });
+
+  it('SYP books only: a USD entry rounded by 0.01 SYP; an SYP entry needs no rounding', () => {
+    const bulletin = week.slice(0, 1);
+    expect(rows(posted(sypOnly, '2026-11-08', bulletin, softwareAndInternet))).toEqual([
+      ['measured', '531004', 'USD', 7_475n, 908_213n, null],
+      ['measured', '531003', 'USD', 2_525n, 306_788n, null],
+      ['measured', '111004', 'USD', -10_000n, -1_215_000n, null],
+      ['rounding', '541003', 'SYP', -1n, -1n, null],
+    ]);
+    const inSyp: [string, Money][] = [
+      ['531002', syp(100_000n)],
+      ['531003', syp(100_000n)],
+      ['111003', syp(-200_000n)],
+    ];
+    // No rate is read: an empty rate table converts nothing.
+    expect(rows(posted(sypOnly, '2026-11-08', [], inSyp))).toEqual([
+      ['measured', '531002', 'SYP', 100_000n, 100_000n, null],
+      ['measured', '531003', 'SYP', 100_000n, 100_000n, null],
+      ['measured', '111003', 'SYP', -200_000n, -200_000n, null],
+    ]);
+  });
+
+  it('USD books: an SYP entry rounded in the book ledger by 0.01 USD', () => {
+    // Book: 1,500.00 SYP / 121.5 = 12.345… → 12.35 USD; 3,000.00 SYP / 121.5 = 24.691… → 24.69 USD.
+    const lines: [string, Money][] = [
+      ['531001', syp(150_000n)],
+      ['531002', syp(150_000n)],
+      ['111003', syp(-300_000n)],
+    ];
+    expect(rows(posted(usdSyp, '2026-11-08', week.slice(0, 1), lines))).toEqual([
+      ['measured', '531001', 'SYP', 150_000n, 1_235n, 150_000n],
+      ['measured', '531002', 'SYP', 150_000n, 1_235n, 150_000n],
+      ['measured', '111003', 'SYP', -300_000n, -2_469n, -300_000n],
+      ['rounding', '541003', 'USD', -1n, -1n, 0n],
+    ]);
+  });
+
+  it('USD books: a USD entry rounded in the SYP parallel ledger by 0.01 SYP', () => {
+    // Parallel: 74.75 × 122.5 = 9,156.875 → 9,156.88 SYP; 25.25 × 122.5 = 3,093.125 → 3,093.13 SYP.
+    const rates = [
+      rate('USD', 'SYP', '121.5000', 'bulletin', '2026-11-08'),
+      rate('USD', 'SYP', '122.5000', 'market', '2026-11-08'),
+    ];
+    expect(rows(posted(usdSyp, '2026-11-08', rates, softwareAndInternet))).toEqual([
+      ['measured', '531004', 'USD', 7_475n, 7_475n, 915_688n],
+      ['measured', '531003', 'USD', 2_525n, 2_525n, 309_313n],
+      ['measured', '111004', 'USD', -10_000n, -10_000n, -1_225_000n],
+      ['rounding', '541003', 'SYP', -1n, 0n, -1n],
+    ]);
+  });
+
+  it('third: a TRY entry rounded in both ledgers, in opposite directions', () => {
+    const rates = [
+      rate('USD', 'SYP', '122.0000', 'bulletin', '2026-11-10'),
+      rate('USD', 'TRY', '41.0000', 'bulletin', '2026-11-10'),
+      rate('USD', 'TRY', '41.2000', 'market', '2026-11-10'),
+    ];
+    const lines: [string, Money][] = [
+      ['531006', try_(50_000n)],
+      ['531005', try_(150_000n)],
+      ['111007', try_(-200_000n)],
+    ];
+    // Book: TRY / 41 × 122, one exact product; parallel: TRY / 41.2.
+    expect(rows(posted(sypUsd, '2026-11-10', rates, lines))).toEqual([
+      ['measured', '531006', 'TRY', 50_000n, 148_780n, 1_214n],
+      ['measured', '531005', 'TRY', 150_000n, 446_341n, 3_641n],
+      ['measured', '111007', 'TRY', -200_000n, -595_122n, -4_854n],
+      ['rounding', '541003', 'SYP', 1n, 1n, 0n],
+      ['rounding', '541003', 'USD', -1n, 0n, -1n],
+    ]);
+  });
+});
