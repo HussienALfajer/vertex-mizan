@@ -69,6 +69,8 @@ export const COMPANY_AUDIT_ACTIONS = [
   'bulletin_holiday.added',
   'bulletin_holiday.removed',
   'export.chart',
+  // S03: journal entries; a reversal is its own `entry.posted`, with `reverses` in its details.
+  'entry.posted',
 ] as const;
 
 export const companyAuditActionSchema = z

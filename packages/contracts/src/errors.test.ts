@@ -88,6 +88,10 @@ describe('error codes', () => {
       ['ENTRY_NOT_REVERSIBLE', 409],
       ['ENTRY_ALREADY_REVERSED', 409],
       ['REVERSAL_BEFORE_ORIGINAL', 422],
+      ['PERIOD_CLOSED', 409],
+      ['IDEMPOTENCY_CONFLICT', 409],
+      ['ENTRY_DATE_OUT_OF_RANGE', 422],
+      ['ACCOUNT_IS_CONTROL', 422],
     ]);
   });
 

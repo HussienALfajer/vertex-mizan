@@ -89,6 +89,7 @@ export const audit = {
     'bulletin_holiday.added': 'أضاف عطلة للنشرة',
     'bulletin_holiday.removed': 'أزال عطلة من النشرة',
     'export.chart': 'صدّر دليل الحسابات',
+    'entry.posted': 'رحّل قيداً',
   } satisfies Record<CompanyAuditAction, string>,
   /** The audited entities (`AUDITED_FIELDS` in `apps/api`). */
   entities: {
