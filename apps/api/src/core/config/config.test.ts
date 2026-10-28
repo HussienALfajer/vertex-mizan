@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { EXAMPLE_AUTH_SECRET, loadConfig } from './config.js';
+import { DEVELOPMENT_FILES_DIR, EXAMPLE_AUTH_SECRET, loadConfig } from './config.js';
 
 const DATABASE_APP_URL = 'postgres://mizan_app:fake-password@127.0.0.1:55417/vertex_mizan';
 const AUTH_SECRET = 'synthetic-auth-secret-of-at-least-32-characters';
@@ -14,7 +14,21 @@ describe('loadConfig', () => {
       port: 3300,
       environment: 'development',
       logLevel: 'info',
+      filesDir: DEVELOPMENT_FILES_DIR,
     });
+    expect(DEVELOPMENT_FILES_DIR).toMatch(/[/\\]\.data[/\\]files$/);
+  });
+
+  it('keeps files in an absolute directory, given in production (S03)', () => {
+    expect(
+      loadConfig({ DATABASE_APP_URL, AUTH_SECRET, MIZAN_FILES_DIR: '/srv/mizan/files' }).filesDir,
+    ).toBe('/srv/mizan/files');
+    expect(() =>
+      loadConfig({ DATABASE_APP_URL, AUTH_SECRET, MIZAN_FILES_DIR: 'relative/files' }),
+    ).toThrow('Invalid API environment: MIZAN_FILES_DIR');
+    expect(() => loadConfig({ DATABASE_APP_URL, AUTH_SECRET, NODE_ENV: 'production' })).toThrow(
+      'Invalid API environment: MIZAN_FILES_DIR',
+    );
   });
 
   it('names the variables that are wrong, never their values', () => {

@@ -5,6 +5,7 @@ export * from './chart-templates.js';
 export * from './companies.js';
 export * from './dimensions.js';
 export * from './email.js';
+export * from './entries.js';
 export * from './errors.js';
 export * from './health.js';
 export * from './members.js';

@@ -93,6 +93,10 @@ describe('company changes', () => {
     expect(updateCompanyProfileSchema.safeParse({}).success).toBe(false);
     expect(updateCompanyProfileSchema.safeParse({ nameLatin: null }).success).toBe(true);
     expect(updateCompanyProfileSchema.safeParse({ policyNote: 'نص' }).success).toBe(true);
+    expect(updateCompanyProfileSchema.safeParse({ manualEntryApproval: false }).success).toBe(true);
+    expect(updateCompanyProfileSchema.safeParse({ manualEntryApproval: 'yes' }).success).toBe(
+      false,
+    );
   });
 
   it('send the ledgers in the money module shape only', () => {
@@ -122,6 +126,7 @@ describe('companySchema', () => {
         fiscalYearStartMonth: 1,
         policyNote: 'نص',
         booksStarted: false,
+        manualEntryApproval: false,
         archived: null,
         createdAt: '2026-10-26T09:00:00.000Z',
       }).booksStarted,

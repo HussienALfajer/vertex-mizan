@@ -123,7 +123,8 @@ export type Guards = { functions: PinnedFunction[]; triggers: GuardTrigger[] };
  * The guards of the migrations: every guard function, pinned, and every guard trigger (S01's
  * settings lock; S02's chart, dimension and rate rules; S03's ledger: the append-only tables, the
  * ledger state, the entry's chain, number, period, balance and reversal, the line's validity and
- * period balances, the dimension sets). S04 adds the open items' guards, S07 the period close.
+ * period balances, the dimension sets; the drafts, their lines and attachments). S04 adds the open
+ * items' guards, S07 the period close.
  */
 export const GUARDS: Guards = {
   functions: [
@@ -1162,6 +1163,170 @@ BEGIN
 END
 `,
     },
+    {
+      name: 'entry_draft_rules',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    IF NEW.state <> 'draft' OR NEW.archived_at IS NOT NULL OR NEW.submitted_by_user_id IS NOT NULL
+      OR NEW.rejected_by_user_id IS NOT NULL THEN
+      RAISE EXCEPTION 'entry_drafts: a draft starts unsubmitted, in the draft state'
+        USING ERRCODE = 'restrict_violation';
+    END IF;
+    RETURN NEW;
+  END IF;
+  IF OLD.state = 'posted' OR OLD.archived_at IS NOT NULL THEN
+    RAISE EXCEPTION 'entry_drafts: draft % is posted or discarded and never changes', OLD.id
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF (NEW.id, NEW.company_id, NEW.prepared_by_user_id, NEW.reverses_entry_id,
+      NEW.copied_from_entry_id, NEW.created_at)
+    IS DISTINCT FROM (OLD.id, OLD.company_id, OLD.prepared_by_user_id, OLD.reverses_entry_id,
+      OLD.copied_from_entry_id, OLD.created_at) THEN
+    RAISE EXCEPTION 'entry_drafts: the identity, preparer and origin of draft % never change',
+      OLD.id
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF OLD.state = 'submitted'
+    AND (NEW.entry_date, NEW.description, NEW.reference, NEW.dealt_rates, NEW.archived_at)
+      IS DISTINCT FROM (OLD.entry_date, OLD.description, OLD.reference, OLD.dealt_rates,
+        OLD.archived_at) THEN
+    RAISE EXCEPTION 'entry_drafts: draft % is submitted and read only', OLD.id
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF NEW.state = 'posted' AND NOT EXISTS (
+    SELECT 1 FROM public.journal_entries e
+    WHERE e.company_id = NEW.company_id AND e.id = NEW.posted_entry_id AND e.draft_id = NEW.id
+      AND e.source = 'manual'
+      AND e.prepared_by_user_id = NEW.prepared_by_user_id
+      AND e.reverses_entry_id IS NOT DISTINCT FROM NEW.reverses_entry_id
+      AND (CASE WHEN OLD.state = 'draft' THEN e.approved_by_user_id IS NULL
+        ELSE e.approved_by_user_id IS NOT NULL
+          AND e.approved_by_user_id <> OLD.prepared_by_user_id
+          AND e.approved_by_user_id <> OLD.submitted_by_user_id END)
+  ) THEN
+    RAISE EXCEPTION 'entry_drafts: draft % posts only as its own entry, approved by another person',
+      OLD.id
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  RETURN NEW;
+END
+`,
+    },
+    {
+      name: 'entry_draft_line_rules',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+DECLARE
+  draft record;
+BEGIN
+  IF TG_OP = 'UPDATE' AND (NEW.id, NEW.company_id, NEW.draft_id, NEW.line_no, NEW.created_at)
+    IS DISTINCT FROM (OLD.id, OLD.company_id, OLD.draft_id, OLD.line_no, OLD.created_at) THEN
+    RAISE EXCEPTION 'entry_draft_lines: a line keeps its draft and number'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  SELECT d.state, d.archived_at, d.reverses_entry_id INTO draft
+  FROM public.entry_drafts d
+  WHERE d.company_id = NEW.company_id AND d.id = NEW.draft_id
+  FOR SHARE;
+  IF NOT FOUND OR draft.state <> 'draft' OR draft.archived_at IS NOT NULL
+    OR draft.reverses_entry_id IS NOT NULL THEN
+    RAISE EXCEPTION 'entry_draft_lines: the lines of draft % change only while it is prepared',
+      NEW.draft_id
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  RETURN NEW;
+END
+`,
+    },
+    {
+      name: 'entry_attachment_rules',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+DECLARE
+  draft record;
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    IF NEW.archived_at IS NOT NULL OR (NEW.draft_id IS NULL) = (NEW.entry_id IS NULL) THEN
+      RAISE EXCEPTION 'entry_attachments: a file is added to a draft or to an entry'
+        USING ERRCODE = 'restrict_violation';
+    END IF;
+    IF NEW.draft_id IS NOT NULL THEN
+      SELECT d.state, d.archived_at INTO draft
+      FROM public.entry_drafts d
+      WHERE d.company_id = NEW.company_id AND d.id = NEW.draft_id
+      FOR SHARE;
+      IF NOT FOUND OR draft.state <> 'draft' OR draft.archived_at IS NOT NULL THEN
+        RAISE EXCEPTION 'entry_attachments: files are added to draft % only while it is prepared',
+          NEW.draft_id
+          USING ERRCODE = 'restrict_violation';
+      END IF;
+    END IF;
+    IF (SELECT count(*) FROM public.entry_attachments a
+        WHERE a.company_id = NEW.company_id AND a.archived_at IS NULL
+          AND (a.draft_id = NEW.draft_id OR a.entry_id = NEW.entry_id)) >= 20 THEN
+      RAISE EXCEPTION 'entry_attachments: 20 files at most on a draft or an entry'
+        USING ERRCODE = 'check_violation';
+    END IF;
+    RETURN NEW;
+  END IF;
+  IF (NEW.id, NEW.company_id, NEW.draft_id, NEW.file_name, NEW.content_type, NEW.size_bytes,
+      NEW.sha256, NEW.storage_key, NEW.uploaded_by_user_id, NEW.created_at)
+    IS DISTINCT FROM (OLD.id, OLD.company_id, OLD.draft_id, OLD.file_name, OLD.content_type,
+      OLD.size_bytes, OLD.sha256, OLD.storage_key, OLD.uploaded_by_user_id, OLD.created_at) THEN
+    RAISE EXCEPTION 'entry_attachments: the file of attachment % never changes', OLD.id
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF OLD.entry_id IS NOT NULL OR OLD.archived_at IS NOT NULL THEN
+    IF (NEW.entry_id, NEW.archived_at, NEW.archived_reason)
+      IS DISTINCT FROM (OLD.entry_id, OLD.archived_at, OLD.archived_reason) THEN
+      RAISE EXCEPTION 'entry_attachments: attachment % of a posted entry, or removed, never changes',
+        OLD.id
+        USING ERRCODE = 'restrict_violation';
+    END IF;
+    RETURN NEW;
+  END IF;
+  IF NEW.entry_id IS NOT NULL AND (NEW.archived_at IS NOT NULL OR NOT EXISTS (
+    SELECT 1 FROM public.entry_drafts d
+    WHERE d.company_id = NEW.company_id AND d.id = NEW.draft_id
+      AND d.posted_entry_id = NEW.entry_id
+  )) THEN
+    RAISE EXCEPTION 'entry_attachments: attachment % moves only to the entry its draft posted',
+      OLD.id
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  RETURN NEW;
+END
+`,
+    },
   ],
   triggers: [
     // The settings lock (S01 rule 11): before every update of a company's ledger settings.
@@ -1610,6 +1775,71 @@ END
       function: 'company_settings_create_ledger_head',
       deferred: false,
       on: ['INSERT'],
+    },
+    // S03's drafts (0015): drafts, their lines and attachments are archived, never deleted, and
+    // each carries its rules.
+    {
+      table: 'entry_drafts',
+      name: 'entry_drafts_refuse_delete',
+      function: 'refuse_delete',
+      deferred: false,
+      on: ['DELETE'],
+    },
+    {
+      table: 'entry_drafts',
+      name: 'entry_drafts_refuse_truncate',
+      function: 'refuse_delete',
+      deferred: false,
+      on: ['TRUNCATE'],
+    },
+    {
+      table: 'entry_draft_lines',
+      name: 'entry_draft_lines_refuse_delete',
+      function: 'refuse_delete',
+      deferred: false,
+      on: ['DELETE'],
+    },
+    {
+      table: 'entry_draft_lines',
+      name: 'entry_draft_lines_refuse_truncate',
+      function: 'refuse_delete',
+      deferred: false,
+      on: ['TRUNCATE'],
+    },
+    {
+      table: 'entry_attachments',
+      name: 'entry_attachments_refuse_delete',
+      function: 'refuse_delete',
+      deferred: false,
+      on: ['DELETE'],
+    },
+    {
+      table: 'entry_attachments',
+      name: 'entry_attachments_refuse_truncate',
+      function: 'refuse_delete',
+      deferred: false,
+      on: ['TRUNCATE'],
+    },
+    {
+      table: 'entry_drafts',
+      name: 'entry_draft_rules',
+      function: 'entry_draft_rules',
+      deferred: false,
+      on: ['INSERT', 'UPDATE'],
+    },
+    {
+      table: 'entry_draft_lines',
+      name: 'entry_draft_line_rules',
+      function: 'entry_draft_line_rules',
+      deferred: false,
+      on: ['INSERT', 'UPDATE'],
+    },
+    {
+      table: 'entry_attachments',
+      name: 'entry_attachment_rules',
+      function: 'entry_attachment_rules',
+      deferred: false,
+      on: ['INSERT', 'UPDATE'],
     },
   ],
 };

@@ -8,13 +8,14 @@ import { joinCompany, newCompany, signedInPerson } from './people.js';
 
 /** A company route as the guard sees it: a read, or a write that carries a body. */
 export interface GuardedRoute {
-  method: 'get' | 'post' | 'patch' | 'put';
+  method: 'get' | 'post' | 'patch' | 'put' | 'delete';
   path: string;
   query?: Record<string, string>;
 }
 
 function send(browser: Browser, route: GuardedRoute, headers: Record<string, string> = {}) {
   if (route.method === 'get') return browser.get(route.path, route.query, headers);
+  if (route.method === 'delete') return browser.delete(route.path, headers);
   return browser[route.method](route.path, {}, headers);
 }
 

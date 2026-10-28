@@ -16,6 +16,7 @@ export function companyOf(company: CompanyRow, settings: SettingsRow): Company {
     fiscalYearStartMonth: settings.fiscalYearStartMonth,
     policyNote: settings.policyNote,
     booksStarted: settings.booksStartedAt !== null,
+    manualEntryApproval: settings.manualEntryApproval,
     archived:
       company.archivedAt && company.archivedReason
         ? { at: company.archivedAt.toISOString(), reason: company.archivedReason }

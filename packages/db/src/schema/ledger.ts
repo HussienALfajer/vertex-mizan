@@ -8,6 +8,7 @@ import {
   integer,
   jsonb,
   numeric,
+  type PgTableExtraConfigValue,
   pgTable,
   smallint,
   text,
@@ -18,6 +19,8 @@ import { chartAccounts } from './chart.js';
 import { companyId, createdAt, id, idIsUuidV7, timestamptz, updatedAt } from './columns.js';
 import { companies, SETTINGS_CURRENCY_CODES, SETTINGS_RATE_TYPES } from './companies.js';
 import { dimensionValues } from './dimensions.js';
+// A cycle with drafts.ts: each reads the other's columns only in its lazy constraints callback.
+import { entryDrafts } from './drafts.js';
 import { exchangeRates, RATE_ROW_SOURCES } from './rates.js';
 
 // The ledger module (S03, ADR 0005, ADR 0008, ADR 0012): the append-only ledger (posting requests,
@@ -99,7 +102,7 @@ export const journalEntries = pgTable(
     description: text().notNull(),
     reference: text(),
     reversesEntryId: uuid(),
-    /** The draft a manual entry was posted from (S03 PR 2); kept without a key until then. */
+    /** The draft a manual entry was posted from; one draft posts once. */
     draftId: uuid(),
     // People and API clients are platform ids, kept without a foreign key as the audit log does.
     preparedByUserId: uuid(),
@@ -111,7 +114,8 @@ export const journalEntries = pgTable(
     hash: text().notNull(),
     createdAt: createdAt(),
   },
-  (t) => [
+  // Typed, so the cycle with drafts.ts does not make the table's type infer itself.
+  (t): PgTableExtraConfigValue[] => [
     idIsUuidV7('journal_entries', t.id),
     unique('journal_entries_company_id_id_key').on(t.companyId, t.id),
     unique('journal_entries_number_key').on(t.companyId, t.fiscalYear, t.number),
@@ -130,6 +134,12 @@ export const journalEntries = pgTable(
       name: 'journal_entries_reverses_fk',
       columns: [t.companyId, t.reversesEntryId],
       foreignColumns: [t.companyId, t.id],
+    }),
+    unique('journal_entries_draft_key').on(t.companyId, t.draftId),
+    foreignKey({
+      name: 'journal_entries_draft_fk',
+      columns: [t.companyId, t.draftId],
+      foreignColumns: [entryDrafts.companyId, entryDrafts.id],
     }),
     // The journal reads by date then number (ADR 0008).
     index('journal_entries_company_date_idx').on(t.companyId, t.entryDate, t.number),
@@ -151,6 +161,11 @@ export const journalEntries = pgTable(
       sql`${t.sourceRef} is null or char_length(${t.sourceRef}) between 1 and 200`,
     ),
     check('journal_entries_not_self_reversal', sql`${t.reversesEntryId} <> ${t.id}`),
+    // Nobody approves what they prepared (S03 rule 8; the submitter is checked on the draft).
+    check(
+      'journal_entries_approver_not_preparer',
+      sql`${t.approvedByUserId} is null or ${t.approvedByUserId} <> ${t.preparedByUserId}`,
+    ),
     // A person or an API client posted it, never both; a person posts every manual entry.
     check(
       'journal_entries_posted_by',

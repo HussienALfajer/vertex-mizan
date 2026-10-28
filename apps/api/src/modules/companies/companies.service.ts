@@ -67,8 +67,9 @@ export class CompaniesService {
   }
 
   /**
-   * `PATCH /api/company`: the names and the policy note. Each change is one audit row with the
-   * changed fields before and after; the policy note stays editable after the lock (rule 11).
+   * `PATCH /api/company`: the names, the policy note and the approval of manual entries (S03 rule
+   * 8). Each change is one audit row with the changed fields before and after; the policy note and
+   * the approval stay editable after the lock (rule 11).
    */
   async updateProfile(access: CompanyRouteAccess, change: UpdateCompanyProfile): Promise<Company> {
     const companyId = access.company.id;
@@ -107,6 +108,24 @@ export class CompaniesService {
           entityId: settings.id,
           before: { policyNote: settings.policyNote },
           after: { policyNote: change.policyNote },
+        });
+      }
+      // S03 rule 8: approval of manual entries, switched by the owner, outside the settings lock.
+      // The exclusive company lock waits for every draft posting under way, which holds it shared.
+      if (
+        change.manualEntryApproval !== undefined &&
+        change.manualEntryApproval !== settings.manualEntryApproval
+      ) {
+        await tx
+          .update(companySettings)
+          .set({ manualEntryApproval: change.manualEntryApproval })
+          .where(eq(companySettings.id, settings.id));
+        await writeCompanyAudit(tx, companyId, actor, {
+          action: 'company.settings_updated',
+          entityType: 'company_settings',
+          entityId: settings.id,
+          before: { manualEntryApproval: settings.manualEntryApproval },
+          after: { manualEntryApproval: change.manualEntryApproval },
         });
       }
       return this.read(tx, companyId);

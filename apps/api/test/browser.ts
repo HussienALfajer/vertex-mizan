@@ -11,7 +11,7 @@ function newAddress(): string {
   return `10.${(n >> 16) & 255}.${(n >> 8) & 255}.${n & 255}`;
 }
 
-type Method = 'get' | 'post' | 'patch' | 'put';
+type Method = 'get' | 'post' | 'patch' | 'put' | 'delete';
 
 /**
  * A browser for the API tests: it keeps its cookies (the `__Host-` session cookie is `Secure`, so
@@ -49,6 +49,15 @@ export class Browser {
     return this.send('put', path, body, undefined, headers);
   }
 
+  delete(path: string, headers: Record<string, string> = {}): Promise<Response> {
+    return this.send('delete', path, undefined, undefined, headers);
+  }
+
+  /** A multipart POST of one file in the `file` field, as a form's file input sends it. */
+  upload(path: string, file: Buffer, fileName: string): Promise<Response> {
+    return this.send('post', path, undefined, undefined, {}, false, { file, fileName });
+  }
+
   /** A GET whose answer is a file: its body as a `Buffer`, whatever its type. */
   download(path: string, query?: Record<string, string>): Promise<Response> {
     return this.send('get', path, undefined, query, {}, true);
@@ -70,6 +79,7 @@ export class Browser {
     query?: Record<string, string>,
     headers: Record<string, string> = {},
     binary = false,
+    upload?: { file: Buffer; fileName: string },
   ): Promise<Response> {
     let call = request(this.app.getHttpServer())
       [method](path)
@@ -84,6 +94,7 @@ export class Browser {
     if (method !== 'get' && this.companyId) call = call.set('x-mizan-company', this.companyId);
     for (const [name, value] of Object.entries(headers)) call = call.set(name, value);
     if (query) call = call.query(query);
+    if (upload) call = call.attach('file', upload.file, upload.fileName);
     if (binary) {
       call = call.buffer(true).parse((answer, done) => {
         const chunks: Buffer[] = [];

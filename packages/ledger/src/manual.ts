@@ -1,6 +1,7 @@
 import {
   type CurrencyCode,
   DomainError,
+  type EntrySource,
   type ExchangeRate,
   type Money,
 } from '@vertex-mizan/contracts';
@@ -93,16 +94,8 @@ export function checkManualEntryDate(on: string, today: string): void {
   }
 }
 
-/** Where a posted entry came from (S03 `journal_entries.source`). */
-export const ENTRY_SOURCES = [
-  'manual',
-  'hub_event',
-  'opening',
-  'revaluation',
-  'revenue_release',
-] as const;
-
-export type EntrySource = (typeof ENTRY_SOURCES)[number];
+/** Where a posted entry came from (S03 `journal_entries.source`): contracts' one list. */
+export { ENTRY_SOURCES, type EntrySource } from '@vertex-mizan/contracts';
 
 /** A posted entry as the posting function reads it, locked, to reverse it by hand. */
 export interface PostedEntry {

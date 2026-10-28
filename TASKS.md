@@ -14,12 +14,12 @@ Spec: `docs/specs/S03-journal-entries-posting.md` (Approved, owner 2026-10-28) �
 - [x] checks and reviewers (`reviewer`, `accountant-reviewer`), PR with auto-merge and Auto-fix
 
 ## PR 2 — Manual entries: drafts, approval, reversal (contracts, db, api)
-- [ ] contracts: `entries.ts` (drafts, lines, dealt rates, entries, the preview, an account's lines, a rate row's entries), the permission keys (`entries.read`, `drafts.read`, `drafts.manage`, `entries.post`, `entries.approve`, `entries.attach`), the drafts, approval and attachment error codes and audit actions, `manualEntryApproval` in the company settings
-- [ ] db (`/db-migration`): the `drafts` module (`entry_drafts`, `entry_draft_lines`, `entry_attachments` and their triggers), `company_settings.manual_entry_approval`; tests
-- [ ] api: the `entries` and `drafts` modules (the spec's routes except integrity and exports), the file store under `MIZAN_FILES_DIR` (type from magic bytes, size and count limits, downloads with `nosniff`), the approval switch, `ACCOUNT_HAS_BALANCE` with the ledger balances (archiving locks the ledger head first); per endpoint: success, 401, 403, another company, idempotent replay; stale writes; self-approval
-- [ ] bridge: OpenAPI regenerated, breaking-change check
-- [ ] wiring (Contracts, Database, API), docs (`apps/api/CLAUDE.md`, `.env.example`, the `AGENTS.md` commands table if a command changes, `docs/ROADMAP.md`)
-- [ ] checks and reviewers (`reviewer`, `accountant-reviewer`), PR with auto-merge and Auto-fix
+- [x] contracts: `entries.ts` (drafts, lines, dealt rates, entries, the preview, an account's lines, a rate row's entries), the permission keys (`entries.read`, `drafts.read`, `drafts.manage`, `entries.post`, `entries.approve`, `entries.attach`), the drafts, approval and attachment error codes and audit actions, `manualEntryApproval` in the company settings
+- [x] db (`/db-migration`): the `drafts` module (`entry_drafts`, `entry_draft_lines`, `entry_attachments` and their triggers), `company_settings.manual_entry_approval`; tests
+- [x] api: the `entries` and `drafts` modules (the spec's routes except integrity and exports), the file store under `MIZAN_FILES_DIR` (type from magic bytes, size and count limits, downloads with `nosniff`), the approval switch, `ACCOUNT_HAS_BALANCE` with the ledger balances (archiving locks the ledger head first); per endpoint: success, 401, 403, another company, idempotent replay; stale writes; self-approval
+- [x] bridge: OpenAPI regenerated, breaking-change check
+- [x] wiring (Contracts, Database, API), docs (`apps/api/CLAUDE.md`, `.env.example`, the `AGENTS.md` commands table if a command changes, `docs/ROADMAP.md`)
+- [x] checks and reviewers (`reviewer`, `accountant-reviewer`), PR with auto-merge and Auto-fix
 
 ## PR 3 — Trust and the full export (contracts, ledger, db, api, worker)
 - [ ] contracts: the integrity report, anchor and export schemas, `integrity.read`, `company.export`, `EXPORT_IN_PROGRESS`, the audit actions, the email kinds (daily anchor, export ready)

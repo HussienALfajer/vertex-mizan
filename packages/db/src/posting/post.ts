@@ -143,6 +143,18 @@ function refuse(code: ErrorCode, message: string, details: Record<string, unknow
   throw new DomainError(code, message, details);
 }
 
+/** Runs a check of one manual line, naming the line in its refusal (`details.lineNo`). */
+function onLine(lineNo: number, check: () => void): void {
+  try {
+    check();
+  } catch (error) {
+    if (error instanceof DomainError) {
+      throw new DomainError(error.code, error.message, { ...error.details, lineNo });
+    }
+    throw error;
+  }
+}
+
 /** The request as its payload hash covers it: everything it posts, not who or when. */
 function payloadOf(request: PostingRequest): CanonicalValue {
   const { content } = request;
@@ -402,8 +414,10 @@ async function manualLines(
   daysOff: readonly number[],
 ): Promise<{ lines: BuiltLine[]; rateIds: Map<ExchangeRate, string> }> {
   const typed: Line[] = [];
-  const specs = content.lines.map((spec) => {
-    if (spec.amountMinor === 0n) refuse('VALIDATION_FAILED', 'A line of zero amount');
+  const specs = content.lines.map((spec, index) => {
+    if (spec.amountMinor === 0n) {
+      refuse('VALIDATION_FAILED', 'A line of zero amount', { lineNo: index + 1 });
+    }
     return spec;
   });
   // The values of one line by type, for the chart check and the line's dimension set.
@@ -411,14 +425,16 @@ async function manualLines(
     ...new Set(specs.flatMap((spec) => spec.dimensionValueIds)),
   ]);
   const chart = await chartOf(tx, [...new Set(specs.map((spec) => spec.accountId))]);
-  const dimensionsOf = specs.map((spec) => {
+  const dimensionsOf = specs.map((spec, index) => {
     const lineValues = spec.dimensionValueIds.map((id) => values.get(id) as LineDimensionValue);
-    checkLineAgainstChart({
-      account: chart.get(spec.accountId),
-      currency: spec.currency,
-      dimensions: lineValues,
-      origin: 'manual',
-    });
+    onLine(index + 1, () =>
+      checkLineAgainstChart({
+        account: chart.get(spec.accountId),
+        currency: spec.currency,
+        dimensions: lineValues,
+        origin: 'manual',
+      }),
+    );
     return Object.fromEntries(lineValues.map((value) => [value.typeId, value.id])) as Dimensions;
   });
   const { rates, ids } = await ratesOn(tx, on);
@@ -638,6 +654,89 @@ async function dimensionSetOf(
 }
 
 /**
+ * The dates of a request: a manual date up to the end of the current month in Damascus
+ * (`ENTRY_DATE_OUT_OF_RANGE`), and no SYP amount before the new pound, in a ledger or on a line
+ * (ADR 0005 invariant 8).
+ */
+function checkDates(on: string, content: PostingContent, ledgers: CompanyLedgers): void {
+  checkManualEntryDate(on, content.today);
+  for (const [, ledger] of keptLedgers(ledgers)) checkCurrencyDate(ledger.currency, on);
+  if (content.kind === 'manual') {
+    for (const [index, line] of content.lines.entries()) {
+      onLine(index + 1, () => checkCurrencyDate(line.currency, on));
+    }
+  }
+}
+
+/** The lines of a request, checked and built by `packages/ledger`, with the rate rows they used. */
+async function buildLines(
+  tx: Transaction,
+  content: PostingContent,
+  on: string,
+  ledgers: CompanyLedgers,
+  daysOff: readonly number[],
+): Promise<{ lines: BuiltLine[]; rateIds: ReadonlyMap<ExchangeRate, string> }> {
+  return content.kind === 'manual'
+    ? manualLines(tx, content, on, ledgers, daysOff)
+    : { lines: await reversalLines(tx, content, on, ledgers), rateIds: new Map() };
+}
+
+/** A line as the preview shows it: as `post()` would store it, with its conversions. */
+export interface PreviewLine {
+  readonly lineNo: number;
+  readonly accountId: string;
+  readonly dimensionValueIds: readonly string[];
+  readonly kind: Line['kind'];
+  readonly ledger: Ledger | null;
+  readonly currency: CurrencyCode;
+  readonly amountMinor: bigint;
+  readonly bookMinor: bigint;
+  readonly parallelMinor: bigint | null;
+  readonly memo: string | null;
+  readonly conversions: readonly ChainConversion[];
+}
+
+/**
+ * The lines a request would post now (S03 rule 7), inside `withCompany`, built by the posting
+ * function's own code with no write and no lock: the dates, the period (`PERIOD_CLOSED` when its
+ * row is closed), the chart checks, the measurement, the realised differences and the rounding.
+ * It refuses as `post()` would; a refusal of one manual line names it in `details.lineNo`.
+ */
+export async function previewPosting(
+  tx: Transaction,
+  request: Pick<PostingRequest, 'entryDate' | 'content'>,
+): Promise<PreviewLine[]> {
+  const [settings] = await tx.select().from(companySettings);
+  if (!settings) throw new Error('A company without its settings');
+  const ledgers = ledgersOf(settings);
+  const on = request.entryDate;
+  const { content } = request;
+  checkDates(on, content, ledgers);
+  const period = periodOf(on);
+  const [periodRow] = await tx
+    .select({ state: periods.state })
+    .from(periods)
+    .where(eq(periods.period, period));
+  if (periodRow && periodRow.state !== 'open') {
+    refuse('PERIOD_CLOSED', `The period ${period} is closed`, { period });
+  }
+  const built = await buildLines(tx, content, on, ledgers, settings.bulletinDaysOff);
+  return built.lines.map(({ line, memo }, index) => ({
+    lineNo: index + 1,
+    accountId: line.account,
+    dimensionValueIds: Object.values(line.dimensions),
+    kind: line.kind,
+    ledger: line.kind === 'difference' || line.kind === 'rounding' ? line.ledger : null,
+    currency: line.transaction.currency,
+    amountMinor: line.transaction.amountMinor,
+    bookMinor: line.bookMinor,
+    parallelMinor: line.parallelMinor,
+    memo,
+    conversions: conversionsOf(line, built.rateIds, content.kind === 'manual'),
+  }));
+}
+
+/**
  * Posts an entry, inside `withCompany` (S03 rules 1–3), in the lock order of ADR 0008:
  * 1. the posting request: its key posted before with the same payload answers that entry and posts
  *    nothing; with another payload it is `IDEMPOTENCY_CONFLICT`; a reversal's key
@@ -685,12 +784,7 @@ export async function post(tx: Transaction, request: PostingRequest): Promise<Po
   const ledgers = ledgersOf(settings);
   const on = request.entryDate;
   const { content } = request;
-  checkManualEntryDate(on, content.today);
-  // No SYP amount before the new pound, in a ledger or on a line (ADR 0005 invariant 8).
-  for (const [, ledger] of keptLedgers(ledgers)) checkCurrencyDate(ledger.currency, on);
-  if (content.kind === 'manual') {
-    for (const line of content.lines) checkCurrencyDate(line.currency, on);
-  }
+  checkDates(on, content, ledgers);
   const fiscalYear = fiscalYearOf(on, settings.fiscalYearStartMonth);
   const period = periodOf(on);
   await tx
@@ -706,10 +800,7 @@ export async function post(tx: Transaction, request: PostingRequest): Promise<Po
     refuse('PERIOD_CLOSED', `The period ${period} is closed`, { period });
   }
 
-  const built =
-    content.kind === 'manual'
-      ? await manualLines(tx, content, on, ledgers, settings.bulletinDaysOff)
-      : { lines: await reversalLines(tx, content, on, ledgers), rateIds: new Map() };
+  const built = await buildLines(tx, content, on, ledgers, settings.bulletinDaysOff);
   const reversesEntryId = content.kind === 'reversal' ? content.entryId : null;
 
   const postedAt = await transactionTime(tx);

@@ -151,6 +151,22 @@ export const errorStatus = {
   ENTRY_DATE_OUT_OF_RANGE: 422,
   /** A manual line on a control account, whose lines S04's open items post (S03 rule 16). */
   ACCOUNT_IS_CONTROL: 422,
+  /** The draft is submitted, posted or discarded: it no longer changes this way (S03 rules 8, 11). */
+  DRAFT_NOT_EDITABLE: 409,
+  /** The draft changed since it was read: reload it before saving (S03 "API"). */
+  DRAFT_CHANGED: 409,
+  /** Approval of manual entries is on: submit the draft instead of posting it (S03 rule 8). */
+  APPROVAL_REQUIRED: 409,
+  /** Approval of manual entries is off: post the draft instead of submitting it (S03 rule 8). */
+  APPROVAL_NOT_REQUIRED: 409,
+  /** The approver prepared or submitted the draft (S03 rule 8). */
+  APPROVER_IS_PREPARER: 403,
+  /** An attachment that is not a PDF, PNG, JPEG or WebP by its first bytes (S03 rule 17). */
+  ATTACHMENT_TYPE: 422,
+  /** An attachment over 10 MB (S03 rule 17). */
+  ATTACHMENT_TOO_LARGE: 413,
+  /** The draft or entry has 20 attachments already (S03 rule 17). */
+  ATTACHMENT_LIMIT: 409,
 } as const satisfies Record<string, number>;
 
 export type ErrorCode = keyof typeof errorStatus;

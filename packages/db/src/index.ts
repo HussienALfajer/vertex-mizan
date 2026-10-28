@@ -26,7 +26,9 @@ export {
   type PostedEntryRef,
   type PostingContent,
   type PostingRequest,
+  type PreviewLine,
   post,
+  previewPosting,
 } from './posting/post.js';
 export {
   type EntryRef,

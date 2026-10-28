@@ -1,3 +1,5 @@
+import { isAbsolute, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 
 /** The role the API connects as (`packages/db/CLAUDE.md`). */
@@ -9,6 +11,16 @@ export const APP_ROLE = 'mizan_app';
  */
 export const EXAMPLE_AUTH_SECRET =
   'replace-with-node-e-console-log-crypto-randomBytes-32-base64url';
+
+/**
+ * Where files live outside production when `MIZAN_FILES_DIR` is unset: `.data/files/` at the
+ * repository root (git-ignored local data), the same from `src/` and `dist/`.
+ */
+export const DEVELOPMENT_FILES_DIR = resolve(
+  fileURLToPath(new URL('.', import.meta.url)),
+  '../../../../..',
+  '.data/files',
+);
 
 /**
  * The API's environment, checked once at start-up: a missing or malformed value stops the process
@@ -48,6 +60,15 @@ const configSchema = z
     LOG_LEVEL: z
       .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
       .default('info'),
+    /**
+     * The directory of attachments and exports (S03, ADR 0008 "Attachments"): on the server's
+     * disk, outside the web root, one folder per company, served only through the API. An
+     * absolute path; required in production.
+     */
+    MIZAN_FILES_DIR: z.string().refine(isAbsolute).optional(),
+  })
+  .refine((env) => env.NODE_ENV !== 'production' || env.MIZAN_FILES_DIR !== undefined, {
+    path: ['MIZAN_FILES_DIR'],
   })
   .transform((env) => ({
     databaseUrl: env.DATABASE_APP_URL,
@@ -57,6 +78,7 @@ const configSchema = z
     port: env.API_PORT,
     environment: env.NODE_ENV,
     logLevel: env.LOG_LEVEL,
+    filesDir: env.MIZAN_FILES_DIR ?? DEVELOPMENT_FILES_DIR,
   }));
 
 export type Config = z.output<typeof configSchema>;
