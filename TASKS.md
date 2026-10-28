@@ -36,7 +36,7 @@ Spec: `docs/specs/S03-journal-entries-posting.md` (Approved, owner 2026-10-28) Â
 - [x] web: `/entries`, `/entries/new` and `/drafts/:id` (the keyboard entry screen, live totals, dealt rates, the preview, attachments), `/drafts` (tabs and the approval queue), `/entries/:id`, `/accounts/:id/lines`, the rate row's entries in `/rates`, the approval switch in `/settings/company`, the command palette items; entry numbers and fiscal years labelled as the spec's "Periods" says (`2026/123`, or `2026-27/123` when a fiscal year spans two calendar years); `ar.entries`, `ar.drafts`, glossary terms
 - [x] e2e: the entry screen by keyboard only, the preview, approval, reversal, the entry page; RTL screenshots light and dark at 360, 768 and 1280 px, looked at
 - [x] wiring (Web), docs (`apps/web/CLAUDE.md`, `docs/glossary.md`, `docs/ROADMAP.md`)
-- [ ] checks and reviewer, PR with auto-merge and Auto-fix
+- [x] checks and reviewer, PR with auto-merge and Auto-fix
 
 ## PR 5 â€” The integrity and export screens (web, e2e)
 - [ ] web: `/integrity` (run, anchors, a pasted anchor), `/settings/export` (request with reauthentication, states, download), "run integrity check" in the command palette; `ar.integrity`, `ar.export`
