@@ -1,6 +1,7 @@
 import {
   type AmountTextError,
   type CurrencyCode,
+  entryTotals,
   type Ledger,
   money,
   summarizeAmounts,
@@ -25,13 +26,16 @@ import {
   ChangeList,
   type DateRange,
   DateRangeField,
+  Digest,
   DimensionPicker,
   type DimensionPickerOption,
+  EntryTotals,
   ErrorSummary,
   Field,
   FieldDescription,
   FieldError,
   FieldLabel,
+  FileUploadButton,
   Grid,
   type GridColumnDef,
   type GridProblem,
@@ -496,7 +500,9 @@ const keymapGroups: [string, KeymapAction[]][] = [
       'insertLine',
       'deleteLine',
       'lookup',
+      'addLine',
       'post',
+      'save',
     ],
   ],
   [ar.shortcuts.date, ['today']],
@@ -737,6 +743,48 @@ const sampleClients: DimensionPickerOption[] = [
   { id: 'c0', code: 'C-000', name: t.dimensionPicker.old, archived: true },
 ];
 
+/** The entry screen's pieces (S03): live totals per currency, a hash, attaching a file. */
+function EntryToolsSample() {
+  const [chosen, setChosen] = useState<string[]>([]);
+  // One balanced currency and one with a residual, from the grid's synthetic lines.
+  const totals = entryTotals([
+    ...gridLines.flatMap((line) =>
+      line.amount === null ? [] : [money(line.amount, line.currency)],
+    ),
+    money(-1n, 'USD'),
+  ]);
+  return (
+    <div className="grid gap-4 lg:grid-cols-2 [&>*]:min-w-0">
+      <EntryTotals totals={totals} labels={t.entryTools.totals} />
+      <div className="flex flex-col items-start gap-4">
+        <p className="flex flex-wrap items-center gap-2">
+          <span className="text-muted-foreground">{t.entryTools.hash}</span>
+          <Digest
+            value={'3f9a'.repeat(16)}
+            copyLabel={t.entryTools.copyHash}
+            copiedLabel={t.access.copied}
+          />
+        </p>
+        <FileUploadButton
+          label={t.entryTools.attach}
+          accept={['application/pdf', 'image/png', 'image/jpeg', 'image/webp']}
+          multiple
+          onFiles={(files) => setChosen(files.map((file) => file.name))}
+        />
+        {chosen.length > 0 && (
+          <ul className="text-muted-foreground">
+            {chosen.map((name) => (
+              <li key={name}>
+                <bdi>{name}</bdi>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function DimensionPickerSample() {
   const [client, setClient] = useState<string | null>('c1');
   const [rate, setRate] = useState<string | null>('120.0000');
@@ -879,6 +927,11 @@ export function DesignSystemPage() {
       <Section id="account-tree" title={t.accountTree.title}>
         <p className="text-muted-foreground">{t.accountTree.hint}</p>
         <AccountTreeSample />
+      </Section>
+
+      <Section id="entry-tools" title={t.entryTools.title}>
+        <p className="text-muted-foreground">{t.entryTools.hint}</p>
+        <EntryToolsSample />
       </Section>
 
       <Section id="dimension-picker" title={t.dimensionPicker.title}>

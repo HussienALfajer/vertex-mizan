@@ -47,6 +47,11 @@ export interface AmountColumn<Row> extends ColumnBase<Row> {
   currency(row: Row): CurrencyCode;
   /** `false` for magnitudes such as debit and credit columns (ADR 0009). */
   readonly allowNegative?: boolean;
+  /**
+   * The amount `=` alone puts in the cell when typed (an entry's balancing amount, S03), or null
+   * when nothing is to balance; without it, `=` alone is an empty expression.
+   */
+  balancingMinor?(row: Row): bigint | null;
 }
 
 export type GridColumn<Row> = TextColumn<Row> | AmountColumn<Row>;
@@ -68,6 +73,8 @@ export type CellProblem = { readonly row: number; readonly column: number } & (
   | { readonly reason: 'AMOUNT'; readonly error: AmountTextError }
   /** Filling an amount into a row of another currency would change what it means. */
   | { readonly reason: 'CURRENCY_MISMATCH' }
+  /** `=` typed where the column has no balancing amount, or the entry already balances. */
+  | { readonly reason: 'NOTHING_TO_BALANCE' }
 );
 
 /**
@@ -130,13 +137,17 @@ export function copyRange<Row>(
   return { tsv: toTsv(cells), html: toHtmlTable(cells) };
 }
 
-/** The edit text makes in one cell, or why it cannot. Empty text empties an amount. */
+/**
+ * The edit text makes in one cell, or why it cannot. Empty text empties an amount; `=` alone,
+ * typed (never pasted), takes the column's balancing amount.
+ */
 function editFromText<Row>(
   rows: Rows<Row>,
   columns: Columns<Row>,
   row: number,
   column: number,
   text: string,
+  typed = false,
 ): CellEdit | CellProblem {
   const definition = columns[column] as GridColumn<Row>;
   const data = rows[row] as Row;
@@ -148,6 +159,12 @@ function editFromText<Row>(
       : { row, column, reason: 'TEXT', error };
   }
   if (text.trim() === '') return { row, column, type: 'amount', amountMinor: null };
+  if (typed && text.trim() === '=' && definition.balancingMinor) {
+    const amountMinor = definition.balancingMinor(data);
+    return amountMinor === null
+      ? { row, column, reason: 'NOTHING_TO_BALANCE' }
+      : { row, column, type: 'amount', amountMinor };
+  }
   const parsed = parseAmount(text, definition.currency(data), {
     allowNegative: definition.allowNegative ?? true,
   });
@@ -170,7 +187,7 @@ export function planCellEdit<Row>(
   { row, column }: CellPosition,
   text: string,
 ): EditPlan {
-  return plan([editFromText(rows, columns, row, column, text)], {
+  return plan([editFromText(rows, columns, row, column, text, true)], {
     firstRow: row,
     lastRow: row,
     firstColumn: column,

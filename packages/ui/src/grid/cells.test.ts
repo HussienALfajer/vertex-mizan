@@ -289,6 +289,47 @@ describe('planCellEdit', () => {
   });
 });
 
+describe('a balancing amount', () => {
+  const balancing: GridColumn<Line>[] = [
+    {
+      id: 'amount',
+      type: 'amount',
+      kind: 'transaction',
+      valueMinor: (line) => line.amount,
+      currency: (line) => line.currency,
+      allowNegative: false,
+      balancingMinor: (line) => (line.currency === 'USD' ? 4950n : null),
+    },
+  ];
+
+  it('takes the column’s balancing amount when `=` alone is typed', () => {
+    expect(planCellEdit(lines, balancing, at(1, 0), ' = ')).toEqual({
+      ok: true,
+      edits: [{ row: 1, column: 0, type: 'amount', amountMinor: 4950n }],
+      range: { firstRow: 1, lastRow: 1, firstColumn: 0, lastColumn: 0 },
+    });
+    expect(planCellEdit(lines, balancing, at(2, 0), '=')).toEqual({
+      ok: false,
+      problem: 'INVALID_CELLS',
+      cells: [{ row: 2, column: 0, reason: 'NOTHING_TO_BALANCE' }],
+    });
+    // An expression is still an expression, and a pasted `=` is never a balancing amount.
+    expect(planCellEdit(lines, balancing, at(1, 0), '=2*3')).toMatchObject({
+      ok: true,
+      edits: [{ amountMinor: 600n }],
+    });
+    expect(planPaste(lines, balancing, selectCell(at(1, 0)), '=')).toMatchObject({
+      ok: false,
+      cells: [{ reason: 'AMOUNT', error: 'EMPTY' }],
+    });
+    // Without a balancing amount, `=` alone is an empty expression.
+    expect(planCellEdit(lines, columns, at(1, 1), '=')).toMatchObject({
+      ok: false,
+      cells: [{ reason: 'AMOUNT', error: 'EMPTY' }],
+    });
+  });
+});
+
 describe('planClear', () => {
   it('empties the selected cells, and refuses when any is locked', () => {
     expect(planClear(lines, columns, range(at(1, 0), at(1, 1)))).toEqual({

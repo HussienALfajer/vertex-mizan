@@ -18,6 +18,18 @@ const move = (name: string, extend = false): GridCommand => ({
 });
 
 describe('gridCommand', () => {
+  it('moves Enter down a column, or along the line of an entry grid', () => {
+    expect(gridCommand(press({ key: 'Enter' }), 'rtl', 'other')).toEqual(move('down'));
+    expect(gridCommand(press({ key: 'Enter', shiftKey: true }), 'rtl', 'other')).toEqual(
+      move('up'),
+    );
+    const along = { enterMoves: 'next' } as const;
+    expect(gridCommand(press({ key: 'Enter' }), 'rtl', 'other', along)).toEqual(move('next'));
+    expect(gridCommand(press({ key: 'Enter', shiftKey: true }), 'ltr', 'other', along)).toEqual(
+      move('previous'),
+    );
+  });
+
   it('moves visually: Left is the next column in RTL and the previous one in LTR', () => {
     expect(gridCommand(press({ key: 'ArrowLeft' }), 'rtl', 'other')).toEqual(move('forward'));
     expect(gridCommand(press({ key: 'ArrowRight' }), 'rtl', 'other')).toEqual(move('backward'));

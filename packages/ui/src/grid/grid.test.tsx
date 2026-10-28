@@ -9,7 +9,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { keymap } from '../lib/keymap';
 import { matchesShortcut } from '../lib/shortcuts';
 import type { CellEdit } from './cells';
-import { Grid, type GridColumnDef, type GridProblem } from './grid';
+import { Grid, type GridColumnDef, type GridProblem, gridCellOf } from './grid';
 
 afterEach(cleanup);
 
@@ -73,12 +73,16 @@ const ids = ['account', 'amount', 'parallel'] as const;
 function Harness({
   direction = 'rtl',
   editable = true,
+  enterMoves,
   onEdit = () => {},
   onEditError = () => {},
   onPost = () => {},
+  onLookup = () => {},
 }: {
   direction?: 'rtl' | 'ltr';
   editable?: boolean;
+  enterMoves?: 'down' | 'next';
+  onLookup?: (cell: ReturnType<typeof gridCellOf>) => void;
   onEdit?: (edits: readonly CellEdit[]) => void;
   onEditError?: (problem: GridProblem | null) => void;
   onPost?: (lines: readonly Line[]) => void;
@@ -106,6 +110,8 @@ function Harness({
   const onKeyDown = (event: React.KeyboardEvent) => {
     if (matchesShortcut(event.nativeEvent, keymap.post, 'other')) onPost(lines);
     if (matchesShortcut(event.nativeEvent, keymap.insertLine, 'other')) insertFirst();
+    if (matchesShortcut(event.nativeEvent, keymap.lookup, 'other'))
+      onLookup(gridCellOf(event.target));
   };
   return (
     <DirectionProvider direction={direction}>
@@ -126,6 +132,7 @@ function Harness({
           describeProblem={problemText}
           summaryLabels={ar.grid.summary}
           stickyStartColumn
+          {...(enterMoves ? { enterMoves } : {})}
         />
       </div>
     </DirectionProvider>
@@ -255,6 +262,34 @@ describe('Grid', () => {
     expect(document.activeElement).toBe(cell(2, 1));
   });
 
+  it('moves Enter along the line in an entry grid, in navigation and after an edit', () => {
+    render(<Harness enterMoves="next" />);
+    focusCell(1, 0);
+    press('Enter');
+    expect(document.activeElement).toBe(cell(1, 1));
+    press('3');
+    fireEvent.keyDown(editor(), { key: 'Enter' });
+    expect(cell(1, 1).textContent).toBe('3.00');
+    expect(document.activeElement).toBe(cell(1, 2));
+    // The last cell of a line goes on to the first of the next.
+    press('Enter');
+    expect(document.activeElement).toBe(cell(2, 0));
+    press('Enter', { shiftKey: true });
+    expect(document.activeElement).toBe(cell(1, 2));
+  });
+
+  it('names the cell a lookup key came from, even from its editor', () => {
+    const onLookup = vi.fn();
+    render(<Harness onLookup={onLookup} />);
+    focusCell(2, 0);
+    press('ArrowDown', { altKey: true });
+    expect(onLookup).toHaveBeenLastCalledWith({ row: 2, column: 0 });
+    press('F2');
+    fireEvent.keyDown(editor(), { key: 'ArrowDown', altKey: true });
+    expect(onLookup).toHaveBeenLastCalledWith({ row: 2, column: 0 });
+    expect(gridCellOf(document.body)).toBeNull();
+  });
+
   it('edits with F2 from the grouped amount, and Escape cancels without an edit', () => {
     const onEdit = vi.fn();
     render(<Harness onEdit={onEdit} />);
@@ -322,20 +357,20 @@ describe('Grid', () => {
     expect(onEditError).toHaveBeenCalledTimes(2);
   });
 
-  it('commits before Post (Ctrl+Enter), which reaches the app only with the edited rows', () => {
+  it('commits before Post (Ctrl+Shift+Enter), which reaches the app only with the edited rows', () => {
     const onEditError = vi.fn();
     const onPost = vi.fn();
     render(<Harness onEditError={onEditError} onPost={onPost} />);
     focusCell(0, 1);
     press('F2');
     fireEvent.change(editor(), { target: { value: '12.345' } });
-    fireEvent.keyDown(editor(), { key: 'Enter', ctrlKey: true });
+    fireEvent.keyDown(editor(), { key: 'Enter', ctrlKey: true, shiftKey: true });
     // Refused text stops Post, already reported.
     expect(onPost).not.toHaveBeenCalled();
     expect(onEditError).toHaveBeenLastCalledWith(expect.objectContaining({ ok: false }));
     expect(editor().value).toBe('12.345');
     fireEvent.change(editor(), { target: { value: '12.34' } });
-    fireEvent.keyDown(editor(), { key: 'Enter', ctrlKey: true });
+    fireEvent.keyDown(editor(), { key: 'Enter', ctrlKey: true, shiftKey: true });
     expect(onEditError).toHaveBeenLastCalledWith(null);
     expect(onPost).toHaveBeenCalledTimes(1);
     // The app posts the lines it rendered after the edit, never the old ones.
@@ -377,7 +412,7 @@ describe('Grid', () => {
     focusCell(0, 1);
     press('F2');
     fireEvent.change(editor(), { target: { value: '30' } });
-    fireEvent.keyDown(editor(), { key: 'Enter', ctrlKey: true });
+    fireEvent.keyDown(editor(), { key: 'Enter', ctrlKey: true, shiftKey: true });
     expect(grid().querySelectorAll('[data-slot="grid-cell"]')).toHaveLength(0);
     fireEvent.click(screen.getByRole('button', { name: 'reload' }));
     expect(grid().querySelectorAll('[data-slot="grid-cell"]')).toHaveLength(6);
