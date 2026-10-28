@@ -1,43 +1,10 @@
-import type { Company, CompanyLedgers, CurrencyCode, RateType } from '@vertex-mizan/contracts';
-import type { companies, companySettings } from '@vertex-mizan/db';
+import type { Company } from '@vertex-mizan/contracts';
+import { type companies, type companySettings, ledgersOf } from '@vertex-mizan/db';
+
+export { ledgerColumns, ledgersOf } from '@vertex-mizan/db';
 
 type CompanyRow = typeof companies.$inferSelect;
 type SettingsRow = typeof companySettings.$inferSelect;
-
-/** The settings columns of a company's ledgers (ADR 0007), as stored. */
-export function ledgerColumns(ledgers: CompanyLedgers) {
-  return {
-    bookCurrency: ledgers.book.currency,
-    bookRateType: ledgers.book.ratePolicy.rateType,
-    bookAcceptsTransactionRate: ledgers.book.ratePolicy.acceptsTransactionRate,
-    parallelCurrency: ledgers.parallel?.currency ?? null,
-    parallelRateType: ledgers.parallel?.ratePolicy.rateType ?? null,
-    parallelAcceptsTransactionRate: ledgers.parallel?.ratePolicy.acceptsTransactionRate ?? null,
-  };
-}
-
-/** The ledgers as `companyLedgersSchema` reads them; the database checks keep the columns whole. */
-export function ledgersOf(settings: SettingsRow): CompanyLedgers {
-  return {
-    book: {
-      currency: settings.bookCurrency as CurrencyCode,
-      ratePolicy: {
-        rateType: settings.bookRateType as RateType,
-        acceptsTransactionRate: settings.bookAcceptsTransactionRate,
-      },
-    },
-    parallel:
-      settings.parallelCurrency && settings.parallelRateType
-        ? {
-            currency: settings.parallelCurrency as CurrencyCode,
-            ratePolicy: {
-              rateType: settings.parallelRateType as RateType,
-              acceptsTransactionRate: settings.parallelAcceptsTransactionRate ?? false,
-            },
-          }
-        : null,
-  };
-}
 
 /** A company as the API answers it (`companySchema`). */
 export function companyOf(company: CompanyRow, settings: SettingsRow): Company {

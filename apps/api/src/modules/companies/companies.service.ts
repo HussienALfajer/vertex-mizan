@@ -8,6 +8,7 @@ import type {
 import {
   companies,
   companySettings,
+  createCompanyBooks,
   type Database,
   invitations,
   memberships,
@@ -19,15 +20,9 @@ import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import { actorOf, type CompanyRouteAccess, type SignedInAccess } from '../../core/access/access.js';
 import { lockCompanyForWrite } from '../../core/access/company-lock.js';
-import {
-  type AuditActor,
-  changedFields,
-  writeCompanyAudit,
-  writePlatformAudit,
-} from '../../core/audit/audit.js';
+import { type AuditActor, changedFields, writeCompanyAudit } from '../../core/audit/audit.js';
 import { DATABASE } from '../../core/database/database.module.js';
 import { CodedException } from '../../core/errors/coded-exception.js';
-import { applyChartTemplate } from '../chart/chart-shape.js';
 import { auditedLedgerFields, companyOf, ledgerColumns } from './company-shape.js';
 
 /** Companies (S01 rules 9–13): creation, profile, ledger settings with their lock, archive. */
@@ -37,51 +32,31 @@ export class CompaniesService {
 
   /**
    * `POST /api/companies`: a new company whose creator becomes its owner (rule 9), in one
-   * transaction with its settings (whose insert makes the five root accounts and the built-in
-   * dimension types), the chart template chosen (S02 rule 1), the owner's membership and both
-   * audit logs.
+   * transaction with its books (`createCompanyBooks`: the settings, whose insert makes the five
+   * root accounts, the built-in dimension types and the ledger head, and the chart template chosen,
+   * S02 rule 1), the owner's membership and both audit logs.
    */
   async create(access: SignedInAccess, input: CreateCompany): Promise<Company> {
     const actor = actorOf(access);
     const companyId = uuidv7();
     return withCompany(this.db, companyId, async (tx) => {
-      const [company] = await tx
-        .insert(companies)
-        .values({
-          id: companyId,
-          name: input.name,
-          nameLatin: input.nameLatin,
-          createdByUserId: access.person.id,
-        })
-        .returning();
-      const [settings] = await tx
-        .insert(companySettings)
-        .values({
-          companyId,
-          ...ledgerColumns(input.ledgers),
-          fiscalYearStartMonth: input.fiscalYearStartMonth,
-          policyNote: input.policyNote,
-        })
-        .returning();
+      const { company, settings } = await createCompanyBooks(
+        tx,
+        companyId,
+        { ...input, createdByUserId: access.person.id },
+        actor,
+      );
       const [membership] = await tx
         .insert(memberships)
         .values({ userId: access.person.id, scopeCompanyId: companyId, role: 'owner' })
         .returning({ id: memberships.id });
-      if (!company || !settings || !membership) throw new Error('The company was not created');
-      await writePlatformAudit(tx, {
-        action: 'company.created',
-        actor,
-        subjectCompanyId: companyId,
-      });
+      if (!membership) throw new Error('The company was not created');
       await writeCompanyAudit(tx, companyId, actor, {
         action: 'membership.created',
         entityType: 'membership',
         entityId: membership.id,
         after: { userId: access.person.id, role: 'owner', canClosePeriods: false },
       });
-      if (input.template !== null) {
-        await applyChartTemplate(tx, companyId, input.template, actor);
-      }
       return companyOf(company, settings);
     });
   }

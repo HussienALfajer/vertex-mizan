@@ -87,6 +87,25 @@ export const fixtureLines = pgTable(
   ],
 );
 
+/**
+ * A company ledger-state table: a counter the app role adds and moves, never deletes, through a
+ * guard that lets it move by one only (ADR 0012).
+ */
+export const fixtureCounters = pgTable(
+  'fixture_counters',
+  {
+    id: id(),
+    companyId: companyId(),
+    lastNumber: integer().notNull(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    idIsUuidV7('fixture_counters', t.id),
+    unique('fixture_counters_company_id_key').on(t.companyId),
+  ],
+);
+
 /** A platform business table: no company scope. */
 export const fixtureSettings = pgTable(
   'fixture_settings',
