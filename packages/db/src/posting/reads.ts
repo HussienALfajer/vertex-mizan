@@ -1,6 +1,6 @@
 import type { CurrencyCode, Ledger, RateSource, RateType } from '@vertex-mizan/contracts';
 import type { ChainConversion, ChainEntry, ChainLine, EntrySource } from '@vertex-mizan/ledger';
-import { asc, sql } from 'drizzle-orm';
+import { asc, eq, sql } from 'drizzle-orm';
 import type { Transaction } from '../client.js';
 import {
   dimensionSets,
@@ -190,4 +190,39 @@ export async function readPeriodBalances(tx: Transaction): Promise<PeriodTotals[
       lineCount: row.lineCount,
     }))
     .sort(byKey);
+}
+
+/** A posted entry, as a list names it. */
+export interface EntryRef {
+  readonly id: string;
+  readonly sequence: bigint;
+  readonly fiscalYear: number;
+  readonly number: number;
+  readonly entryDate: string;
+}
+
+/**
+ * The entries whose conversions used a rate row (S02 rule 15), in posting order: what a correction
+ * of that row lists for the accountant to judge. A reversal carries amounts, so it never appears.
+ */
+export async function entriesUsingRate(tx: Transaction, rateId: string): Promise<EntryRef[]> {
+  return tx
+    .selectDistinct({
+      id: journalEntries.id,
+      sequence: journalEntries.sequence,
+      fiscalYear: journalEntries.fiscalYear,
+      number: journalEntries.number,
+      entryDate: journalEntries.entryDate,
+    })
+    .from(lineConversions)
+    .innerJoin(
+      journalLines,
+      sql`${journalLines.companyId} = ${lineConversions.companyId} and ${journalLines.id} = ${lineConversions.lineId}`,
+    )
+    .innerJoin(
+      journalEntries,
+      sql`${journalEntries.companyId} = ${journalLines.companyId} and ${journalEntries.id} = ${journalLines.entryId}`,
+    )
+    .where(eq(lineConversions.rateId, rateId))
+    .orderBy(asc(journalEntries.sequence));
 }

@@ -29,6 +29,8 @@ export {
   post,
 } from './posting/post.js';
 export {
+  type EntryRef,
+  entriesUsingRate,
   type PeriodTotals,
   readChain,
   readPeriodBalances,

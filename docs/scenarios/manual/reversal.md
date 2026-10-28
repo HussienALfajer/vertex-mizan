@@ -1,8 +1,8 @@
 # The reversal of a manual entry
 
-Status: Proposed
+Status: Approved (owner, 2026-10-28)
 
-The expected entries were approved by the owner on 2026-10-28. The file stays `Proposed` until S03 registers the setup, the ledger reader and the `manual` and `reversal` executors the runner needs; the PR that does so marks it `Approved (owner, 2026-10-28)` without changing an expected value. Until then `packages/ledger`'s `adr-0007.examples.test.ts` builds every case with `manualEntryLines()`, `balanceEntry()` and `manualReversalLines()`.
+The expected entries were approved by the owner on 2026-10-28. The book runs every case through the posting function since S03 brought the setup, the ledger reader and the step executors, with no expected value changed; `packages/ledger`'s `adr-0007.examples.test.ts` builds them too.
 
 ## Rule
 

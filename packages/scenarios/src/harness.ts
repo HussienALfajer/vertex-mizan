@@ -9,6 +9,8 @@ import type {
   StepKind,
 } from './format.js';
 
+import { ledger, manual, rate, reversal, setUp } from './system.js';
+
 /**
  * The run's fresh database as the runtime roles reach it, the way the API and the worker connect
  * (`createDatabase`). The runner never hands out the owner: a case runs through what the system
@@ -90,5 +92,12 @@ export type ScenarioHarness = {
   ledger?: LedgerReader;
 };
 
-/** The harness the book runs with. Nothing is registered until S03. */
-export const bookHarness: ScenarioHarness = { executors: {} };
+/**
+ * The harness the book runs with: S03's company setup, ledger reader and `manual`, `reversal` and
+ * `rate` executors (`system.ts`); `event` joins with S05, `job` with S07.
+ */
+export const bookHarness: ScenarioHarness = {
+  setUp,
+  executors: { manual, reversal, rate },
+  ledger,
+};

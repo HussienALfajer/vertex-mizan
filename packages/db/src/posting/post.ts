@@ -99,7 +99,10 @@ export type PostingContent =
 export interface PostingRequest {
   /** `manual`, `system`, or an API client's id (S05). */
   readonly client: string;
-  /** A manual entry's draft id; a reversal's `reversal:<entry id>`. */
+  /**
+   * A manual entry's draft id; a reversal's `reversal:<entry id>`, so an entry's second reversal
+   * finds the first one's key and is refused.
+   */
   readonly idempotencyKey: string;
   readonly entryDate: string;
   /** البيان, 1–500 characters. */
@@ -637,7 +640,8 @@ async function dimensionSetOf(
 /**
  * Posts an entry, inside `withCompany` (S03 rules 1–3), in the lock order of ADR 0008:
  * 1. the posting request: its key posted before with the same payload answers that entry and posts
- *    nothing; with another payload it is `IDEMPOTENCY_CONFLICT`;
+ *    nothing; with another payload it is `IDEMPOTENCY_CONFLICT`; a reversal's key
+ *    (`reversal:<entry id>`) posted before is `ENTRY_ALREADY_REVERSED`;
  * 2. the company's ledger head `FOR UPDATE`, then its settings row `FOR UPDATE`;
  * 3. a manual date up to the end of the current month (`ENTRY_DATE_OUT_OF_RANGE`), then the
  *    period of the entry date, made open when missing, `FOR SHARE` (`PERIOD_CLOSED`);
@@ -664,7 +668,16 @@ export async function post(tx: Transaction, request: PostingRequest): Promise<Po
       target: [postingRequests.companyId, postingRequests.client, postingRequests.idempotencyKey],
     })
     .returning({ id: postingRequests.id });
-  if (!created) return replay(tx, request, payloadHash);
+  if (!created) {
+    // A reversal's key is its original's: a second reversal, at once or later, is refused rather
+    // than answered as the first (S03 rule 9, edge case 13; scenario manual/reversal).
+    if (request.content.kind === 'reversal') {
+      refuse('ENTRY_ALREADY_REVERSED', 'The entry has a reversal already', {
+        entryId: request.content.entryId,
+      });
+    }
+    return replay(tx, request, payloadHash);
+  }
 
   const [head] = await tx.select().from(ledgerHeads).for('update');
   const [settings] = await tx.select().from(companySettings).for('update');

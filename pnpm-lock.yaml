@@ -527,6 +527,12 @@ importers:
       '@vertex-mizan/db':
         specifier: workspace:*
         version: link:../db
+      drizzle-orm:
+        specifier: 0.45.4
+        version: 0.45.4(@opentelemetry/api@1.10.0)(@types/pg@8.23.1)(kysely@0.29.7)(pg@8.23.1)
+      uuid:
+        specifier: 14.0.3
+        version: 14.0.3
       yaml:
         specifier: 2.9.1
         version: 2.9.1

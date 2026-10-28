@@ -298,10 +298,15 @@ describe('the posting function, as properties (ADR 0005)', () => {
             expect(verifyChain(broken)).toEqual({ index, reason: 'hash' });
           }
         }
-        // A replay of every request answers its entry and posts nothing (invariant 5).
+        // A replay of every request answers its entry and posts nothing (invariant 5); a
+        // reversal's again is a second reversal, refused (S03 rule 9).
         for (const [index, request] of requests.entries()) {
-          const again = await withCompany(app, company, (tx) => post(tx, request));
-          expect(again).toEqual({ ...posted[index]?.ref, replayed: true });
+          const again = withCompany(app, company, (tx) => post(tx, request));
+          if (request.content.kind === 'reversal') {
+            await expect(again).rejects.toMatchObject({ code: 'ENTRY_ALREADY_REVERSED' });
+          } else {
+            expect(await again).toEqual({ ...posted[index]?.ref, replayed: true });
+          }
         }
         const after = await withCompany(app, company, (tx) => tx.select().from(journalEntries));
         expect(after).toHaveLength(state.entries.length);

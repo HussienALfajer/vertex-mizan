@@ -624,10 +624,10 @@ describe('post(): reversals (S03 rule 9)', () => {
     const first = await postManual(company, entry);
     const second = await postManual(company, { ...entry, on: '2026-11-20' });
     const reversal = await reverse(company, first.id, '2026-11-25');
-    // The reversal's key is `reversal:<entry id>`: the same request again answers the reversal,
-    // another under that key is a conflict, and a reversal under another key is refused.
-    expect(await reverse(company, first.id, '2026-11-25')).toEqual({ ...reversal, replayed: true });
-    expect(await code(reverse(company, first.id, '2026-11-26'))).toBe('IDEMPOTENCY_CONFLICT');
+    // The reversal's key is `reversal:<entry id>`: the same request again, or another under that
+    // key, is a second reversal, refused; so is one under another key (the entry is reversed).
+    expect(await code(reverse(company, first.id, '2026-11-25'))).toBe('ENTRY_ALREADY_REVERSED');
+    expect(await code(reverse(company, first.id, '2026-11-26'))).toBe('ENTRY_ALREADY_REVERSED');
     expect(
       await code(
         inCompany(company, (tx) =>
