@@ -28,7 +28,7 @@ Spec: `docs/specs/S03-journal-entries-posting.md` (Approved, owner 2026-10-28) Â
 - [x] api: `POST /api/integrity/check`, the export routes (`@Reauthenticated` request, list, download, `LINK_INVALID` once expired)
 - [x] worker: `ledger.daily-anchor`, `company.export`, `company.export-expire`, each safe to run twice
 - [x] bridge: OpenAPI regenerated, breaking-change check
-- [ ] wiring, docs (`apps/worker/CLAUDE.md`, `packages/db/CLAUDE.md`, `docs/ROADMAP.md`)
+- [x] wiring, docs (`apps/worker/CLAUDE.md`, `packages/db/CLAUDE.md`, `docs/ROADMAP.md`)
 - [ ] checks and reviewers (`reviewer`, `accountant-reviewer`), PR with auto-merge and Auto-fix
 
 ## PR 4 â€” The entry screens (ui, web, e2e)
