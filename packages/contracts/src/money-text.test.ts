@@ -2,7 +2,13 @@ import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import { CURRENCY_CODES } from './money.js';
 import { MINOR_MAX, MINOR_MIN } from './money-arithmetic.js';
-import { summarizeAmounts } from './money-summary.js';
+import {
+  balancingAmount,
+  debitCreditOf,
+  entryTotals,
+  signedAmount,
+  summarizeAmounts,
+} from './money-summary.js';
 import { amountParts, evaluateAmount, formatMinor, parseAmount } from './money-text.js';
 
 const ok = (amountMinor: bigint) => ({ ok: true, amountMinor });
@@ -210,6 +216,58 @@ describe('summarizeAmounts', () => {
         expect(summary && summary.averageMinor >= summary.minMinor).toBe(true);
         expect(summary && summary.averageMinor <= summary.maxMinor).toBe(true);
       }),
+    );
+  });
+});
+
+describe('entry totals', () => {
+  it('splits a signed amount into debit and credit magnitudes, and back', () => {
+    expect(debitCreditOf(1250n)).toEqual({ debitMinor: 1250n, creditMinor: null });
+    expect(debitCreditOf(-1250n)).toEqual({ debitMinor: null, creditMinor: 1250n });
+    expect(debitCreditOf(null)).toEqual({ debitMinor: null, creditMinor: null });
+    expect(signedAmount('debit', 1250n)).toBe(1250n);
+    expect(signedAmount('credit', 1250n)).toBe(-1250n);
+  });
+
+  it('totals each currency apart, with its residual', () => {
+    expect(
+      entryTotals([
+        { amountMinor: 10_000n, currency: 'USD' },
+        { amountMinor: -1_225_000n, currency: 'SYP' },
+        { amountMinor: 1_225_000n, currency: 'SYP' },
+        { amountMinor: -9_999n, currency: 'USD' },
+      ]),
+    ).toEqual([
+      { currency: 'USD', debitMinor: 10_000n, creditMinor: 9_999n, residualMinor: 1n },
+      { currency: 'SYP', debitMinor: 1_225_000n, creditMinor: 1_225_000n, residualMinor: 0n },
+    ]);
+    expect(entryTotals([])).toEqual([]);
+  });
+
+  it('balances a currency with the negated sum of its other lines (property)', () => {
+    const line = fc.record({
+      amountMinor: fc.bigInt({ min: -(10n ** 15n), max: 10n ** 15n }),
+      currency: fc.constantFrom(...CURRENCY_CODES),
+    });
+    fc.assert(
+      fc.property(
+        fc.array(line, { maxLength: 20 }),
+        fc.constantFrom(...CURRENCY_CODES),
+        (others, currency) => {
+          const balancing = balancingAmount(others, currency);
+          const [totals] = entryTotals([
+            ...others.filter((other) => other.currency === currency),
+            { amountMinor: balancing, currency },
+          ]);
+          expect(totals?.residualMinor).toBe(0n);
+          const { debitMinor, creditMinor } = debitCreditOf(balancing);
+          expect(
+            debitMinor !== null
+              ? signedAmount('debit', debitMinor)
+              : signedAmount('credit', creditMinor ?? 0n),
+          ).toBe(balancing);
+        },
+      ),
     );
   });
 });

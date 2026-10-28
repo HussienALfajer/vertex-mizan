@@ -110,6 +110,9 @@ One name per concept. Code, contracts and tables use the English term; the Arabi
 | فحص السلامة | integrity check | Recomputing the chain, numbers, balances and period balances, and comparing them with the anchors |
 | تصدير بيانات الشركة | company export | The owner's full ZIP copy of a company's data, attachments and chain head |
 | مرساة السلسلة | chain anchor | The daily chain head emailed to the owner, outside the server |
+| بصمة القيد | entry hash | The SHA-256 of an entry with the previous entry's hash; shown by its first 12 characters, copied whole |
+| شرح السطر | line memo | An optional note on one line of an entry, beside the entry's description |
+| مجاميع القيد | entry totals | Debits, credits and the difference of each transaction currency while an entry is typed |
 | سند | voucher | A receipt or payment document that produces an entry (phase 2) |
 | شيك / شيك مؤجل | cheque / post-dated cheque | A cheque, or one dated in the future (phase 2 or later) |
 | أوراق قبض / أوراق دفع | notes receivable / notes payable | Cheques and bills held or issued until due (phase 2 or later) |

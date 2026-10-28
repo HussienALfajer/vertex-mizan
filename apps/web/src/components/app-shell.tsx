@@ -15,6 +15,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  keymap,
   type PaletteCommand,
   PoweredBy,
   Sheet,
@@ -24,17 +25,21 @@ import {
   setDensity,
   setTheme,
   ThemeToggle,
+  useShortcut,
   VertexMizanMark,
 } from '@vertex-mizan/ui';
 import {
   ArchiveIcon,
   ArrowLeftIcon,
   ArrowLeftRightIcon,
+  BookOpenIcon,
   BuildingIcon,
   CalendarDaysIcon,
   CheckIcon,
   ChevronDownIcon,
+  FilePenLineIcon,
   FolderTreeIcon,
+  HashIcon,
   HouseIcon,
   KeyRoundIcon,
   LandmarkIcon,
@@ -80,6 +85,8 @@ const navItems: NavItem[] = [
     permission: 'accounts.read',
   },
   { to: '/dimensions', label: ar.dimensions.nav, icon: TagsIcon, permission: 'dimensions.read' },
+  { to: '/entries', label: ar.entries.nav, icon: BookOpenIcon, permission: 'entries.read' },
+  { to: '/drafts', label: ar.drafts.nav, icon: FilePenLineIcon, permission: 'drafts.read' },
   {
     to: '/rates',
     label: ar.rates.nav,
@@ -211,6 +218,11 @@ function Sidebar({ me, onNavigate }: { me: Me | null | undefined; onNavigate?: (
 function TopBar({ me }: { me: Me | null | undefined }) {
   const [navOpen, setNavOpen] = useState(false);
   const commands = useShellCommands(me);
+  const router = useRouter();
+  // Alt+N anywhere: a new manual entry (ADR 0010 §4), for those who prepare entries.
+  useShortcut(keymap.newEntry, () => void router.navigate({ to: '/entries/new' }), {
+    enabled: me ? can(me, 'drafts.manage') : false,
+  });
   return (
     <header className="sticky top-0 z-40 flex h-14 items-center justify-between gap-3 border-b border-border bg-surface px-4 md:px-8">
       <div className="flex shrink-0 items-center gap-2 md:hidden">
@@ -256,6 +268,43 @@ function useShellCommands(me: Me | null | undefined): PaletteCommand[] {
             keywords: ['new account', 'chart'],
             icon: <PlusIcon />,
             run: () => void router.navigate({ to: '/chart', search: { new: true } }),
+          },
+        ]
+      : []),
+    ...(me && can(me, 'drafts.manage')
+      ? [
+          {
+            id: 'new-entry',
+            label: ar.entries.newEntry,
+            group: t.palette.navigation,
+            keywords: ['new entry', 'journal entry', 'قيد يومية'],
+            shortcut: keymap.newEntry,
+            icon: <PlusIcon />,
+            run: () => void router.navigate({ to: '/entries/new' }),
+          },
+        ]
+      : []),
+    ...(me && can(me, 'entries.read')
+      ? [
+          {
+            id: 'entry-number',
+            label: ar.entries.goToNumber,
+            group: t.palette.navigation,
+            keywords: ['entry number', 'رقم القيد'],
+            icon: <HashIcon />,
+            run: () => void router.navigate({ to: '/entries', search: { find: 'number' } }),
+          },
+        ]
+      : []),
+    ...(me && can(me, 'entries.approve')
+      ? [
+          {
+            id: 'awaiting-approval',
+            label: ar.drafts.awaitingApproval,
+            group: t.palette.navigation,
+            keywords: ['approval', 'اعتماد'],
+            icon: <FilePenLineIcon />,
+            run: () => void router.navigate({ to: '/drafts', search: { view: 'awaiting' } }),
           },
         ]
       : []),

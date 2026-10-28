@@ -23,5 +23,6 @@ export const grid = {
     NOTHING_TO_FILL: 'لا يوجد صف فوق التحديد للتعبئة منه.',
     READ_ONLY: 'هذه الخلية لا تقبل التعديل.',
     CURRENCY_MISMATCH: 'لا يُنسخ مبلغ إلى سطر بعملة أخرى.',
+    NOTHING_TO_BALANCE: 'لا يوجد فرق يوازنه هذا الحقل.',
   },
 };

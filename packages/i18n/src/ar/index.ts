@@ -7,7 +7,9 @@ import { common } from './common.js';
 import { company } from './company.js';
 import { designSystem } from './design-system.js';
 import { dimensions } from './dimensions.js';
+import { drafts } from './drafts.js';
 import { email } from './email.js';
+import { entries } from './entries.js';
 import { errors } from './errors.js';
 import { grid } from './grid.js';
 import { members } from './members.js';
@@ -37,6 +39,8 @@ export const ar = {
   chart,
   dimensions,
   rates,
+  entries,
+  drafts,
 };
 
 export type Catalog = typeof ar;

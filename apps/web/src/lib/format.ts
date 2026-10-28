@@ -97,3 +97,40 @@ export function addDays(day: string, days: number): string {
 export function isoWeekday(day: string): 1 | 2 | 3 | 4 | 5 | 6 | 7 {
   return (new Date(`${day}T00:00:00Z`).getUTCDay() || 7) as 1 | 2 | 3 | 4 | 5 | 6 | 7;
 }
+
+/**
+ * An entry's number as accountants read it (S03 "Periods"): the fiscal year and the number,
+ * `2026/123`, or `2026-27/123` when the company's fiscal year spans two calendar years.
+ */
+export function formatEntryNumber(
+  { fiscalYear, number }: { fiscalYear: number; number: number },
+  fiscalYearStartMonth: number,
+): string {
+  const year =
+    fiscalYearStartMonth === 1
+      ? `${fiscalYear}`
+      : `${fiscalYear}-${String((fiscalYear + 1) % 100).padStart(2, '0')}`;
+  return `${year}/${number}`;
+}
+
+/**
+ * A typed entry number: `123`, `2026/123` or `2026-27/123` (Arabic-Indic digits read), as the
+ * journal's filter takes it; `null` when it is not one.
+ */
+export function parseEntryNumber(text: string): { fiscalYear?: number; number: number } | null {
+  const latin = text
+    .trim()
+    .replace(/[٠-٩]/g, (digit) => String(digit.charCodeAt(0) - 0x0660))
+    .replace(/[۰-۹]/g, (digit) => String(digit.charCodeAt(0) - 0x06f0));
+  const match = /^(?:(\d{4})(?:-\d{2})?\/)?([1-9]\d{0,8})$/.exec(latin);
+  if (!match) return null;
+  const [, year, number] = match;
+  return year ? { fiscalYear: Number(year), number: Number(number) } : { number: Number(number) };
+}
+
+const sizeFormat = new Intl.NumberFormat(formatLocale, { maximumFractionDigits: 1 });
+
+/** A file's size in kilobytes, one decimal at most (an attachment's size). */
+export function formatKilobytes(bytes: number): string {
+  return sizeFormat.format(bytes / 1024);
+}

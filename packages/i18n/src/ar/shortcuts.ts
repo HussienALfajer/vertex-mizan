@@ -17,7 +17,9 @@ export const shortcuts = {
     insertLine: 'إدراج سطر',
     deleteLine: 'حذف السطر',
     lookup: 'فتح قائمة الاختيار',
-    post: 'ترحيل القيد',
+    addLine: 'إضافة سطر',
+    post: 'ترحيل القيد أو إرساله للاعتماد',
+    save: 'حفظ المسودة',
     today: 'تاريخ اليوم',
   },
 };

@@ -41,3 +41,60 @@ export function summarizeAmounts(amounts: readonly Money[]): MoneySummary[] {
     maxMinor: max,
   }));
 }
+
+/**
+ * A line's signed amount as an entry's debit and credit columns show it (S03): a positive amount
+ * is a debit, a negative one a credit, each column a magnitude; an empty amount empties both.
+ */
+export function debitCreditOf(amountMinor: bigint | null): {
+  debitMinor: bigint | null;
+  creditMinor: bigint | null;
+} {
+  if (amountMinor === null) return { debitMinor: null, creditMinor: null };
+  return amountMinor < 0n
+    ? { debitMinor: null, creditMinor: -amountMinor }
+    : { debitMinor: amountMinor, creditMinor: null };
+}
+
+/** The signed amount of a magnitude typed in the debit or the credit column. */
+export function signedAmount(side: 'debit' | 'credit', magnitudeMinor: bigint): bigint {
+  return side === 'credit' ? -magnitudeMinor : magnitudeMinor;
+}
+
+/**
+ * An entry's totals in one transaction currency: the debits, the credits (as a magnitude) and the
+ * residual (debits less credits), zero when the currency balances (S03 rule 14).
+ */
+export interface CurrencyTotals {
+  readonly currency: CurrencyCode;
+  readonly debitMinor: bigint;
+  readonly creditMinor: bigint;
+  readonly residualMinor: bigint;
+}
+
+/** The totals per currency of signed line amounts, in the order each currency first appears. */
+export function entryTotals(amounts: readonly Money[]): CurrencyTotals[] {
+  const byCurrency = new Map<CurrencyCode, { debit: bigint; credit: bigint }>();
+  for (const { amountMinor, currency } of amounts) {
+    const totals = byCurrency.get(currency) ?? { debit: 0n, credit: 0n };
+    if (amountMinor < 0n) totals.credit -= amountMinor;
+    else totals.debit += amountMinor;
+    byCurrency.set(currency, totals);
+  }
+  return [...byCurrency].map(([currency, { debit, credit }]) => ({
+    currency,
+    debitMinor: debit,
+    creditMinor: credit,
+    residualMinor: debit - credit,
+  }));
+}
+
+/**
+ * The signed amount a line in `currency` needs so that the entry's other lines in that currency
+ * balance (the entry screen's `=`): minus their sum; zero when they already balance.
+ */
+export function balancingAmount(others: readonly Money[], currency: CurrencyCode): bigint {
+  let sum = 0n;
+  for (const line of others) if (line.currency === currency) sum += line.amountMinor;
+  return -sum;
+}

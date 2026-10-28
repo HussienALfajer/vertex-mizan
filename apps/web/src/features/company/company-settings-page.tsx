@@ -16,6 +16,7 @@ import {
   Input,
   PageHeader,
   Skeleton,
+  SwitchField,
   Textarea,
 } from '@vertex-mizan/ui';
 import { CircleCheckIcon, InfoIcon, LockIcon } from 'lucide-react';
@@ -88,6 +89,7 @@ function Settings({
         <div className="flex flex-col gap-6">
           <Profile company={company} canEdit={canEdit} />
           <PolicyNote company={company} canEdit={canEdit} />
+          <ManualEntryApproval company={company} canEdit={canEdit} />
         </div>
         <Ledgers company={company} canEdit={canEdit} />
       </div>
@@ -205,6 +207,34 @@ function Profile({ company, canEdit }: { company: Company; canEdit: boolean }) {
           </Button>
         )}
       </form>
+    </Section>
+  );
+}
+
+/**
+ * Approval of manual entries (S03 rule 8): when on, manual entries and reversals are submitted
+ * and approved by someone who neither prepared nor submitted them. Outside the settings lock;
+ * audited with before and after. Submitted drafts stay submitted when it is switched off.
+ */
+function ManualEntryApproval({ company, canEdit }: { company: Company; canEdit: boolean }) {
+  const { companyId } = useCompany();
+  const save = useCompanyWrite((manualEntryApproval: boolean) =>
+    api('PATCH', '/company', {
+      company: companyId,
+      body: { manualEntryApproval },
+      schema: companySchema,
+    }),
+  );
+  return (
+    <Section title={t.approval.title} description={t.approval.description}>
+      <SwitchField
+        label={t.approval.label}
+        description={company.manualEntryApproval ? t.approval.on : t.approval.off}
+        checked={company.manualEntryApproval}
+        disabled={!canEdit || save.isPending}
+        onCheckedChange={(checked) => save.mutate(checked)}
+      />
+      <FormError error={save.error} />
     </Section>
   );
 }

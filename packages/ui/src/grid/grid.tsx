@@ -8,8 +8,10 @@ import {
   type ComponentProps,
   type KeyboardEvent,
   type ReactNode,
+  type Ref,
   useEffect,
   useId,
+  useImperativeHandle,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -32,7 +34,7 @@ import {
   planFillDown,
   planPaste,
 } from './cells';
-import { type GridCommand, gridCommand } from './grid-keys';
+import { type EnterMove, enterMove, type GridCommand, gridCommand } from './grid-keys';
 import {
   type CellPosition,
   clampSelection,
@@ -103,7 +105,17 @@ type GridProps<Row> = Omit<ComponentProps<'div'>, 'children' | 'onCopy' | 'onPas
     stickyStartColumn?: boolean;
     /** Shown when there is no row. */
     empty?: ReactNode;
+    /** Where Enter moves: down the column (the default) or to the next cell of the line. */
+    enterMoves?: EnterMove;
+    /** For an app that moves the focus itself: to a line it just added, or back from a picker. */
+    handle?: Ref<GridHandle>;
   };
+
+/** What an app can do to the grid from outside it. */
+export interface GridHandle {
+  /** Makes a cell the active one and focuses it, once rendered (a new line's first cell). */
+  focusCell(position: CellPosition): void;
+}
 
 /**
  * The open editor. Its row is held by `rowKey`, not by index, so a line inserted or deleted
@@ -123,6 +135,8 @@ interface Editing {
  */
 const ROW_KEYS = [
   keymap.post,
+  keymap.addLine,
+  keymap.save,
   keymap.insertLine,
   keymap.deleteLine,
   keymap.copyAbove,
@@ -134,6 +148,17 @@ type KeyInit = Pick<KeyboardEvent, 'key' | 'code' | 'ctrlKey' | 'metaKey' | 'alt
 interface Problem {
   readonly message: string;
   readonly cells: readonly CellPosition[];
+}
+
+/**
+ * The cell a key or pointer event came from, for an app's row keys on an ancestor (a lookup opens
+ * the picker of that line's cell): its row and column, or null outside a grid's cells.
+ */
+export function gridCellOf(target: EventTarget | null): CellPosition | null {
+  if (!(target instanceof Element)) return null;
+  const cell = target.closest<HTMLElement>('[data-slot="grid-cell"]');
+  if (!cell) return null;
+  return { row: Number(cell.dataset.row), column: Number(cell.dataset.column) };
 }
 
 const same = (a: CellPosition, b: CellPosition) => a.row === b.row && a.column === b.column;
@@ -162,6 +187,8 @@ function Grid<Row>({
   summaryLabels,
   stickyStartColumn = false,
   empty,
+  enterMoves = 'down',
+  handle,
   className,
   'aria-label': ariaLabel,
   'aria-labelledby': ariaLabelledBy,
@@ -250,6 +277,10 @@ function Grid<Row>({
     setSelection(next);
     focusPending.current = focus;
   }
+
+  useImperativeHandle(handle, () => ({
+    focusCell: (position) => select(selectCell(position)),
+  }));
 
   /** Applies a plan: every edit to the app, or its refusal shown and nothing changed. */
   function apply(plan: EditPlan): boolean {
@@ -358,7 +389,7 @@ function Grid<Row>({
 
   function onGridKeyDown(event: KeyboardEvent<HTMLTableElement>) {
     if (edited || !current) return;
-    const command = gridCommand(event.nativeEvent, direction);
+    const command = gridCommand(event.nativeEvent, direction, undefined, { enterMoves });
     if (command) {
       if (run(command, current)) event.preventDefault();
       return;
@@ -398,7 +429,7 @@ function Grid<Row>({
       }
     } else if (event.key === 'Enter' && !event.ctrlKey && !event.metaKey && !event.altKey) {
       event.preventDefault();
-      commit(event.shiftKey ? 'up' : 'down');
+      commit(enterMove(enterMoves, event.shiftKey));
     } else if (event.key === 'Tab') {
       event.preventDefault();
       commit(event.shiftKey ? 'previous' : 'next');

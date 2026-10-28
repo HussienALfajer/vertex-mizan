@@ -17,6 +17,18 @@ export type GridCommand =
   | { readonly type: 'clear' }
   | { readonly type: 'fillDown' };
 
+/**
+ * Where Enter goes: `down` the column as in a spreadsheet, or to the `next` cell in reading order
+ * as on an entry screen, where a line is typed from its account to its memo (S03).
+ */
+export type EnterMove = 'down' | 'next';
+
+/** The move of Enter, or of Shift+Enter (`back`). */
+export function enterMove(enterMoves: EnterMove, back: boolean): GridMove {
+  if (enterMoves === 'next') return back ? 'previous' : 'next';
+  return back ? 'up' : 'down';
+}
+
 /** The keyboard event fields a command reads. */
 type KeyEvent = Pick<KeyboardEvent, 'key' | 'code' | 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'>;
 
@@ -35,6 +47,7 @@ export function gridCommand(
   event: KeyEvent,
   direction: 'rtl' | 'ltr',
   platform: Platform = detectPlatform(),
+  { enterMoves = 'down' }: { enterMoves?: EnterMove } = {},
 ): GridCommand | undefined {
   for (const [type, shortcut] of [
     ['selectAll', keymap.selectAll],
@@ -56,8 +69,10 @@ export function gridCommand(
   if (event.key === 'Home') return { type: 'move', move: mod ? 'gridStart' : 'rowStart', extend };
   if (event.key === 'End') return { type: 'move', move: mod ? 'gridEnd' : 'rowEnd', extend };
   if (mod) return undefined;
-  // Enter moves down and Shift+Enter up, as in a spreadsheet; F2 or typing edits.
-  if (event.key === 'Enter') return { type: 'move', move: extend ? 'up' : 'down', extend: false };
+  // Enter moves down and Shift+Enter up, as in a spreadsheet, or along the line in an entry grid;
+  // F2 or typing edits.
+  if (event.key === 'Enter')
+    return { type: 'move', move: enterMove(enterMoves, extend), extend: false };
   const vertical = VERTICAL[event.key];
   if (vertical) return { type: 'move', move: vertical, extend };
   if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
