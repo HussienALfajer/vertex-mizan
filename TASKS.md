@@ -19,7 +19,7 @@ Spec: `docs/specs/S03-journal-entries-posting.md` (Approved, owner 2026-10-28) Â
 - [x] api: the `entries` and `drafts` modules (the spec's routes except integrity and exports), the file store under `MIZAN_FILES_DIR` (type from magic bytes, size and count limits, downloads with `nosniff`), the approval switch, `ACCOUNT_HAS_BALANCE` with the ledger balances (archiving locks the ledger head first); per endpoint: success, 401, 403, another company, idempotent replay; stale writes; self-approval
 - [x] bridge: OpenAPI regenerated, breaking-change check
 - [x] wiring (Contracts, Database, API), docs (`apps/api/CLAUDE.md`, `.env.example`, the `AGENTS.md` commands table if a command changes, `docs/ROADMAP.md`)
-- [ ] checks and reviewers (`reviewer`, `accountant-reviewer`), PR with auto-merge and Auto-fix
+- [x] checks and reviewers (`reviewer`, `accountant-reviewer`), PR with auto-merge and Auto-fix
 
 ## PR 3 â€” Trust and the full export (contracts, ledger, db, api, worker)
 - [ ] contracts: the integrity report, anchor and export schemas, `integrity.read`, `company.export`, `EXPORT_IN_PROGRESS`, the audit actions, the email kinds (daily anchor, export ready)
