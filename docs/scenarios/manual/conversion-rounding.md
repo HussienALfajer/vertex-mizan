@@ -2,7 +2,7 @@
 
 Status: Proposed
 
-The expected entries were approved by the owner on 2026-10-28, except the case "USD books; USD expenses paid from the USD bank", added after review and awaiting the owner's approval. The file stays `Proposed` until S03 registers the setup, the ledger reader and the `manual` and `reversal` executors the runner needs; the PR that does so marks it `Approved (owner, 2026-10-28)` without changing an expected value. Until then `packages/ledger`'s `adr-0007.examples.test.ts` builds every case with `manualEntryLines()` and `balanceEntry()`.
+The expected entries were approved by the owner on 2026-10-28, the case "USD books; USD expenses paid from the USD bank", added after review, the same day. The file stays `Proposed` until S03 registers the setup, the ledger reader and the `manual` and `reversal` executors the runner needs; the PR that does so marks it `Approved (owner, 2026-10-28)` without changing an expected value. Until then `packages/ledger`'s `adr-0007.examples.test.ts` builds every case with `manualEntryLines()` and `balanceEntry()`.
 
 ## Rule
 
