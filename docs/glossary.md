@@ -35,6 +35,14 @@ One name per concept. Code, contracts and tables use the English term; the Arabi
 | قياس جديد | new measurement | A line converted at its ledger's policy rate on the entry date: revenue, a new receivable, cash received, an expense |
 | مبلغ محمول | carried amount | A line that releases, clears, settles or reverses a balance at that balance's own amounts; never converted again |
 | رصيد جارٍ | running balance | An item kept per counterparty (client ad funds), cleared at its average carrying amount; it may cross zero |
+| نوع البند / بند مستند | item kind / document item | A control account's kind of open item: one per document (an invoice, a milestone's contract asset), opened once and cleared toward zero; or a running balance per client (ADR 0013) |
+| تسوية / تسوية جزئية | settlement / partial settlement | A movement that clears an open item at its carrying amount, in proportion to what remains open; the last clears everything left (ADR 0013) |
+| أعمار الذمم | receivables ageing | Open receivable items by days past their due date, in six buckets: not yet due, 1–30, 31–60, 61–90, 91–180, over 180 |
+| تاريخ الاستحقاق / أيام التأخير | due date / days past due | When an item is due (its document date when none is set) / the report date minus the due date in force on it |
+| كشف حساب عميل | client statement | A client's items and movements on the control accounts, with opening, running and closing balances |
+| شطب دين | write-off | Clearing an uncollectible item at its carrying amount to an expense measured on the write-off date (IFRS 9.5.4.4) |
+| مقاصة مع الأمانات | offset against client funds | Clearing a client's receivable from the client's ad funds held, on the client's instruction |
+| معدّل في ميزان | adjusted in Mizan | A manual movement on an item from Hub or opening balances, shown on the item and in the reconciliation |
 | حساب نقدي / غير نقدي | monetary / non-monetary account | Whether foreign-currency balances are revalued (IAS 21) |
 | بُعد تحليلي | dimension | An analysis tag on a line; the built-in types are client, contract (a project or a retainer), department and service (ADR 0011) |
 | نوع البعد | dimension type | A kind of dimension: the built-in client, contract, department and service, or a custom one |

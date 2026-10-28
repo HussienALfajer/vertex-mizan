@@ -1,6 +1,6 @@
 # 0012 — Journal entries: numbering year, manual rates, approval and the ledger's derived state
 
-Status: Accepted · Date: 2026-10-28 (owner's answers in the S03 interview; approved with the spec the same day) · Amends [0005](0005-ledger-invariants.md), [0007](0007-book-and-parallel-currency-ledgers.md), [0008](0008-foundation-audit-amendments.md)
+Status: Accepted (residuals of entries with carried lines amended by [0013](0013-open-items-and-settlements.md)) · Date: 2026-10-28 (owner's answers in the S03 interview; approved with the spec the same day) · Amends [0005](0005-ledger-invariants.md), [0007](0007-book-and-parallel-currency-ledgers.md), [0008](0008-foundation-audit-amendments.md)
 
 ## Context
 S03 (`docs/specs/S03-journal-entries-posting.md`) builds the ledger tables, the posting function and manual entries. ADR 0005 and 0008 fix the invariants but leave four choices that shape every later spec: which fiscal year numbers an entry posted after the year turned, how a manual entry in more than one currency is measured, who may approve a manual entry, and how the summaries the posting function maintains (the ledger head, the number counters, the period balances) are protected when they cannot be append-only.
