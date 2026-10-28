@@ -115,7 +115,7 @@ export class AccountsService {
         CODE_TAKEN,
       );
       if (!row) throw new Error('The account was not created');
-      await this.requireDimensions(tx, companyId, row.id, [], input.requiredDimensionTypeIds);
+      await this.addDimensions(tx, companyId, row.id, [], input.requiredDimensionTypeIds);
       await writeCompanyAudit(tx, companyId, actorOf(access), {
         action: 'account.created',
         entityType: 'account',
@@ -206,6 +206,10 @@ export class AccountsService {
       await this.checkRolesStillFit(tx, id, next.kind, accountClass);
       await this.checkDimensionTypes(tx, next.requiredDimensionTypeIds);
       const before = auditedOf(row, required);
+      // Dropped dimensions go before the account changes and added ones after it: the database
+      // allows a required dimension on a postable account only, so a postable account that turns
+      // into a header lets its dimensions go first, and a header that turns postable gains them last.
+      await this.dropDimensions(tx, id, required, next.requiredDimensionTypeIds);
       const [updated] = await onUniqueViolation(
         () =>
           tx
@@ -229,7 +233,7 @@ export class AccountsService {
         CODE_TAKEN,
       );
       if (!updated) throw new CodedException('NOT_FOUND', 'No such account');
-      await this.requireDimensions(tx, companyId, id, required, next.requiredDimensionTypeIds);
+      await this.addDimensions(tx, companyId, id, required, next.requiredDimensionTypeIds);
       const diff = changedFields(before, auditedOf(updated, next.requiredDimensionTypeIds));
       if (diff) {
         await writeCompanyAudit(tx, companyId, actorOf(access), {
@@ -503,32 +507,39 @@ export class AccountsService {
     return rows.map((row) => row.typeId);
   }
 
-  /** Archives the required types dropped and adds the new ones; postings use the set from now. */
-  private async requireDimensions(
+  /** Archives the required types dropped; postings use the set from now. */
+  private async dropDimensions(
+    tx: Transaction,
+    accountId: string,
+    before: readonly string[],
+    after: readonly string[],
+  ): Promise<void> {
+    const dropped = before.filter((typeId) => !after.includes(typeId));
+    if (dropped.length === 0) return;
+    await tx
+      .update(accountRequiredDimensions)
+      .set({ archivedAt: new Date() })
+      .where(
+        and(
+          eq(accountRequiredDimensions.accountId, accountId),
+          inArray(accountRequiredDimensions.dimensionTypeId, dropped),
+          isNull(accountRequiredDimensions.archivedAt),
+        ),
+      );
+  }
+
+  /** Adds the required types new to the account. */
+  private async addDimensions(
     tx: Transaction,
     companyId: string,
     accountId: string,
     before: readonly string[],
     after: readonly string[],
   ): Promise<void> {
-    const dropped = before.filter((typeId) => !after.includes(typeId));
     const added = after.filter((typeId) => !before.includes(typeId));
-    if (dropped.length > 0) {
-      await tx
-        .update(accountRequiredDimensions)
-        .set({ archivedAt: new Date() })
-        .where(
-          and(
-            eq(accountRequiredDimensions.accountId, accountId),
-            inArray(accountRequiredDimensions.dimensionTypeId, dropped),
-            isNull(accountRequiredDimensions.archivedAt),
-          ),
-        );
-    }
-    if (added.length > 0) {
-      await tx
-        .insert(accountRequiredDimensions)
-        .values(added.map((dimensionTypeId) => ({ companyId, accountId, dimensionTypeId })));
-    }
+    if (added.length === 0) return;
+    await tx
+      .insert(accountRequiredDimensions)
+      .values(added.map((dimensionTypeId) => ({ companyId, accountId, dimensionTypeId })));
   }
 }

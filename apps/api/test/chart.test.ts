@@ -310,6 +310,40 @@ describe('PATCH /api/accounts/:id (rules 3–4)', () => {
     });
     expect(answer.body.code).toBe('ACCOUNT_ROLE_INVALID');
   });
+
+  it('turns an unused leaf with required dimensions into a header and back (rule 3)', async () => {
+    const owner = await ownerWith(null);
+    const assets = byCode(await tree(owner.browser), '1');
+    const type = (await owner.browser.get('/api/dimension-types')).body[0].id as string;
+    const header = await owner.browser.post('/api/accounts', {
+      parentId: assets.id,
+      code: '11',
+      kind: 'header',
+      name: 'متداولة',
+    });
+    const leaf = await owner.browser.post('/api/accounts', {
+      parentId: header.body.id,
+      code: '112',
+      kind: 'postable',
+      name: 'ذمم',
+      statementLine: 'bs.trade_receivables',
+      requiredDimensionTypeIds: [type],
+    });
+    const id = leaf.body.id as string;
+    const toHeader = await owner.browser.patch(`/api/accounts/${id}`, {
+      kind: 'header',
+      statementLine: null,
+      requiredDimensionTypeIds: [],
+    });
+    expect(toHeader.status).toBe(200);
+    expect(toHeader.body).toMatchObject({ kind: 'header', requiredDimensionTypeIds: [] });
+    const back = await owner.browser.patch(`/api/accounts/${id}`, {
+      kind: 'postable',
+      statementLine: 'bs.trade_receivables',
+      requiredDimensionTypeIds: [type],
+    });
+    expect(back.body).toMatchObject({ kind: 'postable', requiredDimensionTypeIds: [type] });
+  });
 });
 
 describe('block, archive and restore (rules 5–6)', () => {

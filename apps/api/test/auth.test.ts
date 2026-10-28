@@ -314,6 +314,18 @@ describe('sessions', () => {
       'INVALID_TWO_FACTOR_CODE',
     );
   });
+
+  it('re-authenticate with an authenticator code once, however often it is replayed', async () => {
+    const { browser, person } = await signedInPerson(app, db);
+    const code = await freshCode(person);
+    expect((await browser.post('/api/auth/reauthenticate', { code })).status).toBe(204);
+    // The refused replay must not give the code back: the third try is refused too.
+    for (const _ of [1, 2]) {
+      expect((await browser.post('/api/auth/reauthenticate', { code })).body.code).toBe(
+        'INVALID_TWO_FACTOR_CODE',
+      );
+    }
+  });
 });
 
 describe('other sessions', () => {
@@ -447,6 +459,25 @@ describe('my sign-ins', () => {
     expect(response.body.nextCursor).toBeNull();
     const bad = await browser.get('/api/me/sign-ins', { cursor: 'not-a-cursor' });
     expect(bad.body.code).toBe('VALIDATION_FAILED');
+  });
+
+  it('show a wrong password typed with my address, and not one typed with another', async () => {
+    const { browser, person } = await signedInPerson(app, db);
+    const stranger = new Browser(app);
+    await stranger.post('/api/auth/sign-in/email', {
+      email: person.email.toUpperCase(),
+      password: 'not the password at all',
+    });
+    await stranger.post('/api/auth/sign-in/email', {
+      email: `other-${person.email}`,
+      password: 'not the password at all',
+    });
+    const entries = (await browser.get('/api/me/sign-ins')).body.entries as {
+      action: string;
+      ipAddress: string;
+    }[];
+    const failed = entries.filter((entry) => entry.action === 'user.sign_in_failed');
+    expect(failed).toEqual([expect.objectContaining({ ipAddress: stranger.address })]);
   });
 });
 

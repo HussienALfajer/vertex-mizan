@@ -1,30 +1,43 @@
+import { type AnyColumn, type SQL, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { CodedException } from '../errors/coded-exception.js';
 
-/** A position in a page ordered newest first by `(created_at, id)`. */
+/** A row of a page ordered newest first by `(created_at, id)`. */
 export interface Position {
   createdAt: Date;
   id: string;
 }
 
-const positionSchema = z.object({ createdAt: z.iso.datetime({ offset: true }), id: z.uuid() });
+/** The row after which the next page starts. */
+export interface Cursor {
+  id: string;
+}
+
+const cursorSchema = z.object({ id: z.uuid() });
 
 /** The opaque cursor of the row after which the next page starts. */
 export function encodeCursor(position: Position): string {
-  const json = JSON.stringify({ createdAt: position.createdAt.toISOString(), id: position.id });
-  return Buffer.from(json).toString('base64url');
+  return Buffer.from(JSON.stringify({ id: position.id })).toString('base64url');
 }
 
-/** The position a cursor names; a cursor the API did not make answers `VALIDATION_FAILED`. */
-export function decodeCursor(cursor: string): Position {
+/** The row a cursor names; a cursor the API did not make answers `VALIDATION_FAILED`. */
+export function decodeCursor(cursor: string): Cursor {
   try {
-    const parsed = positionSchema.parse(JSON.parse(Buffer.from(cursor, 'base64url').toString()));
-    return { createdAt: new Date(parsed.createdAt), id: parsed.id };
+    return cursorSchema.parse(JSON.parse(Buffer.from(cursor, 'base64url').toString()));
   } catch {
     throw new CodedException('VALIDATION_FAILED', 'Unknown cursor', [
       { path: ['cursor'], message: 'Unknown cursor' },
     ]);
   }
+}
+
+/**
+ * The rows after the cursor's row, newest first by `(created_at, id)`. The cursor's `created_at`
+ * is read in the database: PostgreSQL keeps microseconds and a `Date` only milliseconds, so a
+ * time carried through JavaScript would skip the rows of the same millisecond.
+ */
+export function afterCursor(createdAt: AnyColumn, id: AnyColumn, cursor: Cursor): SQL {
+  return sql`(${createdAt}, ${id}) < (select ${createdAt}, ${id} from ${id.table} where ${id} = ${cursor.id})`;
 }
 
 /** A page of `size` rows and the cursor of the next, from `size + 1` rows read. */

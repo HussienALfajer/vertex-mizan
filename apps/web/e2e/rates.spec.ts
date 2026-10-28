@@ -2,7 +2,15 @@ import type { Page, Request } from '@playwright/test';
 import type { Me, RateRow, RecordedRate } from '@vertex-mizan/contracts';
 import { ar } from '@vertex-mizan/i18n';
 import { companyId, owner, viewer } from './company-mocks';
-import { bulletinRows, calendar, marketRows, rateReads, today, usdSyp } from './rate-mocks';
+import {
+  bulletinRows,
+  calendar,
+  marketRows,
+  rateReads,
+  ratesPage,
+  today,
+  usdSyp,
+} from './rate-mocks';
 import { type ApiReply, expect, refusal, test } from './test';
 
 const t = ar.rates;
@@ -334,6 +342,35 @@ test.describe('rates', () => {
     await expect(page.getByRole('dialog', { name: t.record.bulletinTitle })).toBeVisible();
     await page.getByRole('button', { name: ar.common.cancel }).click();
     await expect(page).toHaveURL(/\/rates$/);
+  });
+});
+
+test.describe('the bulletin status over several pages', () => {
+  // The rows of the 30 days come in two pages: a day on the second is recorded, not missing.
+  test.use({
+    me: owner,
+    api: {
+      ...rateReads,
+      'GET /api/rates': (request: { url(): string }) => {
+        const url = new URL(request.url());
+        const { rates } = ratesPage(url);
+        const half = Math.ceil(rates.length / 2);
+        return {
+          status: 200,
+          json: url.searchParams.has('cursor')
+            ? { rates: rates.slice(half), nextCursor: null }
+            : { rates: rates.slice(0, half), nextCursor: 'page-2' },
+        };
+      },
+    },
+  });
+
+  test('reads every page before it calls a day missing', async ({ page }) => {
+    await page.clock.setFixedTime(today);
+    await page.goto('/rates');
+    const days = page.getByRole('list', { name: t.status.label });
+    await expect(days.getByRole('listitem')).toHaveCount(30);
+    await expect(days.getByText(`· ${t.status.missing}`)).toHaveCount(2);
   });
 });
 

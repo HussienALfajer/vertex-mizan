@@ -1,11 +1,11 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { AuditEntry, AuditPage, AuditQuery } from '@vertex-mizan/contracts';
 import { auditEntries, type Database, withCompany } from '@vertex-mizan/db';
-import { and, desc, eq, gte, lt, lte, or, type SQL } from 'drizzle-orm';
+import { and, desc, eq, gte, lte, type SQL } from 'drizzle-orm';
 import { actorOf, type CompanyRouteAccess } from '../../core/access/access.js';
 import { writeCompanyAudit } from '../../core/audit/audit.js';
 import { DATABASE } from '../../core/database/database.module.js';
-import { decodeCursor, pageOf } from '../../core/http/cursor.js';
+import { afterCursor, decodeCursor, pageOf } from '../../core/http/cursor.js';
 
 /** 100 rows a page, by cursor on `(company_id, created_at)` (S01 "Volume and performance"). */
 const AUDIT_PAGE = 100;
@@ -30,12 +30,7 @@ export class AuditService {
       query.action ? eq(auditEntries.action, query.action) : undefined,
       query.entityType ? eq(auditEntries.entityType, query.entityType) : undefined,
       query.entityId ? eq(auditEntries.entityId, query.entityId) : undefined,
-      after
-        ? or(
-            lt(auditEntries.createdAt, after.createdAt),
-            and(eq(auditEntries.createdAt, after.createdAt), lt(auditEntries.id, after.id)),
-          )
-        : undefined,
+      after ? afterCursor(auditEntries.createdAt, auditEntries.id, after) : undefined,
     ];
     return withCompany(this.db, companyId, async (tx) => {
       const rows = await tx
