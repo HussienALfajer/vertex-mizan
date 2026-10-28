@@ -10,7 +10,7 @@ Spec: `docs/specs/S03-journal-entries-posting.md` (Approved, owner 2026-10-28) �
 - [x] db: tests — invariants as `mizan_app` on every new table (update, delete, truncate, unbalanced commit, second reversal, a reversal that does not negate, a skipped number, a broken link, direct writes to period balances, the head, a counter); concurrency (gapless numbers and an unbroken chain from many connections; a posting racing a period marked closed); properties (balanced in every shape, entry plus reversal nets to zero, period balances equal the lines, the chain verifies and fails on any altered field, replays post nothing); the isolation property over the new tables
 - [x] db: the company creation, chart template and rate recording the scenario setup shares with the API, as transaction functions the API services call (no behaviour change)
 - [x] scenarios: `bookHarness` setup, ledger reader, `manual`, `reversal` and `rate` executors through the shared services and `post()`; the README's manual payload; the `currency/` scenarios `Approved (owner, 2026-10-27)` and the `manual/` ones `Approved (owner, 2026-10-28)`, no expected value changed, all counted as run
-- [ ] wiring (Contracts, Ledger, Database), docs (`packages/db/CLAUDE.md`, `packages/scenarios/CLAUDE.md`, `packages/ledger/CLAUDE.md`, `docs/ROADMAP.md`)
+- [x] wiring (Contracts, Ledger, Database), docs (`packages/db/CLAUDE.md`, `packages/scenarios/CLAUDE.md`, `packages/ledger/CLAUDE.md`, `apps/api/CLAUDE.md`, the spec's data table, `docs/ROADMAP.md`)
 - [ ] checks and reviewers (`reviewer`, `accountant-reviewer`), PR with auto-merge and Auto-fix
 
 ## PR 2 — Manual entries: drafts, approval, reversal (contracts, db, api)
