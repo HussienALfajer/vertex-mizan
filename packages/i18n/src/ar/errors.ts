@@ -76,4 +76,5 @@ export const errors = {
   ATTACHMENT_TYPE: 'يُقبل المرفق بصيغة PDF أو PNG أو JPEG أو WebP فقط.',
   ATTACHMENT_TOO_LARGE: 'حجم المرفق أكبر من 10 ميغابايت.',
   ATTACHMENT_LIMIT: 'بلغ عدد المرفقات الحد الأقصى، وهو 20 مرفقاً.',
+  EXPORT_IN_PROGRESS: 'يجري إعداد تصدير لهذه الشركة. انتظر حتى يكتمل.',
 } satisfies Record<ErrorCode, string>;

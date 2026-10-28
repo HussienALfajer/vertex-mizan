@@ -66,5 +66,37 @@ export function renderEmail(kind: EmailKind, data: unknown, to: string): Outgoin
         : email.twoFactorReset.byVertex;
       return { to, subject: email.twoFactorReset.subject, text: signed(body) };
     }
+    case 'daily_anchor': {
+      const { anchoredOn, anchors } = emailDataSchemas.daily_anchor.parse(data);
+      const listed = anchors
+        .map((anchor) =>
+          fill(email.dailyAnchor.anchor, {
+            companyName: anchor.companyName,
+            anchoredOn,
+            entryCount: String(anchor.entryCount),
+            headHash: anchor.headHash,
+          }),
+        )
+        .join('\n\n');
+      return {
+        to,
+        subject: fill(email.dailyAnchor.subject, { anchoredOn }),
+        text: signed(fill(email.dailyAnchor.body, { anchoredOn, anchors: listed })),
+      };
+    }
+    case 'export_ready': {
+      const ready = emailDataSchemas.export_ready.parse(data);
+      return {
+        to,
+        subject: fill(email.exportReady.subject, { companyName: ready.companyName }),
+        text: signed(
+          fill(email.exportReady.body, {
+            companyName: ready.companyName,
+            link: ready.link,
+            expiresAt: damascusTime(ready.expiresAt),
+          }),
+        ),
+      };
+    }
   }
 }

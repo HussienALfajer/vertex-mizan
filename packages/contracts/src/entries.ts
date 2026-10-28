@@ -539,3 +539,143 @@ export type AccountLinesPage = z.infer<typeof accountLinesPageSchema>;
 export const attachmentParamsSchema = z
   .object({ id: z.uuid(), attachmentId: z.uuid() })
   .meta({ id: 'AttachmentParams' });
+
+/** A SHA-256 as 64 lowercase hex digits: an entry's hash, a chain head, a file's digest. */
+export const sha256Schema = z
+  .string()
+  .regex(/^[0-9a-f]{64}$/, 'Expected a SHA-256 in lowercase hex')
+  .meta({ id: 'Sha256' });
+
+/**
+ * An anchor pasted from a daily email (S03 rule 19): the company's head at the end of `date`,
+ * `count` entries ending with `hash`. The company is the one the check runs in.
+ */
+export const pastedAnchorSchema = z
+  .object({ date: z.iso.date(), count: z.int().min(1), hash: sha256Schema })
+  .meta({ id: 'PastedAnchor' });
+
+export type PastedAnchor = z.infer<typeof pastedAnchorSchema>;
+
+/** `POST /api/integrity/check`: optionally with an anchor pasted from an email. */
+export const integrityCheckSchema = z
+  .object({ anchor: pastedAnchorSchema.optional() })
+  .meta({ id: 'IntegrityCheck' });
+
+export type IntegrityCheck = z.infer<typeof integrityCheckSchema>;
+
+/**
+ * What an anchor finds in the chain: `verified` when the entry at its count has its hash,
+ * `mismatch` when it has another, `missing` when the chain is shorter than its count.
+ */
+export const ANCHOR_RESULTS = ['verified', 'mismatch', 'missing'] as const;
+
+export const anchorResultSchema = z.enum(ANCHOR_RESULTS).meta({ id: 'AnchorResult' });
+
+export type AnchorResult = z.infer<typeof anchorResultSchema>;
+
+/** Where the chain first breaks: a sequence out of order, a broken link, or an altered entry. */
+export const CHAIN_BREAK_REASONS = ['sequence', 'previous-hash', 'hash'] as const;
+
+/** A gap or a repeat in a fiscal year's numbers, or a counter that disagrees with them. */
+export const NUMBERING_PROBLEMS = ['missing', 'duplicate', 'counter'] as const;
+
+/**
+ * A period balance that disagrees with the lines: different totals, a balance the lines need but
+ * the table lacks, or a balance no line explains.
+ */
+export const PERIOD_BALANCE_PROBLEMS = ['different', 'missing', 'unexpected'] as const;
+
+/**
+ * The integrity check's report (S03 rule 19): the chain recomputed from the first entry, the
+ * numbers per fiscal year, each entry's balance in both ledgers, the period balances against the
+ * lines, the ledger head, every stored anchor and the pasted one. `ok` only when all hold.
+ */
+export const integrityReportSchema = z
+  .object({
+    checkedAt: z.iso.datetime({ offset: true }),
+    ok: z.boolean(),
+    entryCount: z.int().min(0),
+    lineCount: z.int().min(0),
+    firstBreak: z
+      .object({
+        sequence: z.int().min(1),
+        entryId: z.uuid(),
+        number: entryNumberSchema,
+        reason: z.enum(CHAIN_BREAK_REASONS),
+      })
+      .nullable(),
+    head: z.object({
+      entryCount: z.int().min(0),
+      hash: sha256Schema.nullable(),
+      matchesChain: z.boolean(),
+    }),
+    numbering: z.array(
+      z.object({
+        fiscalYear: z.int(),
+        number: z.int(),
+        problem: z.enum(NUMBERING_PROBLEMS),
+      }),
+    ),
+    unbalanced: z.array(
+      z.object({
+        entryId: z.uuid(),
+        number: entryNumberSchema,
+        ledger: ledgerSchema,
+        residualMinor: minorUnitsSchema,
+      }),
+    ),
+    periodBalances: z.array(
+      z.object({
+        period: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),
+        accountId: z.uuid(),
+        dimensionSetId: z.uuid().nullable(),
+        currency: currencyCodeSchema,
+        problem: z.enum(PERIOD_BALANCE_PROBLEMS),
+      }),
+    ),
+    anchors: z.array(
+      z.object({
+        anchoredOn: z.iso.date(),
+        entryCount: z.int().min(1),
+        headHash: sha256Schema,
+        result: anchorResultSchema,
+      }),
+    ),
+    pasted: z
+      .object({
+        anchor: pastedAnchorSchema,
+        result: anchorResultSchema,
+        /** The anchor stored for that date: none, the same count and hash, or another. */
+        stored: z.enum(['none', 'same', 'different']),
+      })
+      .nullable(),
+  })
+  .meta({ id: 'IntegrityReport' });
+
+export type IntegrityReport = z.infer<typeof integrityReportSchema>;
+
+/** The states of a full export (S03 rule 21): one `queued` per company at a time. */
+export const EXPORT_STATES = ['queued', 'ready', 'failed', 'expired'] as const;
+
+export const exportStateSchema = z.enum(EXPORT_STATES).meta({ id: 'ExportState' });
+
+export type ExportState = z.infer<typeof exportStateSchema>;
+
+/** How long a ready export can be downloaded before its file is deleted (S03 rule 21). */
+export const EXPORT_TTL_HOURS = 24;
+
+/** A full export of the company's data (`company_exports`). */
+export const companyExportSchema = z
+  .object({
+    id: z.uuid(),
+    state: exportStateSchema,
+    requestedBy: personRefSchema,
+    sizeBytes: z.int().min(0).nullable(),
+    sha256: sha256Schema.nullable(),
+    expiresAt: z.iso.datetime({ offset: true }).nullable(),
+    createdAt: z.iso.datetime({ offset: true }),
+    updatedAt: z.iso.datetime({ offset: true }),
+  })
+  .meta({ id: 'CompanyExport' });
+
+export type CompanyExport = z.infer<typeof companyExportSchema>;

@@ -167,6 +167,8 @@ export const errorStatus = {
   ATTACHMENT_TOO_LARGE: 413,
   /** The draft or entry has 20 attachments already (S03 rule 17). */
   ATTACHMENT_LIMIT: 409,
+  /** The company has an export queued already: one at a time (S03 rule 21). */
+  EXPORT_IN_PROGRESS: 409,
 } as const satisfies Record<string, number>;
 
 export type ErrorCode = keyof typeof errorStatus;

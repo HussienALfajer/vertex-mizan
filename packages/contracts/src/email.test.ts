@@ -43,4 +43,36 @@ describe('emailDataSchemas', () => {
       companyName: null,
     });
   });
+
+  it('lists the anchors of every company an owner owns, at least one', () => {
+    const anchor = {
+      companyName: 'شركة اختبار',
+      entryCount: 12,
+      headHash: 'a'.repeat(64),
+    };
+    expect(
+      emailDataSchemas.daily_anchor.parse({ anchoredOn: '2026-11-08', anchors: [anchor] }),
+    ).toEqual({ anchoredOn: '2026-11-08', anchors: [anchor] });
+    expect(
+      emailDataSchemas.daily_anchor.safeParse({ anchoredOn: '2026-11-08', anchors: [] }).success,
+    ).toBe(false);
+    expect(
+      emailDataSchemas.daily_anchor.safeParse({
+        anchoredOn: '2026-11-08',
+        anchors: [{ ...anchor, headHash: 'not-a-hash' }],
+      }).success,
+    ).toBe(false);
+  });
+
+  it('links a ready export to the web app', () => {
+    const ready = {
+      companyName: 'شركة اختبار',
+      link: 'https://mizan.example.test/settings/export',
+      expiresAt: '2026-11-09T10:00:00.000Z',
+    };
+    expect(emailDataSchemas.export_ready.parse(ready)).toEqual(ready);
+    expect(
+      emailDataSchemas.export_ready.safeParse({ ...ready, link: 'file:///etc/passwd' }).success,
+    ).toBe(false);
+  });
 });

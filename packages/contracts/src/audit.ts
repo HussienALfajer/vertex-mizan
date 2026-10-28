@@ -81,6 +81,10 @@ export const COMPANY_AUDIT_ACTIONS = [
   'attachment.added',
   'attachment.removed',
   'company.settings_updated',
+  // S03: the integrity check and the full export.
+  'integrity.checked',
+  'export.requested',
+  'export.downloaded',
 ] as const;
 
 export const companyAuditActionSchema = z

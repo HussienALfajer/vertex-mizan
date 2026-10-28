@@ -22,7 +22,7 @@ Spec: `docs/specs/S03-journal-entries-posting.md` (Approved, owner 2026-10-28) Â
 - [x] checks and reviewers (`reviewer`, `accountant-reviewer`), PR with auto-merge and Auto-fix
 
 ## PR 3 â€” Trust and the full export (contracts, ledger, db, api, worker)
-- [ ] contracts: the integrity report, anchor and export schemas, `integrity.read`, `company.export`, `EXPORT_IN_PROGRESS`, the audit actions, the email kinds (daily anchor, export ready)
+- [x] contracts: the integrity report, anchor and export schemas, `integrity.read`, `company.export`, `EXPORT_IN_PROGRESS`, the audit actions, the email kinds (daily anchor, export ready)
 - [ ] ledger: the integrity check's pure parts (chain, numbers, balance, period balances against the lines, anchors)
 - [ ] db (`/db-migration`): the `trust` module (`chain_anchors` append-only, `company_exports` queue); the jobs role's first policies and grants for the daily anchor
 - [ ] api: `POST /api/integrity/check`, the export routes (`@Reauthenticated` request, list, download, `LINK_INVALID` once expired)

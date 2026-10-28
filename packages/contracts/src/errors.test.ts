@@ -100,6 +100,7 @@ describe('error codes', () => {
       ['ATTACHMENT_TYPE', 422],
       ['ATTACHMENT_TOO_LARGE', 413],
       ['ATTACHMENT_LIMIT', 409],
+      ['EXPORT_IN_PROGRESS', 409],
     ]);
   });
 

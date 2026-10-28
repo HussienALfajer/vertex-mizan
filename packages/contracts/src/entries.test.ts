@@ -9,6 +9,7 @@ import {
   draftInputSchema,
   draftLineInputSchema,
   entryQuerySchema,
+  integrityCheckSchema,
   minorUnitsSchema,
   reverseEntrySchema,
   updateDraftSchema,
@@ -140,6 +141,26 @@ it('keeps the attachment limits of S03 rule 17', () => {
   expect(ATTACHMENT_LIMIT).toBe(20);
 });
 
+describe('integrityCheckSchema', () => {
+  it('takes no anchor, or one pasted from an email with its date, count and hash', () => {
+    expect(integrityCheckSchema.parse({})).toEqual({});
+    const anchor = { date: '2026-11-08', count: 12, hash: 'ab'.repeat(32) };
+    expect(integrityCheckSchema.parse({ anchor })).toEqual({ anchor });
+  });
+
+  it('refuses a hash in capitals or cut short, and a count of zero', () => {
+    const anchor = { date: '2026-11-08', count: 12, hash: 'AB'.repeat(32) };
+    expect(integrityCheckSchema.safeParse({ anchor }).success).toBe(false);
+    expect(
+      integrityCheckSchema.safeParse({ anchor: { ...anchor, hash: 'ab'.repeat(31) } }).success,
+    ).toBe(false);
+    expect(
+      integrityCheckSchema.safeParse({ anchor: { ...anchor, hash: 'ab'.repeat(32), count: 0 } })
+        .success,
+    ).toBe(false);
+  });
+});
+
 it('converts every S03 schema to JSON Schema with its id', () => {
   const { schemas } = z.toJSONSchema(z.globalRegistry, {
     target: 'draft-2020-12',
@@ -162,6 +183,9 @@ it('converts every S03 schema to JSON Schema with its id', () => {
       'PostedDraft',
       'AccountLinesPage',
       'AccountLinesQuery',
+      'IntegrityCheck',
+      'IntegrityReport',
+      'CompanyExport',
     ]),
   );
 });
