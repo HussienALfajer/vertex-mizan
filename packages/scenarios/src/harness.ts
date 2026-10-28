@@ -78,8 +78,8 @@ export type LedgerReader = {
  */
 export type ScenarioHarness = {
   /**
-   * Creates the case's company (ledgers, template, closed periods, bulletin calendar) and its
-   * rates; its id.
+   * Creates the case's company (ledgers, template and the accounts added to it, closed periods,
+   * bulletin calendar) and its rates; its id.
    */
   setUp?: (
     database: ScenarioDatabase,

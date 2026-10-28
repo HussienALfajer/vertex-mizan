@@ -349,6 +349,56 @@ describe('a case', () => {
     expect(refusal(CORRECTION.replace(from, to))).toContain(problem);
   });
 
+  const TRY_CASH =
+    '{ code: "111007", name: "الصندوق — ليرة تركية", currency: TRY, monetary: true, statement_line: bs.cash }';
+  const withAccounts = (...accounts: string[]) =>
+    SYP_ONLY.replace(
+      'company: { shape: syp,',
+      `company: { template: service-agency, accounts: [${accounts.join(', ')}], shape: syp,`,
+    );
+
+  it('reads the accounts a case adds to its template', () => {
+    expect(parseCase(withAccounts(TRY_CASH)).company.accounts).toEqual([
+      {
+        code: '111007',
+        name: 'الصندوق — ليرة تركية',
+        nameLatin: null,
+        statementLine: 'bs.cash',
+        currency: 'TRY',
+        isMonetary: true,
+      },
+    ]);
+    expect(parseCase(SYP_ONLY).company.accounts).toEqual([]);
+  });
+
+  it.each([
+    [
+      'an account added with no template',
+      withAccounts(TRY_CASH).replace('template: service-agency, ', ''),
+      'known chart template',
+    ],
+    ['an account added twice', withAccounts(TRY_CASH, TRY_CASH), 'added twice'],
+    [
+      'an account already in the template',
+      withAccounts(TRY_CASH.replace('111007', '111004')),
+      'already in the service-agency template',
+    ],
+    ['a header added', withAccounts(TRY_CASH.replace('"111007"', '"119"')), 'postable'],
+    [
+      'an account under no header of the template',
+      withAccounts(TRY_CASH.replace('111007', '119001')),
+      'no header 119',
+    ],
+    [
+      'a statement line of another class',
+      withAccounts(TRY_CASH.replace('bs.cash', 'is.fx_differences')),
+      'does not fit account 111007',
+    ],
+    ['an account with an unknown key', withAccounts(TRY_CASH.replace('monetary', 'cash')), 'cash'],
+  ])('refuses %s', (_, source, problem) => {
+    expect(refusal(source)).toContain(problem);
+  });
+
   it('accepts a third-currency case with a line in TRY', () => {
     const third = CASE.replace('shape: syp-usd', 'shape: third')
       .replaceAll('currency: USD, amount: 10000', 'currency: TRY, amount: 43000')

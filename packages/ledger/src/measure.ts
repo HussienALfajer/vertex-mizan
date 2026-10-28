@@ -28,6 +28,12 @@ export interface MeasureContext {
    * USD). A ledger uses it only when its policy accepts it and it quotes the pair to convert.
    */
   readonly transactionRate?: ExchangeRate;
+  /**
+   * The rates a manual entry was dealt at, one per currency pair (S03 rule 13, ADR 0012). A ledger
+   * uses the one that quotes the pair to convert, under the same policy as the transaction's own
+   * rate.
+   */
+  readonly dealtRates?: readonly ExchangeRate[];
 }
 
 /** A new amount's value in each ledger, with how each was converted. */
@@ -55,14 +61,11 @@ function measureIn(
   const to = settings.currency;
   if (amount.currency === to) return { minor: amount.amountMinor, conversion: null };
   const { rateType, acceptsTransactionRate } = settings.ratePolicy;
-  const own = context.transactionRate;
+  const own = [context.transactionRate, ...(context.dealtRates ?? [])].find(
+    (candidate) => candidate !== undefined && quotesPair(candidate, amount.currency, to),
+  );
   // Only a market policy accepts a transaction's own rate (ADR 0007, IAS 21.26).
-  if (
-    own !== undefined &&
-    acceptsTransactionRate &&
-    rateType === 'market' &&
-    quotesPair(own, amount.currency, to)
-  ) {
+  if (own !== undefined && acceptsTransactionRate && rateType === 'market') {
     return {
       minor: convert(amount, to, own).amountMinor,
       conversion: { basis: 'transaction', rate: own },
@@ -87,8 +90,8 @@ function measureIn(
 /**
  * Measures a new amount (revenue, a new receivable, cash received, an expense) in each ledger
  * (ADR 0007): as is in a ledger of its own currency; otherwise converted with the transaction's
- * own rate when the ledger's policy accepts it and the pair matches, or else with the policy's
- * rate type in force on the entry date, direct or crossed. A missing rate is refused with
+ * own rate or the pair's dealt rate when the ledger's policy accepts it, or else with the
+ * policy's rate type in force on the entry date, direct or crossed. A missing rate is refused with
  * `RATE_MISSING`, never defaulted.
  */
 export function measure(amount: Money, context: MeasureContext): Measurement {

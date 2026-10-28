@@ -27,6 +27,7 @@ import {
   ledgerAmount,
   ledgerCurrency,
 } from './lines.js';
+import { manualEntryLines } from './manual.js';
 import { type MeasureContext, measuredLine } from './measure.js';
 import { lastPublicationDay, type PublicationCalendar, rateInForce } from './rates.js';
 import { calendar, refusal } from './test-fixtures.js';
@@ -443,6 +444,152 @@ describe('settlements', () => {
         },
       ),
       { numRuns: 1_000 },
+    );
+  });
+});
+
+/** A manual entry in two currencies (a currency purchase or sale), with or without a dealt rate. */
+const exchange = fc
+  .record({
+    company: ledgers,
+    pair: fc.uniqueArray(currency, { minLength: 2, maxLength: 2 }),
+    choices: fc.tuple(rateChoices, rateChoices),
+    given: nonZero,
+    received: nonZero,
+    dealt: fc.option(
+      fc.record({
+        line: fc.boolean(),
+        parallel: fc.boolean(),
+        flip: fc.boolean(),
+        value: rateValue,
+        // A pair the accountant may give that no line and ledger currency make up.
+        stray: fc.option(fc.uniqueArray(currency, { minLength: 2, maxLength: 2 }), { nil: null }),
+      }),
+      { nil: null },
+    ),
+  })
+  .map(({ company, pair, choices, given, received, dealt }) => {
+    const [from, to] = pair as [CurrencyCode, CurrencyCode];
+    const context: MeasureContext = {
+      ledgers: company,
+      on: '2026-11-15',
+      calendar,
+      rates: [...rateTable(company, from, choices[0]), ...rateTable(company, to, choices[1])],
+    };
+    const dealtRates: ExchangeRate[] = [];
+    if (dealt?.stray) {
+      const [base, quote] = dealt.stray as [CurrencyCode, CurrencyCode];
+      dealtRates.push(row(base, quote, dealt.value, 'market'));
+    } else if (dealt !== null) {
+      const ledger = dealt.parallel && company.parallel !== null ? company.parallel : company.book;
+      const of = dealt.line ? from : to;
+      if (of !== ledger.currency) {
+        dealtRates.push(
+          dealt.flip
+            ? row(ledger.currency, of, dealt.value, 'market')
+            : row(of, ledger.currency, dealt.value, 'market'),
+        );
+      }
+    }
+    const lines = [
+      { account: 'A', amount: money(received, to) },
+      { account: 'B', amount: money(-given, from) },
+    ];
+    return { company, context, entry: { lines, dealtRates }, currencies: [from, to] };
+  });
+
+const realised = { gain: { account: 'G' }, loss: { account: 'L' } };
+
+/** Whether a ledger of `company` can use `dealt` for a line in one of `currencies`. */
+function dealtAccepted(
+  company: CompanyLedgers,
+  currencies: readonly CurrencyCode[],
+  dealt: ExchangeRate,
+): boolean {
+  return keptLedgers(company).some(
+    ([, settings]) =>
+      settings.ratePolicy.rateType === 'market' &&
+      settings.ratePolicy.acceptsTransactionRate &&
+      currencies.some(
+        (other) =>
+          other !== settings.currency &&
+          [dealt.base, dealt.quote].includes(other) &&
+          [dealt.base, dealt.quote].includes(settings.currency),
+      ),
+  );
+}
+
+describe('manual entries in two currencies', () => {
+  it('balance with one realised difference per ledger, a debit to the loss and a credit to the gain', () => {
+    fc.assert(
+      fc.property(exchange, ({ company, context, entry, currencies }) => {
+        const [dealt] = entry.dealtRates;
+        if (dealt !== undefined && !dealtAccepted(company, currencies, dealt)) {
+          expect(refusal(() => manualEntryLines(entry, context, realised))).toBe(
+            'DEALT_RATE_NOT_ACCEPTED',
+          );
+          return;
+        }
+        const lines = manualEntryLines(entry, context, realised);
+        // The differences absorb all of each ledger's residual: no rounding line is added.
+        expect(balanceEntry({ on: '2026-11-15', ledgers: company, lines, rounding })).toEqual(
+          lines,
+        );
+        for (const [ledger] of keptLedgers(company)) {
+          expect(ledgerTotal(lines, ledger)).toBe(0n);
+          const differences = lines.filter(
+            (line) => line.kind === 'difference' && line.ledger === ledger,
+          );
+          expect(differences.length).toBeLessThanOrEqual(1);
+          for (const line of differences) {
+            const amountMinor = ledgerAmount(line, ledger) ?? 0n;
+            expect(line.account).toBe(amountMinor > 0n ? 'L' : 'G');
+            expect(line.transaction).toEqual(money(amountMinor, ledgerCurrency(company, ledger)));
+            const other: Ledger = ledger === 'book' ? 'parallel' : 'book';
+            expect(ledgerAmount(line, other) ?? 0n).toBe(0n);
+          }
+        }
+        // A ledger that accepts the dealt rate converts its pair at it, and only that pair.
+        for (const line of lines) {
+          if (line.kind !== 'measured') continue;
+          for (const [ledger, settings] of keptLedgers(company)) {
+            const conversion = line.conversions[ledger];
+            const pair = [line.transaction.currency, settings.currency];
+            const takes =
+              dealt !== undefined &&
+              settings.ratePolicy.rateType === 'market' &&
+              settings.ratePolicy.acceptsTransactionRate &&
+              line.transaction.currency !== settings.currency &&
+              pair.includes(dealt.base) &&
+              pair.includes(dealt.quote);
+            expect(conversion?.basis === 'transaction').toBe(takes);
+            if (takes) expect(conversion?.rate).toEqual(dealt);
+          }
+        }
+      }),
+      { numRuns: 1_000 },
+    );
+  });
+
+  it('reverse to lines that balance as they are and net every account to zero', () => {
+    fc.assert(
+      fc.property(exchange, ({ company, context, entry, currencies }) => {
+        const [dealt] = entry.dealtRates;
+        if (dealt !== undefined && !dealtAccepted(company, currencies, dealt)) return;
+        const lines = manualEntryLines(entry, context, realised);
+        const reversal = reverseLines(lines);
+        expect(
+          balanceEntry({ on: '2026-12-01', ledgers: company, lines: reversal, rounding }),
+        ).toEqual(reversal);
+        const both = [...lines, ...reversal];
+        for (const account of new Set(both.map((line) => line.account))) {
+          const ofAccount = both.filter((line) => line.account === account);
+          for (const [ledger] of keptLedgers(company)) {
+            expect(ledgerTotal(ofAccount, ledger)).toBe(0n);
+          }
+        }
+      }),
+      { numRuns: 500 },
     );
   });
 });
