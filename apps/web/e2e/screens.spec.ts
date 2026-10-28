@@ -15,6 +15,7 @@ import {
 } from './entry-mocks';
 import { rateReads, today } from './rate-mocks';
 import { expect, expectNoPageOverflow, screenshot, test, widths } from './test';
+import { brokenReport, emailedAnchor, trustReads } from './trust-mocks';
 
 // RTL screenshots of every screen in both themes at each width: the design review evidence.
 for (const colorScheme of ['light', 'dark'] as const) {
@@ -372,6 +373,39 @@ for (const colorScheme of ['light', 'dark'] as const) {
           await expect(page.getByRole('table', { name: ar.entries.lines.label })).toBeVisible();
           await expectNoPageOverflow(page);
           await screenshot(page, testInfo, `account-lines-${colorScheme}-${width}`);
+        });
+      });
+
+      test.describe('trust screens', () => {
+        test.use({
+          me: owner,
+          api: {
+            ...trustReads,
+            'POST /api/integrity/check': { status: 200, json: brokenReport },
+          },
+        });
+        test.beforeEach(async ({ page }) => {
+          await page.clock.setFixedTime(today);
+        });
+
+        test('integrity check', async ({ page }, testInfo) => {
+          await page.goto('/integrity');
+          await expect(page.getByRole('heading', { level: 1 })).toHaveText(ar.integrity.title);
+          await page.getByRole('button', { name: ar.integrity.run }).click();
+          await expect(page.getByText(ar.integrity.result.broken)).toBeVisible();
+          await page.getByLabel(ar.integrity.pasted.hash, { exact: true }).fill(emailedAnchor);
+          await page.getByRole('button', { name: ar.integrity.pasted.submit }).click();
+          await expect(page.getByRole('region', { name: ar.common.errorSummary })).toBeFocused();
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `integrity-${colorScheme}-${width}`);
+        });
+
+        test('export', async ({ page }, testInfo) => {
+          await page.goto('/settings/export');
+          await expect(page.getByRole('heading', { level: 1 })).toHaveText(ar.export.title);
+          await expect(page.getByText(ar.export.states.ready)).toBeVisible();
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `export-${colorScheme}-${width}`);
         });
       });
 

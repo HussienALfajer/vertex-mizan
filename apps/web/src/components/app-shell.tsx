@@ -46,10 +46,12 @@ import {
   type LucideIcon,
   MenuIcon,
   MoonIcon,
+  PackageIcon,
   PlusIcon,
   RowsIcon,
   ScrollTextIcon,
   ShieldCheckIcon,
+  ShieldEllipsisIcon,
   SunIcon,
   SwatchBookIcon,
   TagsIcon,
@@ -108,6 +110,18 @@ const navItems: NavItem[] = [
   },
   { to: '/settings/members', label: ar.members.nav, icon: UsersIcon, permission: 'members.read' },
   { to: '/settings/audit', label: ar.audit.nav, icon: ScrollTextIcon, permission: 'audit.read' },
+  {
+    to: '/integrity',
+    label: ar.integrity.nav,
+    icon: ShieldEllipsisIcon,
+    permission: 'integrity.read',
+  },
+  {
+    to: '/settings/export',
+    label: ar.export.nav,
+    icon: PackageIcon,
+    permission: 'company.export',
+  },
   { to: '/account/security', label: ar.auth.nav, icon: ShieldCheckIcon },
   // A developer gallery (and the screenshot tests' page): listed in development only.
   {
@@ -305,6 +319,18 @@ function useShellCommands(me: Me | null | undefined): PaletteCommand[] {
             keywords: ['approval', 'اعتماد'],
             icon: <FilePenLineIcon />,
             run: () => void router.navigate({ to: '/drafts', search: { view: 'awaiting' } }),
+          },
+        ]
+      : []),
+    ...(me && can(me, 'integrity.read')
+      ? [
+          {
+            id: 'run-integrity-check',
+            label: ar.integrity.paletteRun,
+            group: t.palette.navigation,
+            keywords: ['integrity check', 'chain', 'السلسلة'],
+            icon: <ShieldEllipsisIcon />,
+            run: () => void router.navigate({ to: '/integrity', search: { run: true } }),
           },
         ]
       : []),
