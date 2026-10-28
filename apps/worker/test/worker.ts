@@ -34,6 +34,7 @@ export async function startWorker(
   const config = loadConfig({
     DATABASE_QUEUE_URL: inject('queueUrl'),
     DATABASE_APP_URL: inject('appUrl'),
+    DATABASE_JOBS_URL: inject('jobsUrl'),
     SMTP_URL: 'smtp://127.0.0.1:1',
     EMAIL_FROM: 'Mizan <mizan@example.test>',
     NODE_ENV: 'test',
