@@ -138,6 +138,24 @@ describe('git guard: wrapped commands', () => {
   });
 });
 
+// The PowerShell tool's commands reach the same hook: statements joined with `;` and `if ($?) { }`,
+// and messages in single-quoted here-strings.
+describe('git guard: PowerShell commands', () => {
+  it.each([
+    'git add -A; if ($?) { git commit -m x }',
+    'if ($?) { git push origin main }',
+    'git push origin main --force-with-lease; $LASTEXITCODE',
+  ])('refuses %s', (command) => {
+    expect(refused(command)).toBe(true);
+  });
+
+  it('refuses a here-string commit on main, allows it on a branch', () => {
+    const commit = (dir: string) => `git -C "${dir}" commit -m @'\nfeat: x\n\nWhy.\n'@`;
+    expect(refused(commit(main))).toBe(true);
+    expect(refused(commit(feature))).toBe(false);
+  });
+});
+
 describe('git guard: hooks', () => {
   it.each([
     'commit --no-verify -m x',

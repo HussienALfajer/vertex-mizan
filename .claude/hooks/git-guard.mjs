@@ -1,8 +1,8 @@
-// PreToolUse hook (Bash): refuse `git commit` on main, `git commit -a`, skipping git hooks
-// (`--no-verify`), pushing to main, and broad staging (`git add -A`, `--all`, `-u`, `.`, `:/`).
-// A refusal exits with code 2; the message goes back to Claude, which must use a branch, push its
-// own branch, or stage by path. Copied from Vertex Food (.claude/hooks/git-guard.mjs), with the
-// `commit -a` and `--no-verify` rules kept from Mizan's first version.
+// PreToolUse hook (Bash and PowerShell): refuse `git commit` on main, `git commit -a`, skipping git
+// hooks (`--no-verify`), pushing to main, and broad staging (`git add -A`, `--all`, `-u`, `.`,
+// `:/`). A refusal exits with code 2; the message goes back to Claude, which must use a branch,
+// push its own branch, or stage by path. Copied from Vertex Food (.claude/hooks/git-guard.mjs),
+// with the `commit -a` and `--no-verify` rules kept from Mizan's first version.
 // Tested by `packages/config/test/git-guard.test.ts`, which pipes commands into this file.
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';

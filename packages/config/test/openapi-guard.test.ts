@@ -7,10 +7,12 @@ import { afterAll, describe, expect, it } from 'vitest';
 
 // The OpenAPI breaking-change guard `scripts/openapi-guard.mjs` (ADR 0006), run as CI runs it,
 // against a throwaway repository whose base commit holds the published document. It needs oasdiff:
-// CI installs it (scripts/install-oasdiff.sh) and must run these tests; elsewhere they run when
-// oasdiff is on the PATH or named by OASDIFF.
+// CI and `pnpm verify` install the pinned release (`node scripts/tools.mjs install oasdiff`), and CI
+// must run these tests; elsewhere they run when it is installed, on the PATH or named by OASDIFF.
 const script = fileURLToPath(new URL('../../../scripts/openapi-guard.mjs', import.meta.url));
-const oasdiff = process.env.OASDIFF || 'oasdiff';
+const tools = fileURLToPath(new URL('../../../scripts/tools.mjs', import.meta.url));
+const installed = spawnSync(process.execPath, [tools, 'path', 'oasdiff'], { encoding: 'utf8' });
+const oasdiff = installed.status === 0 ? installed.stdout.trim() : 'oasdiff';
 const available = spawnSync(oasdiff, ['--version']).status === 0;
 
 const dirs: string[] = [];

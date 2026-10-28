@@ -9,7 +9,9 @@
         "$TURBO_ROOT$/scripts/**",
         "$TURBO_ROOT$/packages/db/src/schema/registry.ts",
         "$TURBO_ROOT$/docs/decisions/**",
-        "$TURBO_ROOT$/biome.json"
+        "$TURBO_ROOT$/biome.json",
+        "$TURBO_ROOT$/.github/workflows/**",
+        "$TURBO_ROOT$/apps/web/package.json"
       ]
     }
   }

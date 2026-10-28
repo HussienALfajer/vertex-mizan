@@ -12,12 +12,6 @@
       "runtimeExecutable": "pnpm",
       "runtimeArgs": ["--filter", "@vertex-mizan/api", "start"],
       "port": 3300
-    },
-    {
-      "name": "worker",
-      "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["--filter", "@vertex-mizan/worker", "start"],
-      "port": 3301
     }
   ]
 }

@@ -1,7 +1,16 @@
-# Proposes updates of the pinned GitHub Actions (CI pins them to commit SHAs).
+# Dependabot (.github/CLAUDE.md):
+# - GitHub Actions: version updates of the pinned actions (CI pins them to commit SHAs).
+# - npm: security updates only. Version updates stay off (limit 0): the pinned versions move in
+#   reviewed PRs (ADR 0002). A fix for a published advisory opens its own PR, so `pnpm audit`
+#   (CI and `pnpm verify`) does not first fail an unrelated feature PR.
 version: 2
 updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 0
