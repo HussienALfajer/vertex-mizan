@@ -3,6 +3,7 @@ export * from './balance.js';
 export * from './carried.js';
 export * from './chart.js';
 export * from './integrity.js';
+export * from './integrity-check.js';
 export * from './lines.js';
 export * from './manual.js';
 export * from './measure.js';
