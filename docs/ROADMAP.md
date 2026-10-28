@@ -41,6 +41,7 @@ Scope: `docs/product/phase-1-scope.md`. One spec per line, each through `/spec` 
   - [x] Posting rules: the scenarios `currency/bulletin-rate-of-the-day` and `currency/rate-correction-after-use` (numbers approved by the owner 2026-10-27, `Proposed` until S03 brings their executors); the scenario format's bulletin calendar, `rate` and `reversal` steps and `corrections`; `rateInForce()` and `policyRate()` on the publication calendar (rule 16) with its properties
 - [~] S03 Journal entries and the posting function: F05 · F14 (`docs/specs/S03-journal-entries-posting.md`, ADR 0012; period balances, `posted_at`, the daily anchor)
   - [ ] Posting rules: the scenarios `manual/conversion-rounding`, `manual/currency-purchase` and `manual/reversal`
+    - [x] `manual/conversion-rounding`: numbers approved by the owner 2026-10-28 (an SYP entry for `usd-syp`, where a USD entry rounds nothing), `Proposed` until S03 brings its executors; worked examples and fast-check properties of one-currency manual entries
     - [x] `manual/currency-purchase`: numbers approved by the owner 2026-10-28 (with a TRY cash account added to the template for `third`, and the two refusals of a dealt rate for a pair no ledger converts), `Proposed` until S03 brings its executors; `manualEntryLines()` and `realisedDifferenceLines()` with their properties; `DEALT_RATE_NOT_ACCEPTED`; the scenario format's added `accounts`
 - [ ] S04 Open items and settlements: F06
 - [ ] S05 Posting API, event inbox and posting rules: F10
