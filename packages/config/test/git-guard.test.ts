@@ -33,9 +33,9 @@ function repository(branch: string): string {
   return dir;
 }
 
-function refused(command: string): boolean {
+function refused(command: string, tool = 'Bash'): boolean {
   const result = spawnSync(process.execPath, [hook], {
-    input: JSON.stringify({ tool_input: { command } }),
+    input: JSON.stringify({ tool_name: tool, tool_input: { command } }),
     encoding: 'utf8',
   });
   if (result.status !== 0 && result.status !== 2) throw new Error(result.stderr);
@@ -135,6 +135,43 @@ describe('git guard: wrapped commands', () => {
     'echo $(git add -A)',
   ])('refuses %s', (command) => {
     expect(refused(command)).toBe(true);
+  });
+});
+
+// The PowerShell tool's commands reach the same hook: statements joined with `;`, script blocks
+// (`if ($?) { … }`), messages in single-quoted here-strings, and backslashes that are path
+// separators, not escapes.
+describe('git guard: PowerShell commands', () => {
+  it.each([
+    'git add -A; if ($?) { git commit -m x }',
+    'if ($?) { git push origin main }',
+    'git push origin main --force-with-lease; $LASTEXITCODE',
+  ])('refuses %s', (command) => {
+    expect(refused(command, 'PowerShell')).toBe(true);
+  });
+
+  it('refuses a here-string commit on main, allows it on a branch inside a script block', () => {
+    const commit = (dir: string) =>
+      `git -C "${dir}" add apps/x.ts; if ($?) { git -C "${dir}" commit -m @'\nfeat: x\n\nWhy.\n'@ }`;
+    expect(refused(commit(main), 'PowerShell')).toBe(true);
+    expect(refused(commit(feature), 'PowerShell')).toBe(false);
+  });
+
+  // A backslash path means something only on Windows, where the PowerShell tool runs.
+  it.runIf(process.platform === 'win32')('reads an unquoted Windows path as a path', () => {
+    const windows = (dir: string) => dir.replaceAll('/', '\\');
+    expect(refused(`git -C ${windows(main)} commit -m x`, 'PowerShell')).toBe(true);
+    expect(refused(`git -C ${windows(feature)} commit -m x`, 'PowerShell')).toBe(false);
+  });
+});
+
+describe('git guard: a directory it cannot read', () => {
+  it.each(['commit -m x', 'push'])('refuses git %s there instead of passing it', (args) => {
+    expect(refused(`git -C "${join(main, 'no-such-dir')}" ${args}`)).toBe(true);
+  });
+
+  it('keeps a shell variable in braces as one word', () => {
+    expect(refused(`echo \${HOME} && git -C "${feature}" commit -m x`)).toBe(false);
   });
 });
 

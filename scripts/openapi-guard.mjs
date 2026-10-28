@@ -16,8 +16,8 @@
 // 2026-10-27). A value removed from such an enum fails: oasdiff reports it only as `info`, so it is
 // raised to an error with the others above.
 //
-// Needs the oasdiff binary: on the PATH, or named by `OASDIFF`. CI installs the pinned release with
-// `scripts/install-oasdiff.sh`.
+// Needs the oasdiff binary: the pinned release `node scripts/tools.mjs install oasdiff` puts in
+// .tools/ (CI and `pnpm verify` install it), the one `OASDIFF` names, or one on the PATH.
 //
 // Options: `--base <ref>` (default `origin/main`), `--repo <dir>` (default this repository) and
 // `--file <path in the repository>` (default the document above).
@@ -26,6 +26,7 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { toolPath } from './tools.mjs';
 
 function option(args, name, fallback) {
   const index = args.lastIndexOf(name);
@@ -37,7 +38,7 @@ function main(args) {
   const repo = resolve(option(args, '--repo', root));
   const base = option(args, '--base', 'origin/main');
   const file = option(args, '--file', 'apps/api/openapi.json');
-  const oasdiff = process.env.OASDIFF || 'oasdiff';
+  const oasdiff = toolPath('oasdiff') ?? 'oasdiff';
   const git = (...gitArgs) =>
     execFileSync('git', ['-C', repo, ...gitArgs], {
       encoding: 'utf8',
@@ -85,7 +86,7 @@ function main(args) {
     if (result.error) {
       console.error(
         `openapi-guard: cannot run ${oasdiff} (${result.error.code ?? result.error.message}). ` +
-          'Install oasdiff (scripts/install-oasdiff.sh pins the version CI uses) or set OASDIFF.',
+          'Install the pinned oasdiff with `node scripts/tools.mjs install oasdiff`, or set OASDIFF.',
       );
       return 2;
     }

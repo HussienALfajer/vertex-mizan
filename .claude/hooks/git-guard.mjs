@@ -1,8 +1,8 @@
-// PreToolUse hook (Bash): refuse `git commit` on main, `git commit -a`, skipping git hooks
-// (`--no-verify`), pushing to main, and broad staging (`git add -A`, `--all`, `-u`, `.`, `:/`).
-// A refusal exits with code 2; the message goes back to Claude, which must use a branch, push its
-// own branch, or stage by path. Copied from Vertex Food (.claude/hooks/git-guard.mjs), with the
-// `commit -a` and `--no-verify` rules kept from Mizan's first version.
+// PreToolUse hook (Bash and PowerShell): refuse `git commit` on main, `git commit -a`, skipping git
+// hooks (`--no-verify`), pushing to main, and broad staging (`git add -A`, `--all`, `-u`, `.`,
+// `:/`). A refusal exits with code 2; the message goes back to Claude, which must use a branch,
+// push its own branch, or stage by path. Copied from Vertex Food (.claude/hooks/git-guard.mjs),
+// with the `commit -a` and `--no-verify` rules kept from Mizan's first version.
 // Tested by `packages/config/test/git-guard.test.ts`, which pipes commands into this file.
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
@@ -12,6 +12,9 @@ import { fileURLToPath } from 'node:url';
 const projectDir = resolve(fileURLToPath(new URL('../..', import.meta.url)));
 const input = JSON.parse(readFileSync(0, 'utf8') || '{}');
 const command = input.tool_input?.command ?? '';
+// PowerShell escapes with a backtick: a backslash is a path separator (`D:\vertex-mizan`), not an
+// escape, outside quotes and inside them.
+const powershell = input.tool_name === 'PowerShell';
 
 // Global options of `git` that take the next word as their value (`git -C dir commit`).
 const OPTIONS_WITH_VALUE = new Set([
@@ -62,30 +65,51 @@ function refuse(message) {
   process.exit(2);
 }
 
+/**
+ * The branch checked out in `dir`. A directory the guard cannot read is refused rather than
+ * passed: a misread path must never let a commit or a push onto main through.
+ */
 function currentBranch(dir) {
   const result = spawnSync('git', ['-C', dir, 'rev-parse', '--abbrev-ref', 'HEAD'], {
     encoding: 'utf8',
   });
-  return result.status === 0 ? result.stdout.trim() : '';
+  if (result.status !== 0) {
+    refuse(
+      `Refused: the git guard cannot read the branch of ${dir}, so it cannot tell whether this commits or pushes to main. Run the command from the repository, or quote the path.`,
+    );
+  }
+  return result.stdout.trim();
 }
 
-/** Splits a command line into parts, outside quotes: `&&`, `||`, `|`, `;`, `&`, `(`, `)`, newline. */
+/**
+ * Splits a command line into parts, outside quotes: `&&`, `||`, `|`, `;`, `&`, `(`, `)`, newline,
+ * and PowerShell's script blocks `{ … }` (`if ($?) { git commit … }`); a shell's `${name}` stays
+ * one word.
+ */
 function splitChain(line) {
   const parts = [];
   let current = '';
   let quote = '';
+  let variable = 0;
   for (let i = 0; i < line.length; i++) {
     const char = line[i];
     if (quote) {
       current += char;
       if (char === quote) quote = '';
-      else if (char === '\\' && quote === '"' && i + 1 < line.length) current += line[++i];
+      else if (char === '\\' && quote === '"' && !powershell && i + 1 < line.length)
+        current += line[++i];
     } else if (char === '"' || char === "'") {
       quote = char;
       current += char;
-    } else if (char === '\\' && i + 1 < line.length) {
+    } else if (char === '\\' && !powershell && i + 1 < line.length) {
       current += char + line[++i];
-    } else if (';&|()\n'.includes(char)) {
+    } else if (char === '{' && line[i - 1] === '$') {
+      variable++;
+      current += char;
+    } else if (char === '}' && variable > 0) {
+      variable--;
+      current += char;
+    } else if (';&|(){}\n'.includes(char)) {
       parts.push(current);
       current = '';
     } else {
@@ -108,13 +132,13 @@ function words(part) {
       if (char === quote) quote = '';
       // Inside double quotes a backslash escapes only `"`, `\`, `$` and a backtick, as in bash, so
       // a Windows path keeps its backslashes.
-      else if (char === '\\' && quote === '"' && '"\\$`'.includes(part[i + 1] ?? ''))
+      else if (char === '\\' && quote === '"' && !powershell && '"\\$`'.includes(part[i + 1] ?? ''))
         current += part[++i];
       else current += char;
     } else if (char === '"' || char === "'") {
       quote = char;
       started = true;
-    } else if (char === '\\' && i + 1 < part.length) {
+    } else if (char === '\\' && !powershell && i + 1 < part.length) {
       current += part[++i];
       started = true;
     } else if (/\s/.test(char)) {

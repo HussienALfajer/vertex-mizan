@@ -103,7 +103,7 @@ jobs:
       # The published OpenAPI document changes additively only (ADR 0006); apps/api/test/openapi.test.ts
       # checks that the committed document is the API's own.
       - name: Install oasdiff
-        run: bash scripts/install-oasdiff.sh
+        run: node scripts/tools.mjs install oasdiff
       - name: The OpenAPI document has no breaking change
         env:
           BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
@@ -162,7 +162,7 @@ jobs:
           restore-keys: turbo-${{ github.job }}-
       # The OpenAPI guard's tests (packages/config) run only where oasdiff is, and must run here.
       - name: Install oasdiff
-        run: bash scripts/install-oasdiff.sh
+        run: node scripts/tools.mjs install oasdiff
       - name: Database roles and development database
         run: pnpm db:setup-local
       # The development database migrated as a server is; the tests then migrate a fresh database
@@ -187,13 +187,19 @@ jobs:
           if [ -d .turbo/cache ] && [ "$(du -sm .turbo/cache | cut -f1)" -gt 1500 ]; then rm -rf .turbo/cache; fi
 
   # The whole Playwright suite of apps/web on its production build, split over two runners
-  # (--shard, with fullyParallel). Sessions run only the specs they change (docs/testing.md, "E2E").
+  # (--shard, with fullyParallel). It runs in Playwright's own image, pinned to the version of
+  # @playwright/test in apps/web (packages/config/test/ci.test.ts keeps them equal): Chromium, its
+  # system libraries and fonts come with the image, so no step downloads them from Ubuntu's mirrors,
+  # which took up to 13 minutes. The runner's user (1001) keeps the workspace's file owners.
   e2e:
     name: Playwright shard ${{ matrix.shard }}
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    container:
+      image: mcr.microsoft.com/playwright:v1.63.0-noble@sha256:eff16c30e6f3f4af0a03fa4b706120d5e9b0891c344a27d64559aff5900a4a27
+      options: --user 1001
     env:
       TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
       TURBO_TEAM: ${{ vars.TURBO_TEAM }}
@@ -217,7 +223,6 @@ jobs:
           path: .turbo/cache
           key: turbo-${{ github.job }}-${{ matrix.shard }}-${{ github.sha }}
           restore-keys: turbo-${{ github.job }}-${{ matrix.shard }}-
-      - run: pnpm --filter @vertex-mizan/web exec playwright install --with-deps chromium
       - run: pnpm test:e2e --shard=${{ matrix.shard }}/2
       # The report and the RTL screenshots (light and dark, 360, 768 and 1280 px) are the review
       # evidence of each run.
@@ -235,8 +240,8 @@ jobs:
         run: |
           if [ -d .turbo/cache ] && [ "$(du -sm .turbo/cache | cut -f1)" -gt 1500 ]; then rm -rf .turbo/cache; fi
 
-  # The check the ruleset requires: it passes when every job behind it passed or was skipped
-  # (documentation only), and fails otherwise.
+  # The check the ruleset requires: it waits for every job above and passes when each passed or was
+  # skipped (documentation only), and fails otherwise.
   checks:
     name: Typecheck, lint, test, build
     needs: [changes, static, test, e2e]
@@ -258,7 +263,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+      # The gitleaks release `pnpm verify` runs too (scripts/tools.mjs; ci.test.ts keeps them equal).
       - uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_ENABLE_COMMENTS: false
+          GITLEAKS_VERSION: 8.24.3

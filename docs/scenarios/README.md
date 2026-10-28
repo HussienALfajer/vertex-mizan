@@ -18,7 +18,7 @@ Scenarios are written through `/posting-rule`, before the rule's code.
 
 ## File format
 
-1. **Title and status:** `Status: Proposed | Approved (owner, YYYY-MM-DD)`.
+1. **Title and status:** `Status: Proposed | Approved (owner, YYYY-MM-DD)`. A case runs once it is `Approved`, so it becomes `Approved` only when the executors its steps need exist (the runner fails an `Approved` case it cannot run). Until then a case whose numbers the owner has approved stays `Proposed`, and its PR and `docs/ROADMAP.md` record the approval and its date. The PR that brings its executors switches it to `Approved (owner, <that date>)`, and the book must then count it as run.
 2. **Rule:** one or two sentences.
 3. **Basis:**
    - the standard paragraph (for example IAS 21.28);
@@ -72,11 +72,11 @@ expect:
     - source: <event type | job | manual>
       date: 2026-11-03
       lines:                        # minor units; positive debit, negative credit
-        - { account: "1210", dims: { client: C1 }, currency: USD, amount: 10000, book: 1200000, parallel: 10000 }
+        - { account: "112001", dims: { client: C1 }, currency: USD, amount: 10000, book: 1200000, parallel: 10000 }
   balances:                         # optional: account balances, as the reports read them
-    - { account: "1210", book: 0, parallel: 0 }
+    - { account: "112001", book: 0, parallel: 0 }
   open_items:                       # optional: what remains of each document on its control account
-    - { item: INV-2026-1, account: "1210", dims: { client: C1 }, currency: USD, amount: 0, book: 0, parallel: 0 }
+    - { item: INV-2026-1, account: "112001", dims: { client: C1 }, currency: USD, amount: 0, book: 0, parallel: 0 }
   corrections:                      # optional: per correction step, the entries its answer lists
     - { step: 5, used_by: [1] }     # as converted at the superseded row (posting order)
   outcome:                          # optional: the last step's hold or refusal (held | refused)
@@ -85,7 +85,7 @@ expect:
 ```
 
 Writing the YAML:
-- **Amounts** are whole minor units; a decimal amount is refused, never rounded. **Account codes and rates are quoted** (`"1210"`, `"120.0000"`), dates are `YYYY-MM-DD` and periods `YYYY-MM`.
+- **Amounts** are whole minor units; a decimal amount is refused, never rounded. **Account codes and rates are quoted** (`"112001"`, `"120.0000"`), dates are `YYYY-MM-DD` and periods `YYYY-MM`.
 - A scenario file has no fence but its cases: each opens with exactly `` ```yaml `` and closes with `` ``` ``, both at the start of a line. Any other fence (no language, `yml`, indented, in a list or a quote, tildes, unclosed) is an error, so no case is hidden. A payload holds no decimal number.
 - On a line or an open item, no `dims` means no dimensions. On a balance, `dims` filters: the balance over every dimension set holding the stated pairs, so no `dims` is the whole account; with a `currency`, only that currency's lines, and its `amount` may be stated.
 - `parallel` is stated on every line, balance and open item exactly when the company keeps a parallel ledger. In a ledger's own currency, that ledger's amount is the transaction amount (ADR 0007): a SYP line in SYP books has `book` equal to `amount`.
@@ -109,7 +109,7 @@ The runner is `packages/scenarios` (`pnpm test:scenarios`, in CI).
 
 ## Examples
 
-These two cases show the format only; they are not approved rules. The account codes are placeholders until the service-agency chart-of-accounts template is approved.
+These two cases show the format only; they are not approved rules. Their account codes are the service-agency template's (`service-agency@1`, a draft until the templates are reviewed, Q3): trade receivables `112001`, service revenue `411001`, the USD and SYP bank accounts `111004` and `111003`, realised exchange gains `421001` and losses `541001`.
 
 ### A USD invoice paid in USD, in the SYP books at the bulletin
 
@@ -133,19 +133,19 @@ expect:
       date: 2026-11-03
       lines:
         # book: 100.00 USD × 120 (bulletin) = 12,000.00 SYP; parallel: USD as is (Hub's 122 is not needed)
-        - { account: "1210", dims: { client: C1 }, currency: USD, amount: 10000, book: 1200000, parallel: 10000 }
-        - { account: "4110", dims: { client: C1, service: S1 }, currency: USD, amount: -10000, book: -1200000, parallel: -10000 }
+        - { account: "112001", dims: { client: C1 }, currency: USD, amount: 10000, book: 1200000, parallel: 10000 }
+        - { account: "411001", dims: { client: C1, service: S1 }, currency: USD, amount: -10000, book: -1200000, parallel: -10000 }
     - source: payment.recorded
       date: 2026-11-20
       lines:
         # book: 100.00 USD × 123 = 12,300.00 SYP received
-        - { account: "1121", currency: USD, amount: 10000, book: 1230000, parallel: 10000 }
+        - { account: "111004", currency: USD, amount: 10000, book: 1230000, parallel: 10000 }
         # the receivable is cleared at its carrying amounts: 12,000.00 SYP, 100.00 USD
-        - { account: "1210", dims: { client: C1 }, currency: USD, amount: -10000, book: -1200000, parallel: -10000 }
+        - { account: "112001", dims: { client: C1 }, currency: USD, amount: -10000, book: -1200000, parallel: -10000 }
         # realised exchange gain 300.00 SYP in the book ledger only (IAS 21.28); nothing in the parallel ledger
-        - { account: "5910", currency: SYP, amount: -30000, book: -30000, parallel: 0 }
+        - { account: "421001", currency: SYP, amount: -30000, book: -30000, parallel: 0 }
   balances:
-    - { account: "1210", book: 0, parallel: 0 }
+    - { account: "112001", book: 0, parallel: 0 }
 ```
 
 ### An SYP invoice paid in SYP, in the USD parallel ledger at Hub's rate
@@ -167,18 +167,18 @@ expect:
       date: 2026-11-03
       lines:
         # book: SYP as is; parallel: 12,200.00 SYP / 122 (Hub's rate) = 100.00 USD
-        - { account: "1210", dims: { client: C1 }, currency: SYP, amount: 1220000, book: 1220000, parallel: 10000 }
-        - { account: "4110", dims: { client: C1, service: S1 }, currency: SYP, amount: -1220000, book: -1220000, parallel: -10000 }
+        - { account: "112001", dims: { client: C1 }, currency: SYP, amount: 1220000, book: 1220000, parallel: 10000 }
+        - { account: "411001", dims: { client: C1, service: S1 }, currency: SYP, amount: -1220000, book: -1220000, parallel: -10000 }
     - source: payment.recorded
       date: 2026-11-20
       lines:
         # parallel: 12,200.00 SYP / 125 = 97.60 USD received
-        - { account: "1111", currency: SYP, amount: 1220000, book: 1220000, parallel: 9760 }
-        - { account: "1210", dims: { client: C1 }, currency: SYP, amount: -1220000, book: -1220000, parallel: -10000 }
+        - { account: "111003", currency: SYP, amount: 1220000, book: 1220000, parallel: 9760 }
+        - { account: "112001", dims: { client: C1 }, currency: SYP, amount: -1220000, book: -1220000, parallel: -10000 }
         # realised exchange loss 2.40 USD in the parallel ledger only; nothing in the SYP books
-        - { account: "5910", currency: USD, amount: 240, book: 0, parallel: 240 }
+        - { account: "541001", currency: USD, amount: 240, book: 0, parallel: 240 }
   balances:
-    - { account: "1210", book: 0, parallel: 0 }
+    - { account: "112001", book: 0, parallel: 0 }
 ```
 
 Each entry balances in both ledgers:

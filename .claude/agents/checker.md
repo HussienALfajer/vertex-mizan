@@ -1,6 +1,6 @@
 ---
 name: checker
-description: Runs the Vertex Mizan checks through `pnpm verify` (lint, typecheck, unit and property tests, the scenario book, build, the migration, error-code and OpenAPI guards, the changed E2E specs) and returns its summary, failures first, each with its file:line. Use it to keep a long check run out of the main context, and do not edit files while it runs. Say "the branch" for the whole verify, or name the test files to run.
+description: Runs the Vertex Mizan checks through `pnpm verify` (lint, typecheck, unit and property tests, the scenario book, build, the migration, error-code and OpenAPI guards, the dependency audit, the secret scan, the E2E specs) and returns its summary, failures first, each with its file:line. Use it to keep a long check run out of the main context, as before a PR while the reviewers run, and do not edit files while it runs. Say "the branch before the PR" for `--e2e-all`, "the branch" for the whole verify, or name the test files to run.
 tools: Bash, Read, Grep, Glob
 model: haiku
 effort: low
@@ -13,8 +13,9 @@ You run the Vertex Mizan checks with one command and report what it found. You n
 
 Run from the repository root, in the foreground, with the Bash timeout set to 600000 ms:
 
+- The branch before a PR: `pnpm --silent verify --e2e-all` (every check and the whole E2E suite, as CI runs them)
 - The whole branch: `pnpm --silent verify`
-- Some test files: `pnpm --silent verify <path> [<path>...]`, paths from the repository root (`packages/db/test/roles.test.ts`, `apps/web/e2e/shell.spec.ts`); a path under `docs/scenarios/` runs the scenario book; add `--grep "<title>"` to run part of a Playwright spec.
+- Some test files: `pnpm --silent verify <path> [<path>...]`, paths from the repository root (`packages/db/test/roles.test.ts`, `apps/web/e2e/shell.spec.ts`); a path under `docs/scenarios/` runs the scenario book; add `--grep "<title>"` to run only the tests with that title.
 
 That command is the only one you run. Never start another test command (`pnpm test`, `pnpm test:scenarios`, `vitest`, `playwright`, `turbo run test`), never wrap one in `timeout`, never pipe it through `tail` or `grep`, never run two at once, and never run the same one twice: everything it found is in its summary and in `.verify/`. Never read `.env` files or `.data/`, and never run anything that touches a server or a real company's data.
 

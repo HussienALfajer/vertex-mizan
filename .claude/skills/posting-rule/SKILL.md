@@ -34,12 +34,14 @@ Rule: **$ARGUMENTS**. Rules: ADR 0007 (money, book and parallel ledgers), ADR 00
 
 ## 3. Owner approval of the numbers
 - Show the owner each case in Arabic as a small table of debit and credit lines with amounts, and the reasoning in one or two lines.
-- **Stop and wait for approval.** Changes to an existing expected value need explicit approval and are named in the PR.
+- **Stop and wait for approval.** Changes to an existing expected value need explicit approval and are named in the PR. This approval is the one the PR needs: the PR quotes it and merges automatically ("Finishing a task" in `AGENTS.md`).
+- An approved case keeps `Status: Proposed` until the executors its steps need exist (the runner fails an `Approved` case it cannot run); its PR and `docs/ROADMAP.md` record the owner's approval and date (`docs/scenarios/README.md`, "Status").
 
 ## 4. Implement
 - Put the rule in `packages/ledger` as pure functions (no I/O), and register it where its event or job is dispatched.
 - The posting function in `packages/db` stays the only writer.
-- Run the scenario through the runner: `pnpm verify docs/scenarios/<area>/<scenario>.md` runs the scenario book. It must pass without editing the expected values. If the code disagrees with the approved numbers, the code is wrong unless the owner approves a change.
+- When this PR brings the executors a case's steps need, switch the case to `Status: Approved (owner, <the approval's date>)` in the same PR.
+- Run the scenario through the runner: `pnpm verify docs/scenarios/<area>/<scenario>.md` runs the scenario book. It must pass without editing the expected values, and its summary must count the case as run, not skipped: a skipped case proves nothing. If the code disagrees with the approved numbers, the code is wrong unless the owner approves a change.
 
 ## 5. Property tests
 Add fast-check properties for the rule, and run their files with `pnpm verify <files>`:
@@ -50,5 +52,5 @@ Add fast-check properties for the rule, and run their files with `pnpm verify <f
 - replaying its input posts nothing new.
 
 ## 6. Review and finish
-- Verify the branch once with both reviews at the same time: `pnpm verify` through the `checker`, the `accountant-reviewer` with the scenario paths, and the `reviewer` when code beyond `packages/ledger` changed. Edit nothing while they run.
-- Fix every blocking finding and every failure together, run `pnpm verify` once more, then finish the PR following "Finishing a task" in `AGENTS.md`. A posting-rule PR waits for the owner's approval before auto-merge.
+- Check and review at the same time: `pnpm verify --e2e-all` through the `checker`, the `accountant-reviewer` with the scenario paths, and the `reviewer` (every PR that changes code, `CLAUDE.md`). Edit nothing while they run.
+- Fix every blocking finding and every failure together, run `pnpm verify --e2e-all` once more and the one re-review `CLAUDE.md` allows, then finish the PR in the same turn, without asking: "Finishing a task" in `AGENTS.md`. A fix that changes an approved expected value, account or treatment goes back to step 3 for a new approval first. A scenario-only PR (no code yet) runs the same steps: CI runs the scenario book on it.

@@ -43,3 +43,6 @@ Thumbs.db
 .claude/settings.local.json
 .claude/worktrees/
 CLAUDE.local.md
+
+# Pinned tools the checks download (scripts/tools.mjs)
+.tools/
