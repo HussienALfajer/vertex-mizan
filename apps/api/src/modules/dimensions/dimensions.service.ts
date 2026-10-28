@@ -19,14 +19,14 @@ import {
   type Transaction,
   withCompany,
 } from '@vertex-mizan/db';
-import { and, asc, count, desc, eq, ilike, inArray, isNull, lt, max, or } from 'drizzle-orm';
+import { and, asc, count, desc, eq, ilike, inArray, isNull, max, or } from 'drizzle-orm';
 import { actorOf, type CompanyRouteAccess } from '../../core/access/access.js';
 import { lockCompanyForWrite } from '../../core/access/company-lock.js';
 import { type AuditActor, changedFields, writeCompanyAudit } from '../../core/audit/audit.js';
 import { DATABASE } from '../../core/database/database.module.js';
 import { onUniqueViolation } from '../../core/database/unique-violation.js';
 import { CodedException } from '../../core/errors/coded-exception.js';
-import { decodeCursor, pageOf } from '../../core/http/cursor.js';
+import { afterCursor, decodeCursor, pageOf } from '../../core/http/cursor.js';
 
 type TypeRow = typeof dimensionTypes.$inferSelect;
 type ValueRow = typeof dimensionValues.$inferSelect;
@@ -243,15 +243,7 @@ export class DimensionsService {
                   ilike(dimensionValues.nameLatin, containing(query.q)),
                 )
               : undefined,
-            after
-              ? or(
-                  lt(dimensionValues.createdAt, after.createdAt),
-                  and(
-                    eq(dimensionValues.createdAt, after.createdAt),
-                    lt(dimensionValues.id, after.id),
-                  ),
-                )
-              : undefined,
+            after ? afterCursor(dimensionValues.createdAt, dimensionValues.id, after) : undefined,
           ),
         )
         .orderBy(desc(dimensionValues.createdAt), desc(dimensionValues.id))

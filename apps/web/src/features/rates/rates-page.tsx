@@ -59,7 +59,7 @@ import {
   PlusIcon,
   TriangleAlertIcon,
 } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { FormError } from '../../components/form-error';
 import { ApiError, api, hasCode } from '../../lib/api';
 import {
@@ -358,6 +358,12 @@ function BulletinStatus({ pair }: { pair: RatePair }) {
   const rows = useInfiniteQuery(
     ratesQuery(companyId, pair, 'bulletin', { from: addDays(today, -29), to: today }),
   );
+  // A day is judged missing only once every page is read: corrections can fill the first page.
+  const { hasNextPage, isFetchingNextPage, isError, fetchNextPage } = rows;
+  useEffect(() => {
+    if (hasNextPage && !isFetchingNextPage && !isError) void fetchNextPage();
+  }, [hasNextPage, isFetchingNextPage, isError, fetchNextPage]);
+  const complete = rows.data !== undefined && !hasNextPage;
   const recorded = new Set(
     rows.data?.pages.flatMap((page) => page.rates.map((r) => r.effectiveOn)),
   );
@@ -368,7 +374,7 @@ function BulletinStatus({ pair }: { pair: RatePair }) {
       <CardHeader>
         <CardTitle>{t.status.title}</CardTitle>
         <CardDescription>
-          {calendar.data && rows.data ? (
+          {calendar.data && complete ? (
             missing === 0 ? (
               t.status.allRecorded
             ) : (
@@ -382,10 +388,10 @@ function BulletinStatus({ pair }: { pair: RatePair }) {
         </CardDescription>
       </CardHeader>
       <div className="px-6 pb-6">
-        {calendar.isPending || rows.isPending ? (
-          <Skeleton className="h-row" />
-        ) : calendar.isError || rows.isError ? (
+        {calendar.isError || rows.isError ? (
           <FormError error={calendar.error ?? rows.error} />
+        ) : calendar.isPending || !complete ? (
+          <Skeleton className="h-row" />
         ) : (
           <ul aria-label={t.status.label} className="flex flex-wrap gap-2">
             {days.map(({ day, status }) => (

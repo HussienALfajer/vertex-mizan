@@ -70,10 +70,11 @@ export class AccountService {
     const actor = actorOf(access);
     let accepted: boolean;
     if (/^\d{6}$/.test(code)) {
-      accepted =
-        (await claimCode(this.db, person.id, code)) &&
-        (await totpMatches(row, code, this.config.authSecret));
-      if (!accepted) await releaseCode(this.db, person.id, code);
+      // Only a claim this request made is given back: releasing a refused claim would erase the
+      // mark of an earlier use and let the same code through on the next try (S01 "Code replay").
+      const claimed = await claimCode(this.db, person.id, code);
+      accepted = claimed && (await totpMatches(row, code, this.config.authSecret));
+      if (claimed && !accepted) await releaseCode(this.db, person.id, code);
     } else {
       accepted = await this.db.transaction(async (tx) => {
         // The person's lock first, as every two-factor change takes it: the audit insert below

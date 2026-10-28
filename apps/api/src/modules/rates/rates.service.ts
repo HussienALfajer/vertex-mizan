@@ -27,14 +27,14 @@ import {
   withCompany,
 } from '@vertex-mizan/db';
 import { lastPublicationDay, type PublicationCalendar, policyRate } from '@vertex-mizan/ledger';
-import { and, asc, desc, eq, gte, isNull, lt, lte, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, isNull, lte, or, sql } from 'drizzle-orm';
 import { actorOf, type CompanyRouteAccess } from '../../core/access/access.js';
 import { lockCompanyForWrite } from '../../core/access/company-lock.js';
 import { type AuditActor, writeCompanyAudit } from '../../core/audit/audit.js';
 import { DATABASE } from '../../core/database/database.module.js';
 import { onUniqueViolation } from '../../core/database/unique-violation.js';
 import { CodedException } from '../../core/errors/coded-exception.js';
-import { decodeCursor, pageOf } from '../../core/http/cursor.js';
+import { afterCursor, decodeCursor, pageOf } from '../../core/http/cursor.js';
 
 type StoredRate = typeof exchangeRates.$inferSelect;
 type PairRow = typeof ratePairs.$inferSelect;
@@ -121,12 +121,7 @@ export class RatesService {
         query.type ? eq(exchangeRates.type, query.type) : undefined,
         query.from ? gte(exchangeRates.effectiveOn, query.from) : undefined,
         query.to ? lte(exchangeRates.effectiveOn, query.to) : undefined,
-        after
-          ? or(
-              lt(exchangeRates.createdAt, after.createdAt),
-              and(eq(exchangeRates.createdAt, after.createdAt), lt(exchangeRates.id, after.id)),
-            )
-          : undefined,
+        after ? afterCursor(exchangeRates.createdAt, exchangeRates.id, after) : undefined,
       ]);
       const page = pageOf(rows, PAGE_SIZE, (row) => row.entry);
       return { rates: page.entries, nextCursor: page.nextCursor };

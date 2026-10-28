@@ -1,6 +1,6 @@
 import type { INestApplication } from '@nestjs/common';
 import { auditEntries, type Database, withCompany } from '@vertex-mizan/db';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createTestApp } from './app.js';
 import { joinCompany, newCompany, signedInPerson, testDatabase } from './people.js';
@@ -65,6 +65,35 @@ describe('GET /api/audit', () => {
       to: '2026-10-01T00:19:00.000Z',
     });
     expect(range.body.entries).toHaveLength(10);
+  });
+
+  it('pages rows of the same microsecond across a page boundary without losing one', async () => {
+    const owner = await signedInPerson(app, db);
+    const company = await newCompany(owner.browser);
+    // 101 entries at one time with microseconds, which a JavaScript Date cannot hold.
+    await withCompany(db, company.id, (tx) =>
+      tx.insert(auditEntries).values(
+        Array.from({ length: 101 }, (_, n) => ({
+          companyId: company.id,
+          createdAt: sql`'2026-10-01 00:00:00.123456+00'::timestamptz`,
+          actorKind: 'system',
+          actorName: 'Vertex',
+          requestId: `request-${n}`,
+          action: 'company.updated',
+          entityType: 'company',
+          entityId: company.id,
+        })),
+      ),
+    );
+    const first = await owner.browser.get('/api/audit', { action: 'company.updated' });
+    expect(first.body.entries).toHaveLength(100);
+    const second = await owner.browser.get('/api/audit', {
+      action: 'company.updated',
+      cursor: first.body.nextCursor,
+    });
+    expect(second.body.entries).toHaveLength(1);
+    const ids = new Set([...first.body.entries, ...second.body.entries].map((entry) => entry.id));
+    expect(ids.size).toBe(101);
   });
 
   it('is for owners and auditors, and shows only the active company', async () => {

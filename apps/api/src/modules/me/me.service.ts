@@ -14,12 +14,12 @@ import {
   sessions,
   withCompany,
 } from '@vertex-mizan/db';
-import { and, asc, desc, eq, isNull, lt, ne, or } from 'drizzle-orm';
+import { and, asc, desc, eq, isNull, ne, or } from 'drizzle-orm';
 import { actorOf, type SignedInAccess } from '../../core/access/access.js';
 import { writeCompanyAudit, writePlatformAudit } from '../../core/audit/audit.js';
 import { DATABASE } from '../../core/database/database.module.js';
 import { CodedException } from '../../core/errors/coded-exception.js';
-import { decodeCursor, pageOf } from '../../core/http/cursor.js';
+import { afterCursor, decodeCursor, pageOf } from '../../core/http/cursor.js';
 import { consumeLimit, LIMITS } from '../../core/limits/limits.js';
 import { hashPassword, verifyPassword } from '../auth/password.js';
 
@@ -84,22 +84,26 @@ export class MeService {
         ),
       );
     if (!membership) throw new CodedException('NOT_FOUND', 'No such company');
-    await this.db
-      .update(sessions)
-      .set({ activeCompanyId: companyId })
-      .where(eq(sessions.id, access.session.id));
-    await withCompany(this.db, companyId, (tx) =>
-      writeCompanyAudit(tx, companyId, actorOf(access), {
+    // The switch and its audit row in one transaction (ADR 0005): neither is kept without the other.
+    await withCompany(this.db, companyId, async (tx) => {
+      await tx
+        .update(sessions)
+        .set({ activeCompanyId: companyId })
+        .where(eq(sessions.id, access.session.id));
+      await writeCompanyAudit(tx, companyId, actorOf(access), {
         action: 'session.company_entered',
         entityType: 'session',
         entityId: access.session.id,
         after: { activeCompanyId: companyId },
-      }),
-    );
+      });
+    });
     return this.me({ ...access, session: { ...access.session, activeCompanyId: companyId } });
   }
 
-  /** `GET /api/me/sign-ins`: the person's own platform audit entries, newest first. */
+  /**
+   * `GET /api/me/sign-ins`: the person's own platform audit entries, newest first, with the
+   * failed password steps typed with their address (rule 26), whose actor is unknown.
+   */
   async signIns(access: SignedInAccess, cursor: string | undefined): Promise<SignInPage> {
     const after = cursor ? decodeCursor(cursor) : null;
     const rows = await this.db
@@ -113,15 +117,16 @@ export class MeService {
       .from(platformAuditEntries)
       .where(
         and(
-          eq(platformAuditEntries.actorUserId, access.person.id),
+          or(
+            eq(platformAuditEntries.actorUserId, access.person.id),
+            and(
+              isNull(platformAuditEntries.actorUserId),
+              eq(platformAuditEntries.action, 'user.sign_in_failed'),
+              eq(platformAuditEntries.email, access.person.email.toLowerCase()),
+            ),
+          ),
           after
-            ? or(
-                lt(platformAuditEntries.createdAt, after.createdAt),
-                and(
-                  eq(platformAuditEntries.createdAt, after.createdAt),
-                  lt(platformAuditEntries.id, after.id),
-                ),
-              )
+            ? afterCursor(platformAuditEntries.createdAt, platformAuditEntries.id, after)
             : undefined,
         ),
       )
