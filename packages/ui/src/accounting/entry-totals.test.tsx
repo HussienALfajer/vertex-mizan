@@ -15,6 +15,7 @@ const labels = {
   status: 'الحالة',
   balanced: 'متوازن',
   residual: 'الفرق',
+  crossCurrency: 'يُرحَّل فرق كل عملة فرقَ صرف محققًا.',
 };
 
 describe('EntryTotals', () => {
@@ -38,6 +39,29 @@ describe('EntryTotals', () => {
     expect(usd?.querySelector('[data-negative]')?.textContent).toBe('-0.50');
     expect(syp?.textContent).toBe('SYP12,250.0012,250.00متوازن');
     expect(syp?.getAttribute('data-balanced')).toBe('true');
+  });
+
+  it('marks a one-currency imbalance as an error, and explains residuals in several currencies', () => {
+    const { rerender } = render(
+      <EntryTotals labels={labels} totals={entryTotals([{ amountMinor: 5n, currency: 'SYP' }])} />,
+    );
+    expect(document.querySelector('[data-slot="badge"]')?.className).toContain('danger');
+    expect(document.querySelector('[data-slot="entry-totals-note"]')).toBeNull();
+    rerender(
+      <EntryTotals
+        labels={labels}
+        totals={entryTotals([
+          { amountMinor: 10_000n, currency: 'USD' },
+          { amountMinor: -1_225_000n, currency: 'SYP' },
+        ])}
+      />,
+    );
+    for (const badge of document.querySelectorAll('[data-slot="badge"]')) {
+      expect(badge.className).not.toContain('danger');
+    }
+    expect(document.querySelector('[data-slot="entry-totals-note"]')?.textContent).toBe(
+      labels.crossCurrency,
+    );
   });
 
   it('keeps every figure an LTR isolate, and announces changes politely', () => {

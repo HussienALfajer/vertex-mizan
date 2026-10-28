@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link } from '@tanstack/react-router';
 import {
   type Account,
   type AccountClass,
@@ -518,6 +519,15 @@ export function AccountSheet({
           {!readOnly && (
             <Button type="submit" loading={save.isPending}>
               {account ? s.save : s.create}
+            </Button>
+          )}
+          {used && account && account.kind === 'postable' && (
+            <Button
+              type="button"
+              variant="outline"
+              render={<Link to="/accounts/$id/lines" params={{ id: account.id }} />}
+            >
+              {ar.entries.lines.title}
             </Button>
           )}
           <SheetClose render={<Button type="button" variant="ghost" />}>

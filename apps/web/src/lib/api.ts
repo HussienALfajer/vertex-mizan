@@ -44,7 +44,7 @@ interface Request<T> {
  * contract's schema. A refusal throws `ApiError` with its code.
  */
 export async function api<T = void>(
-  method: 'GET' | 'POST' | 'PATCH' | 'PUT',
+  method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE',
   path: string,
   { body, company, schema }: Request<T> = {},
 ): Promise<T> {
@@ -81,7 +81,41 @@ export function listOf<T>(item: { parse(value: unknown): T }): { parse(value: un
 }
 
 /**
- * Downloads a file answer (an export) with the session cookie and the company header, then hands
+ * Uploads one file as the `file` field of a multipart body (an attachment, S03 rule 17), with the
+ * company header, and parses the answer with the contract's schema.
+ */
+export async function upload<T>(
+  path: string,
+  file: File,
+  { company, schema }: { company: string; schema: { parse(value: unknown): T } },
+): Promise<T> {
+  const body = new FormData();
+  body.append('file', file);
+  const response = await fetch(`/api${path}`, {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { accept: 'application/json', 'x-mizan-company': company },
+    body,
+  });
+  if (!response.ok) throw await refusal(response);
+  return schema.parse(await response.json());
+}
+
+/** The file name of a `Content-Disposition` header: RFC 5987's UTF-8 form first, then the plain one. */
+export function dispositionFileName(header: string | null): string | undefined {
+  const encoded = /filename\*=UTF-8''([^;]+)/i.exec(header ?? '')?.[1];
+  if (encoded) {
+    try {
+      return decodeURIComponent(encoded);
+    } catch {
+      // A malformed name falls back to the plain one.
+    }
+  }
+  return /filename="([^"]+)"/.exec(header ?? '')?.[1];
+}
+
+/**
+ * Downloads a file answer (an export, an attachment) with the session cookie and the company header, then hands
  * it to the browser under the name the API gave in `Content-Disposition`.
  */
 export async function download(path: string, { company }: { company: string }): Promise<void> {
@@ -90,7 +124,7 @@ export async function download(path: string, { company }: { company: string }): 
     headers: { 'x-mizan-company': company },
   });
   if (!response.ok) throw await refusal(response);
-  const name = /filename="([^"]+)"/.exec(response.headers.get('content-disposition') ?? '')?.[1];
+  const name = dispositionFileName(response.headers.get('content-disposition'));
   const url = URL.createObjectURL(await response.blob());
   const link = document.createElement('a');
   link.href = url;

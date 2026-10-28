@@ -21,6 +21,8 @@ The Arabic text of every front end (ADR 0009): plain catalogs and locale constan
   - `chart`: the chart of accounts (S02): account classes, kinds, normal balances, roles, templates and the chart export's columns;
   - `dimensions`: dimension types and values, the Hub link and contract kinds (S02);
   - `rates`: rate pairs, types and sources, the rate table and corrections, the rate in force, the bulletin status and calendar, the weekdays (S02);
+  - `entries`: the journal, an entry's page, its reversal and files, an account's lines and a rate row's entries, with each entry source and line kind (S03);
+  - `drafts`: the keyboard entry screen, dealt rates, the preview, the drafts list, approval and rejection, with each draft state (S03);
   - `email`: the emails the worker sends (S01), with `{name}` placeholders the worker fills from the email's data.
 - `src/locale.ts`: `defaultLanguage` (`ar`), `textDirection` (`rtl`), `formatLocale` (`ar-SY-u-nu-latn`: Syrian month names, Latin digits; pinned by `locale.test.ts`) for dates and counts, `displayTimeZone` (`Asia/Damascus`).
 - `src/catalog.test.ts`: no empty text, no Arabic-Indic digit, a text for every error code and every amount-input reason.

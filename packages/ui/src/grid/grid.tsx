@@ -8,8 +8,10 @@ import {
   type ComponentProps,
   type KeyboardEvent,
   type ReactNode,
+  type Ref,
   useEffect,
   useId,
+  useImperativeHandle,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -105,7 +107,15 @@ type GridProps<Row> = Omit<ComponentProps<'div'>, 'children' | 'onCopy' | 'onPas
     empty?: ReactNode;
     /** Where Enter moves: down the column (the default) or to the next cell of the line. */
     enterMoves?: EnterMove;
+    /** For an app that moves the focus itself: to a line it just added, or back from a picker. */
+    handle?: Ref<GridHandle>;
   };
+
+/** What an app can do to the grid from outside it. */
+export interface GridHandle {
+  /** Makes a cell the active one and focuses it, once rendered (a new line's first cell). */
+  focusCell(position: CellPosition): void;
+}
 
 /**
  * The open editor. Its row is held by `rowKey`, not by index, so a line inserted or deleted
@@ -178,6 +188,7 @@ function Grid<Row>({
   stickyStartColumn = false,
   empty,
   enterMoves = 'down',
+  handle,
   className,
   'aria-label': ariaLabel,
   'aria-labelledby': ariaLabelledBy,
@@ -266,6 +277,10 @@ function Grid<Row>({
     setSelection(next);
     focusPending.current = focus;
   }
+
+  useImperativeHandle(handle, () => ({
+    focusCell: (position) => select(selectCell(position)),
+  }));
 
   /** Applies a plan: every edit to the app, or its refusal shown and nothing changed. */
   function apply(plan: EditPlan): boolean {

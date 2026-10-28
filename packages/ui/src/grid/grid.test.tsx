@@ -9,7 +9,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { keymap } from '../lib/keymap';
 import { matchesShortcut } from '../lib/shortcuts';
 import type { CellEdit } from './cells';
-import { Grid, type GridColumnDef, type GridProblem, gridCellOf } from './grid';
+import { Grid, type GridColumnDef, type GridHandle, type GridProblem, gridCellOf } from './grid';
 
 afterEach(cleanup);
 
@@ -276,6 +276,41 @@ describe('Grid', () => {
     expect(document.activeElement).toBe(cell(2, 0));
     press('Enter', { shiftKey: true });
     expect(document.activeElement).toBe(cell(1, 2));
+  });
+
+  it('focuses a cell the app names, once its line is rendered', () => {
+    const handle = { current: null as GridHandle | null };
+    function Added() {
+      const [lines, setLines] = useState(initialLines.slice(0, 1));
+      return (
+        <DirectionProvider direction="rtl">
+          <button
+            type="button"
+            onClick={() => {
+              setLines([
+                ...lines,
+                { id: 'new', account: '', currency: 'USD', amount: null, parallel: null },
+              ]);
+              handle.current?.focusCell({ row: lines.length, column: 0 });
+            }}
+          >
+            add
+          </button>
+          <Grid
+            aria-label="قيد"
+            rows={lines}
+            columns={columns}
+            rowKey={(line) => line.id}
+            describeProblem={problemText}
+            summaryLabels={ar.grid.summary}
+            handle={handle}
+          />
+        </DirectionProvider>
+      );
+    }
+    render(<Added />);
+    fireEvent.click(screen.getByRole('button', { name: 'add' }));
+    expect(document.activeElement).toBe(cell(1, 0));
   });
 
   it('names the cell a lookup key came from, even from its editor', () => {

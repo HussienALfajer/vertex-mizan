@@ -39,6 +39,10 @@ import {
   PageHeader,
   RateInput,
   SelectField,
+  Sheet,
+  SheetClose,
+  SheetContent,
+  SheetTitle,
   Skeleton,
   Table,
   TableBody,
@@ -71,6 +75,8 @@ import {
   isoWeekday,
 } from '../../lib/format';
 import { can, useCompany } from '../../lib/session';
+import { EntryNumberText, useFiscalYearStartMonth } from '../entries/entry-parts';
+import { rateEntriesQuery } from '../entries/entry-queries';
 import { rateCalendarQuery, ratePairsQuery, ratesQuery } from './rate-queries';
 
 const t = ar.rates;
@@ -243,7 +249,8 @@ function RecordedNotice({ recorded }: { recorded: RecordedRate }) {
 }
 
 function PairPanel({ pair, type }: { pair: RatePair; type: RateType }) {
-  const { companyId } = useCompany();
+  const { companyId, me } = useCompany();
+  const [usedBy, setUsedBy] = useState<RateRow | null>(null);
   const rows = useInfiniteQuery(ratesQuery(companyId, pair, type));
   const list = rows.data?.pages.flatMap((page) => page.rates) ?? [];
   return (
@@ -297,6 +304,11 @@ function PairPanel({ pair, type }: { pair: RatePair; type: RateType }) {
                           <bdi>{row.reason}</bdi>
                         </span>
                       )}
+                      {can(me, 'entries.read') && (
+                        <Button variant="ghost" size="sm" onClick={() => setUsedBy(row)}>
+                          {ar.entries.rateEntries.open}
+                        </Button>
+                      )}
                     </span>
                   </TableCell>
                 </TableRow>
@@ -315,7 +327,75 @@ function PairPanel({ pair, type }: { pair: RatePair; type: RateType }) {
           )}
         </>
       )}
+      <RateEntriesSheet row={usedBy} onClose={() => setUsedBy(null)} />
     </div>
+  );
+}
+
+/**
+ * The entries whose conversions used a rate row (S02 rule 15, S03): after a correction they stay
+ * as posted; each opens, to be reversed and posted again (S03 rule 9).
+ */
+function RateEntriesSheet({ row, onClose }: { row: RateRow | null; onClose: () => void }) {
+  const { companyId } = useCompany();
+  const startMonth = useFiscalYearStartMonth(companyId);
+  const entries = useInfiniteQuery({
+    ...rateEntriesQuery(companyId, row?.id ?? ''),
+    enabled: row !== null,
+  });
+  const list = entries.data?.pages.flatMap((page) => page.entries) ?? [];
+  const te = ar.entries;
+  return (
+    <Sheet open={row !== null} onOpenChange={(open) => !open && onClose()}>
+      <SheetContent className="gap-4 overflow-y-auto p-6">
+        <SheetTitle>{te.rateEntries.title}</SheetTitle>
+        {row && (
+          <p className="flex flex-wrap gap-x-3">
+            <QuotedRate row={row} strong />
+            <span>{formatDay(row.effectiveOn)}</span>
+          </p>
+        )}
+        <p className="text-muted-foreground">{te.rateEntries.description}</p>
+        {entries.isPending ? (
+          <Loading />
+        ) : entries.isError ? (
+          <FormError error={entries.error} />
+        ) : list.length === 0 ? (
+          <EmptyState title={te.rateEntries.empty} />
+        ) : (
+          <ul aria-label={te.rateEntries.title} className="flex flex-col gap-2">
+            {list.map((entry) => (
+              <li key={entry.id} className="flex flex-col">
+                <Link
+                  to="/entries/$id"
+                  params={{ id: entry.id }}
+                  className="font-medium text-primary underline-offset-4 hover:underline"
+                >
+                  <EntryNumberText number={entry} startMonth={startMonth} />
+                </Link>
+                <span className="text-muted-foreground text-xs">
+                  {`${formatDay(entry.entryDate)} · `}
+                  <bdi>{entry.description}</bdi>
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+        {entries.hasNextPage && (
+          <Button
+            variant="outline"
+            className="w-fit"
+            loading={entries.isFetchingNextPage}
+            onClick={() => void entries.fetchNextPage()}
+          >
+            {t.loadMore}
+          </Button>
+        )}
+        <SheetClose render={<Button variant="secondary" className="w-fit" />}>
+          {ar.common.close}
+        </SheetClose>
+      </SheetContent>
+    </Sheet>
   );
 }
 

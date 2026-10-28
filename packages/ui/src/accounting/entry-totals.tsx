@@ -17,6 +17,11 @@ export interface EntryTotalsLabels {
   readonly balanced: string;
   /** Before the residual of an unbalanced currency: "difference". */
   readonly residual: string;
+  /**
+   * Under the totals of an entry in several currencies: their residuals are not an error, the
+   * posting turns them into realised exchange differences per ledger (S03 rule 15).
+   */
+  readonly crossCurrency: string;
 }
 
 type EntryTotalsProps = Omit<ComponentProps<'div'>, 'children'> & {
@@ -26,12 +31,14 @@ type EntryTotalsProps = Omit<ComponentProps<'div'>, 'children'> & {
 };
 
 /**
- * An entry's live totals per transaction currency (S03 rule 14, ADR 0010 §3): debits, credits and
- * whether the currency balances, written out with its residual, never shown by color alone. The
- * figures come from the money module; nothing is added here. Its status is announced politely as
- * lines change.
+ * An entry's live totals per transaction currency (ADR 0010 §3): debits, credits and whether the
+ * currency balances, written out with its residual, never shown by color alone. In one currency a
+ * residual is an error (S03 rule 14); in several, each currency's residual is expected and the
+ * note says it posts as a realised exchange difference (rule 15). The figures come from the money
+ * module; nothing is added here. Its status is announced politely as lines change.
  */
 function EntryTotals({ totals, labels, className, ...props }: EntryTotalsProps) {
+  const crossCurrency = totals.length > 1;
   return (
     <div data-slot="entry-totals" className={cn('min-w-0', className)} {...props}>
       <Table aria-label={labels.label}>
@@ -64,7 +71,7 @@ function EntryTotals({ totals, labels, className, ...props }: EntryTotalsProps) 
                       {labels.balanced}
                     </Badge>
                   ) : (
-                    <Badge tone="danger">
+                    <Badge tone={crossCurrency ? 'neutral' : 'danger'}>
                       <CircleAlertIcon aria-hidden="true" />
                       {`${labels.residual} `}
                       <Amount value={total.residualMinor} currency={total.currency} />
@@ -76,6 +83,11 @@ function EntryTotals({ totals, labels, className, ...props }: EntryTotalsProps) 
           })}
         </TableBody>
       </Table>
+      {crossCurrency && (
+        <p data-slot="entry-totals-note" className="mt-2 text-sm text-muted-foreground">
+          {labels.crossCurrency}
+        </p>
+      )}
     </div>
   );
 }
