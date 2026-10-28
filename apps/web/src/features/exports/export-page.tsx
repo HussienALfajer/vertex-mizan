@@ -103,13 +103,12 @@ export function ExportPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>{t.table.requestedAt}</TableHead>
-                <TableHead className="max-md:hidden">{t.table.requestedBy}</TableHead>
+                <TableHead className="max-xl:hidden">{t.table.requestedBy}</TableHead>
                 <TableHead>{t.table.state}</TableHead>
-                <TableHead numeric className="max-sm:hidden">
+                <TableHead numeric className="max-lg:hidden">
                   {t.table.size}
                 </TableHead>
-                <TableHead className="max-lg:hidden">{t.table.sha256}</TableHead>
-                <TableHead className="max-sm:hidden">{t.table.expiresAt}</TableHead>
+                <TableHead className="max-xl:hidden">{t.table.sha256}</TableHead>
                 <TableHead>
                   <span className="sr-only">{t.table.actions}</span>
                 </TableHead>
@@ -121,24 +120,28 @@ export function ExportPage() {
                   <TableCell className="whitespace-nowrap">
                     {formatDateTime(row.createdAt)}
                   </TableCell>
-                  <TableCell className="max-md:hidden">
+                  <TableCell className="max-xl:hidden">
                     <bdi>{row.requestedBy.name}</bdi>
                   </TableCell>
                   <TableCell>
-                    <Badge tone={stateTone[row.state]}>{t.states[row.state]}</Badge>
+                    <span className="flex flex-col items-start gap-1">
+                      <Badge tone={stateTone[row.state]}>{t.states[row.state]}</Badge>
+                      {row.state === 'ready' && row.expiresAt && (
+                        <span className="text-xs whitespace-nowrap text-muted-foreground">
+                          {t.table.expiresAt} {formatDateTime(row.expiresAt)}
+                        </span>
+                      )}
+                    </span>
                   </TableCell>
-                  <TableCell numeric className="max-sm:hidden">
+                  <TableCell numeric className="max-lg:hidden">
                     {row.sizeBytes === null ? null : (
                       <bdi dir="ltr">{formatKilobytes(row.sizeBytes)}</bdi>
                     )}
                   </TableCell>
-                  <TableCell className="max-lg:hidden">
+                  <TableCell className="max-xl:hidden">
                     {row.sha256 && (
                       <Digest value={row.sha256} copyLabel={t.copyHash} copiedLabel={t.copied} />
                     )}
-                  </TableCell>
-                  <TableCell className="max-sm:hidden whitespace-nowrap">
-                    {row.state === 'ready' && row.expiresAt ? formatDateTime(row.expiresAt) : null}
                   </TableCell>
                   <TableCell>
                     {row.state === 'ready' && (

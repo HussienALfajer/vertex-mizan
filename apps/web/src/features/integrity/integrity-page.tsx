@@ -141,7 +141,7 @@ function Report({ report }: { report: IntegrityReport }) {
         description={report.ok ? t.result.cleanDescription : t.result.brokenDescription}
       />
       <Card>
-        <dl className="grid gap-4 p-6 sm:grid-cols-2 lg:grid-cols-4">
+        <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Fact label={t.result.checkedAt}>{formatDateTime(report.checkedAt)}</Fact>
           <Fact label={t.result.entries}>
             <bdi dir="ltr" className="tabular-nums">
@@ -173,7 +173,7 @@ function Report({ report }: { report: IntegrityReport }) {
       </Card>
       {report.firstBreak && (
         <Problems title={t.firstBreak.title}>
-          <dl className="grid gap-4 px-6 pb-6 sm:grid-cols-3">
+          <dl className="grid gap-4 sm:grid-cols-3">
             <Fact label={t.firstBreak.entry}>
               <Link
                 to="/entries/$id"
@@ -225,7 +225,7 @@ function Report({ report }: { report: IntegrityReport }) {
           <CardTitle>{t.anchors.title}</CardTitle>
           <CardDescription>{t.anchors.description}</CardDescription>
         </CardHeader>
-        <div className="min-w-0 px-6 pb-6">
+        <div className="min-w-0">
           {report.anchors.length === 0 ? (
             <p className="text-sm text-muted-foreground">{t.anchors.empty}</p>
           ) : (
@@ -233,7 +233,9 @@ function Report({ report }: { report: IntegrityReport }) {
               <TableHeader>
                 <TableRow>
                   <TableHead>{t.anchors.date}</TableHead>
-                  <TableHead numeric>{t.anchors.count}</TableHead>
+                  <TableHead numeric className="max-sm:hidden">
+                    {t.anchors.count}
+                  </TableHead>
                   <TableHead className="max-sm:hidden">{t.anchors.hash}</TableHead>
                   <TableHead>{t.anchors.result}</TableHead>
                 </TableRow>
@@ -244,7 +246,7 @@ function Report({ report }: { report: IntegrityReport }) {
                     <TableCell className="whitespace-nowrap">
                       {formatDay(anchor.anchoredOn)}
                     </TableCell>
-                    <TableCell numeric>
+                    <TableCell numeric className="max-sm:hidden">
                       <bdi dir="ltr">{anchor.entryCount}</bdi>
                     </TableCell>
                     <TableCell className="max-sm:hidden">
@@ -277,9 +279,11 @@ function Unbalanced({ report, startMonth }: { report: IntegrityReport; startMont
         <TableHeader>
           <TableRow>
             <TableHead>{t.unbalanced.entry}</TableHead>
-            <TableHead>{t.unbalanced.ledger}</TableHead>
+            <TableHead className="max-sm:hidden">{t.unbalanced.ledger}</TableHead>
             <TableHead numeric>{t.unbalanced.residual}</TableHead>
-            <TableHead numeric>{t.unbalanced.incompleteLines}</TableHead>
+            <TableHead numeric className="max-sm:hidden">
+              {t.unbalanced.incompleteLines}
+            </TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -296,13 +300,13 @@ function Unbalanced({ report, startMonth }: { report: IntegrityReport; startMont
                     <EntryNumberText number={row.number} startMonth={startMonth} />
                   </Link>
                 </TableCell>
-                <TableCell>{ar.accounting.ledger[row.ledger]}</TableCell>
+                <TableCell className="max-sm:hidden">{ar.accounting.ledger[row.ledger]}</TableCell>
                 <TableCell numeric>
                   {currency ? (
                     <Amount value={BigInt(row.residualMinor)} currency={currency} showCurrency />
                   ) : null}
                 </TableCell>
-                <TableCell numeric>
+                <TableCell numeric className="max-sm:hidden">
                   <bdi dir="ltr">{row.incompleteLines}</bdi>
                 </TableCell>
               </TableRow>
@@ -325,7 +329,7 @@ function PeriodBalances({ report }: { report: IntegrityReport }) {
           <TableRow>
             <TableHead>{t.periodBalances.period}</TableHead>
             <TableHead>{t.periodBalances.account}</TableHead>
-            <TableHead>{t.periodBalances.currency}</TableHead>
+            <TableHead className="max-sm:hidden">{t.periodBalances.currency}</TableHead>
             <TableHead>{t.periodBalances.problem}</TableHead>
           </TableRow>
         </TableHeader>
@@ -348,7 +352,7 @@ function PeriodBalances({ report }: { report: IntegrityReport }) {
                     <bdi dir="ltr">{row.accountId}</bdi>
                   )}
                 </TableCell>
-                <TableCell>
+                <TableCell className="max-sm:hidden">
                   <bdi dir="ltr">{row.currency}</bdi>
                 </TableCell>
                 <TableCell>{t.periodBalances.problems[row.problem]}</TableCell>
@@ -367,7 +371,7 @@ function Problems({ title, children }: { title: string; children: ReactNode }) {
       <CardHeader>
         <CardTitle>{title}</CardTitle>
       </CardHeader>
-      <div className="min-w-0 px-6 pb-6">{children}</div>
+      <div className="min-w-0">{children}</div>
     </Card>
   );
 }
@@ -438,7 +442,7 @@ function PastedAnchorCard({
       </CardHeader>
       <form
         noValidate
-        className="flex min-w-0 flex-col gap-4 px-6 pb-6"
+        className="flex min-w-0 flex-col gap-4"
         onSubmit={(event) => {
           event.preventDefault();
           const typed = { date: date.trim(), count: count.trim(), hash: hash.trim().toLowerCase() };
