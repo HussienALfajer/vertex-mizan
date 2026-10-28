@@ -165,6 +165,7 @@ Without a dealt rate the parallel SYP line is −100.41 (÷ 122.0, market) and t
 - S03 creates the month's period row on the first posting dated in it (`open`), with its fiscal year from `fiscal_year_start_month`. The period guard refuses an entry into a `closed` period (`PERIOD_CLOSED`); S07 brings closing, reopening and their lock order (head, then period, ADR 0008).
 - A draft dated in a period that S07 later closes cannot be posted; the accountant changes its date.
 - Entry numbers restart at 1 each fiscal year of the entry date; an entry dated in 2026 and posted in January 2027 takes the next 2026 number (owner, 2026-10-28). The journal book (S09) prints by entry date then number (ADR 0008).
+- A fiscal year's key (`fiscal_year`) is the calendar year it starts in. It is shown as that year when it is a calendar year (`2026`), and as both years when it spans two (`2026/2027` for July 2026 to June 2027), as the region names a July–June budget year; statements state the period's end date (IAS 1.51(c)). No amount or stored number depends on the label (decided on the owner's instruction to choose the most professional convention, 2026-10-28).
 - Checklist items S07 adds from this spec: no drafts or submitted drafts dated in the period (F09).
 
 ## API
@@ -237,7 +238,7 @@ None in S03. The journal book (S09) prints these entries by entry date then numb
 ## Arabic strings and number formats
 - New namespaces `ar.entries`, `ar.drafts`, `ar.integrity`, `ar.export`, with the sources (يدوي، حدث من Hub، أرصدة افتتاحية، إعادة تقييم، تحرير إيراد)، states (مسودة، بانتظار الاعتماد، مرحّل، مرفوض), line kinds (سطر تقريب، فرق صرف محقق) and the new error codes in `ar.errors`.
 - Terms (glossary): بيان القيد، المرجع، سعر الصفقة، إرسال للاعتماد، اعتماد، رفض، سحب، معاينة الترحيل، فحص السلامة، رأس السلسلة، تصدير بيانات الشركة، مجموعة الأبعاد، طلب الترحيل.
-- Entry numbers shown as `2026/123` (fiscal year / number) in Latin digits, LTR isolated; dates `YYYY-MM-DD`; amounts through the Amount component only; hashes in monospace, first 12 characters with copy.
+- Entry numbers shown as `2026/123` (fiscal year / number), or `2026-27/123` in a fiscal year that spans two calendar years ("Periods"), in Latin digits, LTR isolated; dates `YYYY-MM-DD`; amounts through the Amount component only; hashes in monospace, first 12 characters with copy.
 
 ## Audit
 One `audit_entries` row per change in the same transaction (S01 rule 23): `entry.posted` (one per posting, any source: the runner counts it), `entry.reversed` is the reversal's own `entry.posted` with `reverses` in its details, `draft.created`, `draft.updated` (before and after of the changed fields), `draft.submitted`, `draft.withdrawn`, `draft.approved`, `draft.rejected` (reason), `draft.discarded`, `attachment.added`, `attachment.removed`, `integrity.checked` (result), `export.requested`, `export.downloaded`, and the settings change of `manual_entry_approval` through S01's `company.settings_updated`. Anchors are written by the job with the jobs role as actor.
