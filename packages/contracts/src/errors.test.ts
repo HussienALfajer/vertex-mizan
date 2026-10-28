@@ -92,6 +92,14 @@ describe('error codes', () => {
       ['IDEMPOTENCY_CONFLICT', 409],
       ['ENTRY_DATE_OUT_OF_RANGE', 422],
       ['ACCOUNT_IS_CONTROL', 422],
+      ['DRAFT_NOT_EDITABLE', 409],
+      ['DRAFT_CHANGED', 409],
+      ['APPROVAL_REQUIRED', 409],
+      ['APPROVAL_NOT_REQUIRED', 409],
+      ['APPROVER_IS_PREPARER', 403],
+      ['ATTACHMENT_TYPE', 422],
+      ['ATTACHMENT_TOO_LARGE', 413],
+      ['ATTACHMENT_LIMIT', 409],
     ]);
   });
 

@@ -6,9 +6,14 @@ describe('audit actions', () => {
   // Stored values: a later spec appends, never renames (S01, "Audit").
   it('are the platform and company actions of S01 to S03, as <entity>.<verb>', () => {
     expect(PLATFORM_AUDIT_ACTIONS).toHaveLength(11);
-    expect(COMPANY_AUDIT_ACTIONS).toHaveLength(40);
+    expect(COMPANY_AUDIT_ACTIONS).toHaveLength(50);
     expect(COMPANY_AUDIT_ACTIONS.slice(15, 17)).toEqual(['account.created', 'account.updated']);
-    expect(COMPANY_AUDIT_ACTIONS.slice(-2)).toEqual(['export.chart', 'entry.posted']);
+    expect(COMPANY_AUDIT_ACTIONS.slice(38, 41)).toEqual([
+      'export.chart',
+      'entry.posted',
+      'draft.created',
+    ]);
+    expect(COMPANY_AUDIT_ACTIONS.slice(-1)).toEqual(['company.settings_updated']);
     for (const action of [...PLATFORM_AUDIT_ACTIONS, ...COMPANY_AUDIT_ACTIONS]) {
       expect(action).toMatch(/^[a-z]+(_[a-z]+)*\.[a-z]+(_[a-z]+)*$/);
     }

@@ -10,7 +10,7 @@ import {
 } from './access.js';
 
 describe('the permission map', () => {
-  it('gives each role the permissions of S01 and S02', () => {
+  it('gives each role the permissions of S01, S02 and S03', () => {
     expect(rolePermissions).toEqual({
       owner: [
         'company.read',
@@ -26,6 +26,12 @@ describe('the permission map', () => {
         'dimensions.manage',
         'rates.read',
         'rates.manage',
+        'entries.read',
+        'drafts.read',
+        'drafts.manage',
+        'entries.post',
+        'entries.approve',
+        'entries.attach',
       ],
       accountant: [
         'company.read',
@@ -35,9 +41,22 @@ describe('the permission map', () => {
         'dimensions.manage',
         'rates.read',
         'rates.manage',
+        'entries.read',
+        'drafts.read',
+        'drafts.manage',
+        'entries.post',
+        'entries.attach',
       ],
-      approver: ['company.read', 'accounts.read', 'dimensions.read', 'rates.read'],
-      viewer: ['company.read', 'accounts.read', 'dimensions.read', 'rates.read'],
+      approver: [
+        'company.read',
+        'accounts.read',
+        'dimensions.read',
+        'rates.read',
+        'entries.read',
+        'drafts.read',
+        'entries.approve',
+      ],
+      viewer: ['company.read', 'accounts.read', 'dimensions.read', 'rates.read', 'entries.read'],
       auditor: [
         'company.read',
         'members.read',
@@ -45,8 +64,21 @@ describe('the permission map', () => {
         'accounts.read',
         'dimensions.read',
         'rates.read',
+        'entries.read',
+        'drafts.read',
       ],
     });
+  });
+
+  it('lets the S03 roles of the spec prepare, post, approve and attach (S03 "Access")', () => {
+    const holders = (key: (typeof PERMISSIONS)[number]) =>
+      ROLES.filter((role) => rolePermissions[role].includes(key));
+    expect(holders('entries.read')).toEqual([...ROLES]);
+    expect(holders('drafts.read')).toEqual(['owner', 'accountant', 'approver', 'auditor']);
+    expect(holders('drafts.manage')).toEqual(['owner', 'accountant']);
+    expect(holders('entries.post')).toEqual(['owner', 'accountant']);
+    expect(holders('entries.attach')).toEqual(['owner', 'accountant']);
+    expect(holders('entries.approve')).toEqual(['owner', 'approver']);
   });
 
   it('lets every role read the company profile, the chart, dimensions and rates', () => {

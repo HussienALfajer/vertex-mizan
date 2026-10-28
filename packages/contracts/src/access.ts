@@ -29,6 +29,13 @@ export const PERMISSIONS = [
   'dimensions.manage',
   'rates.read',
   'rates.manage',
+  // S03: journal entries and their drafts.
+  'entries.read',
+  'drafts.read',
+  'drafts.manage',
+  'entries.post',
+  'entries.approve',
+  'entries.attach',
 ] as const;
 
 export const permissionSchema = z.enum(PERMISSIONS).meta({ id: 'Permission' });
@@ -49,9 +56,22 @@ export const rolePermissions: Readonly<Record<Role, readonly Permission[]>> = {
     'dimensions.manage',
     'rates.read',
     'rates.manage',
+    'entries.read',
+    'drafts.read',
+    'drafts.manage',
+    'entries.post',
+    'entries.attach',
   ],
-  approver: ['company.read', 'accounts.read', 'dimensions.read', 'rates.read'],
-  viewer: ['company.read', 'accounts.read', 'dimensions.read', 'rates.read'],
+  approver: [
+    'company.read',
+    'accounts.read',
+    'dimensions.read',
+    'rates.read',
+    'entries.read',
+    'drafts.read',
+    'entries.approve',
+  ],
+  viewer: ['company.read', 'accounts.read', 'dimensions.read', 'rates.read', 'entries.read'],
   auditor: [
     'company.read',
     'members.read',
@@ -59,6 +79,8 @@ export const rolePermissions: Readonly<Record<Role, readonly Permission[]>> = {
     'accounts.read',
     'dimensions.read',
     'rates.read',
+    'entries.read',
+    'drafts.read',
   ],
 };
 

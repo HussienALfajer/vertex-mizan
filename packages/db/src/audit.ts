@@ -43,6 +43,7 @@ export const AUDITED_FIELDS = {
     'fiscalYearStartMonth',
     'policyNote',
     'bulletinDaysOff',
+    'manualEntryApproval',
   ],
   membership: ['userId', 'role', 'canClosePeriods', 'archivedReason'],
   invitation: ['email', 'role', 'canClosePeriods', 'expiresAt'],
@@ -95,6 +96,21 @@ export const AUDITED_FIELDS = {
     'lineCount',
     'reverses',
   ],
+  // The drafts of manual entries and their attachments (S03 PR 2).
+  entry_draft: [
+    'state',
+    'entryDate',
+    'description',
+    'reference',
+    'dealtRates',
+    'lines',
+    'reversesEntryId',
+    'copiedFromEntryId',
+    'postedEntryId',
+    'rejectedReason',
+    'archivedReason',
+  ],
+  attachment: ['fileName', 'contentType', 'sizeBytes', 'sha256', 'draftId', 'entryId'],
 } as const satisfies Record<string, readonly string[]>;
 
 export type AuditedEntity = keyof typeof AUDITED_FIELDS;

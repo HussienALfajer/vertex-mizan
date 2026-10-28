@@ -46,12 +46,16 @@ export const createCompanySchema = z
 
 export type CreateCompany = z.infer<typeof createCompanySchema>;
 
-/** `PATCH /api/company`: the names and the policy note; at least one of them. */
+/**
+ * `PATCH /api/company`: the names, the policy note and the approval of manual entries (S03 rule 8,
+ * outside the settings lock); at least one of them.
+ */
 export const updateCompanyProfileSchema = z
   .object({
     name: companyNameSchema.optional(),
     nameLatin: companyNameSchema.nullable().optional(),
     policyNote: policyNoteSchema.optional(),
+    manualEntryApproval: z.boolean().optional(),
   })
   .refine((change) => Object.values(change).some((value) => value !== undefined), {
     message: 'Nothing to change',
@@ -81,6 +85,8 @@ export const companySchema = z
     policyNote: z.string(),
     /** Whether the first entry posted: the ledger settings are then locked. */
     booksStarted: z.boolean(),
+    /** Manual entries and reversals are submitted and approved before they post (S03 rule 8). */
+    manualEntryApproval: z.boolean(),
     archived: z.object({ at: z.iso.datetime({ offset: true }), reason: z.string() }).nullable(),
     createdAt: z.iso.datetime({ offset: true }),
   })

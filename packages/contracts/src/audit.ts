@@ -71,6 +71,16 @@ export const COMPANY_AUDIT_ACTIONS = [
   'export.chart',
   // S03: journal entries; a reversal is its own `entry.posted`, with `reverses` in its details.
   'entry.posted',
+  'draft.created',
+  'draft.updated',
+  'draft.submitted',
+  'draft.withdrawn',
+  'draft.approved',
+  'draft.rejected',
+  'draft.discarded',
+  'attachment.added',
+  'attachment.removed',
+  'company.settings_updated',
 ] as const;
 
 export const companyAuditActionSchema = z
