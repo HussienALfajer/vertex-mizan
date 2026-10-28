@@ -1,8 +1,18 @@
 import { ar } from '@vertex-mizan/i18n';
 import { linkToken, newPersonInvitation, notEnrolled, setup, signIns } from './access-mocks';
-import { chartReads, roots } from './chart-mocks';
+import { accountOf, chartReads, roots } from './chart-mocks';
 import { archivedCompany, archivedOwner, company, companyReads, owner } from './company-mocks';
 import { dimensionReads, typeOf } from './dimension-mocks';
+import {
+  approvalCompany,
+  entryReads,
+  ownDraft,
+  purchase,
+  purchasePreview,
+  rejectedDraft,
+  reversal,
+  submittedDraft,
+} from './entry-mocks';
 import { rateReads, today } from './rate-mocks';
 import { expect, expectNoPageOverflow, screenshot, test, widths } from './test';
 
@@ -289,6 +299,113 @@ for (const colorScheme of ['light', 'dark'] as const) {
           await expect(page.getByText('عطلة تجريبية')).toBeVisible();
           await expectNoPageOverflow(page);
           await screenshot(page, testInfo, `rate-calendar-${colorScheme}-${width}`);
+        });
+      });
+
+      test.describe('entry screens', () => {
+        test.use({ me: owner, api: entryReads });
+        test.beforeEach(async ({ page }) => {
+          await page.clock.setFixedTime(today);
+        });
+
+        test('journal', async ({ page }, testInfo) => {
+          await page.goto('/entries');
+          await expect(page.getByRole('heading', { level: 1 })).toHaveText(ar.entries.title);
+          await expect(page.getByRole('link', { name: '2026/1' })).toBeVisible();
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `journal-${colorScheme}-${width}`);
+        });
+
+        test('entry', async ({ page }, testInfo) => {
+          await page.goto(`/entries/${purchase.id}`);
+          await expect(page.getByRole('heading', { level: 1 })).toContainText('2026/1');
+          await expect(page.getByText('إيصال الصرافة.pdf')).toBeVisible();
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `entry-${colorScheme}-${width}`);
+        });
+
+        test('entry screen with its preview', async ({ page }, testInfo) => {
+          await page.route(`**/api/drafts/${ownDraft.id}/preview`, (route) =>
+            route.fulfill({ status: 200, json: purchasePreview }),
+          );
+          await page.goto(`/drafts/${ownDraft.id}`);
+          await expect(page.getByRole('heading', { level: 1 })).toHaveText(ar.drafts.editor.title);
+          await page.getByRole('button', { name: ar.drafts.editor.preview }).click();
+          await expect(page.getByRole('table', { name: ar.drafts.preview.label })).toBeVisible();
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `entry-screen-${colorScheme}-${width}`);
+        });
+
+        test('new entry', async ({ page }, testInfo) => {
+          await page.goto('/entries/new');
+          await expect(page.getByRole('heading', { level: 1 })).toHaveText(
+            ar.drafts.editor.newTitle,
+          );
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `new-entry-${colorScheme}-${width}`);
+        });
+
+        test('rejected draft', async ({ page }, testInfo) => {
+          await page.goto(`/drafts/${rejectedDraft.id}`);
+          await expect(page.getByText(ar.drafts.editor.rejectedTitle)).toBeVisible();
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `rejected-draft-${colorScheme}-${width}`);
+        });
+
+        test('drafts', async ({ page }, testInfo) => {
+          await page.goto('/drafts');
+          await expect(page.getByRole('heading', { level: 1 })).toHaveText(ar.drafts.title);
+          await expect(page.getByText('شراء دولار للمصاريف')).toBeVisible();
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `drafts-${colorScheme}-${width}`);
+        });
+
+        test('reversal', async ({ page }, testInfo) => {
+          await page.goto(`/entries/${reversal.id}`);
+          await expect(page.getByRole('heading', { level: 1 })).toContainText('2026/2');
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `reversal-${colorScheme}-${width}`);
+        });
+
+        test('account lines', async ({ page }, testInfo) => {
+          await page.goto(`/accounts/${accountOf('111004').id}/lines`);
+          await expect(page.getByRole('table', { name: ar.entries.lines.label })).toBeVisible();
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `account-lines-${colorScheme}-${width}`);
+        });
+      });
+
+      test.describe('an entry not yet reversed', () => {
+        test.use({
+          me: owner,
+          api: {
+            ...entryReads,
+            [`GET /api/entries/${purchase.id}`]: { status: 200, json: purchase },
+          },
+        });
+
+        test('reverse dialog', async ({ page }, testInfo) => {
+          await page.goto(`/entries/${purchase.id}`);
+          await page.getByRole('button', { name: ar.entries.actions.reverse }).click();
+          await expect(page.getByRole('dialog', { name: ar.entries.reverse.title })).toBeVisible();
+          await screenshot(page, testInfo, `reverse-dialog-${colorScheme}-${width}`, {
+            fullPage: false,
+          });
+        });
+      });
+
+      test.describe('entry screens with approval', () => {
+        test.use({
+          me: owner,
+          api: { ...entryReads, 'GET /api/company': { status: 200, json: approvalCompany } },
+        });
+
+        test('draft awaiting approval', async ({ page }, testInfo) => {
+          await page.clock.setFixedTime(today);
+          await page.goto(`/drafts/${submittedDraft.id}`);
+          await expect(page.getByRole('button', { name: ar.drafts.editor.approve })).toBeVisible();
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `draft-approval-${colorScheme}-${width}`);
         });
       });
 
