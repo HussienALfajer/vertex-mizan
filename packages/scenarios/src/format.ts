@@ -1,6 +1,10 @@
 import {
+  accountClassOfCode,
+  accountCodeLevel,
+  CHART_TEMPLATE_IDS,
   type CompanyLedgers,
   type CurrencyCode,
+  chartTemplate,
   companyLedgersSchema,
   currencyCodeSchema,
   exchangeRateSchema,
@@ -8,6 +12,7 @@ import {
   rateSourceSchema,
   rateTypeSchema,
   rateValueSchema,
+  statementLineFits,
 } from '@vertex-mizan/contracts';
 import { z } from 'zod';
 
@@ -81,6 +86,30 @@ export const SHAPES = {
 
 export type Shape = keyof typeof SHAPES;
 
+/**
+ * A postable account the case adds to its template, as the accountant adds one in the chart (S02),
+ * for a case that needs an account the template lacks (a TRY cash account, for instance).
+ */
+const addedAccountSchema = z
+  .strictObject({
+    code: accountSchema,
+    name: z.string().trim().min(1),
+    name_latin: z.string().trim().min(1).optional(),
+    statement_line: z.string().min(1),
+    currency: currencyCodeSchema.optional(),
+    monetary: z.boolean().default(false),
+  })
+  .transform((account) => ({
+    code: account.code,
+    name: account.name,
+    nameLatin: account.name_latin ?? null,
+    statementLine: account.statement_line,
+    currency: account.currency ?? null,
+    isMonetary: account.monetary,
+  }));
+
+export type AddedAccount = z.output<typeof addedAccountSchema>;
+
 const rawCompanySchema = z.strictObject({
   shape: z.enum(Object.keys(SHAPES) as [Shape, ...Shape[]]),
   book: currencyCodeSchema,
@@ -92,6 +121,7 @@ const rawCompanySchema = z.strictObject({
     parallel_accepts_transaction_rate: z.boolean().optional(),
   }),
   template: z.string().min(1).optional(),
+  accounts: z.array(addedAccountSchema).default([]),
   closed_periods: z.array(periodSchema).default([]),
   // The bulletin publication calendar (S02 rules 16–17): ISO weekdays off (Friday and Saturday by
   // default) and the holidays the accountant has marked.
@@ -130,6 +160,42 @@ function ledgersOf(company: RawCompany): CompanyLedgers {
   };
 }
 
+/**
+ * Each added account fits the template as S02 would place it: a postable code under one of the
+ * template's headers, not already in it, stated once, with a statement line of its class.
+ */
+function checkAddedAccounts(company: RawCompany, context: z.RefinementCtx): void {
+  if (company.accounts.length === 0) return;
+  const templateId = CHART_TEMPLATE_IDS.find((id) => id === company.template);
+  if (templateId === undefined) {
+    const message = 'Accounts are added to a known chart template';
+    context.addIssue({ code: 'custom', message, path: ['accounts'] });
+    return;
+  }
+  const template = chartTemplate(templateId).accounts;
+  const issue = (index: number, message: string) =>
+    context.addIssue({ code: 'custom', message, path: ['accounts', index] });
+  for (const [index, account] of company.accounts.entries()) {
+    const { code } = account;
+    if (company.accounts.slice(0, index).some((other) => other.code === code)) {
+      issue(index, `Account ${code} is added twice`);
+    } else if (accountCodeLevel(code) !== 4) {
+      issue(index, `Account ${code} is not the code of a postable account`);
+    } else if (template.some((existing) => existing.code === code)) {
+      issue(index, `Account ${code} is already in the ${templateId} template`);
+    } else if (
+      !template.some((existing) => existing.code === code.slice(0, 3) && existing.kind === 'header')
+    ) {
+      issue(
+        index,
+        `Account ${code} has no header ${code.slice(0, 3)} in the ${templateId} template`,
+      );
+    } else if (!statementLineFits(account.statementLine, accountClassOfCode(code))) {
+      issue(index, `Statement line ${account.statementLine} does not fit account ${code}`);
+    }
+  }
+}
+
 const companySchema = rawCompanySchema
   .superRefine((company, context) => {
     const shape = SHAPES[company.shape];
@@ -164,6 +230,7 @@ const companySchema = rawCompanySchema
         path: ['rate_policy', 'parallel_accepts_transaction_rate'],
       });
     }
+    checkAddedAccounts(company, context);
     const ledgers = companyLedgersSchema.safeParse(ledgersOf(company));
     for (const issue of ledgers.error?.issues ?? []) {
       context.addIssue({ code: 'custom', message: issue.message, path: ['rate_policy'] });
@@ -173,6 +240,7 @@ const companySchema = rawCompanySchema
     shape: company.shape,
     ledgers: ledgersOf(company),
     template: company.template ?? null,
+    accounts: company.accounts,
     closedPeriods: company.closed_periods,
     calendar: { daysOff: company.bulletin_days_off, holidays: company.bulletin_holidays },
   }));

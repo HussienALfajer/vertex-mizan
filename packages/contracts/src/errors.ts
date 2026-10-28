@@ -133,6 +133,8 @@ export const errorStatus = {
   RATE_REASON_REQUIRED: 422,
   /** The date is already a bulletin holiday. */
   HOLIDAY_EXISTS: 409,
+  /** A dealt rate no ledger of the company can use for the entry's pairs (S03 rule 13). */
+  DEALT_RATE_NOT_ACCEPTED: 422,
 } as const satisfies Record<string, number>;
 
 export type ErrorCode = keyof typeof errorStatus;

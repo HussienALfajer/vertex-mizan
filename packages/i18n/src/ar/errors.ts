@@ -58,4 +58,5 @@ export const errors = {
   RATE_UNCHANGED: 'السعر نفسه نافذ لهذا التاريخ.',
   RATE_REASON_REQUIRED: 'تصحيح السعر يحتاج إلى سبب.',
   HOLIDAY_EXISTS: 'هذا التاريخ عطلة مسجّلة من قبل.',
+  DEALT_RATE_NOT_ACCEPTED: 'لا يقبل أي دفتر في الشركة سعر الصفقة لهذا الزوج من العملات.',
 } satisfies Record<ErrorCode, string>;

@@ -105,6 +105,23 @@ function checkOneCurrency(lines: readonly Line[]): void {
   }
 }
 
+function residualLines(
+  ledgers: CompanyLedgers,
+  lines: readonly Line[],
+  targetOf: (residualMinor: bigint) => LineTarget,
+): Line[] {
+  checkOneCurrency(lines);
+  const differences: Line[] = [];
+  for (const [ledger] of keptLedgers(ledgers)) {
+    const residual = -ledgerTotal(lines, ledger);
+    if (residual !== 0n) {
+      const target = targetOf(residual);
+      differences.push(differenceLine(ledgers, ledger, residual, { ...target, kind: 'gain-loss' }));
+    }
+  }
+  return differences;
+}
+
 /**
  * The realised exchange-difference lines that balance `lines` (IAS 21.28): one on `target`, the
  * exchange gain or loss account, for the residual of each ledger they leave out of balance. For
@@ -117,15 +134,26 @@ export function exchangeDifferenceLines(
   lines: readonly Line[],
   target: LineTarget,
 ): Line[] {
-  checkOneCurrency(lines);
-  const differences: Line[] = [];
-  for (const [ledger] of keptLedgers(ledgers)) {
-    const residual = -ledgerTotal(lines, ledger);
-    if (residual !== 0n) {
-      differences.push(differenceLine(ledgers, ledger, residual, { ...target, kind: 'gain-loss' }));
-    }
-  }
-  return differences;
+  return residualLines(ledgers, lines, () => target);
+}
+
+/** The realised exchange gain and loss accounts (roles `fx_realised_gain`, `fx_realised_loss`). */
+export interface RealisedTargets {
+  readonly gain: LineTarget;
+  readonly loss: LineTarget;
+}
+
+/**
+ * As `exchangeDifferenceLines()`, with the account chosen by the sign of each ledger's residual
+ * (ADR 0011 separate accounts, S03 rule 15): a debit to `loss`, a credit to `gain`. One ledger may
+ * gain while the other loses.
+ */
+export function realisedDifferenceLines(
+  ledgers: CompanyLedgers,
+  lines: readonly Line[],
+  targets: RealisedTargets,
+): Line[] {
+  return residualLines(ledgers, lines, (residual) => (residual > 0n ? targets.loss : targets.gain));
 }
 
 function checkShape(line: Line, ledgers: CompanyLedgers): void {

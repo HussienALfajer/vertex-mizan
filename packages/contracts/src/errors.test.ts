@@ -84,6 +84,7 @@ describe('error codes', () => {
       ['RATE_UNCHANGED', 409],
       ['RATE_REASON_REQUIRED', 422],
       ['HOLIDAY_EXISTS', 409],
+      ['DEALT_RATE_NOT_ACCEPTED', 422],
     ]);
   });
 

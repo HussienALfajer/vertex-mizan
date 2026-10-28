@@ -2,6 +2,8 @@
 
 Status: Proposed
 
+The expected entries were approved by the owner on 2026-10-28, with the TRY cash account added to the template for the `third` cases. The file stays `Proposed` until S03 registers the setup, the ledger reader and the `manual` and `reversal` executors the runner needs; the PR that does so marks it `Approved (owner, 2026-10-28)` without changing an expected value. Until then `packages/ledger`'s `adr-0007.examples.test.ts` builds every case with `manualEntryLines()`.
+
 ## Rule
 
 A manual entry that exchanges one currency for another measures every line anew in each ledger: as is in a ledger of its own currency, otherwise at that ledger's policy rate in force on the entry date, or at the rate the accountant dealt at when the ledger's policy is `market` and accepts a transaction's rate (for that pair only). Whatever each ledger is left out of balance by, conversion rounding included, posts in that ledger only as a realised exchange difference: to the `fx_realised_loss` account when it is a debit, to the `fx_realised_gain` account when it is a credit. A dealt rate that no ledger of the company can use is refused with `DEALT_RATE_NOT_ACCEPTED`.

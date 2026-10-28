@@ -4,5 +4,6 @@ export * from './carried.js';
 export * from './chart.js';
 export * from './integrity.js';
 export * from './lines.js';
+export * from './manual.js';
 export * from './measure.js';
 export * from './rates.js';

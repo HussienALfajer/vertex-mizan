@@ -4921,7 +4921,8 @@
           "RATE_ORIENTATION",
           "RATE_UNCHANGED",
           "RATE_REASON_REQUIRED",
-          "HOLIDAY_EXISTS"
+          "HOLIDAY_EXISTS",
+          "DEALT_RATE_NOT_ACCEPTED"
         ]
       },
       "PageQuery": {

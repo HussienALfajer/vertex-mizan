@@ -9,6 +9,7 @@ import {
   reverseLines,
 } from './carried.js';
 import { type CarriedAmounts, carriedLine, type Line, negate } from './lines.js';
+import { manualEntryLines } from './manual.js';
 import { type MeasureContext, measuredLine } from './measure.js';
 import { calendar, hubRate, rate, refusal, sypOnly, sypUsd, usdSyp } from './test-fixtures.js';
 
@@ -562,6 +563,180 @@ describe('docs/scenarios/currency: the bulletin rate of the day', () => {
     expect(rows(rent([wrong, right]))).toEqual([
       ['measured', '531001', 'SYP', 1_000_000n, 8_333n, 1_000_000n],
       ['measured', '111003', 'SYP', -1_000_000n, -8_333n, -1_000_000n],
+    ]);
+  });
+});
+
+describe('docs/scenarios/manual: a currency purchase or sale', () => {
+  const realised = { gain: { account: '421001' }, loss: { account: '541001' } };
+  const roundingAccount = { account: '541003' };
+  const usd = (minor: bigint) => money(minor, 'USD');
+  const syp = (minor: bigint) => money(minor, 'SYP');
+  const week = [
+    rate('USD', 'SYP', '121.5000', 'bulletin', '2026-11-08'),
+    rate('USD', 'SYP', '122.0000', 'market', '2026-11-08'),
+  ];
+  const dealt = (base: 'USD', quote: 'SYP' | 'TRY', value: string, on: string) =>
+    rate(base, quote, value, 'market', on);
+  /** `usd-syp` whose SYP parallel ledger does not accept a transaction's rate. */
+  const usdSypStrict: CompanyLedgers = {
+    book: usdSyp.book,
+    parallel: {
+      currency: 'SYP',
+      ratePolicy: { rateType: 'market', acceptsTransactionRate: false },
+    },
+  };
+
+  /** The manual entry `debit` / `credit` on `on`, with its rounding lines: rows of the book. */
+  function exchanged(
+    ledgers: CompanyLedgers,
+    on: string,
+    rates: readonly ExchangeRate[],
+    lines: readonly [string, Money][],
+    dealtRates: readonly ExchangeRate[] = [],
+  ): Line[] {
+    const at: MeasureContext = { ledgers, on, rates, calendar };
+    const entry = manualEntryLines(
+      { lines: lines.map(([account, amount]) => ({ account, amount })), dealtRates },
+      at,
+      realised,
+    );
+    const balanced = balanceEntry({ on, ledgers, lines: entry, rounding: roundingAccount });
+    // In more than one currency the residual is all difference: never a rounding line too.
+    expect(balanced).toEqual(entry);
+    return balanced;
+  }
+
+  const purchase = (sypMinor: bigint): readonly [string, Money][] => [
+    ['111004', usd(10_000n)],
+    ['111003', syp(-sypMinor)],
+  ];
+
+  it('USD bought at a dealt rate: a book loss only', () => {
+    const entry = exchanged(sypUsd, '2026-11-08', week, purchase(1_225_000n), [
+      dealt('USD', 'SYP', '122.5000', '2026-11-08'),
+    ]);
+    expect(rows(entry)).toEqual([
+      ['measured', '111004', 'USD', 10_000n, 1_215_000n, 10_000n],
+      ['measured', '111003', 'SYP', -1_225_000n, -1_225_000n, -10_000n],
+      ['difference', '541001', 'SYP', 10_000n, 10_000n, 0n],
+    ]);
+  });
+
+  it('USD bought without a dealt rate: a loss in both ledgers', () => {
+    // Parallel: 12,250.00 SYP / 122 = 100.4098… → 100.41 USD.
+    expect(rows(exchanged(sypUsd, '2026-11-08', week, purchase(1_225_000n)))).toEqual([
+      ['measured', '111004', 'USD', 10_000n, 1_215_000n, 10_000n],
+      ['measured', '111003', 'SYP', -1_225_000n, -1_225_000n, -10_041n],
+      ['difference', '541001', 'SYP', 10_000n, 10_000n, 0n],
+      ['difference', '541001', 'USD', 41n, 0n, 41n],
+    ]);
+  });
+
+  it('USD sold at a dealt rate: a book gain only', () => {
+    const sale: [string, Money][] = [
+      ['111003', syp(1_230_000n)],
+      ['111004', usd(-10_000n)],
+    ];
+    const entry = exchanged(sypUsd, '2026-11-08', week, sale, [
+      dealt('USD', 'SYP', '123.0000', '2026-11-08'),
+    ]);
+    expect(rows(entry)).toEqual([
+      ['measured', '111003', 'SYP', 1_230_000n, 1_230_000n, 10_000n],
+      ['measured', '111004', 'USD', -10_000n, -1_215_000n, -10_000n],
+      ['difference', '421001', 'SYP', -15_000n, -15_000n, 0n],
+    ]);
+  });
+
+  it('a loss in the book ledger and a gain in the parallel one', () => {
+    // Parallel: 12,180.00 SYP / 122 = 99.836… → 99.84 USD.
+    expect(rows(exchanged(sypUsd, '2026-11-08', week, purchase(1_218_000n)))).toEqual([
+      ['measured', '111004', 'USD', 10_000n, 1_215_000n, 10_000n],
+      ['measured', '111003', 'SYP', -1_218_000n, -1_218_000n, -9_984n],
+      ['difference', '541001', 'SYP', 3_000n, 3_000n, 0n],
+      ['difference', '421001', 'USD', -16n, 0n, -16n],
+    ]);
+  });
+
+  it('the purchase reversed the next month carries every line, the difference included', () => {
+    const entry = exchanged(sypUsd, '2026-11-08', week, purchase(1_225_000n), [
+      dealt('USD', 'SYP', '122.5000', '2026-11-08'),
+    ]);
+    const reversal = reverseLines(entry);
+    expect(
+      balanceEntry({
+        on: '2026-12-01',
+        ledgers: sypUsd,
+        lines: reversal,
+        rounding: roundingAccount,
+      }),
+    ).toEqual(reversal);
+    expect(rows(reversal)).toEqual([
+      ['measured', '111004', 'USD', -10_000n, -1_215_000n, -10_000n],
+      ['measured', '111003', 'SYP', 1_225_000n, 1_225_000n, 10_000n],
+      ['difference', '541001', 'SYP', -10_000n, -10_000n, 0n],
+    ]);
+  });
+
+  it('SYP books only: a loss in the books; a dealt rate is refused', () => {
+    const bulletin = week.slice(0, 1);
+    expect(rows(exchanged(sypOnly, '2026-11-08', bulletin, purchase(1_225_000n)))).toEqual([
+      ['measured', '111004', 'USD', 10_000n, 1_215_000n, null],
+      ['measured', '111003', 'SYP', -1_225_000n, -1_225_000n, null],
+      ['difference', '541001', 'SYP', 10_000n, 10_000n, null],
+    ]);
+    expect(
+      refusal(() =>
+        exchanged(sypOnly, '2026-11-08', bulletin, purchase(1_225_000n), [
+          dealt('USD', 'SYP', '122.5000', '2026-11-08'),
+        ]),
+      ),
+    ).toBe('DEALT_RATE_NOT_ACCEPTED');
+  });
+
+  it('USD books: a loss in both ledgers; a dealt rate only where the parallel ledger accepts it', () => {
+    // Book: 12,250.00 SYP / 121.5 = 100.823… → 100.82 USD.
+    // Parallel: 100.00 USD × 122 = 12,200.00 SYP.
+    expect(rows(exchanged(usdSypStrict, '2026-11-08', week, purchase(1_225_000n)))).toEqual([
+      ['measured', '111004', 'USD', 10_000n, 10_000n, 1_220_000n],
+      ['measured', '111003', 'SYP', -1_225_000n, -10_082n, -1_225_000n],
+      ['difference', '541001', 'USD', 82n, 82n, 0n],
+      ['difference', '541001', 'SYP', 5_000n, 0n, 5_000n],
+    ]);
+    const atDealt = [dealt('USD', 'SYP', '122.5000', '2026-11-08')];
+    expect(
+      refusal(() => exchanged(usdSypStrict, '2026-11-08', week, purchase(1_225_000n), atDealt)),
+    ).toBe('DEALT_RATE_NOT_ACCEPTED');
+    expect(rows(exchanged(usdSyp, '2026-11-08', week, purchase(1_225_000n), atDealt))).toEqual([
+      ['measured', '111004', 'USD', 10_000n, 10_000n, 1_225_000n],
+      ['measured', '111003', 'SYP', -1_225_000n, -10_082n, -1_225_000n],
+      ['difference', '541001', 'USD', 82n, 82n, 0n],
+    ]);
+  });
+
+  it('third: TRY sold for USD, at the market rate and at a dealt rate', () => {
+    const rates = [
+      rate('USD', 'SYP', '122.0000', 'bulletin', '2026-11-10'),
+      rate('USD', 'TRY', '41.0000', 'bulletin', '2026-11-10'),
+      rate('USD', 'TRY', '41.2000', 'market', '2026-11-10'),
+    ];
+    const sale: [string, Money][] = [
+      ['111004', usd(10_000n)],
+      ['111007', money(-415_000n, 'TRY')],
+    ];
+    // Book: 4,150.00 TRY / 41 × 122 = 12,348.780… → 12,348.78 SYP.
+    // Parallel: 4,150.00 TRY / 41.2 = 100.728… → 100.73 USD.
+    expect(rows(exchanged(sypUsd, '2026-11-10', rates, sale))).toEqual([
+      ['measured', '111004', 'USD', 10_000n, 1_220_000n, 10_000n],
+      ['measured', '111007', 'TRY', -415_000n, -1_234_878n, -10_073n],
+      ['difference', '541001', 'SYP', 14_878n, 14_878n, 0n],
+      ['difference', '541001', 'USD', 73n, 0n, 73n],
+    ]);
+    const atDealt = [dealt('USD', 'TRY', '41.5000', '2026-11-10')];
+    expect(rows(exchanged(sypUsd, '2026-11-10', rates, sale, atDealt))).toEqual([
+      ['measured', '111004', 'USD', 10_000n, 1_220_000n, 10_000n],
+      ['measured', '111007', 'TRY', -415_000n, -1_234_878n, -10_000n],
+      ['difference', '541001', 'SYP', 14_878n, 14_878n, 0n],
     ]);
   });
 });
