@@ -10,6 +10,7 @@ import type {
 } from '@vertex-mizan/ledger';
 import { asc, eq, sql } from 'drizzle-orm';
 import type { Transaction } from '../client.js';
+import { companySettings } from '../schema/companies.js';
 import {
   dimensionSets,
   entryNumberCounters,
@@ -248,6 +249,8 @@ export interface StoredAnchor {
 
 /** What the integrity check compares with the chain, read in the caller's snapshot. */
 export interface LedgerState {
+  /** Whether the company keeps a parallel ledger, from its settings. */
+  readonly keepsParallel: boolean;
   readonly head: StoredHead;
   readonly counters: StoredCounter[];
   /** Keyed by period and dimension key, as the lines carry them, with the set's id. */
@@ -260,9 +263,13 @@ export interface LedgerState {
 
 /**
  * The ledger state as stored (ADR 0012) and the company's anchors, for the integrity check (S03
- * rule 19): the head, the counters, the period balances and the anchors.
+ * rule 19): which ledgers the company keeps, the head, the counters, the period balances and the
+ * anchors.
  */
 export async function readLedgerState(tx: Transaction): Promise<LedgerState> {
+  const [settings] = await tx
+    .select({ parallelCurrency: companySettings.parallelCurrency })
+    .from(companySettings);
   const [head] = await tx.select().from(ledgerHeads);
   const counters = await tx
     .select({
@@ -291,6 +298,7 @@ export async function readLedgerState(tx: Transaction): Promise<LedgerState> {
     .from(chainAnchors)
     .orderBy(asc(chainAnchors.anchoredOn));
   return {
+    keepsParallel: (settings?.parallelCurrency ?? null) !== null,
     head: {
       entryCount: head?.entryCount ?? 0n,
       lastEntryId: head?.lastEntryId ?? null,

@@ -48,6 +48,8 @@ export interface StoredPeriodBalance {
 
 export interface IntegrityInput {
   readonly chain: readonly StoredEntry[];
+  /** Whether the company keeps a parallel ledger (`company_settings.parallel_currency`). */
+  readonly keepsParallel: boolean;
   readonly head: StoredHead;
   readonly counters: readonly StoredCounter[];
   readonly periodBalances: readonly StoredPeriodBalance[];
@@ -75,6 +77,8 @@ export interface UnbalancedEntry {
   readonly number: number;
   readonly ledger: Ledger;
   readonly residualMinor: bigint;
+  /** Lines missing an amount in a kept ledger, or holding one in a ledger not kept. */
+  readonly incompleteLines: number;
 }
 
 export interface PeriodBalanceProblem {
@@ -156,31 +160,38 @@ export function numberingProblems(
 }
 
 /**
- * Entries whose lines do not sum to zero in the book ledger, or in the parallel ledger when the
- * company keeps one (ADR 0005 invariant 1), with the residual.
+ * Entries that do not balance (ADR 0005 invariant 1): whose lines do not sum to zero in the book
+ * ledger, or in the parallel ledger, or whose lines lack a parallel amount when the company keeps
+ * a parallel ledger (or hold one when it keeps none), as the database's entry check refuses. Which
+ * ledgers the company keeps comes from its settings, never from the entry itself.
  */
-export function unbalancedEntries(chain: readonly StoredEntry[]): UnbalancedEntry[] {
+export function unbalancedEntries(
+  chain: readonly StoredEntry[],
+  keepsParallel: boolean,
+): UnbalancedEntry[] {
   const found: UnbalancedEntry[] = [];
   for (const { entry } of chain) {
     let book = 0n;
     let parallel = 0n;
-    let keepsParallel = false;
+    let withParallel = 0;
     for (const line of entry.lines) {
       book += line.bookMinor;
       if (line.parallelMinor !== null) {
-        keepsParallel = true;
+        withParallel += 1;
         parallel += line.parallelMinor;
       }
     }
-    const of = (ledger: Ledger, residualMinor: bigint): UnbalancedEntry => ({
+    const of = (ledger: Ledger, residualMinor: bigint, incompleteLines = 0): UnbalancedEntry => ({
       entryId: entry.id,
       fiscalYear: entry.fiscalYear,
       number: entry.number,
       ledger,
       residualMinor,
+      incompleteLines,
     });
     if (book !== 0n) found.push(of('book', book));
-    if (keepsParallel && parallel !== 0n) found.push(of('parallel', parallel));
+    const incomplete = keepsParallel ? entry.lines.length - withParallel : withParallel;
+    if (parallel !== 0n || incomplete > 0) found.push(of('parallel', parallel, incomplete));
   }
   return found;
 }
@@ -325,7 +336,7 @@ export function checkIntegrity(input: IntegrityInput): IntegrityFindings {
       head.lastEntryId === (last?.entry.id ?? null) &&
       head.lastHash === (last?.hash ?? null),
     numbering: numberingProblems(chain, input.counters),
-    unbalanced: unbalancedEntries(chain),
+    unbalanced: unbalancedEntries(chain, input.keepsParallel),
     periodBalances: periodBalanceProblems(chain, input.periodBalances),
   };
 }

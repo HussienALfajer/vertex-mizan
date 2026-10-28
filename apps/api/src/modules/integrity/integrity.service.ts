@@ -89,6 +89,7 @@ export class IntegrityService {
             number: { fiscalYear: entry.fiscalYear, number: entry.number },
             ledger: entry.ledger,
             residualMinor: entry.residualMinor.toString(),
+            incompleteLines: entry.incompleteLines,
           })),
           periodBalances: findings.periodBalances.map((problem) => ({
             period: problem.period,

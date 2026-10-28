@@ -621,7 +621,13 @@ export const integrityReportSchema = z
         entryId: z.uuid(),
         number: entryNumberSchema,
         ledger: ledgerSchema,
+        /** What the ledger's amounts sum to; zero when only `incompleteLines` is wrong. */
         residualMinor: minorUnitsSchema,
+        /**
+         * Lines without an amount in a ledger the company keeps, or with one in a ledger it does
+         * not keep: an entry the database would have refused (ADR 0005 invariant 1).
+         */
+        incompleteLines: z.int().min(0),
       }),
     ),
     periodBalances: z.array(

@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdtemp, readFile, stat, writeFile } from 'node:fs/promises';
+import { mkdtemp, readdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
@@ -29,7 +29,7 @@ import { dayBefore, todayInDamascus } from '../src/core/clock/today.js';
 import { type Config, loadConfig } from '../src/core/config/config.js';
 import { FileStore } from '../src/core/files/file-store.js';
 import { csvField } from '../src/jobs/company/archive.js';
-import { CompanyExportJob } from '../src/jobs/company/export.job.js';
+import { CompanyExportJob, EXPORT_ATTEMPTS } from '../src/jobs/company/export.job.js';
 import { CompanyExportExpireJob } from '../src/jobs/company/export-expire.job.js';
 import { renderEmail } from '../src/jobs/email/templates.js';
 import { DailyAnchorJob } from '../src/jobs/ledger/daily-anchor.job.js';
@@ -320,6 +320,7 @@ describe('company.export', () => {
       companyId: both,
       companyName: 'شركة أولى',
       chainHead: { entryCount: '2' },
+      ledgers: { bookCurrency: 'SYP', parallelCurrency: 'USD' },
       missingAttachments: [],
     });
     for (const file of manifest.files as { path: string; sha256: string; bytes: number }[]) {
@@ -337,7 +338,12 @@ describe('company.export', () => {
     expect(tables.get('journal_lines')).toBe(4);
     expect(tables.get('company_exports')).toBe(1);
     expect(archive.get(`attachments/${attachmentId}`)).toEqual(pdf);
-    expect(archive.has('README.md')).toBe(true);
+    // The README says which currency each amount column is in, and that SYP is the new pound.
+    const readme = archive.get('README.md')?.toString('utf8') ?? '';
+    expect(readme).toContain('الليرة السورية الجديدة');
+    expect(readme).toContain('SYP is the new Syrian pound');
+    expect(readme).toContain('`book_*`');
+    expect(readme).toContain('`parallel_*`');
     // Amounts as integer strings, rates exactly as stored, dates as dates.
     const lines = JSON.parse(archive.get('tables/journal_lines.json')?.toString() ?? '[]');
     expect(lines.map((line: { amount_minor: string }) => line.amount_minor).sort()).toEqual([
@@ -406,6 +412,79 @@ describe('company.export', () => {
         .from(emailOutbox)
         .where(inArray(emailOutbox.kind, ['export_ready'])),
     ).toEqual([]);
+  });
+});
+
+describe('company.export, when a build cannot finish', () => {
+  /** An attachment on the first entry of `companyId`, recorded with `recorded` but holding `file`. */
+  async function attach(companyId: string, recorded: Buffer, file: Buffer | null) {
+    const [entry] = await heads(companyId);
+    const id = uuidv7();
+    await withCompany(db, companyId, (tx) =>
+      tx.insert(entryAttachments).values({
+        id,
+        companyId,
+        entryId: entry?.id,
+        fileName: 'إيصال.pdf',
+        contentType: 'application/pdf',
+        sizeBytes: recorded.length,
+        sha256: createHash('sha256').update(recorded).digest('hex'),
+        storageKey: `${companyId}/${id}`,
+        uploadedByUserId: people.first,
+      }),
+    );
+    if (file) await files.write(companyId, id, Readable.from([file]));
+    return id;
+  }
+
+  it('fails on an attachment changed after its upload, leaving no file behind', async () => {
+    const companyId = await company('شركة مرفق معدّل', [people.first], 1);
+    await attach(companyId, Buffer.from('%PDF-1.7 كما رُفع'), Buffer.from('%PDF-1.7 معدّل'));
+    const requested = await requestExport(companyId);
+    expect(await new CompanyExportJob(jobs, db, files, config).run()).toEqual({
+      built: 0,
+      failed: 1,
+    });
+    expect(await exportRow(companyId, requested.id)).toMatchObject({
+      state: 'failed',
+      error: 'ATTACHMENT_CHANGED',
+      attempts: 1,
+    });
+    const left = await readdir(join(config.filesDir, companyId));
+    expect(left.filter((name) => name.startsWith(requested.id))).toEqual([]);
+  });
+
+  it('lists an attachment whose file is gone, and exports the rest', async () => {
+    const companyId = await company('شركة مرفق مفقود', [people.first], 1);
+    const missing = await attach(companyId, Buffer.from('%PDF-1.7 مفقود'), null);
+    const requested = await requestExport(companyId);
+    expect(await new CompanyExportJob(jobs, db, files, config).run()).toMatchObject({ built: 1 });
+    const archive = await unzip(join(config.filesDir, companyId, requested.id));
+    expect(JSON.parse(archive.get('manifest.json')?.toString() ?? '{}')).toMatchObject({
+      missingAttachments: [missing],
+    });
+    expect(archive.has(`attachments/${missing}`)).toBe(false);
+    await db.delete(emailOutbox).where(eq(emailOutbox.kind, 'export_ready'));
+  });
+
+  it('fails an export whose builds keep dying, after three attempts', async () => {
+    const companyId = await company('شركة محاولات', [people.first], 1);
+    const requested = await requestExport(companyId);
+    // Three builds started and never finished (the worker was killed each time).
+    await withCompany(db, companyId, (tx) =>
+      tx
+        .update(companyExports)
+        .set({ attempts: EXPORT_ATTEMPTS })
+        .where(eq(companyExports.id, requested.id)),
+    );
+    expect(await new CompanyExportJob(jobs, db, files, config).run()).toEqual({
+      built: 0,
+      failed: 1,
+    });
+    expect(await exportRow(companyId, requested.id)).toMatchObject({
+      state: 'failed',
+      error: 'EXPORT_ATTEMPTS',
+    });
   });
 });
 

@@ -83,6 +83,7 @@ const sound = (chain: readonly StoredEntry[]) => ({
     lastHash: chain.at(-1)?.hash ?? null,
   },
   counters: [{ fiscalYear: 2026, lastNumber: chain.length }].filter(() => chain.length > 0),
+  keepsParallel: true,
   periodBalances: periodTotalsOf(chain),
 });
 
@@ -195,6 +196,8 @@ describe('numberingProblems', () => {
 });
 
 describe('unbalancedEntries', () => {
+  const at = { entryId: idOf(1, 'e'), fiscalYear: 2026, number: 1 };
+
   it('reports each ledger whose lines do not sum to zero, with the residual', () => {
     const entry = entryOf(1);
     const [first, second] = entry.lines as [ChainLine, ChainLine];
@@ -202,16 +205,37 @@ describe('unbalancedEntries', () => {
       ...entry,
       lines: [{ ...first, bookMinor: first.bookMinor + 1n, parallelMinor: 99n }, second],
     };
-    expect(unbalancedEntries(chainOf([tampered]))).toEqual([
-      { entryId: entry.id, fiscalYear: 2026, number: 1, ledger: 'book', residualMinor: 1n },
-      { entryId: entry.id, fiscalYear: 2026, number: 1, ledger: 'parallel', residualMinor: -1n },
+    expect(unbalancedEntries(chainOf([tampered]), true)).toEqual([
+      { ...at, ledger: 'book', residualMinor: 1n, incompleteLines: 0 },
+      { ...at, ledger: 'parallel', residualMinor: -1n, incompleteLines: 0 },
     ]);
   });
 
-  it('checks the parallel ledger only when the company keeps one', () => {
+  it('reports an entry missing from the parallel ledger the company keeps', () => {
+    // Balanced in the book ledger, with no parallel amount at all: the database refuses it.
+    const entry = entryOf(1);
+    const bookOnly = {
+      ...entry,
+      lines: entry.lines.map((line) => ({ ...line, parallelMinor: null })),
+    };
+    expect(unbalancedEntries(chainOf([bookOnly]), true)).toEqual([
+      { ...at, ledger: 'parallel', residualMinor: 0n, incompleteLines: 2 },
+    ]);
+    const [first, second] = entry.lines as [ChainLine, ChainLine];
+    const oneLine = { ...entry, lines: [first, { ...second, parallelMinor: null }] };
+    expect(unbalancedEntries(chainOf([oneLine]), true)).toEqual([
+      { ...at, ledger: 'parallel', residualMinor: first.parallelMinor, incompleteLines: 1 },
+    ]);
+    expect(checkIntegrity({ ...sound(chainOf([bookOnly])) }).unbalanced).toHaveLength(1);
+  });
+
+  it('checks no parallel ledger when the company keeps none, and refuses amounts in one', () => {
     const entry = entryOf(1);
     const syp = { ...entry, lines: entry.lines.map((line) => ({ ...line, parallelMinor: null })) };
-    expect(unbalancedEntries(chainOf([syp]))).toEqual([]);
+    expect(unbalancedEntries(chainOf([syp]), false)).toEqual([]);
+    expect(unbalancedEntries(chainOf([entry]), false)).toEqual([
+      { ...at, ledger: 'parallel', residualMinor: 0n, incompleteLines: 2 },
+    ]);
   });
 });
 

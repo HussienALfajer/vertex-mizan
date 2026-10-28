@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { createWriteStream } from 'node:fs';
-import { mkdir, readFile, rename, rm } from 'node:fs/promises';
+import { createReadStream, createWriteStream, type ReadStream } from 'node:fs';
+import { mkdir, rename, rm, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
@@ -42,14 +42,19 @@ export class FileStore {
     }
   }
 
-  /** A file whole (an attachment, at most 10 MB), or null when it is not on disk. */
-  async read(companyId: string, id: string): Promise<Buffer | null> {
+  /** A file's size, or null when it is not on disk. */
+  async size(companyId: string, id: string): Promise<number | null> {
     try {
-      return await readFile(this.pathOf(companyId, id));
+      return (await stat(this.pathOf(companyId, id))).size;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
       throw error;
     }
+  }
+
+  /** A file as a stream, read as it is consumed. */
+  open(companyId: string, id: string): ReadStream {
+    return createReadStream(this.pathOf(companyId, id));
   }
 
   /** Deletes a file; one already gone is no error, so a second run does nothing. */

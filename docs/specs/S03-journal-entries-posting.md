@@ -38,7 +38,7 @@ New permission keys, appended to `PERMISSIONS` in `packages/contracts/src/access
 | Run the integrity check; verify an anchor | Web | Owner, auditor (`integrity.read`; scope §3: the auditor reads the integrity check) |
 | Request and download the full export | Web | Owner (`company.export`, `@Reauthenticated`; owner, 2026-10-28) |
 
-Every company write carries `X-Mizan-Company` (S01 rule 22) and is refused on an archived company (`COMPANY_ARCHIVED`). The export request is the only new `@Reauthenticated` action.
+Every company write carries `X-Mizan-Company` (S01 rule 22) and is refused on an archived company (`COMPANY_ARCHIVED`). The export's request and download are the only new `@Reauthenticated` actions (the table above; the download is the whole company's data).
 
 ## Data
 All tables are company tables: `company_id`, forced RLS with `company_isolation`, `unique (company_id, id)`, composite company foreign keys, UUIDv7 ids, registered in `registry.ts` (ADR 0003). Money columns are `bigint` minor units with a currency code; rates `numeric(22,10)` as quoted (ADR 0007).

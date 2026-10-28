@@ -5,6 +5,7 @@ import {
   date,
   foreignKey,
   index,
+  integer,
   pgTable,
   text,
   unique,
@@ -75,6 +76,8 @@ export const companyExports = pgTable(
     sha256: text(),
     /** The code of the failure (an error code or a Node code), never its message. */
     error: text(),
+    /** How many builds started: an export that keeps dying (a crash, a kill) fails at three. */
+    attempts: integer().notNull().default(0),
     expiresAt: timestamptz(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
@@ -101,6 +104,7 @@ export const companyExports = pgTable(
       sql`${t.storageKey} is null or ${t.storageKey} = ${t.companyId}::text || '/' || ${t.id}::text`,
     ),
     check('company_exports_size', sql`${t.sizeBytes} is null or ${t.sizeBytes} > 0`),
+    check('company_exports_attempts', sql`${t.attempts} >= 0`),
     check('company_exports_sha256', sql`${t.sha256} is null or ${t.sha256} ~ ${HASH}`),
     check(
       'company_exports_error_length',

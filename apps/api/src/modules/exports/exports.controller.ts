@@ -61,13 +61,21 @@ export class ExportsController {
     return this.exports.list(inCompany(access));
   }
 
+  /** The whole company's data: a fresh code, as for the request (S03 "Access", a leaked link). */
   @Get(':id/download')
   @ApiParamsFrom(idParamSchema)
   @CompanyRoute('company.export')
+  @Reauthenticated()
   @Header('X-Content-Type-Options', 'nosniff')
   @Header('Content-Security-Policy', "default-src 'none'; sandbox")
   @ApiOkProducesResponse('The export as a ZIP, for 24 hours after it is ready', ['application/zip'])
-  @ApiErrors(...COMPANY_READ_ERRORS, 'VALIDATION_FAILED', 'NOT_FOUND', 'LINK_INVALID')
+  @ApiErrors(
+    ...COMPANY_READ_ERRORS,
+    'REAUTHENTICATION_REQUIRED',
+    'VALIDATION_FAILED',
+    'NOT_FOUND',
+    'LINK_INVALID',
+  )
   async download(
     @Access() access: RequestAccess,
     @Param({ schema: idParamSchema }) params: IdParam,

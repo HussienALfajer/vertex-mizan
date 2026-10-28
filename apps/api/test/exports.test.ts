@@ -15,7 +15,7 @@ import { FileStore } from '../src/core/files/file-store.js';
 import { createTestApp } from './app.js';
 import { type Books, books } from './books.js';
 import { Browser } from './browser.js';
-import { testDatabase } from './people.js';
+import { reauthenticate, testDatabase } from './people.js';
 
 // The full export through the API (S03 rule 21, acceptance step 8): the reauthenticated request,
 // one at a time, the list, the download for 24 hours, its audit, and who may do it. The worker
@@ -76,22 +76,37 @@ describe('POST /api/company/exports', () => {
     expect(await actions(book)).toEqual([{ action: 'export.requested', entityId: first.body.id }]);
   });
 
-  it('needs a fresh code (S03 "Access")', async () => {
+  it('needs a fresh code to request and to download (S03 "Access")', async () => {
     const book = await books(app, db);
+    const queued = await request(book.owner.browser);
+    await makeReady(book, queued.body.id, Buffer.from('PK synthetic'));
     await db
       .update(sessions)
       .set({ reauthenticatedAt: null })
       .where(eq(sessions.userId, book.owner.person.id));
-    const response = await request(book.owner.browser);
-    expect(response.body.code).toBe('REAUTHENTICATION_REQUIRED');
+    expect((await request(book.owner.browser)).body.code).toBe('REAUTHENTICATION_REQUIRED');
+    const download = await book.owner.browser.download(
+      `/api/company/exports/${queued.body.id}/download`,
+    );
+    expect(JSON.parse(download.body.toString()).code).toBe('REAUTHENTICATION_REQUIRED');
+    await reauthenticate(book.owner.browser, book.owner.person);
+    expect(
+      (await book.owner.browser.download(`/api/company/exports/${queued.body.id}/download`)).status,
+    ).toBe(200);
   });
 
   it('is the owner’s only, in their company, archived or not', async () => {
     const book = await books(app, db);
+    const queued = await request(book.owner.browser);
+    await makeReady(book, queued.body.id, Buffer.from('PK synthetic'));
     for (const role of ['accountant', 'approver', 'viewer', 'auditor'] as const) {
       const member = await book.join(role);
       expect((await request(member.browser)).body.code, role).toBe('FORBIDDEN');
       expect((await member.browser.get('/api/company/exports')).body.code, role).toBe('FORBIDDEN');
+      const download = await member.browser.download(
+        `/api/company/exports/${queued.body.id}/download`,
+      );
+      expect(JSON.parse(download.body.toString()).code, role).toBe('FORBIDDEN');
     }
     expect((await request(new Browser(app))).status).toBe(401);
     expect(
