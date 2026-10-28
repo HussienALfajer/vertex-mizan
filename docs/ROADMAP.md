@@ -39,7 +39,8 @@ Scope: `docs/product/phase-1-scope.md`. One spec per line, each through `/spec` 
   - [x] PR 3 chart screens: `/chart` (the tree with filters, the account sheet with the lock notice, block, archive and restore with a reason, the template choice on an empty chart, the Excel export) and `/chart/roles`; the template choice on the new-company form (service agency by default); "new account" in the command palette; `AccountTree` and `AccountPicker` in `packages/ui`
   - [x] PR 4 dimension and rate screens: `/dimensions` (a tab per type, manual values, the Hub link once, archive and restore, custom types, a contract's kind and client), `/rates` (rows with corrections, the bulletin status of the last 30 days, the rate in force, recording and correcting with a reason, pairs) and `/rates/calendar`; "record bulletin rate" in the command palette; `DimensionPicker` and `RateInput` in `packages/ui`
   - [x] Posting rules: the scenarios `currency/bulletin-rate-of-the-day` and `currency/rate-correction-after-use` (numbers approved by the owner 2026-10-27, `Proposed` until S03 brings their executors); the scenario format's bulletin calendar, `rate` and `reversal` steps and `corrections`; `rateInForce()` and `policyRate()` on the publication calendar (rule 16) with its properties
-- [ ] S03 Journal entries and the posting function: F05 · F14 (period balances, `posted_at`, the daily anchor)
+- [~] S03 Journal entries and the posting function: F05 · F14 (`docs/specs/S03-journal-entries-posting.md`, ADR 0012; period balances, `posted_at`, the daily anchor)
+  - [ ] Posting rules: the scenarios `manual/conversion-rounding`, `manual/currency-purchase` and `manual/reversal`
 - [ ] S04 Open items and settlements: F06
 - [ ] S05 Posting API, event inbox and posting rules: F10
 - [ ] S06 Revenue recognition (IFRS 15): F07

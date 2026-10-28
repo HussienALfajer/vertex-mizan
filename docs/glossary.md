@@ -100,6 +100,15 @@ One name per concept. Code, contracts and tables use the English term; the Arabi
 | كتاب السيناريوهات | scenario book | Solved examples of every accounting rule, run as tests |
 | شكل العملات | currency shape | A scenario's book and parallel currencies (`syp`, `syp-usd`, `usd-syp`, `third`) |
 | أرصدة الفترات | period balances | Totals per period, account, dimensions and currency, kept by the posting function |
+| بيان القيد / المرجع | entry description / reference | The required Arabic statement of an entry, printed in the journal book / an optional document number |
+| سعر الصفقة | dealt rate | The rate a manual entry was actually dealt at; used only by a market ledger that accepts a transaction's rate (ADR 0012) |
+| إرسال للاعتماد / اعتماد / رفض / سحب | submit / approve / reject / withdraw | The approval steps of a manual entry when the company switches approval on; the approver is never the preparer |
+| معاينة الترحيل | posting preview | The lines as they would post, in both ledgers, with rounding and difference lines, before posting |
+| طلب الترحيل | posting request | The idempotency record every posting starts with: client and key (a draft id, an event id) |
+| مجموعة الأبعاد | dimension set | One combination of dimension values that lines and period balances share |
+| رأس السلسلة | chain head | The company's last posted entry hash and entry count |
+| فحص السلامة | integrity check | Recomputing the chain, numbers, balances and period balances, and comparing them with the anchors |
+| تصدير بيانات الشركة | company export | The owner's full ZIP copy of a company's data, attachments and chain head |
 | مرساة السلسلة | chain anchor | The daily chain head emailed to the owner, outside the server |
 | سند | voucher | A receipt or payment document that produces an entry (phase 2) |
 | شيك / شيك مؤجل | cheque / post-dated cheque | A cheque, or one dated in the future (phase 2 or later) |
