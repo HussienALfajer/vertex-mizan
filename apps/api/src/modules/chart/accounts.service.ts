@@ -24,11 +24,13 @@ import {
   checkDimensionTypes,
   createAccount,
   type Database,
+  ledgerHeads,
   lockedAccount,
+  periodBalances,
   type Transaction,
   withCompany,
 } from '@vertex-mizan/db';
-import { and, eq, inArray, isNull } from 'drizzle-orm';
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { actorOf, type CompanyRouteAccess } from '../../core/access/access.js';
 import { lockCompanyForWrite } from '../../core/access/company-lock.js';
 import { type AuditActor, changedFields, writeCompanyAudit } from '../../core/audit/audit.js';
@@ -229,8 +231,10 @@ export class AccountsService {
 
   /**
    * `POST /api/accounts/:id/archive` (rule 6): not a root (`ACCOUNT_LOCKED`), no unarchived child
-   * (`ACCOUNT_HAS_CHILDREN`), no role (`ACCOUNT_IN_ROLE`). The zero-balance check
-   * (`ACCOUNT_HAS_BALANCE`) joins with S03's period balances and open items: S02 has none.
+   * (`ACCOUNT_HAS_CHILDREN`), no role (`ACCOUNT_IN_ROLE`), and a zero balance in both ledgers
+   * (`ACCOUNT_HAS_BALANCE`, S03; open items join with S04). The ledger head is locked before the
+   * account, in the posting function's order (ADR 0008), so no posting lands between the balance
+   * read and the archive (S02 abuse case).
    */
   async archive(access: CompanyRouteAccess, id: string, reason: string): Promise<Account> {
     return this.changeState(access, id, async (tx, row, actor) => {
@@ -240,6 +244,9 @@ export class AccountsService {
         throw new CodedException('ACCOUNT_HAS_CHILDREN', 'The account has unarchived children');
       }
       await this.refuseInRole(tx, id);
+      if (await hasLedgerBalance(tx, id)) {
+        throw new CodedException('ACCOUNT_HAS_BALANCE', 'The account has a balance');
+      }
       await tx
         .update(chartAccounts)
         .set({ archivedAt: new Date(), archivedReason: reason })
@@ -352,6 +359,8 @@ export class AccountsService {
     const companyId = access.company.id;
     return withCompany(this.db, companyId, async (tx) => {
       await lockCompanyForWrite(tx, companyId);
+      // The ledger head before the account, as the posting function locks them (ADR 0008).
+      await tx.select({ id: ledgerHeads.id }).from(ledgerHeads).for('update');
       const row = await this.accountRow(tx, id, 'update');
       await work(tx, row, actorOf(access));
       return readAccount(tx, id);
@@ -441,4 +450,19 @@ export class AccountsService {
         ),
       );
   }
+}
+
+/**
+ * Whether an account's book or parallel balance is not zero (S02 rule 6, S03), from the period
+ * balances the line trigger keeps (ADR 0012).
+ */
+async function hasLedgerBalance(tx: Transaction, accountId: string): Promise<boolean> {
+  const [row] = await tx
+    .select({
+      book: sql<string>`coalesce(sum(${periodBalances.bookDebitMinor} - ${periodBalances.bookCreditMinor}), 0)`,
+      parallel: sql<string>`coalesce(sum(${periodBalances.parallelDebitMinor} - ${periodBalances.parallelCreditMinor}), 0)`,
+    })
+    .from(periodBalances)
+    .where(eq(periodBalances.accountId, accountId));
+  return row !== undefined && (BigInt(row.book) !== 0n || BigInt(row.parallel) !== 0n);
 }

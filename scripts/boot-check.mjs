@@ -46,6 +46,7 @@ async function main() {
     API_HOST: '127.0.0.1',
     API_PORT: port,
     AUTH_SECRET: 'boot-check-only-secret-of-at-least-32-characters',
+    MIZAN_FILES_DIR: resolve(root, '.data', 'boot-check-files'),
   });
   const worker = start('worker', {
     SMTP_URL: 'smtp://127.0.0.1:1025',

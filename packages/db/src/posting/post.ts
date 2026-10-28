@@ -662,9 +662,9 @@ function checkDates(on: string, content: PostingContent, ledgers: CompanyLedgers
   checkManualEntryDate(on, content.today);
   for (const [, ledger] of keptLedgers(ledgers)) checkCurrencyDate(ledger.currency, on);
   if (content.kind === 'manual') {
-    content.lines.forEach((line, index) =>
-      onLine(index + 1, () => checkCurrencyDate(line.currency, on)),
-    );
+    for (const [index, line] of content.lines.entries()) {
+      onLine(index + 1, () => checkCurrencyDate(line.currency, on));
+    }
   }
 }
 

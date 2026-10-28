@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import {
-  accountLinesQuerySchema,
   ATTACHMENT_LIMIT,
   ATTACHMENT_MAX_BYTES,
+  accountLinesQuerySchema,
   DRAFT_LINE_LIMIT,
   dealtRateSchema,
   draftInputSchema,
@@ -82,9 +82,9 @@ describe('draftInputSchema', () => {
 
   it('takes one dealt rate per pair, either way round (S03 rule 13)', () => {
     const rate = { base: 'USD', quote: 'SYP', rate: '122.5000' };
-    expect(draftInputSchema.safeParse({ entryDate: '2026-11-08', dealtRates: [rate] }).success).toBe(
-      true,
-    );
+    expect(
+      draftInputSchema.safeParse({ entryDate: '2026-11-08', dealtRates: [rate] }).success,
+    ).toBe(true);
     expect(
       draftInputSchema.safeParse({
         entryDate: '2026-11-08',
