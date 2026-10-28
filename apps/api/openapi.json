@@ -4922,7 +4922,10 @@
           "RATE_UNCHANGED",
           "RATE_REASON_REQUIRED",
           "HOLIDAY_EXISTS",
-          "DEALT_RATE_NOT_ACCEPTED"
+          "DEALT_RATE_NOT_ACCEPTED",
+          "ENTRY_NOT_REVERSIBLE",
+          "ENTRY_ALREADY_REVERSED",
+          "REVERSAL_BEFORE_ORIGINAL"
         ]
       },
       "PageQuery": {

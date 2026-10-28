@@ -2,7 +2,7 @@
 
 Status: Proposed
 
-Drafted for the owner's approval of the expected entries. Once approved, the file stays `Proposed` until S03 registers the setup, the ledger reader and the `manual` and `reversal` executors the runner needs; the PR that does so marks it `Approved (owner, <the approval's date>)` without changing an expected value.
+The expected entries were approved by the owner on 2026-10-28. The file stays `Proposed` until S03 registers the setup, the ledger reader and the `manual` and `reversal` executors the runner needs; the PR that does so marks it `Approved (owner, 2026-10-28)` without changing an expected value. Until then `packages/ledger`'s `adr-0007.examples.test.ts` builds every case with `manualEntryLines()`, `balanceEntry()` and `manualReversalLines()`.
 
 ## Rule
 

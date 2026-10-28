@@ -27,7 +27,12 @@ import {
   ledgerAmount,
   ledgerCurrency,
 } from './lines.js';
-import { manualEntryLines } from './manual.js';
+import {
+  ENTRY_SOURCES,
+  manualEntryLines,
+  manualReversalLines,
+  type PostedEntry,
+} from './manual.js';
 import { type MeasureContext, measuredLine } from './measure.js';
 import { lastPublicationDay, type PublicationCalendar, rateInForce } from './rates.js';
 import { calendar, refusal } from './test-fixtures.js';
@@ -708,6 +713,126 @@ describe('manual entries in one currency', () => {
 });
 
 /** Carried amounts in one currency; a ledger in that currency carries the transaction amount. */
+/** A posted manual entry in one currency, dated `date`, and a reversal date around it. */
+const manualReversal = fc.record({
+  posted: oneCurrency,
+  date: offset.map(day),
+  on: offset.map(day),
+});
+
+/** The refusal S03 rule 9 gives, in its order: the source, then a reversal, then the date. */
+function expectedRefusal(original: Omit<PostedEntry, 'lines'>, on: string) {
+  if (original.source !== 'manual' || original.isReversal) return 'ENTRY_NOT_REVERSIBLE';
+  if (original.reversed) return 'ENTRY_ALREADY_REVERSED';
+  if (on < original.date) return 'REVERSAL_BEFORE_ORIGINAL';
+  return 'none';
+}
+
+describe('manual reversals', () => {
+  it('negate the posted lines exactly on or after the original, and net every account to zero', () => {
+    fc.assert(
+      fc.property(manualReversal, ({ posted: { company, context, entry }, date, on }) => {
+        const lines = balanceEntry({
+          on: date,
+          ledgers: company,
+          lines: manualEntryLines(entry, context, realised),
+          rounding,
+        });
+        const original = {
+          source: 'manual',
+          date,
+          isReversal: false,
+          reversed: false,
+          lines,
+        } as const;
+        if (on < date) {
+          expect(refusal(() => manualReversalLines(original, on))).toBe('REVERSAL_BEFORE_ORIGINAL');
+          return;
+        }
+        const reversal = manualReversalLines(original, on);
+        expect(reversal).toEqual(reverseLines(lines));
+        expect(balanceEntry({ on, ledgers: company, lines: reversal, rounding })).toEqual(reversal);
+        const both = [...lines, ...reversal];
+        for (const account of new Set(both.map((line) => line.account))) {
+          const ofAccount = both.filter((line) => line.account === account);
+          for (const [ledger] of keptLedgers(company)) {
+            expect(ledgerTotal(ofAccount, ledger)).toBe(0n);
+          }
+        }
+      }),
+      { numRuns: 500 },
+    );
+  });
+
+  it('are refused for another source, a reversal, a reversed entry or an earlier date, in that order', () => {
+    fc.assert(
+      fc.property(
+        fc.record({
+          source: fc.constantFrom(...ENTRY_SOURCES),
+          date: offset.map(day),
+          isReversal: fc.boolean(),
+          reversed: fc.boolean(),
+        }),
+        offset.map(day),
+        (header, on) => {
+          const lines = [100n, -100n].map((amount, index) =>
+            carriedLine({
+              account: `A${index}`,
+              amounts: {
+                transaction: money(amount, 'SYP'),
+                bookMinor: amount,
+                parallelMinor: null,
+              },
+            }),
+          );
+          const original = { ...header, lines };
+          expect(refusal(() => manualReversalLines(original, on))).toBe(
+            expectedRefusal(header, on),
+          );
+        },
+      ),
+      { numRuns: 1_000 },
+    );
+  });
+
+  it('post nothing more once an entry is reversed: neither it nor its reversal reverses again', () => {
+    fc.assert(
+      fc.property(manualReversal, ({ posted: { company, context, entry }, date, on }) => {
+        fc.pre(on >= date);
+        const lines = balanceEntry({
+          on: date,
+          ledgers: company,
+          lines: manualEntryLines(entry, context, realised),
+          rounding,
+        });
+        const reversal = manualReversalLines(
+          { source: 'manual', date, isReversal: false, reversed: false, lines },
+          on,
+        );
+        for (const later of [on, day(61)]) {
+          expect(
+            refusal(() =>
+              manualReversalLines(
+                { source: 'manual', date, isReversal: false, reversed: true, lines },
+                later,
+              ),
+            ),
+          ).toBe('ENTRY_ALREADY_REVERSED');
+          expect(
+            refusal(() =>
+              manualReversalLines(
+                { source: 'manual', date: on, isReversal: true, reversed: false, lines: reversal },
+                later,
+              ),
+            ),
+          ).toBe('ENTRY_NOT_REVERSIBLE');
+        }
+      }),
+      { numRuns: 300 },
+    );
+  });
+});
+
 const carried = fc
   .record({
     total: nonZero,

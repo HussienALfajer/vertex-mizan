@@ -135,6 +135,12 @@ export const errorStatus = {
   HOLIDAY_EXISTS: 409,
   /** A dealt rate no ledger of the company can use for the entry's pairs (S03 rule 13). */
   DEALT_RATE_NOT_ACCEPTED: 422,
+  /** Only a manual entry that is not itself a reversal is reversed by hand (S03 rule 9). */
+  ENTRY_NOT_REVERSIBLE: 409,
+  /** The entry has a reversal already: an entry is reversed once (ADR 0005, invariant 3). */
+  ENTRY_ALREADY_REVERSED: 409,
+  /** A reversal dated before the entry it reverses (S03 rule 9). */
+  REVERSAL_BEFORE_ORIGINAL: 422,
 } as const satisfies Record<string, number>;
 
 export type ErrorCode = keyof typeof errorStatus;
