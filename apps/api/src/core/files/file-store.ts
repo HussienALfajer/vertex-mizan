@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { createReadStream, type ReadStream } from 'node:fs';
+import { mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Global, Inject, Injectable, Module } from '@nestjs/common';
 import type { AttachmentContentType } from '@vertex-mizan/contracts';
@@ -64,6 +65,13 @@ export class FileStore {
 
   read(companyId: string, id: string): Promise<Buffer> {
     return readFile(this.pathOf(companyId, id));
+  }
+
+  /** A large file (an export) streamed from disk, with its size, never read whole into memory. */
+  async open(companyId: string, id: string): Promise<{ stream: ReadStream; size: number }> {
+    const path = this.pathOf(companyId, id);
+    const { size } = await stat(path);
+    return { stream: createReadStream(path), size };
   }
 }
 

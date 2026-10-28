@@ -16,10 +16,19 @@ export async function withCompany<T>(
   db: Database,
   companyId: string,
   work: (tx: Transaction) => Promise<T>,
+  options: CompanyTransactionOptions = {},
 ): Promise<T> {
   if (!UUID.test(companyId)) throw new Error('withCompany needs the company id as a UUID');
   return db.transaction(async (tx) => {
     await tx.execute(sql`select set_config(${COMPANY_SETTING}, ${companyId}, true)`);
     return work(tx);
-  });
+  }, options);
+}
+
+/**
+ * A snapshot for reads that must agree with each other (the integrity check, the full export):
+ * `repeatable read` sees the database as it was at the transaction's first query.
+ */
+export interface CompanyTransactionOptions {
+  isolationLevel?: 'repeatable read';
 }

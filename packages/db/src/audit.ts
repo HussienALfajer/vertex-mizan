@@ -111,6 +111,16 @@ export const AUDITED_FIELDS = {
     'archivedReason',
   ],
   attachment: ['fileName', 'contentType', 'sizeBytes', 'sha256', 'draftId', 'entryId'],
+  // Trust and the full export (S03 PR 3): a check's result, an export's file.
+  integrity_check: [
+    'ok',
+    'entryCount',
+    'firstBreakSequence',
+    'problemCount',
+    'anchorCount',
+    'pastedResult',
+  ],
+  company_export: ['state', 'sizeBytes', 'sha256'],
 } as const satisfies Record<string, readonly string[]>;
 
 export type AuditedEntity = keyof typeof AUDITED_FIELDS;
