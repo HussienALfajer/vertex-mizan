@@ -4,6 +4,7 @@ export * from './audit.js';
 export * from './chart.js';
 export * from './companies.js';
 export * from './dimensions.js';
+export * from './drafts.js';
 export * from './email.js';
 export * from './ledger.js';
 export * from './rates.js';

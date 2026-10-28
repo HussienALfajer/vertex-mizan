@@ -76,6 +76,11 @@ export const tableRegistry = {
   entry_number_counters: { module: 'ledger', scope: 'company', kind: 'ledger-state' },
   periods: { module: 'ledger', scope: 'company', kind: 'ledger-state' },
   period_balances: { module: 'ledger', scope: 'company', kind: 'ledger-state' },
+  // drafts (S03, ADR 0005 "drafts are not ledger"): manual entries being prepared, and the files
+  // attached to a draft or a posted entry.
+  entry_drafts: { module: 'drafts', scope: 'company', kind: 'draft' },
+  entry_draft_lines: { module: 'drafts', scope: 'company', kind: 'draft' },
+  entry_attachments: { module: 'drafts', scope: 'company', kind: 'business' },
 } as const satisfies Record<string, TableInfo>;
 
 export type TableScope = 'company' | 'platform';

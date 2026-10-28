@@ -1,6 +1,7 @@
 import { CURRENCY_CODES } from '@vertex-mizan/contracts';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import fc from 'fast-check';
+import { v7 as uuidv7 } from 'uuid';
 import { describe, expect, it } from 'vitest';
 import {
   type AuditActor,
@@ -13,6 +14,9 @@ import {
   companySettings,
   dimensionTypes,
   dimensionValues,
+  entryAttachments,
+  entryDraftLines,
+  entryDrafts,
   exchangeRates,
   post,
   ratePairs,
@@ -50,6 +54,9 @@ const COVERED = [
   'entry_number_counters',
   'periods',
   'period_balances',
+  'entry_drafts',
+  'entry_draft_lines',
+  'entry_attachments',
 ];
 
 const auditRow = fc.record({
@@ -255,6 +262,30 @@ async function seedLedger(tx: Transaction, companyId: string, userId: string, da
     entryDate: '2026-11-03',
     content: { kind: 'reversal', entryId: entry.id, today: '2026-11-30' },
   });
+  // A draft being prepared, with a line typed and one not yet, and a file on it and on the entry.
+  const [draft] = await tx
+    .insert(entryDrafts)
+    .values({ companyId, state: 'draft', entryDate: '2026-11-04', preparedByUserId: userId })
+    .returning({ id: entryDrafts.id });
+  const draftId = draft?.id as string;
+  await tx.insert(entryDraftLines).values([
+    { companyId, draftId, lineNo: 1, accountId: debit, currency: foreign, amountMinor: 500n },
+    { companyId, draftId, lineNo: 2 },
+  ]);
+  for (const owner of [{ draftId }, { entryId: entry.id }]) {
+    const id = uuidv7();
+    await tx.insert(entryAttachments).values({
+      id,
+      companyId,
+      ...owner,
+      fileName: 'مرفق.pdf',
+      contentType: 'application/pdf',
+      sizeBytes: 100,
+      sha256: 'a'.repeat(64),
+      storageKey: `${companyId}/${id}`,
+      uploadedByUserId: userId,
+    });
+  }
 }
 
 /** The entries `seedLedger` posts, each with one audit row. */
@@ -281,6 +312,9 @@ const expectedRows = (data: CompanyData): Record<string, number> => ({
   entry_number_counters: 1,
   periods: 1,
   period_balances: 2,
+  entry_drafts: 1,
+  entry_draft_lines: 2,
+  entry_attachments: 2,
 });
 
 async function seed(userId: string, data: CompanyData): Promise<string> {

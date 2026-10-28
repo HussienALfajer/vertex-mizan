@@ -84,6 +84,11 @@ export const companySettings = pgTable(
      * it decides which bulletin a future posting needs, never a posted amount.
      */
     bulletinDaysOff: smallint().array().notNull().default(sql`'{5,6}'`),
+    /**
+     * Manual entries and their reversals are submitted and approved before they post (S03 rule
+     * 8). Not part of the settings lock: it decides how a posting is made, never a posted amount.
+     */
+    manualEntryApproval: boolean().notNull().default(false),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
     archivedAt: archivedAt(),
