@@ -27,7 +27,7 @@ Spec: `docs/specs/S03-journal-entries-posting.md` (Approved, owner 2026-10-28) Â
 - [x] db (`/db-migration`): the `trust` module (`chain_anchors` append-only, `company_exports` queue); the jobs role's first policies and grants for the daily anchor
 - [x] api: `POST /api/integrity/check`, the export routes (`@Reauthenticated` request, list, download, `LINK_INVALID` once expired)
 - [x] worker: `ledger.daily-anchor`, `company.export`, `company.export-expire`, each safe to run twice
-- [ ] bridge: OpenAPI regenerated, breaking-change check
+- [x] bridge: OpenAPI regenerated, breaking-change check
 - [ ] wiring, docs (`apps/worker/CLAUDE.md`, `packages/db/CLAUDE.md`, `docs/ROADMAP.md`)
 - [ ] checks and reviewers (`reviewer`, `accountant-reviewer`), PR with auto-merge and Auto-fix
 
