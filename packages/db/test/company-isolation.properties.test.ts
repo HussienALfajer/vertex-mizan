@@ -1,5 +1,5 @@
 import { CURRENCY_CODES } from '@vertex-mizan/contracts';
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import fc from 'fast-check';
 import { v7 as uuidv7 } from 'uuid';
 import { describe, expect, it } from 'vitest';
@@ -9,8 +9,10 @@ import {
   accountRoles,
   auditEntries,
   bulletinHolidays,
+  chainAnchors,
   chartAccounts,
   companies,
+  companyExports,
   companySettings,
   dimensionTypes,
   dimensionValues,
@@ -18,6 +20,7 @@ import {
   entryDraftLines,
   entryDrafts,
   exchangeRates,
+  journalEntries,
   post,
   ratePairs,
   type Transaction,
@@ -32,7 +35,7 @@ import { connect } from './connections.js';
 // a later spec that adds a company table adds its rows here, and the first test fails until it
 // does.
 
-const { app } = connect();
+const { app, jobs } = connect();
 const COVERED = [
   'company_settings',
   'audit_entries',
@@ -57,6 +60,8 @@ const COVERED = [
   'entry_drafts',
   'entry_draft_lines',
   'entry_attachments',
+  'chain_anchors',
+  'company_exports',
 ];
 
 const auditRow = fc.record({
@@ -315,6 +320,8 @@ const expectedRows = (data: CompanyData): Record<string, number> => ({
   entry_drafts: 1,
   entry_draft_lines: 2,
   entry_attachments: 2,
+  chain_anchors: 1,
+  company_exports: 1,
 });
 
 async function seed(userId: string, data: CompanyData): Promise<string> {
@@ -323,7 +330,7 @@ async function seed(userId: string, data: CompanyData): Promise<string> {
     .values({ name: 'شركة مولّدة', createdByUserId: userId })
     .returning({ id: companies.id });
   if (!row) throw new Error('no company inserted');
-  await withCompany(app, row.id, async (tx) => {
+  const [head] = await withCompany(app, row.id, async (tx) => {
     await tx.insert(companySettings).values({
       companyId: row.id,
       bookCurrency: data.bookCurrency,
@@ -345,6 +352,21 @@ async function seed(userId: string, data: CompanyData): Promise<string> {
     }
     await seedChart(tx, row.id, userId, data);
     await seedLedger(tx, row.id, userId, data);
+    await tx.insert(companyExports).values({ companyId: row.id, requestedByUserId: userId });
+    return tx
+      .select({ id: journalEntries.id, hash: journalEntries.hash })
+      .from(journalEntries)
+      .orderBy(desc(journalEntries.sequence))
+      .limit(1);
+  });
+  // Today's anchor, as the daily anchor job writes it: across companies, as the jobs role.
+  await jobs.insert(chainAnchors).values({
+    companyId: row.id,
+    anchoredOn: sql`(now() at time zone 'Asia/Damascus')::date`,
+    entryCount: BigInt(POSTED),
+    headEntryId: head?.id as string,
+    headHash: head?.hash as string,
+    emailOutboxIds: [],
   });
   return row.id;
 }
