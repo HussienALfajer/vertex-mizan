@@ -72,9 +72,7 @@ export async function installTool(name) {
   const asset = tool.assets[`${process.platform}-${process.arch}`];
   if (!asset)
     throw new Error(`${name} has no pinned release for ${process.platform}-${process.arch}`);
-  const response = await fetch(tool.url(asset.file));
-  if (!response.ok) throw new Error(`downloading ${asset.file} failed: HTTP ${response.status}`);
-  const bytes = Buffer.from(await response.arrayBuffer());
+  const bytes = await download(tool.url(asset.file));
   const sha256 = createHash('sha256').update(bytes).digest('hex');
   if (sha256 !== asset.sha256) {
     throw new Error(`${asset.file} has SHA-256 ${sha256}, not the pinned ${asset.sha256}`);
@@ -100,6 +98,27 @@ export async function installTool(name) {
     throw new Error(`unpacking ${asset.file} failed: ${unpacked.stderr || unpacked.error}`);
   }
   return join(target, exe(name));
+}
+
+/**
+ * The release archive's bytes. Node's `fetch` ignores `HTTPS_PROXY`, so where it cannot connect
+ * (a cloud session behind a proxy) curl, which reads the proxy variables, downloads it instead.
+ */
+async function download(url) {
+  try {
+    const response = await fetch(url);
+    if (response.ok) return Buffer.from(await response.arrayBuffer());
+  } catch {
+    // Try curl below.
+  }
+  const curl = spawnSync('curl', ['-fsSL', '--retry', '3', url], {
+    maxBuffer: 256 * 1024 * 1024,
+    windowsHide: true,
+  });
+  if (curl.status !== 0) {
+    throw new Error(`downloading ${url} failed: ${String(curl.stderr || curl.error).trim()}`);
+  }
+  return curl.stdout;
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
