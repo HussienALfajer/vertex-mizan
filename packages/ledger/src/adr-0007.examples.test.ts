@@ -714,6 +714,87 @@ describe('docs/scenarios/manual: a currency purchase or sale', () => {
     ]);
   });
 
+  it('a dealt rate for a pair no accepting ledger converts is refused', () => {
+    // syp-usd: no line is in TRY, so no ledger converts USD/TRY.
+    expect(
+      refusal(() =>
+        exchanged(sypUsd, '2026-11-08', week, purchase(1_225_000n), [
+          dealt('USD', 'TRY', '41.5000', '2026-11-08'),
+        ]),
+      ),
+    ).toBe('DEALT_RATE_NOT_ACCEPTED');
+    // third: TRY sold for SYP; the USD parallel ledger converts TRY and SYP to USD, never TRY/SYP.
+    const rates = [
+      rate('USD', 'SYP', '122.0000', 'bulletin', '2026-11-10'),
+      rate('USD', 'TRY', '41.0000', 'bulletin', '2026-11-10'),
+      rate('USD', 'SYP', '122.0000', 'market', '2026-11-10'),
+      rate('USD', 'TRY', '41.2000', 'market', '2026-11-10'),
+    ];
+    const sale: [string, Money][] = [
+      ['111003', syp(1_240_000n)],
+      ['111007', money(-415_000n, 'TRY')],
+    ];
+    expect(
+      refusal(() =>
+        exchanged(sypUsd, '2026-11-10', rates, sale, [
+          rate('TRY', 'SYP', '2.9880', 'market', '2026-11-10'),
+        ]),
+      ),
+    ).toBe('DEALT_RATE_NOT_ACCEPTED');
+  });
+
+  it('in one currency, leaves the residual to balanceEntry() as rounding, never a difference', () => {
+    const at: MeasureContext = { ledgers: sypUsd, on: '2026-11-08', rates: week, calendar };
+    // Book: 0.01 USD × 121.5 = 1.215 SYP → 1.22 SYP twice, 0.02 USD → 2.43 SYP: 1 minor unit over.
+    const lines = manualEntryLines(
+      {
+        lines: [
+          { account: '531004', amount: usd(1n) },
+          { account: '532002', amount: usd(1n) },
+          { account: '111004', amount: usd(-2n) },
+        ],
+        dealtRates: [],
+      },
+      at,
+      realised,
+    );
+    expect(lines.every((line) => line.kind === 'measured')).toBe(true);
+    const entry = balanceEntry({
+      on: '2026-11-08',
+      ledgers: sypUsd,
+      lines,
+      rounding: roundingAccount,
+    });
+    expect(rows(entry)).toEqual([
+      ['measured', '531004', 'USD', 1n, 122n, 1n],
+      ['measured', '532002', 'USD', 1n, 122n, 1n],
+      ['measured', '111004', 'USD', -2n, -243n, -2n],
+      ['rounding', '541003', 'SYP', -1n, -1n, 0n],
+    ]);
+    // Unbalanced in its one currency: refused, never a gain or loss.
+    const unbalanced = manualEntryLines(
+      {
+        lines: [
+          { account: '531004', amount: usd(10_000n) },
+          { account: '111004', amount: usd(-9_999n) },
+        ],
+        dealtRates: [],
+      },
+      at,
+      realised,
+    );
+    expect(
+      refusal(() =>
+        balanceEntry({
+          on: '2026-11-08',
+          ledgers: sypUsd,
+          lines: unbalanced,
+          rounding: roundingAccount,
+        }),
+      ),
+    ).toBe('ENTRY_UNBALANCED');
+  });
+
   it('third: TRY sold for USD, at the market rate and at a dealt rate', () => {
     const rates = [
       rate('USD', 'SYP', '122.0000', 'bulletin', '2026-11-10'),

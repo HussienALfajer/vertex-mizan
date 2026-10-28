@@ -462,6 +462,8 @@ const exchange = fc
         parallel: fc.boolean(),
         flip: fc.boolean(),
         value: rateValue,
+        // A pair the accountant may give that no line and ledger currency make up.
+        stray: fc.option(fc.uniqueArray(currency, { minLength: 2, maxLength: 2 }), { nil: null }),
       }),
       { nil: null },
     ),
@@ -475,7 +477,10 @@ const exchange = fc
       rates: [...rateTable(company, from, choices[0]), ...rateTable(company, to, choices[1])],
     };
     const dealtRates: ExchangeRate[] = [];
-    if (dealt !== null) {
+    if (dealt?.stray) {
+      const [base, quote] = dealt.stray as [CurrencyCode, CurrencyCode];
+      dealtRates.push(row(base, quote, dealt.value, 'market'));
+    } else if (dealt !== null) {
       const ledger = dealt.parallel && company.parallel !== null ? company.parallel : company.book;
       const of = dealt.line ? from : to;
       if (of !== ledger.currency) {

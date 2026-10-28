@@ -2,7 +2,7 @@
 
 Status: Proposed
 
-The expected entries were approved by the owner on 2026-10-28, with the TRY cash account added to the template for the `third` cases. The file stays `Proposed` until S03 registers the setup, the ledger reader and the `manual` and `reversal` executors the runner needs; the PR that does so marks it `Approved (owner, 2026-10-28)` without changing an expected value. Until then `packages/ledger`'s `adr-0007.examples.test.ts` builds every case with `manualEntryLines()`.
+The expected entries were approved by the owner on 2026-10-28, with the TRY cash account added to the template for the `third` cases; the two refusals under "A dealt rate for a pair no accepting ledger converts", added after review, await the owner's approval. The file stays `Proposed` until S03 registers the setup, the ledger reader and the `manual` and `reversal` executors the runner needs; the PR that does so marks it `Approved (owner, 2026-10-28)` without changing an expected value. Until then `packages/ledger`'s `adr-0007.examples.test.ts` builds every case with `manualEntryLines()`.
 
 ## Rule
 
@@ -301,6 +301,52 @@ expect:
         - { account: "111003", currency: SYP, amount: -1225000, book: -10082, parallel: -1225000 }
         # book residual −82 → realised loss 0.82 USD; parallel residual 0 → no parallel line
         - { account: "541001", currency: USD, amount: 82, book: 82, parallel: 0 }
+```
+
+### A dealt rate for a pair no accepting ledger converts
+
+A dealt rate is used only for the pair of a line's currency and the currency of a ledger that accepts it (S03 rule 13). Any other pair is refused, never ignored.
+
+```yaml
+case: Vertex Media; a USD/TRY dealt rate on a USD/SYP purchase is refused
+company: { shape: syp-usd, book: SYP, parallel: USD, template: service-agency,
+           rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true } }
+rates:
+  - { date: 2026-11-08, base: USD, quote: SYP, rate: "121.5000", type: bulletin }
+  - { date: 2026-11-08, base: USD, quote: SYP, rate: "122.0000", type: market }
+steps:
+  - manual: USD bought from the SYP bank account, with a dealt rate of another pair
+    accounting_date: 2026-11-08
+    payload: { dealt_rates: [{ base: USD, quote: TRY, rate: "41.5000" }],
+               lines: [{ account: "111004", currency: USD, amount: 10000 },
+                       { account: "111003", currency: SYP, amount: -1225000 }] }
+expect:
+  # no line is in TRY, so no ledger converts the pair USD/TRY
+  entries: []
+  outcome: { status: refused, reason: DEALT_RATE_NOT_ACCEPTED }
+```
+
+```yaml
+case: TRY sold for SYP at a dealt TRY/SYP rate is refused; the USD parallel ledger never converts TRY/SYP
+company: { shape: third, book: SYP, parallel: USD, template: service-agency,
+           rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true },
+           accounts: [{ code: "111007", name: "الصندوق — ليرة تركية", name_latin: "Cash on hand — TRY",
+                        currency: TRY, monetary: true, statement_line: bs.cash }] }
+rates:
+  - { date: 2026-11-10, base: USD, quote: SYP, rate: "122.0000", type: bulletin }
+  - { date: 2026-11-10, base: USD, quote: TRY, rate: "41.0000", type: bulletin }
+  - { date: 2026-11-10, base: USD, quote: SYP, rate: "122.0000", type: market }
+  - { date: 2026-11-10, base: USD, quote: TRY, rate: "41.2000", type: market }
+steps:
+  - manual: TRY cash sold into the SYP bank account at a dealt rate
+    accounting_date: 2026-11-10
+    payload: { dealt_rates: [{ base: TRY, quote: SYP, rate: "2.9880" }],
+               lines: [{ account: "111003", currency: SYP, amount: 1240000 },
+                       { account: "111007", currency: TRY, amount: -415000 }] }
+expect:
+  # the SYP books take the bulletin; the USD parallel ledger converts TRY→USD and SYP→USD only
+  entries: []
+  outcome: { status: refused, reason: DEALT_RATE_NOT_ACCEPTED }
 ```
 
 ### A third currency: TRY sold for USD
