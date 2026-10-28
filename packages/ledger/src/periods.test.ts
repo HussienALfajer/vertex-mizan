@@ -45,7 +45,11 @@ describe('fiscalYearOf', () => {
 
   it('holds every day of a fiscal year in one year, whatever the start month', () => {
     const dates = fc
-      .date({ min: new Date('2026-01-01T00:00:00Z'), max: new Date('2099-12-31T00:00:00Z') })
+      .date({
+        min: new Date('2026-01-01T00:00:00Z'),
+        max: new Date('2099-12-31T00:00:00Z'),
+        noInvalidDate: true,
+      })
       .map((date) => date.toISOString().slice(0, 10));
     fc.assert(
       fc.property(dates, fc.integer({ min: 1, max: 12 }), (date, start) => {
