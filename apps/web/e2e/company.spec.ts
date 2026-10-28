@@ -13,7 +13,7 @@ import {
   secondCompanyId,
   viewer,
 } from './company-mocks';
-import { type ApiReply, expect, refusal, test } from './test';
+import { type ApiReply, expect, fieldError, refusal, test } from './test';
 
 /** Records each request a mock answers, to check what the page sent. */
 function recorder(reply: ApiReply) {
@@ -344,7 +344,7 @@ test.describe('members', () => {
     await page.getByRole('menuitem', { name: ar.members.actions.remove }).click();
     const dialog = page.getByRole('dialog', { name: ar.members.remove.title });
     await dialog.getByRole('button', { name: ar.members.remove.submit }).click();
-    await expect(dialog.getByText(ar.company.validation.required)).toBeVisible();
+    await expect(fieldError(dialog, ar.company.validation.required)).toBeVisible();
     await dialog.getByLabel(ar.members.reason).fill('انتهى التعاقد (مثال)');
     await dialog.getByRole('button', { name: ar.members.remove.submit }).click();
     await expect(dialog).toBeHidden();

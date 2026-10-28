@@ -50,7 +50,7 @@ import {
   UserPlusIcon,
 } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
-import { FormError } from '../../components/form-error';
+import { FormError, FormErrorSummary } from '../../components/form-error';
 import { ReasonDialog } from '../../components/reason-dialog';
 import { useSensitiveAction } from '../../components/reauth-dialog';
 import { api } from '../../lib/api';
@@ -464,6 +464,7 @@ function InviteDialog({
     canClosePeriods: false,
   });
   const [invalid, setInvalid] = useState<string | undefined>();
+  const [attempt, setAttempt] = useState(0);
   const invite = useMutation({
     mutationFn: () =>
       run(() =>
@@ -480,6 +481,7 @@ function InviteDialog({
     setEmail('');
     setAssignment({ role: 'accountant', canClosePeriods: false });
     setInvalid(undefined);
+    setAttempt(0);
     invite.reset();
     onClose();
   }
@@ -513,10 +515,12 @@ function InviteDialog({
               event.stopPropagation();
               const found = emailError(email);
               setInvalid(found);
-              if (!found) invite.mutate();
+              if (found) setAttempt((count) => count + 1);
+              else invite.mutate();
             }}
           >
-            <Field invalid={invalid !== undefined}>
+            <FormErrorSummary attempt={attempt} errors={[['invite-email', invalid]]} />
+            <Field id="invite-email" invalid={invalid !== undefined}>
               <FieldLabel>{t.inviteDialog.email}</FieldLabel>
               <Input
                 type="email"

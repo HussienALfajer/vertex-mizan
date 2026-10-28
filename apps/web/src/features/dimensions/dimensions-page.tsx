@@ -54,7 +54,7 @@ import {
 import { EllipsisIcon, InfoIcon, LinkIcon, PlusIcon, TagsIcon } from 'lucide-react';
 import { useDeferredValue, useMemo, useState } from 'react';
 import { ConfirmDialog } from '../../components/confirm-dialog';
-import { FormError } from '../../components/form-error';
+import { FormError, FormErrorSummary } from '../../components/form-error';
 import { api } from '../../lib/api';
 import { can, useCompany } from '../../lib/session';
 import { dimensionTypesQuery, dimensionValuesQuery } from './dimension-queries';
@@ -466,6 +466,7 @@ function ValueFormDialog({
     parentValueId: current?.parentValueId ?? null,
   });
   const [errors, setErrors] = useState<Partial<Record<keyof ValueForm, string>>>({});
+  const [attempt, setAttempt] = useState(0);
   const [unchanged, setUnchanged] = useState(false);
   const contract = isContractType(type);
   // The chosen client's id and name, kept while the search shows other clients.
@@ -509,7 +510,10 @@ function ValueFormDialog({
     if (contract && !current && form.contractKind === '')
       found.contractKind = t.validation.required;
     setErrors(found);
-    if (Object.keys(found).length > 0) return;
+    if (Object.keys(found).length > 0) {
+      setAttempt((count) => count + 1);
+      return;
+    }
     if (!current) {
       const parsed = createDimensionValueSchema.safeParse({
         typeId: type.id,
@@ -521,6 +525,7 @@ function ValueFormDialog({
       });
       if (!parsed.success) {
         setErrors({ name: t.validation.length });
+        setAttempt((count) => count + 1);
         return;
       }
       save.mutate(parsed.data);
@@ -540,6 +545,7 @@ function ValueFormDialog({
     const parsed = updateDimensionValueSchema.safeParse(change);
     if (!parsed.success) {
       setErrors({ name: t.validation.length });
+      setAttempt((count) => count + 1);
       return;
     }
     save.mutate(parsed.data);
@@ -568,7 +574,14 @@ function ValueFormDialog({
               description={t.value.hubDescription}
             />
           )}
-          <Field invalid={errors.name !== undefined}>
+          <FormErrorSummary
+            attempt={attempt}
+            errors={[
+              ['value-name', errors.name],
+              ['value-contract-kind', errors.contractKind],
+            ]}
+          />
+          <Field id="value-name" invalid={errors.name !== undefined}>
             <FieldLabel>{t.value.name}</FieldLabel>
             <Input value={form.name} onChange={(event) => set({ name: event.target.value })} />
             <FieldError match={errors.name !== undefined}>{errors.name}</FieldError>
@@ -592,6 +605,7 @@ function ValueFormDialog({
           </Field>
           {contract && (
             <SelectField
+              id="value-contract-kind"
               label={t.value.kind}
               value={form.contractKind === '' ? null : form.contractKind}
               options={kindOptions}
@@ -637,6 +651,7 @@ function LinkDialog({ value, onClose }: { value: DimensionValue; onClose: () => 
   const queryClient = useQueryClient();
   const [externalId, setExternalId] = useState('');
   const [invalid, setInvalid] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   const link = useMutation({
     mutationFn: (body: unknown) =>
       api('POST', `/dimension-values/${value.id}/link`, {
@@ -660,13 +675,18 @@ function LinkDialog({ value, onClose }: { value: DimensionValue; onClose: () => 
             const parsed = linkDimensionValueSchema.safeParse({ externalId });
             setInvalid(!parsed.success);
             if (parsed.success) link.mutate(parsed.data);
+            else setAttempt((count) => count + 1);
           }}
         >
           <DialogHeader>
             <DialogTitle>{`${t.link.title}: ${value.name}`}</DialogTitle>
             <DialogDescription>{t.link.description}</DialogDescription>
           </DialogHeader>
-          <Field invalid={invalid}>
+          <FormErrorSummary
+            attempt={attempt}
+            errors={[['link-external-id', invalid ? t.validation.required : undefined]]}
+          />
+          <Field id="link-external-id" invalid={invalid}>
             <FieldLabel>{t.link.externalId}</FieldLabel>
             <Input
               dir="ltr"
@@ -713,6 +733,7 @@ function TypeFormDialog({
   const [name, setName] = useState(current?.name ?? '');
   const [nameLatin, setNameLatin] = useState(current?.nameLatin ?? '');
   const [errors, setErrors] = useState<{ code?: string; name?: string }>({});
+  const [attempt, setAttempt] = useState(0);
   const save = useMutation({
     mutationFn: (body: unknown) =>
       current
@@ -739,6 +760,7 @@ function TypeFormDialog({
       const parsed = updateDimensionTypeSchema.safeParse({ name, nameLatin: latin });
       setErrors(parsed.success ? {} : { name: t.validation.required });
       if (parsed.success) save.mutate(parsed.data);
+      else setAttempt((count) => count + 1);
       return;
     }
     const parsed = createDimensionTypeSchema.safeParse({ code, name, nameLatin: latin });
@@ -748,6 +770,7 @@ function TypeFormDialog({
         ...(paths.has('code') ? { code: t.validation.typeCode } : {}),
         ...(paths.has('name') ? { name: t.validation.required } : {}),
       });
+      setAttempt((count) => count + 1);
       return;
     }
     setErrors({});
@@ -769,7 +792,14 @@ function TypeFormDialog({
             <DialogTitle>{current ? t.type.editTitle : t.type.createTitle}</DialogTitle>
             <DialogDescription>{t.type.limit}</DialogDescription>
           </DialogHeader>
-          <Field invalid={errors.code !== undefined} disabled={current !== null}>
+          <FormErrorSummary
+            attempt={attempt}
+            errors={[
+              ['type-code', errors.code],
+              ['type-name', errors.name],
+            ]}
+          />
+          <Field id="type-code" invalid={errors.code !== undefined} disabled={current !== null}>
             <FieldLabel>{t.type.code}</FieldLabel>
             <Input
               dir="ltr"
@@ -782,7 +812,7 @@ function TypeFormDialog({
             <FieldDescription>{t.type.codeHint}</FieldDescription>
             <FieldError match={errors.code !== undefined}>{errors.code}</FieldError>
           </Field>
-          <Field invalid={errors.name !== undefined}>
+          <Field id="type-name" invalid={errors.name !== undefined}>
             <FieldLabel>{t.type.name}</FieldLabel>
             <Input value={name} onChange={(event) => setName(event.target.value)} />
             <FieldError match={errors.name !== undefined}>{errors.name}</FieldError>

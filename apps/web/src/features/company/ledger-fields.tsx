@@ -75,6 +75,9 @@ export function ledgersOf(form: LedgerForm): CompanyLedgers {
   };
 }
 
+/** The field `ledgerFormError` belongs to, for a form's error summary. */
+export const ledgerErrorFieldId = 'parallel-currency';
+
 /** Why the ledgers cannot be sent (S01 edge case 8), or `undefined`. */
 export function ledgerFormError(form: LedgerForm): string | undefined {
   return form.hasParallel && form.parallelCurrency === form.bookCurrency
@@ -145,6 +148,7 @@ export function LedgerFields({
           <>
             <div className="grid gap-4 sm:grid-cols-2">
               <SelectField
+                id={ledgerErrorFieldId}
                 label={t.fields.currency}
                 value={value.parallelCurrency}
                 options={currencyOptions}

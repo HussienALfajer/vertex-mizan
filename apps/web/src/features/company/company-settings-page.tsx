@@ -20,7 +20,7 @@ import {
 } from '@vertex-mizan/ui';
 import { CircleCheckIcon, InfoIcon, LockIcon } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
-import { FormError } from '../../components/form-error';
+import { FormError, FormErrorSummary } from '../../components/form-error';
 import { ReasonDialog } from '../../components/reason-dialog';
 import { useSensitiveAction } from '../../components/reauth-dialog';
 import { api } from '../../lib/api';
@@ -30,6 +30,7 @@ import { companyQuery } from './company-queries';
 import {
   LedgerFields,
   type LedgerForm,
+  ledgerErrorFieldId,
   ledgerFormError,
   ledgerFormOf,
   ledgersOf,
@@ -143,6 +144,7 @@ function Profile({ company, canEdit }: { company: Company; canEdit: boolean }) {
   const [errors, setErrors] = useState<{ name?: string | undefined; latin?: string | undefined }>(
     {},
   );
+  const [attempt, setAttempt] = useState(0);
   const save = useCompanyWrite(() =>
     api('PATCH', '/company', {
       company: companyId,
@@ -162,10 +164,18 @@ function Profile({ company, canEdit }: { company: Company; canEdit: boolean }) {
             latin: nameLatin.trim() === '' ? undefined : nameError(nameLatin),
           };
           setErrors(found);
-          if (!found.name && !found.latin) save.mutate(undefined);
+          if (found.name || found.latin) setAttempt((count) => count + 1);
+          else save.mutate(undefined);
         }}
       >
-        <Field invalid={errors.name !== undefined}>
+        <FormErrorSummary
+          attempt={attempt}
+          errors={[
+            ['company-name', errors.name],
+            ['company-name-latin', errors.latin],
+          ]}
+        />
+        <Field id="company-name" invalid={errors.name !== undefined}>
           <FieldLabel>{fields.name}</FieldLabel>
           <Input
             value={name}
@@ -175,7 +185,7 @@ function Profile({ company, canEdit }: { company: Company; canEdit: boolean }) {
           />
           <FieldError match={errors.name !== undefined}>{errors.name}</FieldError>
         </Field>
-        <Field invalid={errors.latin !== undefined}>
+        <Field id="company-name-latin" invalid={errors.latin !== undefined}>
           <FieldLabel>{fields.nameLatin}</FieldLabel>
           <Input
             dir="ltr"
@@ -204,6 +214,7 @@ function PolicyNote({ company, canEdit }: { company: Company; canEdit: boolean }
   const { companyId } = useCompany();
   const [note, setNote] = useState(company.policyNote);
   const [error, setError] = useState<string | undefined>();
+  const [attempt, setAttempt] = useState(0);
   const save = useCompanyWrite(() =>
     api('PATCH', '/company', {
       company: companyId,
@@ -220,10 +231,12 @@ function PolicyNote({ company, canEdit }: { company: Company; canEdit: boolean }
           event.preventDefault();
           const found = policyNoteError(note);
           setError(found);
-          if (!found) save.mutate(undefined);
+          if (found) setAttempt((count) => count + 1);
+          else save.mutate(undefined);
         }}
       >
-        <Field invalid={error !== undefined}>
+        <FormErrorSummary attempt={attempt} errors={[['company-policy-note', error]]} />
+        <Field id="company-policy-note" invalid={error !== undefined}>
           <FieldLabel>{fields.policyNote}</FieldLabel>
           <Textarea
             value={note}
@@ -254,6 +267,7 @@ function Ledgers({ company, canEdit }: { company: Company; canEdit: boolean }) {
     ledgerFormOf(company.ledgers, company.fiscalYearStartMonth),
   );
   const editable = canEdit && !company.booksStarted;
+  const [attempt, setAttempt] = useState(0);
   const save = useCompanyWrite(() =>
     run(() =>
       api('PUT', '/company/ledgers', {
@@ -278,9 +292,14 @@ function Ledgers({ company, canEdit }: { company: Company; canEdit: boolean }) {
         className="flex flex-col gap-4"
         onSubmit={(event) => {
           event.preventDefault();
-          if (!ledgerFormError(form)) save.mutate(undefined);
+          if (ledgerFormError(form)) setAttempt((count) => count + 1);
+          else save.mutate(undefined);
         }}
       >
+        <FormErrorSummary
+          attempt={attempt}
+          errors={[[ledgerErrorFieldId, ledgerFormError(form)]]}
+        />
         <LedgerFields value={form} onChange={setForm} disabled={!editable} />
         <FormError error={save.error} />
         <Saved show={save.isSuccess} title={t.ledgers.saved} />

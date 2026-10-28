@@ -13,6 +13,7 @@ interface SelectOption<T extends string> {
  * its label, description and error linked to a `Select`. The options' labels are the app's text.
  */
 function SelectField<T extends string>({
+  id,
   label,
   value,
   options,
@@ -22,6 +23,8 @@ function SelectField<T extends string>({
   disabled,
   placeholder,
 }: {
+  /** The field's id, which an error summary links to. */
+  id?: string | undefined;
   label: string;
   value: T | null;
   options: readonly SelectOption<T>[];
@@ -32,7 +35,7 @@ function SelectField<T extends string>({
   placeholder?: string | undefined;
 }) {
   return (
-    <Field invalid={error !== undefined} disabled={disabled}>
+    <Field id={id} invalid={error !== undefined} disabled={disabled}>
       <FieldLabel render={<span />}>{label}</FieldLabel>
       <Select
         items={options}

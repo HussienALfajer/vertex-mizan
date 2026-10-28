@@ -15,7 +15,7 @@ import {
   Textarea,
 } from '@vertex-mizan/ui';
 import { type ReactNode, useState } from 'react';
-import { FormError } from './form-error';
+import { FormError, FormErrorSummary } from './form-error';
 import { useSensitiveAction } from './reauth-dialog';
 
 interface ReasonDialogProps {
@@ -53,6 +53,7 @@ export function ReasonDialog({
   const { run, dialog } = useSensitiveAction();
   const [reason, setReason] = useState('');
   const [invalid, setInvalid] = useState<string | undefined>();
+  const [attempt, setAttempt] = useState(0);
   const confirm = useMutation({
     mutationFn: (value: string) => run(() => onConfirm(value)),
     onSuccess: async () => {
@@ -64,6 +65,7 @@ export function ReasonDialog({
   function close() {
     setReason('');
     setInvalid(undefined);
+    setAttempt(0);
     confirm.reset();
     onOpenChange(false);
   }
@@ -91,6 +93,7 @@ export function ReasonDialog({
                     ? ar.company.validation.required
                     : ar.company.validation.reasonLength,
                 );
+                setAttempt((count) => count + 1);
                 return;
               }
               setInvalid(undefined);
@@ -101,8 +104,9 @@ export function ReasonDialog({
               <DialogTitle>{title}</DialogTitle>
               <DialogDescription>{description}</DialogDescription>
             </DialogHeader>
+            <FormErrorSummary attempt={attempt} errors={[['reason', invalid]]} />
             {children}
-            <Field invalid={invalid !== undefined}>
+            <Field id="reason" invalid={invalid !== undefined}>
               <FieldLabel>{reasonLabel}</FieldLabel>
               <Textarea
                 value={reason}

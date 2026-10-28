@@ -60,6 +60,7 @@ function AccountPicker({
   error,
   disabled,
   className,
+  id,
 }: {
   label: string;
   accounts: readonly AccountPickerOption[];
@@ -71,6 +72,8 @@ function AccountPicker({
   error?: string | undefined;
   disabled?: boolean | undefined;
   className?: string | undefined;
+  /** The field's id, which an error summary links to. */
+  id?: string | undefined;
 }) {
   const chosen = accounts.find((account) => account.id === value) ?? null;
   const items = useMemo(
@@ -81,7 +84,7 @@ function AccountPicker({
     [accounts],
   );
   return (
-    <Field invalid={error !== undefined} disabled={disabled} className={className}>
+    <Field id={id} invalid={error !== undefined} disabled={disabled} className={className}>
       <FieldLabel>{label}</FieldLabel>
       <Combobox.Root<AccountPickerOption>
         items={items}

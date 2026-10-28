@@ -4,10 +4,10 @@ import { ar } from '@vertex-mizan/i18n';
 import { Button } from '@vertex-mizan/ui';
 import { useState } from 'react';
 import { AuthHeading } from '../../components/auth-layout';
-import { FormError } from '../../components/form-error';
+import { FormError, FormErrorSummary } from '../../components/form-error';
 import { api, hasCode } from '../../lib/api';
 import { useFragmentToken } from '../../lib/fragment-token';
-import { NewPasswordFields } from './new-password-fields';
+import { NewPasswordFields, newPasswordFieldIds } from './new-password-fields';
 import { newPasswordError } from './validation';
 
 const t = ar.auth;
@@ -18,6 +18,7 @@ export function ResetPasswordPage() {
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [errors, setErrors] = useState<{ password?: string; confirm?: string }>({});
+  const [attempt, setAttempt] = useState(0);
   const reset = useMutation({
     mutationFn: () => api('POST', '/auth/reset-password', { body: { token, password } }),
   });
@@ -51,10 +52,18 @@ export function ResetPasswordPage() {
         event.preventDefault();
         const found = newPasswordError(password, confirm);
         setErrors(found);
-        if (!found.password && !found.confirm) reset.mutate();
+        if (found.password || found.confirm) setAttempt((count) => count + 1);
+        else reset.mutate();
       }}
     >
       <AuthHeading title={t.reset.title} description={t.reset.description} />
+      <FormErrorSummary
+        attempt={attempt}
+        errors={[
+          [newPasswordFieldIds.password, errors.password],
+          [newPasswordFieldIds.confirm, errors.confirm],
+        ]}
+      />
       <NewPasswordFields
         password={password}
         confirm={confirm}

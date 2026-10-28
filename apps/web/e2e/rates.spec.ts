@@ -11,7 +11,7 @@ import {
   today,
   usdSyp,
 } from './rate-mocks';
-import { type ApiReply, expect, refusal, test } from './test';
+import { type ApiReply, expect, fieldError, refusal, test } from './test';
 
 const t = ar.rates;
 const c = t.calendar;
@@ -97,7 +97,8 @@ test.describe('the bulletin calendar', () => {
       await page.getByRole('checkbox', { name: t.weekdays[day] }).click();
     }
     await page.getByRole('button', { name: c.save }).click();
-    await expect(page.getByText(c.daysOffInvalid)).toBeVisible();
+    await expect(page.getByRole('alert').getByText(c.daysOffInvalid)).toBeVisible();
+    await expect(page.getByRole('region', { name: ar.common.errorSummary })).toBeFocused();
     expect(put.seen).toHaveLength(0);
     for (const day of [1, 2, 3, 4, 7, 6] as const) {
       await page.getByRole('checkbox', { name: t.weekdays[day] }).click();
@@ -282,7 +283,7 @@ test.describe('rates', () => {
     await dialog.getByRole('button', { name: t.record.submit }).click();
     await expect(dialog.getByText(t.record.correctionTitle)).toBeVisible();
     await dialog.getByRole('button', { name: t.record.correct }).click();
-    await expect(dialog.getByText(t.validation.reason)).toBeVisible();
+    await expect(fieldError(dialog, t.validation.reason)).toBeVisible();
     await dialog.getByLabel(t.record.reason).fill('تصحيح خطأ إدخال (مثال)');
     await dialog.getByRole('button', { name: t.record.correct }).click();
     await expect(dialog).toHaveCount(0);

@@ -5,7 +5,7 @@ import { ar } from '@vertex-mizan/i18n';
 import { Button, Field, FieldError, FieldLabel, Input, PasswordInput } from '@vertex-mizan/ui';
 import { useState } from 'react';
 import { AuthHeading } from '../../components/auth-layout';
-import { FormError } from '../../components/form-error';
+import { FormError, FormErrorSummary } from '../../components/form-error';
 import { api } from '../../lib/api';
 import { meQuery } from '../../lib/session';
 import { emailError } from './validation';
@@ -22,6 +22,7 @@ export function SignInPage({ redirect }: { redirect: string | undefined }) {
     email?: string | undefined;
     password?: string | undefined;
   }>({});
+  const [attempt, setAttempt] = useState(0);
 
   const signIn = useMutation({
     mutationFn: () =>
@@ -51,11 +52,19 @@ export function SignInPage({ redirect }: { redirect: string | undefined }) {
           password: password === '' ? t.validation.required : undefined,
         };
         setErrors(found);
-        if (!found.email && !found.password) signIn.mutate();
+        if (found.email || found.password) setAttempt((count) => count + 1);
+        else signIn.mutate();
       }}
     >
       <AuthHeading title={t.signIn.title} description={t.signIn.description} />
-      <Field invalid={errors.email !== undefined}>
+      <FormErrorSummary
+        attempt={attempt}
+        errors={[
+          ['sign-in-email', errors.email],
+          ['sign-in-password', errors.password],
+        ]}
+      />
+      <Field id="sign-in-email" invalid={errors.email !== undefined}>
         <FieldLabel>{t.fields.email}</FieldLabel>
         <Input
           type="email"
@@ -66,7 +75,7 @@ export function SignInPage({ redirect }: { redirect: string | undefined }) {
         />
         <FieldError match={errors.email !== undefined}>{errors.email}</FieldError>
       </Field>
-      <Field invalid={errors.password !== undefined}>
+      <Field id="sign-in-password" invalid={errors.password !== undefined}>
         <div className="flex items-center justify-between gap-2">
           <FieldLabel>{t.fields.password}</FieldLabel>
           <Link to="/forgot-password" className="text-control text-primary hover:underline">

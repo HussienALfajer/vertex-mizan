@@ -1,4 +1,11 @@
-import { test as base, expect, type Page, type Request, type TestInfo } from '@playwright/test';
+import {
+  test as base,
+  expect,
+  type Locator,
+  type Page,
+  type Request,
+  type TestInfo,
+} from '@playwright/test';
 import type { ErrorCode, HealthResponse, Me } from '@vertex-mizan/contracts';
 
 /*
@@ -50,6 +57,11 @@ export interface ApiReply {
 export type ApiMocks = Record<string, ApiReply | ((request: Request) => ApiReply)>;
 
 /** The API's refusal with a stable code, as `errorResponseSchema` describes it. */
+/** A field's error beside it: a refused form's error summary repeats it above the form. */
+export function fieldError(scope: Page | Locator, text: string): Locator {
+  return scope.locator('[data-slot="field-error"]').filter({ hasText: text });
+}
+
 export function refusal(status: number, code: ErrorCode): ApiReply {
   return { status, json: { statusCode: status, code, message: code } };
 }

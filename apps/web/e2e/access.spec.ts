@@ -1,7 +1,7 @@
 import type { Request } from '@playwright/test';
 import { ar } from '@vertex-mizan/i18n';
 import { linkToken, newPersonInvitation, notEnrolled, setup, signIns } from './access-mocks';
-import { expect, refusal, signedIn, test } from './test';
+import { expect, fieldError, refusal, signedIn, test } from './test';
 
 /*
  * S01's access flows in the browser, the API mocked: signing in with both steps, the guards,
@@ -88,8 +88,12 @@ test.describe('sign-in', () => {
       await page.goto('/sign-in');
       await page.getByLabel(t.fields.email).fill('not-an-email');
       await page.getByRole('button', { name: t.signIn.submit }).click();
-      await expect(page.getByText(t.validation.email)).toBeVisible();
-      await expect(page.getByText(t.validation.required)).toBeVisible();
+      await expect(fieldError(page, t.validation.email)).toBeVisible();
+      await expect(fieldError(page, t.validation.required)).toBeVisible();
+      const summary = page.getByRole('region', { name: ar.common.errorSummary });
+      await expect(summary).toBeFocused();
+      await summary.getByRole('link', { name: t.validation.required }).click();
+      await expect(page.getByLabel(t.fields.password, { exact: true })).toBeFocused();
     });
   });
 
@@ -325,11 +329,11 @@ test.describe('password reset', () => {
       expect(new URL(page.url()).hash).toBe('');
       await page.getByLabel(t.fields.newPassword).fill('short');
       await page.getByRole('button', { name: t.reset.submit }).click();
-      await expect(page.getByText(t.validation.passwordLength)).toBeVisible();
+      await expect(fieldError(page, t.validation.passwordLength)).toBeVisible();
       await page.getByLabel(t.fields.newPassword).fill(password);
       await page.getByLabel(t.fields.confirmPassword).fill(`${password}x`);
       await page.getByRole('button', { name: t.reset.submit }).click();
-      await expect(page.getByText(t.validation.passwordMismatch)).toBeVisible();
+      await expect(fieldError(page, t.validation.passwordMismatch)).toBeVisible();
       await page.getByLabel(t.fields.confirmPassword).fill(password);
       await page.getByRole('button', { name: t.reset.submit }).click();
       await expect(page.getByRole('heading', { level: 1 })).toHaveText(t.reset.doneTitle);
@@ -388,7 +392,7 @@ test.describe('invitation', () => {
       await page.getByLabel(t.fields.newPassword).fill(newPersonInvitation.email);
       await page.getByLabel(t.fields.confirmPassword).fill(newPersonInvitation.email);
       await page.getByRole('button', { name: t.invitation.accept }).click();
-      await expect(page.getByText(t.validation.passwordIsEmail)).toBeVisible();
+      await expect(fieldError(page, t.validation.passwordIsEmail)).toBeVisible();
       await page.getByLabel(t.fields.newPassword).fill(password);
       await page.getByLabel(t.fields.confirmPassword).fill(password);
       await page.route('**/api/me', (route) => route.fulfill({ json: notEnrolled }));

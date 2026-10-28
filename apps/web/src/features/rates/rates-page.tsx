@@ -60,7 +60,7 @@ import {
   TriangleAlertIcon,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { FormError } from '../../components/form-error';
+import { FormError, FormErrorSummary } from '../../components/form-error';
 import { ApiError, api, hasCode } from '../../lib/api';
 import {
   addDays,
@@ -538,6 +538,7 @@ function RecordDialog({
     date?: string;
     reason?: string;
   }>({});
+  const [attempt, setAttempt] = useState(0);
   const save = useMutation({
     mutationFn: (body: unknown) =>
       api('POST', '/rates', { company: companyId, body, schema: recordedRateSchema }),
@@ -568,7 +569,10 @@ function RecordDialog({
       found.reason = t.validation.reason;
     }
     setErrors(found);
-    if (Object.keys(found).length > 0) return;
+    if (Object.keys(found).length > 0) {
+      setAttempt((count) => count + 1);
+      return;
+    }
     const parsed = recordRateSchema.safeParse({
       effectiveOn,
       base,
@@ -580,6 +584,7 @@ function RecordDialog({
     });
     if (!parsed.success) {
       setErrors({ date: ar.errors.SYP_BEFORE_REDENOMINATION });
+      setAttempt((count) => count + 1);
       return;
     }
     save.mutate(parsed.data);
@@ -602,6 +607,15 @@ function RecordDialog({
             </DialogTitle>
             <DialogDescription>{t.record.description}</DialogDescription>
           </DialogHeader>
+          <FormErrorSummary
+            attempt={attempt}
+            errors={[
+              ['rate-quote', errors.pair],
+              ['rate-date', errors.date],
+              ['rate-value', errors.rate],
+              ['rate-reason', errors.reason],
+            ]}
+          />
           <SelectField
             label={t.type}
             value={type}
@@ -616,6 +630,7 @@ function RecordDialog({
               onValueChange={(value) => change(() => setBase(value))}
             />
             <SelectField
+              id="rate-quote"
               label={t.record.quote}
               value={quote}
               options={currencyOptions}
@@ -623,7 +638,7 @@ function RecordDialog({
               onValueChange={(value) => change(() => setQuote(value))}
             />
           </div>
-          <Field invalid={errors.date !== undefined}>
+          <Field id="rate-date" invalid={errors.date !== undefined}>
             <FieldLabel>{t.record.effectiveOn}</FieldLabel>
             <Input
               type="date"
@@ -633,7 +648,7 @@ function RecordDialog({
             />
             <FieldError match={errors.date !== undefined}>{errors.date}</FieldError>
           </Field>
-          <Field invalid={errors.rate !== undefined || rateInvalid}>
+          <Field id="rate-value" invalid={errors.rate !== undefined || rateInvalid}>
             <FieldLabel>{t.record.rate}</FieldLabel>
             <RateInput
               value={rate}
@@ -661,7 +676,7 @@ function RecordDialog({
                 title={t.record.correctionTitle}
                 description={t.record.correctionDescription}
               />
-              <Field invalid={errors.reason !== undefined}>
+              <Field id="rate-reason" invalid={errors.reason !== undefined}>
                 <FieldLabel>{t.record.reason}</FieldLabel>
                 <Textarea value={reason} onChange={(event) => setReason(event.target.value)} />
                 <FieldError match={errors.reason !== undefined}>{errors.reason}</FieldError>
@@ -696,6 +711,7 @@ function PairDialog({
   const [base, setBase] = useState<CurrencyCode>('USD');
   const [quote, setQuote] = useState<CurrencyCode>('SYP');
   const [invalid, setInvalid] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   const add = useMutation({
     mutationFn: (body: unknown) =>
       api('POST', '/rate-pairs', { company: companyId, body, schema: ratePairSchema }),
@@ -716,12 +732,17 @@ function PairDialog({
             const parsed = createRatePairSchema.safeParse({ base, quote });
             setInvalid(!parsed.success);
             if (parsed.success) add.mutate(parsed.data);
+            else setAttempt((count) => count + 1);
           }}
         >
           <DialogHeader>
             <DialogTitle>{t.pairDialog.title}</DialogTitle>
             <DialogDescription>{t.pairDialog.description}</DialogDescription>
           </DialogHeader>
+          <FormErrorSummary
+            attempt={attempt}
+            errors={[['pair-quote', invalid ? t.validation.samePair : undefined]]}
+          />
           <div className="grid gap-4 sm:grid-cols-2">
             <SelectField
               label={t.record.base}
@@ -730,6 +751,7 @@ function PairDialog({
               onValueChange={setBase}
             />
             <SelectField
+              id="pair-quote"
               label={t.record.quote}
               value={quote}
               options={currencyOptions}

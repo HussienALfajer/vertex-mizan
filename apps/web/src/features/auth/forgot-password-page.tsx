@@ -4,7 +4,7 @@ import { ar } from '@vertex-mizan/i18n';
 import { Button, Field, FieldError, FieldLabel, Input } from '@vertex-mizan/ui';
 import { useState } from 'react';
 import { AuthHeading } from '../../components/auth-layout';
-import { FormError } from '../../components/form-error';
+import { FormError, FormErrorSummary } from '../../components/form-error';
 import { api } from '../../lib/api';
 import { emailError } from './validation';
 
@@ -14,6 +14,7 @@ const t = ar.auth;
 export function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
   const [error, setError] = useState<string | undefined>();
+  const [attempt, setAttempt] = useState(0);
   const request = useMutation({
     mutationFn: () => api('POST', '/auth/request-password-reset', { body: { email } }),
   });
@@ -37,11 +38,13 @@ export function ForgotPasswordPage() {
         event.preventDefault();
         const found = emailError(email);
         setError(found);
-        if (!found) request.mutate();
+        if (found) setAttempt((count) => count + 1);
+        else request.mutate();
       }}
     >
       <AuthHeading title={t.forgot.title} description={t.forgot.description} />
-      <Field invalid={error !== undefined}>
+      <FormErrorSummary attempt={attempt} errors={[['forgot-email', error]]} />
+      <Field id="forgot-email" invalid={error !== undefined}>
         <FieldLabel>{t.fields.email}</FieldLabel>
         <Input
           type="email"

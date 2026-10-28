@@ -12,6 +12,9 @@ interface NewPasswordFieldsProps {
 }
 
 /** A new password typed twice, with its rule (S01 rule 4): reset, invitation and the security page. */
+/** The ids of the two fields, for a form's error summary. */
+export const newPasswordFieldIds = { password: 'new-password', confirm: 'confirm-password' };
+
 export function NewPasswordFields({
   password,
   confirm,
@@ -21,7 +24,7 @@ export function NewPasswordFields({
 }: NewPasswordFieldsProps) {
   return (
     <>
-      <Field invalid={errors.password !== undefined}>
+      <Field id={newPasswordFieldIds.password} invalid={errors.password !== undefined}>
         <FieldLabel>{t.newPassword}</FieldLabel>
         <PasswordInput
           autoComplete="new-password"
@@ -33,7 +36,7 @@ export function NewPasswordFields({
         <FieldDescription>{t.passwordRule}</FieldDescription>
         <FieldError match={errors.password !== undefined}>{errors.password}</FieldError>
       </Field>
-      <Field invalid={errors.confirm !== undefined}>
+      <Field id={newPasswordFieldIds.confirm} invalid={errors.confirm !== undefined}>
         <FieldLabel>{t.confirmPassword}</FieldLabel>
         <PasswordInput
           autoComplete="new-password"
