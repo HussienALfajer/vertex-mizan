@@ -29,7 +29,7 @@ Spec: `docs/specs/S03-journal-entries-posting.md` (Approved, owner 2026-10-28) �
 - [x] worker: `ledger.daily-anchor`, `company.export`, `company.export-expire`, each safe to run twice
 - [x] bridge: OpenAPI regenerated, breaking-change check
 - [x] wiring, docs (`apps/worker/CLAUDE.md`, `packages/db/CLAUDE.md`, `docs/ROADMAP.md`)
-- [ ] checks and reviewers (`reviewer`, `accountant-reviewer`), PR with auto-merge and Auto-fix
+- [x] checks and reviewers (`reviewer`, `accountant-reviewer`), PR with auto-merge and Auto-fix
 
 ## PR 4 — The entry screens (ui, web, e2e)
 - [ ] ui: the general components the screens lack, built in `packages/ui` first (ADR 0010 §7), tested, both densities, on the design-system page

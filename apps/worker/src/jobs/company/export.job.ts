@@ -74,8 +74,6 @@ export class CompanyExportJob implements ScheduledJob {
         continue;
       }
       try {
-        // What an earlier build that died left behind, before this one starts.
-        await this.files.removePartials(companyId, id);
         if (await this.build(companyId, id)) built += 1;
       } catch (error) {
         this.logger.error(`Export ${id} failed: ${describeForLog(error)}`);
@@ -146,6 +144,9 @@ export class CompanyExportJob implements ScheduledJob {
           .where(and(eq(companyExports.id, id), eq(companyExports.state, 'queued')))
           .for('update', { skipLocked: true });
         if (!row) return false;
+        // What an earlier build that died left behind; under the row lock, so never the file a
+        // build running beside this one is writing.
+        await this.files.removePartials(companyId, id);
         const { size, sha256 } = await writeArchive(
           tx,
           companyId,
