@@ -446,7 +446,9 @@ export function EntryEditor({
 
   const showPreview = useMutation({
     mutationFn: async () => {
-      const stored = await persist();
+      // A draft the person cannot edit (submitted, or read only) is previewed as stored.
+      const stored = editable ? await persist() : saved.current.draft;
+      if (!stored) throw new RefusedText();
       if (!draft) return { stored, answer: null };
       const answer = await api('POST', `/drafts/${stored.id}/preview`, {
         company: companyId,
@@ -531,11 +533,13 @@ export function EntryEditor({
     const native = event.nativeEvent;
     if (matchesShortcut(native, keymap.save)) {
       event.preventDefault();
+      commitFocusedField(event.target);
       setTimeout(() => latest.current.save());
       return;
     }
     if (matchesShortcut(native, keymap.post)) {
       event.preventDefault();
+      commitFocusedField(event.target);
       setTimeout(() => latest.current.postOrSubmit());
       return;
     }
@@ -975,6 +979,17 @@ export function EntryEditor({
       )}
     </div>
   );
+}
+
+/**
+ * Commits the field a save or post key was pressed in: a rate or an amount input commits its
+ * text on blur (Enter aside), so it is blurred and focused again before the action runs. The
+ * grid's own editor is left alone: it commits on these keys and replays them itself.
+ */
+function commitFocusedField(target: EventTarget) {
+  if (!(target instanceof HTMLInputElement) || target.closest('[data-slot="grid"]')) return;
+  target.blur();
+  target.focus();
 }
 
 /** The set with `key` in it or not. */

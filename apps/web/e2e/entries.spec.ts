@@ -313,6 +313,27 @@ test.describe('drafts', () => {
     await expect(refused).toContainText(ar.errors.ACCOUNT_BLOCKED);
   });
 
+  test('saves a dealt rate typed in its field with Ctrl+S from that field', async ({ page }) => {
+    const save = recorder((request) => ({
+      status: 200,
+      json: draftOf(request.postDataJSON() as DraftInput, { id: ownDraft.id }),
+    }));
+    await page.route(`**/api/drafts/${ownDraft.id}`, async (route) => {
+      if (route.request().method() !== 'PUT') return route.fallback();
+      const reply = save.mock(route.request());
+      await route.fulfill({ status: reply.status, json: reply.json });
+    });
+    await page.goto(`/drafts/${ownDraft.id}`);
+    const rate = page.getByRole('textbox', { name: /سعر الصفقة/ });
+    await expect(rate).toHaveValue('122.5');
+    await rate.fill('123.25');
+    await page.keyboard.press('Control+s');
+    await expect.poll(() => save.seen.length).toBe(1);
+    expect(save.seen[0]?.postDataJSON()).toMatchObject({
+      dealtRates: [{ base: 'USD', quote: 'SYP', rate: '123.25' }],
+    });
+  });
+
   test('shows a rejection with its reason', async ({ page }) => {
     await page.goto(`/drafts/${rejectedDraft.id}`);
     await expect(page.getByText(te.rejectedTitle)).toBeVisible();
