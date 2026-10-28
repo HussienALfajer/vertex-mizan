@@ -5,6 +5,7 @@ import {
   type Money,
 } from '@vertex-mizan/contracts';
 import { type RealisedTargets, realisedDifferenceLines } from './balance.js';
+import { reverseLines } from './carried.js';
 import { type Dimensions, keptLedgers, type Line } from './lines.js';
 import { type MeasureContext, measuredLine } from './measure.js';
 import { quotesPair } from './rates.js';
@@ -71,4 +72,60 @@ export function manualEntryLines(
   const currencies = new Set(lines.map((line) => line.transaction.currency));
   if (currencies.size < 2) return lines;
   return [...lines, ...realisedDifferenceLines(context.ledgers, lines, targets)];
+}
+
+/** Where a posted entry came from (S03 `journal_entries.source`). */
+export const ENTRY_SOURCES = [
+  'manual',
+  'hub_event',
+  'opening',
+  'revaluation',
+  'revenue_release',
+] as const;
+
+export type EntrySource = (typeof ENTRY_SOURCES)[number];
+
+/** A posted entry as the posting function reads it, locked, to reverse it by hand. */
+export interface PostedEntry {
+  readonly source: EntrySource;
+  /** Its accounting date, `YYYY-MM-DD`. */
+  readonly date: string;
+  /** It is itself a reversal (`reverses_entry_id` set). */
+  readonly isReversal: boolean;
+  /** A reversal of it is already posted. */
+  readonly reversed: boolean;
+  readonly lines: readonly Line[];
+}
+
+/**
+ * The lines of the accountant's reversal of a posted entry dated `on` (S03 rule 9, ADR 0012): every
+ * line negated at its posted amounts, rounding and difference lines included, never converted
+ * again (`reverseLines()`), so it needs no rate and `balanceEntry()` adds nothing to it. Only a
+ * manual entry that is not itself a reversal is reversed by hand (`ENTRY_NOT_REVERSIBLE`: Hub,
+ * revaluation, release and opening entries are reversed by their own process, and a reversal is
+ * copied instead), once (`ENTRY_ALREADY_REVERSED`; the unique `reverses_entry_id` settles a race),
+ * and on or after its date (`REVERSAL_BEFORE_ORIGINAL`). The period and the date range are the
+ * posting function's checks, as for any entry.
+ */
+export function manualReversalLines(original: PostedEntry, on: string): Line[] {
+  if (original.source !== 'manual' || original.isReversal) {
+    throw new DomainError(
+      'ENTRY_NOT_REVERSIBLE',
+      original.isReversal
+        ? 'A reversal is never reversed; copy the original instead'
+        : `A ${original.source} entry is reversed by its own process`,
+      { source: original.source },
+    );
+  }
+  if (original.reversed) {
+    throw new DomainError('ENTRY_ALREADY_REVERSED', 'The entry has a reversal already');
+  }
+  if (on < original.date) {
+    throw new DomainError(
+      'REVERSAL_BEFORE_ORIGINAL',
+      `A reversal dated ${on} is before its original of ${original.date}`,
+      { on, original: original.date },
+    );
+  }
+  return reverseLines(original.lines);
 }

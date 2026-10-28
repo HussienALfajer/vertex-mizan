@@ -59,4 +59,8 @@ export const errors = {
   RATE_REASON_REQUIRED: 'تصحيح السعر يحتاج إلى سبب.',
   HOLIDAY_EXISTS: 'هذا التاريخ عطلة مسجّلة من قبل.',
   DEALT_RATE_NOT_ACCEPTED: 'لا يقبل أي دفتر في الشركة سعر الصفقة لهذا الزوج من العملات.',
+  ENTRY_NOT_REVERSIBLE:
+    'يُعكس يدوياً القيد اليدوي فقط، ولا يُعكس قيد العكس: انسخ القيد الأصلي بدلاً من ذلك.',
+  ENTRY_ALREADY_REVERSED: 'هذا القيد معكوس من قبل.',
+  REVERSAL_BEFORE_ORIGINAL: 'تاريخ العكس يسبق تاريخ القيد الأصلي.',
 } satisfies Record<ErrorCode, string>;

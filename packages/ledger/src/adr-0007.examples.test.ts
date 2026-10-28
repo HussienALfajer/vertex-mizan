@@ -8,8 +8,8 @@ import {
   type RunningMovement,
   reverseLines,
 } from './carried.js';
-import { type CarriedAmounts, carriedLine, type Line, negate } from './lines.js';
-import { manualEntryLines } from './manual.js';
+import { type CarriedAmounts, carriedLine, keptLedgers, type Line, negate } from './lines.js';
+import { manualEntryLines, manualReversalLines, type PostedEntry } from './manual.js';
 import { type MeasureContext, measuredLine } from './measure.js';
 import { calendar, hubRate, rate, refusal, sypOnly, sypUsd, usdSyp } from './test-fixtures.js';
 
@@ -1017,6 +1017,189 @@ describe('docs/scenarios/manual: conversion rounding in one currency', () => {
       ['measured', '111007', 'TRY', -200_000n, -595_122n, -4_854n],
       ['rounding', '541003', 'SYP', 1n, 1n, 0n],
       ['rounding', '541003', 'USD', -1n, 0n, -1n],
+    ]);
+  });
+});
+
+describe('docs/scenarios/manual: the reversal of a manual entry', () => {
+  const realised = { gain: { account: '421001' }, loss: { account: '541001' } };
+  const roundingAccount = { account: '541003' };
+  const usd = (minor: bigint) => money(minor, 'USD');
+  const syp = (minor: bigint) => money(minor, 'SYP');
+  const try_ = (minor: bigint) => money(minor, 'TRY');
+  const week = [
+    rate('USD', 'SYP', '121.5000', 'bulletin', '2026-11-08'),
+    rate('USD', 'SYP', '122.0000', 'market', '2026-11-08'),
+  ];
+
+  /** The manual entry of `lines` on `on`, with its difference or rounding lines. */
+  function posted(
+    ledgers: CompanyLedgers,
+    on: string,
+    rates: readonly ExchangeRate[],
+    lines: readonly [string, Money][],
+  ): Line[] {
+    const at: MeasureContext = { ledgers, on, rates, calendar };
+    const entry = manualEntryLines(
+      { lines: lines.map(([account, amount]) => ({ account, amount })), dealtRates: [] },
+      at,
+      realised,
+    );
+    return balanceEntry({ on, ledgers, lines: entry, rounding: roundingAccount });
+  }
+
+  /** A manual entry posted on `date`, neither a reversal nor reversed. */
+  const manualEntry = (date: string, lines: readonly Line[]): PostedEntry => ({
+    source: 'manual',
+    date,
+    isReversal: false,
+    reversed: false,
+    lines,
+  });
+
+  /**
+   * The accountant's reversal on `on`, as the posting function balances it: it takes no rates, and
+   * `balanceEntry()` adds no rounding or difference line to it.
+   */
+  function reversed(ledgers: CompanyLedgers, original: readonly Line[], date: string, on: string) {
+    const reversal = manualReversalLines(manualEntry(date, original), on);
+    expect(balanceEntry({ on, ledgers, lines: reversal, rounding: roundingAccount })).toEqual(
+      reversal,
+    );
+    const both = [...original, ...reversal];
+    for (const account of new Set(both.map((line) => line.account))) {
+      const lines = both.filter((line) => line.account === account);
+      for (const [ledger] of keptLedgers(ledgers)) expect(ledgerTotal(lines, ledger)).toBe(0n);
+    }
+    return reversal;
+  }
+
+  const subscription = (account: string): readonly [string, Money][] => [
+    [account, usd(10_000n)],
+    ['111004', usd(-10_000n)],
+  ];
+
+  it('a wrong account reversed on its own date and reposted to the right one', () => {
+    const wrong = posted(sypUsd, '2026-11-08', week, subscription('531003'));
+    expect(rows(wrong)).toEqual([
+      ['measured', '531003', 'USD', 10_000n, 1_215_000n, 10_000n],
+      ['measured', '111004', 'USD', -10_000n, -1_215_000n, -10_000n],
+    ]);
+    expect(rows(reversed(sypUsd, wrong, '2026-11-08', '2026-11-08'))).toEqual([
+      ['measured', '531003', 'USD', -10_000n, -1_215_000n, -10_000n],
+      ['measured', '111004', 'USD', 10_000n, 1_215_000n, 10_000n],
+    ]);
+    expect(rows(posted(sypUsd, '2026-11-08', week, subscription('531004')))).toEqual([
+      ['measured', '531004', 'USD', 10_000n, 1_215_000n, 10_000n],
+      ['measured', '111004', 'USD', -10_000n, -1_215_000n, -10_000n],
+    ]);
+  });
+
+  it('a difference line in each ledger, reversed in December as posted', () => {
+    const purchase = posted(sypUsd, '2026-11-08', week, [
+      ['111004', usd(10_000n)],
+      ['111003', syp(-1_225_000n)],
+    ]);
+    expect(rows(reversed(sypUsd, purchase, '2026-11-08', '2026-12-01'))).toEqual([
+      ['measured', '111004', 'USD', -10_000n, -1_215_000n, -10_000n],
+      ['measured', '111003', 'SYP', 1_225_000n, 1_225_000n, 10_041n],
+      ['difference', '541001', 'SYP', -10_000n, -10_000n, 0n],
+      ['difference', '541001', 'USD', -41n, 0n, -41n],
+    ]);
+  });
+
+  it('refuses a date before the original, a second reversal and a reversal of a reversal', () => {
+    const tuesday = [
+      rate('USD', 'SYP', '121.5000', 'bulletin', '2026-11-10'),
+      rate('USD', 'SYP', '122.0000', 'market', '2026-11-10'),
+    ];
+    const entry = posted(sypUsd, '2026-11-10', tuesday, subscription('531004'));
+    expect(refusal(() => manualReversalLines(manualEntry('2026-11-10', entry), '2026-11-08'))).toBe(
+      'REVERSAL_BEFORE_ORIGINAL',
+    );
+    expect(
+      refusal(() =>
+        manualReversalLines({ ...manualEntry('2026-11-10', entry), reversed: true }, '2026-11-10'),
+      ),
+    ).toBe('ENTRY_ALREADY_REVERSED');
+    const reversal = manualReversalLines(manualEntry('2026-11-10', entry), '2026-11-10');
+    expect(
+      refusal(() =>
+        manualReversalLines(
+          { ...manualEntry('2026-11-10', reversal), isReversal: true },
+          '2026-11-10',
+        ),
+      ),
+    ).toBe('ENTRY_NOT_REVERSIBLE');
+  });
+
+  it('refuses an entry of any other source: its own process reverses it', () => {
+    const entry = posted(sypUsd, '2026-11-08', week, subscription('531004'));
+    for (const source of ['hub_event', 'opening', 'revaluation', 'revenue_release'] as const) {
+      expect(
+        refusal(() =>
+          manualReversalLines({ ...manualEntry('2026-11-08', entry), source }, '2026-11-08'),
+        ),
+      ).toBe('ENTRY_NOT_REVERSIBLE');
+    }
+  });
+
+  it('SYP books only: reversed in January 2027, whose bulletin is not entered', () => {
+    const entry = posted(
+      sypOnly,
+      '2026-12-29',
+      [rate('USD', 'SYP', '121.5000', 'bulletin', '2026-12-29')],
+      [
+        ['531004', usd(7_475n)],
+        ['531003', usd(2_525n)],
+        ['111004', usd(-10_000n)],
+      ],
+    );
+    expect(rows(entry)).toEqual([
+      ['measured', '531004', 'USD', 7_475n, 908_213n, null],
+      ['measured', '531003', 'USD', 2_525n, 306_788n, null],
+      ['measured', '111004', 'USD', -10_000n, -1_215_000n, null],
+      ['rounding', '541003', 'SYP', -1n, -1n, null],
+    ]);
+    expect(rows(reversed(sypOnly, entry, '2026-12-29', '2027-01-03'))).toEqual([
+      ['measured', '531004', 'USD', -7_475n, -908_213n, null],
+      ['measured', '531003', 'USD', -2_525n, -306_788n, null],
+      ['measured', '111004', 'USD', 10_000n, 1_215_000n, null],
+      ['rounding', '541003', 'SYP', 1n, 1n, null],
+    ]);
+  });
+
+  it('USD books: an SYP entry with a book rounding line, reversed after the bulletin moved', () => {
+    const entry = posted(usdSyp, '2026-11-08', week.slice(0, 1), [
+      ['531001', syp(150_000n)],
+      ['531002', syp(150_000n)],
+      ['111003', syp(-300_000n)],
+    ]);
+    expect(rows(reversed(usdSyp, entry, '2026-11-08', '2026-12-01'))).toEqual([
+      ['measured', '531001', 'SYP', -150_000n, -1_235n, -150_000n],
+      ['measured', '531002', 'SYP', -150_000n, -1_235n, -150_000n],
+      ['measured', '111003', 'SYP', 300_000n, 2_469n, 300_000n],
+      ['rounding', '541003', 'USD', 1n, 1n, 0n],
+    ]);
+  });
+
+  it('third: a TRY entry with a rounding line in each ledger, reversed in December', () => {
+    const rates = [
+      rate('USD', 'SYP', '122.0000', 'bulletin', '2026-11-10'),
+      rate('USD', 'TRY', '41.0000', 'bulletin', '2026-11-10'),
+      rate('USD', 'TRY', '41.2000', 'market', '2026-11-10'),
+    ];
+    const entry = posted(sypUsd, '2026-11-10', rates, [
+      ['531006', try_(50_000n)],
+      ['531005', try_(150_000n)],
+      ['111007', try_(-200_000n)],
+    ]);
+    expect(rows(reversed(sypUsd, entry, '2026-11-10', '2026-12-01'))).toEqual([
+      ['measured', '531006', 'TRY', -50_000n, -148_780n, -1_214n],
+      ['measured', '531005', 'TRY', -150_000n, -446_341n, -3_641n],
+      ['measured', '111007', 'TRY', 200_000n, 595_122n, 4_854n],
+      ['rounding', '541003', 'SYP', -1n, -1n, 0n],
+      ['rounding', '541003', 'USD', 1n, 0n, 1n],
     ]);
   });
 });

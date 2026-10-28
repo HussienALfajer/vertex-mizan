@@ -85,6 +85,9 @@ describe('error codes', () => {
       ['RATE_REASON_REQUIRED', 422],
       ['HOLIDAY_EXISTS', 409],
       ['DEALT_RATE_NOT_ACCEPTED', 422],
+      ['ENTRY_NOT_REVERSIBLE', 409],
+      ['ENTRY_ALREADY_REVERSED', 409],
+      ['REVERSAL_BEFORE_ORIGINAL', 422],
     ]);
   });
 
