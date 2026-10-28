@@ -453,16 +453,22 @@ export class AccountsService {
 }
 
 /**
- * Whether an account's book or parallel balance is not zero (S02 rule 6, S03), from the period
- * balances the line trigger keeps (ADR 0012).
+ * Whether an account holds a balance in any currency, in the transaction amount or in either
+ * ledger (S02 rule 6: "a zero balance in every currency in both ledgers"), from the period balances
+ * the line trigger keeps (ADR 0012). Per currency: a USD balance never cancels an SYP one through
+ * their book amounts.
  */
 async function hasLedgerBalance(tx: Transaction, accountId: string): Promise<boolean> {
-  const [row] = await tx
-    .select({
-      book: sql<string>`coalesce(sum(${periodBalances.bookDebitMinor} - ${periodBalances.bookCreditMinor}), 0)`,
-      parallel: sql<string>`coalesce(sum(${periodBalances.parallelDebitMinor} - ${periodBalances.parallelCreditMinor}), 0)`,
-    })
+  const [held] = await tx
+    .select({ currency: periodBalances.currency })
     .from(periodBalances)
-    .where(eq(periodBalances.accountId, accountId));
-  return row !== undefined && (BigInt(row.book) !== 0n || BigInt(row.parallel) !== 0n);
+    .where(eq(periodBalances.accountId, accountId))
+    .groupBy(periodBalances.currency)
+    .having(
+      sql`sum(${periodBalances.debitMinor} - ${periodBalances.creditMinor}) <> 0
+        or sum(${periodBalances.bookDebitMinor} - ${periodBalances.bookCreditMinor}) <> 0
+        or coalesce(sum(${periodBalances.parallelDebitMinor} - ${periodBalances.parallelCreditMinor}), 0) <> 0`,
+    )
+    .limit(1);
+  return held !== undefined;
 }

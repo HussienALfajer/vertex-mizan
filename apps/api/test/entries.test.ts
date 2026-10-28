@@ -158,6 +158,12 @@ describe('an entry (acceptance steps 2–3)', () => {
         .body.code,
     ).toBe('NOT_FOUND');
     expect((await other.post(`/api/entries/${entry.id}/copy`)).body.code).toBe('NOT_FOUND');
+    expect(
+      (await other.upload(`/api/entries/${entry.id}/attachments`, files.pdf, 'a.pdf')).body.code,
+    ).toBe('NOT_FOUND');
+    expect((await first.owner.browser.get(`/api/entries/${entry.id}`)).body.attachments).toEqual(
+      [],
+    );
     expect((await other.get(`/api/accounts/${first.accounts.get('111004')}/lines`)).body.code).toBe(
       'NOT_FOUND',
     );
@@ -379,6 +385,59 @@ describe('archiving an account (S02 rule 6, S03)', () => {
     expect((await archive()).body.code).toBe('ACCOUNT_HAS_BALANCE');
     await reverse(book, entry.id);
     expect((await archive()).status).toBe(200);
+  });
+
+  it('refuses a balance in one currency that another currency cancels in the book (S02 rule 6)', async () => {
+    // SYP books only: a suspense account with no currency restriction, holding +100.00 USD and
+    // -12,150.00 SYP, whose book total is zero.
+    const book = await books(app, db, {
+      ledgers: {
+        book: {
+          currency: 'SYP',
+          ratePolicy: { rateType: 'bulletin', acceptsTransactionRate: false },
+        },
+        parallel: null,
+      },
+    });
+    const { browser } = book.owner;
+    const suspense = await browser.post('/api/accounts', {
+      parentId: book.accounts.get('111'),
+      code: '111099',
+      kind: 'postable',
+      name: 'حساب معلّق تجريبي',
+      statementLine: 'bs.cash',
+      currency: null,
+      isMonetary: true,
+    });
+    expect(suspense.status, JSON.stringify(suspense.body)).toBe(201);
+    const id = suspense.body.id as string;
+    await posted(browser, {
+      entryDate: today(),
+      description: 'إلى الحساب المعلّق',
+      lines: [
+        { accountId: id, dimensionValueIds: [], currency: 'USD', amountMinor: '10000', memo: null },
+        line(book, '111004', 'USD', '-10000'),
+      ],
+    });
+    await posted(browser, {
+      entryDate: today(),
+      description: 'من الحساب المعلّق',
+      lines: [
+        line(book, '111003', 'SYP', '1215000'),
+        {
+          accountId: id,
+          dimensionValueIds: [],
+          currency: 'SYP',
+          amountMinor: '-1215000',
+          memo: null,
+        },
+      ],
+    });
+    const lines = await browser.get(`/api/accounts/${id}/lines`);
+    expect(lines.body.lines.at(-1).balance.book.amountMinor).toBe('0');
+    expect(
+      (await browser.post(`/api/accounts/${id}/archive`, { reason: 'حساب مغلق' })).body.code,
+    ).toBe('ACCOUNT_HAS_BALANCE');
   });
 
   it('saves a draft on any line and refuses a zero amount at save (edge case 3)', async () => {

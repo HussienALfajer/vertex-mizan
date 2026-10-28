@@ -296,12 +296,12 @@ export class DraftsService {
     });
   }
 
-  /** `POST /api/drafts/:id/withdraw` (rule 8): the preparer or submitter takes it back to `draft`. */
+  /** `POST /api/drafts/:id/withdraw` (rule 8): its preparer takes it back to `draft`. */
   async withdraw(access: CompanyRouteAccess, id: string): Promise<Draft> {
     return this.change(access, id, async (tx, row, actor) => {
       if (row.state !== 'submitted') throw notEditable(row);
-      if (actor.userId !== row.preparedByUserId && actor.userId !== row.submittedByUserId) {
-        throw new CodedException('FORBIDDEN', 'Only its preparer or submitter withdraws a draft');
+      if (actor.userId !== row.preparedByUserId) {
+        throw new CodedException('FORBIDDEN', 'Only its preparer withdraws a draft');
       }
       await tx
         .update(entryDrafts)

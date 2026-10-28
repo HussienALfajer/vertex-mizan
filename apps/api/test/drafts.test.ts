@@ -45,6 +45,7 @@ describe('the guard on every draft route', () => {
       { method: 'post', path: '/api/drafts' },
       { method: 'get', path: `/api/drafts/${id}` },
       { method: 'put', path: `/api/drafts/${id}` },
+      { method: 'post', path: `/api/drafts/${id}/preview` },
       { method: 'post', path: `/api/drafts/${id}/post` },
       { method: 'post', path: `/api/drafts/${id}/submit` },
       { method: 'post', path: `/api/drafts/${id}/withdraw` },
@@ -56,15 +57,27 @@ describe('the guard on every draft route', () => {
     ]);
   });
 
-  it('refuses a draft to a person without drafts.read or drafts.manage', async () => {
+  it('refuses a draft to a person without drafts.read, drafts.manage or entries.approve', async () => {
     const book = await books(app, db);
+    const draft = await draftOf(book.owner.browser, purchase(book));
     const viewer = await book.join('viewer');
     const approver = await book.join('approver');
+    const accountant = await book.join('accountant');
     expect((await viewer.browser.get('/api/drafts')).body.code).toBe('FORBIDDEN');
+    expect((await viewer.browser.get(`/api/drafts/${draft.id}`)).body.code).toBe('FORBIDDEN');
+    expect((await viewer.browser.post(`/api/drafts/${draft.id}/preview`)).body.code).toBe(
+      'FORBIDDEN',
+    );
     expect((await approver.browser.get('/api/drafts')).status).toBe(200);
     expect((await approver.browser.post('/api/drafts', purchase(book))).body.code).toBe(
       'FORBIDDEN',
     );
+    expect((await approver.browser.post(`/api/drafts/${draft.id}/post`)).body.code).toBe(
+      'FORBIDDEN',
+    );
+    expect(
+      (await accountant.browser.post(`/api/drafts/${draft.id}/reject`, { reason: 'لا' })).body.code,
+    ).toBe('FORBIDDEN');
   });
 });
 
@@ -205,6 +218,9 @@ describe('approval on (rule 8, acceptance step 5)', () => {
     const submitted = await accountant.browser.post(`/api/drafts/${draft.id}/submit`);
     expect(submitted.status, JSON.stringify(submitted.body)).toBe(200);
     expect(submitted.body.state).toBe('submitted');
+    expect((await accountant.browser.post(`/api/drafts/${draft.id}/submit`)).body.code).toBe(
+      'DRAFT_NOT_EDITABLE',
+    );
     expect(
       (
         await accountant.browser.put(`/api/drafts/${draft.id}`, {
@@ -227,6 +243,10 @@ describe('approval on (rule 8, acceptance step 5)', () => {
     });
     expect(rejected.body.state).toBe('draft');
     expect(rejected.body.rejected).toMatchObject({ reason: 'المرجع ناقص' });
+    expect(
+      (await approver.browser.post(`/api/drafts/${draft.id}/reject`, { reason: 'مرة ثانية' })).body
+        .code,
+    ).toBe('DRAFT_NOT_EDITABLE');
     const fixed = await accountant.browser.put(`/api/drafts/${draft.id}`, {
       ...purchase(book),
       reference: 'REF-1',
@@ -283,6 +303,10 @@ describe('approval on (rule 8, acceptance step 5)', () => {
       'FORBIDDEN',
     );
     expect((await browser.post(`/api/drafts/${draft.id}/withdraw`)).body.state).toBe('draft');
+    // Each transition once: a second withdrawal finds the draft in `draft`.
+    expect((await browser.post(`/api/drafts/${draft.id}/withdraw`)).body.code).toBe(
+      'DRAFT_NOT_EDITABLE',
+    );
     await browser.post(`/api/drafts/${draft.id}/submit`);
     await browser.patch('/api/company', { manualEntryApproval: false });
     expect((await browser.get(`/api/drafts/${draft.id}`)).body.state).toBe('submitted');
@@ -384,12 +408,37 @@ describe('another company', () => {
       files.pdf,
       'a.pdf',
     );
+    const submitted = await draftOf(first.owner.browser, purchase(first));
+    await first.owner.browser.patch('/api/company', { manualEntryApproval: true });
+    await first.owner.browser.post(`/api/drafts/${submitted.id}/submit`);
+    const before = await first.owner.browser.get(`/api/drafts/${draft.id}`);
+    const audit = (await actions(first.companyId)).length;
+
     const other = second.owner.browser;
-    expect((await other.get(`/api/drafts/${draft.id}`)).body.code).toBe('NOT_FOUND');
-    expect((await other.post(`/api/drafts/${draft.id}/post`)).body.code).toBe('NOT_FOUND');
-    expect((await other.post(`/api/drafts/${draft.id}/preview`)).body.code).toBe('NOT_FOUND');
-    expect((await other.get(`/api/attachments/${file.body.id}`)).body.code).toBe('NOT_FOUND');
+    const tries = [
+      () => other.get(`/api/drafts/${draft.id}`),
+      () =>
+        other.put(`/api/drafts/${draft.id}`, { ...purchase(second), updatedAt: draft.updatedAt }),
+      () => other.post(`/api/drafts/${draft.id}/preview`),
+      () => other.post(`/api/drafts/${draft.id}/post`),
+      () => other.post(`/api/drafts/${draft.id}/discard`, {}),
+      () => other.post(`/api/drafts/${draft.id}/attachments`),
+      () => other.upload(`/api/drafts/${draft.id}/attachments`, files.pdf, 'b.pdf'),
+      () => other.delete(`/api/drafts/${draft.id}/attachments/${file.body.id}`),
+      () => other.get(`/api/attachments/${file.body.id}`),
+      () => other.post(`/api/drafts/${submitted.id}/submit`),
+      () => other.post(`/api/drafts/${submitted.id}/withdraw`),
+      () => other.post(`/api/drafts/${submitted.id}/approve`),
+      () => other.post(`/api/drafts/${submitted.id}/reject`, { reason: 'من شركة أخرى' }),
+    ];
+    for (const attempt of tries) expect((await attempt()).body.code).toBe('NOT_FOUND');
     expect((await other.get('/api/drafts')).body.drafts).toEqual([]);
+    // The first company's draft and audit log are as they were.
+    expect((await first.owner.browser.get(`/api/drafts/${draft.id}`)).body).toEqual(before.body);
+    expect((await first.owner.browser.get(`/api/drafts/${submitted.id}`)).body.state).toBe(
+      'submitted',
+    );
+    expect(await actions(first.companyId)).toHaveLength(audit);
   });
 
   it('refuses an account of another company at save', async () => {
