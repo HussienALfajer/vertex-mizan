@@ -151,7 +151,7 @@ The draft keeps them while it is typed; the posting function checks them (rules 
 ### Reversals
 13. A reversal (S03 rule 9, and S05's for Hub voids) negates every line exactly, and each line on an item moves the same item back. So a settlement's reversal reopens the item at exactly what it had before, and later clearings start from there (rule 4).
     - **An opening reversed while the item has other movements:** refused (`OPEN_ITEM_HAS_SETTLEMENTS`). The settlements are reversed first.
-    - **A running item's movement reversed** (ADR 0013): the exact reversal posts. In the same transaction, an exchange-difference entry brings the item to the carrying amount it would have if the void were a new movement under rule 3, and posts the residual to the realised gain or loss account. It has its own posting request (key `<the reversal's key>:difference`) and the reversal's source, so each entry stays one request. It is skipped when the difference is zero in both ledgers.
+    - **A running item's movement reversed** (ADR 0013): the exact reversal posts. When the reversal's net movement on the item runs against the item's balance before it, or crosses zero, an exchange-difference entry follows in the same transaction. It brings the item to the carrying amount it would have if the void were a new movement under rule 3 (cleared at the average, or split at zero with the excess measured at the void date's policy rates), and posts the residual to the realised gain or loss account. A reversal that runs with the balance, or onto a zero balance, posts no difference entry: the item regains exactly what the movement cleared (owner, 2026-11-06; `ad-funds/running-balance`). It has its own posting request (key `<the reversal's key>:difference`) and the reversal's source, so each entry stays one request. It is skipped when the difference is zero in both ledgers.
 
 ### Due dates and ageing (owner, 2026-10-28)
 14. A document item's due date in force on a date *D* is the newest `open_item_due_dates` row with `effective_on` ≤ *D*. With none, the item is due on its document date.
@@ -182,12 +182,13 @@ The draft keeps them while it is typed; the posting function checks them (rules 
   - **`invoice.voided`:**
     - while payments on the invoice are not voided: held `OPEN_ITEM_HAS_SETTLEMENTS`, retried by itself once the payments' voids have posted (owner, 2026-10-28);
     - otherwise: the reversal of the issue entry, and of any release (S06).
-  - **`ad_wallet.deposited`:** Dr the method's account, measured new / Cr the client's running item on `213001` by the USD amount, measured new; a deposit paid in SYP for a USD credit posts its residual as a realised difference (ADR 0007).
+  - **`ad_wallet.deposited`:** Dr the method's account, measured new / Cr the client's running item on `213001` by the USD amount, measured new; a deposit paid in SYP for a USD credit posts its residual as a realised difference (ADR 0007). Its USD amount may differ from the SYP amount at Hub's `syp_per_usd` within the payments' tolerance; beyond it the deposit, like a refund, is held `NEEDS_DECISION` (owner, 2026-11-06).
   - **`ad_wallet.refunded` and `ad_spend.recorded`:**
     - a refund debits the running item at its average and credits cash measured new;
     - a spend debits the running item at its average and credits `211001` ad platforms payable, which carries the same amounts;
     - a crossing splits (rule 3).
-  - **`ad_wallet.entry_voided`:** the exact reversal and the difference entry (rule 13).
+  - **`ad_wallet.entry_voided`:** the exact reversal and, when it runs against the balance or crosses zero, the difference entry (rule 13).
+  - **`ad_spend.changed` and `ad_spend.archived`:** the reversal of the spend's posting under rule 13, then, for a change, the new spend.
   - **`invoice.due_date_changed`:** posts nothing; it records the due date (rule 15).
 - **Contract assets** (S06): document items on `113001`, one per milestone (or late cycle), opened by the revenue entry and cleared by the milestone invoice; monetary and revalued (ADR 0007).
 
@@ -406,7 +407,7 @@ Accounting rules this spec introduces, each written and approved through `/posti
     - any sequence of openings, partial clearings and reversals keeps every item within its sign and zero in every ledger when its open amount is zero;
     - the items of a control account always equal its balance in every ledger;
     - a crossing splits exactly;
-    - a running void plus its difference entry reaches the carrying amount rule 3 gives;
+    - a running void against the balance or across zero, plus its difference entry, reaches the carrying amount rule 3 gives; a void with the balance restores exactly what its movement cleared;
     - settlements never read a rate;
   - invariant tests as `mizan_app`:
     - update, delete and truncate on every new table;
