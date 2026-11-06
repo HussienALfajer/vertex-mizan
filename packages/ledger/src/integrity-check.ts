@@ -340,3 +340,144 @@ export function checkIntegrity(input: IntegrityInput): IntegrityFindings {
     periodBalances: periodBalanceProblems(chain, input.periodBalances),
   };
 }
+
+/** An open item as stored (`open_items`): the account and currency its movements are in. */
+export interface StoredItem {
+  readonly id: string;
+  readonly accountId: string;
+  readonly currency: CurrencyCode;
+}
+
+/** A movement as stored (`open_item_movements`). */
+export interface StoredMovement {
+  readonly itemId: string;
+  readonly entryDate: string;
+  readonly amountMinor: bigint;
+  readonly bookMinor: bigint;
+  readonly parallelMinor: bigint | null;
+}
+
+/** An item's balance row as stored (`open_item_balances`). */
+export interface StoredItemBalance {
+  readonly itemId: string;
+  readonly openMinor: bigint;
+  readonly bookMinor: bigint;
+  readonly parallelMinor: bigint | null;
+  readonly movementCount: number;
+  readonly lastMovementOn: string;
+}
+
+export interface OpenItemsInput {
+  /** The control accounts of the chart (`is_control`), every one compared, items or none. */
+  readonly controlAccountIds: readonly string[];
+  readonly periodBalances: readonly StoredPeriodBalance[];
+  readonly items: readonly StoredItem[];
+  readonly movements: readonly StoredMovement[];
+  readonly balances: readonly StoredItemBalance[];
+}
+
+/** A control account whose balance in a currency is not its items' (S04 "Reports"). */
+export interface ControlAccountProblem {
+  readonly accountId: string;
+  readonly currency: CurrencyCode;
+  readonly amount: 'transaction' | 'book' | 'parallel';
+}
+
+/** An item's balance row that is not the sum of its movements, or a row missing or unexplained. */
+export interface ItemBalanceProblem {
+  readonly itemId: string;
+  readonly problem: 'different' | 'missing' | 'unexpected';
+}
+
+export interface OpenItemFindings {
+  readonly controlAccounts: readonly ControlAccountProblem[];
+  readonly itemBalances: readonly ItemBalanceProblem[];
+}
+
+interface Net {
+  amount: bigint;
+  book: bigint;
+  parallel: bigint;
+}
+
+/**
+ * The integrity check's comparisons of the open items (S04 "Reports"):
+ * - each control account's period balances, net per transaction currency and in each ledger,
+ *   against the sum of its items' movements in that currency;
+ * - each item's balance row (open and carrying amounts, movement count, last movement date)
+ *   against its movements.
+ *
+ * The period balances are compared as stored: `periodBalanceProblems()` checks them against the
+ * lines separately. An amount missing in a ledger counts as zero on both sides, so a company
+ * without a parallel ledger compares zero with zero.
+ */
+export function openItemProblems(input: OpenItemsInput): OpenItemFindings {
+  const accountKey = (accountId: string, currency: string) => `${accountId}|${currency}`;
+  const control = new Set(input.controlAccountIds);
+  const fromBalances = new Map<string, Net>();
+  for (const row of input.periodBalances) {
+    if (!control.has(row.accountId)) continue;
+    const key = accountKey(row.accountId, row.currency);
+    const net = fromBalances.get(key) ?? { amount: 0n, book: 0n, parallel: 0n };
+    net.amount += row.debitMinor - row.creditMinor;
+    net.book += row.bookDebitMinor - row.bookCreditMinor;
+    net.parallel += (row.parallelDebitMinor ?? 0n) - (row.parallelCreditMinor ?? 0n);
+    fromBalances.set(key, net);
+  }
+  const items = new Map(input.items.map((item) => [item.id, item]));
+  const fromItems = new Map<string, Net>();
+  const byItem = new Map<string, { net: Net; count: number; last: string }>();
+  for (const movement of input.movements) {
+    const item = items.get(movement.itemId);
+    if (item === undefined) throw new RangeError(`A movement of no item: ${movement.itemId}`);
+    const key = accountKey(item.accountId, item.currency);
+    const net = fromItems.get(key) ?? { amount: 0n, book: 0n, parallel: 0n };
+    net.amount += movement.amountMinor;
+    net.book += movement.bookMinor;
+    net.parallel += movement.parallelMinor ?? 0n;
+    fromItems.set(key, net);
+    const own = byItem.get(item.id) ?? {
+      net: { amount: 0n, book: 0n, parallel: 0n },
+      count: 0,
+      last: movement.entryDate,
+    };
+    own.net.amount += movement.amountMinor;
+    own.net.book += movement.bookMinor;
+    own.net.parallel += movement.parallelMinor ?? 0n;
+    own.count += 1;
+    if (movement.entryDate > own.last) own.last = movement.entryDate;
+    byItem.set(item.id, own);
+  }
+  const controlAccounts: ControlAccountProblem[] = [];
+  const zero: Net = { amount: 0n, book: 0n, parallel: 0n };
+  const keys = new Set([...fromBalances.keys(), ...fromItems.keys()]);
+  for (const key of [...keys].sort()) {
+    const [accountId = '', currency = ''] = key.split('|');
+    const stored = fromBalances.get(key) ?? zero;
+    const moved = fromItems.get(key) ?? zero;
+    const problem = (amount: ControlAccountProblem['amount']) =>
+      controlAccounts.push({ accountId, currency: currency as CurrencyCode, amount });
+    if (stored.amount !== moved.amount) problem('transaction');
+    if (stored.book !== moved.book) problem('book');
+    if (stored.parallel !== moved.parallel) problem('parallel');
+  }
+  const itemBalances: ItemBalanceProblem[] = [];
+  const rows = new Map(input.balances.map((row) => [row.itemId, row]));
+  for (const [itemId, own] of byItem) {
+    const row = rows.get(itemId);
+    rows.delete(itemId);
+    if (row === undefined) itemBalances.push({ itemId, problem: 'missing' });
+    else if (
+      row.openMinor !== own.net.amount ||
+      row.bookMinor !== own.net.book ||
+      (row.parallelMinor ?? 0n) !== own.net.parallel ||
+      row.movementCount !== own.count ||
+      row.lastMovementOn !== own.last
+    ) {
+      itemBalances.push({ itemId, problem: 'different' });
+    }
+  }
+  for (const itemId of rows.keys()) itemBalances.push({ itemId, problem: 'unexpected' });
+  itemBalances.sort((a, b) => (a.itemId < b.itemId ? -1 : a.itemId > b.itemId ? 1 : 0));
+  return { controlAccounts, itemBalances };
+}

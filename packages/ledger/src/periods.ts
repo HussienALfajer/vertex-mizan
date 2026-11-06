@@ -47,3 +47,24 @@ export function fiscalYearOf(date: string, startMonth: number): number {
   const { year, month } = partsOf(date);
   return month >= startMonth ? year : year - 1;
 }
+
+/** The day number of a date from 1970-01-01, on the proleptic Gregorian calendar. */
+function dayNumber(date: string): number {
+  const { year, month, day } = partsOf(date);
+  // Days from civil (Howard Hinnant's algorithm), in whole numbers only.
+  const y = month <= 2 ? year - 1 : year;
+  const era = Math.floor(y / 400);
+  const yearOfEra = y - era * 400;
+  const dayOfYear = Math.floor((153 * (month + (month > 2 ? -3 : 9)) + 2) / 5) + day - 1;
+  const dayOfEra =
+    yearOfEra * 365 + Math.floor(yearOfEra / 4) - Math.floor(yearOfEra / 100) + dayOfYear;
+  return era * 146_097 + dayOfEra - 719_468;
+}
+
+/**
+ * The calendar days from `from` to `to`, negative when `to` is earlier: a leap day counts as any
+ * other (S04 edge case 19), so `daysBetween('2028-02-28', '2028-03-01')` is 2.
+ */
+export function daysBetween(from: string, to: string): number {
+  return dayNumber(to) - dayNumber(from);
+}

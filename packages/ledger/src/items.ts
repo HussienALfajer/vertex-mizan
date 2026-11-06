@@ -361,3 +361,63 @@ export function runningVoidDifferenceLines(
   if (lines.length === 0) return [];
   return [...lines, ...realisedDifferenceLines(ledgers, lines, targets)];
 }
+
+/** A line as the preview lists it: its item, if any, and its three amounts. */
+export interface ItemLineAmounts {
+  readonly item: { readonly id: string } | null;
+  readonly currency: CurrencyCode;
+  readonly amountMinor: bigint;
+  readonly bookMinor: bigint;
+  readonly parallelMinor: bigint | null;
+}
+
+/** What an entry does to one item: what it carries before the entry and after it. */
+export interface ItemPosition {
+  readonly id: string;
+  /** No balance row before the entry: the entry opens the item or makes the running one. */
+  readonly isNew: boolean;
+  readonly before: CarriedAmounts;
+  readonly after: CarriedAmounts;
+}
+
+/**
+ * Each item an entry's lines move, in the order of its first line, with its balance before the
+ * entry (`before`, the balance rows read; a missing item starts at zero in its currency) and after
+ * every line on it, a split at zero and a void's difference line included (S04 "Screens").
+ */
+export function itemPositions(
+  lines: readonly ItemLineAmounts[],
+  before: ReadonlyMap<string, CarriedAmounts>,
+  keepsParallel: boolean,
+): ItemPosition[] {
+  const positions = new Map<string, ItemPosition>();
+  for (const line of lines) {
+    if (line.item === null) continue;
+    const { id } = line.item;
+    const current = positions.get(id) ?? {
+      id,
+      isNew: !before.has(id),
+      before: before.get(id) ?? emptyBalance(line.currency, keepsParallel),
+      after: before.get(id) ?? emptyBalance(line.currency, keepsParallel),
+    };
+    if (current.after.transaction.currency !== line.currency) {
+      throw new RangeError(`A line moves the item ${id} in another currency`);
+    }
+    const { after } = current;
+    if ((after.parallelMinor === null) !== (line.parallelMinor === null)) {
+      throw new RangeError(`A line on the item ${id} without the parallel amount it keeps`);
+    }
+    positions.set(id, {
+      ...current,
+      after: {
+        transaction: money(after.transaction.amountMinor + line.amountMinor, line.currency),
+        bookMinor: after.bookMinor + line.bookMinor,
+        parallelMinor:
+          after.parallelMinor === null || line.parallelMinor === null
+            ? null
+            : after.parallelMinor + line.parallelMinor,
+      },
+    });
+  }
+  return [...positions.values()];
+}

@@ -6,6 +6,7 @@ import {
   checkItemLine,
   emptyBalance,
   type ItemState,
+  itemPositions,
   moveItem,
   movementOn,
   runningVoidDifference,
@@ -581,3 +582,111 @@ function emptyLine(account: string, amount: bigint, book: bigint): Line {
     parallelMinor: amount,
   };
 }
+
+describe('itemPositions (the preview\u2019s items, S04 "Screens")', () => {
+  const m1Balance: CarriedAmounts = {
+    transaction: money(60_000n, 'USD'),
+    bookMinor: 7_200_000n,
+    parallelMinor: 60_000n,
+  };
+
+  it('shows an item before and after a receipt, and a new item from zero', () => {
+    const positions = itemPositions(
+      [
+        {
+          item: null,
+          currency: 'SYP',
+          amountMinor: 7_440_000n,
+          bookMinor: 7_440_000n,
+          parallelMinor: 60_000n,
+        },
+        {
+          item: { id: 'm1' },
+          currency: 'USD',
+          amountMinor: -60_000n,
+          bookMinor: -7_200_000n,
+          parallelMinor: -60_000n,
+        },
+        {
+          item: { id: 'm2' },
+          currency: 'USD',
+          amountMinor: 10_000n,
+          bookMinor: 1_200_000n,
+          parallelMinor: 10_000n,
+        },
+        { item: null, currency: 'SYP', amountMinor: 0n, bookMinor: -240_000n, parallelMinor: 0n },
+      ],
+      new Map([['m1', m1Balance]]),
+      true,
+    );
+    expect(positions).toEqual([
+      {
+        id: 'm1',
+        isNew: false,
+        before: m1Balance,
+        after: { transaction: money(0n, 'USD'), bookMinor: 0n, parallelMinor: 0n },
+      },
+      {
+        id: 'm2',
+        isNew: true,
+        before: emptyBalance('USD', true),
+        after: {
+          transaction: money(10_000n, 'USD'),
+          bookMinor: 1_200_000n,
+          parallelMinor: 10_000n,
+        },
+      },
+    ]);
+  });
+
+  it('adds both lines of a split at zero to one item, without a parallel ledger too', () => {
+    const before: CarriedAmounts = {
+      transaction: money(-30_000n, 'USD'),
+      bookMinor: -3_600_000n,
+      parallelMinor: null,
+    };
+    const [position] = itemPositions(
+      [
+        {
+          item: { id: 'r1' },
+          currency: 'USD',
+          amountMinor: 30_000n,
+          bookMinor: 3_600_000n,
+          parallelMinor: null,
+        },
+        {
+          item: { id: 'r1' },
+          currency: 'USD',
+          amountMinor: 10_000n,
+          bookMinor: 1_230_000n,
+          parallelMinor: null,
+        },
+      ],
+      new Map([['r1', before]]),
+      false,
+    );
+    expect(position?.after).toEqual({
+      transaction: money(10_000n, 'USD'),
+      bookMinor: 1_230_000n,
+      parallelMinor: null,
+    });
+  });
+
+  it('refuses a line in another currency than its item', () => {
+    expect(() =>
+      itemPositions(
+        [
+          {
+            item: { id: 'm1' },
+            currency: 'SYP',
+            amountMinor: -1n,
+            bookMinor: -1n,
+            parallelMinor: -1n,
+          },
+        ],
+        new Map([['m1', m1Balance]]),
+        true,
+      ),
+    ).toThrow(RangeError);
+  });
+});
