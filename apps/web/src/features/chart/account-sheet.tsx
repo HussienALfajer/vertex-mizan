@@ -10,6 +10,8 @@ import {
   accountSchema,
   CURRENCY_CODES,
   type CurrencyCode,
+  ITEM_KINDS,
+  type ItemKind,
   checkAccountCode,
   createAccountSchema,
   defaultNormalBalance,
@@ -63,6 +65,8 @@ interface AccountForm {
   statementLine: string | null;
   currency: CurrencyCode | null;
   isControl: boolean;
+  /** A control account's item kind (S04), asked for when "control" is ticked. */
+  itemKind: ItemKind | null;
   isMonetary: boolean;
   requiredDimensionTypeIds: string[];
 }
@@ -93,6 +97,7 @@ function formOf(mode: AccountSheetMode, accounts: readonly Account[]): AccountFo
       statementLine: null,
       currency: null,
       isControl: false,
+      itemKind: null,
       isMonetary: false,
       requiredDimensionTypeIds: [],
     };
@@ -110,6 +115,7 @@ function formOf(mode: AccountSheetMode, accounts: readonly Account[]): AccountFo
     statementLine: account.statementLine,
     currency: account.currency,
     isControl: account.isControl,
+    itemKind: account.itemKind,
     isMonetary: account.isMonetary,
     requiredDimensionTypeIds: account.requiredDimensionTypeIds,
   };
@@ -140,6 +146,7 @@ function shaped(form: ResolvedForm, accountClass: AccountClass) {
     statementLine: postable ? form.statementLine : null,
     currency: postable ? form.currency : null,
     isControl: flags && form.isControl,
+    itemKind: flags && form.isControl ? form.itemKind : null,
     isMonetary: flags && form.isMonetary,
     requiredDimensionTypeIds: postable ? form.requiredDimensionTypeIds : [],
   };
@@ -158,6 +165,7 @@ function changes(account: Account, form: ResolvedForm, accountClass: AccountClas
   if (next.statementLine !== account.statementLine) change.statementLine = next.statementLine;
   if (next.currency !== account.currency) change.currency = next.currency;
   if (next.isControl !== account.isControl) change.isControl = next.isControl;
+  if (next.itemKind !== account.itemKind) change.itemKind = next.itemKind;
   if (next.isMonetary !== account.isMonetary) change.isMonetary = next.isMonetary;
   const before = [...account.requiredDimensionTypeIds].sort().join();
   if ([...next.requiredDimensionTypeIds].sort().join() !== before) {
@@ -174,6 +182,7 @@ const balanceOptions = NORMAL_BALANCES.map((balance) => ({
   value: balance,
   label: t.normalBalances[balance],
 }));
+const itemKindOptions = ITEM_KINDS.map((kind) => ({ value: kind, label: t.itemKinds[kind] }));
 const noCurrency = 'none';
 const currencyOptions = [
   { value: noCurrency, label: s.anyCurrency },
@@ -203,7 +212,12 @@ export function AccountSheet({
   const queryClient = useQueryClient();
   const types = useQuery(dimensionTypesQuery(companyId));
   const [form, setForm] = useState(() => formOf(mode, accounts));
-  const [errors, setErrors] = useState<{ code?: string; name?: string; line?: string }>({});
+  const [errors, setErrors] = useState<{
+    code?: string;
+    name?: string;
+    line?: string;
+    itemKind?: string;
+  }>({});
   const [attempt, setAttempt] = useState(0);
   const [unchanged, setUnchanged] = useState(false);
   const account = mode.kind === 'edit' ? mode.account : undefined;
@@ -263,6 +277,9 @@ export function AccountSheet({
     }
     if (resolved.kind === 'postable' && !form.statementLine)
       found.line = t.validation.statementLine;
+    if (shaped(resolved, accountClass).isControl && form.itemKind === null) {
+      found.itemKind = t.validation.itemKind;
+    }
     setErrors(found);
     if (Object.keys(found).length > 0) {
       setAttempt((count) => count + 1);
@@ -351,6 +368,7 @@ export function AccountSheet({
             ['account-code', errors.code],
             ['account-name', errors.name],
             ['account-statement-line', errors.line],
+            ['account-item-kind', errors.itemKind],
           ]}
         />
         <fieldset disabled={readOnly} className="flex min-w-0 flex-col gap-5">
@@ -473,6 +491,19 @@ export function AccountSheet({
                     disabled={readOnly || used}
                     onCheckedChange={(checked) => set('isControl', checked)}
                   />
+                  {form.isControl && (
+                    <SelectField
+                      id="account-item-kind"
+                      label={s.itemKind}
+                      value={form.itemKind}
+                      placeholder={s.choose}
+                      options={itemKindOptions}
+                      description={s.itemKindHint}
+                      error={errors.itemKind}
+                      disabled={readOnly || used}
+                      onValueChange={(value) => set('itemKind', value as ItemKind)}
+                    />
+                  )}
                   <SwitchField
                     label={s.monetary}
                     description={s.monetaryHint}

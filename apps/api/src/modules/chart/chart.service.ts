@@ -99,6 +99,7 @@ export async function chartWorkbook(
     { header: text.export.statementLine, key: 'statementLine', width: 40 },
     { header: text.export.currency, key: 'currency', width: 24 },
     { header: text.export.control, key: 'control', width: 12 },
+    { header: text.export.itemKind, key: 'itemKind', width: 14 },
     { header: text.export.monetary, key: 'monetary', width: 12 },
     { header: text.export.requiredDimensions, key: 'requiredDimensions', width: 24 },
     { header: text.export.roles, key: 'roles', width: 30 },
@@ -126,6 +127,7 @@ export async function chartWorkbook(
             ? ar.accounting.sypPrintedName
             : ar.accounting.currencies[account.currency],
       control: yesNo(account.isControl),
+      itemKind: account.itemKind === null ? '' : text.itemKinds[account.itemKind],
       monetary: yesNo(account.isMonetary),
       requiredDimensions: account.requiredDimensionTypeIds
         .map((id) => typeNames.get(id) ?? '')

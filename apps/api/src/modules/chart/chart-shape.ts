@@ -31,6 +31,7 @@ export function accountOf(
     statementLine: row.statementLine,
     currency: row.currency as CurrencyCode | null,
     isControl: row.isControl,
+    itemKind: row.itemKind as Account['itemKind'],
     isMonetary: row.isMonetary,
     requiredDimensionTypeIds: [...requiredDimensionTypeIds],
     roles: [...roles],

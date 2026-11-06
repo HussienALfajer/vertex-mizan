@@ -285,12 +285,12 @@ describe('chainEntryValue', () => {
 
   it("hashes a line's item id only when the line has one (S04), so earlier entries hash alike", () => {
     const pinned = entryHash(chainEntryValue(entry), null);
-    const withItems = (itemId: string | null | undefined): ChainEntry => ({
+    const withItems = (itemId: string | null): ChainEntry => ({
       ...entry,
       lines: entry.lines.map((line, index) => (index === 0 ? { ...line, itemId } : line)),
     });
+    expect(entry.lines.every((line) => line.itemId === undefined)).toBe(true);
     expect(entryHash(chainEntryValue(withItems(null)), null)).toBe(pinned);
-    expect(entryHash(chainEntryValue(withItems(undefined)), null)).toBe(pinned);
     const moved = withItems('01900000-0000-7000-8000-0000000000aa');
     expect(entryHash(chainEntryValue(moved), null)).not.toBe(pinned);
     expect(entryHash(chainEntryValue(moved), null)).not.toBe(

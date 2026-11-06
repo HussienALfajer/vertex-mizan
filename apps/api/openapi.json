@@ -7267,7 +7267,15 @@
           "ATTACHMENT_TYPE",
           "ATTACHMENT_TOO_LARGE",
           "ATTACHMENT_LIMIT",
-          "EXPORT_IN_PROGRESS"
+          "EXPORT_IN_PROGRESS",
+          "OPEN_ITEM_REQUIRED",
+          "ACCOUNT_NOT_CONTROL",
+          "OPEN_ITEM_REFERENCE_TAKEN",
+          "OPEN_ITEM_MISMATCH",
+          "OPEN_ITEM_DIRECTION",
+          "OPEN_ITEM_HAS_SETTLEMENTS",
+          "OPEN_ITEM_MEMO_REQUIRED",
+          "OPEN_ITEM_FROM_HUB"
         ]
       },
       "PageQuery": {
@@ -8157,6 +8165,14 @@
           "isControl": {
             "type": "boolean"
           },
+          "itemKind": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ItemKind"
+              }
+            ]
+          },
           "isMonetary": {
             "type": "boolean"
           },
@@ -8237,6 +8253,7 @@
           "statementLine",
           "currency",
           "isControl",
+          "itemKind",
           "isMonetary",
           "requiredDimensionTypeIds",
           "roles",
@@ -8269,6 +8286,13 @@
         "enum": [
           "debit",
           "credit"
+        ]
+      },
+      "ItemKind": {
+        "type": "string",
+        "enum": [
+          "document",
+          "running"
         ]
       },
       "AccountRole": {
@@ -8336,6 +8360,15 @@
           "isControl": {
             "default": false,
             "type": "boolean"
+          },
+          "itemKind": {
+            "default": null,
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ItemKind"
+              }
+            ]
           },
           "isMonetary": {
             "default": false,
@@ -8426,6 +8459,14 @@
           },
           "isControl": {
             "type": "boolean"
+          },
+          "itemKind": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ItemKind"
+              }
+            ]
           },
           "isMonetary": {
             "type": "boolean"
