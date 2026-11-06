@@ -9,6 +9,7 @@ import type {
   StepKind,
 } from './format.js';
 
+import type { NamedValue } from './run.js';
 import { ledger, manual, rate, reversal, setUp } from './system.js';
 
 /**
@@ -57,7 +58,7 @@ export type BalanceQuery = Pick<ExpectedBalance, 'account' | 'dims' | 'currency'
 /** `amount` is the transaction amount, read when the query names a currency. */
 export type ObservedBalance = { amount: bigint | null; book: bigint; parallel: bigint | null };
 
-/** One document's open item on a control account. */
+/** One document's open item on a control account; a running item is named by its client's code. */
 export type OpenItemQuery = Pick<ExpectedOpenItem, 'item' | 'account'>;
 
 /** What remains of an open item, with its dimensions and currency. */
@@ -81,12 +82,13 @@ export type LedgerReader = {
 export type ScenarioHarness = {
   /**
    * Creates the case's company (ledgers, template and the accounts added to it, closed periods,
-   * bulletin calendar) and its rates; its id.
+   * bulletin calendar), its rates and the dimension values it names (S04); its id.
    */
   setUp?: (
     database: ScenarioDatabase,
     company: CaseCompany,
     rates: readonly ExchangeRate[],
+    values: readonly NamedValue[],
   ) => Promise<string>;
   executors: StepExecutors;
   ledger?: LedgerReader;
@@ -94,7 +96,8 @@ export type ScenarioHarness = {
 
 /**
  * The harness the book runs with: S03's company setup, ledger reader and `manual`, `reversal` and
- * `rate` executors (`system.ts`); `event` joins with S05, `job` with S07.
+ * `rate` executors (`system.ts`), with S04's dimension values, item lines and open-item reader;
+ * `event` joins with S05, `job` with S07.
  */
 export const bookHarness: ScenarioHarness = {
   setUp,

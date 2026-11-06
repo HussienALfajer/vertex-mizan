@@ -9,7 +9,7 @@ import type {
   ScenarioHarness,
   StepResult,
 } from './harness.js';
-import { runCase, ScenarioFailure } from './run.js';
+import { namedDimensionValues, runCase, ScenarioFailure } from './run.js';
 import { CASE, CORRECTION } from './test-fixtures.js';
 
 // The runner against a fake harness: what the S03, S05 and S07 parts will hand it, built here from
@@ -306,5 +306,38 @@ describe('runCase with a rate correction', () => {
       'step 3 (reversal of entry 1 on 2026-11-08): no executor for reversal steps; ' +
         'reversals arrive with S03',
     ]);
+  });
+});
+
+describe('namedDimensionValues (S04)', () => {
+  it('lists each value a case names once, from its manual lines and what it expects', () => {
+    const named = parseCase(`
+case: a receipt on an item
+company: { shape: syp, book: SYP, rate_policy: { book: bulletin } }
+steps:
+  - manual: an invoice
+    accounting_date: 2026-11-03
+    payload: { lines: [{ account: "112001", dims: { client: C2 }, currency: SYP, amount: 100,
+                         open_item: { ref: M-1 } },
+                       { account: "411001", dims: { client: C2, service: S9 }, currency: SYP, amount: -100 }] }
+expect:
+  entries:
+    - source: manual
+      date: 2026-11-03
+      lines:
+        - { account: "112001", dims: { client: C2 }, currency: SYP, amount: 100, book: 100 }
+        - { account: "411001", dims: { client: C2, service: S9 }, currency: SYP, amount: -100, book: -100 }
+  balances:
+    - { account: "213001", dims: { client: C3 }, book: 0 }
+  open_items:
+    - { item: M-1, account: "112001", dims: { client: C2, project: P1 }, currency: SYP, amount: 100, book: 100 }
+`);
+    expect(namedDimensionValues(named)).toEqual([
+      { type: 'client', code: 'C2' },
+      { type: 'service', code: 'S9' },
+      { type: 'client', code: 'C3' },
+      { type: 'project', code: 'P1' },
+    ]);
+    expect(namedDimensionValues(parseCase(CORRECTION))).toEqual([]);
   });
 });

@@ -13,6 +13,7 @@ import {
 import {
   accountRequiredDimensions,
   companySettings,
+  createDimensionValue,
   type Database,
   dimensionTypes,
   dimensionValues,
@@ -265,47 +266,7 @@ export class DimensionsService {
     const companyId = access.company.id;
     return withCompany(this.db, companyId, async (tx) => {
       await lockCompanyForWrite(tx, companyId);
-      const type = await this.typeRow(tx, input.typeId);
-      if (type.archivedAt) throw new CodedException('NOT_FOUND', 'The type is archived');
-      const isContract = type.builtin && type.code === 'contract';
-      if ((input.contractKind !== null) !== isContract) {
-        throw new CodedException(
-          'VALIDATION_FAILED',
-          'A contract kind exactly on contract values',
-          [{ path: ['contractKind'], message: 'A contract kind exactly on contract values' }],
-        );
-      }
-      await this.checkParent(tx, type, input.parentValueId);
-      const [row] = await onUniqueViolation(
-        () =>
-          tx
-            .insert(dimensionValues)
-            .values({
-              companyId,
-              typeId: type.id,
-              code: input.code,
-              name: input.name,
-              nameLatin: input.nameLatin,
-              contractKind: input.contractKind,
-              parentValueId: input.parentValueId,
-            })
-            .returning(),
-        { dimension_values_code_key: 'DIMENSION_CODE_TAKEN' },
-      );
-      if (!row) throw new Error('The value was not created');
-      await writeCompanyAudit(tx, companyId, actorOf(access), {
-        action: 'dimension_value.created',
-        entityType: 'dimension_value',
-        entityId: row.id,
-        after: {
-          typeId: row.typeId,
-          code: row.code,
-          name: row.name,
-          nameLatin: row.nameLatin,
-          contractKind: row.contractKind,
-          parentValueId: row.parentValueId,
-        },
-      });
+      const row = await createDimensionValue(tx, companyId, input, actorOf(access));
       const [value] = await valuesWithParents(tx, [row]);
       return value as DimensionValue;
     });

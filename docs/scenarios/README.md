@@ -112,7 +112,7 @@ The runner is `packages/scenarios` (`pnpm test:scenarios`, in CI).
   - the stated account and open-item balances: an open item by its document and account, with its dimensions, currency and remaining amounts;
   - the outcomes: every step completes, except the last when the case states an `outcome`, which it must match exactly;
   - each stated correction's answer: exactly the entries it lists as converted at the superseded row.
-- It runs on a fresh test database through the real posting function, never through a mock. Each case has a company of its own.
+- It runs on a fresh test database through the real posting function, never through a mock. Each case has a company of its own, made with the company, chart, dimension and rate services the API uses: every dimension value the case names (`client: C1` in a manual line, an expected line, a balance or an open item) is made in the setup, by its type's code and its own code (S04).
 
 ## Examples
 

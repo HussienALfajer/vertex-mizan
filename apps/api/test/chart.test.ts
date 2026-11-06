@@ -172,7 +172,7 @@ describe('POST /api/accounts (rule 2)', () => {
     expect(await actions(owner.company.id)).toContain('account.created');
   });
 
-  it("gives a control account its item kind, and only a control account one (S04)", async () => {
+  it('gives a control account its item kind, and only a control account one (S04)', async () => {
     const owner = await ownerWith('service-agency');
     const accounts = await tree(owner.browser);
     expect(
@@ -272,9 +272,9 @@ describe('PATCH /api/accounts/:id (rules 3–4)', () => {
     const created = await owner.browser.post('/api/accounts', euroBank(byCode(accounts, '111').id));
     const id = created.body.id as string;
     // A control account names the kind of its items (S04); without one it is refused.
-    expect(
-      (await owner.browser.patch(`/api/accounts/${id}`, { isControl: true })).body.code,
-    ).toBe('VALIDATION_FAILED');
+    expect((await owner.browser.patch(`/api/accounts/${id}`, { isControl: true })).body.code).toBe(
+      'VALIDATION_FAILED',
+    );
     const renamed = await owner.browser.patch(`/api/accounts/${id}`, {
       name: 'المصرف — يورو',
       isControl: true,
