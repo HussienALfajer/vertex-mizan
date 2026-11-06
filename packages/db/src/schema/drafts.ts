@@ -26,6 +26,7 @@ import {
 } from './columns.js';
 import { companies, SETTINGS_CURRENCY_CODES } from './companies.js';
 import { journalEntries } from './ledger.js';
+import { openItems } from './open-items.js';
 
 // The drafts module (S03 PR 2, ADR 0005 "drafts are not ledger"): the accountant's drafts of
 // manual entries and their lines, which change until they post, and the files attached to a draft
@@ -140,7 +141,8 @@ export const entryDrafts = pgTable(
 /**
  * A line of a draft as typed: the account, the currency and the amount may be missing while the
  * accountant types; an amount is never zero. Line numbers 1 to 500, each row kept for its number:
- * a line removed from the draft is archived, and taken back when the draft grows again.
+ * a line removed from the draft is archived, and taken back when the draft grows again. A line on
+ * a control account keeps the item it moves or the new item it opens (S04), checked at posting.
  */
 export const entryDraftLines = pgTable(
   'entry_draft_lines',
@@ -154,6 +156,11 @@ export const entryDraftLines = pgTable(
     currency: text(),
     amountMinor: bigint({ mode: 'bigint' }),
     memo: text(),
+    /** The open item a line on a control account moves (S04 rule 7). */
+    openItemId: uuid(),
+    /** The manual document item the line opens (S04 rule 6): its reference and due date. */
+    newItemReference: text(),
+    newItemDueOn: date(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
     archivedAt: archivedAt(),
@@ -172,6 +179,22 @@ export const entryDraftLines = pgTable(
       foreignColumns: [chartAccounts.companyId, chartAccounts.id],
     }),
     index('entry_draft_lines_company_account_idx').on(t.companyId, t.accountId),
+    foreignKey({
+      name: 'entry_draft_lines_open_item_fk',
+      columns: [t.companyId, t.openItemId],
+      foreignColumns: [openItems.companyId, openItems.id],
+    }),
+    index('entry_draft_lines_company_open_item_idx').on(t.companyId, t.openItemId),
+    // A line moves an item or opens one, never both; a due date only with a new item's reference.
+    check(
+      'entry_draft_lines_item',
+      sql`(${t.openItemId} is null or ${t.newItemReference} is null)
+        and (${t.newItemDueOn} is null or ${t.newItemReference} is not null)`,
+    ),
+    check(
+      'entry_draft_lines_new_item_reference_length',
+      sql`${t.newItemReference} is null or char_length(${t.newItemReference}) between 1 and 100`,
+    ),
     check('entry_draft_lines_line_no', sql`${t.lineNo} between 1 and 500`),
     check('entry_draft_lines_amount', sql`${t.amountMinor} is null or ${t.amountMinor} <> 0`),
     check(

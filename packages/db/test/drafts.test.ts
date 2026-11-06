@@ -414,6 +414,25 @@ describe('a draft and its posting', () => {
       /entry_draft_lines_account_fk/,
     );
   });
+
+  it('keeps a line’s item or new item, never both, and no item of another company (S04)', async () => {
+    const draft = await draftRow();
+    const line = (values: Partial<typeof entryDraftLines.$inferInsert>) =>
+      inCompany(company, (tx) =>
+        tx
+          .insert(entryDraftLines)
+          .values({ companyId: company, draftId: draft.id, lineNo: 1, ...values }),
+      );
+    expect(await refusal(line({ openItemId: uuidv7(), newItemReference: 'M-1' }))).toMatch(
+      /entry_draft_lines_item/,
+    );
+    expect(await refusal(line({ newItemDueOn: '2026-12-03' }))).toMatch(/entry_draft_lines_item/);
+    expect(await refusal(line({ newItemReference: '' }))).toMatch(
+      /entry_draft_lines_new_item_reference_length/,
+    );
+    expect(await refusal(line({ openItemId: uuidv7() }))).toMatch(/entry_draft_lines_open_item_fk/);
+    await line({ newItemReference: 'M-1', newItemDueOn: '2026-12-03' });
+  });
 });
 
 describe('attachments', () => {
