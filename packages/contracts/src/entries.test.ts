@@ -45,6 +45,8 @@ describe('draftLineInputSchema', () => {
       currency: null,
       amountMinor: null,
       memo: null,
+      openItemId: null,
+      newItem: null,
     });
   });
 

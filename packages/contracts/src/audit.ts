@@ -85,6 +85,10 @@ export const COMPANY_AUDIT_ACTIONS = [
   'integrity.checked',
   'export.requested',
   'export.downloaded',
+  // S04: a manual item's due date and the receivables exports.
+  'open_item.due_date_changed',
+  'export.ageing',
+  'export.client_statement',
 ] as const;
 
 export const companyAuditActionSchema = z

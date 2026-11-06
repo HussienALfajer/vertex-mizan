@@ -39,6 +39,17 @@ export function formatMinor(
   return `${negative ? '-' : ''}${integer}${fraction ? `.${fraction}` : ''}`;
 }
 
+/**
+ * An amount as a spreadsheet cell (the Excel exports, S04 "Printing"): a number in major units when
+ * a spreadsheet holds it exactly (15 significant digits, Excel's precision), else the exact text of
+ * `formatMinor()` without grouping, so a cell never shows a rounded amount.
+ */
+export function spreadsheetAmount(amountMinor: bigint, currency: CurrencyCode): number | string {
+  const text = formatMinor(amountMinor, currency, { grouping: false });
+  const digits = (amountMinor < 0n ? -amountMinor : amountMinor).toString().replace(/^0+/, '');
+  return digits.length <= 15 ? Number(text) : text;
+}
+
 /** Why typed text is not an amount. `AMOUNT_OUT_OF_RANGE` is the error code of the same rule. */
 export type AmountTextError =
   | 'EMPTY'

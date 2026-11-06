@@ -34,6 +34,8 @@ describe('the permission map', () => {
         'entries.attach',
         'integrity.read',
         'company.export',
+        'open_items.read',
+        'open_items.manage',
       ],
       accountant: [
         'company.read',
@@ -48,6 +50,8 @@ describe('the permission map', () => {
         'drafts.manage',
         'entries.post',
         'entries.attach',
+        'open_items.read',
+        'open_items.manage',
       ],
       approver: [
         'company.read',
@@ -57,8 +61,16 @@ describe('the permission map', () => {
         'entries.read',
         'drafts.read',
         'entries.approve',
+        'open_items.read',
       ],
-      viewer: ['company.read', 'accounts.read', 'dimensions.read', 'rates.read', 'entries.read'],
+      viewer: [
+        'company.read',
+        'accounts.read',
+        'dimensions.read',
+        'rates.read',
+        'entries.read',
+        'open_items.read',
+      ],
       auditor: [
         'company.read',
         'members.read',
@@ -69,6 +81,7 @@ describe('the permission map', () => {
         'entries.read',
         'drafts.read',
         'integrity.read',
+        'open_items.read',
       ],
     });
   });
@@ -84,6 +97,13 @@ describe('the permission map', () => {
     expect(holders('entries.approve')).toEqual(['owner', 'approver']);
     expect(holders('integrity.read')).toEqual(['owner', 'auditor']);
     expect(holders('company.export')).toEqual(['owner']);
+  });
+
+  it('lets every role read open items and the owner and accountants manage due dates (S04 "Access")', () => {
+    const holders = (key: (typeof PERMISSIONS)[number]) =>
+      ROLES.filter((role) => rolePermissions[role].includes(key));
+    expect(holders('open_items.read')).toEqual([...ROLES]);
+    expect(holders('open_items.manage')).toEqual(['owner', 'accountant']);
   });
 
   it('lets every role read the company profile, the chart, dimensions and rates', () => {

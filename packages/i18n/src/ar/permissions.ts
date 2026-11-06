@@ -23,4 +23,6 @@ export const permissions = {
   'entries.attach': 'إرفاق الملفات بالقيود المرحّلة',
   'integrity.read': 'تشغيل فحص السلامة',
   'company.export': 'تصدير بيانات الشركة',
+  'open_items.read': 'قراءة البنود المفتوحة وأعمار الذمم وأمانات العملاء وكشوف حسابات العملاء',
+  'open_items.manage': 'تغيير تاريخ استحقاق البنود اليدوية',
 } satisfies Record<Permission, string>;

@@ -39,6 +39,9 @@ export const PERMISSIONS = [
   // S03: trust and the full export.
   'integrity.read',
   'company.export',
+  // S04: open items, the ageing, client funds and statements.
+  'open_items.read',
+  'open_items.manage',
 ] as const;
 
 export const permissionSchema = z.enum(PERMISSIONS).meta({ id: 'Permission' });
@@ -64,6 +67,8 @@ export const rolePermissions: Readonly<Record<Role, readonly Permission[]>> = {
     'drafts.manage',
     'entries.post',
     'entries.attach',
+    'open_items.read',
+    'open_items.manage',
   ],
   approver: [
     'company.read',
@@ -73,8 +78,16 @@ export const rolePermissions: Readonly<Record<Role, readonly Permission[]>> = {
     'entries.read',
     'drafts.read',
     'entries.approve',
+    'open_items.read',
   ],
-  viewer: ['company.read', 'accounts.read', 'dimensions.read', 'rates.read', 'entries.read'],
+  viewer: [
+    'company.read',
+    'accounts.read',
+    'dimensions.read',
+    'rates.read',
+    'entries.read',
+    'open_items.read',
+  ],
   auditor: [
     'company.read',
     'members.read',
@@ -85,6 +98,7 @@ export const rolePermissions: Readonly<Record<Role, readonly Permission[]>> = {
     'entries.read',
     'drafts.read',
     'integrity.read',
+    'open_items.read',
   ],
 };
 
