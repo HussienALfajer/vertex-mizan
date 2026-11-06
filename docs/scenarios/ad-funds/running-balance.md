@@ -4,6 +4,7 @@ Status: Proposed
 
 The expected entries were approved by the owner on 2026-11-06, with two decisions:
 - **A reversal that runs with the item's balance** (a refund voided, a spend changed or archived while the funds hold a credit) posts its exact reversal and no difference entry: the item regains what the movement cleared, and the movement's difference is taken back with it. A reversal against the balance or across zero is followed by the difference entry of ADR 0013. S04 rule 13 says so.
+- **A reversal across zero** (owner, 2026-11-06, after the accounting review of S04's first PR): its difference entry clears the item to zero at what the exact reversal left, measures the excess anew at the void date's policy rate, with that rate recorded so a correction of it lists the entry (S02 rule 15), and posts the realised difference. The item and the gain or loss are those approved before; the entry has these lines instead of one difference line on the item. A reversal against the balance that stays on its side of zero keeps its difference line on the item: it reads no rate.
 - **A deposit or refund in SYP for a USD amount:** the gap between Hub's `usd_amount` and the SYP amount at Hub's `syp_per_usd` is a realised exchange difference within the tolerance of payments (1.00 USD by default, the same company setting; `receivables/hub-payment.md`), and beyond it the event is held `NEEDS_DECISION`.
 
 The cases stay `Proposed` until S05 brings their executors: the `event` executor through the event inbox, the posting rules of `ad_wallet.deposited`, `ad_wallet.refunded`, `ad_wallet.entry_voided`, `ad_spend.recorded`, `ad_spend.changed` and `ad_spend.archived`, the mapping of each payment method to its account, and the void difference entry of a running item (S04 rule 13; S04 "Out of scope"; owner, 2026-10-28).
@@ -232,9 +233,11 @@ expect:
       date: 2026-11-19
       lines:
         # as a new movement: clear 700.00 at 8,400,000, then 300.00 × 123 = 3,690,000 → a debit of 3,690,000
-        # difference: 3,690,000 − 3,600,000 = 90,000 on the item, in the book ledger only
-        - { account: "213001", dims: { client: C1 }, currency: USD, amount: 0, book: 90000, parallel: 0 }
-        # → realised gain 900.00 SYP
+        # across zero: the 300.00 USD debit the reversal left, at 3,600,000, cleared to zero
+        - { account: "213001", dims: { client: C1 }, currency: USD, amount: -30000, book: -3600000, parallel: -30000 }
+        # then the 300.00 USD beyond zero measured anew at the 19 November bulletin, its rate recorded
+        - { account: "213001", dims: { client: C1 }, currency: USD, amount: 30000, book: 3690000, parallel: 30000 }
+        # book residual: 3,600,000 − 3,690,000 = −90,000 → realised gain 900.00 SYP
         - { account: "421001", currency: SYP, amount: -90000, book: -90000, parallel: 0 }
   balances:
     - { account: "213001", book: 3690000, parallel: 30000 }
@@ -563,9 +566,11 @@ expect:
       date: 2026-11-25
       lines:
         # as a new movement: clear 600.00 at 7,320,000, then 400.00 × 125 (market) = 5,000,000
-        # difference: 5,000,000 − 4,880,000 = 120,000 on the item, in the parallel ledger only
-        - { account: "213001", dims: { client: C1 }, currency: USD, amount: 0, book: 0, parallel: 120000 }
-        # → realised gain 1,200.00 SYP
+        # across zero: the 400.00 USD debit the reversal left, at 4,880,000, cleared to zero
+        - { account: "213001", dims: { client: C1 }, currency: USD, amount: -40000, book: -40000, parallel: -4880000 }
+        # then the 400.00 USD beyond zero measured anew at the 25 November market rate, its rate recorded
+        - { account: "213001", dims: { client: C1 }, currency: USD, amount: 40000, book: 40000, parallel: 5000000 }
+        # parallel residual: 4,880,000 − 5,000,000 = −120,000 → realised gain 1,200.00 SYP
         - { account: "421001", currency: SYP, amount: -120000, book: 0, parallel: -120000 }
   balances:
     - { account: "213001", book: 40000, parallel: 5000000 }

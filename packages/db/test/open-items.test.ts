@@ -22,7 +22,9 @@ import {
   dimensionSets,
   dimensionTypes,
   dimensionValues,
+  entriesUsingRate,
   entryNumberCounters,
+  exchangeRates,
   journalEntries,
   journalLines,
   ledgerHeads,
@@ -685,11 +687,24 @@ describe('post(): running items (S04 rules 3, 9, 12, 13)', () => {
     expect(reversal?.entry.id).toBe(voided.id);
     expect(difference?.key).toBe(`reversal:${deposit.id}:difference`);
     expect(difference?.entry.reversesEntryId).toBeNull();
-    // As a new movement: 700.00 cleared at 8,400,000, then 300.00 × 123; 90,000 more on the item.
+    // As a new movement: 700.00 cleared at 8,400,000, then 300.00 × 123. Across zero, the item is
+    // cleared from what the reversal left and the 300.00 measured anew (owner, 2026-11-06).
     expect(await rowsOf(books, difference?.entry.id as string)).toEqual([
-      ['213001', 'USD', 0n, 90_000n, 0n, 'difference'],
+      ['213001', 'USD', -30_000n, -3_600_000n, -30_000n, 'clear'],
+      ['213001', 'USD', 30_000n, 3_690_000n, 30_000n, 'add'],
       ['421001', 'SYP', -90_000n, -90_000n, 0n, null],
     ]);
+    // Its rate is recorded, so a correction of the 19 November bulletin lists the entry.
+    const used = await inCompany(books.id, async (tx) => {
+      const [row] = await tx
+        .select({ id: exchangeRates.id })
+        .from(exchangeRates)
+        .where(
+          and(eq(exchangeRates.effectiveOn, '2026-11-19'), eq(exchangeRates.type, 'bulletin')),
+        );
+      return entriesUsingRate(tx, row?.id as string);
+    });
+    expect(used.map((entry) => entry.id)).toContain(difference?.entry.id);
     expect(await balanceOf(books, 'C1')).toEqual([30_000n, 3_690_000n, 30_000n]);
     const audits = await inCompany(books.id, (tx) =>
       tx.select().from(auditEntries).where(eq(auditEntries.action, 'entry.posted')),
@@ -703,6 +718,32 @@ describe('post(): running items (S04 rules 3, 9, 12, 13)', () => {
       'ENTRY_NOT_REVERSIBLE',
     );
     expect(await chainHolds(books)).toBeNull();
+  });
+
+  it('follows a void against the balance with a difference line on the item, reading no rate', async () => {
+    const books = await newBooks();
+    await manual(books, '2026-11-03', [
+      { code: '111004', currency: 'USD', amount: 100_000n },
+      { code: '213001', currency: 'USD', amount: -100_000n, dims: ['C1'] },
+    ]);
+    await manual(books, '2026-11-10', [
+      { code: '213001', currency: 'USD', amount: 40_000n, dims: ['C1'] },
+      { code: '211001', currency: 'USD', amount: -40_000n, dims: ['C1'] },
+    ]);
+    const second = await manual(books, '2026-11-19', [
+      { code: '111004', currency: 'USD', amount: 70_000n },
+      { code: '213001', currency: 'USD', amount: -70_000n, dims: ['C1'] },
+    ]);
+    await reverse(books, second.id, '2026-11-25');
+    const [, , , , difference] = await inCompany(books.id, (tx) =>
+      tx.select().from(journalEntries).orderBy(asc(journalEntries.sequence)),
+    );
+    // 15,810,000 × 700 / 1,300 = 8,513,077 cleared as a new movement; 96,923 more credit.
+    expect(await rowsOf(books, difference?.id as string)).toEqual([
+      ['213001', 'USD', 0n, -96_923n, 0n, 'difference'],
+      ['541001', 'SYP', 96_923n, 96_923n, 0n, null],
+    ]);
+    expect(await balanceOf(books, 'C1')).toEqual([-60_000n, -7_296_923n, -60_000n]);
   });
 
   it('posts a void with the balance alone: the item regains what the movement cleared', async () => {

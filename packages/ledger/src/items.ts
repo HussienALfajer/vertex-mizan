@@ -17,6 +17,7 @@ import {
   type Line,
   ledgerAmount,
   ledgerCurrency,
+  negate,
 } from './lines.js';
 import { type MeasureContext, measure, measuredLine } from './measure.js';
 
@@ -288,9 +289,16 @@ export function runningVoidDifference(
 
 /**
  * The lines of the exchange-difference entry that follows a reversal's movements on running items
- * (S04 rule 13): on each item, a difference line per ledger with a transaction amount of zero (a
- * `difference` movement), and each ledger's residual as a realised difference by its sign
- * (IAS 21.28). Empty when no item needs one; the posting function then posts no entry.
+ * (S04 rule 13), for each item that needs one (`runningVoidDifference()`):
+ * - against the balance, a difference line per ledger on the item, with a transaction amount of
+ *   zero (a `difference` movement): the clearing at the average reads no rate;
+ * - across zero (owner, 2026-11-06), the item cleared to zero at what the exact reversal left (a
+ *   carried `clear`), then the excess measured anew at the void date's policy rates (an `add`,
+ *   with its conversions recorded, so a correction of that rate lists the entry, S02 rule 15).
+ *
+ * Then each ledger's residual as a realised difference by its sign (IAS 21.28). Either way the
+ * item ends at the carrying amount of a new movement under rule 3. Empty when no item needs one;
+ * the posting function then posts no entry.
  */
 export function runningVoidDifferenceLines(
   items: readonly VoidedRunningItem[],
@@ -298,11 +306,46 @@ export function runningVoidDifferenceLines(
   targets: RealisedTargets,
 ): Line[] {
   const { ledgers } = context;
+  const policy: MeasureContext = {
+    ledgers,
+    on: context.on,
+    rates: context.rates,
+    calendar: context.calendar,
+  };
   const lines: Line[] = [];
   for (const item of items) {
     const difference = runningVoidDifference(item, context);
     if (difference === null) continue;
     const currency = item.before.transaction.currency;
+    // What the exact reversal leaves on the item.
+    const { before, reversed } = item;
+    const exact: CarriedAmounts = {
+      transaction: money(
+        before.transaction.amountMinor + reversed.transaction.amountMinor,
+        currency,
+      ),
+      bookMinor: before.bookMinor + reversed.bookMinor,
+      parallelMinor:
+        before.parallelMinor === null || reversed.parallelMinor === null
+          ? null
+          : before.parallelMinor + reversed.parallelMinor,
+    };
+    const held = before.transaction.amountMinor;
+    const crosses = sign(exact.transaction.amountMinor) === -sign(held);
+    if (crosses) {
+      lines.push(
+        carriedLine({
+          ...item.target,
+          amounts: negate(exact),
+          item: { id: item.id, movement: 'clear' },
+        }),
+        {
+          ...measuredLine({ ...item.target, amount: exact.transaction }, policy),
+          item: { id: item.id, movement: 'add' },
+        },
+      );
+      continue;
+    }
     for (const [ledger] of keptLedgers(ledgers)) {
       const amount = ledgerAmount(difference, ledger) ?? 0n;
       if (amount === 0n) continue;

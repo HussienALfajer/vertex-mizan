@@ -169,6 +169,8 @@ export interface PostedEntry {
   readonly isReversal: boolean;
   /** A reversal of it is already posted. */
   readonly reversed: boolean;
+  /** It is the exchange-difference entry that follows a reversal (S04 rule 13). */
+  readonly followsReversal?: boolean;
   readonly lines: readonly Line[];
 }
 
@@ -194,7 +196,7 @@ export function manualReversalLines(original: PostedEntry, on: string): Line[] {
   }
   // The difference entry that follows a running item's void (S04 rule 13) belongs to that
   // reversal, which is never reversed either.
-  if (original.lines.some((line) => line.item?.movement === 'difference')) {
+  if (original.followsReversal === true) {
     throw new DomainError(
       'ENTRY_NOT_REVERSIBLE',
       "A void's exchange difference is never reversed by hand",

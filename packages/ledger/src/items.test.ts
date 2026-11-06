@@ -447,10 +447,20 @@ describe('the void of a running movement (S04 rule 13, ad-funds/running-balance)
     const context = voidDay('2026-11-19', '123.0000');
     // As a new movement: 700.00 cleared at 8,400,000, then 300.00 × 123 = 3,690,000.
     expect(runningVoidDifference(voided, context)).toEqual(amounts(0n, 90_000n, 0n));
-    expect(rows(runningVoidDifferenceLines([voided], context, targets))).toEqual([
-      ['difference', '213001', 'USD', 0n, 90_000n, 0n, 'C1:difference'],
+    // The item cleared to zero at what the exact reversal left (300.00 at 36,000.00), then the
+    // excess measured anew with its rate recorded (owner, 2026-11-06), then the realised gain.
+    const lines = runningVoidDifferenceLines([voided], context, targets);
+    expect(rows(lines)).toEqual([
+      ['carried', '213001', 'USD', -30_000n, -3_600_000n, -30_000n, 'C1:clear'],
+      ['measured', '213001', 'USD', 30_000n, 3_690_000n, 30_000n, 'C1:add'],
       ['difference', '421001', 'SYP', -90_000n, -90_000n, 0n, null],
     ]);
+    const added = lines[1];
+    expect(added?.kind === 'measured' && added.conversions.book).toEqual({
+      basis: 'policy',
+      rate: bulletin('123.0000', '2026-11-19'),
+    });
+    expect(balanceEntry({ on: '2026-11-19', ledgers: sypUsd, lines, rounding })).toHaveLength(3);
   });
 
   it('against the balance: cleared at the average, the gap a realised loss; no rate read', () => {
@@ -546,7 +556,14 @@ describe('a reversal and its difference entry', () => {
     expect(
       refusal(() =>
         manualReversalLines(
-          { source: 'manual', date: '2026-11-19', isReversal: false, reversed: false, lines },
+          {
+            source: 'manual',
+            date: '2026-11-19',
+            isReversal: false,
+            reversed: false,
+            followsReversal: true,
+            lines,
+          },
           '2026-11-25',
         ),
       ),

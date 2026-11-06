@@ -907,6 +907,13 @@ async function reversalLines(
     .select({ id: journalEntries.id })
     .from(journalEntries)
     .where(eq(journalEntries.reversesEntryId, original.id));
+  // The difference entry of a void (S04 rule 13) is posted under `<the reversal's key>:difference`.
+  const [request] = await tx
+    .select({ key: postingRequests.idempotencyKey })
+    .from(postingRequests)
+    .where(eq(postingRequests.id, original.requestId));
+  const followsReversal =
+    request?.key.startsWith('reversal:') === true && request.key.endsWith(':difference');
   const stored = await tx
     .select()
     .from(journalLines)
@@ -968,6 +975,7 @@ async function reversalLines(
       date: original.entryDate,
       isReversal: original.reversesEntryId !== null,
       reversed: reversal !== undefined,
+      followsReversal,
       lines,
     },
     on,
@@ -1028,9 +1036,10 @@ async function reversalLines(
 /**
  * The exchange-difference entry that follows a reversal's movements on running items (S04 rule 13,
  * ADR 0013): on each running item it moved against the balance or across zero, what brings the
- * item to the carrying amount of a new movement under rule 3, the excess measured at the policy
- * rates of the reversal's date (`RATE_MISSING` without one), and each ledger's residual as a
- * realised gain or loss. Null when no item needs one.
+ * item to the carrying amount of a new movement under rule 3 (across zero, the item cleared and
+ * the excess measured anew at the policy rates of the reversal's date, with its conversions;
+ * `RATE_MISSING` without a rate), and each ledger's residual as a realised gain or loss. Null when
+ * no item needs one.
  */
 async function voidDifferenceLines(
   tx: Transaction,
@@ -1040,7 +1049,7 @@ async function voidDifferenceLines(
   daysOff: readonly number[],
 ): Promise<Built | null> {
   if (voided.length === 0) return null;
-  const { rates } = await ratesOn(tx, on);
+  const { rates, ids } = await ratesOn(tx, on);
   const context: MeasureContext = {
     ledgers,
     on,
@@ -1088,7 +1097,8 @@ async function voidDifferenceLines(
     sources.find((item) => item.id === line.item?.id)?.source !== 'manual';
   return {
     lines: lines.map((line) => ({ line, memo: null, adjusted: adjusted(line) })),
-    rateIds: new Map(),
+    // Across zero, the excess is measured at the void date: its rate rows are recorded.
+    rateIds: ids,
     newItems: [],
     voided: [],
   };
