@@ -2,11 +2,16 @@
 
 Status: Proposed
 
-The expected entries were approved by the owner on 2026-11-06, with three decisions: the gap between Hub's applied amount and the amount received at Hub's rate is a realised exchange difference, not a discount; the book ledger measures foreign cash at the bulletin even when Hub applied it at its own rate; and a payment in the invoice's currency whose applied amount differs from its amount is refused by S05's contract (422, nothing stored), since a gap in one currency is never an exchange difference (ADR 0007). The cases stay `Proposed` until S05 brings their executors: the `event` executor through the event inbox, the posting rules of `invoice.issued`, `invoice.voided`, `invoice.due_date_changed`, `payment.recorded` and `payment.voided`, the mapping of each payment method to its account, and the holds `NEEDS_DECISION` and `OPEN_ITEM_HAS_SETTLEMENTS` (S04 "Out of scope"; owner, 2026-10-28).
+The expected entries were approved by the owner on 2026-11-06, with three decisions, the first and third revised the same day after the accounting review:
+- **A payment in the other currency:** the gap between Hub's applied amount and the amount received at Hub's `syp_per_usd`, both in the invoice's currency, is a realised exchange difference while it is within a tolerance of 1.00 in the invoice's currency (a company setting, default 1.00 USD or 1.00 SYP), not a discount. A wider gap is an overpayment, a liability (IFRS 15.106), or a concession, so the payment is held `NEEDS_DECISION`.
+- **The book ledger** measures foreign cash at the bulletin, even when Hub applied it at its own rate.
+- **A payment in the invoice's currency:** an amount above the applied amount is an overpayment, held `NEEDS_DECISION`. An applied amount above the amount is refused by S05's contract (422, nothing stored), since a gap in one currency is never an exchange difference (ADR 0007). S05 confirms with Hub how it sends an overpayment (Q5).
+
+The cases stay `Proposed` until S05 brings their executors: the `event` executor through the event inbox, the posting rules of `invoice.issued`, `invoice.voided`, `invoice.due_date_changed`, `payment.recorded` and `payment.voided`, the mapping of each payment method to its account, and the holds `NEEDS_DECISION` and `OPEN_ITEM_HAS_SETTLEMENTS` (S04 "Out of scope"; owner, 2026-10-28).
 
 ## Rule
 
-`invoice.issued` opens one document item per invoice on trade receivables, under Hub's invoice number, a new measurement at each ledger's policy rate; an extra-work line is revenue at issue. `payment.recorded` debits the account of the payment's method in the payment's currency, a new measurement: the book ledger at the bulletin of the day, a market ledger that accepts the transaction's rate at Hub's `syp_per_usd`. It credits the invoice's item by the amount Hub applied in the invoice's currency, at the item's carrying amount in proportion to what remains (S04 rule 4). Each ledger's residual, rounding included, posts in that ledger only as a realised exchange difference: a credit to `fx_realised_gain`, a debit to `fx_realised_loss`. A payment applying more than is open is held `NEEDS_DECISION`. `payment.voided` posts the exact reversal of the payment's entry, which reopens the item at what it had. `invoice.voided` posts the exact reversal of the issue entry, and is held `OPEN_ITEM_HAS_SETTLEMENTS` while a payment on the invoice stands. `invoice.due_date_changed` posts nothing.
+`invoice.issued` opens one document item per invoice on trade receivables, under Hub's invoice number, a new measurement at each ledger's policy rate; an extra-work line is revenue at issue. `payment.recorded` debits the account of the payment's method in the payment's currency, a new measurement: the book ledger at the bulletin of the day, a market ledger that accepts the transaction's rate at Hub's `syp_per_usd`. It credits the invoice's item by the amount Hub applied in the invoice's currency, at the item's carrying amount in proportion to what remains (S04 rule 4). Each ledger's residual, rounding included, posts in that ledger only as a realised exchange difference: a credit to `fx_realised_gain`, a debit to `fx_realised_loss`. A payment is held `NEEDS_DECISION` when it applies more than is open, when in the invoice's currency its amount exceeds the applied amount, or when in the other currency its amount at Hub's `syp_per_usd` differs from the applied amount by more than the company's tolerance (1.00 in the invoice's currency by default); the accountant then places the excess in a liability or decides the concession. `payment.voided` posts the exact reversal of the payment's entry, which reopens the item at what it had. `invoice.voided` posts the exact reversal of the issue entry, and is held `OPEN_ITEM_HAS_SETTLEMENTS` while a payment on the invoice stands. `invoice.due_date_changed` posts nothing.
 
 ## Basis
 
@@ -34,7 +39,8 @@ The cases leave out what other scenarios or later specs own:
 - a payment dated in a closed period, held `PERIOD_CLOSED`, and one after a month-end revaluation, added with S07's jobs;
 - the automatic retry of an invoice void held `OPEN_ITEM_HAS_SETTLEMENTS` once its payments' voids post: the format states a hold only on a case's last step, so S05 adds that case with the field it needs;
 - a replayed event (the same idempotency key), which posts nothing new: a property test of S05, since a step carries no event ID;
-- a payment of zero or a negative amount, and one in the invoice's currency whose applied amount differs from its amount: refused by the contract (422), nothing stored (owner, 2026-11-06);
+- a payment of zero or a negative amount, and one in the invoice's currency that applies more than its amount: refused by the contract (422), nothing stored (owner, 2026-11-06);
+- the other holds of a payment (owner, 2026-11-06): in the invoice's currency, an amount above the applied amount; in the other currency, a gap beyond the tolerance. Each posts nothing, as the hold beyond the open amount does, and S05 adds them with its tolerance setting;
 - the ad-wallet events (`ad-funds/running-balance.md`, S05).
 
 ### Vertex Media: a USD invoice paid in USD as the bulletin rises (ADR 0007, B1)
@@ -130,7 +136,7 @@ expect:
 
 ### Vertex Media: a USD invoice paid in two SYP payments, with Hub's applied amounts
 
-The item clears by the USD amount Hub applied, never by a conversion of the SYP received; the cash is in the book currency, so the bulletin of the payment's date is not read. The first payment's applied amount is Hub's rate exactly, so the parallel ledger posts nothing. The last payment closes the invoice: Hub applies the 595.14 USD still open, while 73,800.00 SYP at Hub's 124 is 595.16 USD, and the 0.02 USD between them is a parallel gain, not a discount (owner, 2026-11-06).
+The item clears by the USD amount Hub applied, never by a conversion of the SYP received; the cash is in the book currency, so the bulletin of the payment's date is not read. The first payment's applied amount is Hub's rate exactly, so the parallel ledger posts nothing. The last payment closes the invoice: Hub applies the 595.14 USD still open, while 73,800.00 SYP at Hub's 124 is 595.16 USD, and the 0.02 USD between them, within the 1.00 USD tolerance, is a parallel gain, not a discount (owner, 2026-11-06).
 
 ```yaml
 case: a 1,000.00 USD invoice at 120; 50,000.00 SYP applied as 404.86 USD, then 73,800.00 SYP applied as the 595.14 USD left
