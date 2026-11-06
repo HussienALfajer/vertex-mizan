@@ -12,7 +12,7 @@ Spec: `docs/specs/S04-open-items-settlements.md` (Approved, owner 2026-10-28) ·
 - [x] web: the item kind in `/chart`'s account sheet, asked for when "control" is ticked (moved from PR 3: the account routes require it from this PR), with its E2E check
 - [x] scenarios: the manual executor's `open_item` and `item` fields, the setup's dimension values (client `C1`, service `S1`), the open-item reader; `receivables/manual-settlement` and `receivables/write-off` `Approved (owner, 2026-11-06)`, no expected value changed, counted as run; the Hub scenarios still listed as `Proposed`
 - [x] wiring (Contracts, Ledger, Database), docs (`packages/ledger/CLAUDE.md`, `packages/db/CLAUDE.md`, `packages/scenarios/CLAUDE.md`, `packages/contracts/CLAUDE.md`, `docs/glossary.md`, `docs/ROADMAP.md`)
-- [ ] checks and reviewers (`reviewer`, `accountant-reviewer`), PR with auto-merge and Auto-fix
+- [x] checks and reviewers (`reviewer`, `accountant-reviewer`), PR with auto-merge and Auto-fix
 
 ## PR 2 — The receivables API (contracts, ledger, db, api)
 - [ ] contracts: `open-items.ts` (the items list and its query, an item with its movements and due dates, the due-date change, the ageing, client funds, the client statement), the manual line's `openItemId` and `newItem` in `entries.ts` and the preview's item lines (open and carrying amounts before and after, the split, the differences), `open_items.read` and `open_items.manage`, the audit actions `open_item.due_date_changed`, `export.ageing`, `export.client_statement`
