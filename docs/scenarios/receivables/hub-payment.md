@@ -529,7 +529,7 @@ expect:
 
 ### SYP books only
 
-With no parallel ledger, Hub's `syp_per_usd` is never read: the USD invoice takes the bulletin, the SYP cash its own amount.
+With no parallel ledger, Hub's `syp_per_usd` measures nothing: the USD invoice takes the bulletin, the SYP cash its own amount. It is still read to check the payment's gap against the tolerance: 123,000.00 SYP / 123 = 1,000.00 USD, the applied amount, so there is no gap.
 
 ```yaml
 case: SYP books only; a 1,000.00 USD invoice at 120 paid with 123,000.00 SYP applied as 1,000.00 USD; a gain of 3,000.00 SYP
