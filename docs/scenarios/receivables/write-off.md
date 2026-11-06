@@ -2,7 +2,7 @@
 
 Status: Proposed
 
-The expected entries await the owner's approval. Once approved, the cases stay `Proposed` until S04 brings their executors: the manual line's item fields, the item lines of the posting function, the open-item reader, and a setup that creates the dimension values a case names (client `C1`, service `S1`).
+The expected entries were approved by the owner on 2026-11-06, with the added account `532005` for written-off receivables. The cases stay `Proposed` until S04 brings their executors: the manual line's item fields, the item lines of the posting function, the open-item reader, and a setup that creates the dimension values a case names (client `C1`, service `S1`).
 
 ## Rule
 
@@ -22,7 +22,7 @@ The account codes are the service-agency template's (S02): the SYP and USD bank 
 
 A manual line opens an item with `open_item: { ref, due? }` and moves one with `item: <ref>`; it then takes the item's dimensions, so it states none (S04 rules 6–7). The expense line carries no dimension: `532005` requires none. A difference line carries its amount in one ledger only, in that ledger's currency (ADR 0007).
 
-The cases leave out what other scenarios or later specs own: a write-off of a Hub item, which needs a line memo and is marked "معدّل في ميزان" (S04 rule 8; `receivables/hub-payment.md`, S05); a write-off dated in a closed period and one after a month-end revaluation, added with S07's jobs.
+The cases leave out what other scenarios or later specs own: a write-off of a Hub item, which needs a line memo and is marked "معدّل في ميزان" (S04 rule 8; `receivables/hub-payment.md`, S05); a write-off dated in a closed period and one after a month-end revaluation, added with S07's jobs. A receipt on a debt already written off, the item being settled, is a later scenario: Dr cash, Cr the write-off account `532005`, so the recovery is presented with the losses it reverses (IFRS 9.5.4.4, IAS 1.82(ba); owner, 2026-11-06).
 
 ### Vertex Media: a USD item written off whole as the bulletin rises
 

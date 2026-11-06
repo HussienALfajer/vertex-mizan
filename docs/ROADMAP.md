@@ -51,6 +51,7 @@ Scope: `docs/product/phase-1-scope.md`. One spec per line, each through `/spec` 
   - [x] PR 5 the integrity and export screens: `/integrity` (run the check, its report with the first break, numbering, unbalanced entries, period balances and the stored anchors; an anchor pasted whole from the daily email), `/settings/export` (request and download after a fresh code, the export states, polling while queued), "run integrity check" in the command palette; `ar.integrity`, `ar.export`
 - [~] S04 Open items and settlements: F06 (`docs/specs/S04-open-items-settlements.md`, ADR 0013)
   - [x] Posting rules: `receivables/manual-settlement`, numbers approved by the owner 2026-11-06 (an overpayment's excess to other payables `211003`; an opening reversible once its item's settlements are reversed), `Proposed` until S04 brings its executors; the scenario format's `open_item` and `item` line fields
+  - [x] Posting rules: `receivables/write-off`, numbers approved by the owner 2026-11-06 (the added account `532005` for written-off receivables; a recovery after a write-off, Dr cash / Cr `532005`, in a later scenario), `Proposed` until S04 brings its executors
 - [ ] S05 Posting API, event inbox and posting rules: F10
 - [ ] S06 Revenue recognition (IFRS 15): F07
 - [ ] S07 Month-end revaluation, periods and close: F08 · F09
