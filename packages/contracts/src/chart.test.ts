@@ -152,6 +152,7 @@ describe('checkAccountShape (S02 checks 2–4)', () => {
     statementLine: 'bs.cash',
     currency: 'USD',
     isControl: false,
+    itemKind: null,
     isMonetary: true,
     requiredDimensionCount: 0,
   };
@@ -189,6 +190,7 @@ describe('checkAccountShape (S02 checks 2–4)', () => {
     for (const change of [
       { currency: 'USD' },
       { isControl: true },
+      { itemKind: 'document' },
       { isMonetary: true },
       { requiredDimensionCount: 1 },
     ] as const) {
@@ -214,8 +216,21 @@ describe('checkAccountShape (S02 checks 2–4)', () => {
           class: 'liability',
           statementLine: 'bs.client_money',
           isControl: true,
+          itemKind: 'running',
         }),
       ),
+    ).toBe('none');
+  });
+
+  it('gives a control account, and only a control account, an item kind (S04)', () => {
+    expect(codeOf(() => checkAccountShape({ ...postable, isControl: true }))).toBe(
+      'VALIDATION_FAILED',
+    );
+    expect(codeOf(() => checkAccountShape({ ...postable, itemKind: 'document' }))).toBe(
+      'VALIDATION_FAILED',
+    );
+    expect(
+      codeOf(() => checkAccountShape({ ...postable, isControl: true, itemKind: 'document' })),
     ).toBe('none');
   });
 });
@@ -261,6 +276,7 @@ describe('the account schemas', () => {
       statementLine: null,
       currency: null,
       isControl: false,
+      itemKind: null,
       isMonetary: false,
       requiredDimensionTypeIds: [],
     });

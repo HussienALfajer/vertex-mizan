@@ -20,9 +20,10 @@
  *   are posted (ADR 0005, drafts are not ledger).
  * - `ledger-state`: `created_at` and `updated_at`, no `archived_at`; rows that summarise the
  *   append-only ledger and change only as it grows (the ledger head, the entry-number counters, the
- *   periods, the period balances; ADR 0012). The app role has `SELECT, INSERT, UPDATE`, never
- *   `DELETE`; `refuse_delete()` triggers refuse `DELETE` and `TRUNCATE` for every role, and a pinned
- *   guard trigger before `INSERT` and `UPDATE` allows only the change an append makes.
+ *   periods, the period balances, the open items' balances; ADR 0012, S04). The app role has
+ *   `SELECT, INSERT, UPDATE`, never `DELETE`; `refuse_delete()` triggers refuse `DELETE` and
+ *   `TRUNCATE` for every role, and a pinned guard trigger before `INSERT` and `UPDATE` allows only
+ *   the change an append makes.
  * - `ephemeral`: `created_at` and `updated_at`, no `archived_at`; rows deleted when they expire or
  *   are used or sent (sessions, one-time tokens, two-factor secrets, rate-limit counters, the email
  *   outbox; S01). Platform
@@ -84,6 +85,10 @@ export const tableRegistry = {
   // trust (S03 rules 19–21): the daily anchors of the chain and the owner's full exports.
   chain_anchors: { module: 'trust', scope: 'company', kind: 'append-only' },
   company_exports: { module: 'trust', scope: 'company', kind: 'queue' },
+  open_items: { module: 'open-items', scope: 'company', kind: 'append-only' },
+  open_item_movements: { module: 'open-items', scope: 'company', kind: 'append-only' },
+  open_item_due_dates: { module: 'open-items', scope: 'company', kind: 'append-only' },
+  open_item_balances: { module: 'open-items', scope: 'company', kind: 'ledger-state' },
 } as const satisfies Record<string, TableInfo>;
 
 export type TableScope = 'company' | 'platform';

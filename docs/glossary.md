@@ -36,6 +36,7 @@ One name per concept. Code, contracts and tables use the English term; the Arabi
 | مبلغ محمول | carried amount | A line that releases, clears, settles or reverses a balance at that balance's own amounts; never converted again |
 | رصيد جارٍ | running balance | An item kept per counterparty (client ad funds), cleared at its average carrying amount; it may cross zero |
 | نوع البند / بند مستند | item kind / document item | A control account's kind of open item: one per document (an invoice, a milestone's contract asset), opened once and cleared toward zero; or a running balance per client (ADR 0013) |
+| حركة البند | item movement | The one movement of an item each line on a control account makes, with that line's three amounts: an opening, an addition, a clearing or a void's exchange difference |
 | تسوية / تسوية جزئية | settlement / partial settlement | A movement that clears an open item at its carrying amount, in proportion to what remains open; the last clears everything left (ADR 0013) |
 | أعمار الذمم | receivables ageing | Open receivable items by days past their due date, in six buckets: not yet due, 1–30, 31–60, 61–90, 91–180, over 180 |
 | تاريخ الاستحقاق / أيام التأخير | due date / days past due | When an item is due (its document date when none is set) / the report date minus the due date in force on it |

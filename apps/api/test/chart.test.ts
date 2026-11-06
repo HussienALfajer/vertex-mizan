@@ -172,6 +172,35 @@ describe('POST /api/accounts (rule 2)', () => {
     expect(await actions(owner.company.id)).toContain('account.created');
   });
 
+  it('gives a control account its item kind, and only a control account one (S04)', async () => {
+    const owner = await ownerWith('service-agency');
+    const accounts = await tree(owner.browser);
+    expect(
+      ['112001', '113001', '213001', '111004'].map((code) => byCode(accounts, code).itemKind),
+    ).toEqual(['document', 'document', 'running', null]);
+    const receivables = byCode(accounts, '112');
+    const account = (change: Record<string, unknown>) =>
+      owner.browser.post('/api/accounts', {
+        parentId: receivables.id,
+        code: '112009',
+        kind: 'postable',
+        name: 'ذمم مدينة تجريبية',
+        statementLine: 'bs.trade_receivables',
+        isMonetary: true,
+        ...change,
+      });
+    expect((await account({ isControl: true })).body.code).toBe('VALIDATION_FAILED');
+    expect((await account({ itemKind: 'document' })).body.code).toBe('VALIDATION_FAILED');
+    const created = await account({ isControl: true, itemKind: 'running' });
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
+    expect(created.body).toMatchObject({ isControl: true, itemKind: 'running' });
+    // No longer a control account, it drops its item kind.
+    const plain = await owner.browser.patch(`/api/accounts/${created.body.id}`, {
+      isControl: false,
+    });
+    expect(plain.body).toMatchObject({ isControl: false, itemKind: null });
+  });
+
   it('refuses a child of a postable account, a misfit statement line and a header with flags', async () => {
     const owner = await ownerWith(null);
     const assets = byCode(await tree(owner.browser), '1');
@@ -242,11 +271,20 @@ describe('PATCH /api/accounts/:id (rules 3–4)', () => {
     const accounts = await tree(owner.browser);
     const created = await owner.browser.post('/api/accounts', euroBank(byCode(accounts, '111').id));
     const id = created.body.id as string;
+    // A control account names the kind of its items (S04); without one it is refused.
+    expect((await owner.browser.patch(`/api/accounts/${id}`, { isControl: true })).body.code).toBe(
+      'VALIDATION_FAILED',
+    );
     const renamed = await owner.browser.patch(`/api/accounts/${id}`, {
       name: 'المصرف — يورو',
       isControl: true,
+      itemKind: 'document',
     });
-    expect(renamed.body).toMatchObject({ name: 'المصرف — يورو', isControl: true });
+    expect(renamed.body).toMatchObject({
+      name: 'المصرف — يورو',
+      isControl: true,
+      itemKind: 'document',
+    });
     const receivables = byCode(accounts, '112');
     const moved = await owner.browser.patch(`/api/accounts/${id}`, {
       parentId: receivables.id,
@@ -264,6 +302,9 @@ describe('PATCH /api/accounts/:id (rules 3–4)', () => {
     const locked = await owner.browser.patch(`/api/accounts/${id}`, { currency: 'USD' });
     expect(locked.status).toBe(409);
     expect(locked.body.code).toBe('ACCOUNT_LOCKED');
+    expect(
+      (await owner.browser.patch(`/api/accounts/${id}`, { itemKind: 'running' })).body.code,
+    ).toBe('ACCOUNT_LOCKED');
     const kept = await owner.browser.patch(`/api/accounts/${id}`, {
       name: 'اسم بعد الاستخدام',
       statementLine: 'bs.other_current_assets',

@@ -111,11 +111,50 @@ test.describe('the chart', () => {
       statementLine: 'bs.cash',
       currency: 'EUR',
       isControl: false,
+      itemKind: null,
       // Q12: a currency restriction turns the monetary flag on.
       isMonetary: true,
       requiredDimensionTypeIds: [],
     });
     expect(create.seen[0]?.headers()['x-mizan-company']).toBe(companyId);
+  });
+
+  test('asks for the item kind of a new control account (S04)', async ({ page }) => {
+    const receivables = accountOf('112');
+    const added: Account = {
+      ...accountOf('112001'),
+      id: '01900000-0000-7000-8002-000000112003',
+      code: '112003',
+      name: 'ذمم عملاء بالتقسيط',
+      itemKind: 'document',
+    };
+    const create = recorder({ status: 201, json: added });
+    await page.route('**/api/accounts', (route) =>
+      route.request().method() === 'POST'
+        ? route.fulfill({ status: 201, json: create.mock(route.request()).json })
+        : route.fallback(),
+    );
+    await page.goto('/chart');
+    await rowAction(page, '112', t.actions.addChild);
+    const sheet = page.getByRole('dialog', { name: s.createTitle });
+    await expect(sheet.getByLabel(s.code)).toHaveValue('112003');
+    await sheet.getByLabel(s.name).fill('ذمم عملاء بالتقسيط');
+    await choose(page, s.statementLine, 'الذمم المدينة التجارية والأخرى');
+    await expect(sheet.getByRole('combobox', { name: s.itemKind })).toHaveCount(0);
+    await sheet.getByRole('switch', { name: s.control }).click();
+    await sheet.getByRole('button', { name: s.create }).click();
+    await expect(fieldError(sheet, t.validation.itemKind)).toBeVisible();
+    expect(create.seen).toHaveLength(0);
+    await choose(page, s.itemKind, t.itemKinds.document);
+    await sheet.getByRole('button', { name: s.create }).click();
+    await expect(sheet).toHaveCount(0);
+    expect(create.seen[0]?.postDataJSON()).toMatchObject({
+      parentId: receivables.id,
+      code: '112003',
+      statementLine: 'bs.trade_receivables',
+      isControl: true,
+      itemKind: 'document',
+    });
   });
 
   test('shows the API refusal of a taken code', async ({ page }) => {

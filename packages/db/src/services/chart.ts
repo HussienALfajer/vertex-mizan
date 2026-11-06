@@ -41,6 +41,7 @@ export function auditedAccountOf(row: AccountRow, requiredDimensionTypeIds: read
     statementLine: row.statementLine,
     currency: row.currency,
     isControl: row.isControl,
+    itemKind: row.itemKind,
     isMonetary: row.isMonetary,
     requiredDimensionTypeIds: [...requiredDimensionTypeIds],
   };
@@ -125,6 +126,7 @@ export async function createAccount(
     statementLine: input.statementLine,
     currency: input.currency,
     isControl: input.isControl,
+    itemKind: input.itemKind,
     isMonetary: input.isMonetary,
     requiredDimensionCount: input.requiredDimensionTypeIds.length,
   });
@@ -146,6 +148,7 @@ export async function createAccount(
           statementLine: input.statementLine,
           currency: input.currency,
           isControl: input.isControl,
+          itemKind: input.itemKind,
           isMonetary: input.isMonetary,
         })
         .returning(),
@@ -212,6 +215,7 @@ export async function applyChartTemplate(
       statementLine: account.statementLine,
       currency: account.currency,
       isControl: account.isControl,
+      itemKind: account.itemKind,
       isMonetary: account.isMonetary,
     };
   });

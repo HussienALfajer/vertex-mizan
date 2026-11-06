@@ -21,6 +21,34 @@ export class ScenarioFailure extends Error {
 
 type Run = (context: CaseContext) => Promise<StepResult>;
 
+/** A dimension value a case names: its type's code and its own code (`client: C1`). */
+export type NamedValue = { readonly type: string; readonly code: string };
+
+/**
+ * Every dimension value a case names, in the order first named: in its manual steps' lines, its
+ * expected lines, balances and open items. The setup makes each one, so a case states its values by
+ * code and never creates them in a step (S04).
+ */
+export function namedDimensionValues(scenarioCase: ScenarioCase): NamedValue[] {
+  const named = new Map<string, NamedValue>();
+  const add = (dims: unknown) => {
+    if (typeof dims !== 'object' || dims === null) return;
+    for (const [type, code] of Object.entries(dims)) {
+      if (typeof code === 'string') named.set(JSON.stringify([type, code]), { type, code });
+    }
+  };
+  for (const step of scenarioCase.steps) {
+    if (step.kind !== 'manual') continue;
+    const lines = (step.payload as { lines?: unknown }).lines;
+    if (Array.isArray(lines)) for (const line of lines) add((line as { dims?: unknown }).dims);
+  }
+  const { expect } = scenarioCase;
+  for (const entry of expect.entries) for (const line of entry.lines) add(line.dims);
+  for (const balance of expect.balances) add(balance.dims);
+  for (const item of expect.openItems) add(item.dims);
+  return [...named.values()];
+}
+
 function executorFor(harness: ScenarioHarness, step: Step): Run | undefined {
   switch (step.kind) {
     case 'event': {
@@ -106,7 +134,12 @@ export async function runCase(
   if (!harness.setUp || !harness.ledger || missing.length > 0) throw new ScenarioFailure(missing);
 
   const { company, rates, steps, expect } = scenarioCase;
-  const companyId = await harness.setUp(database, company, rates);
+  const companyId = await harness.setUp(
+    database,
+    company,
+    rates,
+    namedDimensionValues(scenarioCase),
+  );
   const context: CaseContext = { database, companyId, company };
   const differences: string[] = [];
   const corrections = new Map(expect.corrections.map((c) => [c.step, c.usedBy]));

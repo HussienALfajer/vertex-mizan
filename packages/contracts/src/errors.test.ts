@@ -101,6 +101,14 @@ describe('error codes', () => {
       ['ATTACHMENT_TOO_LARGE', 413],
       ['ATTACHMENT_LIMIT', 409],
       ['EXPORT_IN_PROGRESS', 409],
+      ['OPEN_ITEM_REQUIRED', 422],
+      ['ACCOUNT_NOT_CONTROL', 422],
+      ['OPEN_ITEM_REFERENCE_TAKEN', 409],
+      ['OPEN_ITEM_MISMATCH', 422],
+      ['OPEN_ITEM_DIRECTION', 422],
+      ['OPEN_ITEM_HAS_SETTLEMENTS', 409],
+      ['OPEN_ITEM_MEMO_REQUIRED', 422],
+      ['OPEN_ITEM_FROM_HUB', 409],
     ]);
   });
 

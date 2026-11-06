@@ -55,5 +55,6 @@ export {
 } from './schema/registry.js';
 export * from './services/chart.js';
 export * from './services/companies.js';
+export * from './services/dimensions.js';
 export * from './services/rates.js';
 export { onUniqueViolation } from './unique-violation.js';

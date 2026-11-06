@@ -1,0 +1,1 @@
+ALTER TABLE "chart_accounts" ADD COLUMN "item_kind" text;

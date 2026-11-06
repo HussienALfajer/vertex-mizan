@@ -62,6 +62,10 @@ const COVERED = [
   'entry_attachments',
   'chain_anchors',
   'company_exports',
+  'open_items',
+  'open_item_movements',
+  'open_item_due_dates',
+  'open_item_balances',
 ];
 
 const auditRow = fc.record({
@@ -180,7 +184,7 @@ async function seedChart(tx: Transaction, companyId: string, userId: string, dat
 
 /**
  * S03's rows: an expense in a foreign currency carrying a service, converted at a market rate,
- * and its reversal, posted through the posting function.
+ * and its reversal, posted through the posting function; S04's: an invoice opening an item.
  */
 async function seedLedger(tx: Transaction, companyId: string, userId: string, data: CompanyData) {
   await addAccount(tx, companyId, '5', { code: '59' });
@@ -277,6 +281,43 @@ async function seedLedger(tx: Transaction, companyId: string, userId: string, da
     { companyId, draftId, lineNo: 1, accountId: debit, currency: foreign, amountMinor: 500n },
     { companyId, draftId, lineNo: 2 },
   ]);
+  // S04's rows: a manual invoice opening a document item on a control account, with a due date.
+  await addAccount(tx, companyId, '1', { code: '13' });
+  await addAccount(tx, companyId, '13', { code: '131' });
+  const receivables = await addAccount(tx, companyId, '131', {
+    code: '131001',
+    kind: 'postable',
+    statementLine: 'bs.trade_receivables',
+    isControl: true,
+    itemKind: 'document',
+  });
+  await post(tx, {
+    ...common,
+    idempotencyKey: `generated-item-${companyId}`,
+    entryDate: '2026-11-05',
+    content: {
+      kind: 'manual',
+      today: '2026-11-30',
+      dealtRates: [],
+      lines: [
+        {
+          accountId: receivables,
+          dimensionValueIds: [],
+          currency: data.bookCurrency,
+          amountMinor: 1_000n,
+          memo: null,
+          newItem: { reference: 'M-1', dueOn: '2026-11-20' },
+        },
+        {
+          accountId: credit,
+          dimensionValueIds: [],
+          currency: data.bookCurrency,
+          amountMinor: -1_000n,
+          memo: null,
+        },
+      ],
+    },
+  });
   for (const owner of [{ draftId }, { entryId: entry.id }]) {
     const id = uuidv7();
     await tx.insert(entryAttachments).values({
@@ -294,11 +335,11 @@ async function seedLedger(tx: Transaction, companyId: string, userId: string, da
 }
 
 /** The entries `seedLedger` posts, each with one audit row. */
-const POSTED = 2;
+const POSTED = 3;
 
-/** The rows each S02 and S03 table holds for a company seeded with `data`. */
+/** The rows each S02, S03 and S04 table holds for a company seeded with `data`. */
 const expectedRows = (data: CompanyData): Record<string, number> => ({
-  chart_accounts: 5 + data.headers.length + 3 + 4,
+  chart_accounts: 5 + data.headers.length + 3 + 4 + 3,
   account_required_dimensions: 1,
   account_roles: 1,
   dimension_types: 4,
@@ -308,20 +349,26 @@ const expectedRows = (data: CompanyData): Record<string, number> => ({
   bulletin_holidays: data.holidays.length,
   posting_requests: POSTED,
   journal_entries: POSTED,
-  journal_lines: 4,
-  // The expense's two lines convert into the book currency; the reversal carries its amounts.
+  journal_lines: 6,
+  // The expense's two lines convert into the book currency; the reversal carries its amounts, and
+  // the invoice is in the book currency.
   line_conversions: 2,
   dimension_sets: 2,
   dimension_set_values: 1,
   ledger_heads: 1,
   entry_number_counters: 1,
   periods: 1,
-  period_balances: 2,
+  // The expense's two accounts in its currency, the invoice's two in the book currency.
+  period_balances: 4,
   entry_drafts: 1,
   entry_draft_lines: 2,
   entry_attachments: 2,
   chain_anchors: 1,
   company_exports: 1,
+  open_items: 1,
+  open_item_movements: 1,
+  open_item_due_dates: 1,
+  open_item_balances: 1,
 });
 
 async function seed(userId: string, data: CompanyData): Promise<string> {

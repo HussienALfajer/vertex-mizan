@@ -7,5 +7,6 @@ export * from './dimensions.js';
 export * from './drafts.js';
 export * from './email.js';
 export * from './ledger.js';
+export * from './open-items.js';
 export * from './rates.js';
 export * from './trust.js';

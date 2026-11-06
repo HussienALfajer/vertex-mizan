@@ -4462,7 +4462,7 @@
             }
           },
           "409": {
-            "description": "COMPANY_NOT_SELECTED, COMPANY_SWITCHED, COMPANY_ARCHIVED, ENTRY_NOT_REVERSIBLE, ENTRY_ALREADY_REVERSED, PERIOD_CLOSED",
+            "description": "COMPANY_NOT_SELECTED, COMPANY_SWITCHED, COMPANY_ARCHIVED, ENTRY_NOT_REVERSIBLE, ENTRY_ALREADY_REVERSED, PERIOD_CLOSED, OPEN_ITEM_HAS_SETTLEMENTS",
             "content": {
               "application/json": {
                 "schema": {
@@ -4472,7 +4472,7 @@
             }
           },
           "422": {
-            "description": "VALIDATION_FAILED, REVERSAL_BEFORE_ORIGINAL, ENTRY_DATE_OUT_OF_RANGE",
+            "description": "VALIDATION_FAILED, REVERSAL_BEFORE_ORIGINAL, ENTRY_DATE_OUT_OF_RANGE, RATE_MISSING",
             "content": {
               "application/json": {
                 "schema": {
@@ -5558,7 +5558,7 @@
             }
           },
           "422": {
-            "description": "VALIDATION_FAILED, ENTRY_TOO_FEW_LINES, ENTRY_UNBALANCED, ENTRY_DATE_OUT_OF_RANGE, RATE_MISSING, DEALT_RATE_NOT_ACCEPTED, RATE_ORIENTATION, INVALID_RATE, SYP_BEFORE_REDENOMINATION, ACCOUNT_IS_CONTROL, ACCOUNT_ROLE_MISSING, ACCOUNT_NOT_POSTABLE, ACCOUNT_BLOCKED, ACCOUNT_ARCHIVED, ACCOUNT_CURRENCY_MISMATCH, DIMENSION_REQUIRED, DIMENSION_VALUE_ARCHIVED, DIMENSION_PARENT_MISMATCH, REVERSAL_BEFORE_ORIGINAL",
+            "description": "VALIDATION_FAILED, ENTRY_TOO_FEW_LINES, ENTRY_UNBALANCED, ENTRY_DATE_OUT_OF_RANGE, RATE_MISSING, DEALT_RATE_NOT_ACCEPTED, RATE_ORIENTATION, INVALID_RATE, SYP_BEFORE_REDENOMINATION, ACCOUNT_IS_CONTROL, ACCOUNT_ROLE_MISSING, ACCOUNT_NOT_POSTABLE, ACCOUNT_BLOCKED, ACCOUNT_ARCHIVED, ACCOUNT_CURRENCY_MISMATCH, DIMENSION_REQUIRED, DIMENSION_VALUE_ARCHIVED, DIMENSION_PARENT_MISMATCH, REVERSAL_BEFORE_ORIGINAL, OPEN_ITEM_REQUIRED, ACCOUNT_NOT_CONTROL, OPEN_ITEM_DIRECTION, RELEASE_EXCEEDS_BALANCE",
             "content": {
               "application/json": {
                 "schema": {
@@ -5896,7 +5896,7 @@
             }
           },
           "422": {
-            "description": "VALIDATION_FAILED, ENTRY_TOO_FEW_LINES, ENTRY_UNBALANCED, ENTRY_DATE_OUT_OF_RANGE, RATE_MISSING, DEALT_RATE_NOT_ACCEPTED, RATE_ORIENTATION, INVALID_RATE, SYP_BEFORE_REDENOMINATION, ACCOUNT_IS_CONTROL, ACCOUNT_ROLE_MISSING, ACCOUNT_NOT_POSTABLE, ACCOUNT_BLOCKED, ACCOUNT_ARCHIVED, ACCOUNT_CURRENCY_MISMATCH, DIMENSION_REQUIRED, DIMENSION_VALUE_ARCHIVED, DIMENSION_PARENT_MISMATCH, REVERSAL_BEFORE_ORIGINAL",
+            "description": "VALIDATION_FAILED, ENTRY_TOO_FEW_LINES, ENTRY_UNBALANCED, ENTRY_DATE_OUT_OF_RANGE, RATE_MISSING, DEALT_RATE_NOT_ACCEPTED, RATE_ORIENTATION, INVALID_RATE, SYP_BEFORE_REDENOMINATION, ACCOUNT_IS_CONTROL, ACCOUNT_ROLE_MISSING, ACCOUNT_NOT_POSTABLE, ACCOUNT_BLOCKED, ACCOUNT_ARCHIVED, ACCOUNT_CURRENCY_MISMATCH, DIMENSION_REQUIRED, DIMENSION_VALUE_ARCHIVED, DIMENSION_PARENT_MISMATCH, REVERSAL_BEFORE_ORIGINAL, OPEN_ITEM_REQUIRED, ACCOUNT_NOT_CONTROL, OPEN_ITEM_DIRECTION, RELEASE_EXCEEDS_BALANCE",
             "content": {
               "application/json": {
                 "schema": {
@@ -7267,7 +7267,15 @@
           "ATTACHMENT_TYPE",
           "ATTACHMENT_TOO_LARGE",
           "ATTACHMENT_LIMIT",
-          "EXPORT_IN_PROGRESS"
+          "EXPORT_IN_PROGRESS",
+          "OPEN_ITEM_REQUIRED",
+          "ACCOUNT_NOT_CONTROL",
+          "OPEN_ITEM_REFERENCE_TAKEN",
+          "OPEN_ITEM_MISMATCH",
+          "OPEN_ITEM_DIRECTION",
+          "OPEN_ITEM_HAS_SETTLEMENTS",
+          "OPEN_ITEM_MEMO_REQUIRED",
+          "OPEN_ITEM_FROM_HUB"
         ]
       },
       "PageQuery": {
@@ -8157,6 +8165,14 @@
           "isControl": {
             "type": "boolean"
           },
+          "itemKind": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ItemKind"
+              }
+            ]
+          },
           "isMonetary": {
             "type": "boolean"
           },
@@ -8237,6 +8253,7 @@
           "statementLine",
           "currency",
           "isControl",
+          "itemKind",
           "isMonetary",
           "requiredDimensionTypeIds",
           "roles",
@@ -8269,6 +8286,13 @@
         "enum": [
           "debit",
           "credit"
+        ]
+      },
+      "ItemKind": {
+        "type": "string",
+        "enum": [
+          "document",
+          "running"
         ]
       },
       "AccountRole": {
@@ -8336,6 +8360,15 @@
           "isControl": {
             "default": false,
             "type": "boolean"
+          },
+          "itemKind": {
+            "default": null,
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ItemKind"
+              }
+            ]
           },
           "isMonetary": {
             "default": false,
@@ -8426,6 +8459,14 @@
           },
           "isControl": {
             "type": "boolean"
+          },
+          "itemKind": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ItemKind"
+              }
+            ]
           },
           "isMonetary": {
             "type": "boolean"

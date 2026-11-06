@@ -48,7 +48,10 @@ import {
 import { ApiParamsFrom, ApiQueryFrom } from '../../core/http/api-parameters.js';
 import { DraftsService } from './drafts.service.js';
 
-/** The refusals of the posting function a draft's posting or approval may answer (rules 5–16). */
+/**
+ * The refusals of the posting function a draft's posting or approval may answer (S03 rules 5–16;
+ * S04 rules 2–9 on a control account). `ACCOUNT_IS_CONTROL` is no longer raised since S04.
+ */
 const POSTING_ERRORS = [
   'ENTRY_TOO_FEW_LINES',
   'ENTRY_UNBALANCED',
@@ -72,6 +75,10 @@ const POSTING_ERRORS = [
   'ENTRY_ALREADY_REVERSED',
   'REVERSAL_BEFORE_ORIGINAL',
   'IDEMPOTENCY_CONFLICT',
+  'OPEN_ITEM_REQUIRED',
+  'ACCOUNT_NOT_CONTROL',
+  'OPEN_ITEM_DIRECTION',
+  'RELEASE_EXCEEDS_BALANCE',
 ] as const;
 
 /** `/api/drafts`: the drafts of manual entries and the approval queue (S03 rules 4–11, 17). */

@@ -63,6 +63,7 @@ export const AUDITED_FIELDS = {
     'statementLine',
     'currency',
     'isControl',
+    'itemKind',
     'isMonetary',
     'requiredDimensionTypeIds',
     'blockedReason',
@@ -95,6 +96,9 @@ export const AUDITED_FIELDS = {
     'reference',
     'lineCount',
     'reverses',
+    // S04: the items its lines moved, and the reversal a void's difference entry follows.
+    'items',
+    'follows',
   ],
   // The drafts of manual entries and their attachments (S03 PR 2).
   entry_draft: [

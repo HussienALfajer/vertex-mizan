@@ -1,8 +1,8 @@
 # Settling a receivable by manual entry
 
-Status: Proposed
+Status: Approved (owner, 2026-11-06)
 
-The expected entries were approved by the owner on 2026-11-06, with an overpayment's excess posted to other payables `211003` and an opening reversible once every settlement on its item is reversed. The cases stay `Proposed` until S04 brings their executors: the manual line's item fields, the item lines of the posting function, the open-item reader, and a setup that creates the dimension values a case names (client `C1`, service `S1`).
+The expected entries were approved by the owner on 2026-11-06, with an overpayment's excess posted to other payables `211003` and an opening reversible once every settlement on its item is reversed. The book runs every case through the posting function since S04 brought the manual line's item fields, the item lines of the posting function, the open-item reader and a setup that creates the dimension values a case names (client `C1`, service `S1`), with no expected value changed; `packages/ledger`'s `items.test.ts` builds the main ones too.
 
 ## Rule
 
@@ -734,7 +734,8 @@ rates:
   - { date: 2026-11-19, base: USD, quote: SYP, rate: "123.0000", type: bulletin }
   - { date: 2026-11-19, base: USD, quote: SYP, rate: "124.0000", type: market }
   - { date: 2026-11-25, base: USD, quote: SYP, rate: "123.5000", type: bulletin }
-  - { date: 2026-11-25, base: USD, quote: SYP, rate: "124.0000", type: market }
+  # the market rate of 19 November, 124, is still in force on the 25th: the rate table takes no
+  # second row of the same rate (RATE_UNCHANGED, S02 rule 14)
 steps:
   - manual: invoice M-1 to client C1
     accounting_date: 2026-11-03

@@ -8,6 +8,7 @@ import {
 } from './chart.js';
 import type { BuiltinDimensionType } from './dimensions.js';
 import type { CurrencyCode } from './money.js';
+import type { ItemKind } from './open-items.js';
 
 /**
  * The chart templates of S02 ("Templates", drafts until Syrian accountants review them, open
@@ -23,6 +24,8 @@ export interface TemplateAccount {
   readonly normalBalance: NormalBalance;
   readonly isMonetary: boolean;
   readonly isControl: boolean;
+  /** The kind of a control account's open items (S04, ADR 0013); null on any other account. */
+  readonly itemKind: ItemKind | null;
   readonly currency: CurrencyCode | null;
   readonly requiredDimensions: readonly BuiltinDimensionType[];
   readonly statementLine: string | null;
@@ -46,6 +49,7 @@ const h = (code: string, name: string, nameLatin: string): TemplateAccount => ({
   normalBalance: defaultNormalBalance(accountClassOfCode(code)),
   isMonetary: false,
   isControl: false,
+  itemKind: null,
   currency: null,
   requiredDimensions: [],
   statementLine: null,
@@ -55,7 +59,8 @@ const h = (code: string, name: string, nameLatin: string): TemplateAccount => ({
 interface PostableOptions {
   readonly balance?: NormalBalance;
   readonly monetary?: boolean;
-  readonly control?: boolean;
+  /** A control account, with the kind of its open items (S04). */
+  readonly control?: ItemKind;
   readonly currency?: CurrencyCode;
   readonly dims?: readonly BuiltinDimensionType[];
   readonly role?: AccountRole;
@@ -75,7 +80,8 @@ const p = (
   kind: 'postable',
   normalBalance: options.balance ?? defaultNormalBalance(accountClassOfCode(code)),
   isMonetary: options.monetary ?? false,
-  isControl: options.control ?? false,
+  isControl: options.control !== undefined,
+  itemKind: options.control ?? null,
   currency: options.currency ?? null,
   requiredDimensions: options.dims ?? [],
   statementLine,
@@ -110,14 +116,14 @@ const serviceAgencyAccounts: readonly TemplateAccount[] = [
   h('112', 'الذمم المدينة', 'Receivables'),
   p('112001', 'ذمم العملاء التجارية', 'Trade receivables', 'bs.trade_receivables', {
     ...M,
-    control: true,
+    control: 'document',
     dims: ['client'],
   }),
   p('112002', 'ذمم مدينة أخرى', 'Other receivables', 'bs.trade_receivables', M),
   h('113', 'أصول العقود', 'Contract assets'),
   p('113001', 'أصول العقود', 'Contract assets', 'bs.contract_assets', {
     ...M,
-    control: true,
+    control: 'document',
     dims: ['client', 'contract'],
   }),
   h('114', 'أصول متداولة أخرى', 'Other current assets'),
@@ -162,7 +168,7 @@ const serviceAgencyAccounts: readonly TemplateAccount[] = [
   h('213', 'أمانات العملاء', 'Client money held'),
   p('213001', 'أمانات إعلانات العملاء', 'Client ad funds held', 'bs.client_money', {
     ...M,
-    control: true,
+    control: 'running',
     currency: 'USD',
     dims: ['client'],
   }),

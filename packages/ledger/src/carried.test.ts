@@ -1,6 +1,6 @@
 import { money } from '@vertex-mizan/contracts';
 import { describe, expect, it } from 'vitest';
-import { clearOpenItem, moveRunningBalance, openItemCarrying, reverseLines } from './carried.js';
+import { clearOpenItem, moveRunningBalance, reverseLines } from './carried.js';
 import { type CarriedAmounts, carriedLine } from './lines.js';
 import { measuredLine } from './measure.js';
 import { calendar, rate, refusal, sypUsd } from './test-fixtures.js';
@@ -12,24 +12,31 @@ const receivable: CarriedAmounts = {
   parallelMinor: 10_000n,
 };
 
-describe('clearOpenItem', () => {
-  it('clears in proportion to the transaction amount, with cumulative rounding', () => {
-    // 33.33, 33.33 and 33.34 USD: round(1 213 333 × 3 333 ÷ 10 000) = 404 404, then
-    // round(1 213 333 × 6 666 ÷ 10 000) = 808 808, then all of 1 213 333.
-    const first = clearOpenItem({ measured: receivable, openMinor: 10_000n }, -3_333n);
-    const second = clearOpenItem({ measured: receivable, openMinor: 6_667n }, -3_333n);
-    const last = clearOpenItem({ measured: receivable, openMinor: 3_334n }, -3_334n);
+describe('clearOpenItem (ADR 0013)', () => {
+  it('clears in proportion to what remains, and the last clearing clears everything left', () => {
+    // 33.33, 33.33 and 33.34 USD: round(1 213 333 × 3 333 ÷ 10 000) = 404 404, leaving 808 929;
+    // round(808 929 × 3 333 ÷ 6 667) = round(404 404.24) = 404 404, leaving 404 525; then all.
+    const first = clearOpenItem(receivable, -3_333n);
     expect(first).toEqual({
       transaction: money(-3_333n, 'USD'),
       bookMinor: -404_404n,
       parallelMinor: -3_333n,
     });
+    const afterFirst = {
+      transaction: money(6_667n, 'USD'),
+      bookMinor: 808_929n,
+      parallelMinor: 6_667n,
+    };
+    const second = clearOpenItem(afterFirst, -3_333n);
     expect(second).toEqual({
       transaction: money(-3_333n, 'USD'),
       bookMinor: -404_404n,
       parallelMinor: -3_333n,
     });
-    // The last part clears what remains, 1 213 333 − 808 808, so the parts always sum exactly.
+    const last = clearOpenItem(
+      { transaction: money(3_334n, 'USD'), bookMinor: 404_525n, parallelMinor: 3_334n },
+      -3_334n,
+    );
     expect(last).toEqual({
       transaction: money(-3_334n, 'USD'),
       bookMinor: -404_525n,
@@ -37,30 +44,42 @@ describe('clearOpenItem', () => {
     });
   });
 
-  it('gives the carrying amount that remains, zero in every ledger once cleared', () => {
-    expect(openItemCarrying({ measured: receivable, openMinor: 6_667n })).toEqual({
-      transaction: money(6_667n, 'USD'),
-      bookMinor: 808_929n,
-      parallelMinor: 6_667n,
-    });
-    expect(openItemCarrying({ measured: receivable, openMinor: 0n })).toEqual({
-      transaction: money(0n, 'USD'),
-      bookMinor: 0n,
-      parallelMinor: 0n,
+  it('starts from what the item carries after a void, so the last clearing leaves zero', () => {
+    // S04's SYP item with halves in the parallel ledger (receivables/manual-settlement): 82 645
+    // parallel; 30 000 cleared (24 794), 35 000 cleared (28 926), the first voided (+24 794), so
+    // 65 000 SYP open carry 53 719 USD cents, all of which the last receipt clears.
+    const item = {
+      transaction: money(10_000_000n, 'SYP'),
+      bookMinor: 10_000_000n,
+      parallelMinor: 82_645n,
+    };
+    const first = clearOpenItem(item, -3_000_000n);
+    expect(first.parallelMinor).toBe(-24_794n);
+    const second = clearOpenItem(
+      { transaction: money(7_000_000n, 'SYP'), bookMinor: 7_000_000n, parallelMinor: 57_851n },
+      -3_500_000n,
+    );
+    expect(second.parallelMinor).toBe(-28_926n);
+    const last = clearOpenItem(
+      { transaction: money(6_500_000n, 'SYP'), bookMinor: 6_500_000n, parallelMinor: 53_719n },
+      -6_500_000n,
+    );
+    expect(last).toEqual({
+      transaction: money(-6_500_000n, 'SYP'),
+      bookMinor: -6_500_000n,
+      parallelMinor: -53_719n,
     });
   });
 
   it('refuses to clear more than is open, and a movement that would add to the item', () => {
-    expect(refusal(() => clearOpenItem({ measured: receivable, openMinor: 3_334n }, -3_335n))).toBe(
-      'RELEASE_EXCEEDS_BALANCE',
-    );
-    expect(() => clearOpenItem({ measured: receivable, openMinor: 3_334n }, 1n)).toThrow(
-      RangeError,
-    );
-    expect(() => clearOpenItem({ measured: receivable, openMinor: -1n }, 0n)).toThrow(RangeError);
-    expect(() => clearOpenItem({ measured: receivable, openMinor: 10_001n }, 0n)).toThrow(
-      RangeError,
-    );
+    const rest = { transaction: money(3_334n, 'USD'), bookMinor: 404_525n, parallelMinor: 3_334n };
+    expect(refusal(() => clearOpenItem(rest, -3_335n))).toBe('RELEASE_EXCEEDS_BALANCE');
+    const settled = { transaction: money(0n, 'USD'), bookMinor: 0n, parallelMinor: 0n };
+    expect(refusal(() => clearOpenItem(settled, -1n))).toBe('RELEASE_EXCEEDS_BALANCE');
+    expect(() => clearOpenItem(rest, 1n)).toThrow(RangeError);
+    expect(() => clearOpenItem(rest, 0n)).toThrow(RangeError);
+    // A settled item that is not zero in a ledger breaks invariant 9: never cleared further.
+    expect(() => clearOpenItem({ ...settled, bookMinor: 1n }, -1n)).toThrow(RangeError);
   });
 
   it('clears a credit balance with debits the same way', () => {
@@ -70,8 +89,8 @@ describe('clearOpenItem', () => {
       bookMinor: -3_633_333n,
       parallelMinor: -30_000n,
     };
-    // round(−3 633 333 × 10 000 ÷ 30 000) = round(−1 211 111) = −1 211 111
-    expect(clearOpenItem({ measured: liability, openMinor: -30_000n }, 10_000n)).toEqual({
+    // round(−3 633 333 × 10 000 ÷ −30 000) = round(1 211 111) = 1 211 111
+    expect(clearOpenItem(liability, 10_000n)).toEqual({
       transaction: money(10_000n, 'USD'),
       bookMinor: 1_211_111n,
       parallelMinor: 10_000n,

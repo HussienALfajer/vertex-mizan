@@ -342,7 +342,7 @@ describe('the lock after first use (S02 check 5) as the app role', () => {
     ['kind', { kind: 'header', statementLine: null }],
     ['normal balance', { normalBalance: 'credit' }],
     ['currency', { currency: 'SYP' }],
-    ['control flag', { isControl: true }],
+    ['control flag', { isControl: true, itemKind: 'document' }],
     ['monetary flag', { isMonetary: true }],
     ['first use', { firstPostedAt: new Date('2026-11-05T09:00:00Z') }],
   ];
@@ -370,13 +370,30 @@ describe('the lock after first use (S02 check 5) as the app role', () => {
       ],
       [{ normalBalance: 'credit' }, { normalBalance: 'debit' }],
       [{ currency: 'SYP' }, { currency: null }],
-      [{ isControl: true }, { isControl: false }],
+      [
+        { isControl: true, itemKind: 'document' },
+        { isControl: false, itemKind: null },
+      ],
       [{ isMonetary: true }, { isMonetary: false }],
     ];
     for (const [change, undo] of changes) {
       await updateAccount('111010', change);
       await updateAccount(change.code ?? '111010', undo);
     }
+  });
+
+  it("keeps a control account's item kind once it is used, and only a control account has one (S04)", async () => {
+    await addAccount('111', { code: '111012', isControl: true, itemKind: 'document' });
+    await updateAccount('111012', { itemKind: 'running' });
+    await updateAccount('111012', { itemKind: 'document' });
+    await updateAccount('111012', { firstPostedAt: new Date('2026-11-04T09:00:00Z') });
+    expect(await refusal(updateAccount('111012', { itemKind: 'running' }))).toMatch(LOCK);
+    expect(await refusal(updateAccount('111010', { itemKind: 'document' }))).toMatch(
+      /chart_accounts_item_kind/,
+    );
+    expect(await refusal(addAccount('111', { code: '111013', isControl: true }))).toMatch(
+      /chart_accounts_item_kind/,
+    );
   });
 
   it('refuses a change of the level or class, which the code fixes, from the checks or the lock', async () => {

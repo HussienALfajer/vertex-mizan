@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { DomainError } from './errors.js';
 import { type CurrencyCode, currencyCodeSchema } from './money.js';
+import { type ItemKind, itemKindSchema } from './open-items.js';
 
 /**
  * The chart of accounts (S02, ADR 0011): four levels with codes of 1, 2, 3 and 6 digits, the class
@@ -393,6 +394,8 @@ export interface AccountShape {
   readonly statementLine: string | null;
   readonly currency: CurrencyCode | null;
   readonly isControl: boolean;
+  /** Set exactly on a control account (S04, ADR 0013). */
+  readonly itemKind: ItemKind | null;
   readonly isMonetary: boolean;
   readonly requiredDimensionCount: number;
 }
@@ -400,8 +403,9 @@ export interface AccountShape {
 /**
  * Checks S02 checks 2–4 on an account: levels 1 and 2 are headers; a statement line exactly on a
  * postable account, from the catalogue and fitting the class (`STATEMENT_LINE_INVALID`); headers
- * carry no flag, currency or required dimension, and only assets and liabilities are monetary or
- * control accounts (`VALIDATION_FAILED`). Whether a postable account is a leaf is the chart's.
+ * carry no flag, currency or required dimension, only assets and liabilities are monetary or
+ * control accounts, and a control account and only a control account has an item kind (S04;
+ * `VALIDATION_FAILED`). Whether a postable account is a leaf is the chart's.
  */
 export function checkAccountShape(account: AccountShape): void {
   const invalid = (message: string): never => {
@@ -417,6 +421,7 @@ export function checkAccountShape(account: AccountShape): void {
     if (
       account.currency !== null ||
       account.isControl ||
+      account.itemKind !== null ||
       account.isMonetary ||
       account.requiredDimensionCount > 0
     ) {
@@ -436,6 +441,9 @@ export function checkAccountShape(account: AccountShape): void {
     !['asset', 'liability'].includes(account.class)
   ) {
     invalid('Only assets and liabilities are monetary or control accounts');
+  }
+  if (account.isControl !== (account.itemKind !== null)) {
+    invalid('A control account, and only a control account, has an item kind');
   }
 }
 
@@ -484,6 +492,8 @@ export const accountSchema = z
     statementLine: z.string().nullable(),
     currency: currencyCodeSchema.nullable(),
     isControl: z.boolean(),
+    /** The kind of the open items behind a control account (S04); null on any other account. */
+    itemKind: itemKindSchema.nullable(),
     isMonetary: z.boolean(),
     requiredDimensionTypeIds: z.array(z.uuid()),
     roles: z.array(accountRoleSchema),
@@ -511,7 +521,8 @@ const requiredDimensionTypeIdsSchema = z
 
 /**
  * `POST /api/accounts`: a new account under a header. The normal balance defaults by class; the
- * flags, currency and required dimensions are for postable accounts only.
+ * flags, currency and required dimensions are for postable accounts only, and a control account
+ * names its item kind (S04).
  */
 export const createAccountSchema = z
   .object({
@@ -524,6 +535,7 @@ export const createAccountSchema = z
     statementLine: statementLineCodeSchema.nullable().default(null),
     currency: currencyCodeSchema.nullable().default(null),
     isControl: z.boolean().default(false),
+    itemKind: itemKindSchema.nullable().default(null),
     isMonetary: z.boolean().default(false),
     requiredDimensionTypeIds: requiredDimensionTypeIdsSchema.default([]),
   })
@@ -546,6 +558,7 @@ export const updateAccountSchema = z
     statementLine: statementLineCodeSchema.nullable().optional(),
     currency: currencyCodeSchema.nullable().optional(),
     isControl: z.boolean().optional(),
+    itemKind: itemKindSchema.nullable().optional(),
     isMonetary: z.boolean().optional(),
     requiredDimensionTypeIds: requiredDimensionTypeIdsSchema.optional(),
   })

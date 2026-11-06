@@ -102,6 +102,9 @@ export class EntriesController {
     'REVERSAL_BEFORE_ORIGINAL',
     'ENTRY_DATE_OUT_OF_RANGE',
     'PERIOD_CLOSED',
+    // S04 rule 13: an opening whose settlements stand; a void's difference measured on its date.
+    'OPEN_ITEM_HAS_SETTLEMENTS',
+    'RATE_MISSING',
   )
   async reverse(
     @Access() access: RequestAccess,

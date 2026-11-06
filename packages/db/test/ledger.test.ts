@@ -521,7 +521,7 @@ describe('post(): manual entries (S03 rules 1–16)', () => {
     expect(refusals).toEqual({
       rate: 'RATE_MISSING',
       unbalanced: 'ENTRY_UNBALANCED',
-      control: 'ACCOUNT_IS_CONTROL',
+      control: 'OPEN_ITEM_REQUIRED',
       header: 'ACCOUNT_NOT_POSTABLE',
       unknown: 'NOT_FOUND',
       currency: 'ACCOUNT_CURRENCY_MISMATCH',

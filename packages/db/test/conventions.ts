@@ -150,8 +150,8 @@ export type Guards = {
  * The guards of the migrations: every guard function, pinned, and every guard trigger (S01's
  * settings lock; S02's chart, dimension and rate rules; S03's ledger: the append-only tables, the
  * ledger state, the entry's chain, number, period, balance and reversal, the line's validity and
- * period balances, the dimension sets; the drafts, their lines and attachments). S04 adds the open
- * items' guards, S07 the period close.
+ * period balances, the dimension sets; the drafts, their lines and attachments; S04's open items,
+ * their movements, due dates and balances). S07 adds the period close.
  */
 export const GUARDS: Guards = {
   functions: [
@@ -300,9 +300,9 @@ BEGIN
           WHERE c.company_id = OLD.company_id AND c.parent_id = OLD.id)))
       AND (
         (NEW.code, NEW.parent_id, NEW.level, NEW.kind, NEW.class, NEW.normal_balance,
-          NEW.currency, NEW.is_control, NEW.is_monetary)
+          NEW.currency, NEW.is_control, NEW.item_kind, NEW.is_monetary)
           IS DISTINCT FROM (OLD.code, OLD.parent_id, OLD.level, OLD.kind, OLD.class,
-            OLD.normal_balance, OLD.currency, OLD.is_control, OLD.is_monetary)
+            OLD.normal_balance, OLD.currency, OLD.is_control, OLD.item_kind, OLD.is_monetary)
         OR (OLD.first_posted_at IS NOT NULL
           AND NEW.first_posted_at IS DISTINCT FROM OLD.first_posted_at)
       ) THEN
@@ -1433,6 +1433,424 @@ BEGIN
 END;
 `,
     },
+    // S04 (ADR 0013): the open items' guards.
+    {
+      name: 'open_item_rules',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+DECLARE
+  account record;
+  set_client uuid;
+BEGIN
+  SELECT a.kind, a.is_control, a.item_kind, a.currency INTO account
+  FROM public.chart_accounts a
+  WHERE a.company_id = NEW.company_id AND a.id = NEW.account_id
+  FOR SHARE;
+  IF NOT FOUND OR account.kind <> 'postable' OR NOT account.is_control
+    OR account.item_kind IS DISTINCT FROM NEW.kind THEN
+    RAISE EXCEPTION 'open_items: an item is on a control account of its kind'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF account.currency IS NOT NULL AND account.currency <> NEW.currency THEN
+    RAISE EXCEPTION 'open_items: account % takes % items, not %', NEW.account_id,
+      account.currency, NEW.currency
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  SELECT v.value_id INTO set_client
+  FROM public.dimension_set_values v
+  JOIN public.dimension_types t ON t.company_id = v.company_id AND t.id = v.type_id
+  WHERE v.company_id = NEW.company_id AND v.set_id = NEW.dimension_set_id AND t.code = 'client';
+  IF set_client IS DISTINCT FROM NEW.client_value_id THEN
+    RAISE EXCEPTION 'open_items: an item''s client is its dimension set''s'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM public.journal_entries e
+    WHERE e.company_id = NEW.company_id AND e.id = NEW.opened_by_entry_id
+  ) THEN
+    RAISE EXCEPTION 'open_items: an item is opened by an entry of its company'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  RETURN NEW;
+END
+`,
+    },
+    {
+      name: 'open_item_opened',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+DECLARE
+  opening record;
+BEGIN
+  SELECT e.entry_date, e.reverses_entry_id INTO opening
+  FROM public.journal_entries e
+  WHERE e.company_id = NEW.company_id AND e.id = NEW.opened_by_entry_id;
+  IF opening.entry_date IS NULL OR opening.reverses_entry_id IS NOT NULL
+    OR (NEW.source = 'manual' AND opening.entry_date <> NEW.document_date)
+    OR NOT EXISTS (
+      SELECT 1 FROM public.open_item_movements m
+      WHERE m.company_id = NEW.company_id AND m.item_id = NEW.id
+        AND m.entry_id = NEW.opened_by_entry_id
+        AND m.kind = (CASE NEW.kind WHEN 'document' THEN 'open' ELSE 'add' END)
+    ) THEN
+    RAISE EXCEPTION 'open item % is not opened by a movement of its opening entry', NEW.id
+      USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NULL;
+END
+`,
+    },
+    {
+      name: 'open_item_movement_rules',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+DECLARE
+  line record;
+  entry record;
+  item record;
+BEGIN
+  SELECT l.entry_id, l.account_id, l.dimension_set_id, l.currency, l.kind, l.amount_minor,
+         l.book_minor, l.parallel_minor INTO line
+  FROM public.journal_lines l
+  WHERE l.company_id = NEW.company_id AND l.id = NEW.line_id;
+  SELECT e.entry_date, e.source, e.reverses_entry_id INTO entry
+  FROM public.journal_entries e
+  WHERE e.company_id = NEW.company_id AND e.id = line.entry_id;
+  SELECT i.account_id, i.dimension_set_id, i.currency, i.kind, i.source, i.opened_by_entry_id
+    INTO item
+  FROM public.open_items i
+  WHERE i.company_id = NEW.company_id AND i.id = NEW.item_id;
+  IF line.entry_id IS NULL OR entry.entry_date IS NULL OR item.account_id IS NULL
+    OR NEW.entry_id <> line.entry_id OR NEW.entry_date <> entry.entry_date
+    OR (line.account_id, line.dimension_set_id, line.currency)
+      IS DISTINCT FROM (item.account_id, item.dimension_set_id, item.currency)
+    OR (NEW.amount_minor, NEW.book_minor, NEW.parallel_minor)
+      IS DISTINCT FROM (line.amount_minor, line.book_minor, line.parallel_minor) THEN
+    RAISE EXCEPTION 'open_item_movements: a movement is its line''s, on its line''s item'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF NOT (
+    (item.kind = 'document' AND NEW.kind IN ('open', 'clear'))
+    OR (item.kind = 'running' AND NEW.kind IN ('add', 'clear', 'difference'))
+  ) OR line.kind IS DISTINCT FROM (CASE NEW.kind
+      WHEN 'open' THEN 'measured' WHEN 'add' THEN 'measured'
+      WHEN 'clear' THEN 'carried' WHEN 'difference' THEN 'difference' END) THEN
+    RAISE EXCEPTION 'open_item_movements: a % movement does not fit a % item on a % line',
+      NEW.kind, item.kind, line.kind
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF NEW.kind = 'open' AND NOT (
+    (NEW.entry_id = item.opened_by_entry_id AND NOT EXISTS (
+      SELECT 1 FROM public.open_item_movements m
+      WHERE m.company_id = NEW.company_id AND m.item_id = NEW.item_id
+        AND m.entry_id = NEW.entry_id AND m.kind = 'open'))
+    OR entry.reverses_entry_id IS NOT DISTINCT FROM item.opened_by_entry_id
+  ) THEN
+    RAISE EXCEPTION 'open_item_movements: item % opens once, in the entry that opened it', NEW.item_id
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF NEW.kind = 'open' AND entry.reverses_entry_id IS NULL AND sign(NEW.amount_minor) <> (
+    SELECT CASE a.normal_balance WHEN 'debit' THEN 1 ELSE -1 END
+    FROM public.chart_accounts a
+    WHERE a.company_id = NEW.company_id AND a.id = item.account_id
+  ) THEN
+    RAISE EXCEPTION 'open_item_movements: OPEN_ITEM_DIRECTION: item % opens against its account''s normal balance', NEW.item_id
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF NEW.adjusted IS DISTINCT FROM (entry.source = 'manual' AND item.source <> 'manual') THEN
+    RAISE EXCEPTION 'open_item_movements: adjusted exactly when a manual entry moves a % item',
+      item.source
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF NEW.kind = 'open' AND entry.reverses_entry_id IS NOT NULL AND EXISTS (
+    SELECT 1 FROM public.open_item_movements m
+    JOIN public.journal_entries e ON e.company_id = m.company_id AND e.id = m.entry_id
+    WHERE m.company_id = NEW.company_id AND m.item_id = NEW.item_id AND m.kind <> 'open'
+      AND e.reverses_entry_id IS NULL
+      AND NOT EXISTS (
+        SELECT 1 FROM public.journal_entries r
+        WHERE r.company_id = m.company_id AND r.reverses_entry_id = m.entry_id
+      )
+  ) THEN
+    RAISE EXCEPTION 'open_item_movements: OPEN_ITEM_HAS_SETTLEMENTS: item % has movements its opening''s reversal would leave', NEW.item_id
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  RETURN NEW;
+END
+`,
+    },
+    {
+      name: 'open_item_movement_balance',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+BEGIN
+  INSERT INTO public.open_item_balances AS b (
+    id, company_id, item_id, open_minor, book_minor, parallel_minor, movement_count,
+    last_movement_on
+  ) VALUES (
+    public.new_uuidv7(), NEW.company_id, NEW.item_id, NEW.amount_minor, NEW.book_minor,
+    NEW.parallel_minor, 1, NEW.entry_date
+  )
+  ON CONFLICT (company_id, item_id) DO UPDATE SET
+    open_minor = b.open_minor + excluded.open_minor,
+    book_minor = b.book_minor + excluded.book_minor,
+    parallel_minor = b.parallel_minor + excluded.parallel_minor,
+    movement_count = b.movement_count + 1,
+    last_movement_on = greatest(b.last_movement_on, excluded.last_movement_on),
+    updated_at = now();
+  RETURN NULL;
+END
+`,
+    },
+    {
+      name: 'open_item_balance_rules',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+BEGIN
+  IF pg_trigger_depth() < 2 THEN
+    RAISE EXCEPTION 'open_item_balances: written only by the trigger on open_item_movements'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF TG_OP = 'INSERT' AND NEW.movement_count <> 1 THEN
+    RAISE EXCEPTION 'open_item_balances: an item''s balance is made at its first movement'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF TG_OP = 'UPDATE' AND (
+    (NEW.id, NEW.company_id, NEW.item_id, NEW.created_at)
+      IS DISTINCT FROM (OLD.id, OLD.company_id, OLD.item_id, OLD.created_at)
+    OR NEW.movement_count <> OLD.movement_count + 1
+    OR (NEW.parallel_minor IS NULL) <> (OLD.parallel_minor IS NULL)
+    OR NEW.last_movement_on < OLD.last_movement_on
+  ) THEN
+    RAISE EXCEPTION 'open_item_balances: an item''s balance keeps its key and moves by one movement'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  RETURN NEW;
+END
+`,
+    },
+    {
+      name: 'open_item_balance_holds',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+DECLARE
+  balance record;
+  totals record;
+  item_kind text;
+  opening bigint;
+BEGIN
+  SELECT b.open_minor, b.book_minor, b.parallel_minor, b.movement_count INTO balance
+  FROM public.open_item_balances b
+  WHERE b.company_id = NEW.company_id AND b.item_id = NEW.item_id;
+  SELECT count(*) AS movements, coalesce(sum(m.amount_minor), 0) AS amount,
+         coalesce(sum(m.book_minor), 0) AS book, count(m.parallel_minor) AS parallel_movements,
+         coalesce(sum(m.parallel_minor), 0) AS parallel
+    INTO totals
+  FROM public.open_item_movements m
+  WHERE m.company_id = NEW.company_id AND m.item_id = NEW.item_id;
+  SELECT i.kind INTO item_kind
+  FROM public.open_items i
+  WHERE i.company_id = NEW.company_id AND i.id = NEW.item_id;
+  IF balance.movement_count IS NULL OR item_kind IS NULL
+    OR totals.movements <> balance.movement_count OR totals.amount <> balance.open_minor
+    OR totals.book <> balance.book_minor
+    OR totals.parallel_movements <> (CASE WHEN balance.parallel_minor IS NULL THEN 0
+      ELSE totals.movements END)
+    OR totals.parallel <> coalesce(balance.parallel_minor, 0) THEN
+    RAISE EXCEPTION 'open item % is not the sum of its movements', NEW.item_id
+      USING ERRCODE = 'check_violation';
+  END IF;
+  IF item_kind = 'document' THEN
+    SELECT m.amount_minor INTO opening
+    FROM public.open_item_movements m
+    JOIN public.open_items i ON i.company_id = m.company_id AND i.id = m.item_id
+    WHERE m.company_id = NEW.company_id AND m.item_id = NEW.item_id AND m.kind = 'open'
+      AND m.entry_id = i.opened_by_entry_id;
+    IF opening IS NULL OR sign(balance.open_minor) = -sign(opening) THEN
+      RAISE EXCEPTION 'open item % crosses zero against its opening (invariant 9)', NEW.item_id
+        USING ERRCODE = 'check_violation';
+    END IF;
+  END IF;
+  IF balance.open_minor = 0 AND (balance.book_minor <> 0 OR coalesce(balance.parallel_minor, 0) <> 0) THEN
+    RAISE EXCEPTION 'open item % is settled but not zero in every ledger (invariant 9)', NEW.item_id
+      USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NULL;
+END
+`,
+    },
+    {
+      name: 'journal_line_moves_item',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+DECLARE
+  is_control boolean;
+  movements integer;
+BEGIN
+  SELECT a.is_control INTO is_control
+  FROM public.chart_accounts a
+  WHERE a.company_id = NEW.company_id AND a.id = NEW.account_id;
+  SELECT count(*) INTO movements
+  FROM public.open_item_movements m
+  WHERE m.company_id = NEW.company_id AND m.line_id = NEW.id;
+  IF is_control IS NULL OR movements <> (CASE WHEN is_control THEN 1 ELSE 0 END) THEN
+    RAISE EXCEPTION 'journal line %: % item movements on an account that is % control account',
+      NEW.id, movements, CASE WHEN is_control THEN 'a' ELSE 'not a' END
+      USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NULL;
+END
+`,
+    },
+    {
+      name: 'journal_entry_reverses_items',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+BEGIN
+  IF NEW.reverses_entry_id IS NULL THEN
+    RETURN NULL;
+  END IF;
+  IF (SELECT count(*) FROM public.open_item_movements m
+      WHERE m.company_id = NEW.company_id AND m.entry_id = NEW.reverses_entry_id)
+    <> (SELECT count(*) FROM public.open_item_movements m
+      WHERE m.company_id = NEW.company_id AND m.entry_id = NEW.id)
+    OR EXISTS (
+      SELECT m.item_id, m.kind, -m.amount_minor, -m.book_minor, -m.parallel_minor
+      FROM public.open_item_movements m
+      WHERE m.company_id = NEW.company_id AND m.entry_id = NEW.reverses_entry_id
+      EXCEPT ALL
+      SELECT r.item_id, r.kind, r.amount_minor, r.book_minor, r.parallel_minor
+      FROM public.open_item_movements r
+      WHERE r.company_id = NEW.company_id AND r.entry_id = NEW.id
+    ) THEN
+    RAISE EXCEPTION 'journal entry % does not move the items of entry % back exactly', NEW.id,
+      NEW.reverses_entry_id
+      USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NULL;
+END
+`,
+    },
+    {
+      name: 'open_item_due_date_rules',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+DECLARE
+  item record;
+BEGIN
+  SELECT i.kind, i.source, i.document_date INTO item
+  FROM public.open_items i
+  WHERE i.company_id = NEW.company_id AND i.id = NEW.item_id;
+  IF NOT FOUND OR item.kind <> 'document' THEN
+    RAISE EXCEPTION 'open_item_due_dates: a due date is a document item''s'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF NEW.set_by = 'opening' AND (
+    NEW.effective_on <> item.document_date OR NEW.due_on < item.document_date
+    OR EXISTS (
+      SELECT 1 FROM public.open_item_due_dates d
+      WHERE d.company_id = NEW.company_id AND d.item_id = NEW.item_id
+    )
+  ) THEN
+    RAISE EXCEPTION 'open_item_due_dates: an opening due date is the item''s first, from its document date'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF NEW.set_by = 'user' AND (
+    item.source <> 'manual'
+    OR NEW.effective_on <> (now() AT TIME ZONE 'Asia/Damascus')::date
+  ) THEN
+    RAISE EXCEPTION 'open_item_due_dates: OPEN_ITEM_FROM_HUB: a person changes a manual item''s due date, from the day of the change'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF NEW.set_by = 'hub_event' AND item.source <> 'hub_event' THEN
+    RAISE EXCEPTION 'open_item_due_dates: a Hub event sets a Hub item''s due date'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  RETURN NEW;
+END
+`,
+    },
   ],
   triggers: [
     // The settings lock (S01 rule 11): before every update of a company's ledger settings.
@@ -1976,6 +2394,126 @@ END;
       function: 'company_export_rules',
       deferred: false,
       on: ['INSERT', 'UPDATE'],
+    },
+    // S04 (ADR 0013): the open items' tables, their balances and the lines that move them.
+    {
+      table: 'open_items',
+      name: 'open_items_refuse_change',
+      function: 'refuse_change',
+      deferred: false,
+      on: ['UPDATE', 'DELETE'],
+    },
+    {
+      table: 'open_items',
+      name: 'open_items_refuse_truncate',
+      function: 'refuse_change',
+      deferred: false,
+      on: ['TRUNCATE'],
+    },
+    {
+      table: 'open_item_movements',
+      name: 'open_item_movements_refuse_change',
+      function: 'refuse_change',
+      deferred: false,
+      on: ['UPDATE', 'DELETE'],
+    },
+    {
+      table: 'open_item_movements',
+      name: 'open_item_movements_refuse_truncate',
+      function: 'refuse_change',
+      deferred: false,
+      on: ['TRUNCATE'],
+    },
+    {
+      table: 'open_item_due_dates',
+      name: 'open_item_due_dates_refuse_change',
+      function: 'refuse_change',
+      deferred: false,
+      on: ['UPDATE', 'DELETE'],
+    },
+    {
+      table: 'open_item_due_dates',
+      name: 'open_item_due_dates_refuse_truncate',
+      function: 'refuse_change',
+      deferred: false,
+      on: ['TRUNCATE'],
+    },
+    {
+      table: 'open_item_balances',
+      name: 'open_item_balances_refuse_delete',
+      function: 'refuse_delete',
+      deferred: false,
+      on: ['DELETE'],
+    },
+    {
+      table: 'open_item_balances',
+      name: 'open_item_balances_refuse_truncate',
+      function: 'refuse_delete',
+      deferred: false,
+      on: ['TRUNCATE'],
+    },
+    {
+      table: 'open_items',
+      name: 'open_item_rules',
+      function: 'open_item_rules',
+      deferred: false,
+      on: ['INSERT'],
+    },
+    {
+      table: 'open_items',
+      name: 'open_items_opened',
+      function: 'open_item_opened',
+      deferred: true,
+      on: ['INSERT'],
+    },
+    {
+      table: 'open_item_movements',
+      name: 'open_item_movement_rules',
+      function: 'open_item_movement_rules',
+      deferred: false,
+      on: ['INSERT'],
+    },
+    {
+      table: 'open_item_movements',
+      name: 'open_item_movement_balance',
+      function: 'open_item_movement_balance',
+      deferred: false,
+      on: ['INSERT'],
+    },
+    {
+      table: 'open_item_balances',
+      name: 'open_item_balance_rules',
+      function: 'open_item_balance_rules',
+      deferred: false,
+      on: ['INSERT', 'UPDATE'],
+    },
+    {
+      table: 'open_item_balances',
+      name: 'open_item_balances_hold',
+      function: 'open_item_balance_holds',
+      deferred: true,
+      on: ['INSERT', 'UPDATE'],
+    },
+    {
+      table: 'journal_lines',
+      name: 'journal_lines_move_items',
+      function: 'journal_line_moves_item',
+      deferred: true,
+      on: ['INSERT'],
+    },
+    {
+      table: 'journal_entries',
+      name: 'journal_entries_reverse_items',
+      function: 'journal_entry_reverses_items',
+      deferred: true,
+      on: ['INSERT'],
+    },
+    {
+      table: 'open_item_due_dates',
+      name: 'open_item_due_date_rules',
+      function: 'open_item_due_date_rules',
+      deferred: false,
+      on: ['INSERT'],
     },
   ],
   jobs: {

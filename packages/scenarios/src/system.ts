@@ -2,6 +2,7 @@ import {
   type CurrencyCode,
   chartTemplateIdSchema,
   createAccountSchema,
+  createDimensionValueSchema,
   currencyCodeSchema,
   DomainError,
   type ExchangeRate,
@@ -12,12 +13,15 @@ import {
   chartAccounts,
   createAccount,
   createCompanyBooks,
+  createDimensionValue,
   dimensionSetValues,
   dimensionTypes,
   dimensionValues,
   entriesUsingRate,
   journalEntries,
   journalLines,
+  openItemBalances,
+  openItems,
   type PersonActor,
   post,
   recordRate,
@@ -35,10 +39,13 @@ import type {
   CaseContext,
   LedgerReader,
   ObservedBalance,
+  ObservedOpenItem,
+  OpenItemQuery,
   PostedEntry,
   ScenarioDatabase,
   StepResult,
 } from './harness.js';
+import type { NamedValue } from './run.js';
 
 // The parts of the book that run through the system itself (S03): the case's company made by the
 // company, chart and rate services the API and the server commands use, the manual, reversal and
@@ -75,13 +82,15 @@ async function accountIdsByCode(tx: Transaction): Promise<Map<string, string>> {
 /**
  * Makes the case's company (`docs/scenarios/README.md`): a bookkeeper; the company with its
  * ledgers and chart template (`createCompanyBooks`); the accounts the case adds, under their
- * template headers (`createAccount`); its bulletin calendar; and its rate rows, in order
- * (`recordRate`). Closed periods arrive with S07's close, Hub's rate rows with S05.
+ * template headers (`createAccount`); the dimension values it names, of the company's types, each
+ * named by its code (`createDimensionValue`, S04); its bulletin calendar; and its rate rows, in
+ * order (`recordRate`). Closed periods arrive with S07's close, Hub's rate rows with S05.
  */
 export async function setUp(
   database: ScenarioDatabase,
   company: CaseCompany,
   rates: readonly ExchangeRate[],
+  values: readonly NamedValue[] = [],
 ): Promise<string> {
   if (company.closedPeriods.length > 0) {
     throw new Error('A case with closed periods runs once S07 brings the close');
@@ -134,6 +143,22 @@ export async function setUp(
         actor,
       );
     }
+    const types = await tx.select().from(dimensionTypes);
+    for (const value of values) {
+      const type = types.find((candidate) => candidate.code === value.type);
+      if (type === undefined) throw new Error(`The company has no dimension type ${value.type}`);
+      if (type.code === 'contract') throw new Error('A contract value needs its kind and client');
+      await createDimensionValue(
+        tx,
+        companyId,
+        createDimensionValueSchema.parse({
+          typeId: type.id,
+          code: value.code,
+          name: `${type.name} ${value.code}`,
+        }),
+        actor,
+      );
+    }
     await setBulletinDaysOff(tx, companyId, actor, company.calendar.daysOff);
     for (const on of company.calendar.holidays) {
       await addBulletinHoliday(tx, companyId, actor, { on, note: 'عطلة في السيناريو' });
@@ -164,10 +189,38 @@ const manualPayloadSchema = z.strictObject({
         currency: currencyCodeSchema,
         amount: z.bigint(),
         memo: z.string().trim().min(1).max(300).optional(),
+        // S04: the document item a line opens, or the item it moves by its reference.
+        open_item: z
+          .strictObject({
+            ref: z.string().trim().min(1).max(100),
+            due: z.iso.date().optional(),
+          })
+          .optional(),
+        item: z.string().trim().min(1).max(100).optional(),
       }),
     )
     .min(1),
 });
+
+/** The id of the document item of `reference` on an account, if the company has one. */
+async function itemIdOf(
+  tx: Transaction,
+  accountId: string | undefined,
+  reference: string,
+): Promise<string | null> {
+  if (accountId === undefined) return null;
+  const [found] = await tx
+    .select({ id: openItems.id })
+    .from(openItems)
+    .where(
+      and(
+        eq(openItems.accountId, accountId),
+        eq(openItems.kind, 'document'),
+        eq(openItems.reference, reference),
+      ),
+    );
+  return found?.id ?? null;
+}
 
 /** The ids of a line's dimension values, named by type code and value code. */
 async function dimensionValueIds(
@@ -208,13 +261,21 @@ export function manual(
       const accounts = await accountIdsByCode(tx);
       const lines = [];
       for (const line of payload.lines) {
+        const accountId = accounts.get(line.account);
         lines.push({
           // An unknown code is the posting function's to refuse (`NOT_FOUND`).
-          accountId: accounts.get(line.account) ?? uuidv7(),
+          accountId: accountId ?? uuidv7(),
           dimensionValueIds: await dimensionValueIds(tx, line.dims),
           currency: line.currency,
           amountMinor: line.amount,
           memo: line.memo ?? null,
+          ...(line.open_item !== undefined && {
+            newItem: { reference: line.open_item.ref, dueOn: line.open_item.due ?? null },
+          }),
+          // An unknown reference is the posting function's to refuse (`NOT_FOUND`).
+          ...(line.item !== undefined && {
+            openItemId: (await itemIdOf(tx, accountId, line.item)) ?? uuidv7(),
+          }),
         });
       }
       await post(tx, {
@@ -305,7 +366,8 @@ const valueName = sql<string>`coalesce(${dimensionValues.code}, ${dimensionValue
 /**
  * The company's ledger as the reports read it: the entries in posting order with their lines
  * (a reversal's source is `reversal`) and the audit rows of each posting; the balances from the
- * period balances; open items arrive with S04.
+ * period balances; an open item from its balance row (S04), a document by its reference and a
+ * running item by its client's code, with its dimensions by name.
  */
 export const ledger: LedgerReader = {
   entries: (context) =>
@@ -402,7 +464,55 @@ export const ledger: LedgerReader = {
       };
     }),
 
-  openItem: async () => {
-    throw new Error('Open items arrive with S04');
-  },
+  openItem: (context, query: OpenItemQuery) =>
+    withCompany(
+      context.database.app,
+      context.companyId,
+      async (tx): Promise<ObservedOpenItem | null> => {
+        const [found] = await tx
+          .select({ item: openItems, balance: openItemBalances })
+          .from(openItems)
+          .innerJoin(
+            chartAccounts,
+            and(
+              eq(chartAccounts.companyId, openItems.companyId),
+              eq(chartAccounts.id, openItems.accountId),
+            ),
+          )
+          .innerJoin(
+            openItemBalances,
+            and(
+              eq(openItemBalances.companyId, openItems.companyId),
+              eq(openItemBalances.itemId, openItems.id),
+            ),
+          )
+          .where(and(eq(chartAccounts.code, query.account), eq(openItems.reference, query.item)));
+        if (!found) return null;
+        const dims = await tx
+          .select({ type: dimensionTypes.code, value: valueName })
+          .from(dimensionSetValues)
+          .innerJoin(
+            dimensionTypes,
+            and(
+              eq(dimensionTypes.companyId, dimensionSetValues.companyId),
+              eq(dimensionTypes.id, dimensionSetValues.typeId),
+            ),
+          )
+          .innerJoin(
+            dimensionValues,
+            and(
+              eq(dimensionValues.companyId, dimensionSetValues.companyId),
+              eq(dimensionValues.id, dimensionSetValues.valueId),
+            ),
+          )
+          .where(eq(dimensionSetValues.setId, found.item.dimensionSetId));
+        return {
+          dims: Object.fromEntries(dims.map((pair) => [pair.type, pair.value])),
+          currency: found.item.currency as CurrencyCode,
+          amount: found.balance.openMinor,
+          book: found.balance.bookMinor,
+          parallel: found.balance.parallelMinor,
+        };
+      },
+    ),
 };

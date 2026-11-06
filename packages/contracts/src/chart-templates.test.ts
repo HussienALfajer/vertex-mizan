@@ -47,6 +47,7 @@ describe('the chart templates (S02 "Templates", drafts under Q3)', () => {
             statementLine: account.statementLine,
             currency: account.currency,
             isControl: account.isControl,
+            itemKind: account.itemKind,
             isMonetary: account.isMonetary,
             requiredDimensionCount: account.requiredDimensions.length,
           });
@@ -136,11 +137,25 @@ describe('the chart templates (S02 "Templates", drafts under Q3)', () => {
       normalBalance: 'credit',
       isMonetary: true,
       isControl: true,
+      itemKind: 'running',
       currency: 'USD',
       requiredDimensions: ['client'],
       statementLine: 'bs.client_money',
       role: null,
     });
     expect(agency.find((account) => account.code === '121003')?.normalBalance).toBe('credit');
+  });
+
+  it('gives each control account its item kind (S04)', () => {
+    const kinds = (id: 'service-agency' | 'general') =>
+      chartTemplate(id)
+        .accounts.filter((account) => account.isControl || account.itemKind !== null)
+        .map((account) => [account.code, account.itemKind]);
+    expect(kinds('service-agency')).toEqual([
+      ['112001', 'document'],
+      ['113001', 'document'],
+      ['213001', 'running'],
+    ]);
+    expect(kinds('general')).toEqual([['112001', 'document']]);
   });
 });

@@ -3,6 +3,7 @@ import type {
   AccountKind,
   AccountRole,
   ChartTemplateId,
+  ItemKind,
   NormalBalance,
 } from '@vertex-mizan/contracts';
 
@@ -103,6 +104,9 @@ export const chart = {
     currencyHint: 'تقيّد سطور الحساب بعملة واحدة.',
     control: 'حساب مراقبة',
     controlHint: 'رصيده مجموع بنود مفتوحة لكل عميل أو مورد.',
+    itemKind: 'نوع البند',
+    itemKindHint:
+      'بند مستند: بند لكل فاتورة أو مستند يُسدَّد حتى الصفر. رصيد جارٍ: رصيد واحد لكل عميل وعملة، قد يتجاوز الصفر.',
     monetary: 'حساب نقدي',
     monetaryHint: 'يُعاد تقييمه بسعر نهاية الشهر.',
     dimensions: 'الأبعاد المطلوبة',
@@ -110,7 +114,7 @@ export const chart = {
     roles: 'أدوار الحساب',
     lockedTitle: 'رُحِّل إلى الحساب قيد',
     lockedDescription:
-      'لا يتغير بعد الآن الرمز ولا الأب ولا النوع ولا الفئة ولا الطبيعة ولا العملة ولا خاصيتا المراقبة والنقد. يبقى تعديل الاسمين وبند القائمة والأبعاد المطلوبة.',
+      'لا يتغير بعد الآن الرمز ولا الأب ولا النوع ولا الفئة ولا الطبيعة ولا العملة ولا خاصيتا المراقبة والنقد ولا نوع البند. يبقى تعديل الاسمين وبند القائمة والأبعاد المطلوبة.',
     headerLockedTitle: 'تحت الحساب حسابات',
     headerLockedDescription:
       'لا يتغير رمز الحساب الرئيسي ولا موضعه ولا نوعه ما دام تحته حسابات. يبقى تعديل الاسمين.',
@@ -125,6 +129,7 @@ export const chart = {
     required: 'هذا الحقل مطلوب.',
     nameLength: 'الاسم من 1 إلى 200 حرف.',
     statementLine: 'اختر بند القائمة.',
+    itemKind: 'اختر نوع البند.',
   },
   roleSettings: {
     title: 'أدوار الحسابات',
@@ -168,6 +173,11 @@ export const chart = {
     header: 'حساب رئيسي',
     postable: 'حساب فرعي',
   } satisfies Record<AccountKind, string>,
+  /** The item kind of a control account (S04, ADR 0013). */
+  itemKinds: {
+    document: 'بند مستند',
+    running: 'رصيد جارٍ',
+  } satisfies Record<ItemKind, string>,
   normalBalances: {
     debit: 'مدين',
     credit: 'دائن',
@@ -196,6 +206,7 @@ export const chart = {
     statementLine: 'بند القائمة',
     currency: 'عملة الحساب',
     control: 'حساب مراقبة',
+    itemKind: 'نوع البند',
     monetary: 'حساب نقدي',
     requiredDimensions: 'الأبعاد المطلوبة',
     roles: 'دور الحساب',

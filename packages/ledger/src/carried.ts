@@ -9,81 +9,46 @@ import { abs, share } from './share.js';
  * ledger.
  */
 
-/**
- * An open item measured once (an invoice's receivable, a contract asset), cleared as movements
- * come. A balance is split by one method only: a schedule known in advance (a deferral's months,
- * a deposit's milestones) with `allocateCarried()`, movements as they come with `clearOpenItem()`.
- * The two round differently, so mixing them on one balance would leave a remainder.
- */
-export interface OpenItem {
-  /** The amounts the item was measured at. Month-end revaluations reverse, so they are not here. */
-  readonly measured: CarriedAmounts;
-  /** The transaction amount still open, signed as the item. */
-  readonly openMinor: bigint;
-}
-
 function sign(value: bigint): -1 | 0 | 1 {
   return value < 0n ? -1 : value > 0n ? 1 : 0;
 }
 
-function checkOpenItem({ measured, openMinor }: OpenItem): void {
-  const total = measured.transaction.amountMinor;
-  if (total === 0n) throw new RangeError('An open item measured at zero');
-  if (sign(openMinor) === -sign(total) || abs(openMinor) > abs(total)) {
-    throw new RangeError('An open amount outside its item');
-  }
-}
-
-/** The item's ledger amounts with `cleared` of its transaction amount cleared, cumulatively rounded. */
-function remaining(item: OpenItem, cleared: bigint): CarriedAmounts {
-  const { transaction, bookMinor, parallelMinor } = item.measured;
-  const total = transaction.amountMinor;
-  return {
-    transaction: money(total - cleared, transaction.currency),
-    bookMinor: bookMinor - share(bookMinor, cleared, total),
-    parallelMinor:
-      parallelMinor === null ? null : parallelMinor - share(parallelMinor, cleared, total),
-  };
-}
-
-/**
- * An open item's carrying amount in each ledger: the amounts it was measured at, less what was
- * cleared before, in proportion to the transaction amount cleared with cumulative rounding.
- */
-export function openItemCarrying(item: OpenItem): CarriedAmounts {
-  checkOpenItem(item);
-  return remaining(item, item.measured.transaction.amountMinor - item.openMinor);
-}
-
 /**
  * The amounts of the line that clears `movementMinor` of an open item, signed as that line (against
- * the item). Each ledger clears in proportion to the transaction amount, with cumulative rounding
- * over everything cleared so far, so the parts sum exactly and the last part clears whatever
- * remains (ADR 0007). Refuses more than is open (`RELEASE_EXCEEDS_BALANCE`).
+ * the item). `carrying` is what the item carries now: its open transaction amount, signed as the
+ * item, and its carrying amount in each ledger, without month-end revaluations (they reverse;
+ * S07). Each ledger clears in proportion to what remains, `carrying × movement ÷ open`, rounded half
+ * away from zero, and the movement that clears all that is open clears everything left in every
+ * ledger (ADR 0013, amending ADR 0007's cumulative rule): a void is an exact reversal, and the next
+ * clearing starts from what the ledger holds. No rate is read (IAS 21.23(b)). Refuses more than is
+ * open (`RELEASE_EXCEEDS_BALANCE`); a movement with the item's sign is the caller's to refuse.
+ *
+ * A balance is split by one method only: a schedule known in advance (a deferral's months, a
+ * deposit's milestones) with `allocateCarried()`, movements as they come with `clearOpenItem()`.
+ * The two round differently, so mixing them on one balance would leave a remainder.
  */
-export function clearOpenItem(item: OpenItem, movementMinor: bigint): CarriedAmounts {
-  checkOpenItem(item);
-  const total = item.measured.transaction.amountMinor;
-  if (sign(movementMinor) === sign(total)) {
-    throw new RangeError('A clearing movement that would add to its item');
+export function clearOpenItem(carrying: CarriedAmounts, movementMinor: bigint): CarriedAmounts {
+  const open = carrying.transaction.amountMinor;
+  const { bookMinor, parallelMinor } = carrying;
+  if (open === 0n && (bookMinor !== 0n || (parallelMinor !== null && parallelMinor !== 0n))) {
+    throw new RangeError('A settled item that is not zero in a ledger');
   }
-  if (abs(movementMinor) > abs(item.openMinor)) {
+  if (movementMinor === 0n || (open !== 0n && sign(movementMinor) === sign(open))) {
+    throw new RangeError('A clearing movement that would add to its item, or clear nothing');
+  }
+  if (abs(movementMinor) > abs(open)) {
     throw new DomainError(
       'RELEASE_EXCEEDS_BALANCE',
       'The movement clears more than the item has open',
-      { openMinor: item.openMinor.toString(), movementMinor: movementMinor.toString() },
+      { openMinor: open.toString(), movementMinor: movementMinor.toString() },
     );
   }
-  const clearedBefore = total - item.openMinor;
-  const before = remaining(item, clearedBefore);
-  const after = remaining(item, clearedBefore - movementMinor);
+  const clearsAll = -movementMinor === open;
+  const part = (amount: bigint) => (clearsAll ? -amount : share(amount, movementMinor, open));
   return {
-    transaction: money(movementMinor, item.measured.transaction.currency),
-    bookMinor: after.bookMinor - before.bookMinor,
-    parallelMinor:
-      before.parallelMinor === null || after.parallelMinor === null
-        ? null
-        : after.parallelMinor - before.parallelMinor,
+    transaction: money(movementMinor, carrying.transaction.currency),
+    bookMinor: part(bookMinor),
+    parallelMinor: parallelMinor === null ? null : part(parallelMinor),
   };
 }
 

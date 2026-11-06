@@ -44,6 +44,7 @@ const clientFunds: ChartAccount = {
   blocked: false,
   archived: false,
   isControl: false,
+  itemKind: null,
   requiredDimensionTypeIds: [CLIENT_TYPE],
 };
 
@@ -92,10 +93,25 @@ describe('checkLineAgainstChart (S02 rule 8)', () => {
     );
   });
 
-  it('refuses a manual line on a control account and accepts a Hub line on one (S03 rule 16)', () => {
-    const control = { ...clientFunds, isControl: true };
-    expect(refusal(line({ account: control }))).toBe('ACCOUNT_IS_CONTROL');
-    expect(refusal(line({ account: control, origin: 'hub' }))).toBe('accepted');
+  it('requires an item on a document control account, from a manual line or a Hub one (S04 rule 5)', () => {
+    const receivables = { ...clientFunds, isControl: true, itemKind: 'document' as const };
+    for (const origin of ['manual', 'hub'] as const) {
+      expect(refusal(line({ account: receivables, origin }))).toBe('OPEN_ITEM_REQUIRED');
+      expect(refusal(line({ account: receivables, origin, item: 'new' }))).toBe('accepted');
+      expect(refusal(line({ account: receivables, origin, item: 'existing' }))).toBe('accepted');
+    }
+  });
+
+  it("finds a running account's item by the client, so the line names none (S04 rule 9)", () => {
+    const funds = { ...clientFunds, isControl: true, itemKind: 'running' as const };
+    expect(refusal(line({ account: funds }))).toBe('accepted');
+    expect(refusal(line({ account: funds, item: 'existing' }))).toBe('VALIDATION_FAILED');
+    expect(refusal(line({ account: funds, item: 'new' }))).toBe('VALIDATION_FAILED');
+  });
+
+  it('refuses an item on an account that is not a control account (ACCOUNT_NOT_CONTROL)', () => {
+    expect(refusal(line({ item: 'existing' }))).toBe('ACCOUNT_NOT_CONTROL');
+    expect(refusal(line({ item: 'new', origin: 'hub' }))).toBe('ACCOUNT_NOT_CONTROL');
   });
 
   it("accepts a reversal's line as posted, and refuses it on an account now blocked or archived", () => {
@@ -104,7 +120,12 @@ describe('checkLineAgainstChart (S02 rule 8)', () => {
     expect(refusal(line({ dimensions: [], origin: 'reversal' }))).toBe('accepted');
     expect(refusal(line({ dimensions: [archived], origin: 'reversal' }))).toBe('accepted');
     expect(
-      refusal(line({ account: { ...clientFunds, isControl: true }, origin: 'reversal' })),
+      refusal(
+        line({
+          account: { ...clientFunds, isControl: true, itemKind: 'document' },
+          origin: 'reversal',
+        }),
+      ),
     ).toBe('accepted');
     expect(refusal(line({ account: { ...clientFunds, blocked: true }, origin: 'reversal' }))).toBe(
       'ACCOUNT_BLOCKED',
@@ -163,6 +184,7 @@ describe('checkLineAgainstChart properties', () => {
     blocked: fc.constant(false),
     archived: fc.constant(false),
     isControl: fc.constant(false),
+    itemKind: fc.constant(null),
     requiredDimensionTypeIds: fc.subarray(types),
   });
   const liveValue = (typeId: string, archived = false): LineDimensionValue => ({

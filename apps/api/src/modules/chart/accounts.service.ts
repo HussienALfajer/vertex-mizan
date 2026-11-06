@@ -83,6 +83,13 @@ export class AccountsService {
         normalBalance: change.normalBalance ?? row.normalBalance,
         currency: change.currency === undefined ? row.currency : change.currency,
         isControl: change.isControl ?? row.isControl,
+        // An account that stops being a control account drops its item kind (S04).
+        itemKind:
+          change.itemKind !== undefined
+            ? change.itemKind
+            : (change.isControl ?? row.isControl)
+              ? (row.itemKind as Account['itemKind'])
+              : null,
         isMonetary: change.isMonetary ?? row.isMonetary,
         name: change.name ?? row.name,
         nameLatin: change.nameLatin === undefined ? row.nameLatin : change.nameLatin,
@@ -97,6 +104,7 @@ export class AccountsService {
         next.normalBalance !== row.normalBalance ||
         next.currency !== row.currency ||
         next.isControl !== row.isControl ||
+        next.itemKind !== row.itemKind ||
         next.isMonetary !== row.isMonetary;
       if (
         row.level === 1 &&
@@ -136,6 +144,7 @@ export class AccountsService {
           statementLine: next.statementLine,
           currency: next.currency as CurrencyCode | null,
           isControl: next.isControl,
+          itemKind: next.itemKind,
           isMonetary: next.isMonetary,
           requiredDimensionCount: next.requiredDimensionTypeIds.length,
         });
@@ -163,6 +172,7 @@ export class AccountsService {
               statementLine: next.statementLine,
               currency: next.currency,
               isControl: next.isControl,
+              itemKind: next.itemKind,
               isMonetary: next.isMonetary,
             })
             .where(eq(chartAccounts.id, id))

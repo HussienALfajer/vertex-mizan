@@ -1,8 +1,8 @@
 # Writing off a receivable
 
-Status: Proposed
+Status: Approved (owner, 2026-11-06)
 
-The expected entries were approved by the owner on 2026-11-06, with the added account `532005` for written-off receivables. The cases stay `Proposed` until S04 brings their executors: the manual line's item fields, the item lines of the posting function, the open-item reader, and a setup that creates the dimension values a case names (client `C1`, service `S1`).
+The expected entries were approved by the owner on 2026-11-06, with the added account `532005` for written-off receivables. The book runs every case through the posting function since S04 brought the manual line's item fields, the item lines of the posting function, the open-item reader and a setup that creates the dimension values a case names (client `C1`, service `S1`), with no expected value changed; `packages/ledger`'s `items.test.ts` builds the main ones too.
 
 ## Rule
 

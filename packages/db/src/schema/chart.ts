@@ -97,6 +97,8 @@ export const chartAccounts = pgTable(
     statementLine: text(),
     currency: text(),
     isControl: boolean().notNull().default(false),
+    /** The kind of a control account's open items (S04, ADR 0013): `document` or `running`. */
+    itemKind: text(),
     isMonetary: boolean().notNull().default(false),
     blockedAt: timestamptz(),
     blockedReason: text(),
@@ -155,6 +157,12 @@ export const chartAccounts = pgTable(
       'chart_accounts_flags',
       sql`(not (${t.isControl} or ${t.isMonetary}) or ${t.class} in ('asset', 'liability'))
         and (${t.kind} = 'postable' or (not ${t.isControl} and not ${t.isMonetary} and ${t.currency} is null))`,
+    ),
+    // S04 (ADR 0013): a control account, and only a control account, has an item kind.
+    check(
+      'chart_accounts_item_kind',
+      sql`(${t.isControl} = (${t.itemKind} is not null))
+        and (${t.itemKind} is null or ${t.itemKind} in ('document', 'running'))`,
     ),
     check(
       'chart_accounts_currency',
