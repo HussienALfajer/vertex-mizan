@@ -26,6 +26,37 @@ function url(name: string): URL {
   return new URL(value);
 }
 
+/** How long `drop` waits for the runtime roles' connections to the test database to end. */
+const DISCONNECT_DEADLINE_MS = 10_000;
+
+/**
+ * Waits until no role but the owner is connected to the database. `DROP DATABASE … WITH (FORCE)`
+ * may terminate only the owner's own backends: the owner has no `pg_signal_backend` (role
+ * separation, ADR 0008), so a runtime role's backend still listed when the drop runs fails it.
+ * A pool that a test file has just ended can leave its backends listed for a moment after the
+ * client sees the socket close, so the drop waits for them. One still there at the deadline is a
+ * pool a test left open: the error names its roles.
+ */
+async function waitForOtherRolesToLeave(admin: pg.Client, name: string): Promise<void> {
+  const deadline = Date.now() + DISCONNECT_DEADLINE_MS;
+  for (;;) {
+    const { rows } = await admin.query<{ role: string; backends: string }>(
+      `SELECT usename AS role, count(*) AS backends FROM pg_stat_activity
+        WHERE datname = $1 AND usename <> current_user GROUP BY usename ORDER BY usename`,
+      [name],
+    );
+    if (rows.length === 0) return;
+    if (Date.now() >= deadline) {
+      const still = rows.map((row) => `${row.role} (${row.backends})`).join(', ');
+      throw new Error(
+        `The test database ${name} still has connections after ${DISCONNECT_DEADLINE_MS} ms: ` +
+          `${still}. A test left a pool open; end it in the file's afterAll.`,
+      );
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+}
+
 /**
  * Creates a fresh database as the owner role (from `DATABASE_OWNER_URL`, `DATABASE_APP_URL`,
  * `DATABASE_JOBS_URL` and `DATABASE_QUEUE_URL`) and applies every migration to it, so test runs
@@ -42,8 +73,12 @@ export async function createTestDatabase(): Promise<TestDatabase> {
   await admin.connect();
   await admin.query(`CREATE DATABASE ${name} TEMPLATE template0 ENCODING 'UTF8'`);
   const drop = async () => {
-    await admin.query(`DROP DATABASE ${name} WITH (FORCE)`);
-    await admin.end();
+    try {
+      await waitForOtherRolesToLeave(admin, name);
+      await admin.query(`DROP DATABASE ${name} WITH (FORCE)`);
+    } finally {
+      await admin.end();
+    }
   };
 
   for (const role of [owner, app, jobs, queue]) role.pathname = `/${name}`;
