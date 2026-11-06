@@ -500,8 +500,9 @@ describe('openItemProblems (S04 "Reports")', () => {
     parallelMinor: fc.bigInt({ min: -1_000_000n, max: 1_000_000n }),
   });
 
+  type Move = typeof movement extends fc.Arbitrary<infer T> ? T : never;
   /** Period balances and rows built from the movements, as the posting function keeps them. */
-  function consistent(moves: readonly fc.RecordValue<typeof movement>[]): OpenItemsInput {
+  function consistent(moves: readonly Move[]): OpenItemsInput {
     const items = [
       { id: M1, accountId: RECEIVABLE, currency: 'USD' as const },
       { id: R1, accountId: FUNDS, currency: 'USD' as const },
