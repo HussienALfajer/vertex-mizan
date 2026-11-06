@@ -562,8 +562,13 @@ describe('each convention, broken on purpose', () => {
 
 const root = fileURLToPath(new URL('../../../', import.meta.url));
 const WRITER = 'packages/db/src/posting/post.ts';
+// S04: the items, their movements and balances are the posting function's too; a due date is
+// also changed by a person (S04 rule 15), so it is not.
 const LEDGER_TABLES = Object.entries(tableRegistry)
-  .filter(([, info]) => info.module === 'ledger')
+  .filter(
+    ([name, info]) =>
+      info.module === 'ledger' || (info.module === 'open-items' && name !== 'open_item_due_dates'),
+  )
   .map(([name]) => name);
 const camel = (name: string) =>
   name.replace(/_([a-z])/g, (_, letter: string) => letter.toUpperCase());
@@ -593,6 +598,10 @@ describe('one writer of the ledger (ADR 0005 invariant 11)', () => {
   it("names the ledger module's tables", () => {
     expect(LEDGER_TABLES).toContain('journal_lines');
     expect(LEDGER_TABLES).toContain('period_balances');
+    expect(LEDGER_TABLES).toEqual(
+      expect.arrayContaining(['open_items', 'open_item_movements', 'open_item_balances']),
+    );
+    expect(LEDGER_TABLES).not.toContain('open_item_due_dates');
   });
 
   it('finds a write through Drizzle and in SQL', () => {
