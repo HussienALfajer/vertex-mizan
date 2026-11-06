@@ -2,7 +2,7 @@
 
 Status: Proposed
 
-The expected entries await the owner's approval. The cases stay `Proposed` until S05 brings their executors: the `event` executor through the event inbox, the posting rules of `invoice.issued`, `invoice.voided`, `invoice.due_date_changed`, `payment.recorded` and `payment.voided`, the mapping of each payment method to its account, and the holds `NEEDS_DECISION` and `OPEN_ITEM_HAS_SETTLEMENTS` (S04 "Out of scope"; owner, 2026-10-28).
+The expected entries were approved by the owner on 2026-11-06, with three decisions: the gap between Hub's applied amount and the amount received at Hub's rate is a realised exchange difference, not a discount; the book ledger measures foreign cash at the bulletin even when Hub applied it at its own rate; and a payment in the invoice's currency whose applied amount differs from its amount is refused by S05's contract (422, nothing stored), since a gap in one currency is never an exchange difference (ADR 0007). The cases stay `Proposed` until S05 brings their executors: the `event` executor through the event inbox, the posting rules of `invoice.issued`, `invoice.voided`, `invoice.due_date_changed`, `payment.recorded` and `payment.voided`, the mapping of each payment method to its account, and the holds `NEEDS_DECISION` and `OPEN_ITEM_HAS_SETTLEMENTS` (S04 "Out of scope"; owner, 2026-10-28).
 
 ## Rule
 
@@ -34,7 +34,7 @@ The cases leave out what other scenarios or later specs own:
 - a payment dated in a closed period, held `PERIOD_CLOSED`, and one after a month-end revaluation, added with S07's jobs;
 - the automatic retry of an invoice void held `OPEN_ITEM_HAS_SETTLEMENTS` once its payments' voids post: the format states a hold only on a case's last step, so S05 adds that case with the field it needs;
 - a replayed event (the same idempotency key), which posts nothing new: a property test of S05, since a step carries no event ID;
-- a payment of zero or a negative amount: refused by the contract (422), nothing stored;
+- a payment of zero or a negative amount, and one in the invoice's currency whose applied amount differs from its amount: refused by the contract (422), nothing stored (owner, 2026-11-06);
 - the ad-wallet events (`ad-funds/running-balance.md`, S05).
 
 ### Vertex Media: a USD invoice paid in USD as the bulletin rises (ADR 0007, B1)
@@ -130,7 +130,7 @@ expect:
 
 ### Vertex Media: a USD invoice paid in two SYP payments, with Hub's applied amounts
 
-The item clears by the USD amount Hub applied, never by a conversion of the SYP received; the cash is in the book currency, so the bulletin of the payment's date is not read. The first payment's applied amount is Hub's rate exactly, so the parallel ledger posts nothing. The last payment closes the invoice: Hub applies the 595.14 USD still open, while 73,800.00 SYP at Hub's 124 is 595.16 USD, and the 0.02 USD between them is a parallel gain.
+The item clears by the USD amount Hub applied, never by a conversion of the SYP received; the cash is in the book currency, so the bulletin of the payment's date is not read. The first payment's applied amount is Hub's rate exactly, so the parallel ledger posts nothing. The last payment closes the invoice: Hub applies the 595.14 USD still open, while 73,800.00 SYP at Hub's 124 is 595.16 USD, and the 0.02 USD between them is a parallel gain, not a discount (owner, 2026-11-06).
 
 ```yaml
 case: a 1,000.00 USD invoice at 120; 50,000.00 SYP applied as 404.86 USD, then 73,800.00 SYP applied as the 595.14 USD left

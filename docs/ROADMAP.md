@@ -52,6 +52,7 @@ Scope: `docs/product/phase-1-scope.md`. One spec per line, each through `/spec` 
 - [~] S04 Open items and settlements: F06 (`docs/specs/S04-open-items-settlements.md`, ADR 0013)
   - [x] Posting rules: `receivables/manual-settlement`, numbers approved by the owner 2026-11-06 (an overpayment's excess to other payables `211003`; an opening reversible once its item's settlements are reversed), `Proposed` until S04 brings its executors; the scenario format's `open_item` and `item` line fields
   - [x] Posting rules: `receivables/write-off`, numbers approved by the owner 2026-11-06 (the added account `532005` for written-off receivables; a recovery after a write-off, Dr cash / Cr `532005`, in a later scenario), `Proposed` until S04 brings its executors
+  - [x] Posting rules: `receivables/hub-payment`, numbers approved by the owner 2026-11-06 (the gap between Hub's applied amount and the amount at Hub's rate is a realised exchange difference; foreign cash at the bulletin in the book ledger; a same-currency payment whose applied amount differs from its amount refused by S05's contract), `Proposed` until S05 brings the event executor and the Hub posting rules
 - [ ] S05 Posting API, event inbox and posting rules: F10
 - [ ] S06 Revenue recognition (IFRS 15): F07
 - [ ] S07 Month-end revaluation, periods and close: F08 · F09
