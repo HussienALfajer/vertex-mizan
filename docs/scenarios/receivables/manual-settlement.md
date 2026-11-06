@@ -2,7 +2,7 @@
 
 Status: Proposed
 
-The expected entries await the owner's approval (`/posting-rule`). Once approved, the cases stay `Proposed` until S04 brings their executors: the manual line's item fields, the item lines of the posting function, the open-item reader, and a setup that creates the dimension values a case names (client `C1`, service `S1`).
+The expected entries were approved by the owner on 2026-11-06, with an overpayment's excess posted to other payables `211003` and an opening reversible once every settlement on its item is reversed. The cases stay `Proposed` until S04 brings their executors: the manual line's item fields, the item lines of the posting function, the open-item reader, and a setup that creates the dimension values a case names (client `C1`, service `S1`).
 
 ## Rule
 
