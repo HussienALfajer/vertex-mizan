@@ -149,7 +149,10 @@ export const errorStatus = {
   IDEMPOTENCY_CONFLICT: 409,
   /** A manual entry dated after the last day of the current month in Damascus (S03 rule 6). */
   ENTRY_DATE_OUT_OF_RANGE: 422,
-  /** A manual line on a control account, whose lines S04's open items post (S03 rule 16). */
+  /**
+   * A manual line on a control account (S03 rule 16). No longer raised since S04, whose lines name
+   * their open item (`OPEN_ITEM_REQUIRED`); kept in the registry and never reused.
+   */
   ACCOUNT_IS_CONTROL: 422,
   /** The draft is submitted, posted or discarded: it no longer changes this way (S03 rules 8, 11). */
   DRAFT_NOT_EDITABLE: 409,
@@ -169,6 +172,24 @@ export const errorStatus = {
   ATTACHMENT_LIMIT: 409,
   /** The company has an export queued already: one at a time (S03 rule 21). */
   EXPORT_IN_PROGRESS: 409,
+
+  // Open items and settlements (S04, ADR 0013).
+  /** A manual line on a control account names no open item (S04 rule 5). */
+  OPEN_ITEM_REQUIRED: 422,
+  /** A line names an open item on an account that is not a control account (S04 rule 5). */
+  ACCOUNT_NOT_CONTROL: 422,
+  /** A new document item's reference is already used on its account (S04 rule 6). */
+  OPEN_ITEM_REFERENCE_TAKEN: 409,
+  /** The line's account, currency or client is not its item's (S04 rule 7). */
+  OPEN_ITEM_MISMATCH: 422,
+  /** A line adds to a document item instead of clearing it (S04 rule 2). */
+  OPEN_ITEM_DIRECTION: 422,
+  /** Reversing an item's opening while it has other movements; for S05 also a hold (rule 13). */
+  OPEN_ITEM_HAS_SETTLEMENTS: 409,
+  /** A manual movement on a Hub or opening item without a line memo (S04 rule 8). */
+  OPEN_ITEM_MEMO_REQUIRED: 422,
+  /** A change Mizan leaves to Hub, such as a Hub item's due date (S04 rule 15). */
+  OPEN_ITEM_FROM_HUB: 409,
 } as const satisfies Record<string, number>;
 
 export type ErrorCode = keyof typeof errorStatus;
