@@ -17,12 +17,13 @@ async function databaseExists(name: string): Promise<boolean> {
   }
 }
 
-describe('createTestDatabase', () => {
+// Each test makes and migrates a database of its own.
+describe('createTestDatabase', { timeout: 30_000 }, () => {
   it('drops its database once a runtime role that is still connected leaves', async () => {
     const database = await createTestDatabase();
     const app = new pg.Client({ connectionString: database.appUrl });
     await app.connect();
-    // Before the fix, the drop failed at once: "permission denied to terminate process".
+    // A forced drop failed at once here: "permission denied to terminate process".
     const dropped = database.drop();
     await new Promise((resolve) => setTimeout(resolve, 200));
     await app.end();

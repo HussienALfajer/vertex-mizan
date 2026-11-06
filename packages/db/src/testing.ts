@@ -30,22 +30,26 @@ function url(name: string): URL {
 const DISCONNECT_DEADLINE_MS = 10_000;
 
 /**
- * Waits until no role but the owner is connected to the database. `DROP DATABASE … WITH (FORCE)`
- * may terminate only the owner's own backends: the owner has no `pg_signal_backend` (role
- * separation, ADR 0008), so a runtime role's backend still listed when the drop runs fails it.
- * A pool that a test file has just ended can leave its backends listed for a moment after the
- * client sees the socket close, so the drop waits for them. One still there at the deadline is a
- * pool a test left open: the error names its roles.
+ * Drops the test database as the owner, which has no `pg_signal_backend` (role separation, ADR
+ * 0008): it may terminate only its own backends. So the drop never relies on terminating another
+ * role's (`DROP DATABASE … WITH (FORCE)` refuses the whole drop when it meets one):
+ * - it waits until no runtime role's client backend is connected. A pool a test file has just
+ *   ended can leave its backends listed for a moment; one still there at the deadline is a pool a
+ *   test left open, and the error names its roles;
+ * - it terminates the owner's own backends on the database;
+ * - a plain `DROP DATABASE` then waits, up to 5 s, for backends that are still exiting, and stops
+ *   autovacuum workers itself, with no right to signal anyone.
  */
-async function waitForOtherRolesToLeave(admin: pg.Client, name: string): Promise<void> {
+async function dropDatabase(admin: pg.Client, name: string): Promise<void> {
   const deadline = Date.now() + DISCONNECT_DEADLINE_MS;
   for (;;) {
     const { rows } = await admin.query<{ role: string; backends: string }>(
       `SELECT usename AS role, count(*) AS backends FROM pg_stat_activity
-        WHERE datname = $1 AND usename <> current_user GROUP BY usename ORDER BY usename`,
+        WHERE datname = $1 AND backend_type = 'client backend' AND usename <> current_user
+        GROUP BY usename ORDER BY usename`,
       [name],
     );
-    if (rows.length === 0) return;
+    if (rows.length === 0) break;
     if (Date.now() >= deadline) {
       const still = rows.map((row) => `${row.role} (${row.backends})`).join(', ');
       throw new Error(
@@ -55,6 +59,12 @@ async function waitForOtherRolesToLeave(admin: pg.Client, name: string): Promise
     }
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
+  await admin.query(
+    `SELECT pg_terminate_backend(pid) FROM pg_stat_activity
+      WHERE datname = $1 AND usename = current_user AND pid <> pg_backend_pid()`,
+    [name],
+  );
+  await admin.query(`DROP DATABASE ${name}`);
 }
 
 /**
@@ -74,8 +84,7 @@ export async function createTestDatabase(): Promise<TestDatabase> {
   await admin.query(`CREATE DATABASE ${name} TEMPLATE template0 ENCODING 'UTF8'`);
   const drop = async () => {
     try {
-      await waitForOtherRolesToLeave(admin, name);
-      await admin.query(`DROP DATABASE ${name} WITH (FORCE)`);
+      await dropDatabase(admin, name);
     } finally {
       await admin.end();
     }
