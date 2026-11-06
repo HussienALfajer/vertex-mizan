@@ -62,8 +62,9 @@ steps:                              # in order; a Hub event, a manual entry, a r
     payload: { ... }
   - manual: <what it records>       # a manual entry; payload as the manual-entry form sends it (S03):
     accounting_date: 2026-11-03     # { description?, reference?, dealt_rates?, lines: [{ account,
-    payload: { ... }                #   dims?, currency, amount, memo? }] }; dealt_rates: [{ base,
-                                    #   quote, rate }], one per currency pair (S03 rule 13)
+    payload: { ... }                #   dims?, currency, amount, memo?, open_item?, item? }] };
+                                    #   dealt_rates: [{ base, quote, rate }], one per currency pair
+                                    #   (S03 rule 13); open_item and item: "Writing the YAML"
   - reversal: 1                     # reverses the case's entry 1 (posting order) at its amounts
     accounting_date: 2026-11-04
   - job: month_end_revaluation      # or month_end_release, close_period, ...
@@ -93,6 +94,7 @@ Writing the YAML:
 - A scenario file has no fence but its cases: each opens with exactly `` ```yaml `` and closes with `` ``` ``, both at the start of a line. Any other fence (no language, `yml`, indented, in a list or a quote, tildes, unclosed) is an error, so no case is hidden. A payload holds no decimal number.
 - An added account (`accounts`) is a postable code under a header of the case's template, not already in it, with a statement line of its class; `currency` restricts it, `monetary` marks it monetary (S02). It needs a `template`.
 - On a line or an open item, no `dims` means no dimensions. On a balance, `dims` filters: the balance over every dimension set holding the stated pairs, so no `dims` is the whole account; with a `currency`, only that currency's lines, and its `amount` may be stated.
+- **Items** (S04): a manual line on a `document` control account opens an item with `open_item: { ref: M-1, due: 2026-12-03 }` (`due` optional) or moves one with `item: M-1` (a manual reference or a Hub document number). It then takes the item's dimensions, so it states no `dims`. A line on a `running` account names the client in `dims` and neither field. An expected line on an item carries the item's dimensions, and a running item is named in `open_items` by the client's code.
 - `parallel` is stated on every line, balance and open item exactly when the company keeps a parallel ledger. In a ledger's own currency, that ledger's amount is the transaction amount (ADR 0007): a SYP line in SYP books has `book` equal to `amount`.
 - Each expected entry balances in both ledgers, and has at least two lines; a `third` case names a line or a rate in a third currency.
 - An unknown or misspelt key is an error.

@@ -41,7 +41,7 @@ The hook is `.claude/hooks/test-guard.mjs` (PreToolUse on Bash and PowerShell), 
 
 ## Test databases
 
-- Every suite that needs a database creates its own throwaway one for the run, migrated, and drops it afterwards (`createTestDatabase()` in `packages/db/src/testing.ts`): `packages/db`, `apps/api`, `apps/worker` and the scenario book. Runs never share rows, so Turborepo runs them at the same time and no suite needs per-worker databases or an advisory lock. Keep it so: a new suite with a database gets its own from its global setup.
+- Every suite that needs a database creates its own throwaway one for the run, migrated, and drops it afterwards (`createTestDatabase()` in `packages/db/src/testing.ts`; the drop waits for the runtime roles' connections to end, since the owner may not terminate them, and names any a test left open): `packages/db`, `apps/api`, `apps/worker` and the scenario book. Runs never share rows, so Turborepo runs them at the same time and no suite needs per-worker databases or an advisory lock. Keep it so: a new suite with a database gets its own from its global setup.
 - `packages/db` runs one file at a time (`fileParallelism: false`): the files share the run's database, and the convention test alters the fixture tables inside transactions it rolls back, so its locks must never meet another file's.
 
 ## Vitest

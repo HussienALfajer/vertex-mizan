@@ -102,7 +102,7 @@ Guards, all `ENABLE ALWAYS` and pinned in `GUARDS`:
 - **Invariant 9** (ADR 0008, ADR 0013), deferred on `open_item_balances`, checked once per item at commit:
   - a `document` item's open amount never has the opposite sign of its opening amount;
   - every item whose open transaction amount is zero is zero in the book and parallel amounts (S07 will exclude its revaluation movements, which reverse).
-- **An opening with settlements.** A reversal that negates a document item's `open` movement is refused while the item has other movements not themselves reversed in that entry (`OPEN_ITEM_HAS_SETTLEMENTS`).
+- **An opening with settlements.** A reversal that negates a document item's `open` movement is refused while the item has another movement that is not reversed, either by an earlier entry or by that same entry (`OPEN_ITEM_HAS_SETTLEMENTS`). So the settlements are reversed first, and the opening's reversal then posts (owner, 2026-11-06; `receivables/manual-settlement`).
 
 `entry_draft_lines` (S03) gains:
 - `open_item_id` (null: the item a line moves);
