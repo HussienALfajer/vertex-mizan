@@ -11,7 +11,7 @@ import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import { allocate, allocateCarried } from './allocation.js';
 import { balanceEntry, exchangeDifferenceLines, ledgerTotal } from './balance.js';
-import { clearOpenItem, moveRunningBalance, openItemCarrying, reverseLines } from './carried.js';
+import { clearOpenItem, moveRunningBalance, reverseLines } from './carried.js';
 import {
   type CanonicalValue,
   type ChainLink,
@@ -20,15 +20,24 @@ import {
   verifyChain,
 } from './integrity.js';
 import {
+  emptyBalance,
+  type ItemState,
+  moveItem,
+  runningVoidDifference,
+  runningVoidDifferenceLines,
+} from './items.js';
+import {
   type CarriedAmounts,
   carriedLine,
   keptLedgers,
   type Line,
   ledgerAmount,
   ledgerCurrency,
+  negate,
 } from './lines.js';
 import {
   ENTRY_SOURCES,
+  manualEntry,
   manualEntryLines,
   manualReversalLines,
   type PostedEntry,
@@ -413,11 +422,13 @@ describe('settlements', () => {
             at('2026-11-03', issued),
           );
           const paid = (total * percent) / 100n;
+          // No line has a zero amount (S03), so nothing clears zero.
+          fc.pre(paid !== 0n);
           const lines = [
             measuredLine({ account: 'P', amount: money(paid, from) }, at('2026-11-20', settled)),
             carriedLine({
               account: 'I',
-              amounts: clearOpenItem({ measured: item, openMinor: total }, -paid),
+              amounts: clearOpenItem(item, -paid),
             }),
           ];
           // Paying more than is open is not an exchange difference: the excess needs its own line.
@@ -846,48 +857,71 @@ const carried = fc
     parallelMinor: parallel,
   }));
 
-/** Cut points splitting a transaction amount into consecutive parts that reach it exactly. */
-function parts(total: bigint, cuts: readonly bigint[]): bigint[] {
-  const magnitude = abs(total);
-  const points = [...new Set(cuts.map((cut) => cut % magnitude))].sort((a, b) => (a < b ? -1 : 1));
-  const sign = total < 0n ? -1n : 1n;
-  const bounds = [0n, ...points.filter((point) => point > 0n), magnitude];
-  return bounds.slice(1).map((bound, index) => sign * (bound - (bounds[index] as bigint)));
-}
-
 describe('carried balances', () => {
-  it('clear in parts that come from the carried amounts alone and leave zero in every ledger', () => {
+  it('clear in proportion to what remains through any order of clearings and voids (ADR 0013)', () => {
+    // A step clears a share of what is open, or voids an earlier clearing still standing: the
+    // exact negation of its line. The last step clears all that is open.
+    const step = fc.oneof(
+      fc.record({ kind: fc.constant('clear' as const), share: fc.bigInt({ min: 1n, max: 100n }) }),
+      fc.record({ kind: fc.constant('void' as const), pick: fc.nat() }),
+    );
     fc.assert(
-      fc.property(
-        carried,
-        fc.array(fc.bigInt({ min: 0n, max: 10n ** 9n }), { maxLength: 5 }),
-        (item, cuts) => {
-          const total = item.transaction.amountMinor;
-          let open = total;
-          let cleared = 0n;
-          const sum = { transaction: 0n, book: 0n, parallel: 0n };
-          for (const part of parts(total, cuts)) {
-            const line = clearOpenItem({ measured: item, openMinor: open }, -part);
-            open -= part;
-            cleared += part;
-            sum.transaction += line.transaction.amountMinor;
-            sum.book += line.bookMinor;
-            sum.parallel += line.parallelMinor ?? 0n;
-            // Never converted again: what is cleared so far is the carried amount in proportion.
-            expect(-sum.book).toBe(round(item.bookMinor * cleared, total));
-            if (item.parallelMinor !== null)
-              expect(-sum.parallel).toBe(round(item.parallelMinor * cleared, total));
-            // A ledger in the item's currency clears the transaction amount itself.
-            if (item.bookMinor === total) expect(line.bookMinor).toBe(line.transaction.amountMinor);
+      fc.property(carried, fc.array(step, { maxLength: 10 }), (item, steps) => {
+        const total = item.transaction.amountMinor;
+        const bookIsOwn = item.bookMinor === total;
+        let carrying: CarriedAmounts = item;
+        const standing: CarriedAmounts[] = [];
+        const move = (line: CarriedAmounts) => {
+          carrying = {
+            transaction: money(
+              carrying.transaction.amountMinor + line.transaction.amountMinor,
+              'USD',
+            ),
+            bookMinor: carrying.bookMinor + line.bookMinor,
+            parallelMinor:
+              carrying.parallelMinor === null
+                ? null
+                : carrying.parallelMinor + (line.parallelMinor ?? 0n),
+          };
+        };
+        const clear = (movementMinor: bigint) => {
+          const open = carrying.transaction.amountMinor;
+          const line = clearOpenItem(carrying, movementMinor);
+          // Never converted again: a share of what the item carries now, or all of it.
+          const expected = (amount: bigint) =>
+            -movementMinor === open ? -amount : round(amount * movementMinor, open);
+          expect(line.bookMinor).toBe(expected(carrying.bookMinor));
+          if (carrying.parallelMinor !== null) {
+            expect(line.parallelMinor).toBe(expected(carrying.parallelMinor));
           }
-          expect([sum.transaction, sum.book]).toEqual([-total, -item.bookMinor]);
-          expect(openItemCarrying({ measured: item, openMinor: 0n })).toEqual({
-            transaction: money(0n, 'USD'),
-            bookMinor: 0n,
-            parallelMinor: item.parallelMinor === null ? null : 0n,
-          });
-        },
-      ),
+          // A ledger in the item's currency clears the transaction amount itself.
+          if (bookIsOwn) expect(line.bookMinor).toBe(movementMinor);
+          move(line);
+          standing.push(line);
+        };
+        for (const next of steps) {
+          const open = carrying.transaction.amountMinor;
+          if (next.kind === 'clear' && open !== 0n) {
+            const part = (open * next.share) / 100n;
+            if (part !== 0n) clear(-part);
+          } else if (next.kind === 'void' && standing.length > 0) {
+            const [voided] = standing.splice(next.pick % standing.length, 1);
+            if (voided !== undefined) move(negate(voided));
+          }
+          // Within its sign, and at zero in every ledger whenever it is zero in its currency.
+          const left = carrying.transaction.amountMinor;
+          expect(left === 0n || left < 0n === total < 0n).toBe(true);
+          expect(abs(left) <= abs(total)).toBe(true);
+          if (left === 0n)
+            expect([carrying.bookMinor, carrying.parallelMinor ?? 0n]).toEqual([0n, 0n]);
+        }
+        if (carrying.transaction.amountMinor !== 0n) clear(-carrying.transaction.amountMinor);
+        expect(carrying).toEqual({
+          transaction: money(0n, 'USD'),
+          bookMinor: 0n,
+          parallelMinor: item.parallelMinor === null ? null : 0n,
+        });
+      }),
       { numRuns: 1_000 },
     );
   });
@@ -941,6 +975,253 @@ describe('carried balances', () => {
         }
       }),
       { numRuns: 1_000 },
+    );
+  });
+});
+
+describe('open items (S04, ADR 0013)', () => {
+  const targets = { gain: { account: 'G' }, loss: { account: 'L' } };
+  const days = fc.array(rateChoices, { minLength: 12, maxLength: 12 });
+  const context = (
+    company: CompanyLedgers,
+    from: CurrencyCode,
+    choices: Choices,
+  ): MeasureContext => ({
+    ledgers: company,
+    on: '2026-11-15',
+    calendar,
+    rates: rateTable(company, from, choices),
+  });
+  type Choices = Parameters<typeof rateTable>[2];
+  const plus = (balance: CarriedAmounts, lines: readonly Line[], id: string): CarriedAmounts => {
+    let { bookMinor, parallelMinor } = balance;
+    let amountMinor = balance.transaction.amountMinor;
+    for (const line of lines.filter((candidate) => candidate.item?.id === id)) {
+      amountMinor += line.transaction.amountMinor;
+      bookMinor += line.bookMinor;
+      parallelMinor = parallelMinor === null ? null : parallelMinor + (line.parallelMinor ?? 0n);
+    }
+    return {
+      transaction: money(amountMinor, balance.transaction.currency),
+      bookMinor,
+      parallelMinor,
+    };
+  };
+  const isZero = (balance: CarriedAmounts) =>
+    balance.bookMinor === 0n && (balance.parallelMinor === null || balance.parallelMinor === 0n);
+
+  it('a document item stays within its sign through receipts and voids, and ends at zero in every ledger', () => {
+    const step = fc.oneof(
+      fc.record({
+        kind: fc.constant('receipt' as const),
+        share: fc.bigInt({ min: 1n, max: 100n }),
+      }),
+      fc.record({ kind: fc.constant('void' as const), pick: fc.nat() }),
+    );
+    fc.assert(
+      fc.property(
+        ledgers,
+        currency,
+        nonZero,
+        days,
+        fc.array(step, { maxLength: 10 }),
+        (company, from, total, rates, steps) => {
+          const day = (index: number) =>
+            context(company, from, rates[index % rates.length] as Choices);
+          const post = (lines: readonly Line[], on: MeasureContext) =>
+            balanceEntry({ on: on.on, ledgers: company, lines, rounding });
+          const opened = manualEntry(
+            {
+              lines: [
+                {
+                  account: 'I',
+                  amount: money(total, from),
+                  item: {
+                    id: 'M',
+                    kind: 'document',
+                    direction: null,
+                    balance: emptyBalance(from, company.parallel !== null),
+                  },
+                },
+                { account: 'R', amount: money(-total, from) },
+              ],
+              dealtRates: [],
+            },
+            day(0),
+            targets,
+          );
+          const direction = total < 0n ? -1 : 1;
+          let balance = plus(
+            emptyBalance(from, company.parallel !== null),
+            post(opened.lines, day(0)),
+            'M',
+          );
+          const standing: Line[][] = [];
+          const item = (): ItemState => ({ id: 'M', kind: 'document', direction, balance });
+          const receive = (part: bigint, at: MeasureContext) => {
+            const { lines } = manualEntry(
+              {
+                lines: [
+                  { account: 'P', amount: money(part, from) },
+                  { account: 'I', amount: money(-part, from), item: item() },
+                ],
+                dealtRates: [],
+              },
+              at,
+              targets,
+            );
+            // A settlement never reads a rate: the same clearing with no rate table at all.
+            const cleared = moveItem(item(), { account: 'I', dimensions: {} }, money(-part, from), {
+              ...at,
+              rates: [],
+            });
+            expect(lines.filter((line) => line.item !== undefined)).toEqual(cleared.lines);
+            const entry = post(lines, at);
+            balance = plus(balance, entry, 'M');
+            standing.push(entry);
+          };
+          for (const [index, next] of steps.entries()) {
+            const open = balance.transaction.amountMinor;
+            if (next.kind === 'receipt' && open !== 0n) {
+              const part = (open * next.share) / 100n;
+              if (part !== 0n) receive(part, day(index + 1));
+            } else if (next.kind === 'void' && standing.length > 0) {
+              const [voided] = standing.splice(next.pick % standing.length, 1);
+              if (voided !== undefined) {
+                const reversal = manualReversalLines(
+                  {
+                    source: 'manual',
+                    date: '2026-11-15',
+                    isReversal: false,
+                    reversed: false,
+                    lines: voided,
+                  },
+                  '2026-11-15',
+                );
+                balance = plus(balance, post(reversal, day(index + 1)), 'M');
+              }
+            }
+            const left = balance.transaction.amountMinor;
+            expect(left === 0n || left < 0n === total < 0n).toBe(true);
+            expect(abs(left) <= abs(total)).toBe(true);
+            if (left === 0n) expect(isZero(balance)).toBe(true);
+          }
+          if (balance.transaction.amountMinor !== 0n)
+            receive(balance.transaction.amountMinor, day(11));
+          expect(isZero(balance)).toBe(true);
+        },
+      ),
+      { numRuns: 300 },
+    );
+  });
+
+  it('a running movement across zero splits exactly: the whole balance, then the excess measured anew', () => {
+    fc.assert(
+      fc.property(
+        ledgers,
+        currency,
+        nonZero,
+        amount,
+        amount,
+        nonZero,
+        rateChoices,
+        (company, from, held, book, parallel, extra, choices) => {
+          const keeps = company.parallel !== null;
+          const balance: CarriedAmounts = {
+            transaction: money(held, from),
+            bookMinor: company.book.currency === from ? held : book,
+            parallelMinor: !keeps ? null : company.parallel?.currency === from ? held : parallel,
+          };
+          const excess = held < 0n ? abs(extra) : -abs(extra);
+          const at = context(company, from, choices);
+          const moved = moveItem(
+            { id: 'C', kind: 'running', direction: null, balance },
+            { account: 'F', dimensions: {} },
+            money(-held + excess, from),
+            at,
+          );
+          const [clearing, added] = moved.lines;
+          expect(moved.lines).toHaveLength(2);
+          expect(clearing).toEqual(
+            carriedLine({
+              account: 'F',
+              amounts: negate(balance),
+              item: { id: 'C', movement: 'clear' },
+            }),
+          );
+          expect(added).toEqual({
+            ...measuredLine({ account: 'F', amount: money(excess, from) }, at),
+            item: { id: 'C', movement: 'add' },
+          });
+          expect(moved.after.balance).toEqual({
+            transaction: money(excess, from),
+            bookMinor: added?.bookMinor,
+            parallelMinor: added?.parallelMinor,
+          });
+        },
+      ),
+      { numRuns: 500 },
+    );
+  });
+
+  it("a running void reaches rule 3's carrying amount, and one with the balance restores what it cleared", () => {
+    const movement = fc.record({ amount: nonZero, day: fc.nat({ max: 11 }) });
+    fc.assert(
+      fc.property(
+        ledgers,
+        currency,
+        days,
+        fc.array(movement, { minLength: 1, maxLength: 8 }),
+        fc.nat(),
+        fc.nat({ max: 11 }),
+        (company, from, rates, movements, pick, voidDay) => {
+          const at = (index: number) => context(company, from, rates[index] as Choices);
+          const target = { account: 'F', dimensions: {} };
+          let item: ItemState = {
+            id: 'C',
+            kind: 'running',
+            direction: null,
+            balance: emptyBalance(from, company.parallel !== null),
+          };
+          const posted: Line[][] = [];
+          for (const { amount: moved, day } of movements) {
+            const step = moveItem(item, target, money(moved, from), at(day));
+            posted.push([...step.lines]);
+            item = step.after;
+            if (item.balance.transaction.amountMinor === 0n)
+              expect(isZero(item.balance)).toBe(true);
+          }
+          const original = posted[pick % posted.length] as Line[];
+          const before = item.balance;
+          const reversal = reverseLines(original);
+          const reversed = plus(emptyBalance(from, company.parallel !== null), reversal, 'C');
+          const exact = plus(before, reversal, 'C');
+          const voided = { id: 'C', target, before, reversed };
+          const difference = runningVoidDifferenceLines([voided], at(voidDay), targets);
+          const after = plus(exact, difference, 'C');
+          const held = before.transaction.amountMinor;
+          const net = reversed.transaction.amountMinor;
+          if (net !== 0n && held !== 0n && net < 0n !== held < 0n) {
+            // Against the balance or across zero: as if the void were a new movement (rule 3).
+            const asNew = moveItem({ ...item, balance: before }, target, money(net, from), {
+              ...at(voidDay),
+              rates: at(voidDay).rates,
+            });
+            expect(after).toEqual(asNew.after.balance);
+            expect(difference.length === 0).toBe(
+              runningVoidDifference(voided, at(voidDay)) === null,
+            );
+            if (difference.length > 0)
+              balanceEntry({ on: '2026-11-15', ledgers: company, lines: difference, rounding });
+          } else {
+            // With the balance or onto zero: the exact reversal alone.
+            expect(difference).toEqual([]);
+            expect(after).toEqual(exact);
+          }
+          if (after.transaction.amountMinor === 0n) expect(isZero(after)).toBe(true);
+        },
+      ),
+      { numRuns: 500 },
     );
   });
 });

@@ -6,6 +6,7 @@ import {
   type Ledger,
   type LedgerSettings,
   type Money,
+  type MovementKind,
   money,
 } from '@vertex-mizan/contracts';
 
@@ -38,9 +39,20 @@ export interface CarriedAmounts {
   readonly parallelMinor: bigint | null;
 }
 
+/**
+ * The open item a line on a control account moves (S04, ADR 0013): the item's id and the kind of
+ * the movement the line is. A reversal's line keeps its original's, so it moves the same item back.
+ */
+export interface ItemRef {
+  readonly id: string;
+  readonly movement: MovementKind;
+}
+
 interface LineFields extends CarriedAmounts {
   readonly account: string;
   readonly dimensions: Dimensions;
+  /** The open item the line moves: set exactly on a line on a control account (S04). */
+  readonly item?: ItemRef;
 }
 
 /**
@@ -99,6 +111,7 @@ export function carriedLine(input: {
   readonly account: string;
   readonly dimensions?: Dimensions;
   readonly amounts: CarriedAmounts;
+  readonly item?: ItemRef;
 }): Line {
   const { transaction, bookMinor, parallelMinor } = input.amounts;
   return {
@@ -108,5 +121,6 @@ export function carriedLine(input: {
     transaction,
     bookMinor,
     parallelMinor,
+    ...(input.item !== undefined && { item: input.item }),
   };
 }

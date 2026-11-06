@@ -283,6 +283,21 @@ describe('chainEntryValue', () => {
     }
   });
 
+  it("hashes a line's item id only when the line has one (S04), so earlier entries hash alike", () => {
+    const pinned = entryHash(chainEntryValue(entry), null);
+    const withItems = (itemId: string | null | undefined): ChainEntry => ({
+      ...entry,
+      lines: entry.lines.map((line, index) => (index === 0 ? { ...line, itemId } : line)),
+    });
+    expect(entryHash(chainEntryValue(withItems(null)), null)).toBe(pinned);
+    expect(entryHash(chainEntryValue(withItems(undefined)), null)).toBe(pinned);
+    const moved = withItems('01900000-0000-7000-8000-0000000000aa');
+    expect(entryHash(chainEntryValue(moved), null)).not.toBe(pinned);
+    expect(entryHash(chainEntryValue(moved), null)).not.toBe(
+      entryHash(chainEntryValue(withItems('01900000-0000-7000-8000-0000000000ab')), null),
+    );
+  });
+
   it('refuses a posting time that is not UTC with milliseconds', () => {
     expect(() => chainEntryValue({ ...entry, postedAt: '2026-11-08T09:30:00Z' })).toThrow(
       RangeError,

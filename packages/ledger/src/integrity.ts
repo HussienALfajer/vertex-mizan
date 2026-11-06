@@ -112,6 +112,8 @@ export interface ChainLine {
   readonly bookMinor: bigint;
   readonly parallelMinor: bigint | null;
   readonly memo: string | null;
+  /** The open item the line moves (S04); absent or null on a line that moves none. */
+  readonly itemId?: string | null;
   readonly conversions: readonly ChainConversion[];
 }
 
@@ -164,8 +166,9 @@ const POSTED_AT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
  * The hashed value of a posted entry (S03 rule 18, ADR 0005): its header, and its lines in line
  * order, each with its conversions by ledger and quote. The posting function and the integrity
  * check both build it from the same typed fields, so a stored entry hashes as it did when posted:
- * amounts are `bigint`, rates in their stored form, the posting time in milliseconds. Never change
- * it once an entry is posted: `integrity.test.ts` pins it.
+ * amounts are `bigint`, rates in their stored form, the posting time in milliseconds. A line's item
+ * id (S04) joins its value only when the line has one, so every entry posted before S04 hashes as
+ * it did. Never change it once an entry is posted: `integrity.test.ts` pins it.
  */
 export function chainEntryValue(entry: ChainEntry): CanonicalValue {
   if (!POSTED_AT.test(entry.postedAt)) {
@@ -203,6 +206,7 @@ export function chainEntryValue(entry: ChainEntry): CanonicalValue {
       bookMinor: line.bookMinor,
       parallelMinor: line.parallelMinor,
       memo: line.memo,
+      ...(line.itemId !== undefined && line.itemId !== null && { itemId: line.itemId }),
       conversions: [...line.conversions]
         .sort((a, b) => LEDGER_ORDER[a.ledger] - LEDGER_ORDER[b.ledger] || a.quoteNo - b.quoteNo)
         .map((conversion) => ({

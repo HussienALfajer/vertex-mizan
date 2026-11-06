@@ -3,6 +3,7 @@ import {
   type CurrencyCode,
   DomainError,
   type ErrorCode,
+  type ItemKind,
 } from '@vertex-mizan/contracts';
 
 /**
@@ -16,8 +17,10 @@ export interface ChartAccount {
   readonly currency: CurrencyCode | null;
   readonly blocked: boolean;
   readonly archived: boolean;
-  /** A control account, whose lines are open items (S04); no manual line until then. */
+  /** A control account, whose lines move open items (S04, ADR 0013). */
   readonly isControl: boolean;
+  /** The kind of a control account's items; null on any other account. */
+  readonly itemKind: ItemKind | null;
   readonly requiredDimensionTypeIds: readonly string[];
 }
 
@@ -48,6 +51,11 @@ export interface ChartLine {
   readonly currency: CurrencyCode;
   readonly dimensions: readonly LineDimensionValue[];
   readonly origin: 'manual' | 'hub' | 'reversal';
+  /**
+   * The open item the line names (S04 rules 5–9): a new document item it opens, or an existing
+   * item; undefined when it names none, as a line on a running account, whose item is the client's.
+   */
+  readonly item?: 'new' | 'existing';
 }
 
 function refuse(code: ErrorCode, message: string, details: Record<string, unknown>): never {
@@ -58,8 +66,11 @@ function refuse(code: ErrorCode, message: string, details: Record<string, unknow
  * Checks a line against the chart (S02 rule 8), the refusals in this order:
  * - the account is unknown (`NOT_FOUND`), a header (`ACCOUNT_NOT_POSTABLE`), archived
  *   (`ACCOUNT_ARCHIVED`) or blocked (`ACCOUNT_BLOCKED`), whatever the origin;
- * - a manual line on a control account (`ACCOUNT_IS_CONTROL`, S03 rule 16, until S04);
  * - from here on a reversal's line is accepted: it carries a line the chart accepted;
+ * - an item named on an account that is not a control account (`ACCOUNT_NOT_CONTROL`), a line on a
+ *   `document` control account that names no item (`OPEN_ITEM_REQUIRED`; S04 rule 5, which
+ *   replaces S03 rule 16's `ACCOUNT_IS_CONTROL`), and an item named on a `running` account, whose
+ *   item is found by the line's client (`VALIDATION_FAILED`, rule 9);
  * - the transaction currency differs from the account's restriction (`ACCOUNT_CURRENCY_MISMATCH`);
  * - two values of one type (`VALIDATION_FAILED`);
  * - a required dimension type has no value (`DIMENSION_REQUIRED`);
@@ -78,10 +89,20 @@ export function checkLineAgainstChart(line: ChartLine): void {
   if (account.archived)
     refuse('ACCOUNT_ARCHIVED', `Account ${accountId} is archived`, { accountId });
   if (account.blocked) refuse('ACCOUNT_BLOCKED', `Account ${accountId} is blocked`, { accountId });
-  if (line.origin === 'manual' && account.isControl) {
-    refuse('ACCOUNT_IS_CONTROL', `Account ${accountId} is a control account`, { accountId });
-  }
   if (line.origin === 'reversal') return;
+  if (line.item !== undefined && !account.isControl) {
+    refuse('ACCOUNT_NOT_CONTROL', `Account ${accountId} is not a control account`, { accountId });
+  }
+  if (account.itemKind === 'document' && line.item === undefined) {
+    refuse('OPEN_ITEM_REQUIRED', `A line on control account ${accountId} names no item`, {
+      accountId,
+    });
+  }
+  if (account.itemKind === 'running' && line.item !== undefined) {
+    refuse('VALIDATION_FAILED', `A line on running account ${accountId} names only its client`, {
+      accountId,
+    });
+  }
   if (account.currency !== null && account.currency !== line.currency) {
     refuse(
       'ACCOUNT_CURRENCY_MISMATCH',

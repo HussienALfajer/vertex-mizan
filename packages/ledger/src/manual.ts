@@ -7,6 +7,7 @@ import {
 } from '@vertex-mizan/contracts';
 import { type RealisedTargets, realisedDifferenceLines } from './balance.js';
 import { reverseLines } from './carried.js';
+import { type ItemState, moveItem } from './items.js';
 import { type Dimensions, keptLedgers, type Line } from './lines.js';
 import { type MeasureContext, measuredLine } from './measure.js';
 import { lastDayOfMonth, periodOf } from './periods.js';
@@ -17,6 +18,12 @@ export interface ManualLine {
   readonly account: string;
   readonly dimensions?: Dimensions;
   readonly amount: Money;
+  /**
+   * The open item a line on a control account moves (S04 rules 5–9), as the posting function read
+   * it: an existing item, a new document item the line opens, or the client's running item, found
+   * or new. Two lines may move one item: the second moves it from where the first left it.
+   */
+  readonly item?: ItemState;
 }
 
 /** A manual entry's lines and the rates it was dealt at, one per currency pair (S03 rule 13). */
@@ -55,25 +62,81 @@ function checkDealtRates(entry: ManualEntry, context: MeasureContext): void {
   }
 }
 
+/** A manual entry's lines, and for each the manual line it comes from. */
+export interface ManualEntryLines {
+  readonly lines: readonly Line[];
+  /**
+   * The index of the manual line each line comes from, null for a difference line. A running
+   * item's line that crosses zero gives two lines (S04 rule 3), both from its manual line.
+   */
+  readonly typed: readonly (number | null)[];
+}
+
+/** Names the manual line (1-based, `details.lineNo`) in a refusal of what it does to its item. */
+function onLine<T>(lineNo: number, work: () => T): T {
+  try {
+    return work();
+  } catch (error) {
+    if (error instanceof DomainError) {
+      throw new DomainError(error.code, error.message, { ...error.details, lineNo });
+    }
+    throw error;
+  }
+}
+
 /**
- * The lines of a manual entry before its rounding lines (S03 rules 12–15, ADR 0012): every line a
- * new measurement (`measuredLine()`) at each ledger's policy rate on the entry date, or at the
- * pair's dealt rate where the ledger accepts it. In more than one transaction currency (a currency
- * purchase or sale, a payment in another currency), each ledger's residual, rounding included, is a
- * realised exchange difference to the gain or loss account by its sign (IAS 21.28). In one
- * currency, `balanceEntry()` posts the residual as conversion rounding.
+ * The lines of a manual entry before its rounding lines (S03 rules 12–15, ADR 0012; S04 rules 2–10,
+ * ADR 0013), with the manual line each comes from:
+ * - a line with no item is a new measurement (`measuredLine()`) at each ledger's policy rate on the
+ *   entry date, or at the pair's dealt rate where the ledger accepts it;
+ * - a line on an item opens, clears or moves it (`moveItem()`): an opening and a running item's
+ *   `add` are new measurements, a clearing carries the item's amounts and reads no rate;
+ * - each ledger's residual, rounding included, is a realised exchange difference to the gain or
+ *   loss account by its sign (IAS 21.28) when any line is carried (a settlement, a write-off, an
+ *   offset; in one currency too) or the lines are in more than one transaction currency. Only an
+ *   entry in one currency whose lines are all new measurements leaves its residual to
+ *   `balanceEntry()` as conversion rounding. The lines other than differences still balance in
+ *   their currency when they are in one, so an overpayment is never a gain (`ENTRY_UNBALANCED`).
  */
+export function manualEntry(
+  entry: ManualEntry,
+  context: MeasureContext,
+  targets: RealisedTargets,
+): ManualEntryLines {
+  checkDealtRates(entry, context);
+  const at: MeasureContext = { ...context, dealtRates: entry.dealtRates };
+  const items = new Map<string, ItemState>();
+  const lines: Line[] = [];
+  const typed: (number | null)[] = [];
+  for (const [index, line] of entry.lines.entries()) {
+    if (line.item === undefined) {
+      lines.push(measuredLine(line, at));
+      typed.push(index);
+      continue;
+    }
+    const item = items.get(line.item.id) ?? line.item;
+    const moved = onLine(index + 1, () =>
+      moveItem(item, { account: line.account, dimensions: line.dimensions ?? {} }, line.amount, at),
+    );
+    items.set(item.id, moved.after);
+    lines.push(...moved.lines);
+    typed.push(...moved.lines.map(() => index));
+  }
+  const currencies = new Set(lines.map((line) => line.transaction.currency));
+  if (currencies.size < 2 && lines.every((line) => line.kind === 'measured')) {
+    return { lines, typed };
+  }
+  const differences = realisedDifferenceLines(context.ledgers, lines, targets);
+  return { lines: [...lines, ...differences], typed: [...typed, ...differences.map(() => null)] };
+}
+
+/** The lines of a manual entry before its rounding lines: `manualEntry()`'s lines alone. */
 export function manualEntryLines(
   entry: ManualEntry,
   context: MeasureContext,
   targets: RealisedTargets,
 ): Line[] {
-  checkDealtRates(entry, context);
-  const at: MeasureContext = { ...context, dealtRates: entry.dealtRates };
-  const lines = entry.lines.map((line) => measuredLine(line, at));
-  const currencies = new Set(lines.map((line) => line.transaction.currency));
-  if (currencies.size < 2) return lines;
-  return [...lines, ...realisedDifferenceLines(context.ledgers, lines, targets)];
+  return [...manualEntry(entry, context, targets).lines];
 }
 
 /**

@@ -78,7 +78,7 @@ describe('balanceEntry', () => {
       ),
       carriedLine({
         account: '1210',
-        amounts: clearOpenItem({ measured: item, openMinor: 10_000n }, -10_000n),
+        amounts: clearOpenItem(item, -10_000n),
       }),
     ];
     expect(() => balanceEntry({ on: '2026-11-20', ledgers: sypUsd, lines, rounding })).toThrow(
@@ -136,7 +136,7 @@ describe('balanceEntry', () => {
       measuredLine({ account: '1121', amount: money(12_000n, 'USD') }, at),
       carriedLine({
         account: '1210',
-        amounts: clearOpenItem({ measured: item, openMinor: 10_000n }, -10_000n),
+        amounts: clearOpenItem(item, -10_000n),
       }),
     ];
     expect(() => exchangeDifferenceLines(sypUsd, paid, gainOrLoss)).toThrow(
@@ -196,7 +196,7 @@ describe('balanceEntry', () => {
       measuredLine({ account: '1121', amount: money(10_000n, 'USD') }, at),
       carriedLine({
         account: '1210',
-        amounts: clearOpenItem({ measured: item, openMinor: 10_000n }, -10_000n),
+        amounts: clearOpenItem(item, -10_000n),
       }),
     ];
     expect(
@@ -334,7 +334,7 @@ describe('difference lines', () => {
       measuredLine({ account: '1112', amount: money(123_456n, 'TRY') }, context),
       carriedLine({
         account: '1210',
-        amounts: clearOpenItem({ measured: item, openMinor: 123_456n }, -123_456n),
+        amounts: clearOpenItem(item, -123_456n),
       }),
     ];
     const differences = exchangeDifferenceLines(sypUsd, lines, gainOrLoss);

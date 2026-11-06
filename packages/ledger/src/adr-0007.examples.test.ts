@@ -4,7 +4,6 @@ import { balanceEntry, exchangeDifferenceLines, ledgerTotal } from './balance.js
 import {
   clearOpenItem,
   moveRunningBalance,
-  openItemCarrying,
   type RunningMovement,
   reverseLines,
 } from './carried.js';
@@ -62,20 +61,17 @@ function invoice(at: MeasureContext, amount: Money): Line[] {
   });
 }
 
-/** A payment: Dr cash measured new / Cr the receivable at its carrying amounts / the difference. */
-function payment(
-  at: MeasureContext,
-  cash: string,
-  item: CarriedAmounts,
-  open: bigint,
-  paid: Money,
-) {
+/**
+ * A payment: Dr cash measured new / Cr the receivable at its carrying amounts, in proportion to
+ * what remains (ADR 0013) / the difference. `item` is what the receivable carries before it.
+ */
+function payment(at: MeasureContext, cash: string, item: CarriedAmounts, paid: Money) {
   const lines = [
     measuredLine({ account: cash, amount: paid }, at),
     carriedLine({
       account: '1210',
       dimensions: { client: 'C1' },
-      amounts: clearOpenItem({ measured: item, openMinor: open }, -paid.amountMinor),
+      amounts: clearOpenItem(item, -paid.amountMinor),
     }),
   ];
   const differences = exchangeDifferenceLines(at.ledgers, lines, gainOrLoss);
@@ -85,6 +81,23 @@ function payment(
     lines: [...lines, ...differences],
     rounding,
   });
+}
+
+/** What a receivable carries after a payment's line on it (`1210`). */
+function carryingAfter(item: CarriedAmounts, entry: readonly Line[]): CarriedAmounts {
+  const line = entry.find((candidate) => candidate.account === '1210');
+  if (line === undefined) throw new TypeError('A payment with no receivable line');
+  return {
+    transaction: money(
+      item.transaction.amountMinor + line.transaction.amountMinor,
+      item.transaction.currency,
+    ),
+    bookMinor: item.bookMinor + line.bookMinor,
+    parallelMinor:
+      item.parallelMinor === null || line.parallelMinor === null
+        ? null
+        : item.parallelMinor + line.parallelMinor,
+  };
 }
 
 function cleared(movement: RunningMovement): CarriedAmounts {
@@ -117,7 +130,6 @@ describe('ADR 0007 consequences: B1 solved', () => {
       context(sypUsd, '2026-11-20', bulletins, hubRate('125.0000', '2026-11-20')),
       '1121',
       receivable(issued),
-      10_000n,
       money(10_000n, 'USD'),
     );
     // Cash 100.00 × 123 = 12 300.00 SYP; the receivable cleared at 12 000.00; gain 300.00 SYP.
@@ -144,7 +156,6 @@ describe('docs/scenarios/README.md examples', () => {
       context(sypUsd, '2026-11-20', [], hubRate('125.0000', '2026-11-20')),
       '1111',
       receivable(issued),
-      1_220_000n,
       money(1_220_000n, 'SYP'),
     );
     // 12 200.00 SYP ÷ 125 = 97.60 USD received against 100.00 USD carried.
@@ -167,7 +178,6 @@ describe('currency shapes', () => {
       context(sypOnly, '2026-11-20', bulletins),
       '1121',
       receivable(issued),
-      10_000n,
       money(10_000n, 'USD'),
     );
     expect(rows(paid)).toEqual([
@@ -244,28 +254,26 @@ describe('currency shapes', () => {
 });
 
 describe('carried amounts', () => {
-  it('partial settlements clear the carrying amount cumulatively; the last clears the rest', () => {
+  it('partial settlements clear in proportion to what remains; the last clears the rest', () => {
     // 100.00 USD invoiced at a bulletin of 121.3333: 12 133.33 SYP.
     const at = (on: string, bulletin: string) =>
       context(sypUsd, on, [rate('USD', 'SYP', bulletin, 'bulletin', on)]);
     const issued = invoice(at('2026-11-03', '121.3333'), money(10_000n, 'USD'));
     const item = receivable(issued);
     expect(item.bookMinor).toBe(1_213_333n);
-    const first = payment(
-      at('2026-11-10', '122.0000'),
-      '1121',
-      item,
-      10_000n,
-      money(3_333n, 'USD'),
-    );
+    const first = payment(at('2026-11-10', '122.0000'), '1121', item, money(3_333n, 'USD'));
     const second = payment(
       at('2026-11-20', '120.0000'),
       '1121',
-      item,
-      6_667n,
+      carryingAfter(item, first),
       money(3_333n, 'USD'),
     );
-    const last = payment(at('2026-11-30', '125.0000'), '1121', item, 3_334n, money(3_334n, 'USD'));
+    const last = payment(
+      at('2026-11-30', '125.0000'),
+      '1121',
+      carryingAfter(carryingAfter(item, first), second),
+      money(3_334n, 'USD'),
+    );
     // Cleared 404 404, 404 404 and 404 525 = 12 133.33 SYP. Cash 3 333 × 122 = 406 626 (gain
     // 22.22); 3 333 × 120 = 399 960 (loss 44.44); 3 334 × 125 = 416 750 (gain 122.25).
     expect([...rows(first), ...rows(second), ...rows(last)]).toEqual([
@@ -284,7 +292,11 @@ describe('carried amounts', () => {
       (line) => line.account === '1210',
     );
     expect([ledgerTotal(lines, 'book'), ledgerTotal(lines, 'parallel')]).toEqual([0n, 0n]);
-    expect(openItemCarrying({ measured: item, openMinor: 0n }).bookMinor).toBe(0n);
+    expect(carryingAfter(carryingAfter(carryingAfter(item, first), second), last)).toEqual({
+      transaction: money(0n, 'USD'),
+      bookMinor: 0n,
+      parallelMinor: 0n,
+    });
   });
 
   it('a running balance clears at its average, crosses zero, and returns to zero in both ledgers', () => {
