@@ -177,8 +177,8 @@ export interface PostedEntry {
  * line negated at its posted amounts, rounding and difference lines included, never converted
  * again (`reverseLines()`), so it needs no rate and `balanceEntry()` adds nothing to it. Only a
  * manual entry that is not itself a reversal is reversed by hand (`ENTRY_NOT_REVERSIBLE`: Hub,
- * revaluation, release and opening entries are reversed by their own process, and a reversal is
- * copied instead), once (`ENTRY_ALREADY_REVERSED`; the unique `reverses_entry_id` settles a race),
+ * revaluation, release and opening entries are reversed by their own process, a reversal is copied
+ * instead, and the difference entry that follows a running item's void goes with it), once (`ENTRY_ALREADY_REVERSED`; the unique `reverses_entry_id` settles a race),
  * and on or after its date (`REVERSAL_BEFORE_ORIGINAL`). The period and the date range are the
  * posting function's checks, as for any entry.
  */
@@ -189,6 +189,15 @@ export function manualReversalLines(original: PostedEntry, on: string): Line[] {
       original.isReversal
         ? 'A reversal is never reversed; copy the original instead'
         : `A ${original.source} entry is reversed by its own process`,
+      { source: original.source },
+    );
+  }
+  // The difference entry that follows a running item's void (S04 rule 13) belongs to that
+  // reversal, which is never reversed either.
+  if (original.lines.some((line) => line.item?.movement === 'difference')) {
+    throw new DomainError(
+      'ENTRY_NOT_REVERSIBLE',
+      "A void's exchange difference is never reversed by hand",
       { source: original.source },
     );
   }

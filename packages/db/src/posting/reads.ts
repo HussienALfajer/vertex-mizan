@@ -21,6 +21,7 @@ import {
   periodBalances,
   periods,
 } from '../schema/ledger.js';
+import { openItemMovements } from '../schema/open-items.js';
 import { chainAnchors } from '../schema/trust.js';
 
 // Reads of the ledger as stored, in the caller's company context: the chain as the integrity
@@ -34,17 +35,22 @@ export interface StoredChainLink {
 }
 
 /**
- * The company's chain in posting order (`sequence`), each entry with its lines, conversions and
- * dimension keys as stored, typed as `chainEntryValue()` hashes them.
+ * The company's chain in posting order (`sequence`), each entry with its lines, conversions,
+ * dimension keys and items (S04) as stored, typed as `chainEntryValue()` hashes them.
  */
 export async function readChain(tx: Transaction): Promise<StoredChainLink[]> {
   const entries = await tx.select().from(journalEntries).orderBy(asc(journalEntries.sequence));
   const lines = await tx
-    .select({ line: journalLines, key: dimensionSets.key })
+    .select({ line: journalLines, key: dimensionSets.key, itemId: openItemMovements.itemId })
     .from(journalLines)
     .innerJoin(
       dimensionSets,
       sql`${dimensionSets.companyId} = ${journalLines.companyId} and ${dimensionSets.id} = ${journalLines.dimensionSetId}`,
+    )
+    // A line's item (S04) is hashed with it: the movement of the line, when it has one.
+    .leftJoin(
+      openItemMovements,
+      sql`${openItemMovements.companyId} = ${journalLines.companyId} and ${openItemMovements.lineId} = ${journalLines.id}`,
     )
     .orderBy(asc(journalLines.entryId), asc(journalLines.lineNo));
   const conversions = await tx.select().from(lineConversions);
@@ -66,7 +72,7 @@ export async function readChain(tx: Transaction): Promise<StoredChainLink[]> {
     conversionsByLine.set(row.lineId, list);
   }
   const linesByEntry = new Map<string, ChainLine[]>();
-  for (const { line, key } of lines) {
+  for (const { line, key, itemId } of lines) {
     const list = linesByEntry.get(line.entryId) ?? [];
     list.push({
       lineNo: line.lineNo,
@@ -79,6 +85,7 @@ export async function readChain(tx: Transaction): Promise<StoredChainLink[]> {
       bookMinor: line.bookMinor,
       parallelMinor: line.parallelMinor,
       memo: line.memo,
+      itemId,
       conversions: conversionsByLine.get(line.id) ?? [],
     });
     linesByEntry.set(line.entryId, list);

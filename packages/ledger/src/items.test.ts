@@ -7,6 +7,7 @@ import {
   emptyBalance,
   type ItemState,
   moveItem,
+  movementOn,
   runningVoidDifference,
   runningVoidDifferenceLines,
 } from './items.js';
@@ -496,3 +497,56 @@ describe('the void of a running movement (S04 rule 13, ad-funds/running-balance)
     ).toEqual([]);
   });
 });
+
+describe('a reversal and its difference entry', () => {
+  it("sums a reversal's movement on an item", () => {
+    const lines = [
+      {
+        ...emptyLine('213001', 30_000n, 3_660_000n),
+        item: { id: 'C1', movement: 'clear' as const },
+      },
+      { ...emptyLine('213001', 10_000n, 1_230_000n), item: { id: 'C1', movement: 'add' as const } },
+      emptyLine('112001', -40_000n, -4_800_000n),
+    ];
+    expect(movementOn(lines, 'C1', 'USD', true)).toEqual({
+      transaction: usd(40_000n),
+      bookMinor: 4_890_000n,
+      parallelMinor: 40_000n,
+    });
+    expect(movementOn(lines, 'C2', 'USD', false)).toEqual(emptyBalance('USD', false));
+  });
+
+  it("never reverses a void's difference entry by hand: it goes with its reversal", () => {
+    const lines = runningVoidDifferenceLines(
+      [
+        {
+          id: 'C1',
+          target: { account: '213001', dimensions: client },
+          before: { transaction: usd(-70_000n), bookMinor: -8_400_000n, parallelMinor: -70_000n },
+          reversed: { transaction: usd(100_000n), bookMinor: 12_000_000n, parallelMinor: 100_000n },
+        },
+      ],
+      at('2026-11-19', [bulletin('123.0000', '2026-11-19')]),
+      targets,
+    );
+    expect(
+      refusal(() =>
+        manualReversalLines(
+          { source: 'manual', date: '2026-11-19', isReversal: false, reversed: false, lines },
+          '2026-11-25',
+        ),
+      ),
+    ).toBe('ENTRY_NOT_REVERSIBLE');
+  });
+});
+
+function emptyLine(account: string, amount: bigint, book: bigint): Line {
+  return {
+    kind: 'carried',
+    account,
+    dimensions: {},
+    transaction: usd(amount),
+    bookMinor: book,
+    parallelMinor: amount,
+  };
+}

@@ -81,6 +81,22 @@ function plus(balance: CarriedAmounts, lines: readonly Line[]): CarriedAmounts {
 }
 
 /**
+ * The net movement of `lines` on the item `id`: the sum of the lines that move it, from nothing in
+ * its currency (a reversal's movement on a running item, for S04 rule 13).
+ */
+export function movementOn(
+  lines: readonly Line[],
+  id: string,
+  currency: CurrencyCode,
+  keepsParallel: boolean,
+): CarriedAmounts {
+  return plus(
+    emptyBalance(currency, keepsParallel),
+    lines.filter((line) => line.item?.id === id),
+  );
+}
+
+/**
  * The lines of a movement of `amount` on an item (S04 rules 2–4), in the line's sign:
  * - a document item the line opens: a new measurement at each ledger's policy or dealt rate
  *   (`open`); its sign is the item's;

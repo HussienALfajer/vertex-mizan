@@ -8,7 +8,10 @@ import {
   type ErrorCode,
   type ExchangeRate,
   exchangeRateSchema,
+  type ItemKind,
+  type ItemSource,
   type Ledger,
+  type MovementKind,
   money,
   type RateSource,
   type RateType,
@@ -16,6 +19,7 @@ import {
 import {
   balanceEntry,
   type CanonicalValue,
+  type CarriedAmounts,
   type ChainConversion,
   type ChainEntry,
   type ChartAccount,
@@ -23,19 +27,26 @@ import {
   type Conversion,
   canonicalJson,
   chainEntryValue,
+  checkDueDate,
+  checkItemLine,
   checkLineAgainstChart,
   checkManualEntryDate,
   type Dimensions,
   type EntrySource,
+  emptyBalance,
   entryHash,
   fiscalYearOf,
+  type ItemState,
   keptLedgers,
   type Line,
   type LineDimensionValue,
   type MeasureContext,
-  manualEntryLines,
+  manualEntry,
   manualReversalLines,
+  movementOn,
   periodOf,
+  runningVoidDifferenceLines,
+  type VoidedRunningItem,
 } from '@vertex-mizan/ledger';
 import { and, asc, desc, eq, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
@@ -55,6 +66,12 @@ import {
   periods,
   postingRequests,
 } from '../schema/ledger.js';
+import {
+  openItemBalances,
+  openItemDueDates,
+  openItemMovements,
+  openItems,
+} from '../schema/open-items.js';
 import { exchangeRates, ratePairs } from '../schema/rates.js';
 import { ledgersOf } from '../services/companies.js';
 import { exchangeRateOf, publicationCalendar, rateSuperseded } from '../services/rates.js';
@@ -72,6 +89,14 @@ export interface ManualLineSpec {
   /** Minor units, positive debit and negative credit; never zero. */
   readonly amountMinor: bigint;
   readonly memo: string | null;
+  /**
+   * The existing open item a line on a `document` control account moves (S04 rule 7): it then
+   * takes the item's dimensions. A line on a `running` account names none: its item is the
+   * client's (rule 9).
+   */
+  readonly openItemId?: string | null;
+  /** The manual document item the line opens (S04 rule 6): its reference and due date. */
+  readonly newItem?: { readonly reference: string; readonly dueOn: string | null } | null;
 }
 
 /** The rate a manual entry was dealt at for a pair, quoted in the company's orientation of it. */
@@ -126,10 +151,35 @@ export interface PostedEntryRef {
   readonly replayed: boolean;
 }
 
-/** A line ready to store: the ledger's line, its memo and its dimension values by type. */
+/**
+ * A line ready to store: the ledger's line (with the item it moves, S04) and its memo; `adjusted`
+ * marks a manual movement on an item whose source is not manual (rule 8).
+ */
 interface BuiltLine {
   readonly line: Line;
   readonly memo: string | null;
+  readonly adjusted: boolean;
+}
+
+/** An item a manual line opens or makes in this posting (S04 rules 3 and 6). */
+interface NewItem {
+  readonly id: string;
+  readonly accountId: string;
+  readonly kind: ItemKind;
+  readonly reference: string;
+  readonly dimensions: Dimensions;
+  readonly clientValueId: string | null;
+  readonly currency: CurrencyCode;
+  readonly dueOn: string | null;
+}
+
+/** What a request posts, built: its lines, the rate rows they used and the items it makes. */
+interface Built {
+  readonly lines: readonly BuiltLine[];
+  readonly rateIds: ReadonlyMap<ExchangeRate, string>;
+  readonly newItems: readonly NewItem[];
+  /** The running items a reversal moves, for the difference entry of S04 rule 13. */
+  readonly voided: readonly VoidedRunningItem[];
 }
 
 type Role = 'conversion_rounding' | 'fx_realised_gain' | 'fx_realised_loss';
@@ -144,9 +194,9 @@ function refuse(code: ErrorCode, message: string, details: Record<string, unknow
 }
 
 /** Runs a check of one manual line, naming the line in its refusal (`details.lineNo`). */
-function onLine(lineNo: number, check: () => void): void {
+function onLine<T>(lineNo: number, check: () => T): T {
   try {
-    check();
+    return check();
   } catch (error) {
     if (error instanceof DomainError) {
       throw new DomainError(error.code, error.message, { ...error.details, lineNo });
@@ -176,6 +226,11 @@ function payloadOf(request: PostingRequest): CanonicalValue {
               currency: line.currency,
               amountMinor: line.amountMinor,
               memo: line.memo,
+              // Only when set, so a request of S03's shape hashes as it did.
+              ...(line.openItemId && { openItemId: line.openItemId }),
+              ...(line.newItem && {
+                newItem: { reference: line.newItem.reference, dueOn: line.newItem.dueOn },
+              }),
             })),
             dealtRates: content.dealtRates.map((rate) => ({ ...rate })),
           }
@@ -234,6 +289,7 @@ async function chartOf(
         blocked: row.blockedAt !== null,
         archived: row.archivedAt !== null,
         isControl: row.isControl,
+        itemKind: row.itemKind as ItemKind | null,
         requiredDimensionTypeIds: required
           .filter((link) => link.accountId === row.id)
           .map((link) => link.typeId),
@@ -401,10 +457,160 @@ async function checkAgainstChart(
   }
 }
 
+/** An item as stored, with its dimensions and what it carries, as `packages/ledger` moves it. */
+interface StoredItem {
+  readonly accountId: string;
+  readonly source: ItemSource;
+  readonly currency: CurrencyCode;
+  readonly dimensions: Dimensions;
+  readonly state: ItemState;
+}
+
 /**
- * A manual entry's lines (S03 rules 12–16): the typed lines checked against the chart first, then
- * measured anew per ledger with the dealt rates, the realised differences of an entry in several
- * currencies and the conversion rounding of an entry in one, each on its role's account.
+ * The items of `ids` with their dimensions and balance rows, read `FOR UPDATE` when posting, after
+ * the ledger head and the period (S04 "API"): two settlements of one item serialise on its row,
+ * and the second clears from what the first left. An unknown id is absent from the answer.
+ */
+async function itemsOf(
+  tx: Transaction,
+  ids: readonly string[],
+  lock: boolean,
+): Promise<Map<string, StoredItem>> {
+  const unique = [...new Set(ids)].sort();
+  if (unique.length === 0) return new Map();
+  const rows = await tx.select().from(openItems).where(inArray(openItems.id, unique));
+  if (rows.length === 0) return new Map();
+  const balancesQuery = tx
+    .select()
+    .from(openItemBalances)
+    .where(inArray(openItemBalances.itemId, unique))
+    .orderBy(asc(openItemBalances.itemId));
+  const balances = lock ? await balancesQuery.for('update') : await balancesQuery;
+  const values = await tx
+    .select()
+    .from(dimensionSetValues)
+    .where(inArray(dimensionSetValues.setId, [...new Set(rows.map((row) => row.dimensionSetId))]));
+  const openings = await tx
+    .select({ itemId: openItemMovements.itemId, amountMinor: openItemMovements.amountMinor })
+    .from(openItemMovements)
+    .innerJoin(
+      openItems,
+      and(
+        eq(openItems.companyId, openItemMovements.companyId),
+        eq(openItems.id, openItemMovements.itemId),
+        eq(openItems.openedByEntryId, openItemMovements.entryId),
+      ),
+    )
+    .where(and(inArray(openItemMovements.itemId, unique), eq(openItemMovements.kind, 'open')));
+  return new Map(
+    rows.map((row) => {
+      const balance = balances.find((candidate) => candidate.itemId === row.id);
+      if (balance === undefined) throw new Error('An item without its balance row');
+      const currency = row.currency as CurrencyCode;
+      const opening = openings.find((candidate) => candidate.itemId === row.id)?.amountMinor;
+      if (row.kind === 'document' && (opening === undefined || opening === 0n)) {
+        throw new Error('A document item without its opening');
+      }
+      const carried: CarriedAmounts = {
+        transaction: money(balance.openMinor, currency),
+        bookMinor: balance.bookMinor,
+        parallelMinor: balance.parallelMinor,
+      };
+      return [
+        row.id,
+        {
+          accountId: row.accountId,
+          source: row.source as ItemSource,
+          currency,
+          dimensions: Object.fromEntries(
+            values
+              .filter((value) => value.setId === row.dimensionSetId)
+              .map((value) => [value.typeId, value.valueId]),
+          ) as Dimensions,
+          state: {
+            id: row.id,
+            kind: row.kind as ItemKind,
+            direction: row.kind === 'document' ? ((opening as bigint) < 0n ? -1 : 1) : null,
+            balance: carried,
+          },
+        },
+      ];
+    }),
+  );
+}
+
+/** The client's running item on an account in a currency, if it has one (S04 rule 3). */
+async function runningItemOf(
+  tx: Transaction,
+  accountId: string,
+  clientValueId: string,
+  currency: CurrencyCode,
+): Promise<string | null> {
+  const [found] = await tx
+    .select({ id: openItems.id })
+    .from(openItems)
+    .where(
+      and(
+        eq(openItems.kind, 'running'),
+        eq(openItems.accountId, accountId),
+        eq(openItems.clientValueId, clientValueId),
+        eq(openItems.currency, currency),
+      ),
+    );
+  return found?.id ?? null;
+}
+
+/**
+ * Whether an item has a movement its opening's reversal would leave standing (S04 rule 13): one of
+ * an entry other than the opening's that is neither a reversal nor reversed.
+ */
+async function hasStandingSettlements(
+  tx: Transaction,
+  itemId: string,
+  openingEntryId: string,
+): Promise<boolean> {
+  const result = await tx.execute<{ standing: boolean }>(sql`
+    select exists (
+      select 1 from ${openItemMovements} m
+      join ${journalEntries} e on e.company_id = m.company_id and e.id = m.entry_id
+      where m.item_id = ${itemId} and m.kind <> 'open' and m.entry_id <> ${openingEntryId}
+        and e.reverses_entry_id is null
+        and not exists (
+          select 1 from ${journalEntries} r
+          where r.company_id = m.company_id and r.reverses_entry_id = m.entry_id
+        )
+    ) as standing`);
+  return result.rows[0]?.standing === true;
+}
+
+/** Refuses an item line on a running account that names more than its client (S04 rule 9). */
+function clientOf(values: readonly LineDimensionValue[], accountId: string): LineDimensionValue {
+  const client = values.find((value) => value.typeCode === 'client');
+  if (client === undefined) {
+    refuse('DIMENSION_REQUIRED', 'A line on a running account names its client', { accountId });
+  }
+  if (values.length > 1) {
+    refuse('VALIDATION_FAILED', 'A line on a running account names only its client', {
+      accountId,
+    });
+  }
+  return client;
+}
+
+/**
+ * A manual entry's lines (S03 rules 12–16, S04 rules 2–12): each typed line checked against the
+ * chart first, with the item it names:
+ * - an existing item (`openItemId`), whose account, currency and dimensions the line takes
+ *   (`OPEN_ITEM_MISMATCH`), with a memo on a Hub or opening item (`OPEN_ITEM_MEMO_REQUIRED`,
+ *   adjusted);
+ * - a new manual document item (`newItem`), its reference free on the account
+ *   (`OPEN_ITEM_REFERENCE_TAKEN`) and its due date not before the entry date;
+ * - on a running account, the client's item in the line's currency, found or made.
+ *
+ * Then `packages/ledger` opens, clears and moves the items and measures every new amount anew per
+ * ledger with the dealt rates; each ledger's residual is a realised difference when a line is
+ * carried or the entry has several currencies, conversion rounding otherwise, on its role's
+ * account. A refusal of one typed line names it in `details.lineNo`.
  */
 async function manualLines(
   tx: Transaction,
@@ -412,31 +618,195 @@ async function manualLines(
   on: string,
   ledgers: CompanyLedgers,
   daysOff: readonly number[],
-): Promise<{ lines: BuiltLine[]; rateIds: Map<ExchangeRate, string> }> {
-  const typed: Line[] = [];
+  lock: boolean,
+): Promise<Built> {
   const specs = content.lines.map((spec, index) => {
     if (spec.amountMinor === 0n) {
       refuse('VALIDATION_FAILED', 'A line of zero amount', { lineNo: index + 1 });
     }
+    if (spec.openItemId && spec.newItem) {
+      refuse('VALIDATION_FAILED', 'A line opens an item or moves one, not both', {
+        lineNo: index + 1,
+      });
+    }
     return spec;
   });
-  // The values of one line by type, for the chart check and the line's dimension set.
+  const existing = await itemsOf(
+    tx,
+    specs.flatMap((spec) => (spec.openItemId ? [spec.openItemId] : [])),
+    lock,
+  );
+  // The values of the lines and of the items they name, for the chart check and dimension sets.
   const values = await dimensionValuesOf(tx, [
-    ...new Set(specs.flatMap((spec) => spec.dimensionValueIds)),
+    ...new Set([
+      ...specs.flatMap((spec) => spec.dimensionValueIds),
+      ...[...existing.values()].flatMap((item) => Object.values(item.dimensions)),
+    ]),
   ]);
   const chart = await chartOf(tx, [...new Set(specs.map((spec) => spec.accountId))]);
-  const dimensionsOf = specs.map((spec, index) => {
-    const lineValues = spec.dimensionValueIds.map((id) => values.get(id) as LineDimensionValue);
-    onLine(index + 1, () =>
-      checkLineAgainstChart({
-        account: chart.get(spec.accountId),
+  const keepsParallel = ledgers.parallel !== null;
+  const newItems: NewItem[] = [];
+  const running = new Map<string, ItemState>();
+  const lines = [];
+  const adjustedOf: boolean[] = [];
+  for (const [index, spec] of specs.entries()) {
+    const account = chart.get(spec.accountId);
+    const named = spec.dimensionValueIds.map((id) => values.get(id) as LineDimensionValue);
+    const namedDimensions = Object.fromEntries(
+      named.map((value) => [value.typeId, value.id]),
+    ) as Dimensions;
+    const lineNo = index + 1;
+    let dimensions = namedDimensions;
+    let item: ItemState | undefined;
+    let adjusted = false;
+    if (spec.openItemId) {
+      const stored = existing.get(spec.openItemId);
+      if (stored === undefined) {
+        refuse('NOT_FOUND', 'No such open item', { itemId: spec.openItemId, lineNo });
+      }
+      dimensions = stored.dimensions;
+      onLine(lineNo, () => {
+        checkLineAgainstChart({
+          account,
+          currency: spec.currency,
+          dimensions: Object.values(stored.dimensions).map(
+            (id) => values.get(id) as LineDimensionValue,
+          ),
+          origin: 'manual',
+          item: 'existing',
+        });
+        adjusted = checkItemLine(
+          {
+            account: spec.accountId,
+            currency: spec.currency,
+            dimensions: namedDimensions,
+            memo: spec.memo,
+          },
+          {
+            account: stored.accountId,
+            currency: stored.currency,
+            dimensions: stored.dimensions,
+            source: stored.source,
+          },
+        ).adjusted;
+      });
+      item = stored.state;
+    } else if (spec.newItem) {
+      const { reference, dueOn } = spec.newItem;
+      onLine(lineNo, () => {
+        checkLineAgainstChart({
+          account,
+          currency: spec.currency,
+          dimensions: named,
+          origin: 'manual',
+          item: 'new',
+        });
+        if (dueOn !== null) checkDueDate(on, dueOn);
+      });
+      const [taken] = await tx
+        .select({ id: openItems.id })
+        .from(openItems)
+        .where(
+          and(
+            eq(openItems.kind, 'document'),
+            eq(openItems.accountId, spec.accountId),
+            eq(openItems.reference, reference),
+          ),
+        );
+      if (
+        taken ||
+        newItems.some(
+          (other) => other.accountId === spec.accountId && other.reference === reference,
+        )
+      ) {
+        refuse('OPEN_ITEM_REFERENCE_TAKEN', 'The reference is used on this account', {
+          reference,
+          lineNo,
+        });
+      }
+      const id = uuidv7();
+      newItems.push({
+        id,
+        accountId: spec.accountId,
+        kind: 'document',
+        reference,
+        dimensions,
+        clientValueId: named.find((value) => value.typeCode === 'client')?.id ?? null,
         currency: spec.currency,
-        dimensions: lineValues,
-        origin: 'manual',
-      }),
-    );
-    return Object.fromEntries(lineValues.map((value) => [value.typeId, value.id])) as Dimensions;
-  });
+        dueOn,
+      });
+      item = {
+        id,
+        kind: 'document',
+        direction: null,
+        balance: emptyBalance(spec.currency, keepsParallel),
+      };
+    } else {
+      onLine(lineNo, () =>
+        checkLineAgainstChart({
+          account,
+          currency: spec.currency,
+          dimensions: named,
+          origin: 'manual',
+        }),
+      );
+      if (account?.itemKind === 'running') {
+        const client = onLine(lineNo, () => clientOf(named, spec.accountId));
+        const key = JSON.stringify([spec.accountId, client.id, spec.currency]);
+        dimensions = { [client.typeId]: client.id };
+        item = running.get(key);
+        if (item === undefined) {
+          const id = await runningItemOf(tx, spec.accountId, client.id, spec.currency);
+          if (id !== null) {
+            const stored = (await itemsOf(tx, [id], lock)).get(id);
+            if (stored === undefined) throw new Error('A running item read and lost');
+            adjusted = onLine(lineNo, () =>
+              checkItemLine(
+                { account: spec.accountId, currency: spec.currency, dimensions, memo: spec.memo },
+                {
+                  account: stored.accountId,
+                  currency: stored.currency,
+                  dimensions: stored.dimensions,
+                  source: stored.source,
+                },
+              ),
+            ).adjusted;
+            item = stored.state;
+          } else {
+            const [code] = await tx
+              .select({ code: dimensionValues.code })
+              .from(dimensionValues)
+              .where(eq(dimensionValues.id, client.id));
+            const id = uuidv7();
+            newItems.push({
+              id,
+              accountId: spec.accountId,
+              kind: 'running',
+              reference: code?.code ?? client.id,
+              dimensions,
+              clientValueId: client.id,
+              currency: spec.currency,
+              dueOn: null,
+            });
+            item = {
+              id,
+              kind: 'running',
+              direction: null,
+              balance: emptyBalance(spec.currency, keepsParallel),
+            };
+          }
+          running.set(key, item);
+        }
+      }
+    }
+    lines.push({
+      account: spec.accountId,
+      dimensions,
+      amount: money(spec.amountMinor, spec.currency),
+      ...(item !== undefined && { item }),
+    });
+    adjustedOf.push(adjusted);
+  }
   const { rates, ids } = await ratesOn(tx, on);
   const context: MeasureContext = {
     ledgers,
@@ -444,35 +814,42 @@ async function manualLines(
     rates,
     calendar: await publicationCalendar(tx, daysOff),
   };
-  const measured = manualEntryLines(
-    {
-      lines: specs.map((spec, index) => ({
-        account: spec.accountId,
-        dimensions: dimensionsOf[index] as Dimensions,
-        amount: money(spec.amountMinor, spec.currency),
-      })),
-      dealtRates: await dealtRatesOf(tx, content.dealtRates, on),
-    },
+  const built = manualEntry(
+    { lines, dealtRates: await dealtRatesOf(tx, content.dealtRates, on) },
     context,
     {
       gain: { account: roleTarget('fx_realised_gain') },
       loss: { account: roleTarget('fx_realised_loss') },
     },
   );
-  typed.push(
-    ...balanceEntry({
+  const balanced = withRoleAccounts(
+    balanceEntry({
       on,
       ledgers,
-      lines: measured,
+      lines: built.lines,
       rounding: { account: roleTarget('conversion_rounding') },
     }),
+    await roleAccounts(tx),
   );
-  const lines = withRoleAccounts(typed, await roleAccounts(tx));
+  const typedOf = (index: number) => built.typed[index] ?? null;
   // The difference and rounding lines go on the role accounts: checked as manual lines too.
-  await checkAgainstChart(tx, lines.slice(specs.length), 'manual');
+  await checkAgainstChart(
+    tx,
+    balanced.filter((_, index) => typedOf(index) === null),
+    'manual',
+  );
   return {
-    lines: lines.map((line, index) => ({ line, memo: specs[index]?.memo ?? null })),
+    lines: balanced.map((line, index) => {
+      const typed = typedOf(index);
+      return {
+        line,
+        memo: typed === null ? null : (specs[typed]?.memo ?? null),
+        adjusted: typed === null ? false : (adjustedOf[typed] ?? false),
+      };
+    }),
     rateIds: ids,
+    newItems,
+    voided: [],
   };
 }
 
@@ -501,17 +878,20 @@ function conversionOf(
 }
 
 /**
- * The accountant's reversal of a posted entry (S03 rule 9): the original read with its lines,
- * dimensions and conversions; `manualReversalLines()` refuses what is not reversible by hand and
- * negates every line at its amounts, so no rate is read; each account is checked again for its
- * state only.
+ * The accountant's reversal of a posted entry (S03 rule 9, S04 rule 13): the original read with its
+ * lines, dimensions, conversions and item movements; `manualReversalLines()` refuses what is not
+ * reversible by hand and negates every line at its amounts, so no rate is read, and each line
+ * moves its item back. An opening is reversed only once its item's other movements are
+ * (`OPEN_ITEM_HAS_SETTLEMENTS`). Each account is checked again for its state only. The running
+ * items it moves come back with what they carried before, for the difference entry of rule 13.
  */
 async function reversalLines(
   tx: Transaction,
   content: Extract<PostingContent, { kind: 'reversal' }>,
   on: string,
   ledgers: CompanyLedgers,
-): Promise<BuiltLine[]> {
+  lock: boolean,
+): Promise<Built> {
   const [original] = await tx
     .select()
     .from(journalEntries)
@@ -526,15 +906,19 @@ async function reversalLines(
     .from(journalLines)
     .where(eq(journalLines.entryId, original.id))
     .orderBy(asc(journalLines.lineNo));
+  const lineIds = stored.map((line) => line.id);
   const conversions = await tx
     .select()
     .from(lineConversions)
-    .where(
-      inArray(
-        lineConversions.lineId,
-        stored.map((line) => line.id),
-      ),
-    );
+    .where(inArray(lineConversions.lineId, lineIds));
+  const movements = await tx
+    .select({
+      lineId: openItemMovements.lineId,
+      itemId: openItemMovements.itemId,
+      kind: openItemMovements.kind,
+    })
+    .from(openItemMovements)
+    .where(eq(openItemMovements.entryId, original.id));
   const setValues = await tx
     .select()
     .from(dimensionSetValues)
@@ -542,6 +926,7 @@ async function reversalLines(
       inArray(dimensionSetValues.setId, [...new Set(stored.map((line) => line.dimensionSetId))]),
     );
   const lines = stored.map((row): Line => {
+    const movement = movements.find((candidate) => candidate.lineId === row.id);
     const fields = {
       account: row.accountId,
       dimensions: Object.fromEntries(
@@ -552,6 +937,9 @@ async function reversalLines(
       transaction: money(row.amountMinor, row.currency as CurrencyCode),
       bookMinor: row.bookMinor,
       parallelMinor: row.parallelMinor,
+      ...(movement !== undefined && {
+        item: { id: movement.itemId, movement: movement.kind as MovementKind },
+      }),
     };
     if (row.kind === 'difference' || row.kind === 'rounding') {
       return { ...fields, kind: row.kind, ledger: row.ledger as Ledger };
@@ -587,7 +975,103 @@ async function reversalLines(
     rounding: { account: roleTarget('conversion_rounding') },
   });
   if (balanced.length !== negated.length) throw new Error('A reversal needed a rounding line');
-  return negated.map((line, index) => ({ line, memo: stored[index]?.memo ?? null }));
+  const items = await itemsOf(
+    tx,
+    movements.map((movement) => movement.itemId),
+    lock,
+  );
+  for (const movement of movements) {
+    if (
+      movement.kind === 'open' &&
+      (await hasStandingSettlements(tx, movement.itemId, original.id))
+    ) {
+      refuse('OPEN_ITEM_HAS_SETTLEMENTS', 'Reverse the settlements of the item first', {
+        itemId: movement.itemId,
+      });
+    }
+  }
+  const voided: VoidedRunningItem[] = [];
+  for (const [id, item] of items) {
+    if (item.state.kind !== 'running') continue;
+    const reversed = movementOn(
+      negated,
+      id,
+      item.currency,
+      item.state.balance.parallelMinor !== null,
+    );
+    voided.push({
+      id,
+      target: { account: item.accountId, dimensions: item.dimensions },
+      before: item.state.balance,
+      reversed,
+    });
+  }
+  const isManual = original.source === 'manual';
+  return {
+    lines: negated.map((line, index) => ({
+      line,
+      memo: stored[index]?.memo ?? null,
+      adjusted: line.item !== undefined && isManual && items.get(line.item.id)?.source !== 'manual',
+    })),
+    rateIds: new Map(),
+    newItems: [],
+    voided,
+  };
+}
+
+/**
+ * The exchange-difference entry that follows a reversal's movements on running items (S04 rule 13,
+ * ADR 0013): on each running item it moved against the balance or across zero, what brings the
+ * item to the carrying amount of a new movement under rule 3, the excess measured at the policy
+ * rates of the reversal's date (`RATE_MISSING` without one), and each ledger's residual as a
+ * realised gain or loss. Null when no item needs one.
+ */
+async function voidDifferenceLines(
+  tx: Transaction,
+  voided: readonly VoidedRunningItem[],
+  on: string,
+  ledgers: CompanyLedgers,
+  daysOff: readonly number[],
+): Promise<Built | null> {
+  if (voided.length === 0) return null;
+  const { rates } = await ratesOn(tx, on);
+  const context: MeasureContext = {
+    ledgers,
+    on,
+    rates,
+    calendar: await publicationCalendar(tx, daysOff),
+  };
+  const differences = runningVoidDifferenceLines(voided, context, {
+    gain: { account: roleTarget('fx_realised_gain') },
+    loss: { account: roleTarget('fx_realised_loss') },
+  });
+  if (differences.length === 0) return null;
+  const lines = withRoleAccounts(
+    balanceEntry({
+      on,
+      ledgers,
+      lines: differences,
+      rounding: { account: roleTarget('conversion_rounding') },
+    }),
+    await roleAccounts(tx),
+  );
+  // The items' lines carry their item's account and dimensions; the realised lines are new.
+  await checkAgainstChart(
+    tx,
+    lines.filter((line) => line.item !== undefined),
+    'reversal',
+  );
+  await checkAgainstChart(
+    tx,
+    lines.filter((line) => line.item === undefined),
+    'manual',
+  );
+  return {
+    lines: lines.map((line) => ({ line, memo: null, adjusted: false })),
+    rateIds: new Map(),
+    newItems: [],
+    voided: [],
+  };
 }
 
 /** The conversions of a line as stored: one row per rate it used, two for a cross. */
@@ -668,20 +1152,25 @@ function checkDates(on: string, content: PostingContent, ledgers: CompanyLedgers
   }
 }
 
-/** The lines of a request, checked and built by `packages/ledger`, with the rate rows they used. */
+/**
+ * The lines of a request, checked and built by `packages/ledger`, with the rate rows they used, the
+ * items it makes and the running items a reversal moves. `lock` reads the items' balance rows
+ * `FOR UPDATE` (posting, after the head and the period); the preview reads them without a lock.
+ */
 async function buildLines(
   tx: Transaction,
   content: PostingContent,
   on: string,
   ledgers: CompanyLedgers,
   daysOff: readonly number[],
-): Promise<{ lines: BuiltLine[]; rateIds: ReadonlyMap<ExchangeRate, string> }> {
+  lock: boolean,
+): Promise<Built> {
   return content.kind === 'manual'
-    ? manualLines(tx, content, on, ledgers, daysOff)
-    : { lines: await reversalLines(tx, content, on, ledgers), rateIds: new Map() };
+    ? manualLines(tx, content, on, ledgers, daysOff, lock)
+    : reversalLines(tx, content, on, ledgers, lock);
 }
 
-/** A line as the preview shows it: as `post()` would store it, with its conversions. */
+/** A line as the preview shows it: as `post()` would store it, with its conversions and item. */
 export interface PreviewLine {
   readonly lineNo: number;
   readonly accountId: string;
@@ -694,13 +1183,16 @@ export interface PreviewLine {
   readonly parallelMinor: bigint | null;
   readonly memo: string | null;
   readonly conversions: readonly ChainConversion[];
+  /** The item the line moves and how (S04); a new item's id is the preview's own. */
+  readonly item: { readonly id: string; readonly movement: MovementKind } | null;
 }
 
 /**
  * The lines a request would post now (S03 rule 7), inside `withCompany`, built by the posting
  * function's own code with no write and no lock: the dates, the period (`PERIOD_CLOSED` when its
- * row is closed), the chart checks, the measurement, the realised differences and the rounding.
- * It refuses as `post()` would; a refusal of one manual line names it in `details.lineNo`.
+ * row is closed), the chart checks, the items, the measurement, the realised differences and the
+ * rounding. It refuses as `post()` would; a refusal of one manual line names it in
+ * `details.lineNo`.
  */
 export async function previewPosting(
   tx: Transaction,
@@ -720,7 +1212,7 @@ export async function previewPosting(
   if (periodRow && periodRow.state !== 'open') {
     refuse('PERIOD_CLOSED', `The period ${period} is closed`, { period });
   }
-  const built = await buildLines(tx, content, on, ledgers, settings.bulletinDaysOff);
+  const built = await buildLines(tx, content, on, ledgers, settings.bulletinDaysOff, false);
   return built.lines.map(({ line, memo }, index) => ({
     lineNo: index + 1,
     accountId: line.account,
@@ -733,76 +1225,48 @@ export async function previewPosting(
     parallelMinor: line.parallelMinor,
     memo,
     conversions: conversionsOf(line, built.rateIds, content.kind === 'manual'),
+    item: line.item ?? null,
   }));
 }
 
+/** The company's ledger head as a posting moves it, entry by entry. */
+interface Head {
+  readonly id: string;
+  entryCount: bigint;
+  lastHash: string | null;
+}
+
+/** One entry to write: its request's row, its header fields and its built lines. */
+interface EntryToWrite {
+  readonly requestId: string;
+  readonly description: string;
+  readonly reference: string | null;
+  readonly reversesEntryId: string | null;
+  readonly draftId: string | null;
+  readonly preparedByUserId: string | null;
+  readonly approvedByUserId: string | null;
+  readonly built: Built;
+  /** What the audit row adds: the reversal a void's difference entry follows (S04 rule 13). */
+  readonly follows: string | null;
+}
+
 /**
- * Posts an entry, inside `withCompany` (S03 rules 1–3), in the lock order of ADR 0008:
- * 1. the posting request: its key posted before with the same payload answers that entry and posts
- *    nothing; with another payload it is `IDEMPOTENCY_CONFLICT`; a reversal's key
- *    (`reversal:<entry id>`) posted before is `ENTRY_ALREADY_REVERSED`;
- * 2. the company's ledger head `FOR UPDATE`, then its settings row `FOR UPDATE`;
- * 3. a manual date up to the end of the current month (`ENTRY_DATE_OUT_OF_RANGE`), then the
- *    period of the entry date, made open when missing, `FOR SHARE` (`PERIOD_CLOSED`);
- * 4. the lines, checked against the chart and built by `packages/ledger` (`balanceEntry()` last);
- * 5. the accounts and the books marked as used, the next number of the fiscal year of the entry
- *    date, the dimension sets;
- * 6. the hash over the entry as stored (`chainEntryValue()`) and the previous hash;
- * 7. the entry, its lines and conversions, the `entry.posted` audit row, then the head.
- * Any refusal throws and the caller's transaction rolls back, so no number is used up. The
- * deferred guards check the balance, the reversal, the head and the number at commit.
+ * Writes one entry of a posting (steps 5–7 of `post()`): the accounts and the books marked as
+ * used, the next number of the fiscal year of the entry date, the dimension sets, the hash, the
+ * entry, its lines and conversions, the items it makes with their opening due dates, the item
+ * movements of its lines, the `entry.posted` audit row with the items its lines moved, and the
+ * head moved past it.
  */
-export async function post(tx: Transaction, request: PostingRequest): Promise<PostedEntryRef> {
-  const companyId = await contextCompany(tx);
-  const payloadHash = sha256(canonicalJson(payloadOf(request)));
-  const [created] = await tx
-    .insert(postingRequests)
-    .values({
-      companyId,
-      client: request.client,
-      idempotencyKey: request.idempotencyKey,
-      payloadHash,
-    })
-    .onConflictDoNothing({
-      target: [postingRequests.companyId, postingRequests.client, postingRequests.idempotencyKey],
-    })
-    .returning({ id: postingRequests.id });
-  if (!created) {
-    // A reversal's key is its original's: a second reversal, at once or later, is refused rather
-    // than answered as the first (S03 rule 9, edge case 13; scenario manual/reversal).
-    if (request.content.kind === 'reversal') {
-      refuse('ENTRY_ALREADY_REVERSED', 'The entry has a reversal already', {
-        entryId: request.content.entryId,
-      });
-    }
-    return replay(tx, request, payloadHash);
-  }
-
-  const [head] = await tx.select().from(ledgerHeads).for('update');
-  const [settings] = await tx.select().from(companySettings).for('update');
-  if (!head || !settings) throw new Error('A company without its ledger head or settings');
-  const ledgers = ledgersOf(settings);
-  const on = request.entryDate;
-  const { content } = request;
-  checkDates(on, content, ledgers);
-  const fiscalYear = fiscalYearOf(on, settings.fiscalYearStartMonth);
-  const period = periodOf(on);
-  await tx
-    .insert(periods)
-    .values({ companyId, period, fiscalYear, state: 'open' })
-    .onConflictDoNothing({ target: [periods.companyId, periods.period] });
-  const [periodRow] = await tx
-    .select({ state: periods.state })
-    .from(periods)
-    .where(eq(periods.period, period))
-    .for('share');
-  if (periodRow?.state !== 'open') {
-    refuse('PERIOD_CLOSED', `The period ${period} is closed`, { period });
-  }
-
-  const built = await buildLines(tx, content, on, ledgers, settings.bulletinDaysOff);
-  const reversesEntryId = content.kind === 'reversal' ? content.entryId : null;
-
+async function writeEntry(
+  tx: Transaction,
+  companyId: string,
+  head: Head,
+  at: { readonly on: string; readonly fiscalYear: number; readonly settingsId: string },
+  actor: AuditActor,
+  entry: EntryToWrite,
+): Promise<PostedEntryRef> {
+  const { on, fiscalYear } = at;
+  const { built, reversesEntryId } = entry;
   const postedAt = await transactionTime(tx);
   const accountIds = [...new Set(built.lines.map(({ line }) => line.account))];
   await tx
@@ -812,7 +1276,7 @@ export async function post(tx: Transaction, request: PostingRequest): Promise<Po
   await tx
     .update(companySettings)
     .set({ booksStartedAt: postedAt })
-    .where(and(eq(companySettings.id, settings.id), isNull(companySettings.booksStartedAt)));
+    .where(and(eq(companySettings.id, at.settingsId), isNull(companySettings.booksStartedAt)));
   const [counter] = await tx
     .insert(entryNumberCounters)
     .values({ companyId, fiscalYear, lastNumber: 1 })
@@ -823,9 +1287,12 @@ export async function post(tx: Transaction, request: PostingRequest): Promise<Po
     .returning({ lastNumber: entryNumberCounters.lastNumber });
   if (!counter) throw new Error('No entry number');
   const sets = new Map<string, string>();
-  for (const { line } of built.lines) {
-    const key = dimensionKey(line.dimensions);
-    if (!sets.has(key)) sets.set(key, await dimensionSetOf(tx, companyId, line.dimensions));
+  for (const dimensions of [
+    ...built.lines.map(({ line }) => line.dimensions),
+    ...built.newItems.map((item) => item.dimensions),
+  ]) {
+    const key = dimensionKey(dimensions);
+    if (!sets.has(key)) sets.set(key, await dimensionSetOf(tx, companyId, dimensions));
   }
 
   const entryId = uuidv7();
@@ -843,14 +1310,15 @@ export async function post(tx: Transaction, request: PostingRequest): Promise<Po
     bookMinor: line.bookMinor,
     parallelMinor: line.parallelMinor,
     memo,
+    // The item a line moves joins its hashed value only when it has one (S04).
+    ...(line.item !== undefined && { itemId: line.item.id }),
     // A reversal carries amounts: it used no rate (S02 rule 15 lists the entries that did).
     conversions: conversionsOf(line, built.rateIds, reversesEntryId === null),
   }));
-  const actor = request.actor;
   const header = {
     id: entryId,
     companyId,
-    requestId: created.id,
+    requestId: entry.requestId,
     sequence,
     fiscalYear,
     number: counter.lastNumber,
@@ -859,12 +1327,12 @@ export async function post(tx: Transaction, request: PostingRequest): Promise<Po
     source: 'manual' as const,
     sourceRef: null,
     hubDocument: null,
-    description: request.description,
-    reference: request.reference,
+    description: entry.description,
+    reference: entry.reference,
     reversesEntryId,
-    draftId: request.draftId,
-    preparedByUserId: request.preparedByUserId,
-    approvedByUserId: request.approvedByUserId,
+    draftId: entry.draftId,
+    preparedByUserId: entry.preparedByUserId,
+    approvedByUserId: entry.approvedByUserId,
     postedByUserId: actor.kind === 'person' ? actor.userId : null,
     postedByClientId: null,
   };
@@ -899,6 +1367,62 @@ export async function post(tx: Transaction, request: PostingRequest): Promise<Po
     line.conversions.map((conversion) => ({ companyId, lineId: line.id, ...conversion })),
   );
   if (conversions.length > 0) await tx.insert(lineConversions).values(conversions);
+  if (built.newItems.length > 0) {
+    await tx.insert(openItems).values(
+      built.newItems.map((item) => ({
+        id: item.id,
+        companyId,
+        accountId: item.accountId,
+        kind: item.kind,
+        reference: item.reference,
+        source: 'manual' as const,
+        hubDocument: null,
+        dimensionSetId: sets.get(dimensionKey(item.dimensions)) as string,
+        clientValueId: item.clientValueId,
+        currency: item.currency,
+        documentDate: on,
+        openedByEntryId: entryId,
+      })),
+    );
+    const dueDates = built.newItems.flatMap((item) =>
+      item.dueOn === null
+        ? []
+        : [
+            {
+              companyId,
+              itemId: item.id,
+              dueOn: item.dueOn,
+              effectiveOn: on,
+              setBy: 'opening' as const,
+            },
+          ],
+    );
+    if (dueDates.length > 0) await tx.insert(openItemDueDates).values(dueDates);
+  }
+  const movements = built.lines.flatMap(({ line, adjusted }, index) =>
+    line.item === undefined
+      ? []
+      : [
+          {
+            companyId,
+            itemId: line.item.id,
+            lineId: (lines[index] as (typeof lines)[number]).id,
+            entryId,
+            entryDate: on,
+            kind: line.item.movement,
+            adjusted,
+            amountMinor: line.transaction.amountMinor,
+            bookMinor: line.bookMinor,
+            parallelMinor: line.parallelMinor,
+          },
+        ],
+  );
+  if (movements.length > 0) await tx.insert(openItemMovements).values(movements);
+  const items = built.lines.flatMap(({ line }, index) =>
+    line.item === undefined
+      ? []
+      : [{ lineNo: index + 1, itemId: line.item.id, movement: line.item.movement }],
+  );
   await writeCompanyAudit(tx, companyId, actor, {
     action: 'entry.posted',
     entityType: 'journal_entry',
@@ -908,17 +1432,141 @@ export async function post(tx: Transaction, request: PostingRequest): Promise<Po
       number: counter.lastNumber,
       entryDate: on,
       source: header.source,
-      description: request.description,
-      reference: request.reference,
+      description: entry.description,
+      reference: entry.reference,
       lineCount: lines.length,
       ...(reversesEntryId !== null && { reverses: reversesEntryId }),
+      ...(items.length > 0 && { items }),
+      ...(entry.follows !== null && { follows: entry.follows }),
     },
   });
   await tx
     .update(ledgerHeads)
     .set({ entryCount: sequence, lastEntryId: entryId, lastHash: hash })
     .where(eq(ledgerHeads.id, head.id));
+  head.entryCount = sequence;
+  head.lastHash = hash;
   return { id: entryId, fiscalYear, number: counter.lastNumber, sequence, hash, replayed: false };
+}
+
+/**
+ * Posts an entry, inside `withCompany` (S03 rules 1–3), in the lock order of ADR 0008:
+ * 1. the posting request: its key posted before with the same payload answers that entry and posts
+ *    nothing; with another payload it is `IDEMPOTENCY_CONFLICT`; a reversal's key
+ *    (`reversal:<entry id>`) posted before is `ENTRY_ALREADY_REVERSED`;
+ * 2. the company's ledger head `FOR UPDATE`, then its settings row `FOR UPDATE`;
+ * 3. a manual date up to the end of the current month (`ENTRY_DATE_OUT_OF_RANGE`), then the
+ *    period of the entry date, made open when missing, `FOR SHARE` (`PERIOD_CLOSED`);
+ * 4. the lines, checked against the chart and built by `packages/ledger` (`balanceEntry()` last),
+ *    the balance row of each item they move read `FOR UPDATE` (S04);
+ * 5. the accounts and the books marked as used, the next number of the fiscal year of the entry
+ *    date, the dimension sets;
+ * 6. the hash over the entry as stored (`chainEntryValue()`) and the previous hash;
+ * 7. the entry, its lines and conversions, its new items and their movements, the `entry.posted`
+ *    audit row, then the head.
+ * A reversal that moves a running item against its balance or across zero is followed, in the same
+ * transaction, by its exchange-difference entry under its own request `<key>:difference` (S04
+ * rule 13), with its own number and audit row; the answer is the reversal. Any refusal throws and
+ * the caller's transaction rolls back, so no number is used up. The deferred guards check the
+ * balance, the reversal, the items, the head and the number at commit.
+ */
+export async function post(tx: Transaction, request: PostingRequest): Promise<PostedEntryRef> {
+  const companyId = await contextCompany(tx);
+  const payloadHash = sha256(canonicalJson(payloadOf(request)));
+  const [created] = await tx
+    .insert(postingRequests)
+    .values({
+      companyId,
+      client: request.client,
+      idempotencyKey: request.idempotencyKey,
+      payloadHash,
+    })
+    .onConflictDoNothing({
+      target: [postingRequests.companyId, postingRequests.client, postingRequests.idempotencyKey],
+    })
+    .returning({ id: postingRequests.id });
+  if (!created) {
+    // A reversal's key is its original's: a second reversal, at once or later, is refused rather
+    // than answered as the first (S03 rule 9, edge case 13; scenario manual/reversal).
+    if (request.content.kind === 'reversal') {
+      refuse('ENTRY_ALREADY_REVERSED', 'The entry has a reversal already', {
+        entryId: request.content.entryId,
+      });
+    }
+    return replay(tx, request, payloadHash);
+  }
+
+  const [headRow] = await tx.select().from(ledgerHeads).for('update');
+  const [settings] = await tx.select().from(companySettings).for('update');
+  if (!headRow || !settings) throw new Error('A company without its ledger head or settings');
+  const ledgers = ledgersOf(settings);
+  const on = request.entryDate;
+  const { content } = request;
+  checkDates(on, content, ledgers);
+  const fiscalYear = fiscalYearOf(on, settings.fiscalYearStartMonth);
+  const period = periodOf(on);
+  await tx
+    .insert(periods)
+    .values({ companyId, period, fiscalYear, state: 'open' })
+    .onConflictDoNothing({ target: [periods.companyId, periods.period] });
+  const [periodRow] = await tx
+    .select({ state: periods.state })
+    .from(periods)
+    .where(eq(periods.period, period))
+    .for('share');
+  if (periodRow?.state !== 'open') {
+    refuse('PERIOD_CLOSED', `The period ${period} is closed`, { period });
+  }
+
+  const built = await buildLines(tx, content, on, ledgers, settings.bulletinDaysOff, true);
+  const reversesEntryId = content.kind === 'reversal' ? content.entryId : null;
+  const head: Head = { id: headRow.id, entryCount: headRow.entryCount, lastHash: headRow.lastHash };
+  const at = { on, fiscalYear, settingsId: settings.id };
+  const posted = await writeEntry(tx, companyId, head, at, request.actor, {
+    requestId: created.id,
+    description: request.description,
+    reference: request.reference,
+    reversesEntryId,
+    draftId: request.draftId,
+    preparedByUserId: request.preparedByUserId,
+    approvedByUserId: request.approvedByUserId,
+    built,
+    follows: null,
+  });
+  const difference = await voidDifferenceLines(
+    tx,
+    built.voided,
+    on,
+    ledgers,
+    settings.bulletinDaysOff,
+  );
+  if (difference !== null) {
+    const differenceKey = `${request.idempotencyKey}:difference`;
+    const [differenceRequest] = await tx
+      .insert(postingRequests)
+      .values({
+        companyId,
+        client: request.client,
+        idempotencyKey: differenceKey,
+        payloadHash: sha256(
+          canonicalJson({ client: request.client, follows: posted.id, entryDate: on }),
+        ),
+      })
+      .returning({ id: postingRequests.id });
+    if (!differenceRequest) throw new Error('No posting request for the difference entry');
+    await writeEntry(tx, companyId, head, at, request.actor, {
+      requestId: differenceRequest.id,
+      description: request.description,
+      reference: request.reference,
+      reversesEntryId: null,
+      draftId: null,
+      preparedByUserId: request.preparedByUserId,
+      approvedByUserId: request.approvedByUserId,
+      built: difference,
+      follows: posted.id,
+    });
+  }
+  return posted;
 }
 
 /** A request posted before: its entry, when its payload is the same (ADR 0005 invariant 5). */
