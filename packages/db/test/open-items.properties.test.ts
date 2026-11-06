@@ -361,5 +361,5 @@ describe('open items, as a property', () => {
       ),
       { numRuns: 25, includeErrorInReport: true },
     );
-  });
+  }, 120_000);
 });

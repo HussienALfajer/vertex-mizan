@@ -1485,6 +1485,40 @@ END
 `,
     },
     {
+      name: 'open_item_opened',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+DECLARE
+  opening record;
+BEGIN
+  SELECT e.entry_date, e.reverses_entry_id INTO opening
+  FROM public.journal_entries e
+  WHERE e.company_id = NEW.company_id AND e.id = NEW.opened_by_entry_id;
+  IF opening.entry_date IS NULL OR opening.reverses_entry_id IS NOT NULL
+    OR (NEW.source = 'manual' AND opening.entry_date <> NEW.document_date)
+    OR NOT EXISTS (
+      SELECT 1 FROM public.open_item_movements m
+      WHERE m.company_id = NEW.company_id AND m.item_id = NEW.id
+        AND m.entry_id = NEW.opened_by_entry_id
+        AND m.kind = (CASE NEW.kind WHEN 'document' THEN 'open' ELSE 'add' END)
+    ) THEN
+    RAISE EXCEPTION 'open item % is not opened by a movement of its opening entry', NEW.id
+      USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NULL;
+END
+`,
+    },
+    {
       name: 'open_item_movement_rules',
       arguments: '',
       returns: 'trigger',
@@ -1540,6 +1574,14 @@ BEGIN
     OR entry.reverses_entry_id IS NOT DISTINCT FROM item.opened_by_entry_id
   ) THEN
     RAISE EXCEPTION 'open_item_movements: item % opens once, in the entry that opened it', NEW.item_id
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF NEW.kind = 'open' AND entry.reverses_entry_id IS NULL AND sign(NEW.amount_minor) <> (
+    SELECT CASE a.normal_balance WHEN 'debit' THEN 1 ELSE -1 END
+    FROM public.chart_accounts a
+    WHERE a.company_id = NEW.company_id AND a.id = item.account_id
+  ) THEN
+    RAISE EXCEPTION 'open_item_movements: OPEN_ITEM_DIRECTION: item % opens against its account''s normal balance', NEW.item_id
       USING ERRCODE = 'restrict_violation';
   END IF;
   IF NEW.adjusted IS DISTINCT FROM (entry.source = 'manual' AND item.source <> 'manual') THEN
@@ -2415,6 +2457,13 @@ END
       name: 'open_item_rules',
       function: 'open_item_rules',
       deferred: false,
+      on: ['INSERT'],
+    },
+    {
+      table: 'open_items',
+      name: 'open_items_opened',
+      function: 'open_item_opened',
+      deferred: true,
       on: ['INSERT'],
     },
     {

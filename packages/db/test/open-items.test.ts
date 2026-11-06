@@ -523,6 +523,18 @@ describe('post(): manual document items (S04 rules 2, 4, 6, 7, 10)', () => {
           { code: '213001', currency: 'USD', amount: -10_000n, dims: ['C1'], item: m1 },
         ]),
       ),
+      advance: await refused(
+        manual(books, '2026-11-19', [
+          { code: '111004', currency: 'USD', amount: 50_000n },
+          {
+            code: '112001',
+            currency: 'USD',
+            amount: -50_000n,
+            dims: ['C2'],
+            newItem: { reference: 'ADV-1', dueOn: null },
+          },
+        ]),
+      ),
       runningMore: await refused(
         manual(books, '2026-11-19', [
           cash,
@@ -546,6 +558,8 @@ describe('post(): manual document items (S04 rules 2, 4, 6, 7, 10)', () => {
       unknown: 'NOT_FOUND',
       otherCompany: 'NOT_FOUND',
       runningItem: 'VALIDATION_FAILED',
+      // An advance is a liability, never a credit item on a receivable account (ADR 0013).
+      advance: 'OPEN_ITEM_DIRECTION',
       runningMore: 'VALIDATION_FAILED',
     });
     for (const [key, value] of Object.entries(refusals)) {
@@ -732,7 +746,11 @@ interface ForgedLine {
 async function forge(
   books: Books,
   lines: readonly ForgedLine[],
-  options: { readonly reverses?: string } = {},
+  options: {
+    readonly reverses?: string;
+    /** Items the entry opens, inserted after its lines and before its movements. */
+    readonly items?: (entryId: string) => (typeof openItems.$inferInsert)[];
+  } = {},
 ): Promise<string> {
   return inCompany(books.id, async (tx) => {
     const [head] = await tx.select().from(ledgerHeads).for('update');
@@ -817,6 +835,8 @@ async function forge(
         })),
       )
       .returning({ id: journalLines.id });
+    const items = options.items?.(id) ?? [];
+    if (items.length > 0) await tx.insert(openItems).values(items);
     for (const [index, line] of lines.entries()) {
       if (line.movement === undefined) continue;
       await tx.insert(openItemMovements).values({
@@ -1039,6 +1059,82 @@ describe('the open-item guards, against writes the posting function never makes'
         ),
       ),
     ).toMatch(/OPEN_ITEM_HAS_SETTLEMENTS/);
+  });
+
+  it('refuses an item made without its opening movement, or opened against its account', async () => {
+    const { books, item } = await withItem();
+    const forgedItem = (values: Partial<typeof openItems.$inferInsert>) =>
+      inCompany(books.id, (tx) =>
+        tx.insert(openItems).values({
+          companyId: books.id,
+          accountId: item.accountId,
+          kind: 'document',
+          reference: 'M-FORGED',
+          source: 'manual',
+          dimensionSetId: item.dimensionSetId,
+          clientValueId: item.clientValueId,
+          currency: 'USD',
+          documentDate: item.documentDate,
+          openedByEntryId: item.openedByEntryId,
+          ...values,
+        }),
+      );
+    // An old entry gains no line, so an item it is said to open never gets its opening movement.
+    expect(await refusal(forgedItem({}))).toMatch(/not opened by a movement of its opening entry/);
+    expect(
+      await refusal(
+        forgedItem({
+          kind: 'running',
+          accountId: books.accounts.get('213001') as string,
+          reference: 'C1',
+        }),
+      ),
+    ).toMatch(/not opened by a movement of its opening entry/);
+    expect((await count(books)).items).toBe(1);
+    // A forged entry opening a credit item on the receivable account, an advance.
+    const advance = uuidv7();
+    expect(
+      await refusal(
+        forge(
+          books,
+          [
+            {
+              code: '111004',
+              currency: 'USD',
+              amount: 50_000n,
+              book: 6_150_000n,
+              parallel: 50_000n,
+            },
+            {
+              code: '112001',
+              currency: 'USD',
+              amount: -50_000n,
+              book: -6_150_000n,
+              parallel: -50_000n,
+              setId: item.dimensionSetId,
+              movement: { itemId: advance, kind: 'open' },
+            },
+          ],
+          {
+            items: (entryId) => [
+              {
+                id: advance,
+                companyId: books.id,
+                accountId: item.accountId,
+                kind: 'document',
+                reference: 'ADV-1',
+                source: 'manual',
+                dimensionSetId: item.dimensionSetId,
+                clientValueId: item.clientValueId,
+                currency: 'USD',
+                documentDate: '2026-11-20',
+                openedByEntryId: entryId,
+              },
+            ],
+          },
+        ),
+      ),
+    ).toMatch(/OPEN_ITEM_DIRECTION/);
   });
 
   it("refuses a person's due date on an item that is not manual, and a due date on a running item", async () => {

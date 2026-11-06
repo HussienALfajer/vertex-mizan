@@ -7,8 +7,9 @@
 --   for every role, written only by the trigger on movements;
 -- - an item's account, kind, client and currency (on insert); a movement agrees with its line and
 --   its item, and an opening is reversed only once its item's other movements are (on insert);
--- - every line on a control account has its one movement, a reversal moves its original's items
---   back exactly, and invariant 9 holds on every item (deferred to commit);
+-- - every item is opened by a movement of its opening entry, every line on a control account has
+--   its one movement, a reversal moves its original's items back exactly, and invariant 9 holds on
+--   every item (deferred to commit);
 -- - a due date only on a document item, a person's only on a manual item (on insert).
 -- Every trigger is ENABLE ALWAYS (ADR 0008); every guard function is pinned in test/conventions.ts
 -- and names its tables with the schema. Locks follow one order: the ledger head, then the period,
@@ -151,8 +152,9 @@ ALTER TABLE open_items ENABLE ALWAYS TRIGGER open_item_rules;
 --   dimension set and currency are the item's;
 -- - its kind fits the item and the line: a document item opens (a measured line) and clears (a
 --   carried one); a running item adds (measured), clears (carried) and takes a void's difference
---   (a difference line); an item opens only in the entry that opened it, once, or in that entry's
---   reversal;
+--   (a difference line); an item opens only in the entry that opened it, once, with its account's
+--   normal balance (a receivable as a debit, so an advance is never a credit item on it; ADR 0013,
+--   OPEN_ITEM_DIRECTION), or in that entry's reversal;
 -- - `adjusted` exactly when a manual entry moves an item whose source is not manual (rule 8);
 -- - the reversal of an opening waits for every other movement of the item to be reversed, by an
 --   earlier entry or by that same one (OPEN_ITEM_HAS_SETTLEMENTS, rule 13; owner, 2026-11-06).
@@ -204,6 +206,14 @@ BEGIN
     RAISE EXCEPTION 'open_item_movements: item % opens once, in the entry that opened it', NEW.item_id
       USING ERRCODE = 'restrict_violation';
   END IF;
+  IF NEW.kind = 'open' AND entry.reverses_entry_id IS NULL AND sign(NEW.amount_minor) <> (
+    SELECT CASE a.normal_balance WHEN 'debit' THEN 1 ELSE -1 END
+    FROM public.chart_accounts a
+    WHERE a.company_id = NEW.company_id AND a.id = item.account_id
+  ) THEN
+    RAISE EXCEPTION 'open_item_movements: OPEN_ITEM_DIRECTION: item % opens against its account''s normal balance', NEW.item_id
+      USING ERRCODE = 'restrict_violation';
+  END IF;
   IF NEW.adjusted IS DISTINCT FROM (entry.source = 'manual' AND item.source <> 'manual') THEN
     RAISE EXCEPTION 'open_item_movements: adjusted exactly when a manual entry moves a % item',
       item.source
@@ -230,6 +240,39 @@ CREATE TRIGGER open_item_movement_rules BEFORE INSERT ON open_item_movements
   FOR EACH ROW EXECUTE FUNCTION open_item_movement_rules();
 --> statement-breakpoint
 ALTER TABLE open_item_movements ENABLE ALWAYS TRIGGER open_item_movement_rules;
+--> statement-breakpoint
+-- Every item is opened by a movement of the entry that opened it, at commit (S04 rules 2 and 3): a
+-- document item's `open`, a running item's first `add`; that entry is not a reversal, and a manual
+-- item's document date is its date (rule 6). An item made without its posting, by any role, fails
+-- here: an old entry gains no line, and a line moves one item only.
+CREATE FUNCTION open_item_opened() RETURNS trigger
+  LANGUAGE plpgsql
+  AS $$
+DECLARE
+  opening record;
+BEGIN
+  SELECT e.entry_date, e.reverses_entry_id INTO opening
+  FROM public.journal_entries e
+  WHERE e.company_id = NEW.company_id AND e.id = NEW.opened_by_entry_id;
+  IF opening.entry_date IS NULL OR opening.reverses_entry_id IS NOT NULL
+    OR (NEW.source = 'manual' AND opening.entry_date <> NEW.document_date)
+    OR NOT EXISTS (
+      SELECT 1 FROM public.open_item_movements m
+      WHERE m.company_id = NEW.company_id AND m.item_id = NEW.id
+        AND m.entry_id = NEW.opened_by_entry_id
+        AND m.kind = (CASE NEW.kind WHEN 'document' THEN 'open' ELSE 'add' END)
+    ) THEN
+    RAISE EXCEPTION 'open item % is not opened by a movement of its opening entry', NEW.id
+      USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NULL;
+END
+$$;
+--> statement-breakpoint
+CREATE CONSTRAINT TRIGGER open_items_opened AFTER INSERT ON open_items
+  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION open_item_opened();
+--> statement-breakpoint
+ALTER TABLE open_items ENABLE ALWAYS TRIGGER open_items_opened;
 --> statement-breakpoint
 -- An item's balance (ADR 0012, S04): each movement adds its three amounts to its item's row, made
 -- at the item's first movement; the parallel amount stays null without a parallel ledger. This is

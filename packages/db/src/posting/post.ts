@@ -724,6 +724,10 @@ async function manualLines(
           lineNo,
         });
       }
+      const [normal] = await tx
+        .select({ balance: chartAccounts.normalBalance })
+        .from(chartAccounts)
+        .where(eq(chartAccounts.id, spec.accountId));
       const id = uuidv7();
       newItems.push({
         id,
@@ -739,6 +743,8 @@ async function manualLines(
         id,
         kind: 'document',
         direction: null,
+        // A receivable opens as a debit: an advance is never a credit item on it (ADR 0013).
+        opensAs: normal?.balance === 'credit' ? -1 : 1,
         balance: emptyBalance(spec.currency, keepsParallel),
       };
     } else {
@@ -1066,8 +1072,22 @@ async function voidDifferenceLines(
     lines.filter((line) => line.item === undefined),
     'manual',
   );
+  // The difference entry follows a manual reversal: a manual movement on a Hub or opening item is
+  // adjusted in Mizan, as the reversal's own movements are (S04 rule 8).
+  const sources = await tx
+    .select({ id: openItems.id, source: openItems.source })
+    .from(openItems)
+    .where(
+      inArray(
+        openItems.id,
+        voided.map((item) => item.id),
+      ),
+    );
+  const adjusted = (line: Line) =>
+    line.item !== undefined &&
+    sources.find((item) => item.id === line.item?.id)?.source !== 'manual';
   return {
-    lines: lines.map((line) => ({ line, memo: null, adjusted: false })),
+    lines: lines.map((line) => ({ line, memo: null, adjusted: adjusted(line) })),
     rateIds: new Map(),
     newItems: [],
     voided: [],

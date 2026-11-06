@@ -1040,6 +1040,7 @@ describe('open items (S04, ADR 0013)', () => {
                     id: 'M',
                     kind: 'document',
                     direction: null,
+                    opensAs: total < 0n ? -1 : 1,
                     balance: emptyBalance(from, company.parallel !== null),
                   },
                 },

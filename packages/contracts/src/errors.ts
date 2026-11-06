@@ -182,7 +182,11 @@ export const errorStatus = {
   OPEN_ITEM_REFERENCE_TAKEN: 409,
   /** The line's account, currency or client is not its item's (S04 rule 7). */
   OPEN_ITEM_MISMATCH: 422,
-  /** A line adds to a document item instead of clearing it (S04 rule 2). */
+  /**
+   * A line adds to a document item instead of clearing it, or opens one against its account's
+   * normal balance, such as a client's advance as a credit item on receivables (S04 rule 2,
+   * ADR 0013).
+   */
   OPEN_ITEM_DIRECTION: 422,
   /** Reversing an item's opening while it has other movements; for S05 also a hold (rule 13). */
   OPEN_ITEM_HAS_SETTLEMENTS: 409,

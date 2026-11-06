@@ -37,6 +37,12 @@ export interface ItemState {
    * for a running item, and for a document item the line opens.
    */
   readonly direction: 1 | -1 | null;
+  /**
+   * A document item the line opens: the sign of its account's normal balance, the one its opening
+   * must have (S04 rule 2, ADR 0013): a receivable opens as a debit, so a client's advance is never
+   * a credit item on a receivable account (IFRS 15.106, IAS 1.32).
+   */
+  readonly opensAs?: 1 | -1;
   /** Its open transaction amount and its carrying amount in each ledger. */
   readonly balance: CarriedAmounts;
 }
@@ -99,7 +105,8 @@ export function movementOn(
 /**
  * The lines of a movement of `amount` on an item (S04 rules 2–4), in the line's sign:
  * - a document item the line opens: a new measurement at each ledger's policy or dealt rate
- *   (`open`); its sign is the item's;
+ *   (`open`), with the sign of its account's normal balance (`OPEN_ITEM_DIRECTION` otherwise: an
+ *   advance is a liability, never a credit item on a receivable account; ADR 0013);
  * - a document item already open: a clearing toward zero at its carrying amount, in proportion to
  *   what remains (`clear`, `clearOpenItem()`). A line with the item's sign is refused
  *   (`OPEN_ITEM_DIRECTION`: a second invoice is a second item), and so is clearing more than is
@@ -128,14 +135,25 @@ export function moveItem(
   });
   const done = (lines: Line[], direction: ItemState['direction']): ItemMove => ({
     lines,
-    after: { ...item, direction, balance: plus(item.balance, lines) },
+    // Once opened, an item's sign is its direction; `opensAs` was for its opening only.
+    after: { id: item.id, kind: item.kind, direction, balance: plus(item.balance, lines) },
   });
   if (item.kind === 'document') {
     if (item.direction === null) {
       if (item.balance.transaction.amountMinor !== 0n) {
         throw new RangeError('A document item with a balance and no opening');
       }
-      return done([measured(amount, 'open')], sign(amount.amountMinor) as 1 | -1);
+      if (item.opensAs === undefined) {
+        throw new TypeError("A new document item without its account's normal balance");
+      }
+      if (sign(amount.amountMinor) !== item.opensAs) {
+        throw new DomainError(
+          'OPEN_ITEM_DIRECTION',
+          "A document item opens with its account's normal balance",
+          { itemId: item.id },
+        );
+      }
+      return done([measured(amount, 'open')], item.opensAs);
     }
     if (sign(amount.amountMinor) === item.direction) {
       throw new DomainError('OPEN_ITEM_DIRECTION', 'The line adds to a document item', {

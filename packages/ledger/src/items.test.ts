@@ -74,6 +74,7 @@ const newDocument = (id: string, currency: Money['currency'] = 'USD'): ItemState
   id,
   kind: 'document',
   direction: null,
+  opensAs: 1,
   balance: emptyBalance(currency, true),
 });
 
@@ -128,6 +129,19 @@ describe('a document item (S04 rules 2 and 4)', () => {
       ['carried', '112001', 'USD', -60_000n, -7_200_000n, -60_000n, 'M-1:clear'],
     ]);
     expect(last.after.balance).toEqual(emptyBalance('USD', true));
+  });
+
+  it("refuses an opening against its account's normal balance: an advance is no credit item", () => {
+    expect(
+      refusal(() =>
+        moveItem(
+          newDocument('ADV-1'),
+          { account: '112001', dimensions: { client: 'C2' } },
+          usd(-50_000n),
+          at('2026-11-19', [bulletin('123.0000', '2026-11-19')]),
+        ),
+      ),
+    ).toBe('OPEN_ITEM_DIRECTION');
   });
 
   it('refuses a line that adds to it, and clearing more than is open', () => {
