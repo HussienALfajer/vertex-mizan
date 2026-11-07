@@ -139,6 +139,7 @@ export const audit = {
     attachment: 'المرفق',
     open_item: 'البند المفتوح',
     receivables_export: 'تقرير الذمم',
+    inbound_event: 'الحدث الوارد',
   },
   /** The audited fields, by entity field name. */
   fields: {
@@ -177,6 +178,7 @@ export const audit = {
     templateId: 'قالب دليل الحسابات',
     templateVersion: 'إصدار القالب',
     accountCount: 'عدد الحسابات',
+    mappedSlotCount: 'عدد الحسابات المربوطة بقواعد الترحيل',
     format: 'صيغة الملف',
     accountId: 'الحساب',
     position: 'الترتيب',
@@ -226,5 +228,9 @@ export const audit = {
     clientValueId: 'العميل',
     from: 'من تاريخ',
     to: 'إلى تاريخ',
+    documentType: 'نوع المستند',
+    documentNumber: 'رقم المستند',
+    holdReason: 'سبب التعليق',
+    postedOn: 'تاريخ الترحيل',
   },
 };

@@ -506,7 +506,9 @@ describe('voids, service changes and due dates', () => {
         parallelMinor: -50_000n,
       },
     });
-    expect(rows(reclassifiedLines(issued, { client: 'C1', service: 'S4' }))).toEqual([
+    expect(
+      rows(reclassifiedLines(issued, { client: 'C1', service: 'S3' }, { client: 'C1', service: 'S4' })),
+    ).toEqual([
       ['411002', 'USD', 50_000n, 6_000_000n, 50_000n],
       ['411002', 'USD', -50_000n, -6_000_000n, -50_000n],
     ]);
@@ -526,7 +528,7 @@ describe('voids, service changes and due dates', () => {
         { ...NO_REFERENCES, issueLine: { entryId: 'E1', lineNo: 2 } },
         contextOf(sypUsd),
       ),
-    ).toMatchObject({ entries: [{ kind: 'reclassification', lineNo: 2, to: S2 }] });
+    ).toMatchObject({ entries: [{ kind: 'reclassification', lineNo: 2, from: S1, to: S2 }] });
   });
 
   it('records a due date on the item; a rate change posts nothing', () => {

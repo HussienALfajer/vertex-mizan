@@ -707,3 +707,56 @@ export const EVENT_ACTIONS = [
 export const eventActionSchema = z.enum(EVENT_ACTIONS).meta({ id: 'EventAction' });
 
 export type EventAction = z.infer<typeof eventActionSchema>;
+
+/** An account as a slot's check reads it (S05 "Mapping slots", `MAPPING_ACCOUNT_INVALID`). */
+export interface SlotAccount {
+  readonly kind: 'header' | 'postable';
+  readonly class: 'asset' | 'liability' | 'equity' | 'revenue' | 'expense';
+  readonly isControl: boolean;
+  readonly itemKind: 'document' | 'running' | null;
+  readonly currency: string | null;
+  readonly isMonetary: boolean;
+}
+
+/**
+ * Whether an account fits a slot (S05 "Mapping slots", "Must be"): the receivable a `document`
+ * control asset; revenue postable; a payment method a monetary asset restricted to its currency;
+ * the ad funds a `running` control liability restricted to USD; the payables liabilities and the
+ * project cost an expense, all postable.
+ */
+export function slotAccountFits(
+  slot: PostingSlot,
+  currency: HubCurrency | null,
+  account: SlotAccount,
+): boolean {
+  if (account.kind !== 'postable') return false;
+  switch (slot) {
+    case 'receivable':
+      return account.class === 'asset' && account.isControl && account.itemKind === 'document';
+    case 'revenue_at_issue':
+    case 'termination_fee_revenue':
+      return account.class === 'revenue' && !account.isControl;
+    case 'payment_method.cash':
+    case 'payment_method.bank_transfer':
+    case 'payment_method.e_wallet':
+      return (
+        account.class === 'asset' &&
+        account.isMonetary &&
+        !account.isControl &&
+        currency !== null &&
+        account.currency === currency
+      );
+    case 'ad_funds':
+      return (
+        account.class === 'liability' &&
+        account.isControl &&
+        account.itemKind === 'running' &&
+        account.currency === 'USD'
+      );
+    case 'ad_platforms_payable':
+    case 'project_expense_awaiting_payment':
+      return account.class === 'liability' && !account.isControl;
+    case 'project_cost':
+      return account.class === 'expense' && !account.isControl;
+  }
+}

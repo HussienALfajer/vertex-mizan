@@ -20,8 +20,12 @@ import {
   entryDraftLines,
   entryDrafts,
   exchangeRates,
+  inboundEventActions,
+  inboundEvents,
+  inboundEventStates,
   journalEntries,
   post,
+  postingRuleAccounts,
   ratePairs,
   type Transaction,
   tableRegistry,
@@ -66,6 +70,10 @@ const COVERED = [
   'open_item_movements',
   'open_item_due_dates',
   'open_item_balances',
+  'posting_rule_accounts',
+  'inbound_events',
+  'inbound_event_states',
+  'inbound_event_actions',
 ];
 
 const auditRow = fc.record({
@@ -369,7 +377,49 @@ const expectedRows = (data: CompanyData): Record<string, number> => ({
   open_item_movements: 1,
   open_item_due_dates: 1,
   open_item_balances: 1,
+  posting_rule_accounts: 1,
+  inbound_events: 1,
+  inbound_event_states: 1,
+  inbound_event_actions: 2,
 });
+
+/** S05's rows: a slot's account, and an event Hub sent, held, with its two actions. */
+async function seedInbox(tx: Transaction, companyId: string) {
+  const [account] = await tx
+    .select({ id: chartAccounts.id })
+    .from(chartAccounts)
+    .where(and(eq(chartAccounts.companyId, companyId), eq(chartAccounts.code, '591001')));
+  await tx
+    .insert(postingRuleAccounts)
+    .values({ companyId, slot: 'project_cost', accountId: account?.id as string });
+  const [event] = await tx
+    .insert(inboundEvents)
+    .values({
+      companyId,
+      apiClientId: uuidv7(),
+      eventId: uuidv7(),
+      type: 'project_expense.recorded',
+      version: 1,
+      occurredAt: new Date('2026-11-10T09:00:00Z'),
+      accountingDate: '2026-11-10',
+      payload: { expense: { id: uuidv7(), number: 'EXP-1' } },
+      payloadHash: 'b'.repeat(64),
+      documentType: 'project_expense',
+      documentId: uuidv7(),
+      documentNumber: 'EXP-1',
+      itemKey: 'project_expense:generated',
+      requestId: 'request-generated',
+    })
+    .returning({ id: inboundEvents.id });
+  const eventId = event?.id as string;
+  await tx
+    .insert(inboundEventStates)
+    .values({ companyId, eventId, state: 'held', holdReason: 'NO_MAPPING' });
+  await tx.insert(inboundEventActions).values([
+    { companyId, eventId, action: 'received', actorKind: 'system' },
+    { companyId, eventId, action: 'held', holdReason: 'NO_MAPPING', actorKind: 'system' },
+  ]);
+}
 
 async function seed(userId: string, data: CompanyData): Promise<string> {
   const [row] = await app
@@ -400,6 +450,7 @@ async function seed(userId: string, data: CompanyData): Promise<string> {
     await seedChart(tx, row.id, userId, data);
     await seedLedger(tx, row.id, userId, data);
     await tx.insert(companyExports).values({ companyId: row.id, requestedByUserId: userId });
+    await seedInbox(tx, row.id);
     return tx
       .select({ id: journalEntries.id, hash: journalEntries.hash })
       .from(journalEntries)

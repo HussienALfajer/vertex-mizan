@@ -116,6 +116,8 @@ export type PlannedEntry =
       readonly key: string;
       readonly entryId: string;
       readonly lineNo: number;
+      /** The service the line has now (Hub's `old_service`) and the one it moves to. */
+      readonly from: HubValueRef;
       readonly to: HubValueRef;
     };
 
@@ -326,6 +328,7 @@ export function lineServiceChangedPlan(
         key: event.id,
         entryId: line.entryId,
         lineNo: line.lineNo,
+        from: event.payload.old_service,
         to: event.payload.new_service,
       },
     ],
@@ -610,10 +613,11 @@ export function hubReversalLines(original: PostedHubEntry, on: string): Line[] {
 
 /**
  * A line moved to other dimensions at its posted amounts (`invoice.line_service_changed`): the
- * line negated with its own dimensions, and carried again with the new ones, both `carried`, so no
- * rate is read and the entry balances in every ledger by itself (phase 1 scope §6).
+ * line's amounts negated with the dimensions it has now (`from`: its service after any earlier
+ * change), and carried again with the new ones, both `carried`, so no rate is read and the entry
+ * balances in every ledger by itself (phase 1 scope §6).
  */
-export function reclassifiedLines(line: Line, to: Dimensions): Line[] {
+export function reclassifiedLines(line: Line, from: Dimensions, to: Dimensions): Line[] {
   if (line.item !== undefined) throw new TypeError('A line on an item is not reclassified');
   const amounts: CarriedAmounts = {
     transaction: line.transaction,
@@ -621,7 +625,7 @@ export function reclassifiedLines(line: Line, to: Dimensions): Line[] {
     parallelMinor: line.parallelMinor,
   };
   return [
-    carriedLine({ account: line.account, dimensions: line.dimensions, amounts: negate(amounts) }),
+    carriedLine({ account: line.account, dimensions: from, amounts: negate(amounts) }),
     carriedLine({ account: line.account, dimensions: to, amounts }),
   ];
 }

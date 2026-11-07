@@ -8,6 +8,7 @@ import {
   ROOT_ACCOUNTS,
 } from './chart.js';
 import { CHART_TEMPLATES, chartTemplate } from './chart-templates.js';
+import { POSTING_SLOTS, slotAccountFits, slotIsPerCurrency } from './events.js';
 
 describe('the chart templates (S02 "Templates", drafts under Q3)', () => {
   for (const template of CHART_TEMPLATES) {
@@ -157,5 +158,39 @@ describe('the chart templates (S02 "Templates", drafts under Q3)', () => {
       ['213001', 'running'],
     ]);
     expect(kinds('general')).toEqual([['112001', 'document']]);
+  });
+
+  it('maps every posting slot of S05 to a fitting account of the service-agency chart', () => {
+    const template = chartTemplate('service-agency');
+    const expected = POSTING_SLOTS.flatMap((slot) =>
+      slotIsPerCurrency(slot) ? [`${slot}:SYP`, `${slot}:USD`] : [slot],
+    );
+    expect(
+      template.postingRules.map((rule) =>
+        rule.currency === null ? rule.slot : `${rule.slot}:${rule.currency}`,
+      ),
+    ).toEqual(expected);
+    for (const rule of template.postingRules) {
+      const account = template.accounts.find((candidate) => candidate.code === rule.code);
+      if (account === undefined) throw new Error(`No account ${rule.code}`);
+      expect(
+        slotAccountFits(rule.slot, rule.currency, {
+          ...account,
+          class: accountClassOfCode(account.code),
+        }),
+        `${rule.slot} → ${rule.code}`,
+      ).toBe(true);
+    }
+    // Moving a payment method to an account of the other currency does not fit.
+    const usd = template.accounts.find((account) => account.code === '111002');
+    if (usd === undefined) throw new Error('No 111002');
+    expect(
+      slotAccountFits('payment_method.cash', 'SYP', {
+        ...usd,
+        class: accountClassOfCode(usd.code),
+      }),
+    ).toBe(false);
+    // The general template starts unmapped: its events hold NO_MAPPING until the accountant maps them.
+    expect(chartTemplate('general').postingRules).toEqual([]);
   });
 });

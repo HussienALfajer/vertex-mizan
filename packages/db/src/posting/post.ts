@@ -42,8 +42,10 @@ import {
   type LineDimensionValue,
   type MeasureContext,
   manualEntry,
+  hubReversalLines,
   manualReversalLines,
   movementOn,
+  reclassifiedLines,
   periodOf,
   runningVoidDifferenceLines,
   type VoidedRunningItem,
@@ -99,6 +101,16 @@ export interface ManualLineSpec {
   readonly newItem?: { readonly reference: string; readonly dueOn: string | null } | null;
 }
 
+/**
+ * The Hub event an entry comes from (S05 "Entries"): its inbox id (the entry's `source_ref`), the
+ * API client that sent it (`posted_by_client_id`) and the Hub document it is about.
+ */
+export interface HubSource {
+  readonly inboxId: string;
+  readonly clientId: string;
+  readonly document: { readonly type: string; readonly id: string; readonly number: string | null };
+}
+
 /** The rate a manual entry was dealt at for a pair, quoted in the company's orientation of it. */
 export interface DealtRateSpec {
   readonly base: CurrencyCode;
@@ -118,7 +130,48 @@ export type PostingContent =
       readonly dealtRates: readonly DealtRateSpec[];
       readonly today: string;
     }
-  | { readonly kind: 'reversal'; readonly entryId: string; readonly today: string };
+  | { readonly kind: 'reversal'; readonly entryId: string; readonly today: string }
+  /**
+   * A Hub event's rule (S05 rules 12–13): its lines measured as a manual entry's, at the rates of
+   * `measuredOn` (the event's accounting date, or a `.changed` event's document date), with Hub's
+   * rate as the dealt rate where a ledger accepts it; the items it opens are Hub's documents.
+   */
+  | {
+      readonly kind: 'hub';
+      readonly lines: readonly ManualLineSpec[];
+      readonly dealtRates: readonly DealtRateSpec[];
+      readonly measuredOn: string;
+      readonly today: string;
+      readonly hub: HubSource;
+    }
+  /** The exact reversal of a Hub entry by its event: a void, a change, an archive (rule 14). */
+  | {
+      readonly kind: 'hub_reversal';
+      readonly entryId: string;
+      readonly today: string;
+      readonly hub: HubSource;
+    }
+  /**
+   * A line of a Hub entry moved to other dimension values at its posted amounts
+   * (`invoice.line_service_changed`): the line's values now (`fromValueIds`) and after the change
+   * (`toValueIds`).
+   */
+  | {
+      readonly kind: 'hub_reclassification';
+      readonly entryId: string;
+      readonly lineNo: number;
+      readonly fromValueIds: readonly string[];
+      readonly toValueIds: readonly string[];
+      readonly today: string;
+      readonly hub: HubSource;
+    };
+
+type MeasuredContent = Extract<PostingContent, { kind: 'manual' | 'hub' }>;
+
+/** The Hub source of a request, or null for a manual entry or the accountant's reversal. */
+function hubOf(content: PostingContent): HubSource | null {
+  return 'hub' in content ? content.hub : null;
+}
 
 /** A request to post, once by its client's idempotency key (ADR 0005 invariant 5). */
 export interface PostingRequest {
@@ -171,6 +224,10 @@ interface NewItem {
   readonly clientValueId: string | null;
   readonly currency: CurrencyCode;
   readonly dueOn: string | null;
+  /** Its document date: the entry date, or a Hub document's own date (S05 rule 15). */
+  readonly documentDate: string;
+  /** The Hub document of an item a Hub event opens. */
+  readonly hubDocument: HubSource['document'] | null;
 }
 
 /** What a request posts, built: its lines, the rate rows they used and the items it makes. */
@@ -205,9 +262,57 @@ function onLine<T>(lineNo: number, check: () => T): T {
   }
 }
 
+/** A request's lines as its payload hash covers them. */
+function linesPayload(lines: readonly ManualLineSpec[]): CanonicalValue {
+  return lines.map((line) => ({
+    accountId: line.accountId,
+    dimensionValueIds: [...line.dimensionValueIds].sort(),
+    currency: line.currency,
+    amountMinor: line.amountMinor,
+    memo: line.memo,
+    // Only when set, so a request of S03's shape hashes as it did.
+    ...(line.openItemId && { openItemId: line.openItemId }),
+    ...(line.newItem && {
+      newItem: { reference: line.newItem.reference, dueOn: line.newItem.dueOn },
+    }),
+  }));
+}
+
+/** What a request posts, as its payload hash covers it. */
+function contentPayload(content: PostingContent): CanonicalValue {
+  switch (content.kind) {
+    case 'manual':
+      return {
+        kind: content.kind,
+        lines: linesPayload(content.lines),
+        dealtRates: content.dealtRates.map((rate) => ({ ...rate })),
+      };
+    case 'reversal':
+      return { kind: content.kind, entryId: content.entryId };
+    case 'hub':
+      return {
+        kind: content.kind,
+        lines: linesPayload(content.lines),
+        dealtRates: content.dealtRates.map((rate) => ({ ...rate })),
+        measuredOn: content.measuredOn,
+        inboxId: content.hub.inboxId,
+      };
+    case 'hub_reversal':
+      return { kind: content.kind, entryId: content.entryId, inboxId: content.hub.inboxId };
+    case 'hub_reclassification':
+      return {
+        kind: content.kind,
+        entryId: content.entryId,
+        lineNo: content.lineNo,
+        fromValueIds: [...content.fromValueIds].sort(),
+        toValueIds: [...content.toValueIds].sort(),
+        inboxId: content.hub.inboxId,
+      };
+  }
+}
+
 /** The request as its payload hash covers it: everything it posts, not who or when. */
 function payloadOf(request: PostingRequest): CanonicalValue {
-  const { content } = request;
   return {
     client: request.client,
     entryDate: request.entryDate,
@@ -216,25 +321,7 @@ function payloadOf(request: PostingRequest): CanonicalValue {
     draftId: request.draftId,
     preparedByUserId: request.preparedByUserId,
     approvedByUserId: request.approvedByUserId,
-    content:
-      content.kind === 'manual'
-        ? {
-            kind: content.kind,
-            lines: content.lines.map((line) => ({
-              accountId: line.accountId,
-              dimensionValueIds: [...line.dimensionValueIds].sort(),
-              currency: line.currency,
-              amountMinor: line.amountMinor,
-              memo: line.memo,
-              // Only when set, so a request of S03's shape hashes as it did.
-              ...(line.openItemId && { openItemId: line.openItemId }),
-              ...(line.newItem && {
-                newItem: { reference: line.newItem.reference, dueOn: line.newItem.dueOn },
-              }),
-            })),
-            dealtRates: content.dealtRates.map((rate) => ({ ...rate })),
-          }
-        : { kind: content.kind, entryId: content.entryId },
+    content: contentPayload(request.content),
   };
 }
 
@@ -614,12 +701,19 @@ function clientOf(values: readonly LineDimensionValue[], accountId: string): Lin
  */
 async function manualLines(
   tx: Transaction,
-  content: Extract<PostingContent, { kind: 'manual' }>,
+  content: MeasuredContent,
   on: string,
   ledgers: CompanyLedgers,
   daysOff: readonly number[],
   lock: boolean,
 ): Promise<Built> {
+  // A Hub event's lines keep Hub's records (S02 rule 13) and its own items; they are measured at
+  // the rates of their document's date, which differs from the entry date when the accountant
+  // moved the event out of a closed period (S05 rule 15) or a change measures its new state at its
+  // document's date (rule 13).
+  const hub = hubOf(content);
+  const origin = hub === null ? 'manual' : 'hub';
+  const measureOn = content.kind === 'hub' ? content.measuredOn : on;
   const specs = content.lines.map((spec, index) => {
     if (spec.amountMinor === 0n) {
       refuse('VALIDATION_FAILED', 'A line of zero amount', { lineNo: index + 1 });
@@ -672,9 +766,16 @@ async function manualLines(
           dimensions: Object.values(stored.dimensions).map(
             (id) => values.get(id) as LineDimensionValue,
           ),
-          origin: 'manual',
+          origin,
           item: 'existing',
         });
+        if (hub !== null) {
+          // A Hub rule names its own document's item: no memo, never adjusted (S04 rule 8).
+          if (stored.accountId !== spec.accountId || stored.currency !== spec.currency) {
+            refuse('OPEN_ITEM_MISMATCH', 'The line is not on its item', { itemId: spec.openItemId });
+          }
+          return;
+        }
         adjusted = checkItemLine(
           {
             account: spec.accountId,
@@ -698,10 +799,10 @@ async function manualLines(
           account,
           currency: spec.currency,
           dimensions: named,
-          origin: 'manual',
+          origin,
           item: 'new',
         });
-        if (dueOn !== null) checkDueDate(on, dueOn);
+        if (dueOn !== null) checkDueDate(measureOn, dueOn);
       });
       const [taken] = await tx
         .select({ id: openItems.id })
@@ -738,6 +839,8 @@ async function manualLines(
         clientValueId: named.find((value) => value.typeCode === 'client')?.id ?? null,
         currency: spec.currency,
         dueOn,
+        documentDate: measureOn,
+        hubDocument: hub?.document ?? null,
       });
       item = {
         id,
@@ -753,7 +856,7 @@ async function manualLines(
           account,
           currency: spec.currency,
           dimensions: named,
-          origin: 'manual',
+          origin,
         }),
       );
       if (account?.itemKind === 'running') {
@@ -766,17 +869,19 @@ async function manualLines(
           if (id !== null) {
             const stored = (await itemsOf(tx, [id], lock)).get(id);
             if (stored === undefined) throw new Error('A running item read and lost');
-            adjusted = onLine(lineNo, () =>
-              checkItemLine(
-                { account: spec.accountId, currency: spec.currency, dimensions, memo: spec.memo },
-                {
-                  account: stored.accountId,
-                  currency: stored.currency,
-                  dimensions: stored.dimensions,
-                  source: stored.source,
-                },
-              ),
-            ).adjusted;
+            adjusted =
+              hub === null &&
+              onLine(lineNo, () =>
+                checkItemLine(
+                  { account: spec.accountId, currency: spec.currency, dimensions, memo: spec.memo },
+                  {
+                    account: stored.accountId,
+                    currency: stored.currency,
+                    dimensions: stored.dimensions,
+                    source: stored.source,
+                  },
+                ),
+              ).adjusted;
             item = stored.state;
           } else {
             const [code] = await tx
@@ -793,6 +898,8 @@ async function manualLines(
               clientValueId: client.id,
               currency: spec.currency,
               dueOn: null,
+              documentDate: on,
+              hubDocument: null,
             });
             item = {
               id,
@@ -813,15 +920,21 @@ async function manualLines(
     });
     adjustedOf.push(adjusted);
   }
-  const { rates, ids } = await ratesOn(tx, on);
+  const { rates, ids } = await ratesOn(tx, measureOn);
   const context: MeasureContext = {
     ledgers,
-    on,
+    on: measureOn,
     rates,
     calendar: await publicationCalendar(tx, daysOff),
   };
+  const dealtRates = await dealtRatesOf(tx, content.dealtRates, measureOn);
   const built = manualEntry(
-    { lines, dealtRates: await dealtRatesOf(tx, content.dealtRates, on) },
+    {
+      lines,
+      // Hub's rate is the transaction's own rate, from Hub (ADR 0007), as the conversions record it.
+      dealtRates:
+        hub === null ? dealtRates : dealtRates.map((rate) => ({ ...rate, source: 'hub' as const })),
+    },
     context,
     {
       gain: { account: roleTarget('fx_realised_gain') },
@@ -842,7 +955,7 @@ async function manualLines(
   await checkAgainstChart(
     tx,
     balanced.filter((_, index) => typedOf(index) === null),
-    'manual',
+    origin,
   );
   return {
     lines: balanced.map((line, index) => {
@@ -891,29 +1004,10 @@ function conversionOf(
  * (`OPEN_ITEM_HAS_SETTLEMENTS`). Each account is checked again for its state only. The running
  * items it moves come back with what they carried before, for the difference entry of rule 13.
  */
-async function reversalLines(
-  tx: Transaction,
-  content: Extract<PostingContent, { kind: 'reversal' }>,
-  on: string,
-  ledgers: CompanyLedgers,
-  lock: boolean,
-): Promise<Built> {
-  const [original] = await tx
-    .select()
-    .from(journalEntries)
-    .where(eq(journalEntries.id, content.entryId));
-  if (!original) refuse('NOT_FOUND', 'No such entry', { entryId: content.entryId });
-  const [reversal] = await tx
-    .select({ id: journalEntries.id })
-    .from(journalEntries)
-    .where(eq(journalEntries.reversesEntryId, original.id));
-  // The difference entry of a void (S04 rule 13) is posted under `<the reversal's key>:difference`.
-  const [request] = await tx
-    .select({ key: postingRequests.idempotencyKey })
-    .from(postingRequests)
-    .where(eq(postingRequests.id, original.requestId));
-  const followsReversal =
-    request?.key.startsWith('reversal:') === true && request.key.endsWith(':difference');
+/** A posted entry with its lines as `packages/ledger` reads them, for a reversal or a change. */
+async function storedEntry(tx: Transaction, entryId: string) {
+  const [original] = await tx.select().from(journalEntries).where(eq(journalEntries.id, entryId));
+  if (!original) refuse('NOT_FOUND', 'No such entry', { entryId });
   const stored = await tx
     .select()
     .from(journalLines)
@@ -969,17 +1063,71 @@ async function reversalLines(
       conversions: { book: of('book'), parallel: of('parallel') },
     };
   });
-  const negated = manualReversalLines(
-    {
-      source: original.source as EntrySource,
-      date: original.entryDate,
-      isReversal: original.reversesEntryId !== null,
-      reversed: reversal !== undefined,
-      followsReversal,
-      lines,
-    },
-    on,
-  );
+  return { original, stored, lines, movements };
+}
+
+/**
+ * A Hub entry's line moved to other dimension values at its posted amounts
+ * (`invoice.line_service_changed`, S05 "Accounting treatment"): the line of a Hub entry that is
+ * not a reversal, on no item, negated with its own values and carried again with the new ones.
+ * No rate is read; the accounts are checked again for their state, the new values as Hub's.
+ */
+async function reclassificationLines(
+  tx: Transaction,
+  content: Extract<PostingContent, { kind: 'hub_reclassification' }>,
+): Promise<Built> {
+  const { original, lines } = await storedEntry(tx, content.entryId);
+  const line = lines[content.lineNo - 1];
+  if (original.source !== 'hub_event' || original.reversesEntryId !== null || line === undefined) {
+    refuse('ENTRY_NOT_REVERSIBLE', 'Only a line of a Hub entry moves to other values', {
+      entryId: content.entryId,
+    });
+  }
+  const values = await dimensionValuesOf(tx, [...content.fromValueIds, ...content.toValueIds]);
+  const set = (ids: readonly string[]) =>
+    Object.fromEntries(
+      ids.map((id) => [(values.get(id) as LineDimensionValue).typeId, id]),
+    ) as Dimensions;
+  const moved = reclassifiedLines(line, set(content.fromValueIds), set(content.toValueIds));
+  await checkAgainstChart(tx, moved, 'hub');
+  return {
+    lines: moved.map((built) => ({ line: built, memo: null, adjusted: false })),
+    rateIds: new Map(),
+    newItems: [],
+    voided: [],
+  };
+}
+
+async function reversalLines(
+  tx: Transaction,
+  content: Extract<PostingContent, { kind: 'reversal' | 'hub_reversal' }>,
+  on: string,
+  ledgers: CompanyLedgers,
+  lock: boolean,
+): Promise<Built> {
+  const { original, stored, lines, movements } = await storedEntry(tx, content.entryId);
+  const [reversal] = await tx
+    .select({ id: journalEntries.id })
+    .from(journalEntries)
+    .where(eq(journalEntries.reversesEntryId, original.id));
+  // The difference entry of a void (S04 rule 13) is posted under `<the reversal's key>:difference`.
+  const [request] = await tx
+    .select({ key: postingRequests.idempotencyKey })
+    .from(postingRequests)
+    .where(eq(postingRequests.id, original.requestId));
+  const followsReversal =
+    request?.key.startsWith('reversal:') === true && request.key.endsWith(':difference');
+  const posted = {
+    source: original.source as EntrySource,
+    date: original.entryDate,
+    isReversal: original.reversesEntryId !== null,
+    reversed: reversal !== undefined,
+    followsReversal,
+    lines,
+  };
+  // The accountant reverses manual entries only; a Hub entry only its event reverses (rule 14).
+  const negated =
+    content.kind === 'reversal' ? manualReversalLines(posted, on) : hubReversalLines(posted, on);
   await checkAgainstChart(tx, negated, 'reversal');
   // The reversal carries its own rounding lines, so balancing adds nothing (ADR 0007).
   const balanced = balanceEntry({
@@ -1175,7 +1323,12 @@ async function dimensionSetOf(
 function checkDates(on: string, content: PostingContent, ledgers: CompanyLedgers): void {
   checkManualEntryDate(on, content.today);
   for (const [, ledger] of keptLedgers(ledgers)) checkCurrencyDate(ledger.currency, on);
-  if (content.kind === 'manual') {
+  if (content.kind === 'hub') {
+    for (const [, ledger] of keptLedgers(ledgers)) {
+      checkCurrencyDate(ledger.currency, content.measuredOn);
+    }
+  }
+  if (content.kind === 'manual' || content.kind === 'hub') {
     for (const [index, line] of content.lines.entries()) {
       onLine(index + 1, () => checkCurrencyDate(line.currency, on));
     }
@@ -1195,9 +1348,16 @@ async function buildLines(
   daysOff: readonly number[],
   lock: boolean,
 ): Promise<Built> {
-  return content.kind === 'manual'
-    ? manualLines(tx, content, on, ledgers, daysOff, lock)
-    : reversalLines(tx, content, on, ledgers, lock);
+  switch (content.kind) {
+    case 'manual':
+    case 'hub':
+      return manualLines(tx, content, on, ledgers, daysOff, lock);
+    case 'reversal':
+    case 'hub_reversal':
+      return reversalLines(tx, content, on, ledgers, lock);
+    case 'hub_reclassification':
+      return reclassificationLines(tx, content);
+  }
 }
 
 /** A line as the preview shows it: as `post()` would store it, with its conversions and item. */
@@ -1265,7 +1425,11 @@ export async function previewPosting(
     bookMinor: line.bookMinor,
     parallelMinor: line.parallelMinor,
     memo,
-    conversions: conversionsOf(line, built.rateIds, content.kind === 'manual'),
+    conversions: conversionsOf(
+      line,
+      built.rateIds,
+      content.kind === 'manual' || content.kind === 'hub',
+    ),
     item:
       line.item === undefined
         ? null
@@ -1297,6 +1461,8 @@ interface EntryToWrite {
   readonly built: Built;
   /** What the audit row adds: the reversal a void's difference entry follows (S04 rule 13). */
   readonly follows: string | null;
+  /** The Hub event the entry comes from, or null for a manual entry (S05 "Entries"). */
+  readonly hub: HubSource | null;
 }
 
 /**
@@ -1373,17 +1539,17 @@ async function writeEntry(
     number: counter.lastNumber,
     entryDate: on,
     postedAt: postedAt.toISOString(),
-    source: 'manual' as const,
-    sourceRef: null,
-    hubDocument: null,
+    source: entry.hub === null ? ('manual' as const) : ('hub_event' as const),
+    sourceRef: entry.hub?.inboxId ?? null,
+    hubDocument: entry.hub?.document ?? null,
     description: entry.description,
     reference: entry.reference,
     reversesEntryId,
     draftId: entry.draftId,
     preparedByUserId: entry.preparedByUserId,
     approvedByUserId: entry.approvedByUserId,
-    postedByUserId: actor.kind === 'person' ? actor.userId : null,
-    postedByClientId: null,
+    postedByUserId: entry.hub === null && actor.kind === 'person' ? actor.userId : null,
+    postedByClientId: entry.hub?.clientId ?? null,
   };
   const chained: ChainEntry = { ...header, lines };
   const hash = entryHash(chainEntryValue(chained), head.lastHash);
@@ -1424,12 +1590,12 @@ async function writeEntry(
         accountId: item.accountId,
         kind: item.kind,
         reference: item.reference,
-        source: 'manual' as const,
-        hubDocument: null,
+        source: item.hubDocument === null ? ('manual' as const) : ('hub_event' as const),
+        hubDocument: item.hubDocument,
         dimensionSetId: sets.get(dimensionKey(item.dimensions)) as string,
         clientValueId: item.clientValueId,
         currency: item.currency,
-        documentDate: on,
+        documentDate: item.documentDate,
         openedByEntryId: entryId,
       })),
     );
@@ -1441,7 +1607,7 @@ async function writeEntry(
               companyId,
               itemId: item.id,
               dueOn: item.dueOn,
-              effectiveOn: on,
+              effectiveOn: item.documentDate,
               setBy: 'opening' as const,
             },
           ],
@@ -1568,7 +1734,9 @@ export async function post(tx: Transaction, request: PostingRequest): Promise<Po
   }
 
   const built = await buildLines(tx, content, on, ledgers, settings.bulletinDaysOff, true);
-  const reversesEntryId = content.kind === 'reversal' ? content.entryId : null;
+  const reversesEntryId =
+    content.kind === 'reversal' || content.kind === 'hub_reversal' ? content.entryId : null;
+  const hub = hubOf(content);
   const head: Head = { id: headRow.id, entryCount: headRow.entryCount, lastHash: headRow.lastHash };
   const at = { on, fiscalYear, settingsId: settings.id };
   const posted = await writeEntry(tx, companyId, head, at, request.actor, {
@@ -1581,6 +1749,7 @@ export async function post(tx: Transaction, request: PostingRequest): Promise<Po
     approvedByUserId: request.approvedByUserId,
     built,
     follows: null,
+    hub,
   });
   const difference = await voidDifferenceLines(
     tx,
@@ -1613,6 +1782,7 @@ export async function post(tx: Transaction, request: PostingRequest): Promise<Po
       approvedByUserId: request.approvedByUserId,
       built: difference,
       follows: posted.id,
+      hub,
     });
   }
   return posted;

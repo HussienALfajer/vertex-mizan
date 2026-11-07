@@ -1,6 +1,7 @@
 export {
   AUDITED_FIELDS,
   type AuditActor,
+  type PlatformActor,
   type AuditedEntity,
   type CompanyAuditEntry,
   changedFields,
@@ -43,6 +44,7 @@ export {
 } from './posting/item-reads.js';
 export {
   type DealtRateSpec,
+  type HubSource,
   type ManualLineSpec,
   type PostedEntryRef,
   type PostingContent,
@@ -75,3 +77,4 @@ export * from './services/companies.js';
 export * from './services/dimensions.js';
 export * from './services/rates.js';
 export { onUniqueViolation } from './unique-violation.js';
+export * from './services/inbox.js';

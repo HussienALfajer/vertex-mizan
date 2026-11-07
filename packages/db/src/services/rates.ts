@@ -23,8 +23,14 @@ export type StoredRate = typeof exchangeRates.$inferSelect;
 export type RatePairRow = typeof ratePairs.$inferSelect;
 export type BulletinHolidayRow = typeof bulletinHolidays.$inferSelect;
 
-/** A person who records a rate; Hub's own rates join with S05. */
+/** A person who records a rate. */
 export type PersonActor = Extract<AuditActor, { kind: 'person' }>;
+
+/** An API client that records a rate: Hub's `rate.changed` (S05 rule 24). */
+export type ApiClientActor = Extract<AuditActor, { kind: 'api_client' }>;
+
+/** A rate as a person records it, or as Hub sends it (source `hub`, S05 rule 24). */
+export type RateToRecord = Omit<RecordRate, 'source'> & { source: 'manual' | 'hub' };
 
 /**
  * A stored `numeric(22,10)` rate as the money module takes it: the same exact value without the
@@ -163,8 +169,8 @@ export async function ratePairFor(
 export async function recordRate(
   tx: Transaction,
   companyId: string,
-  actor: PersonActor,
-  input: RecordRate,
+  actor: PersonActor | ApiClientActor,
+  input: RateToRecord,
 ): Promise<{ id: string; supersededId: string | null }> {
   const pair = await ratePairFor(tx, companyId, input.base, input.quote, actor);
   await tx
@@ -218,10 +224,11 @@ export async function recordRate(
       quote: input.quote,
       rate: input.rate,
       type: input.type,
-      source: 'manual',
+      source: input.source,
       supersedesRateId: previous?.stored.id ?? null,
       reason: previous ? (input.reason ?? null) : null,
-      recordedByUserId: actor.userId,
+      recordedByUserId: actor.kind === 'person' ? actor.userId : null,
+      recordedByApiClientId: actor.kind === 'api_client' ? actor.clientId : null,
     })
     .returning({ id: exchangeRates.id });
   if (!row) throw new Error('The rate was not recorded');
@@ -242,7 +249,7 @@ export async function recordRate(
       quote: input.quote,
       rate: input.rate,
       type: input.type,
-      source: 'manual',
+      source: input.source,
       supersedesRateId: previous?.stored.id ?? null,
     },
   });
