@@ -20,7 +20,7 @@ Spec: `docs/specs/S04-open-items-settlements.md` (Approved, owner 2026-10-28) ·
 - [x] db (`/db-migration`): `entry_draft_lines.open_item_id`, `new_item_reference`, `new_item_due_on` with their one-of check; the reads the reports and the integrity check share
 - [x] api: the `open-items` module (`GET /api/open-items`, `GET /api/open-items/:id`, `PUT /api/open-items/:id/due-date`), the ageing and its Excel export, client funds, the client statement and its Excel export, the drafts' item fields through save, preview, post and approve, the integrity check's new comparisons, `ACCOUNT_HAS_BALANCE` reading open items; per endpoint: success, 401, 403, another company, an idempotent replay; a Hub item's due date refused; `ar.openItems` for the exports' headings
 - [x] bridge: OpenAPI regenerated, breaking-change check
-- [ ] wiring (Contracts, Database, API), docs (`apps/api/CLAUDE.md`, `packages/db/CLAUDE.md`, `docs/ROADMAP.md`)
+- [x] wiring (Contracts, Database, API), docs (`apps/api/CLAUDE.md`, `packages/db/CLAUDE.md`, `docs/ROADMAP.md`)
 - [ ] checks and reviewers (`reviewer`, `accountant-reviewer`), PR with auto-merge and Auto-fix
 
 ## PR 3 — The receivables screens (ui, web, e2e)
