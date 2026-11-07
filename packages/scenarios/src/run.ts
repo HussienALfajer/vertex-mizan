@@ -93,20 +93,26 @@ function describeStep(step: Step): string {
 }
 
 function describeResult(result: StepResult | Outcome): string {
-  return result.status === 'done' ? 'done' : `${result.status} ${result.reason}`;
+  if (result.status === 'done') return 'done';
+  const detail = result.detail ? ` (${result.detail})` : '';
+  return `${result.status} ${result.reason}${detail}`;
 }
 
+/** A stated detail must match; an unstated one is not compared. */
 function sameResult(result: StepResult, expected: StepResult | Outcome): boolean {
   if (result.status === 'done' || expected.status === 'done')
     return result.status === expected.status;
-  return result.status === expected.status && result.reason === expected.reason;
+  if (result.status !== expected.status || result.reason !== expected.reason) return false;
+  return !expected.detail || result.detail === expected.detail;
 }
 
 /**
  * Runs one `Approved` case on the run's database and throws a `ScenarioFailure` listing every
  * difference. Before anything runs, every part the case needs must be in the harness: an approved
- * step with no executor fails the case, never skips it. Each step must be done, except the last when
- * the case states an `outcome`: then the last step must be held or refused with that reason. Then
+ * step with no executor fails the case, never skips it. Each step must be done when received, except
+ * a step that states its `outcome`, and the last when the case states one in `expect`: such a step
+ * must be held or refused with that reason, and that detail when stated. A held step a later step
+ * frees posts then, so its entry is expected where it posts. Then
  * the ledger must hold exactly the expected entries (`compareEntries`), the stated balances and
  * the stated open items, and each stated correction's answer must list exactly its entries.
  */
@@ -157,10 +163,11 @@ export async function runCase(
         );
       }
     }
+    const step = steps[index] as Step;
     const last = index === runs.length - 1;
-    const expected: StepResult | Outcome = (last && expect.outcome) || { status: 'done' };
+    const expected: StepResult | Outcome =
+      step.outcome ?? ((last && expect.outcome) || { status: 'done' });
     if (!sameResult(result, expected)) {
-      const step = steps[index] as Step;
       differences.push(
         `step ${index + 1} (${describeStep(step)}): ${describeResult(result)}, ` +
           `expected ${describeResult(expected)}`,

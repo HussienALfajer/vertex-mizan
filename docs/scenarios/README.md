@@ -60,6 +60,10 @@ steps:                              # in order; a Hub event, a manual entry, a r
   - event: <type>                   # Hub event (ADR 0006, 0008), payload as Hub sends it
     accounting_date: 2026-11-03
     payload: { ... }
+    outcome: { status: held, reason: UNKNOWN_REFERENCE }
+                                    # optional on any step: its answer when received (held | refused,
+                                    #   a reason and an optional detail); a held step a later step
+                                    #   frees posts then, and its entry is expected where it posts
   - manual: <what it records>       # a manual entry; payload as the manual-entry form sends it (S03):
     accounting_date: 2026-11-03     # { description?, reference?, dealt_rates?, lines: [{ account,
     payload: { ... }                #   dims?, currency, amount, memo?, open_item?, item? }] };
@@ -84,9 +88,10 @@ expect:
     - { item: INV-2026-1, account: "112001", dims: { client: C1 }, currency: USD, amount: 0, book: 0, parallel: 0 }
   corrections:                      # optional: per correction step, the entries its answer lists
     - { step: 5, used_by: [1] }     # as converted at the superseded row (posting order)
-  outcome:                          # optional: the last step's hold or refusal (held | refused)
-    status: held
+  outcome:                          # optional: the last step's hold or refusal (held | refused),
+    status: held                    #   when the step does not state it itself
     reason: PERIOD_CLOSED
+    detail: payment_gap_beyond_tolerance  # optional: the hold's detail (S05 rule 9); unstated, not compared
 ```
 
 Writing the YAML:
@@ -110,7 +115,7 @@ The runner is `packages/scenarios` (`pnpm test:scenarios`, in CI).
   - every amount in both ledgers;
   - one audit row per posting;
   - the stated account and open-item balances: an open item by its document and account, with its dimensions, currency and remaining amounts;
-  - the outcomes: every step completes, except the last when the case states an `outcome`, which it must match exactly;
+  - the outcomes: every step completes when received, except a step that states its `outcome` and the last when `expect` states one; such a step must match its status and reason exactly, and its detail when stated. A held step that a later step frees (S05 rules 10, 11) has its entry in the expected entries at the place it posts;
   - each stated correction's answer: exactly the entries it lists as converted at the superseded row.
 - It runs on a fresh test database through the real posting function, never through a mock. Each case has a company of its own, made with the company, chart, dimension and rate services the API uses: every dimension value the case names (`client: C1` in a manual line, an expected line, a balance or an open item) is made in the setup, by its type's code and its own code (S04).
 
