@@ -103,6 +103,15 @@ One name per concept. Code, contracts and tables use the English term; the Arabi
 | مفتاح منع التكرار | idempotency key | The event ID that makes a resend post nothing new |
 | صندوق الوارد / حدث معلّق | event inbox / held event | Received events; one that could not post yet, with its reason |
 | قاعدة الترحيل | posting rule | How an event type becomes entry lines; accounts mapped by the accountant |
+| ربط الحسابات / خانة الربط | posting-rule mapping / mapping slot | The account a posting rule reads for one purpose (`receivable`, `payment_method.cash` in SYP, …), maintained by the owner and the accountant |
+| مفتاح الربط | API key | A secret that authenticates an API client; shown once, stored as a hash, at most two active per client |
+| حدث مسجّل | recorded event | An event that changed data (a due date, a rate, a name) and posted no entry |
+| بانتظار حدث سابق | waiting for an earlier event | Held because an earlier event on the same item is held; posts after it in Hub's order |
+| مفتاح البند | item key | What orders a connected system's events: the invoice, the client's ad funds, or the document |
+| حُلّ بقيد يدوي | resolved by a manual entry | A held event the accountant handled with a linked manual entry; it never posts itself |
+| إسقاط الحدث | dismiss an event | The owner's decision that a held event never posts, with a reason |
+| الترحيل في أول فترة مفتوحة | post in the next open period | Posting an event held for a closed period on the first day of the first open period after it |
+| هامش فرق السداد | payment tolerance | The gap, in the invoice's currency, between Hub's applied amount and the amount at Hub's rate that posts as an exchange difference; beyond it the event is held |
 | المطابقة اليومية | daily reconciliation | Comparing a connected system's daily counts and totals with what Mizan posted |
 | الأرصدة الافتتاحية | opening balances | Balances on the first day of the books |
 | مصدر المستند | document source | Which system issues a document type for a company |
