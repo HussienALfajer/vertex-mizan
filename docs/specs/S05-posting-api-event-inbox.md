@@ -1,6 +1,6 @@
 # S05 — Posting API, event inbox and posting rules
 
-Status: Draft · Date: 2026-11-07 · Features: `docs/product/phase-1-scope.md` F10 (and §6 for the events it posts) · ADRs: 0003, 0005, 0006, 0007, 0008, 0011, 0012, 0013, 0014
+Status: Approved (owner, 2026-11-07) · Date: 2026-11-07 · Features: `docs/product/phase-1-scope.md` F10 (and §6 for the events it posts) · ADRs: 0003, 0005, 0006, 0007, 0008, 0011, 0012, 0013, 0014
 
 ## Summary
 Vertex Hub keeps Vertex Media's operations: invoices, payments, project expenses, the clients' ad wallets and campaign spend. Today none of it reaches Mizan, and the receivables scenarios S04 approved wait for an event executor.

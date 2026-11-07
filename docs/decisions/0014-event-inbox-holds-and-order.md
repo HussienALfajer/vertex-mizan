@@ -1,6 +1,6 @@
 # 0014 — The event inbox: outcomes, order per item, the accountant's actions and the dates of changes
 
-Status: Proposed (accepted with S05's approval) · Date: 2026-11-07 (owner's answers in the S05 interview) · Amends [0006](0006-hub-posting-api-contract.md) and [0008](0008-foundation-audit-amendments.md)
+Status: Accepted (owner, 2026-11-07, with S05) · Date: 2026-11-07 (owner's answers in the S05 interview) · Amends [0006](0006-hub-posting-api-contract.md) and [0008](0008-foundation-audit-amendments.md)
 
 ## Context
 S05 (`docs/specs/S05-posting-api-event-inbox.md`) builds `POST /v1/events` and the event inbox. ADR 0006 and 0008 fix the envelope, the idempotency and the hold reasons, but leave open:
