@@ -7,11 +7,13 @@ The expected entries were approved by the owner on 2026-11-06, with two decision
 - **A reversal across zero** (owner, 2026-11-06, after the accounting review of S04's first PR): its difference entry clears the item to zero at what the exact reversal left, measures the excess anew at the void date's policy rate, with that rate recorded so a correction of it lists the entry (S02 rule 15), and posts the realised difference. The item and the gain or loss are those approved before; the entry has these lines instead of one difference line on the item. A reversal against the balance that stays on its side of zero keeps its difference line on the item: it reads no rate.
 - **A deposit or refund in SYP for a USD amount:** the gap between Hub's `usd_amount` and the SYP amount at Hub's `syp_per_usd` is a realised exchange difference within the tolerance of payments (1.00 USD by default, the same company setting; `receivables/hub-payment.md`), and beyond it the event is held `NEEDS_DECISION`.
 
-The cases stay `Proposed` until S05 brings their executors: the `event` executor through the event inbox, the posting rules of `ad_wallet.deposited`, `ad_wallet.refunded`, `ad_wallet.entry_voided`, `ad_spend.recorded`, `ad_spend.changed` and `ad_spend.archived`, the mapping of each payment method to its account, and the void difference entry of a running item (S04 rule 13; S04 "Out of scope"; owner, 2026-10-28).
+S05 adds four cases, whose expected entries and outcomes await the owner's approval (S05 "Scenarios"): the tolerance on an SYP deposit and an SYP refund (a gap of exactly 1.00 USD posts as a realised difference, either way), one minor unit beyond it (held `NEEDS_DECISION`, with a parallel ledger and without), and a deposit held `RATE_MISSING` with a spend waiting behind it, both posted in order once the bulletin is recorded. No expected value of the earlier cases changes.
+
+The cases stay `Proposed` until S05 brings their executors: the `event` executor through the event inbox, the posting rules of `ad_wallet.deposited`, `ad_wallet.refunded`, `ad_wallet.entry_voided`, `ad_spend.recorded`, `ad_spend.changed` and `ad_spend.archived`, the mapping of each payment method to its account, the void difference entry of a running item, the holds `RATE_MISSING`, `WAITING_FOR_EARLIER_EVENT` and `NEEDS_DECISION`, and the automatic retries (S04 rule 13; S04 "Out of scope"; owner, 2026-10-28; S05 rules 8–11).
 
 ## Rule
 
-Each client's ad funds are one running item on client ad funds held `213001`, per client and in USD. `ad_wallet.deposited` debits the account of the deposit's method in the deposit's currency, a new measurement, and credits the client's item by the USD amount Hub credits. `ad_wallet.refunded` is the opposite entry. `ad_spend.recorded` debits the item and credits ad platforms payable `211001` with the same amounts. A movement against the item's balance clears it at its average carrying amount; a movement with the balance, or on a zero balance, is a new measurement at each ledger's policy rate of the day, or at Hub's `syp_per_usd` for a market ledger that accepts it; a movement that crosses zero clears the whole balance and measures the excess anew. Each ledger's residual, rounding included, posts in that ledger only as a realised exchange difference. `ad_wallet.entry_voided` posts the exact reversal of the wallet entry's posting; `ad_spend.changed` posts the reversal of the spend's posting, then the new spend; `ad_spend.archived` posts the reversal. When a reversal runs against the item's balance or crosses zero, a difference entry follows it and brings the item to the carrying amount it would have if the reversal were a new movement; a reversal with the balance stands alone (owner, 2026-11-06).
+Each client's ad funds are one running item on client ad funds held `213001`, per client and in USD. `ad_wallet.deposited` debits the account of the deposit's method in the deposit's currency, a new measurement, and credits the client's item by the USD amount Hub credits. `ad_wallet.refunded` is the opposite entry. `ad_spend.recorded` debits the item and credits ad platforms payable `211001` with the same amounts. A movement against the item's balance clears it at its average carrying amount; a movement with the balance, or on a zero balance, is a new measurement at each ledger's policy rate of the day, or at Hub's `syp_per_usd` for a market ledger that accepts it; a movement that crosses zero clears the whole balance and measures the excess anew. Each ledger's residual, rounding included, posts in that ledger only as a realised exchange difference. `ad_wallet.entry_voided` posts the exact reversal of the wallet entry's posting; `ad_spend.changed` posts the reversal of the spend's posting, then the new spend; `ad_spend.archived` posts the reversal. When a reversal runs against the item's balance or crosses zero, a difference entry follows it and brings the item to the carrying amount it would have if the reversal were a new movement; a reversal with the balance stands alone (owner, 2026-11-06). A deposit or refund in SYP is held `NEEDS_DECISION` when its amount at Hub's `syp_per_usd` differs from its `usd_amount` by more than the company's USD tolerance (1.00 USD by default). Events on one client's funds post in Hub's order: an event received after a held one on the same client waits behind it (`WAITING_FOR_EARLIER_EVENT`), so the funds' average never depends on when a bulletin is recorded.
 
 ## Basis
 
@@ -21,6 +23,7 @@ Each client's ad funds are one running item on client ad funds held `213001`, pe
 - **IAS 1.32 and 1.54(h):** a client whose funds turn into a debit balance owes the agency; the balance sheet presents it as a receivable from that client, never netted against other clients' funds (S09).
 - **ADR 0005:** posted entries are append-only; a void or an edit in Hub is a reversal in Mizan, dated on the void or edit date.
 - **Company policy:** `phase-1-scope.md` §4 (book ledger at the bulletin, the USD parallel ledger at market or the transaction's own rate), F06 and §6 "Ad budget"; scope Q4 (client money held) and Q6 (one account per payment method); ADR 0006 (the event catalogue); ADR 0007 "Carrying amount" (the average, crossing zero, voiding a movement on a running balance) and "Exchange residuals"; ADR 0013 (item kinds, voiding a movement on a running item; owner, 2026-10-28); S04 rules 3, 10 and 13 (rule 13's reversal with the balance: owner, 2026-11-06) and its "Accounting treatment" of the ad-wallet events (owner, 2026-10-28).
+- **S05 rules 8–11 and the tolerance** (owner, 2026-11-06 and 2026-11-07): the hold reasons and their order, the automatic retries, the order per client's funds (`ad_funds:<client>`), and the gap compared in USD, rounded half away from zero, held only when it is more than the tolerance.
 - **Syrian rules:** the bulletin for the statutory books, UNVERIFIED (open question Q1), adopted by the owner as the company's policy; Friday and Saturday as days without a bulletin, UNVERIFIED, a company setting.
 
 ## Cases
@@ -31,16 +34,17 @@ The client's running item is named by the client's code (`C1`) and carries the c
 
 Shapes:
 - **`syp-usd`** is Vertex Media, the company Hub feeds; most cases are in it. Its parallel ledger is in USD, the item's currency, so the item's parallel amount is always its USD amount, and every difference on the item is in the book ledger.
-- **`syp`** and **`usd-syp`** each have one case, for a company fed by Hub without a parallel ledger or with USD books.
-- **`third`** cannot occur: `213001` is restricted to USD, and Hub's wallet entries are in SYP or USD with only `syp_per_usd` (ADR 0006), so an event in another currency is refused by the contract (S05), and stores nothing. Hub's repository was not available in this session to confirm its currencies.
+- **`syp`** has two cases and **`usd-syp`** one, for a company fed by Hub without a parallel ledger or with USD books.
+- **`third`** cannot occur: `213001` is restricted to USD, and Hub's wallet entries are in SYP or USD with only `syp_per_usd` (ADR 0006), so an event in another currency is refused by the contract (S05 rule 2, from Hub's `CURRENCIES`, read on 2026-11-07), and stores nothing.
 
 The cases leave out what other scenarios or later specs own:
 - a manual movement on the item, such as an offset of an invoice against the funds (`receivables/manual-settlement.md`);
 - the accountant's payment of `211001` to a platform, a manual entry on a plain account (S03);
 - a wallet event dated in a closed period, held `PERIOD_CLOSED`, and the month-end revaluation of the item, added with S07's jobs;
 - a replayed event (the same idempotency key), which posts nothing new: a property test of S05, since a step carries no event ID;
-- a wallet entry or a spend of zero or a negative amount: refused by the contract (422), nothing stored;
-- a deposit or refund in SYP whose `usd_amount` differs from its amount at Hub's `syp_per_usd`: a realised difference within the tolerance, held `NEEDS_DECISION` beyond it (owner, 2026-11-06); S05 adds both with the tolerance setting;
+- a wallet entry or a spend of zero or a negative amount, and a USD wallet entry whose `usd_amount` differs from its amount: refused by the contract (422), nothing stored (S05 rule 3);
+- a company tolerance other than the default 1.00 USD: the setting is S05's (rule 9), and its cases here use the default;
+- a held event resolved by a manual entry or dismissed, and the events waiting behind it (`inbox/holds-and-actions.md`, S05);
 - a refund beyond the client's balance, which would cross zero as the spend below does; S05 confirms with Hub whether one can be sent (Q5);
 - campaigns the client pays directly, which Hub does not send (ADR 0006).
 
@@ -453,6 +457,152 @@ expect:
     - { item: C1, account: "213001", dims: { client: C1 }, currency: USD, amount: -150000, book: -18100000, parallel: -150000 }
 ```
 
+### Vertex Media: the tolerance on an SYP deposit and an SYP refund
+
+The gap is measured in USD: the SYP amount at Hub's `syp_per_usd`, rounded half away from zero, against Hub's `usd_amount`. Within the tolerance (1.00 USD, the default), the parallel ledger takes the cash at Hub's rate and the funds by the `usd_amount`, and the gap between them is a realised difference in that ledger. Both gaps here are exactly the tolerance: the deposit's, after rounding, is a parallel gain; the refund's runs the other way, a parallel loss (S05 rule 9).
+
+```yaml
+case: 50,000.00 SYP at Hub's 124 credited as 402.23 USD, a gain of 1.00 USD; 24,800.00 SYP at 124 refunded as 199.00 USD, a loss of 1.00 USD
+company: { shape: syp-usd, book: SYP, parallel: USD, template: service-agency,
+           rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true } }
+rates:
+  - { date: 2026-11-03, base: USD, quote: SYP, rate: "120.0000", type: bulletin }
+  - { date: 2026-11-19, base: USD, quote: SYP, rate: "123.0000", type: bulletin }
+steps:
+  - event: ad_wallet.deposited
+    accounting_date: 2026-11-03
+    # the gap: 5,000,000 / 124 = 40,322.58… → 40,323; 40,323 − 40,223 = 100 = 1.00 USD, not more than the tolerance
+    payload: { entry: W-1, client: C1, entered_on: 2026-11-03, method: cash,
+               currency: SYP, amount: 5000000, syp_per_usd: "124.0000", usd_amount: 40223 }
+  - event: ad_wallet.refunded
+    accounting_date: 2026-11-19
+    # the gap: 2,480,000 / 124 = 20,000; 19,900 − 20,000 = −100 = −1.00 USD, not more than the tolerance
+    payload: { entry: W-2, client: C1, entered_on: 2026-11-19, method: cash,
+               currency: SYP, amount: 2480000, syp_per_usd: "124.0000", usd_amount: 19900 }
+expect:
+  entries:
+    - source: ad_wallet.deposited
+      date: 2026-11-03
+      lines:
+        # cash in SYP → 111001; parallel: 50,000.00 SYP / 124 (Hub's rate) = 403.2258… → 403.23 USD
+        - { account: "111001", currency: SYP, amount: 5000000, book: 5000000, parallel: 40323 }
+        # a new running item for C1, measured new by the usd_amount; book: 402.23 USD × 120 = 48,267.60 SYP
+        - { account: "213001", dims: { client: C1 }, currency: USD, amount: -40223, book: -4826760, parallel: -40223 }
+        # book residual: 5,000,000 − 4,826,760 = 173,240 → realised gain 1,732.40 SYP
+        - { account: "421001", currency: SYP, amount: -173240, book: -173240, parallel: 0 }
+        # parallel residual: 40,323 − 40,223 = 100 → realised gain 1.00 USD, the gap within the tolerance
+        - { account: "421001", currency: USD, amount: -100, book: 0, parallel: -100 }
+    - source: ad_wallet.refunded
+      date: 2026-11-19
+      lines:
+        # against the balance of 402.23 USD carried at 48,267.60 SYP:
+        # 4,826,760 × 19,900 / 40,223 = 2,388,000 exactly (the funds are carried at 120)
+        - { account: "213001", dims: { client: C1 }, currency: USD, amount: 19900, book: 2388000, parallel: 19900 }
+        # cash in SYP → 111001; parallel: 24,800.00 SYP / 124 = 200.00 USD; the bulletin of 123 is not read
+        - { account: "111001", currency: SYP, amount: -2480000, book: -2480000, parallel: -20000 }
+        # book residual: 2,388,000 − 2,480,000 = −92,000 → realised loss 920.00 SYP
+        - { account: "541001", currency: SYP, amount: 92000, book: 92000, parallel: 0 }
+        # parallel residual: 19,900 − 20,000 = −100 → realised loss 1.00 USD, the gap within the tolerance
+        - { account: "541001", currency: USD, amount: 100, book: 0, parallel: 100 }
+  balances:
+    # 4,826,760 − 2,388,000 = 2,438,760; 40,223 − 19,900 = 20,323
+    - { account: "213001", book: -2438760, parallel: -20323 }
+    # 5,000,000 − 2,480,000 = 2,520,000; 40,323 − 20,000 = 20,323
+    - { account: "111001", book: 2520000, parallel: 20323 }
+    - { account: "421001", book: -173240, parallel: -100 }
+    - { account: "541001", book: 92000, parallel: 100 }
+  open_items:
+    - { item: C1, account: "213001", dims: { client: C1 }, currency: USD, amount: -20323, book: -2438760, parallel: -20323 }
+```
+
+One minor unit beyond the tolerance, the deposit is held `NEEDS_DECISION` (`wallet_gap_beyond_tolerance`): whether the client is credited what Hub says or what was paid is the accountant's decision, so nothing posts, and the funds keep what the earlier deposit credited.
+
+```yaml
+case: 1,000.00 USD deposited; 50,000.00 SYP at Hub's 124 credited as 402.22 USD, a gap of 1.01 USD, is held NEEDS_DECISION
+company: { shape: syp-usd, book: SYP, parallel: USD, template: service-agency,
+           rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true } }
+rates:
+  - { date: 2026-11-03, base: USD, quote: SYP, rate: "120.0000", type: bulletin }
+  - { date: 2026-11-10, base: USD, quote: SYP, rate: "122.0000", type: bulletin }
+steps:
+  - event: ad_wallet.deposited
+    accounting_date: 2026-11-03
+    payload: { entry: W-1, client: C1, entered_on: 2026-11-03, method: bank_transfer,
+               currency: USD, amount: 100000, syp_per_usd: "122.0000", usd_amount: 100000 }
+  - event: ad_wallet.deposited
+    accounting_date: 2026-11-10
+    # the gap: 5,000,000 / 124 = 40,322.58… → 40,323; 40,323 − 40,222 = 101 = 1.01 USD, more than the tolerance
+    payload: { entry: W-2, client: C1, entered_on: 2026-11-10, method: cash,
+               currency: SYP, amount: 5000000, syp_per_usd: "124.0000", usd_amount: 40222 }
+expect:
+  entries:
+    - source: ad_wallet.deposited
+      date: 2026-11-03
+      lines:
+        - { account: "111004", currency: USD, amount: 100000, book: 12000000, parallel: 100000 }
+        - { account: "213001", dims: { client: C1 }, currency: USD, amount: -100000, book: -12000000, parallel: -100000 }
+  balances:
+    - { account: "111001", book: 0, parallel: 0 }
+  open_items:
+    - { item: C1, account: "213001", dims: { client: C1 }, currency: USD, amount: -100000, book: -12000000, parallel: -100000 }
+  outcome: { status: held, reason: NEEDS_DECISION, detail: wallet_gap_beyond_tolerance }
+```
+
+### Vertex Media: a deposit held for a missing bulletin, and a spend waiting behind it
+
+Thursday 19 November is a publication day, so a deposit dated then, received before the day's bulletin is recorded, is held `RATE_MISSING`: no earlier bulletin stands in for it (ADR 0011). The spend received after it on the same client waits behind it (`WAITING_FOR_EARLIER_EVENT`), though the spend reads no rate: it clears the funds at their average, and that average must include the deposit, as in Hub's order. Recording the bulletin retries the deposit; once it leaves `held`, the spend is retried (S05 rules 10, 11). Had the spend posted first, it would have cleared 700.00 USD at 120, 84,000.00 SYP, instead of the 84,700.00 SYP below.
+
+```yaml
+case: a deposit held RATE_MISSING and a spend waiting behind it; the bulletin of 123 recorded; both post in order at the average of Hub's order
+company: { shape: syp-usd, book: SYP, parallel: USD, template: service-agency,
+           rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true } }
+rates:
+  - { date: 2026-11-03, base: USD, quote: SYP, rate: "120.0000", type: bulletin }
+steps:
+  - event: ad_wallet.deposited
+    accounting_date: 2026-11-03
+    payload: { entry: W-1, client: C1, entered_on: 2026-11-03, method: bank_transfer,
+               currency: USD, amount: 100000, syp_per_usd: "122.0000", usd_amount: 100000 }
+  - event: ad_wallet.deposited
+    accounting_date: 2026-11-19
+    payload: { entry: W-2, client: C1, entered_on: 2026-11-19, method: bank_transfer,
+               currency: USD, amount: 50000, syp_per_usd: "124.0000", usd_amount: 50000 }
+    outcome: { status: held, reason: RATE_MISSING }
+  - event: ad_spend.recorded
+    accounting_date: 2026-11-19
+    payload: { update: CU-1, campaign: CMP-1, client: C1, period_from: 2026-11-01,
+               period_to: 2026-11-19, usd_spend: 70000 }
+    outcome: { status: held, reason: WAITING_FOR_EARLIER_EVENT }
+  - rate: { date: 2026-11-19, base: USD, quote: SYP, rate: "123.0000", type: bulletin }
+expect:
+  entries:
+    - source: ad_wallet.deposited
+      date: 2026-11-03
+      lines:
+        - { account: "111004", currency: USD, amount: 100000, book: 12000000, parallel: 100000 }
+        - { account: "213001", dims: { client: C1 }, currency: USD, amount: -100000, book: -12000000, parallel: -100000 }
+    - source: ad_wallet.deposited
+      date: 2026-11-19
+      lines:
+        # posted by the retry once the bulletin is recorded; book: 500.00 USD × 123 = 61,500.00 SYP
+        # the funds: 1,500.00 USD at 12,000,000 + 6,150,000 = 18,150,000
+        - { account: "111004", currency: USD, amount: 50000, book: 6150000, parallel: 50000 }
+        - { account: "213001", dims: { client: C1 }, currency: USD, amount: -50000, book: -6150000, parallel: -50000 }
+    - source: ad_spend.recorded
+      date: 2026-11-19
+      lines:
+        # retried once the deposit leaves held: 18,150,000 × 700 / 1,500 = 8,470,000 exactly
+        - { account: "213001", dims: { client: C1 }, currency: USD, amount: 70000, book: 8470000, parallel: 70000 }
+        - { account: "211001", dims: { client: C1 }, currency: USD, amount: -70000, book: -8470000, parallel: -70000 }
+  balances:
+    # 18,150,000 − 8,470,000 = 9,680,000
+    - { account: "213001", book: -9680000, parallel: -80000 }
+    - { account: "111004", book: 18150000, parallel: 150000 }
+    - { account: "211001", book: -8470000, parallel: -70000 }
+  open_items:
+    - { item: C1, account: "213001", dims: { client: C1 }, currency: USD, amount: -80000, book: -9680000, parallel: -80000 }
+```
+
 ### SYP books only
 
 The SYP deposit's gain and the SYP refund's loss post in the book ledger, the only one. The refund clears all that is left of the funds, so it takes everything they carry.
@@ -511,6 +661,27 @@ expect:
     - { account: "541001", book: 135000 }
   open_items:
     - { item: C1, account: "213001", dims: { client: C1 }, currency: USD, amount: 0, book: 0 }
+```
+
+The tolerance is checked without a parallel ledger too, where a gap would otherwise vanish into the book residual: the funds are credited by Hub's `usd_amount`, so a gap beyond the tolerance is still the accountant's decision.
+
+```yaml
+case: SYP books only; 122,000.00 SYP at Hub's 122 credited as 998.99 USD, a gap of 1.01 USD, is held NEEDS_DECISION
+company: { shape: syp, book: SYP, template: service-agency, rate_policy: { book: bulletin } }
+rates:
+  - { date: 2026-11-03, base: USD, quote: SYP, rate: "120.0000", type: bulletin }
+steps:
+  - event: ad_wallet.deposited
+    accounting_date: 2026-11-03
+    # the gap: 12,200,000 / 122 = 100,000; 100,000 − 99,899 = 101 = 1.01 USD, more than the tolerance
+    payload: { entry: W-1, client: C1, entered_on: 2026-11-03, method: cash,
+               currency: SYP, amount: 12200000, syp_per_usd: "122.0000", usd_amount: 99899 }
+expect:
+  entries: []
+  balances:
+    - { account: "213001", book: 0 }
+    - { account: "111001", book: 0 }
+  outcome: { status: held, reason: NEEDS_DECISION, detail: wallet_gap_beyond_tolerance }
 ```
 
 ### USD books with an SYP parallel ledger
