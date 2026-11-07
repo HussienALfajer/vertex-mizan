@@ -281,6 +281,30 @@ const payloadSchema = z.record(z.string(), z.unknown()).superRefine((payload, co
   walk(payload, []);
 });
 
+/**
+ * A step's answer when it is not posted: held (ADR 0008 and 0014 hold reasons) or refused, with
+ * the reason and, when stated, its detail (S05 rule 9: `payment_gap_beyond_tolerance`). An unstated
+ * detail is not compared.
+ */
+const outcomeSchema = z
+  .strictObject({
+    status: z.enum(['held', 'refused']),
+    reason: z.string().regex(/^[A-Z][A-Z0-9_]*$/, 'Expected a reason code'),
+    detail: z
+      .string()
+      .regex(/^[a-z][a-z0-9_]*(:[A-Za-z0-9_.-]+)?$/, 'Expected a detail code')
+      .optional(),
+  })
+  .transform((outcome) => ({ ...outcome, detail: outcome.detail ?? null }));
+
+export type Outcome = z.output<typeof outcomeSchema>;
+
+/**
+ * Any step may state its answer when it is received (S05): an event held at receipt that a later
+ * step frees posts then, and its entry is expected in posting order.
+ */
+const stepOutcome = { outcome: outcomeSchema.optional() };
+
 /** A step is told apart by its one key: `event`, `manual`, `reversal`, `job` or `rate`. */
 export const STEP_KINDS = ['event', 'manual', 'reversal', 'job', 'rate'] as const;
 
@@ -292,12 +316,14 @@ const eventStepSchema = z
     event: eventTypeSchema,
     accounting_date: dateSchema,
     payload: payloadSchema,
+    ...stepOutcome,
   })
   .transform((step) => ({
     kind: step.kind,
     type: step.event,
     accountingDate: step.accounting_date,
     payload: step.payload,
+    outcome: step.outcome ?? null,
   }));
 
 /** A manual entry: what it records, and the request as the manual-entry form sends it (S03). */
@@ -307,12 +333,14 @@ const manualStepSchema = z
     manual: z.string().trim().min(1),
     accounting_date: dateSchema,
     payload: payloadSchema,
+    ...stepOutcome,
   })
   .transform((step) => ({
     kind: step.kind,
     description: step.manual,
     accountingDate: step.accounting_date,
     payload: step.payload,
+    outcome: step.outcome ?? null,
   }));
 
 /** The reversal of an entry the case posted, by its number in posting order (ADR 0005). */
@@ -321,11 +349,13 @@ const reversalStepSchema = z
     kind: z.literal('reversal'),
     reversal: countSchema(1),
     accounting_date: dateSchema,
+    ...stepOutcome,
   })
   .transform((step) => ({
     kind: step.kind,
     entry: step.reversal,
     accountingDate: step.accounting_date,
+    outcome: step.outcome ?? null,
   }));
 
 /**
@@ -337,18 +367,31 @@ const rateStepSchema = z
   .strictObject({
     kind: z.literal('rate'),
     rate: z.strictObject({ ...rateFields, reason: z.string().trim().min(1).max(500).optional() }),
+    ...stepOutcome,
   })
-  .transform(({ kind, rate: { reason, date, ...rate } }, context) => {
+  .transform(({ kind, rate: { reason, date, ...rate }, outcome }, context) => {
     const parsed = exchangeRateSchema.safeParse({ effectiveOn: date, ...rate });
     for (const issue of parsed.error?.issues ?? []) {
       context.addIssue({ code: 'custom', message: issue.message, path: ['rate', ...issue.path] });
     }
-    return parsed.success ? { kind, rate: parsed.data, reason: reason ?? null } : z.NEVER;
+    return parsed.success
+      ? { kind, rate: parsed.data, reason: reason ?? null, outcome: outcome ?? null }
+      : z.NEVER;
   });
 
 const jobStepSchema = z
-  .strictObject({ kind: z.literal('job'), job: jobNameSchema, period: periodSchema })
-  .transform((step) => ({ kind: step.kind, name: step.job, period: step.period }));
+  .strictObject({
+    kind: z.literal('job'),
+    job: jobNameSchema,
+    period: periodSchema,
+    ...stepOutcome,
+  })
+  .transform((step) => ({
+    kind: step.kind,
+    name: step.job,
+    period: step.period,
+    outcome: step.outcome ?? null,
+  }));
 
 const stepSchema = z.preprocess(
   (value) => {
@@ -433,14 +476,6 @@ const openItemSchema = z
   .transform((item) => ({ ...item, parallel: item.parallel ?? null }));
 
 export type ExpectedOpenItem = z.output<typeof openItemSchema>;
-
-/** The last step's result when it is not posted: held (ADR 0008 hold reasons) or refused. */
-const outcomeSchema = z.strictObject({
-  status: z.enum(['held', 'refused']),
-  reason: z.string().regex(/^[A-Z][A-Z0-9_]*$/, 'Expected a reason code'),
-});
-
-export type Outcome = z.output<typeof outcomeSchema>;
 
 /**
  * A rate correction's answer (S02 rule 15): the entries it lists as converted at the superseded
@@ -542,6 +577,10 @@ export const caseSchema = z
       if (step.kind === 'reversal' && step.entry > entries.length) {
         issue(`Entry ${step.entry} is not an expected entry`, ['steps', s, 'reversal']);
       }
+    }
+    if (scenarioCase.expect.outcome && steps.at(-1)?.outcome) {
+      const message = "The last step's outcome is stated twice: on the step and in expect";
+      issue(message, ['expect', 'outcome']);
     }
     const corrected = new Set<number>();
     for (const [c, correction] of scenarioCase.expect.corrections.entries()) {

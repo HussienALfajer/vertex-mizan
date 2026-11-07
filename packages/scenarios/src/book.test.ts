@@ -233,6 +233,22 @@ describe('a case', () => {
       'status',
     ],
     [
+      'an outcome with a malformed detail',
+      CASE.replace(
+        '  balances:',
+        '  outcome: { status: held, reason: NEEDS_DECISION, detail: Beyond Tolerance }\n  balances:',
+      ),
+      'detail code',
+    ],
+    [
+      "the last step's outcome stated on the step and in expect",
+      CASE.replace(
+        '    payload: { invoice: INV-1,',
+        '    outcome: { status: held, reason: NO_MAPPING }\n    payload: { invoice: INV-1,',
+      ).replace('  balances:', '  outcome: { status: held, reason: NO_MAPPING }\n  balances:'),
+      'stated twice',
+    ],
+    [
       'a third-currency case with no third currency',
       CASE.replace('shape: syp-usd', 'shape: third'),
       'third currency',
@@ -281,6 +297,22 @@ describe('a case', () => {
     expect(refusal(source)).toContain(problem);
   });
 
+  it("reads a step's outcome, with its detail or none", () => {
+    const held = parseCase(
+      CASE.replace(
+        '    payload: { invoice: INV-1,',
+        '    outcome: { status: held, reason: NEEDS_DECISION, detail: amount_above_applied }\n' +
+          '    payload: { invoice: INV-1,',
+      ),
+    );
+    expect(held.steps[0]?.outcome).toEqual({
+      status: 'held',
+      reason: 'NEEDS_DECISION',
+      detail: 'amount_above_applied',
+    });
+    expect(parseCase(CASE).steps[0]?.outcome).toBeNull();
+  });
+
   it('reads the bulletin calendar, its default days off, rate and reversal steps and corrections', () => {
     const corrected = parseCase(CORRECTION);
     expect(corrected.company.calendar).toEqual({ daysOff: [5, 6], holidays: ['2026-11-09'] });
@@ -295,11 +327,13 @@ describe('a case', () => {
         source: 'manual',
       },
       reason: 'Mistyped',
+      outcome: null,
     });
     expect(corrected.steps[2]).toEqual({
       kind: 'reversal',
       entry: 1,
       accountingDate: '2026-11-08',
+      outcome: null,
     });
     expect(corrected.expect.corrections).toEqual([{ step: 2, usedBy: [1] }]);
     const fridayOnly = CORRECTION.replace(

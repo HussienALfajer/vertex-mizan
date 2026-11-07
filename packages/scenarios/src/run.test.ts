@@ -228,7 +228,7 @@ describe('runCase with an outcome', () => {
     expect(found[0]).toContain(difference);
   });
 
-  it('fails an earlier step that was held: only the last step has an outcome', async () => {
+  it('fails an earlier step that was held when it states no outcome', async () => {
     const twoSteps = parseCase(
       CASE.replace(
         'steps:\n',
@@ -241,6 +241,75 @@ describe('runCase with an outcome', () => {
     expect(await differences(runCase(twoSteps, fake, database))).toEqual([
       'step 1 (event rate.recorded on 2026-11-02): held NO_MAPPING, expected done',
     ]);
+  });
+});
+
+describe('runCase with an outcome on a step', () => {
+  // A payment held at receipt, freed by the invoice that follows it: its entry posts after the
+  // invoice's, so the ledger holds both and the first step answered held (S05 rule 11).
+  const freed = parseCase(
+    CASE.replace(
+      'steps:\n',
+      'steps:\n  - event: payment.recorded\n    accounting_date: 2026-11-03\n' +
+        '    payload: { invoice: INV-1 }\n' +
+        '    outcome: { status: held, reason: UNKNOWN_REFERENCE }\n',
+    ),
+  );
+
+  it('passes when the step is held with the stated reason and the later steps are done', async () => {
+    const { fake, calls } = harness(asPosted(freed), {
+      results: [{ status: 'held', reason: 'UNKNOWN_REFERENCE' }, { status: 'done' }],
+    });
+    await runCase(freed, fake, database);
+    expect(calls).toEqual(['setUp', 'payment.recorded', 'invoice.issued']);
+  });
+
+  it('fails the step when it was done instead', async () => {
+    const { fake } = harness(asPosted(freed), { results: [{ status: 'done' }, { status: 'done' }] });
+    expect(await differences(runCase(freed, fake, database))).toEqual([
+      'step 1 (event payment.recorded on 2026-11-03): done, expected held UNKNOWN_REFERENCE',
+    ]);
+  });
+
+  const decided = parseCase(
+    CASE.replace(
+      '    payload: { invoice: INV-1,',
+      '    outcome: { status: held, reason: NEEDS_DECISION, detail: amount_above_applied }\n' +
+        '    payload: { invoice: INV-1,',
+    )
+      .replace(/ {2}entries:\n(?:(?: {4}| {6}| {8}).*\n)+/, '  entries: []\n')
+      .replace(/ {2}balances:\n.*\n/, '')
+      .replace(/ {2}open_items:\n.*\n/, ''),
+  );
+
+  it('compares a stated detail', async () => {
+    const same = harness([], {
+      results: [{ status: 'held', reason: 'NEEDS_DECISION', detail: 'amount_above_applied' }],
+    });
+    await runCase(decided, same.fake, database);
+    const other = harness([], {
+      results: [{ status: 'held', reason: 'NEEDS_DECISION', detail: 'payment_exceeds_open' }],
+    });
+    expect(await differences(runCase(decided, other.fake, database))).toEqual([
+      'step 1 (event invoice.issued on 2026-11-03): held NEEDS_DECISION (payment_exceeds_open), ' +
+        'expected held NEEDS_DECISION (amount_above_applied)',
+    ]);
+  });
+
+  it('does not compare a detail the case does not state', async () => {
+    const reasonOnly = parseCase(
+      CASE.replace(
+        '    payload: { invoice: INV-1,',
+        '    outcome: { status: held, reason: NEEDS_DECISION }\n    payload: { invoice: INV-1,',
+      )
+        .replace(/ {2}entries:\n(?:(?: {4}| {6}| {8}).*\n)+/, '  entries: []\n')
+        .replace(/ {2}balances:\n.*\n/, '')
+        .replace(/ {2}open_items:\n.*\n/, ''),
+    );
+    const { fake } = harness([], {
+      results: [{ status: 'held', reason: 'NEEDS_DECISION', detail: 'payment_exceeds_open' }],
+    });
+    await runCase(reasonOnly, fake, database);
   });
 });
 

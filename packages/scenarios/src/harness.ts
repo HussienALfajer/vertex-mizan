@@ -23,13 +23,14 @@ export type ScenarioDatabase = { app: Database; jobs: Database };
 export type CaseContext = { database: ScenarioDatabase; companyId: string; company: CaseCompany };
 
 /**
- * What a step did: posted (or ran) everything it had to, or was held or refused with a code. A
- * rate correction's answer also lists the entries that converted at the superseded row, by their
- * number in the company's posting order (S02 rule 15).
+ * What a step did when it was received: posted (or ran) everything it had to, or was held or
+ * refused with a code and, for a hold, its detail (S05 rule 9). A rate correction's answer also
+ * lists the entries that converted at the superseded row, by their number in the company's posting
+ * order (S02 rule 15).
  */
 export type StepResult =
   | { status: 'done'; usedBy?: readonly number[] }
-  | { status: 'held' | 'refused'; reason: string };
+  | { status: 'held' | 'refused'; reason: string; detail?: string | null };
 
 export type StepExecutor<Kind extends StepKind> = (
   context: CaseContext,
