@@ -6,7 +6,21 @@ import {
   rateTypeSchema,
 } from '@vertex-mizan/contracts';
 import { ar } from '@vertex-mizan/i18n';
-import { Callout, Card, CardDescription, CardHeader, CardTitle } from '@vertex-mizan/ui';
+import {
+  Amount,
+  Badge,
+  Callout,
+  Card,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@vertex-mizan/ui';
 import { CircleAlertIcon, TriangleAlertIcon } from 'lucide-react';
 import { formatDay } from '../../lib/format';
 import { useCompany } from '../../lib/session';
@@ -114,16 +128,119 @@ export function PreviewPanel({
         {preview.refusals.length > 0 ? (
           <Refusals refusals={preview.refusals} rowOf={rowOf} />
         ) : (
-          <EntryLinesTable
-            label={t.preview.label}
-            lines={preview.lines}
-            bookCurrency={preview.bookCurrency}
-            parallelCurrency={preview.parallelCurrency}
-            dimensions={dimensions.byId}
-            accountLink={false}
-          />
+          <>
+            <EntryLinesTable
+              label={t.preview.label}
+              lines={preview.lines}
+              bookCurrency={preview.bookCurrency}
+              parallelCurrency={preview.parallelCurrency}
+              dimensions={dimensions.byId}
+              accountLink={false}
+            />
+            <PreviewItems preview={preview} />
+          </>
         )}
       </div>
     </Card>
+  );
+}
+
+const tp = ar.openItems.preview;
+
+/**
+ * The items the entry moves (S04 "Screens"): each one's open amount and carrying amounts before
+ * the entry and after it; a new item starts at zero. A crossing of zero shows in the lines above
+ * as the item's two lines.
+ */
+function PreviewItems({ preview }: { preview: EntryPreview }) {
+  if (preview.items.length === 0) return null;
+  const { bookCurrency, parallelCurrency } = preview;
+  return (
+    <section aria-labelledby="preview-items" className="flex min-w-0 flex-col gap-2">
+      <h3 id="preview-items" className="font-bold">
+        {tp.title}
+      </h3>
+      <Table aria-label={tp.label}>
+        <TableHeader>
+          <TableRow>
+            <TableHead>{tp.item}</TableHead>
+            <TableHead numeric>{`${tp.open} · ${tp.before}`}</TableHead>
+            <TableHead numeric>{`${tp.open} · ${tp.after}`}</TableHead>
+            <TableHead numeric>
+              {`${tp.book} · ${tp.before} `}
+              <bdi dir="ltr">{bookCurrency}</bdi>
+            </TableHead>
+            <TableHead numeric>
+              {`${tp.book} · ${tp.after} `}
+              <bdi dir="ltr">{bookCurrency}</bdi>
+            </TableHead>
+            {parallelCurrency && (
+              <>
+                <TableHead numeric>
+                  {`${tp.parallel} · ${tp.before} `}
+                  <bdi dir="ltr">{parallelCurrency}</bdi>
+                </TableHead>
+                <TableHead numeric>
+                  {`${tp.parallel} · ${tp.after} `}
+                  <bdi dir="ltr">{parallelCurrency}</bdi>
+                </TableHead>
+              </>
+            )}
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {preview.items.map((item) => (
+            <TableRow key={item.id}>
+              <TableCell>
+                <span className="flex items-center gap-2">
+                  <bdi className="font-medium">{item.reference}</bdi>
+                  {item.isNew && <Badge tone="info">{tp.isNew}</Badge>}
+                </span>
+              </TableCell>
+              <TableCell numeric>
+                <Amount
+                  value={BigInt(item.before.openMinor)}
+                  currency={item.currency}
+                  showCurrency
+                />
+              </TableCell>
+              <TableCell numeric>
+                <Amount
+                  value={BigInt(item.after.openMinor)}
+                  currency={item.currency}
+                  showCurrency
+                />
+              </TableCell>
+              <TableCell numeric>
+                <Amount value={BigInt(item.before.bookMinor)} currency={bookCurrency} />
+              </TableCell>
+              <TableCell numeric>
+                <Amount value={BigInt(item.after.bookMinor)} currency={bookCurrency} />
+              </TableCell>
+              {parallelCurrency && (
+                <>
+                  <TableCell numeric>
+                    {item.before.parallelMinor !== null && (
+                      <Amount
+                        value={BigInt(item.before.parallelMinor)}
+                        currency={parallelCurrency}
+                      />
+                    )}
+                  </TableCell>
+                  <TableCell numeric>
+                    {item.after.parallelMinor !== null && (
+                      <Amount
+                        value={BigInt(item.after.parallelMinor)}
+                        currency={parallelCurrency}
+                      />
+                    )}
+                  </TableCell>
+                </>
+              )}
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </section>
   );
 }

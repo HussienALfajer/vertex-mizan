@@ -9,6 +9,7 @@ import {
   type CurrencyCode,
   type DimensionValue,
   type EntryLine,
+  type EntryLineItem,
   type EntryNumber,
   type LineConversion,
   money,
@@ -52,22 +53,20 @@ export const accountPickerLabels = {
   blocked: ar.accounting.account.blocked,
 };
 
-/** Accounts as the account picker lists them; `manual` leaves out control accounts (rule 16). */
-export function pickerAccounts(
-  accounts: readonly Account[],
-  { manual = false }: { manual?: boolean } = {},
-): AccountPickerOption[] {
-  return accounts
-    .filter((account) => !(manual && account.isControl))
-    .map((account) => ({
-      id: account.id,
-      code: account.code,
-      name: account.name,
-      nameLatin: account.nameLatin,
-      kind: account.kind,
-      blocked: account.blocked !== null,
-      archived: account.archived !== null,
-    }));
+/**
+ * Accounts as the account picker lists them, control accounts included: a manual line on one
+ * names its open item (S04 rule 5, which replaced S03 rule 16).
+ */
+export function pickerAccounts(accounts: readonly Account[]): AccountPickerOption[] {
+  return accounts.map((account) => ({
+    id: account.id,
+    code: account.code,
+    name: account.name,
+    nameLatin: account.nameLatin,
+    kind: account.kind,
+    blocked: account.blocked !== null,
+    archived: account.archived !== null,
+  }));
 }
 
 /** Dimension values as the dimension picker lists them. */
@@ -242,6 +241,7 @@ export function EntryLinesTable({
                   <AccountLabel code={line.accountCode} name={line.accountName} />
                 )}
                 <DimensionNames ids={line.dimensionValueIds} byId={dimensions} />
+                {line.item && <LineItem item={line.item} link={accountLink} />}
                 {line.memo && (
                   <span className="text-xs text-muted-foreground">
                     <bdi>{line.memo}</bdi>
@@ -301,6 +301,31 @@ export function EntryLinesTable({
         </TableRow>
       </TableBody>
     </Table>
+  );
+}
+
+/**
+ * The open item a line moves (S04): its reference, linked to its page once posted, the kind of
+ * movement, and "معدّل في ميزان" for a manual movement on a Hub item.
+ */
+function LineItem({ item, link }: { item: EntryLineItem; link: boolean }) {
+  return (
+    <span className="flex flex-wrap items-center gap-2 text-xs">
+      <span className="text-muted-foreground">{ar.openItems.editor.column}</span>
+      {link ? (
+        <Link
+          to="/open-items/$id"
+          params={{ id: item.id }}
+          className="font-medium text-primary underline-offset-4 hover:underline"
+        >
+          <bdi>{item.reference}</bdi>
+        </Link>
+      ) : (
+        <bdi className="font-medium">{item.reference}</bdi>
+      )}
+      <span className="text-muted-foreground">{ar.openItems.movements[item.movement]}</span>
+      {item.adjusted && <Badge tone="warning">{ar.openItems.labels.adjusted}</Badge>}
+    </span>
   );
 }
 

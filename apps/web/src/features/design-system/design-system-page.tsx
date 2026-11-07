@@ -1,4 +1,5 @@
 import {
+  AGEING_BUCKETS,
   type AmountTextError,
   type CurrencyCode,
   entryTotals,
@@ -13,6 +14,8 @@ import {
   AccountPicker,
   AccountTree,
   type AccountTreeNode,
+  AgeingTable,
+  type AgeingTableRow,
   Amount,
   AmountInput,
   AscentLines,
@@ -44,6 +47,8 @@ import {
   type KeymapAction,
   keymap,
   LedgerSwitch,
+  OpenItemPicker,
+  type OpenItemPickerOption,
   OtpField,
   PageHeader,
   PasswordInput,
@@ -785,6 +790,94 @@ function EntryToolsSample() {
   );
 }
 
+/** Synthetic open items of one client on a receivables account (S04). */
+const sampleItems: OpenItemPickerOption[] = [
+  {
+    id: 'i1',
+    reference: 'M-1',
+    currency: 'USD',
+    openMinor: 60000n,
+    carryingMinor: 7200000n,
+    carryingCurrency: 'SYP',
+    detail: '112001 · 2026-12-03',
+  },
+  {
+    id: 'i2',
+    reference: 'M-2',
+    currency: 'USD',
+    openMinor: 25000n,
+    carryingMinor: 3075000n,
+    carryingCurrency: 'SYP',
+    detail: '112001 · 2027-01-15',
+  },
+];
+
+// A range of days as an LTR isolate, as the receivables screens show it.
+const ageingBuckets = AGEING_BUCKETS.map((bucket) => {
+  const range = /^(\d+–\d+)(.*)$/.exec(ar.openItems.buckets[bucket]);
+  return {
+    id: bucket,
+    label: range ? (
+      <>
+        <bdi dir="ltr">{range[1]}</bdi>
+        {range[2]}
+      </>
+    ) : (
+      ar.openItems.buckets[bucket]
+    ),
+  };
+});
+
+/** The ageing of two synthetic clients in SYP, one opening to its items. */
+const sampleAgeing: AgeingTableRow[] = [
+  {
+    key: 'c1',
+    label: <bdi>{t.receivables.first}</bdi>,
+    amounts: { not_due: 3075000n, days_1_30: 7200000n },
+    totalMinor: 10275000n,
+    detail: <p className="text-muted-foreground">{t.receivables.items}</p>,
+  },
+  {
+    key: 'c2',
+    label: <bdi>{t.receivables.second}</bdi>,
+    amounts: { days_61_90: 1850000n, over_180: 412550n },
+    totalMinor: 2262550n,
+  },
+];
+
+/** The receivables components (S04): the ageing table and the open-item picker. */
+function ReceivablesSample() {
+  const [item, setItem] = useState<string | null>('i1');
+  return (
+    <div className="flex min-w-0 flex-col gap-4">
+      <AgeingTable
+        caption={t.receivables.caption}
+        buckets={ageingBuckets}
+        rows={sampleAgeing}
+        totals={{
+          amounts: {
+            not_due: 3075000n,
+            days_1_30: 7200000n,
+            days_61_90: 1850000n,
+            over_180: 412550n,
+          },
+          totalMinor: 12537550n,
+        }}
+        currency="SYP"
+        labels={ar.openItems.ageingTable}
+      />
+      <OpenItemPicker
+        className="max-w-md"
+        label={t.receivables.item}
+        items={sampleItems}
+        value={item}
+        onValueChange={setItem}
+        labels={ar.openItems.picker}
+      />
+    </div>
+  );
+}
+
 function DimensionPickerSample() {
   const [client, setClient] = useState<string | null>('c1');
   const [rate, setRate] = useState<string | null>('120.0000');
@@ -937,6 +1030,11 @@ export function DesignSystemPage() {
       <Section id="dimension-picker" title={t.dimensionPicker.title}>
         <p className="text-muted-foreground">{t.dimensionPicker.hint}</p>
         <DimensionPickerSample />
+      </Section>
+
+      <Section id="receivables" title={t.receivables.title}>
+        <p className="text-muted-foreground">{t.receivables.hint}</p>
+        <ReceivablesSample />
       </Section>
 
       <Section id="brand" title={t.brand.title}>

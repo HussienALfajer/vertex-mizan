@@ -26,7 +26,7 @@ export interface EditLine {
   readonly memo: string;
   /**
    * The open item a line on a control account moves, or the manual item it opens (S04 rules 6–7),
-   * kept as saved; the item cell arrives with S04's screens.
+   * set in the entry screen's item cell.
    */
   readonly openItemId: string | null;
   readonly newItem: { readonly reference: string; readonly dueOn: string | null } | null;
@@ -68,14 +68,21 @@ export function emptyLine(): EditLine {
   };
 }
 
-/** A new entry: today, two empty lines. */
-export function newDraft(today: string): EditDraft {
+/**
+ * A new entry: today, two empty lines. A receipt from a client statement (S04) names the client
+ * on the second line, the credit side, so its open items are ready to pick once the account is.
+ */
+export function newDraft(today: string, clientValueId: string | null = null): EditDraft {
+  const second = emptyLine();
   return {
     entryDate: today,
     description: '',
     reference: '',
     dealtRates: [],
-    lines: [emptyLine(), emptyLine()],
+    lines: [
+      emptyLine(),
+      clientValueId === null ? second : { ...second, dimensionValueIds: [clientValueId] },
+    ],
   };
 }
 

@@ -40,6 +40,7 @@ import {
   FilePenLineIcon,
   FolderTreeIcon,
   HashIcon,
+  HourglassIcon,
   HouseIcon,
   KeyRoundIcon,
   LandmarkIcon,
@@ -55,6 +56,7 @@ import {
   SunIcon,
   SwatchBookIcon,
   TagsIcon,
+  UserRoundSearchIcon,
   UsersIcon,
 } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
@@ -89,6 +91,12 @@ const navItems: NavItem[] = [
   { to: '/dimensions', label: ar.dimensions.nav, icon: TagsIcon, permission: 'dimensions.read' },
   { to: '/entries', label: ar.entries.nav, icon: BookOpenIcon, permission: 'entries.read' },
   { to: '/drafts', label: ar.drafts.nav, icon: FilePenLineIcon, permission: 'drafts.read' },
+  {
+    to: '/receivables',
+    label: ar.openItems.ageing.nav,
+    icon: HourglassIcon,
+    permission: 'open_items.read',
+  },
   {
     to: '/rates',
     label: ar.rates.nav,
@@ -307,6 +315,26 @@ function useShellCommands(me: Me | null | undefined): PaletteCommand[] {
             keywords: ['entry number', 'رقم القيد'],
             icon: <HashIcon />,
             run: () => void router.navigate({ to: '/entries', search: { find: 'number' } }),
+          },
+        ]
+      : []),
+    ...(me && can(me, 'open_items.read')
+      ? [
+          {
+            id: 'client-statement',
+            label: ar.openItems.find.clientStatement,
+            group: t.palette.navigation,
+            keywords: ['client statement', 'statement of account', 'العميل'],
+            icon: <UserRoundSearchIcon />,
+            run: () => void router.navigate({ to: '/receivables', search: { find: 'client' } }),
+          },
+          {
+            id: 'go-to-item',
+            label: ar.openItems.find.goToItem,
+            group: t.palette.navigation,
+            keywords: ['open item', 'invoice', 'reference', 'فاتورة'],
+            icon: <HashIcon />,
+            run: () => void router.navigate({ to: '/receivables', search: { find: 'item' } }),
           },
         ]
       : []),

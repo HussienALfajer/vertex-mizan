@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
 import {
   type Account,
@@ -13,6 +13,7 @@ import {
   entryPreviewSchema,
   entryTotals,
   money,
+  type OpenItemSummary,
   postedDraftSchema,
   type RatePair,
   signedAmount,
@@ -21,6 +22,7 @@ import { ar } from '@vertex-mizan/i18n';
 import {
   AccountLabel,
   AccountPicker,
+  Amount,
   AmountInput,
   Badge,
   Button,
@@ -51,6 +53,8 @@ import {
   Kbd,
   keymap,
   matchesShortcut,
+  OpenItemPicker,
+  type OpenItemPickerOption,
   PageHeader,
   RateInput,
   SelectField,
@@ -73,8 +77,9 @@ import { ConfirmDialog } from '../../components/confirm-dialog';
 import { FormError, FormErrorSummary } from '../../components/form-error';
 import { ReasonDialog } from '../../components/reason-dialog';
 import { api, hasCode } from '../../lib/api';
-import { damascusToday, formatDateTime } from '../../lib/format';
+import { damascusToday, formatDateTime, formatDay } from '../../lib/format';
 import { can, useCompany } from '../../lib/session';
+import { openItemsQuery } from '../receivables/receivables-queries';
 import {
   dealtRatePairs,
   dimensionColumns,
@@ -105,6 +110,7 @@ import { PreviewPanel, Refusals } from './preview-panel';
 
 const t = ar.drafts;
 const te = t.editor;
+const ti = ar.openItems.editor;
 
 /** A grid row: the line with its number. */
 type Row = EditLine & { readonly no: number };
@@ -132,6 +138,7 @@ export function EntryEditor({
   pairs,
   runPreview = false,
   onReload,
+  clientValueId = null,
 }: {
   draft: Draft | null;
   company: Company;
@@ -142,6 +149,8 @@ export function EntryEditor({
   runPreview?: boolean;
   /** Reads the draft again and starts the screen over from it (after `DRAFT_CHANGED`). */
   onReload?: (() => void) | undefined;
+  /** A new receipt from a client statement: the client named on the credit line (S04). */
+  clientValueId?: string | null | undefined;
 }) {
   const { companyId, me, membership } = useCompany();
   const navigate = useNavigate();
@@ -149,7 +158,7 @@ export function EntryEditor({
   const catalog = useDimensionCatalog(companyId);
   const startMonth = useFiscalYearStartMonth(companyId);
   const [edit, setEdit] = useState<EditDraft>(() =>
-    draft ? editDraftOf(draft) : newDraft(damascusToday()),
+    draft ? editDraftOf(draft) : newDraft(damascusToday(), clientValueId),
   );
   const reversal = draft?.reversesEntryId != null;
   /** The draft as it would be saved now: only the dealt rates of the pairs the entry has. */
@@ -195,6 +204,35 @@ export function EntryEditor({
   const rows: Row[] = edit.lines.map((line, index) => ({ ...line, no: index + 1 }));
   const dimensionTypes = dimensionColumns(edit.lines, accountsById, catalog.types, catalog.byId);
   const dealt = dealtRatePairs(edit, company.ledgers, pairs);
+
+  // The open items of each line's document account and client (S04 rule 7), for the item cell.
+  const clientType = catalog.types.find((type) => type.code === 'client');
+  const clientOf = (line: EditLine) =>
+    clientType ? (lineValueOf(line, clientType.id, catalog.byId)?.id ?? null) : null;
+  const itemKindOf = (line: EditLine) =>
+    line.accountId ? (accountsById.get(line.accountId)?.itemKind ?? null) : null;
+  const itemKeys = [
+    ...new Set(
+      edit.lines.flatMap((line) => {
+        const client = clientOf(line);
+        return itemKindOf(line) === 'document' && client ? [`${line.accountId}:${client}`] : [];
+      }),
+    ),
+  ];
+  const itemPages = useQueries({
+    queries: itemKeys.map((key) => {
+      const [account, client] = key.split(':');
+      return openItemsQuery(companyId, { account, client, state: 'open' });
+    }),
+  });
+  const itemsOf = (line: EditLine): readonly OpenItemSummary[] => {
+    const index = itemKeys.indexOf(`${line.accountId}:${clientOf(line)}`);
+    return index < 0 ? [] : (itemPages[index]?.data?.items ?? []);
+  };
+  const itemsById = new Map(
+    itemPages.flatMap((page) => page.data?.items ?? []).map((item) => [item.id, item]),
+  );
+  const showsItems = edit.lines.some((line) => itemKindOf(line) !== null);
   const amounts = edit.lines.flatMap((line) =>
     line.currency === null || line.amountMinor === null
       ? []
@@ -217,13 +255,49 @@ export function EntryEditor({
     setLines((lines) => lines.map((line) => (line.key === key ? change(line) : line)));
   }
 
-  /** The line with an account chosen: its currency defaults to the account's, or the book's. */
+  /**
+   * The line with an account chosen: its currency defaults to the account's, or the book's. An
+   * item named for another account is dropped (S04 rule 7: the item is the account's).
+   */
   function withAccount(line: EditLine, account: Account | null): EditLine {
-    if (!account) return { ...line, accountId: null };
+    const item = account?.id === line.accountId ? {} : { openItemId: null, newItem: null };
+    if (!account) return { ...line, ...item, accountId: null };
     return {
       ...line,
+      ...item,
       accountId: account.id,
       currency: line.currency ?? account.currency ?? bookCurrency,
+    };
+  }
+
+  /**
+   * The line with a dimension value set or removed. A changed client drops the open item it
+   * moved, which is that client's (rule 7); a new item, which has no client yet, stays.
+   */
+  function withDimension(line: EditLine, typeId: string, valueId: string | null): EditLine {
+    const next = withDimensionValue(line, typeId, valueId, catalog.byId);
+    return typeId === clientType?.id && clientOf(next) !== clientOf(line)
+      ? { ...next, openItemId: null }
+      : next;
+  }
+
+  /** The line moving an open item: it takes the item's currency (rule 7). */
+  function withItem(line: EditLine, item: OpenItemSummary): EditLine {
+    return { ...line, openItemId: item.id, newItem: null, currency: item.currency };
+  }
+
+  /**
+   * The item cell as typed: an open item of the line's account and client by its reference, or
+   * else a new manual item with that reference (rule 6); empty names none.
+   */
+  function withItemText(line: EditLine, text: string): EditLine {
+    if (text === '') return { ...line, openItemId: null, newItem: null };
+    const found = itemsOf(line).find((item) => item.reference === text);
+    if (found) return withItem(line, found);
+    return {
+      ...line,
+      openItemId: null,
+      newItem: { reference: text, dueOn: line.newItem?.dueOn ?? null },
     };
   }
 
@@ -237,9 +311,18 @@ export function EntryEditor({
     return { ...line, amountMinor: signedAmount(side, magnitude) };
   }
 
-  /** The magnitude `=` puts in a side: what balances the line's currency, if on that side. */
+  /**
+   * The magnitude `=` puts in a side: on a line moving an item, the item's open amount on the
+   * side that clears it (S04 "Screens"); otherwise what balances the line's currency.
+   */
   function balancingSide(line: EditLine, side: 'debit' | 'credit'): bigint | null {
     const currency = line.currency ?? bookCurrency;
+    const item = line.openItemId ? itemsById.get(line.openItemId) : undefined;
+    if (item && item.currency === currency) {
+      const open = debitCreditOf(BigInt(item.amounts.openMinor));
+      const clearing = side === 'debit' ? open.creditMinor : open.debitMinor;
+      return clearing === null || clearing === 0n ? null : clearing;
+    }
     const others = edit.lines.flatMap((other) =>
       other.key === line.key || other.currency !== currency || other.amountMinor === null
         ? []
@@ -293,11 +376,28 @@ export function EntryEditor({
         },
       }),
     ),
+    ...(showsItems
+      ? [
+          {
+            id: 'item',
+            type: 'text',
+            header: ti.column,
+            readOnly: (row: Row) => !linesEditable || itemKindOf(row) !== 'document',
+            value: (row: Row) =>
+              row.openItemId
+                ? (itemsById.get(row.openItemId)?.reference ?? '')
+                : (row.newItem?.reference ?? ''),
+            validate: (text: string) => (text.trim().length > 100 ? ti.referenceLength : undefined),
+            render: (row: Row) => <ItemCell line={row} kind={itemKindOf(row)} items={itemsById} />,
+          } satisfies GridColumnDef<Row>,
+        ]
+      : []),
     {
       id: 'currency',
       type: 'text',
       header: te.currency,
-      readOnly: !linesEditable,
+      // A line moving an item is in the item's currency (rule 7).
+      readOnly: (row) => !linesEditable || row.openItemId !== null,
       value: (row) => row.currency ?? '',
       validate: (text) =>
         text.trim() === '' || CURRENCY_CODES.includes(text.trim().toUpperCase() as CurrencyCode)
@@ -355,7 +455,9 @@ export function EntryEditor({
           const typeId = column.slice(4);
           const value =
             text === '' ? undefined : findDimensionValue(catalog.valuesOf(typeId), text);
-          next[cell.row] = withDimensionValue(line, typeId, value?.id ?? null, catalog.byId);
+          next[cell.row] = withDimension(line, typeId, value?.id ?? null);
+        } else if (column === 'item') {
+          next[cell.row] = withItemText(line, text);
         } else if (column === 'currency') {
           next[cell.row] = {
             ...line,
@@ -562,7 +664,11 @@ export function EntryEditor({
       grid.current?.focusCell({ row: cell.row, column: 1 });
     } else if (cell && line && matchesShortcut(native, keymap.lookup)) {
       const column = columns[cell.column]?.id;
-      if (column === 'account' || column?.startsWith('dim:')) {
+      if (
+        column === 'account' ||
+        column?.startsWith('dim:') ||
+        (column === 'item' && itemKindOf(line) === 'document')
+      ) {
         event.preventDefault();
         setLookup({ key: line.key, column });
       }
@@ -703,13 +809,16 @@ export function EntryEditor({
             bookCurrency={bookCurrency}
             onAccount={(key, account) => updateLine(key, (line) => withAccount(line, account))}
             onDimension={(key, typeId, valueId) =>
-              updateLine(key, (line) => withDimensionValue(line, typeId, valueId, catalog.byId))
+              updateLine(key, (line) => withDimension(line, typeId, valueId))
             }
             onCurrency={(key, currency) => updateLine(key, (line) => ({ ...line, currency }))}
             onSide={(key, side, magnitude) =>
               updateLine(key, (line) => withSide(line, side, magnitude))
             }
             onMemo={(key, memo) => updateLine(key, (line) => ({ ...line, memo }))}
+            itemKindOf={itemKindOf}
+            items={itemsById}
+            onItemLookup={(key) => setLookup({ key, column: 'item' })}
             onRemove={removeLine}
             onAdd={() => addLine(false)}
             onAmountError={(key, refused) =>
@@ -894,7 +1003,26 @@ export function EntryEditor({
         />
       )}
 
-      {lookup && lookupLine && (
+      {lookup && lookupLine && lookup.column === 'item' && (
+        <ItemLookup
+          line={lookupLine}
+          lineNo={edit.lines.indexOf(lookupLine) + 1}
+          hasClient={clientOf(lookupLine) !== null}
+          items={itemsOf(lookupLine)}
+          bookCurrency={bookCurrency}
+          onPick={(item) => {
+            updateLine(lookupLine.key, (line) => withItem(line, item));
+            closeLookup();
+          }}
+          onNew={(newItem) => {
+            updateLine(lookupLine.key, (line) => ({ ...line, openItemId: null, newItem }));
+            closeLookup();
+          }}
+          onClose={closeLookup}
+        />
+      )}
+
+      {lookup && lookupLine && lookup.column !== 'item' && (
         <Dialog open onOpenChange={(next) => !next && closeLookup()}>
           <DialogContent closeLabel={ar.common.close}>
             <DialogHeader>
@@ -909,7 +1037,7 @@ export function EntryEditor({
             {lookup.column === 'account' ? (
               <AccountPicker
                 label={te.account}
-                accounts={pickerAccounts(accounts, { manual: true })}
+                accounts={pickerAccounts(accounts)}
                 value={lookupLine.accountId}
                 labels={accountPickerLabels}
                 onValueChange={(id) => {
@@ -927,7 +1055,7 @@ export function EntryEditor({
                 labels={dimensionPickerLabels}
                 onValueChange={(id) => {
                   updateLine(lookupLine.key, (line) =>
-                    withDimensionValue(line, lookup.column.slice(4), id, catalog.byId),
+                    withDimension(line, lookup.column.slice(4), id),
                   );
                   closeLookup();
                 }}
@@ -1013,7 +1141,6 @@ function accountProblem(code: string, byCode: ReadonlyMap<string, Account>): str
   if (!account || account.archived) return te.accountUnknown;
   if (account.kind === 'header') return te.accountHeader;
   if (account.blocked) return te.accountBlocked;
-  if (account.isControl) return te.accountControl;
   return undefined;
 }
 
@@ -1214,6 +1341,9 @@ function LineCards({
   onRemove,
   onAdd,
   onAmountError,
+  itemKindOf,
+  items,
+  onItemLookup,
 }: {
   className: string;
   lines: readonly EditLine[];
@@ -1231,8 +1361,11 @@ function LineCards({
   onRemove: (key: string) => void;
   onAdd: () => void;
   onAmountError: (key: string, refused: boolean) => void;
+  itemKindOf: (line: EditLine) => Account['itemKind'];
+  items: ReadonlyMap<string, OpenItemSummary>;
+  onItemLookup: (key: string) => void;
 }) {
-  const options = pickerAccounts(accounts, { manual: true });
+  const options = pickerAccounts(accounts);
   return (
     <ol className={`flex flex-col gap-3 ${className}`} aria-label={te.lines}>
       {lines.map((line, index) => {
@@ -1277,11 +1410,30 @@ function LineCards({
                   onValueChange={(id) => onDimension(line.key, type.id, id)}
                 />
               ))}
+              {itemKindOf(line) === 'document' ? (
+                <Field>
+                  <FieldLabel>{ti.column}</FieldLabel>
+                  <Button
+                    variant="outline"
+                    className="justify-start"
+                    disabled={!editable}
+                    onClick={() => onItemLookup(line.key)}
+                  >
+                    {line.openItemId || line.newItem ? (
+                      <ItemCell line={line} kind="document" items={items} />
+                    ) : (
+                      ti.lookupTitle
+                    )}
+                  </Button>
+                </Field>
+              ) : itemKindOf(line) === 'running' ? (
+                <p className="text-control text-muted-foreground">{ti.running}</p>
+              ) : null}
               <SelectField
                 label={te.currency}
                 value={line.currency}
                 options={CURRENCY_CODES.map((code) => ({ value: code, label: code }))}
-                disabled={!editable}
+                disabled={!editable || line.openItemId !== null}
                 onValueChange={(code) => onCurrency(line.key, code)}
               />
               <div className="grid grid-cols-2 gap-3">
@@ -1321,5 +1473,159 @@ function LineCards({
         </li>
       )}
     </ol>
+  );
+}
+
+/** What a line's item cell shows: the item it moves, the new item it opens, or the client's. */
+function ItemCell({
+  line,
+  kind,
+  items,
+}: {
+  line: EditLine;
+  kind: Account['itemKind'];
+  items: ReadonlyMap<string, OpenItemSummary>;
+}) {
+  if (kind === 'running') return <span className="text-muted-foreground">{ti.running}</span>;
+  if (line.openItemId) {
+    const item = items.get(line.openItemId);
+    return item ? (
+      <span className="flex items-baseline gap-2">
+        <bdi className="font-medium">{item.reference}</bdi>
+        <Amount
+          value={BigInt(item.amounts.openMinor)}
+          currency={item.currency}
+          showCurrency
+          className="text-xs text-muted-foreground"
+        />
+      </span>
+    ) : null;
+  }
+  if (line.newItem) {
+    return (
+      <span className="flex items-baseline gap-2">
+        <Badge tone="info">{ti.newItem}</Badge>
+        <bdi className="font-medium">{line.newItem.reference}</bdi>
+        {line.newItem.dueOn && (
+          <span className="text-xs text-muted-foreground">
+            {`${ti.due} ${formatDay(line.newItem.dueOn)}`}
+          </span>
+        )}
+      </span>
+    );
+  }
+  return null;
+}
+
+/**
+ * The item lookup of a line on a document control account (`Alt+↓`, or a tap on a phone): one of
+ * the client's open items through `OpenItemPicker`, with what is open and its carrying amount, or
+ * a new manual item with its reference and an optional due date (S04 rules 6–7).
+ */
+function ItemLookup({
+  line,
+  lineNo,
+  hasClient,
+  items,
+  bookCurrency,
+  onPick,
+  onNew,
+  onClose,
+}: {
+  line: EditLine;
+  lineNo: number;
+  hasClient: boolean;
+  items: readonly OpenItemSummary[];
+  bookCurrency: CurrencyCode;
+  onPick: (item: OpenItemSummary) => void;
+  onNew: (item: { reference: string; dueOn: string | null }) => void;
+  onClose: () => void;
+}) {
+  const [reference, setReference] = useState(line.newItem?.reference ?? '');
+  const [dueOn, setDueOn] = useState(line.newItem?.dueOn ?? '');
+  const [invalid, setInvalid] = useState<string | undefined>();
+  const options: OpenItemPickerOption[] = items.map((item) => ({
+    id: item.id,
+    reference: item.reference,
+    currency: item.currency,
+    openMinor: BigInt(item.amounts.openMinor),
+    carryingMinor: BigInt(item.amounts.bookMinor),
+    carryingCurrency: bookCurrency,
+    detail: [item.account.code, item.dueOn ? formatDay(item.dueOn) : null]
+      .filter(Boolean)
+      .join(' · '),
+  }));
+  return (
+    <Dialog open onOpenChange={(next) => !next && onClose()}>
+      <DialogContent closeLabel={ar.common.close}>
+        <DialogHeader>
+          <DialogTitle>{ti.lookupTitle}</DialogTitle>
+          <DialogDescription>
+            {`${te.line} `}
+            <bdi dir="ltr">{lineNo}</bdi>
+            {` · ${ti.lookupDescription}`}
+          </DialogDescription>
+        </DialogHeader>
+        {hasClient ? (
+          <OpenItemPicker
+            label={ti.existing}
+            items={options}
+            value={line.openItemId}
+            labels={ar.openItems.picker}
+            onValueChange={(id) => {
+              const item = items.find((candidate) => candidate.id === id);
+              if (item) onPick(item);
+            }}
+          />
+        ) : (
+          <Callout tone="info" icon={<InfoIcon />} title={ti.needsClient} />
+        )}
+        <form
+          noValidate
+          aria-label={ti.newTitle}
+          className="flex flex-col gap-3 border-t border-border pt-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const typed = reference.trim();
+            const problem =
+              typed === ''
+                ? ti.referenceRequired
+                : typed.length > 100
+                  ? ti.referenceLength
+                  : undefined;
+            setInvalid(problem);
+            if (!problem) onNew({ reference: typed, dueOn: dueOn === '' ? null : dueOn });
+          }}
+        >
+          <h3 className="font-medium">{ti.newTitle}</h3>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field invalid={invalid !== undefined}>
+              <FieldLabel>{ti.reference}</FieldLabel>
+              <Input
+                value={reference}
+                maxLength={100}
+                onChange={(event) => setReference(event.target.value)}
+              />
+              <FieldError match={invalid !== undefined}>{invalid}</FieldError>
+            </Field>
+            <Field>
+              <FieldLabel>{ti.dueOn}</FieldLabel>
+              <Input
+                type="date"
+                dir="ltr"
+                value={dueOn}
+                onChange={(event) => setDueOn(event.target.value)}
+              />
+              <FieldDescription>{ti.dueHint}</FieldDescription>
+            </Field>
+          </div>
+          <Button type="submit" variant="outline" className="w-fit">
+            <PlusIcon aria-hidden="true" />
+            {ti.useNew}
+          </Button>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }

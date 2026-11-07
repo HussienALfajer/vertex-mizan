@@ -15,6 +15,7 @@ import { BackLink } from './entry-parts';
 import { draftQuery } from './entry-queries';
 
 const draftRoute = getRouteApi('/_app/_company/drafts/$id');
+const newRoute = getRouteApi('/_app/_company/entries/new');
 
 function Loading() {
   return (
@@ -38,15 +39,25 @@ function useEditorBasics() {
   return { company, accounts, pairs };
 }
 
-/** `/entries/new`: a new manual entry, created as a draft by its first save. */
+/**
+ * `/entries/new`: a new manual entry, created as a draft by its first save; `?client=` (a new
+ * receipt from a client statement) names the client on its credit line.
+ */
 export function NewEntryPage() {
+  const { client } = newRoute.useSearch();
   const { company, accounts, pairs } = useEditorBasics();
   if (company.isPending || accounts.isPending || pairs.isPending) return <Loading />;
   if (company.isError || accounts.isError || pairs.isError) {
     return <FormError error={company.error ?? accounts.error ?? pairs.error} />;
   }
   return (
-    <EntryEditor draft={null} company={company.data} accounts={accounts.data} pairs={pairs.data} />
+    <EntryEditor
+      draft={null}
+      company={company.data}
+      accounts={accounts.data}
+      pairs={pairs.data}
+      clientValueId={client ?? null}
+    />
   );
 }
 
