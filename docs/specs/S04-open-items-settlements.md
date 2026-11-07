@@ -155,7 +155,7 @@ The draft keeps them while it is typed; the posting function checks them (rules 
 
 ### Due dates and ageing (owner, 2026-10-28)
 14. A document item's due date in force on a date *D* is the newest `open_item_due_dates` row with `effective_on` ≤ *D*. With none, the item is due on its document date.
-15. A manual item's due date is changed by `open_items.manage` with a reason, effective on the day of the change. The new date may be any date, and the change is audited. A Hub item's due date comes only from Hub (`OPEN_ITEM_FROM_HUB`; S05 records `invoice.due_date_changed` effective on its accounting date).
+15. A manual item's due date is changed by `open_items.manage` with a reason, effective on the day of the change. The new date may be any date, and the change is audited. An item whose document date is after today (an entry dated later in the month, S03 rule 6) keeps the due date it opened with until that date: a change is refused before it (`VALIDATION_FAILED`), since the opening's due date applies from the document date and would override it (owner, 2026-11-07). A Hub item's due date comes only from Hub (`OPEN_ITEM_FROM_HUB`; S05 records `invoice.due_date_changed` effective on its accounting date).
 16. **Ageing as of *D*:**
     - **Items:** every document item on the chosen asset control accounts (default: accounts on `bs.trade_receivables`) whose open amount at the end of *D* is not zero, from movements dated on or before *D*.
     - **Days past due:** *D* minus the due date in force on *D*.
@@ -361,6 +361,7 @@ One `audit_entries` row per change, in the same transaction (S01 rule 23):
 18. **A settlement back-dated before a later one:** allowed in an open period. Clearing follows posting order, not entry dates, so the amounts do not depend on the date; the statement orders by date.
 19. **A leap day:** days past due count calendar days, 29 February included.
 20. **A zero carrying amount in one ledger with an open transaction amount:** possible only through rounding on a tiny item. The last clearing clears zero in that ledger, and invariant 9 holds.
+21. **A due-date change before the item's document date:** refused until that date (rule 15; owner, 2026-11-07). On the document date and after, the change wins over the opening's due date of the same date, being recorded later.
 
 ## Scenarios
 Accounting rules this spec introduces, each written and approved through `/posting-rule` before its code:

@@ -22,7 +22,7 @@ Spec: `docs/specs/S04-open-items-settlements.md` (Approved, owner 2026-10-28) ·
 - [x] bridge: OpenAPI regenerated, breaking-change check
 - [x] wiring (Contracts, Database, API), docs (`apps/api/CLAUDE.md`, `packages/db/CLAUDE.md`, `docs/ROADMAP.md`)
 - [x] checks and reviewers (`reviewer`, `accountant-reviewer`), PR opened (auto-merge off until the decision below)
-- [ ] the owner's decision on a due-date change before a manual item's document date (refused for now; or effective from the document date, a guard change), recorded in S04 rule 15 and its edge cases; then auto-merge on
+- [x] the owner's decision on a due-date change before a manual item's document date: refused until that date (owner, 2026-11-07), recorded in S04 rule 15 and edge case 21; auto-merge on
 
 ## PR 3 — The receivables screens (ui, web, e2e)
 - [ ] ui: `AgeingTable` (buckets with totals and drill-down) and `OpenItemPicker` (`Alt+↓`, a client's open items with open and carrying amounts), tested, both densities, on the design-system page
