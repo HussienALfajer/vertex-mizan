@@ -13,16 +13,17 @@ Spec: `docs/specs/S05-posting-api-event-inbox.md` (Approved, owner 2026-11-07) �
 - [x] checks and reviewers (`reviewer`, `accountant-reviewer`; one re-review each on the fix commit, no new finding), PR with auto-merge and Auto-fix
 
 ## PR 2 — The ad-funds and project-expense rules (ledger, db, scenarios)
-- [ ] ledger: the rules of `ad_wallet.deposited`, `.refunded`, `.entry_voided` (the running item's difference entry, S04 rule 13), `ad_spend.recorded`, `.changed`, `.archived`, `wallet_gap_beyond_tolerance`; `project_expense.recorded`, `.changed` (the new state measured at `spent_on`, rule 13), `.archived`; worked examples and properties
-- [ ] db: their attempt paths in the inbox service; tests
-- [ ] scenarios: `ad-funds/running-balance` and `expenses/project-expense` `Approved (owner, 2026-11-07)`, counted as run
-- [ ] wiring (Ledger, Database), docs (`docs/ROADMAP.md`)
-- [ ] checks and reviewers (`reviewer`, `accountant-reviewer`), PR with auto-merge and Auto-fix
+- [x] ledger: the rules of `ad_wallet.deposited`, `.refunded`, `.entry_voided` (the running item's difference entry, S04 rule 13), `ad_spend.recorded`, `.changed`, `.archived`, `wallet_gap_beyond_tolerance`; `project_expense.recorded`, `.changed` (the new state measured at `spent_on`, rule 13), `.archived`; worked examples and properties
+- [x] db: their attempt paths in the inbox service; tests
+- [x] scenarios: `ad-funds/running-balance` and `expenses/project-expense` `Approved (owner, 2026-11-07)`, counted as run
+- [x] wiring (Ledger, Database), docs (`docs/ROADMAP.md`, `packages/ledger/CLAUDE.md`, `packages/db/CLAUDE.md`, `packages/scenarios/CLAUDE.md`)
+- [x] checks and reviewers (`reviewer`, `accountant-reviewer`; one re-review of the accountant's on the fix commit, no new finding; Q13 recorded for the owner), PR with auto-merge and Auto-fix
 
 ## PR 3 — The Hub API and the jobs (contracts, db, api, worker, bridge)
 - [ ] db (`/db-migration`): the platform tables `api_clients` and `api_client_keys` (hashed keys, the two-active-keys trigger, revocation kept), `document_sources`; archiving a company revokes its keys
 - [ ] api: `@ApiClientRoute(...scopes)` (Bearer key, the key's company as the transaction's company, sessions refused on `/v1` and keys on `/api`, the IP allow-list, 600 requests a minute, 256 KB, 200 lines, `COMPANY_ARCHIVED`); `POST /v1/events` (`ENTRY_DATE_OUT_OF_RANGE`, `SOURCE_NOT_ALLOWED`, the receipt refusals, one retry then `503`); `GET /v1/periods/status`; `/api/inbox`, `/api/inbox/counts`, `/api/inbox/:id` and its four actions; `/api/posting-rules`; `/api/api-clients` and its keys (reauthenticated); the tolerance in `PUT /api/company/settings`; before storing, the receipt refusals that store nothing (`ENTRY_DATE_OUT_OF_RANGE` after the current month, `SYP_BEFORE_REDENOMINATION` for an SYP event before 2026-01-01, edge case 18), since an attempt would hold them `NO_MAPPING`; the raw body passed to `receiveEvent()` with its parsed envelope; a document type moved to another client must not let Hub's replay under the new client post twice (rule 21); the JSON Schema export for Hub with one example payload per type and the script that posts them; tests per endpoint (success, 401, 403 by scope, allow-list and role, another company's key and documents, replays, a refused source)
 - [ ] worker: `events.retry` enqueued after the commits that free held events (rates, holidays, mappings, accounts unblocked or restored), `events.retry-sweep` (daily 04:00 and at start), `events.held-digest` (daily 08:00, one email per company and day); safe twice, per company in its context
+- [ ] Q13 (`docs/open-questions.md`): the owner's answer on an `ad_spend.changed` across zero, and, if it changes the treatment, its `ad-funds/running-balance` case through `/posting-rule` before Hub's events reach Mizan
 - [ ] bridge: OpenAPI regenerated, breaking-change check
 - [ ] wiring (API and worker), docs (`apps/api/CLAUDE.md`, `apps/worker/CLAUDE.md`, the `AGENTS.md` commands table, `docs/ROADMAP.md`)
 - [ ] checks and reviewers (`reviewer`, `accountant-reviewer`), PR with auto-merge and Auto-fix

@@ -30,8 +30,8 @@ import {
 import { periodOf } from './periods.js';
 
 // The posting rules of Hub's events (S05 rules 8–17, "Accounting treatment"; ADR 0006, 0013, 0014),
-// each from its approved scenario: `revenue/revenue-at-issue`, `receivables/hub-payment` and
-// `inbox/holds-and-actions`. Pure functions from the event, the mapped accounts and what the
+// each from its approved scenario: `revenue/revenue-at-issue`, `receivables/hub-payment`,
+// `inbox/holds-and-actions`, `ad-funds/running-balance` and `expenses/project-expense`. Pure functions from the event, the mapped accounts and what the
 // posting function read of the books to a plan: a hold with its reason and detail, a record that
 // changes data only, or the entries to post as line specifications. `post()` in `packages/db`
 // measures and writes them with this package's mechanics (`manualEntry()`, `reverseLines()`,
@@ -84,6 +84,11 @@ export interface HubLine {
   readonly dimensions: HubDimensions;
   readonly amount: Money;
   readonly item?: HubItemRef;
+  /**
+   * The line carries the negation of the entry's lines on items instead of a new measurement: an
+   * ad spend's payable takes what the client's funds gave up (`ad-funds/running-balance`).
+   */
+  readonly carriesItems?: true;
 }
 
 /** A rate a ledger that accepts a transaction's rate reads (Hub's `syp_per_usd`, ADR 0007). */
@@ -109,6 +114,11 @@ export type PlannedEntry =
       readonly key: string;
       readonly lines: readonly HubLine[];
       readonly dealtRates: readonly HubDealtRate[];
+      /**
+       * The date its new measurements read their rates on, when not the event's accounting date:
+       * a `.changed` event's new state at its document's own date (rule 13).
+       */
+      readonly measuredOn?: string;
     }
   | { readonly kind: 'reversal'; readonly key: string; readonly entryId: string }
   | {
@@ -299,7 +309,8 @@ function reversalsOf(eventId: string, standing: readonly string[]): PlannedEntry
 }
 
 /**
- * A void (`invoice.voided`, `payment.voided`): the exact reversal of every entry still standing
+ * A void or an archive (`invoice.voided`, `payment.voided`, `ad_wallet.entry_voided`,
+ * `ad_spend.archived`, `project_expense.archived`): the exact reversal of every entry still standing
  * for the document, latest first, on the void date; nothing standing holds `UNKNOWN_REFERENCE`
  * (a void before the posting it reverses). An invoice's reversal is held
  * `OPEN_ITEM_HAS_SETTLEMENTS` by the posting function while a payment on it stands (ADR 0013).
@@ -428,9 +439,227 @@ export function paymentRecordedPlan(
 }
 
 /**
- * The plan of any event. The rules of the ad funds and project expenses arrive with S05's second
- * PR, and S06's deferred revenue after it: until then their events hold `NO_MAPPING` and are
- * retried when their rules deploy (rule 10).
+ * What a wallet entry needs the accountant for (S05 rule 9, `ad-funds/running-balance`), or null:
+ * `wallet_gap_beyond_tolerance` when an SYP entry's amount at Hub's `syp_per_usd`, rounded half
+ * away from zero, differs from the `usd_amount` Hub credits by more than the USD tolerance. A gap
+ * of exactly the tolerance posts as a realised difference. A USD entry credits its own amount (the
+ * contract refuses any other, rule 3), so it has no gap.
+ */
+export function walletDecision(
+  payload: EventOf<'ad_wallet.deposited'>['payload'],
+  tolerance: Readonly<Record<HubCurrency, bigint>>,
+): string | null {
+  if (payload.currency === 'USD') return null;
+  const credited = hubMinor(payload.usd_amount);
+  const received = convert(
+    money(hubMinor(payload.amount), payload.currency),
+    'USD',
+    hubRate(payload.entered_on, payload.syp_per_usd),
+  ).amountMinor;
+  const gap = received > credited ? received - credited : credited - received;
+  return gap > tolerance.USD ? 'wallet_gap_beyond_tolerance' : null;
+}
+
+/**
+ * `ad_wallet.deposited` and `ad_wallet.refunded` (`ad-funds/running-balance`; S04 "Accounting
+ * treatment"): a deposit debits the account of its method in its currency, a new measurement, and
+ * credits the client's running item on `ad_funds` by Hub's `usd_amount`; a refund is the opposite
+ * entry. The posting function moves the item at its average or measures it anew (S04 rule 3), and
+ * each ledger's residual is a realised difference (`manualEntry()`). Hub's `syp_per_usd` is the
+ * dealt rate where a ledger reads it.
+ */
+export function walletEntryPlan(
+  event: EventOf<'ad_wallet.deposited' | 'ad_wallet.refunded'>,
+  context: HubRuleContext,
+): RulePlan {
+  const { payload } = event;
+  const cash = slotAccount(context, paymentMethodSlot(payload.method), payload.currency);
+  if (isHold(cash)) return cash;
+  const funds = slotAccount(context, 'ad_funds', null);
+  if (isHold(funds)) return funds;
+  const sign = event.type === 'ad_wallet.deposited' ? 1n : -1n;
+  const lines: HubLine[] = [
+    {
+      account: cash.id,
+      dimensions: {},
+      amount: money(sign * hubMinor(payload.amount), payload.currency),
+    },
+    {
+      account: funds.id,
+      dimensions: { client: payload.client },
+      amount: money(-sign * hubMinor(payload.usd_amount), 'USD'),
+    },
+  ];
+  return {
+    kind: 'post',
+    entries: [
+      {
+        kind: 'lines',
+        key: event.id,
+        lines,
+        dealtRates: hubDealtRates(context.ledgers, [payload.currency, 'USD'], payload.syp_per_usd),
+      },
+    ],
+    decision: walletDecision(payload, context.tolerance),
+  };
+}
+
+/**
+ * A spend's entry (`ad-funds/running-balance`): Dr the client's running item on `ad_funds` by the
+ * USD spend, which clears it at its average (S04 rule 3), or past zero measures the excess anew;
+ * Cr `ad_platforms_payable` with the client, carrying the same amounts, so no rate is read for it
+ * and the entry has no residual.
+ */
+function spendEntry(
+  key: string,
+  payload: EventOf<'ad_spend.recorded'>['payload'],
+  context: HubRuleContext,
+  measuredOn?: string,
+): PlannedEntry | Hold {
+  const funds = slotAccount(context, 'ad_funds', null);
+  if (isHold(funds)) return funds;
+  const payable = slotAccount(context, 'ad_platforms_payable', null);
+  if (isHold(payable)) return payable;
+  const spend = hubMinor(payload.usd_spend);
+  const client = { client: payload.client };
+  return {
+    kind: 'lines',
+    key,
+    lines: [
+      { account: funds.id, dimensions: client, amount: money(spend, 'USD') },
+      {
+        account: payable.id,
+        dimensions: client,
+        amount: money(-spend, 'USD'),
+        carriesItems: true,
+      },
+    ],
+    dealtRates: [],
+    ...(measuredOn !== undefined && { measuredOn }),
+  };
+}
+
+const isPlannedHold = (value: PlannedEntry | Hold): value is Hold => value.kind === 'hold';
+
+/** `ad_spend.recorded`: the spend's entry on its accounting date, its period's end (rule 13). */
+export function spendRecordedPlan(
+  event: EventOf<'ad_spend.recorded'>,
+  context: HubRuleContext,
+): RulePlan {
+  const entry = spendEntry(event.id, event.payload, context);
+  if (isPlannedHold(entry)) return entry;
+  return { kind: 'post', entries: [entry], decision: null };
+}
+
+/**
+ * A `.changed` event (rule 13; ADR 0006): the reversal of every entry standing for the document,
+ * latest first, then its new state, both on the change date; the new state measured at its
+ * document's own date. Nothing standing holds `UNKNOWN_REFERENCE`: a change before what it
+ * changes, or after its archive.
+ */
+function changedPlan(
+  eventId: string,
+  references: HubReferences,
+  state: PlannedEntry | Hold,
+  decision: string | null,
+): RulePlan {
+  if (references.standing.length === 0) return hold('UNKNOWN_REFERENCE');
+  if (isPlannedHold(state)) return state;
+  return {
+    kind: 'post',
+    entries: [...reversalsOf(eventId, references.standing), state],
+    decision,
+  };
+}
+
+/**
+ * `ad_spend.changed`: the spend's posting reversed, then the new spend against the funds as they
+ * then stand; the excess of a zero crossing measured at the new state's `period_to` (rule 13). A
+ * reversal against the funds' balance or across zero is followed by its difference entry (S04
+ * rule 13, the posting function's).
+ */
+export function spendChangedPlan(
+  event: EventOf<'ad_spend.changed'>,
+  references: HubReferences,
+  context: HubRuleContext,
+): RulePlan {
+  const state = spendEntry(event.id, event.payload, context, event.payload.period_to);
+  return changedPlan(event.id, references, state, null);
+}
+
+/**
+ * A project expense's entry (`expenses/project-expense`; phase 1 scope §6, scope Q7): Dr
+ * `project_cost` with the client, the contract and the department; Cr
+ * `project_expense_awaiting_payment` by the same amount; both new measurements in the expense's
+ * currency at one rate, so the entry has no residual. Hub's `syp_per_usd` is the dealt rate where
+ * a ledger reads it.
+ */
+function expenseEntry(
+  key: string,
+  payload: EventOf<'project_expense.recorded'>['payload'],
+  context: HubRuleContext,
+  measuredOn?: string,
+): PlannedEntry | Hold {
+  const cost = slotAccount(context, 'project_cost', null);
+  if (isHold(cost)) return cost;
+  const awaiting = slotAccount(context, 'project_expense_awaiting_payment', null);
+  if (isHold(awaiting)) return awaiting;
+  const { client, contract, department, currency } = payload;
+  const amount = hubMinor(payload.amount);
+  return {
+    kind: 'lines',
+    key,
+    lines: [
+      {
+        account: cost.id,
+        dimensions: { client, ...(contract !== undefined && { contract }), department },
+        amount: money(amount, currency),
+      },
+      { account: awaiting.id, dimensions: {}, amount: money(-amount, currency) },
+    ],
+    dealtRates: hubDealtRates(context.ledgers, [currency], payload.syp_per_usd),
+    ...(measuredOn !== undefined && { measuredOn }),
+  };
+}
+
+/** `project_expense.recorded`: the expense's entry on its accounting date, its `spent_on`. */
+export function expenseRecordedPlan(
+  event: EventOf<'project_expense.recorded'>,
+  context: HubRuleContext,
+): RulePlan {
+  const entry = expenseEntry(event.id, event.payload, context);
+  if (isPlannedHold(entry)) return entry;
+  const { client, contract } = event.payload;
+  return {
+    kind: 'post',
+    entries: [entry],
+    decision: contractOfAnotherClient(client, contract) ? 'contract_client_mismatch' : null,
+  };
+}
+
+/**
+ * `project_expense.changed`: the standing entry reversed, then the new state measured at the rates
+ * of its own `spent_on`, with its `syp_per_usd` where a ledger reads it (rule 13; IAS 21.21–22), so
+ * a change of the description alone nets to zero.
+ */
+export function expenseChangedPlan(
+  event: EventOf<'project_expense.changed'>,
+  references: HubReferences,
+  context: HubRuleContext,
+): RulePlan {
+  const state = expenseEntry(event.id, event.payload, context, event.payload.spent_on);
+  const { client, contract } = event.payload;
+  return changedPlan(
+    event.id,
+    references,
+    state,
+    contractOfAnotherClient(client, contract) ? 'contract_client_mismatch' : null,
+  );
+}
+
+/**
+ * The plan of any event. S06's deferred revenue arrives after S05: until then its events hold
+ * `NO_MAPPING` and are retried when their rules deploy (rule 10).
  */
 export function planEvent(
   event: EventEnvelope,
@@ -442,7 +671,21 @@ export function planEvent(
       return invoiceIssuedPlan(event, context);
     case 'invoice.voided':
     case 'payment.voided':
+    case 'ad_wallet.entry_voided':
+    case 'ad_spend.archived':
+    case 'project_expense.archived':
       return voidPlan(event.id, references);
+    case 'ad_wallet.deposited':
+    case 'ad_wallet.refunded':
+      return walletEntryPlan(event, context);
+    case 'ad_spend.recorded':
+      return spendRecordedPlan(event, context);
+    case 'ad_spend.changed':
+      return spendChangedPlan(event, references, context);
+    case 'project_expense.recorded':
+      return expenseRecordedPlan(event, context);
+    case 'project_expense.changed':
+      return expenseChangedPlan(event, references, context);
     case 'invoice.line_service_changed':
       return lineServiceChangedPlan(event, references);
     case 'invoice.due_date_changed':

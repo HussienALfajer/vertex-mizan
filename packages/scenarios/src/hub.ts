@@ -35,6 +35,8 @@ interface CaseHub {
   readonly inboxIds: Map<number, string>;
   /** Each payment's receipt and invoice, for its void (the short form names the payment only). */
   readonly payments: Map<string, { receipt: string; invoice: string }>;
+  /** Each wallet entry's client, for its void (the short form names the entry only). */
+  readonly walletEntries: Map<string, string>;
 }
 
 const hubs = new Map<string, CaseHub>();
@@ -42,7 +44,13 @@ const hubs = new Map<string, CaseHub>();
 function hubOf(companyId: string): CaseHub {
   let hub = hubs.get(companyId);
   if (hub === undefined) {
-    hub = { clientId: uuidv7(), today: '0000-01-01', inboxIds: new Map(), payments: new Map() };
+    hub = {
+      clientId: uuidv7(),
+      today: '0000-01-01',
+      inboxIds: new Map(),
+      payments: new Map(),
+      walletEntries: new Map(),
+    };
     hubs.set(companyId, hub);
   }
   return hub;
@@ -92,7 +100,13 @@ const documentRef = (companyId: string, type: string, number: string) => ({
 });
 
 /** The full payload of a short-form step (README "Writing the YAML"; S05 rule 2). */
-function payloadOf(companyId: string, hub: CaseHub, type: string, short: Short): Short {
+function payloadOf(
+  companyId: string,
+  hub: CaseHub,
+  type: string,
+  short: Short,
+  accountingDate: string,
+): Short {
   const invoice = () => documentRef(companyId, 'invoice', asCode(short.invoice, 'invoice'));
   const client = () => valueRef(companyId, 'client', asCode(short.client, 'client'));
   const service = (code: unknown) => valueRef(companyId, 'service', asCode(code, 'service'));
@@ -152,6 +166,54 @@ function payloadOf(companyId: string, hub: CaseHub, type: string, short: Short):
         invoice: documentRef(companyId, 'invoice', recorded.invoice),
       };
     }
+    case 'ad_wallet.deposited':
+    case 'ad_wallet.refunded': {
+      const code = asCode(short.entry, 'wallet entry');
+      hub.walletEntries.set(code, asCode(short.client, 'client'));
+      return {
+        ...short,
+        entry: documentRef(companyId, 'ad_wallet_entry', code),
+        client: client(),
+      };
+    }
+    case 'ad_wallet.entry_voided': {
+      const code = asCode(short.entry, 'wallet entry');
+      const owner = hub.walletEntries.get(code);
+      if (owner === undefined) throw new Error(`Wallet entry ${code} is voided before it is sent`);
+      return {
+        ...short,
+        entry: documentRef(companyId, 'ad_wallet_entry', code),
+        client: valueRef(companyId, 'client', owner),
+      };
+    }
+    case 'ad_spend.recorded':
+    case 'ad_spend.changed':
+    case 'ad_spend.archived':
+      return {
+        ...short,
+        update: documentRef(companyId, 'ad_spend', asCode(short.update, 'spend update')),
+        campaign: documentRef(companyId, 'campaign', asCode(short.campaign, 'campaign')),
+        client: client(),
+        // The book's short form leaves an archive's date to the step's accounting date.
+        ...(type === 'ad_spend.archived' &&
+          short.archived_on === undefined && { archived_on: accountingDate }),
+      };
+    case 'project_expense.recorded':
+    case 'project_expense.changed': {
+      const { contract, department, ...rest } = short;
+      return {
+        ...rest,
+        expense: documentRef(companyId, 'project_expense', asCode(short.expense, 'expense')),
+        client: client(),
+        ...(contract !== undefined && { contract: contractRef(companyId, contract) }),
+        department: valueRef(companyId, 'department', asCode(department, 'department')),
+      };
+    }
+    case 'project_expense.archived':
+      return {
+        ...short,
+        expense: documentRef(companyId, 'project_expense', asCode(short.expense, 'expense')),
+      };
     default:
       throw new Error(`The short form of ${type} arrives with its rule`);
   }
@@ -184,7 +246,9 @@ export function envelopeOf(
     version: 1,
     occurred_at: `${step.accountingDate}T12:00:00+03:00`,
     accounting_date: step.accountingDate,
-    payload: asJson(payloadOf(companyId, hub, step.type, step.payload as Short)),
+    payload: asJson(
+      payloadOf(companyId, hub, step.type, step.payload as Short, step.accountingDate),
+    ),
   };
   return { raw, envelope: parseEventEnvelope(raw) };
 }

@@ -4,11 +4,19 @@ import {
   type EntrySource,
   type ExchangeRate,
   type Money,
+  money,
 } from '@vertex-mizan/contracts';
 import { type RealisedTargets, realisedDifferenceLines } from './balance.js';
 import { reverseLines } from './carried.js';
 import { type ItemState, moveItem } from './items.js';
-import { type Dimensions, keptLedgers, type Line } from './lines.js';
+import {
+  type CarriedAmounts,
+  carriedLine,
+  type Dimensions,
+  keptLedgers,
+  type Line,
+  negate,
+} from './lines.js';
 import { type MeasureContext, measuredLine } from './measure.js';
 import { lastDayOfMonth, periodOf } from './periods.js';
 import { quotesPair } from './rates.js';
@@ -24,6 +32,13 @@ export interface ManualLine {
    * or new. Two lines may move one item: the second moves it from where the first left it.
    */
   readonly item?: ItemState;
+  /**
+   * A line that carries the negation of the entry's lines on items in its currency, in every
+   * ledger, instead of a new measurement: an ad spend's payable takes what the client's funds gave
+   * up at their carrying amount (`ad-funds/running-balance`, S05). Its transaction amount must be
+   * that negation. A Hub rule's only; the accountant's lines never carry it.
+   */
+  readonly carriesItems?: true;
 }
 
 /** A manual entry's lines and the rates it was dealt at, one per currency pair (S03 rule 13). */
@@ -72,6 +87,20 @@ export interface ManualEntryLines {
   readonly typed: readonly (number | null)[];
 }
 
+/** The sum of the lines on items in a currency, in every ledger. */
+function carriedOfItems(lines: readonly Line[], currency: CurrencyCode): CarriedAmounts {
+  let transaction = 0n;
+  let book = 0n;
+  let parallel: bigint | null = null;
+  for (const line of lines) {
+    if (line.item === undefined || line.transaction.currency !== currency) continue;
+    transaction += line.transaction.amountMinor;
+    book += line.bookMinor;
+    if (line.parallelMinor !== null) parallel = (parallel ?? 0n) + line.parallelMinor;
+  }
+  return { transaction: money(transaction, currency), bookMinor: book, parallelMinor: parallel };
+}
+
 /** Names the manual line (1-based, `details.lineNo`) in a refusal of what it does to its item. */
 function onLine<T>(lineNo: number, work: () => T): T {
   try {
@@ -108,7 +137,13 @@ export function manualEntry(
   const items = new Map<string, ItemState>();
   const lines: Line[] = [];
   const typed: (number | null)[] = [];
+  const carrying: { at: number; index: number }[] = [];
   for (const [index, line] of entry.lines.entries()) {
+    if (line.carriesItems === true) {
+      if (line.item !== undefined) throw new TypeError('A carrying line is on no item');
+      carrying.push({ at: lines.length, index });
+      continue;
+    }
     if (line.item === undefined) {
       lines.push(measuredLine(line, at));
       typed.push(index);
@@ -121,6 +156,24 @@ export function manualEntry(
     items.set(item.id, moved.after);
     lines.push(...moved.lines);
     typed.push(...moved.lines.map(() => index));
+  }
+  // Inserted from the last, so each earlier place still names where its line was typed.
+  for (const { at, index } of carrying.reverse()) {
+    const line = entry.lines[index] as ManualLine;
+    const carried = carriedOfItems(lines, line.amount.currency);
+    if (carried.transaction.amountMinor !== -line.amount.amountMinor) {
+      throw new TypeError('A carrying line is not the negation of the item lines');
+    }
+    lines.splice(
+      at,
+      0,
+      carriedLine({
+        account: line.account,
+        dimensions: line.dimensions ?? {},
+        amounts: negate(carried),
+      }),
+    );
+    typed.splice(at, 0, index);
   }
   const currencies = new Set(lines.map((line) => line.transaction.currency));
   if (currencies.size < 2 && lines.every((line) => line.kind === 'measured')) {

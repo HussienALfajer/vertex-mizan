@@ -48,7 +48,7 @@ import { connect, refusal } from './connections.js';
 
 // S05's event inbox on the migrated database (0024, 0025): an event kept as received and posted
 // through `post()` by its rule, replays and conflicts, two receipts at once, the order per item
-// and the automatic retries, a move out of a closed month (the first case of
+// and the automatic retries, a spend's change and archive on the client's funds, a move out of a closed month (the first case of
 // `inbox/post-in-next-open-period`, whose setup the book cannot make before S07), the mapping, a
 // rate from Hub, and the writes the service never makes, forged to prove the guards refuse them.
 // Every value is synthetic.
@@ -885,5 +885,217 @@ describe('a line’s service change (revenue/revenue-at-issue; accounting review
     const late = await receive(company, change('2026-11-25', S1, S3));
     expect(late.event).toMatchObject({ state: 'held', reason: 'UNKNOWN_REFERENCE' });
     expect(await ledger(company)).toHaveLength(2);
+  });
+});
+
+describe('the ad funds’ changes and archives (ad-funds/running-balance; S04 rule 13)', () => {
+  const update = { id: ids(701), number: 'CU-1' };
+  const campaign = { id: ids(702), number: 'CMP-1' };
+  const deposited = (on: string, amount: number) =>
+    envelope('ad_wallet.deposited', on, {
+      entry: { id: ids(601), number: 'W-1' },
+      client: C1,
+      entered_on: on,
+      method: 'bank_transfer',
+      currency: 'USD',
+      amount,
+      syp_per_usd: '122.0000',
+      usd_amount: amount,
+    });
+  const spent = (type: string, on: string, periodTo: string, usd: number) =>
+    envelope(type, on, {
+      update,
+      campaign,
+      client: C1,
+      period_from: '2026-11-01',
+      period_to: periodTo,
+      usd_spend: usd,
+      ...(type === 'ad_spend.changed' && { changed_on: on }),
+    });
+
+  it('reverses only what stands for the spend: never the difference entry of a change', async () => {
+    const company = await newCompany('service-agency', [
+      ['2026-11-03', '120.0000'],
+      ['2026-11-19', '123.0000'],
+      ['2026-11-25', '123.5000'],
+      ['2026-11-26', '124.0000'],
+    ]);
+    const deposit = deposited('2026-11-03', 30_000);
+    expect((await receive(company, deposit)).event.state).toBe('posted');
+    // 450.00 USD spent: the funds cross zero to a 150.00 USD debit.
+    const recorded = await receive(
+      company,
+      spent('ad_spend.recorded', '2026-11-19', '2026-11-19', 45_000),
+    );
+    expect(recorded.event.state).toBe('posted');
+    // Changed to 400.00 USD: the reversal crosses zero back, so its difference entry follows.
+    const changed = await receive(
+      company,
+      spent('ad_spend.changed', '2026-11-25', '2026-11-19', 40_000),
+    );
+    expect(changed.event).toMatchObject({ state: 'posted' });
+    const archived = await receive(
+      company,
+      envelope('ad_spend.archived', '2026-11-26', {
+        update,
+        campaign,
+        client: C1,
+        archived_on: '2026-11-26',
+      }),
+    );
+    expect(archived.event).toMatchObject({ state: 'posted' });
+    const entries = await inCompany(company, (tx) =>
+      tx.select().from(journalEntries).orderBy(asc(journalEntries.sequence)),
+    );
+    // The deposit, the spend; the change's reversal, its difference entry and the new state; the
+    // archive's reversal and its own difference entry.
+    expect(entries).toHaveLength(7);
+    const [, spend, reversal, difference, state, archive, archiveDifference] = entries;
+    expect(reversal?.reversesEntryId).toBe(spend?.id);
+    expect(difference?.reversesEntryId).toBeNull();
+    expect(archive?.reversesEntryId).toBe(state?.id);
+    expect(archiveDifference?.reversesEntryId).toBeNull();
+    expect(entries.filter((entry) => entry.reversesEntryId === difference?.id)).toEqual([]);
+    const lines = await ledger(company);
+    // The new state at its period's end (rule 13): the 300.00 USD credit cleared at what the
+    // difference entry left (300 × 123.5), the 100.00 USD beyond zero at the 19 November bulletin.
+    expect(lines[4]?.lines).toEqual([
+      ['213001', 'USD', 30_000n, 3_705_000n, 30_000n],
+      ['213001', 'USD', 10_000n, 1_230_000n, 10_000n],
+      ['211001', 'USD', -40_000n, -4_935_000n, -40_000n],
+    ]);
+    // Archived, the spend is gone: the payable is back to zero.
+    const [payable] = await inCompany(company, (tx) =>
+      tx
+        .select({ amount: sql<string>`sum(${journalLines.amountMinor})::text` })
+        .from(journalLines)
+        .innerJoin(
+          chartAccounts,
+          and(
+            eq(chartAccounts.companyId, journalLines.companyId),
+            eq(chartAccounts.id, journalLines.accountId),
+          ),
+        )
+        .where(eq(chartAccounts.code, '211001')),
+    );
+    expect(payable?.amount).toBe('0');
+  });
+
+  it('measures a moved void’s difference entry at the void’s own date (rule 15)', async () => {
+    const company = await newCompany('service-agency', [
+      ['2026-11-03', '120.0000'],
+      ['2026-11-10', '122.0000'],
+      ['2026-11-30', '123.0000'],
+      ['2026-12-01', '125.0000'],
+    ]);
+    await receive(company, deposited('2026-11-03', 100_000));
+    await receive(company, spent('ad_spend.recorded', '2026-11-10', '2026-11-10', 30_000));
+    // S07 brings the close; here the superuser closes November, as the ledger tests do.
+    const closer = await superuser.connect();
+    try {
+      await closer.query('begin');
+      await closer.query('alter table periods disable trigger period_rules');
+      await closer.query(
+        `update periods set state = 'closed' where company_id = $1 and period = '2026-11'`,
+        [company],
+      );
+      await closer.query('alter table periods enable always trigger period_rules');
+      await closer.query('commit');
+    } finally {
+      closer.release();
+    }
+    const voided = await receive(
+      company,
+      envelope('ad_wallet.entry_voided', '2026-11-30', {
+        entry: { id: ids(601), number: 'W-1' },
+        client: C1,
+        voided_on: '2026-11-30',
+      }),
+    );
+    expect(voided.event).toMatchObject({ state: 'held', reason: 'PERIOD_CLOSED' });
+    const moved = await inCompany(company, (tx) =>
+      moveEvent(tx, voided.event.inboxId, 'وصل الإلغاء بعد إقفال تشرين الثاني', {
+        actor: person(),
+        today: '2026-12-01',
+      }),
+    );
+    expect(moved.event).toMatchObject({ state: 'posted', postedOn: '2026-12-01' });
+    const [, , reversal, difference] = await ledger(company);
+    expect(reversal?.date).toBe('2026-12-01');
+    // The 300.00 USD beyond zero at the bulletin of 30 November (123), not of 1 December (125):
+    // the move makes no exchange difference.
+    expect(difference).toEqual({
+      date: '2026-12-01',
+      lines: [
+        ['213001', 'USD', -30_000n, -3_600_000n, -30_000n],
+        ['213001', 'USD', 30_000n, 3_690_000n, 30_000n],
+        ['421001', 'SYP', -90_000n, -90_000n, 0n],
+      ],
+    });
+  });
+
+  it('answers a replayed deposit with its entry and posts nothing new', async () => {
+    const company = await newCompany('service-agency', [['2026-11-03', '120.0000']]);
+    const deposit = deposited('2026-11-03', 100_000);
+    const first = await receive(company, deposit);
+    const again = await receive(company, deposit);
+    expect(again).toMatchObject({
+      replayed: true,
+      event: { state: 'posted', entries: first.event.entries },
+    });
+    expect(await ledger(company)).toEqual([
+      {
+        date: '2026-11-03',
+        lines: [
+          ['111004', 'USD', 100_000n, 12_000_000n, 100_000n],
+          ['213001', 'USD', -100_000n, -12_000_000n, -100_000n],
+        ],
+      },
+    ]);
+  });
+
+  it('refuses a manual line that carries the items: only a Hub rule’s line does', async () => {
+    const company = await newCompany('service-agency', [['2026-11-03', '120.0000']]);
+    const accounts = await inCompany(company, (tx) =>
+      tx.select({ id: chartAccounts.id, code: chartAccounts.code }).from(chartAccounts),
+    );
+    const idOf = (code: string) => accounts.find((account) => account.code === code)?.id as string;
+    await expect(
+      inCompany(company, (tx) =>
+        post(tx, {
+          client: 'manual',
+          idempotencyKey: uuidv7(),
+          entryDate: '2026-11-03',
+          description: 'قيد',
+          reference: null,
+          draftId: null,
+          preparedByUserId: personId,
+          approvedByUserId: null,
+          actor: person(),
+          content: {
+            kind: 'manual',
+            today: '2026-11-03',
+            dealtRates: [],
+            lines: [
+              {
+                accountId: idOf('111004'),
+                dimensionValueIds: [],
+                currency: 'USD',
+                amountMinor: 1_000n,
+                memo: null,
+              },
+              {
+                accountId: idOf('111002'),
+                dimensionValueIds: [],
+                currency: 'USD',
+                amountMinor: -1_000n,
+                memo: null,
+                carriesItems: true,
+              },
+            ],
+          },
+        }),
+      ),
+    ).rejects.toMatchObject({ code: 'VALIDATION_FAILED', details: { lineNo: 2 } });
   });
 });

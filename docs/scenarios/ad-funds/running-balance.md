@@ -1,6 +1,6 @@
 # A client's ad funds as a running balance
 
-Status: Proposed
+Status: Approved (owner, 2026-11-07)
 
 The expected entries were approved by the owner on 2026-11-06, with two decisions:
 - **A reversal that runs with the item's balance** (a refund voided, a spend changed or archived while the funds hold a credit) posts its exact reversal and no difference entry: the item regains what the movement cleared, and the movement's difference is taken back with it. A reversal against the balance or across zero is followed by the difference entry of ADR 0013. S04 rule 13 says so.
@@ -9,7 +9,7 @@ The expected entries were approved by the owner on 2026-11-06, with two decision
 
 S05 added four cases, whose expected entries and outcomes the owner approved on 2026-11-07 (S05 "Scenarios"): the tolerance on an SYP deposit and an SYP refund (a gap of exactly 1.00 USD posts as a realised difference, either way), one minor unit beyond it (held `NEEDS_DECISION`, with a parallel ledger and without), and a deposit held `RATE_MISSING` with a spend waiting behind it, both posted in order once the bulletin is recorded. No expected value of the earlier cases changes.
 
-The cases stay `Proposed` until S05 brings their executors: the `event` executor through the event inbox, the posting rules of `ad_wallet.deposited`, `ad_wallet.refunded`, `ad_wallet.entry_voided`, `ad_spend.recorded`, `ad_spend.changed` and `ad_spend.archived`, the mapping of each payment method to its account, the void difference entry of a running item, the holds `RATE_MISSING`, `WAITING_FOR_EARLIER_EVENT` and `NEEDS_DECISION`, and the automatic retries (S04 rule 13; S04 "Out of scope"; owner, 2026-10-28; S05 rules 8–11). S05's feature slice switches the file to `Approved (owner, 2026-11-07)`.
+S05's feature slice brought their executors: the `event` executor through the event inbox, the posting rules of `ad_wallet.deposited`, `ad_wallet.refunded`, `ad_wallet.entry_voided`, `ad_spend.recorded`, `ad_spend.changed` and `ad_spend.archived`, the mapping of each payment method to its account, the void difference entry of a running item, the holds `RATE_MISSING`, `WAITING_FOR_EARLIER_EVENT` and `NEEDS_DECISION`, and the automatic retries (S04 rule 13; S04 "Out of scope"; owner, 2026-10-28; S05 rules 8–11).
 
 ## Rule
 

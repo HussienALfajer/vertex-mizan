@@ -23,22 +23,27 @@ import {
   invoiceIssuedPlan,
   type KeyedEvent,
   type MappedAccount,
+  type PlannedEntry,
   paymentDecision,
   paymentRecordedPlan,
   planEvent,
   type RulePlan,
   reclassifiedLines,
+  spendChangedPlan,
+  walletDecision,
+  walletEntryPlan,
 } from './hub.js';
 import { emptyBalance, type ItemState } from './items.js';
-import { carriedLine, type Line } from './lines.js';
+import { type CarriedAmounts, carriedLine, type Line } from './lines.js';
 import { manualEntry } from './manual.js';
 import type { MeasureContext } from './measure.js';
 import { calendar, rate, refusal, sypOnly, sypUsd, usdSyp } from './test-fixtures.js';
 
 /**
  * Worked examples of the Hub posting rules with the numbers of the approved scenarios
- * `revenue/revenue-at-issue`, `receivables/hub-payment` and `inbox/holds-and-actions` (owner,
- * 2026-11-06 and 2026-11-07), and their properties. Accounts are the service-agency codes, mapped
+ * `revenue/revenue-at-issue`, `receivables/hub-payment`, `inbox/holds-and-actions`,
+ * `ad-funds/running-balance` and `expenses/project-expense` (owner, 2026-11-06 and 2026-11-07),
+ * and their properties. Accounts are the service-agency codes, mapped
  * to themselves; `C1`, `S1` and `S2` stand for Hub's values by their external ids.
  */
 
@@ -52,6 +57,10 @@ const TEMPLATE: Record<string, string> = {
   'payment_method.bank_transfer:USD': '111004',
   'payment_method.e_wallet:SYP': '111005',
   'payment_method.e_wallet:USD': '111006',
+  ad_funds: '213001',
+  ad_platforms_payable: '211001',
+  project_cost: '511001',
+  project_expense_awaiting_payment: '211002',
 };
 
 function contextOf(
@@ -584,7 +593,7 @@ describe('voids, service changes and due dates', () => {
     expect(refusal(() => hubReversalLines(entry, '2026-11-02'))).toBe('REVERSAL_BEFORE_ORIGINAL');
   });
 
-  it('holds the later spec’s events NO_MAPPING until their rules deploy', () => {
+  it('holds S06’s events NO_MAPPING until their rules deploy', () => {
     const done = event('milestone.done', {
       milestone: { id: ids(501), number: 'M-1' },
       client: C1,
@@ -768,6 +777,532 @@ describe('properties of the invoice rule', () => {
             USD: 100n,
           });
           expect(decision === null).toBe(Math.abs(offset) <= 100);
+        },
+      ),
+    );
+  });
+});
+
+// ---- The ad funds (`ad-funds/running-balance`) and project expenses (`expenses/project-expense`)
+
+const WALLET = (n: number) => ({ id: ids(600 + n), number: `W-${n}` });
+const UPDATE = { id: ids(701), number: 'CU-1' };
+const CAMPAIGN = { id: ids(702), number: 'CMP-1' };
+const EXPENSE = { id: ids(801), number: 'E-1' };
+const P1 = { external_id: 'P1', name: 'مشروع', kind: 'project', client_external_id: 'C1' };
+const PHOTO = { external_id: 'photography', code: 'photography', name: 'تصوير' };
+
+function wallet(
+  type: 'ad_wallet.deposited' | 'ad_wallet.refunded',
+  n: number,
+  on: string,
+  fields: { method?: string; currency: HubCurrency; amount: number; syp: string; usd: number },
+) {
+  return event(
+    type,
+    {
+      entry: WALLET(n),
+      client: C1,
+      entered_on: on,
+      method: fields.method ?? 'bank_transfer',
+      currency: fields.currency,
+      amount: fields.amount,
+      syp_per_usd: fields.syp,
+      usd_amount: fields.usd,
+    },
+    on,
+  ) as EventOf<'ad_wallet.deposited' | 'ad_wallet.refunded'>;
+}
+
+function spend(type: 'ad_spend.recorded' | 'ad_spend.changed', usd: number, on: string) {
+  return event(
+    type,
+    {
+      update: UPDATE,
+      campaign: CAMPAIGN,
+      client: C1,
+      period_from: '2026-11-01',
+      period_to: on,
+      usd_spend: usd,
+    },
+    on,
+  );
+}
+
+function expense(
+  type: 'project_expense.recorded' | 'project_expense.changed',
+  fields: { currency: HubCurrency; amount: number; spentOn: string; contract?: unknown },
+  on = fields.spentOn,
+) {
+  return event(
+    type,
+    {
+      expense: EXPENSE,
+      client: C1,
+      contract: fields.contract ?? P1,
+      department: PHOTO,
+      spent_on: fields.spentOn,
+      currency: fields.currency,
+      amount: fields.amount,
+      syp_per_usd: '124.0000',
+      description: 'تصوير',
+      ...(type === 'project_expense.changed' && { changed_on: on }),
+    },
+    on,
+  );
+}
+
+const usdOf = (amount: bigint, book: bigint, parallel: bigint | null): CarriedAmounts => ({
+  transaction: money(amount, 'USD'),
+  bookMinor: book,
+  parallelMinor: parallel,
+});
+
+/** The client's funds as the posting function reads their running item. */
+const fundsAt = (balance: CarriedAmounts): ItemState => ({
+  id: 'C1',
+  kind: 'running',
+  direction: null,
+  balance,
+});
+
+/**
+ * The lines a planned `lines` entry posts as `post()` posts a Hub event's: a line on the funds'
+ * account moves the client's running item, a carrying line takes what the items gave up, then
+ * `manualEntry()` and `balanceEntry()`. Returns the lines and the funds after them.
+ */
+function postLines(
+  entry: PlannedEntry | undefined,
+  ledgers: CompanyLedgers,
+  on: string,
+  rates: readonly ExchangeRate[],
+  funds: CarriedAmounts = emptyBalance('USD', ledgers.parallel !== null),
+): { lines: Line[]; funds: CarriedAmounts } {
+  if (entry?.kind !== 'lines') throw new Error('Expected lines');
+  const measuredOn = entry.measuredOn ?? on;
+  const built = manualEntry(
+    {
+      lines: entry.lines.map((line) => ({
+        account: line.account,
+        dimensions: dims(line),
+        amount: line.amount,
+        ...(line.account === '213001' && { item: fundsAt(funds) }),
+        ...(line.carriesItems === true && { carriesItems: true as const }),
+      })),
+      dealtRates: entry.dealtRates.map((dealt) => ({
+        effectiveOn: measuredOn,
+        ...dealt,
+        type: 'market' as const,
+        source: 'hub' as const,
+      })),
+    },
+    { ledgers, on: measuredOn, rates, calendar },
+    { gain: { account: '421001' }, loss: { account: '541001' } },
+  );
+  const lines = balanceEntry({ on, ledgers, lines: built.lines, rounding: { account: '541003' } });
+  let after = funds;
+  for (const line of lines) {
+    if (line.item?.id !== 'C1') continue;
+    after = {
+      transaction: money(after.transaction.amountMinor + line.transaction.amountMinor, 'USD'),
+      bookMinor: after.bookMinor + line.bookMinor,
+      parallelMinor:
+        after.parallelMinor === null || line.parallelMinor === null
+          ? null
+          : after.parallelMinor + line.parallelMinor,
+    };
+  }
+  return { lines, funds: after };
+}
+
+function only(plan: RulePlan): PlannedEntry | undefined {
+  if (plan.kind !== 'post') throw new Error(`Expected a posting, got ${plan.kind}`);
+  return plan.entries[0];
+}
+
+const DAYS = {
+  '2026-11-03': '120.0000',
+  '2026-11-10': '122.0000',
+  '2026-11-19': '123.0000',
+  '2026-11-25': '123.5000',
+} as const;
+const BULLETINS = Object.entries(DAYS).map(([on, value]) => bulletin(value, on));
+
+describe('the ad funds (ad-funds/running-balance)', () => {
+  it('deposits in USD and SYP, spends at the average, refunds with a loss', () => {
+    const context = contextOf(sypUsd);
+    const first = postLines(
+      only(
+        walletEntryPlan(
+          wallet('ad_wallet.deposited', 1, '2026-11-03', {
+            currency: 'USD',
+            amount: 100_000,
+            syp: '122.0000',
+            usd: 100_000,
+          }),
+          context,
+        ),
+      ),
+      sypUsd,
+      '2026-11-03',
+      BULLETINS,
+    );
+    expect(rows(first.lines)).toEqual([
+      ['111004', 'USD', 100_000n, 12_000_000n, 100_000n],
+      ['213001', 'USD', -100_000n, -12_000_000n, -100_000n],
+    ]);
+    const deposit = walletEntryPlan(
+      wallet('ad_wallet.deposited', 2, '2026-11-10', {
+        method: 'cash',
+        currency: 'SYP',
+        amount: 6_200_000,
+        syp: '124.0000',
+        usd: 50_000,
+      }),
+      context,
+    );
+    expect(deposit).toMatchObject({ decision: null });
+    const second = postLines(only(deposit), sypUsd, '2026-11-10', BULLETINS, first.funds);
+    expect(rows(second.lines)).toEqual([
+      ['111001', 'SYP', 6_200_000n, 6_200_000n, 50_000n],
+      ['213001', 'USD', -50_000n, -6_100_000n, -50_000n],
+      ['421001', 'SYP', -100_000n, -100_000n, 0n],
+    ]);
+    const spent = postLines(
+      only(planEvent(spend('ad_spend.recorded', 70_000, '2026-11-19'), NO_REFERENCES, context)),
+      sypUsd,
+      '2026-11-19',
+      BULLETINS,
+      second.funds,
+    );
+    // 18,100,000 × 700 / 1,500 = 8,446,666.67 → 8,446,667; the payable carries it, 123 not read.
+    expect(rows(spent.lines)).toEqual([
+      ['213001', 'USD', 70_000n, 8_446_667n, 70_000n],
+      ['211001', 'USD', -70_000n, -8_446_667n, -70_000n],
+    ]);
+    const refund = postLines(
+      only(
+        walletEntryPlan(
+          wallet('ad_wallet.refunded', 3, '2026-11-25', {
+            currency: 'USD',
+            amount: 30_000,
+            syp: '124.5000',
+            usd: 30_000,
+          }),
+          context,
+        ),
+      ),
+      sypUsd,
+      '2026-11-25',
+      BULLETINS,
+      spent.funds,
+    );
+    expect(rows(refund.lines)).toEqual([
+      ['111004', 'USD', -30_000n, -3_705_000n, -30_000n],
+      ['213001', 'USD', 30_000n, 3_620_000n, 30_000n],
+      ['541001', 'SYP', 85_000n, 85_000n, 0n],
+    ]);
+    expect(refund.funds).toEqual(usdOf(-50_000n, -6_033_333n, -50_000n));
+  });
+
+  it('splits a spend at zero; the payable carries both parts, so no residual', () => {
+    const lines = postLines(
+      only(
+        planEvent(
+          spend('ad_spend.recorded', 45_000, '2026-11-19'),
+          NO_REFERENCES,
+          contextOf(sypUsd),
+        ),
+      ),
+      sypUsd,
+      '2026-11-19',
+      BULLETINS,
+      usdOf(-30_000n, -3_600_000n, -30_000n),
+    );
+    expect(rows(lines.lines)).toEqual([
+      ['213001', 'USD', 30_000n, 3_600_000n, 30_000n],
+      ['213001', 'USD', 15_000n, 1_845_000n, 15_000n],
+      ['211001', 'USD', -45_000n, -5_445_000n, -45_000n],
+    ]);
+  });
+
+  it('decides the SYP gap in USD: exactly 1.00 posts as a parallel difference, 1.01 holds', () => {
+    const entry = (usd: number) =>
+      wallet('ad_wallet.deposited', 1, '2026-11-03', {
+        method: 'cash',
+        currency: 'SYP',
+        amount: 5_000_000,
+        syp: '124.0000',
+        usd,
+      });
+    const within = walletEntryPlan(entry(40_223), contextOf(sypUsd));
+    expect(within).toMatchObject({ decision: null });
+    expect(rows(postLines(only(within), sypUsd, '2026-11-03', BULLETINS).lines)).toEqual([
+      ['111001', 'SYP', 5_000_000n, 5_000_000n, 40_323n],
+      ['213001', 'USD', -40_223n, -4_826_760n, -40_223n],
+      ['421001', 'SYP', -173_240n, -173_240n, 0n],
+      ['421001', 'USD', -100n, 0n, -100n],
+    ]);
+    expect(walletEntryPlan(entry(40_222), contextOf(sypUsd))).toMatchObject({
+      decision: 'wallet_gap_beyond_tolerance',
+    });
+    // Without a parallel ledger the gap would vanish into the book residual: it still holds.
+    const books = wallet('ad_wallet.deposited', 1, '2026-11-03', {
+      method: 'cash',
+      currency: 'SYP',
+      amount: 12_200_000,
+      syp: '122.0000',
+      usd: 99_899,
+    });
+    expect(walletEntryPlan(books, contextOf(sypOnly))).toMatchObject({
+      decision: 'wallet_gap_beyond_tolerance',
+    });
+  });
+
+  it('measures an SYP deposit in USD books at the bulletin and the SYP parallel ledger at Hub’s rate', () => {
+    const plan = walletEntryPlan(
+      wallet('ad_wallet.deposited', 1, '2026-11-03', {
+        method: 'cash',
+        currency: 'SYP',
+        amount: 12_200_000,
+        syp: '122.0000',
+        usd: 100_000,
+      }),
+      contextOf(usdSyp),
+    );
+    expect(rows(postLines(only(plan), usdSyp, '2026-11-03', BULLETINS).lines)).toEqual([
+      ['111001', 'SYP', 12_200_000n, 101_667n, 12_200_000n],
+      ['213001', 'USD', -100_000n, -100_000n, -12_200_000n],
+      ['421001', 'USD', -1_667n, -1_667n, 0n],
+    ]);
+  });
+
+  it('reverses a change’s spend, then posts the new state measured at its period’s end', () => {
+    const changed = spend('ad_spend.changed', 45_000, '2026-11-19') as EventOf<'ad_spend.changed'>;
+    const references = { ...NO_REFERENCES, standing: ['spend-entry'] };
+    const plan = spendChangedPlan(changed, references, contextOf(sypUsd));
+    expect(plan).toMatchObject({
+      kind: 'post',
+      entries: [
+        { kind: 'reversal', key: `${changed.id}:reversal:1`, entryId: 'spend-entry' },
+        { kind: 'lines', key: changed.id, measuredOn: '2026-11-19' },
+      ],
+    });
+    expect(spendChangedPlan(changed, NO_REFERENCES, contextOf(sypUsd))).toMatchObject({
+      reason: 'UNKNOWN_REFERENCE',
+    });
+    expect(
+      spendChangedPlan(changed, references, contextOf(sypUsd, { ad_platforms_payable: null })),
+    ).toMatchObject({ reason: 'NO_MAPPING', detail: 'slot_unmapped:ad_platforms_payable' });
+  });
+
+  it('reverses what stands for a wallet entry or a spend on its void or archive', () => {
+    const voided = event(
+      'ad_wallet.entry_voided',
+      { entry: WALLET(1), client: C1, voided_on: '2026-11-19' },
+      '2026-11-19',
+    );
+    const archived = event(
+      'ad_spend.archived',
+      { update: UPDATE, campaign: CAMPAIGN, client: C1, archived_on: '2026-11-26' },
+      '2026-11-26',
+    );
+    for (const done of [voided, archived]) {
+      expect(
+        planEvent(done, { ...NO_REFERENCES, standing: ['e2', 'e1'] }, contextOf(sypUsd)),
+      ).toEqual({
+        kind: 'post',
+        entries: [
+          { kind: 'reversal', key: `${done.id}:reversal:1`, entryId: 'e2' },
+          { kind: 'reversal', key: `${done.id}:reversal:2`, entryId: 'e1' },
+        ],
+        decision: null,
+      });
+      expect(planEvent(done, NO_REFERENCES, contextOf(sypUsd))).toMatchObject({
+        reason: 'UNKNOWN_REFERENCE',
+      });
+    }
+  });
+
+  it('holds a wallet entry NO_MAPPING without the method’s account or the funds', () => {
+    const entry = wallet('ad_wallet.deposited', 1, '2026-11-03', {
+      currency: 'USD',
+      amount: 100,
+      syp: '122.0000',
+      usd: 100,
+    });
+    expect(
+      walletEntryPlan(entry, contextOf(sypUsd, { 'payment_method.bank_transfer:USD': null })),
+    ).toMatchObject({ reason: 'NO_MAPPING', detail: 'slot_unmapped:payment_method.bank_transfer' });
+    expect(
+      walletEntryPlan(entry, contextOf(sypUsd, { ad_funds: { blocked: true } })),
+    ).toMatchObject({ reason: 'NO_MAPPING', detail: 'account_blocked:213001' });
+  });
+});
+
+describe('project expenses (expenses/project-expense)', () => {
+  it('measures an SYP expense in the USD parallel ledger at Hub’s 124 on each line', () => {
+    const plan = planEvent(
+      expense('project_expense.recorded', {
+        currency: 'SYP',
+        amount: 5_000_000,
+        spentOn: '2026-11-10',
+      }),
+      NO_REFERENCES,
+      contextOf(sypUsd),
+    );
+    const { lines } = postLines(only(plan), sypUsd, '2026-11-10', BULLETINS);
+    expect(rows(lines)).toEqual([
+      ['511001', 'SYP', 5_000_000n, 5_000_000n, 40_323n],
+      ['211002', 'SYP', -5_000_000n, -5_000_000n, -40_323n],
+    ]);
+    const entry = only(plan);
+    expect(entry?.kind === 'lines' && dims(entry.lines[0] as HubLine)).toEqual({
+      client: 'C1',
+      contract: 'P1',
+      department: 'photography',
+    });
+  });
+
+  it('measures a USD expense at the bulletin in the SYP books, never at Hub’s rate', () => {
+    const plan = planEvent(
+      expense('project_expense.recorded', {
+        currency: 'USD',
+        amount: 18_735,
+        spentOn: '2026-11-10',
+      }),
+      NO_REFERENCES,
+      contextOf(sypUsd),
+    );
+    expect(only(plan)).toMatchObject({ dealtRates: [] });
+    expect(rows(postLines(only(plan), sypUsd, '2026-11-10', BULLETINS).lines)).toEqual([
+      ['511001', 'USD', 18_735n, 2_285_670n, 18_735n],
+      ['211002', 'USD', -18_735n, -2_285_670n, -18_735n],
+    ]);
+  });
+
+  it('measures a change’s new state at its own spent_on, not the change date', () => {
+    const changed = expense(
+      'project_expense.changed',
+      { currency: 'USD', amount: 25_000, spentOn: '2026-11-10' },
+      '2026-12-03',
+    );
+    const plan = planEvent(changed, { ...NO_REFERENCES, standing: ['e1'] }, contextOf(sypUsd));
+    expect(plan).toMatchObject({
+      kind: 'post',
+      entries: [
+        { kind: 'reversal', entryId: 'e1' },
+        { kind: 'lines', measuredOn: '2026-11-10' },
+      ],
+    });
+    const state = plan.kind === 'post' ? plan.entries[1] : undefined;
+    const rates = [...BULLETINS, bulletin('125.0000', '2026-12-03')];
+    // 250.00 × 122 = 30,500.00 SYP, not × 125.
+    expect(rows(postLines(state, sypUsd, '2026-12-03', rates).lines)).toEqual([
+      ['511001', 'USD', 25_000n, 3_050_000n, 25_000n],
+      ['211002', 'USD', -25_000n, -3_050_000n, -25_000n],
+    ]);
+    expect(planEvent(changed, NO_REFERENCES, contextOf(sypUsd))).toMatchObject({
+      reason: 'UNKNOWN_REFERENCE',
+    });
+  });
+
+  it('holds NO_MAPPING without its slots; leaves another client’s contract to the accountant', () => {
+    const recorded = expense('project_expense.recorded', {
+      currency: 'USD',
+      amount: 20_000,
+      spentOn: '2026-11-10',
+    });
+    expect(
+      planEvent(recorded, NO_REFERENCES, contextOf(sypUsd, { project_cost: null })),
+    ).toMatchObject({
+      reason: 'NO_MAPPING',
+      detail: 'slot_unmapped:project_cost',
+    });
+    const other = expense('project_expense.recorded', {
+      currency: 'USD',
+      amount: 20_000,
+      spentOn: '2026-11-10',
+      contract: { ...P1, client_external_id: 'C2' },
+    });
+    expect(planEvent(other, NO_REFERENCES, contextOf(sypUsd))).toMatchObject({
+      decision: 'contract_client_mismatch',
+    });
+  });
+});
+
+describe('properties of the ad funds and expenses', () => {
+  const funds = fc
+    .tuple(fc.bigInt({ min: -2_000_000n, max: 2_000_000n }), fc.bigInt({ min: 1n, max: 200n }))
+    .map(([amount, perUsd]) =>
+      amount === 0n ? emptyBalance('USD', true) : usdOf(amount, amount * perUsd, amount),
+    );
+
+  it('a spend posts no difference: the payable carries exactly what the funds gave up', () => {
+    fc.assert(
+      fc.property(funds, fc.integer({ min: 1, max: 5_000_000 }), (balance, usd) => {
+        const plan = planEvent(
+          spend('ad_spend.recorded', usd, '2026-11-19'),
+          NO_REFERENCES,
+          contextOf(sypUsd),
+        );
+        const { lines } = postLines(only(plan), sypUsd, '2026-11-19', BULLETINS, balance);
+        expect(lines.every((line) => line.kind !== 'difference' && line.kind !== 'rounding')).toBe(
+          true,
+        );
+        expect(ledgerTotal(lines, 'book')).toBe(0n);
+        expect(ledgerTotal(lines, 'parallel')).toBe(0n);
+      }),
+    );
+  });
+
+  it('a wallet entry balances in every ledger and shape, its differences each in one ledger', () => {
+    const shapes = [sypOnly, sypUsd, usdSyp] as const;
+    fc.assert(
+      fc.property(
+        fc.constantFrom(...shapes),
+        fc.constantFrom('ad_wallet.deposited' as const, 'ad_wallet.refunded' as const),
+        fc.integer({ min: 1, max: 1_000_000 }),
+        fc.integer({ min: 100, max: 200 }),
+        fc.boolean(),
+        (ledgers, type, usd, perUsd, inSyp) => {
+          const entry = wallet(type, 1, '2026-11-10', {
+            method: 'cash',
+            currency: inSyp ? 'SYP' : 'USD',
+            amount: inSyp ? usd * perUsd : usd,
+            syp: `${perUsd}.0000`,
+            usd,
+          });
+          const plan = walletEntryPlan(entry, contextOf(ledgers));
+          expect(plan).toMatchObject({ decision: null });
+          const { lines } = postLines(only(plan), ledgers, '2026-11-10', BULLETINS);
+          expect(ledgerTotal(lines, 'book')).toBe(0n);
+          if (ledgers.parallel !== null) expect(ledgerTotal(lines, 'parallel')).toBe(0n);
+        },
+      ),
+    );
+  });
+
+  it('decides the wallet tolerance symmetrically around its bound', () => {
+    fc.assert(
+      fc.property(
+        fc.integer({ min: 1_000, max: 1_000_000 }),
+        fc.integer({ min: -300, max: 300 }),
+        (usd, gap) => {
+          const decision = walletDecision(
+            {
+              entry: WALLET(1),
+              client: C1,
+              entered_on: '2026-11-10',
+              method: 'cash',
+              currency: 'SYP',
+              amount: usd * 124,
+              syp_per_usd: '124.0000',
+              usd_amount: usd + gap,
+            },
+            { SYP: 100n, USD: 100n },
+          );
+          expect(decision).toBe(Math.abs(gap) > 100 ? 'wallet_gap_beyond_tolerance' : null);
         },
       ),
     );

@@ -99,6 +99,12 @@ export interface ManualLineSpec {
   readonly openItemId?: string | null;
   /** The manual document item the line opens (S04 rule 6): its reference and due date. */
   readonly newItem?: { readonly reference: string; readonly dueOn: string | null } | null;
+  /**
+   * A Hub rule's line that carries what the entry's item lines move, in every ledger, instead of a
+   * new measurement: an ad spend's payable (S05, `ad-funds/running-balance`). Refused on a manual
+   * entry's line.
+   */
+  readonly carriesItems?: boolean;
 }
 
 /**
@@ -144,10 +150,16 @@ export type PostingContent =
       readonly today: string;
       readonly hub: HubSource;
     }
-  /** The exact reversal of a Hub entry by its event: a void, a change, an archive (rule 14). */
+  /**
+   * The exact reversal of a Hub entry by its event: a void, a change, an archive (rule 14). Its
+   * lines read no rate; the difference entry that follows it on a running item (S04 rule 13)
+   * measures at the rates of `measuredOn`, the event's own date even when the accountant moved it
+   * to a later open period (rule 15).
+   */
   | {
       readonly kind: 'hub_reversal';
       readonly entryId: string;
+      readonly measuredOn: string;
       readonly today: string;
       readonly hub: HubSource;
     }
@@ -275,6 +287,7 @@ function linesPayload(lines: readonly ManualLineSpec[]): CanonicalValue {
     ...(line.newItem && {
       newItem: { reference: line.newItem.reference, dueOn: line.newItem.dueOn },
     }),
+    ...(line.carriesItems === true && { carriesItems: true }),
   }));
 }
 
@@ -298,7 +311,12 @@ function contentPayload(content: PostingContent): CanonicalValue {
         inboxId: content.hub.inboxId,
       };
     case 'hub_reversal':
-      return { kind: content.kind, entryId: content.entryId, inboxId: content.hub.inboxId };
+      return {
+        kind: content.kind,
+        entryId: content.entryId,
+        measuredOn: content.measuredOn,
+        inboxId: content.hub.inboxId,
+      };
     case 'hub_reclassification':
       return {
         kind: content.kind,
@@ -723,6 +741,11 @@ async function manualLines(
         lineNo: index + 1,
       });
     }
+    if (spec.carriesItems === true && (hub === null || spec.openItemId || spec.newItem)) {
+      refuse('VALIDATION_FAILED', 'Only a Hub rule’s line off an item carries the items', {
+        lineNo: index + 1,
+      });
+    }
     return spec;
   });
   const existing = await itemsOf(
@@ -914,11 +937,15 @@ async function manualLines(
         }
       }
     }
+    if (spec.carriesItems === true && item !== undefined) {
+      refuse('VALIDATION_FAILED', 'A line on an item cannot carry the items', { lineNo });
+    }
     lines.push({
       account: spec.accountId,
       dimensions,
       amount: money(spec.amountMinor, spec.currency),
       ...(item !== undefined && { item }),
+      ...(spec.carriesItems === true && { carriesItems: true as const }),
     });
     adjustedOf.push(adjusted);
   }
@@ -1205,14 +1232,17 @@ async function voidDifferenceLines(
   tx: Transaction,
   voided: readonly VoidedRunningItem[],
   on: string,
+  measureOn: string,
   ledgers: CompanyLedgers,
   daysOff: readonly number[],
 ): Promise<Built | null> {
   if (voided.length === 0) return null;
-  const { rates, ids } = await ratesOn(tx, on);
+  // A moved Hub event's difference entry is measured at its own date (S05 rule 15), so the move
+  // makes no exchange difference; it is dated on the posting date.
+  const { rates, ids } = await ratesOn(tx, measureOn);
   const context: MeasureContext = {
     ledgers,
-    on,
+    on: measureOn,
     rates,
     calendar: await publicationCalendar(tx, daysOff),
   };
@@ -1335,7 +1365,7 @@ async function dimensionSetOf(
 function checkDates(on: string, content: PostingContent, ledgers: CompanyLedgers): void {
   checkManualEntryDate(on, content.today);
   for (const [, ledger] of keptLedgers(ledgers)) checkCurrencyDate(ledger.currency, on);
-  if (content.kind === 'hub') {
+  if (content.kind === 'hub' || content.kind === 'hub_reversal') {
     for (const [, ledger] of keptLedgers(ledgers)) {
       checkCurrencyDate(ledger.currency, content.measuredOn);
     }
@@ -1767,6 +1797,7 @@ export async function post(tx: Transaction, request: PostingRequest): Promise<Po
     tx,
     built.voided,
     on,
+    content.kind === 'hub_reversal' ? content.measuredOn : on,
     ledgers,
     settings.bulletinDaysOff,
   );
