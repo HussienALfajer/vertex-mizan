@@ -25,7 +25,7 @@ Spec: `docs/specs/S04-open-items-settlements.md` (Approved, owner 2026-10-28) ·
 - [x] the owner's decision on a due-date change before a manual item's document date: refused until that date (owner, 2026-11-07), recorded in S04 rule 15 and edge case 21; auto-merge on
 
 ## PR 3 — The receivables screens (ui, web, e2e)
-- [ ] ui: `AgeingTable` (buckets with totals and drill-down) and `OpenItemPicker` (`Alt+↓`, a client's open items with open and carrying amounts), tested, both densities, on the design-system page
+- [x] ui: `AgeingTable` (buckets with totals and drill-down) and `OpenItemPicker` (`Alt+↓`, a client's open items with open and carrying amounts), tested, both densities, on the design-system page
 - [ ] web: `/receivables` (the ageing, a card per client on a phone), `/receivables/clients/:valueId` (the statement, Excel, new receipt), `/open-items/:id` (the item, its movements, the due-date change), `/client-funds`; the entry screen's item cell ("بند جديد" or the picker, `=` on an item line) and the preview's item lines; the palette's "receivables ageing", "client statement…" and "go to item…"; `ar.openItems`
 - [ ] e2e: an invoice and receipts by keyboard with the item picker, the ageing, the client statement, an item's page, the due-date change; RTL screenshots light and dark at 360, 768 and 1280 px, looked at
 - [ ] wiring (Web), docs (`apps/web/CLAUDE.md`, `packages/ui/CLAUDE.md`, `docs/ROADMAP.md`: S04 done)

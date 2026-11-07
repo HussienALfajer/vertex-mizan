@@ -58,6 +58,19 @@ export const openItems = {
     itemKind: 'نوع البند',
     noClient: 'بلا عميل',
   },
+  /** `OpenItemPicker`'s labels. */
+  picker: {
+    placeholder: 'ابحث بالمرجع',
+    empty: 'لا بنود مفتوحة لهذا الحساب والعميل والعملة',
+    open: 'المفتوح',
+    carrying: 'الدفتري',
+  },
+  /** `AgeingTable`'s labels. */
+  ageingTable: {
+    row: 'العميل',
+    total: 'الإجمالي',
+    showDetail: 'عرض بنود العميل',
+  },
   /** The ageing export's sheet: one row per item, under its client (S04 "Printing"). */
   ageingExport: {
     sheet: 'أعمار الذمم',

@@ -1,6 +1,7 @@
 export { CSPProvider } from '@base-ui/react/csp-provider';
 export { DirectionProvider } from '@base-ui/react/direction-provider';
 export * from './accounting/account-label';
+export * from './accounting/ageing-table';
 export * from './accounting/account-picker';
 export * from './accounting/account-tree';
 export * from './accounting/amount';
@@ -8,6 +9,7 @@ export * from './accounting/amount-input';
 export * from './accounting/dimension-picker';
 export * from './accounting/entry-totals';
 export * from './accounting/ledger-switch';
+export * from './accounting/open-item-picker';
 export * from './accounting/period-badge';
 export * from './accounting/rate-input';
 export { AscentLines } from './brand/ascent-lines';
