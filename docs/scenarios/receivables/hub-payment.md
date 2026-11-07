@@ -396,6 +396,152 @@ expect:
   outcome: { status: held, reason: NEEDS_DECISION }
 ```
 
+### Vertex Media: the tolerance on a payment in the other currency
+
+The gap is measured in the invoice's currency: the payment's amount at Hub's `syp_per_usd`, rounded half away from zero, against the applied amount. A gap of exactly the tolerance (1.00, the default) is within it and posts as a realised difference; one minor unit more is held `NEEDS_DECISION` (`payment_gap_beyond_tolerance`), and nothing posts (S05 rule 9).
+
+```yaml
+case: 50,000.00 SYP at Hub's 124 applied as 402.23 USD, a gap of exactly 1.00 USD, posts with a parallel gain of 1.00 USD
+company: { shape: syp-usd, book: SYP, parallel: USD, template: service-agency,
+           rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true } }
+rates:
+  - { date: 2026-11-03, base: USD, quote: SYP, rate: "120.0000", type: bulletin }
+  - { date: 2026-11-19, base: USD, quote: SYP, rate: "123.0000", type: bulletin }
+steps:
+  - event: invoice.issued
+    accounting_date: 2026-11-03
+    payload: { invoice: INV-2026-1, client: C1, currency: USD, syp_per_usd: "122.0000",
+               issued_on: 2026-11-03, due_on: 2026-12-03,
+               lines: [{ line: L1, amount: 100000, source: extra_work, service: S1 }] }
+  - event: payment.recorded
+    accounting_date: 2026-11-19
+    # the gap: 5,000,000 / 124 = 40,322.58… → 40,323; 40,323 − 40,223 = 100 = 1.00 USD, not more than the tolerance
+    payload: { payment: PAY-1, receipt: R-2026-1, invoice: INV-2026-1, paid_on: 2026-11-19,
+               method: bank_transfer, currency: SYP, amount: 5000000, syp_per_usd: "124.0000",
+               applied_amount: 40223, invoice_currency: USD }
+expect:
+  entries:
+    - source: invoice.issued
+      date: 2026-11-03
+      lines:
+        - { account: "112001", dims: { client: C1 }, currency: USD, amount: 100000, book: 12000000, parallel: 100000 }
+        - { account: "411001", dims: { client: C1, service: S1 }, currency: USD, amount: -100000, book: -12000000, parallel: -100000 }
+    - source: payment.recorded
+      date: 2026-11-19
+      lines:
+        # bank_transfer in SYP → 111003; parallel: 50,000.00 SYP / 124 = 403.2258… → 403.23 USD
+        - { account: "111003", currency: SYP, amount: 5000000, book: 5000000, parallel: 40323 }
+        # 402.23 of 1,000.00 open: book 12,000,000 × 40,223 / 100,000 = 4,826,760 exactly
+        - { account: "112001", dims: { client: C1 }, currency: USD, amount: -40223, book: -4826760, parallel: -40223 }
+        # book residual: 5,000,000 − 4,826,760 = 173,240 → realised gain 1,732.40 SYP
+        - { account: "421001", currency: SYP, amount: -173240, book: -173240, parallel: 0 }
+        # parallel residual: 40,323 − 40,223 = 100 → realised gain 1.00 USD, the gap within the tolerance
+        - { account: "421001", currency: USD, amount: -100, book: 0, parallel: -100 }
+  balances:
+    - { account: "421001", book: -173240, parallel: -100 }
+  open_items:
+    # 1,000.00 − 402.23 = 597.77 USD; book 12,000,000 − 4,826,760 = 7,173,240
+    - { item: INV-2026-1, account: "112001", dims: { client: C1 }, currency: USD, amount: 59777, book: 7173240, parallel: 59777 }
+```
+
+```yaml
+case: 50,000.00 SYP at Hub's 124 applied as 402.22 USD, a gap of 1.01 USD, is held NEEDS_DECISION
+company: { shape: syp-usd, book: SYP, parallel: USD, template: service-agency,
+           rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true } }
+rates:
+  - { date: 2026-11-03, base: USD, quote: SYP, rate: "120.0000", type: bulletin }
+  - { date: 2026-11-19, base: USD, quote: SYP, rate: "123.0000", type: bulletin }
+steps:
+  - event: invoice.issued
+    accounting_date: 2026-11-03
+    payload: { invoice: INV-2026-1, client: C1, currency: USD, syp_per_usd: "122.0000",
+               issued_on: 2026-11-03, due_on: 2026-12-03,
+               lines: [{ line: L1, amount: 100000, source: extra_work, service: S1 }] }
+  - event: payment.recorded
+    accounting_date: 2026-11-19
+    # the gap: 40,323 − 40,222 = 101 = 1.01 USD, more than the tolerance
+    payload: { payment: PAY-1, receipt: R-2026-1, invoice: INV-2026-1, paid_on: 2026-11-19,
+               method: bank_transfer, currency: SYP, amount: 5000000, syp_per_usd: "124.0000",
+               applied_amount: 40222, invoice_currency: USD }
+expect:
+  entries:
+    - source: invoice.issued
+      date: 2026-11-03
+      lines:
+        - { account: "112001", dims: { client: C1 }, currency: USD, amount: 100000, book: 12000000, parallel: 100000 }
+        - { account: "411001", dims: { client: C1, service: S1 }, currency: USD, amount: -100000, book: -12000000, parallel: -100000 }
+  open_items:
+    - { item: INV-2026-1, account: "112001", dims: { client: C1 }, currency: USD, amount: 100000, book: 12000000, parallel: 100000 }
+  outcome: { status: held, reason: NEEDS_DECISION, detail: payment_gap_beyond_tolerance }
+```
+
+The tolerance is in the invoice's currency, so on an SYP invoice it is 1.00 SYP, and the gap may run either way: here Hub applies 1.01 SYP more than the USD received is worth at its rate.
+
+```yaml
+case: 500.00 USD at Hub's 124 applied as 62,001.01 SYP on an SYP invoice, a gap of 1.01 SYP, is held NEEDS_DECISION
+company: { shape: syp-usd, book: SYP, parallel: USD, template: service-agency,
+           rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true } }
+rates:
+  - { date: 2026-11-03, base: USD, quote: SYP, rate: "120.0000", type: bulletin }
+  - { date: 2026-11-19, base: USD, quote: SYP, rate: "123.0000", type: bulletin }
+steps:
+  - event: invoice.issued
+    accounting_date: 2026-11-03
+    payload: { invoice: INV-2026-1, client: C1, currency: SYP, syp_per_usd: "122.0000",
+               issued_on: 2026-11-03, due_on: 2026-12-03,
+               lines: [{ line: L1, amount: 12200000, source: extra_work, service: S1 }] }
+  - event: payment.recorded
+    accounting_date: 2026-11-19
+    # the gap: 50,000 × 124 = 6,200,000; 6,200,000 − 6,200,101 = −101 = −1.01 SYP, more than the tolerance
+    payload: { payment: PAY-1, receipt: R-2026-1, invoice: INV-2026-1, paid_on: 2026-11-19,
+               method: cash, currency: USD, amount: 50000, syp_per_usd: "124.0000",
+               applied_amount: 6200101, invoice_currency: SYP }
+expect:
+  entries:
+    - source: invoice.issued
+      date: 2026-11-03
+      lines:
+        - { account: "112001", dims: { client: C1 }, currency: SYP, amount: 12200000, book: 12200000, parallel: 100000 }
+        - { account: "411001", dims: { client: C1, service: S1 }, currency: SYP, amount: -12200000, book: -12200000, parallel: -100000 }
+  open_items:
+    - { item: INV-2026-1, account: "112001", dims: { client: C1 }, currency: SYP, amount: 12200000, book: 12200000, parallel: 100000 }
+  outcome: { status: held, reason: NEEDS_DECISION, detail: payment_gap_beyond_tolerance }
+```
+
+### Vertex Media: a payment in the invoice's currency above its applied amount
+
+No tolerance applies in one currency: a gap there is never an exchange difference (ADR 0007), so even 0.01 USD received beyond what Hub applied is an overpayment for the accountant (IFRS 15.106), held `NEEDS_DECISION` (`amount_above_applied`).
+
+```yaml
+case: 400.01 USD received in USD and applied as 400.00 USD is held NEEDS_DECISION
+company: { shape: syp-usd, book: SYP, parallel: USD, template: service-agency,
+           rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true } }
+rates:
+  - { date: 2026-11-03, base: USD, quote: SYP, rate: "120.0000", type: bulletin }
+  - { date: 2026-11-19, base: USD, quote: SYP, rate: "123.0000", type: bulletin }
+steps:
+  - event: invoice.issued
+    accounting_date: 2026-11-03
+    payload: { invoice: INV-2026-1, client: C1, currency: USD, syp_per_usd: "122.0000",
+               issued_on: 2026-11-03, due_on: 2026-12-03,
+               lines: [{ line: L1, amount: 100000, source: extra_work, service: S1 }] }
+  - event: payment.recorded
+    accounting_date: 2026-11-19
+    payload: { payment: PAY-1, receipt: R-2026-1, invoice: INV-2026-1, paid_on: 2026-11-19,
+               method: bank_transfer, currency: USD, amount: 40001, syp_per_usd: "124.0000",
+               applied_amount: 40000, invoice_currency: USD }
+expect:
+  entries:
+    - source: invoice.issued
+      date: 2026-11-03
+      lines:
+        - { account: "112001", dims: { client: C1 }, currency: USD, amount: 100000, book: 12000000, parallel: 100000 }
+        - { account: "411001", dims: { client: C1, service: S1 }, currency: USD, amount: -100000, book: -12000000, parallel: -100000 }
+  open_items:
+    - { item: INV-2026-1, account: "112001", dims: { client: C1 }, currency: USD, amount: 100000, book: 12000000, parallel: 100000 }
+  outcome: { status: held, reason: NEEDS_DECISION, detail: amount_above_applied }
+```
+
 ### Vertex Media: voiding an invoice that has a payment
 
 ```yaml
@@ -495,6 +641,127 @@ expect:
     - { account: "421001", book: 0, parallel: 0 }
   open_items:
     - { item: INV-2026-1, account: "112001", dims: { client: C1 }, currency: USD, amount: 0, book: 0, parallel: 0 }
+```
+
+When the invoice's void arrives before its payment's void, it is held `OPEN_ITEM_HAS_SETTLEMENTS`; the payment's void does not wait behind it (S05 rule 11), and once it posts the held void is retried and posts by itself (rule 10). Each keeps its own date: the payment's void on 24 November, the invoice's on 25 November, so the entries end the same as when Hub's order is kept, and no rate is read for either date.
+
+```yaml
+case: the invoice's void received before its payment's void is held, then posts by itself once the payment's void posts
+company: { shape: syp-usd, book: SYP, parallel: USD, template: service-agency,
+           rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true } }
+rates:
+  - { date: 2026-11-03, base: USD, quote: SYP, rate: "120.0000", type: bulletin }
+  - { date: 2026-11-19, base: USD, quote: SYP, rate: "123.0000", type: bulletin }
+steps:
+  - event: invoice.issued
+    accounting_date: 2026-11-03
+    payload: { invoice: INV-2026-1, client: C1, currency: USD, syp_per_usd: "122.0000",
+               issued_on: 2026-11-03, due_on: 2026-12-03,
+               lines: [{ line: L1, amount: 100000, source: extra_work, service: S1 }] }
+  - event: payment.recorded
+    accounting_date: 2026-11-19
+    payload: { payment: PAY-1, receipt: R-2026-1, invoice: INV-2026-1, paid_on: 2026-11-19,
+               method: bank_transfer, currency: USD, amount: 40000, syp_per_usd: "124.0000",
+               applied_amount: 40000, invoice_currency: USD }
+  - event: invoice.voided
+    accounting_date: 2026-11-25
+    payload: { invoice: INV-2026-1, voided_on: 2026-11-25, reason: "أُلغيت الفاتورة في Hub" }
+    outcome: { status: held, reason: OPEN_ITEM_HAS_SETTLEMENTS }
+  - event: payment.voided
+    accounting_date: 2026-11-24
+    payload: { payment: PAY-1, voided_on: 2026-11-24 }
+expect:
+  entries:
+    - source: invoice.issued
+      date: 2026-11-03
+      lines:
+        - { account: "112001", dims: { client: C1 }, currency: USD, amount: 100000, book: 12000000, parallel: 100000 }
+        - { account: "411001", dims: { client: C1, service: S1 }, currency: USD, amount: -100000, book: -12000000, parallel: -100000 }
+    - source: payment.recorded
+      date: 2026-11-19
+      lines:
+        - { account: "111004", currency: USD, amount: 40000, book: 4920000, parallel: 40000 }
+        - { account: "112001", dims: { client: C1 }, currency: USD, amount: -40000, book: -4800000, parallel: -40000 }
+        - { account: "421001", currency: SYP, amount: -120000, book: -120000, parallel: 0 }
+    - source: payment.voided
+      date: 2026-11-24
+      lines:
+        # the exact negation of the payment's entry
+        - { account: "111004", currency: USD, amount: -40000, book: -4920000, parallel: -40000 }
+        - { account: "112001", dims: { client: C1 }, currency: USD, amount: 40000, book: 4800000, parallel: 40000 }
+        - { account: "421001", currency: SYP, amount: 120000, book: 120000, parallel: 0 }
+    - source: invoice.voided
+      date: 2026-11-25
+      lines:
+        # posted by the retry, after the payment's void; the exact negation of the issue entry on its own date
+        - { account: "112001", dims: { client: C1 }, currency: USD, amount: -100000, book: -12000000, parallel: -100000 }
+        - { account: "411001", dims: { client: C1, service: S1 }, currency: USD, amount: 100000, book: 12000000, parallel: 100000 }
+  balances:
+    - { account: "112001", book: 0, parallel: 0 }
+    - { account: "111004", book: 0, parallel: 0 }
+    - { account: "411001", book: 0, parallel: 0 }
+    - { account: "421001", book: 0, parallel: 0 }
+  open_items:
+    - { item: INV-2026-1, account: "112001", dims: { client: C1 }, currency: USD, amount: 0, book: 0, parallel: 0 }
+```
+
+### Vertex Media: two payments received before their invoice
+
+The first payment names an invoice Mizan has not received: held `UNKNOWN_REFERENCE`. The second waits behind it on the invoice's key: held `WAITING_FOR_EARLIER_EVENT`. The invoice does not wait behind them (S05 rule 11): it posts, then the payments are retried in received order, each at the rates of its own date. The entries are those of "an SYP invoice paid first in USD, then in SYP" above, in the same posting order, so the order of arrival changes nothing.
+
+```yaml
+case: two payments received before their invoice are held, then post in order after it; the entries are those of Hub's order
+company: { shape: syp-usd, book: SYP, parallel: USD, template: service-agency,
+           rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true } }
+rates:
+  - { date: 2026-11-03, base: USD, quote: SYP, rate: "120.0000", type: bulletin }
+  - { date: 2026-11-19, base: USD, quote: SYP, rate: "123.0000", type: bulletin }
+  - { date: 2026-11-25, base: USD, quote: SYP, rate: "123.5000", type: bulletin }
+steps:
+  - event: payment.recorded
+    accounting_date: 2026-11-19
+    payload: { payment: PAY-1, receipt: R-2026-1, invoice: INV-2026-1, paid_on: 2026-11-19,
+               method: cash, currency: USD, amount: 50000, syp_per_usd: "124.0000",
+               applied_amount: 6200000, invoice_currency: SYP }
+    outcome: { status: held, reason: UNKNOWN_REFERENCE }
+  - event: payment.recorded
+    accounting_date: 2026-11-25
+    payload: { payment: PAY-2, receipt: R-2026-2, invoice: INV-2026-1, paid_on: 2026-11-25,
+               method: bank_transfer, currency: SYP, amount: 6000000, syp_per_usd: "125.0000",
+               applied_amount: 6000000, invoice_currency: SYP }
+    outcome: { status: held, reason: WAITING_FOR_EARLIER_EVENT }
+  - event: invoice.issued
+    accounting_date: 2026-11-03
+    payload: { invoice: INV-2026-1, client: C1, currency: SYP, syp_per_usd: "122.0000",
+               issued_on: 2026-11-03, due_on: 2026-12-03,
+               lines: [{ line: L1, amount: 12200000, source: extra_work, service: S1 }] }
+expect:
+  entries:
+    - source: invoice.issued
+      date: 2026-11-03
+      lines:
+        - { account: "112001", dims: { client: C1 }, currency: SYP, amount: 12200000, book: 12200000, parallel: 100000 }
+        - { account: "411001", dims: { client: C1, service: S1 }, currency: SYP, amount: -12200000, book: -12200000, parallel: -100000 }
+    - source: payment.recorded
+      date: 2026-11-19
+      lines:
+        # retried first: cash in USD → 111002 at the bulletin of 19 November, 123
+        - { account: "111002", currency: USD, amount: 50000, book: 6150000, parallel: 50000 }
+        - { account: "112001", dims: { client: C1 }, currency: SYP, amount: -6200000, book: -6200000, parallel: -50820 }
+        - { account: "541001", currency: SYP, amount: 50000, book: 50000, parallel: 0 }
+        - { account: "541001", currency: USD, amount: 820, book: 0, parallel: 820 }
+    - source: payment.recorded
+      date: 2026-11-25
+      lines:
+        # retried once the first leaves held: all that remains, parallel 100,000 − 50,820 = 49,180
+        - { account: "111003", currency: SYP, amount: 6000000, book: 6000000, parallel: 48000 }
+        - { account: "112001", dims: { client: C1 }, currency: SYP, amount: -6000000, book: -6000000, parallel: -49180 }
+        - { account: "541001", currency: USD, amount: 1180, book: 0, parallel: 1180 }
+  balances:
+    - { account: "112001", book: 0, parallel: 0 }
+    - { account: "541001", book: 50000, parallel: 2000 }
+  open_items:
+    - { item: INV-2026-1, account: "112001", dims: { client: C1 }, currency: SYP, amount: 0, book: 0, parallel: 0 }
 ```
 
 ### Vertex Media: a due date changed in Hub
