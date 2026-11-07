@@ -176,7 +176,8 @@ function main(args) {
       }
       for (const name of GUARDED_LISTS) {
         const before = parseList(baseLists, name);
-        if (before !== null) problems.push(...compareLists(name, before, parseList(headLists, name)));
+        if (before !== null)
+          problems.push(...compareLists(name, before, parseList(headLists, name)));
       }
     }
     for (const problem of problems) console.error(`error-codes-guard: ${problem}`);
