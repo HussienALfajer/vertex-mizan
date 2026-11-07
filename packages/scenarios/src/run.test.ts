@@ -9,7 +9,7 @@ import type {
   ScenarioHarness,
   StepResult,
 } from './harness.js';
-import { namedDimensionValues, runCase, ScenarioFailure } from './run.js';
+import { eventValues, namedDimensionValues, runCase, ScenarioFailure } from './run.js';
 import { CASE, CORRECTION, INBOX } from './test-fixtures.js';
 
 // The runner against a fake harness: what the S03, S05 and S07 parts will hand it, built here from
@@ -427,5 +427,34 @@ expect:
       { type: 'project', code: 'P1' },
     ]);
     expect(namedDimensionValues(parseCase(CORRECTION))).toEqual([]);
+  });
+
+  it('leaves out the values a Hub event brings, which the event makes by its Hub id (S05 rule 23)', () => {
+    const named = parseCase(`
+case: an invoice from Hub with its contract
+company: { shape: syp, book: SYP, template: service-agency, rate_policy: { book: bulletin } }
+steps:
+  - event: invoice.issued
+    accounting_date: 2026-11-03
+    payload: { invoice: INV-2026-1, client: C1, contract: { code: R1, kind: retainer, client: C1 },
+               currency: SYP, syp_per_usd: "122.0000", issued_on: 2026-11-03, due_on: 2026-12-03,
+               lines: [{ line: L1, amount: 100, source: extra_work, service: S1 }] }
+expect:
+  entries:
+    - source: invoice.issued
+      date: 2026-11-03
+      lines:
+        - { account: "112001", dims: { client: C1, contract: R1 }, currency: SYP, amount: 100, book: 100 }
+        - { account: "411001", dims: { client: C1, contract: R1, service: S1 }, currency: SYP, amount: -100, book: -100 }
+  balances:
+    - { account: "411001", dims: { service: S2 }, book: 0 }
+`);
+    expect(eventValues(named)).toEqual([
+      { type: 'client', code: 'C1' },
+      { type: 'contract', code: 'R1' },
+      { type: 'client', code: 'C1' },
+      { type: 'service', code: 'S1' },
+    ]);
+    expect(namedDimensionValues(named)).toEqual([{ type: 'service', code: 'S2' }]);
   });
 });

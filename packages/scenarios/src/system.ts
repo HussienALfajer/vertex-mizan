@@ -18,6 +18,7 @@ import {
   dimensionTypes,
   dimensionValues,
   entriesUsingRate,
+  inboundEvents,
   journalEntries,
   journalLines,
   openItemBalances,
@@ -45,12 +46,16 @@ import type {
   ScenarioDatabase,
   StepResult,
 } from './harness.js';
+import { advanceClock, inboxActions, runRetries } from './hub.js';
 import type { NamedValue } from './run.js';
 
 // The parts of the book that run through the system itself (S03): the case's company made by the
 // company, chart and rate services the API and the server commands use, the manual, reversal and
 // rate steps through the posting function and the rate service, and the ledger read from the
 // database as the reports read it, never from an executor's answer.
+
+/** The accountant's inbox actions (S05), as the case's bookkeeper. */
+export const actions = inboxActions((companyId) => bookkeeperOf(companyId));
 
 /** Each case company's bookkeeper: the person who records its rates and posts its entries. */
 const bookkeepers = new Map<string, PersonActor>();
@@ -256,6 +261,7 @@ export function manual(
 ): Promise<StepResult> {
   const payload = manualPayloadSchema.parse(step.payload);
   const actor = bookkeeperOf(context.companyId);
+  advanceClock(context.companyId, step.accountingDate);
   return outcomeOf(
     withCompany(context.database.app, context.companyId, async (tx) => {
       const accounts = await accountIdsByCode(tx);
@@ -315,6 +321,7 @@ export function reversal(
   step: Extract<Step, { kind: 'reversal' }>,
 ): Promise<StepResult> {
   const actor = bookkeeperOf(context.companyId);
+  advanceClock(context.companyId, step.accountingDate);
   return outcomeOf(
     withCompany(context.database.app, context.companyId, async (tx) => {
       const original = await entryInPostingOrder(tx, step.entry);
@@ -344,7 +351,7 @@ export async function rate(
 ): Promise<StepResult> {
   const actor = bookkeeperOf(context.companyId);
   try {
-    return await withCompany(context.database.app, context.companyId, async (tx) => {
+    const result = await withCompany(context.database.app, context.companyId, async (tx) => {
       const recorded = await recordRate(tx, context.companyId, actor, {
         ...step.rate,
         source: 'manual',
@@ -354,6 +361,11 @@ export async function rate(
       const usedBy = await entriesUsingRate(tx, recorded.supersededId);
       return { status: 'done' as const, usedBy: usedBy.map((entry) => Number(entry.sequence)) };
     });
+    // The held events of that date and after are retried, as the worker does after the commit.
+    await runRetries(context.database, context.companyId, [
+      { kind: 'rate', on: step.rate.effectiveOn },
+    ]);
+    return result;
   } catch (error) {
     if (error instanceof DomainError) return { status: 'refused', reason: error.code };
     throw error;
@@ -373,6 +385,16 @@ export const ledger: LedgerReader = {
   entries: (context) =>
     withCompany(context.database.app, context.companyId, async (tx) => {
       const entries = await tx.select().from(journalEntries).orderBy(asc(journalEntries.sequence));
+      // A Hub entry's source is its event's type, its reversals' too (S05 rule 14).
+      const events = await tx
+        .select({ id: inboundEvents.id, type: inboundEvents.type })
+        .from(inboundEvents);
+      const sourceOf = (entry: (typeof entries)[number]) =>
+        entry.source === 'hub_event'
+          ? (events.find((event) => event.id === entry.sourceRef)?.type ?? 'hub_event')
+          : entry.reversesEntryId === null
+            ? entry.source
+            : 'reversal';
       const lines = await tx
         .select({ line: journalLines, code: chartAccounts.code })
         .from(journalLines)
@@ -408,7 +430,7 @@ export const ledger: LedgerReader = {
         .groupBy(auditEntries.entityId);
       return entries.map(
         (entry): PostedEntry => ({
-          source: entry.reversesEntryId === null ? entry.source : 'reversal',
+          source: sourceOf(entry),
           date: entry.entryDate,
           lines: lines
             .filter(({ line }) => line.entryId === entry.id)

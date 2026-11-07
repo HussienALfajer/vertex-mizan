@@ -1,10 +1,10 @@
 # Revenue at issue from Hub's invoices
 
-Status: Proposed
+Status: Approved (owner, 2026-11-07)
 
 S05 wrote these cases (S05 "Scenarios"); the owner approved their expected entries and outcomes on 2026-11-07, with the conversion rounding of an invoice as S05 states it ("Residuals"): the item's total and each line are converted on their own, and the residual posts to `conversion_rounding`.
 
-The cases stay `Proposed` until S05 brings their executors: the `event` executor through the event inbox, the posting rules of `invoice.issued` (lines recognised at issue), `invoice.voided` and `invoice.line_service_changed`, the mapping slots `receivable`, `revenue_at_issue` and `termination_fee_revenue`, a contract value made from the event (its kind and client, S05 rule 23), and the hold `NO_MAPPING` with its details `deferred_revenue` and `tax_lines` (S05 rules 8, 12–14). S05's feature slice switches the file to `Approved (owner, 2026-11-07)`.
+S05's feature slice brought their executors: the `event` executor through the event inbox, the posting rules of `invoice.issued` (lines recognised at issue), `invoice.voided` and `invoice.line_service_changed`, the mapping slots `receivable`, `revenue_at_issue` and `termination_fee_revenue`, a contract value made from the event (its kind and client, S05 rule 23), and the hold `NO_MAPPING` with its details `deferred_revenue` and `tax_lines` (S05 rules 8, 12–14).
 
 ## Rule
 
