@@ -10,7 +10,7 @@ import type {
   StepResult,
 } from './harness.js';
 import { namedDimensionValues, runCase, ScenarioFailure } from './run.js';
-import { CASE, CORRECTION } from './test-fixtures.js';
+import { CASE, CORRECTION, INBOX } from './test-fixtures.js';
 
 // The runner against a fake harness: what the S03, S05 and S07 parts will hand it, built here from
 // the case itself so each test can break one thing. The book runs on a real database
@@ -96,6 +96,23 @@ describe('runCase', () => {
         'Hub events arrive with S05',
     ]);
     expect(calls).toEqual([]);
+  });
+
+  it('names the inbox actions that have no executor (S05)', async () => {
+    const inbox = parseCase(INBOX);
+    const { fake } = harness([]);
+    const done = async () => ({ status: 'done' as const });
+    const found = await differences(
+      runCase(inbox, { ...fake, executors: { event: done, manual: done } }, database),
+    );
+    expect(found).toEqual([
+      'step 2 (retry of step 1): no executor for retry steps; inbox actions arrive with S05',
+      'step 3 (move of step 1 to the next open period): no executor for move steps; ' +
+        'inbox actions arrive with S05',
+      'step 6 (resolution of step 4 by entry 2): no executor for resolve steps; ' +
+        'inbox actions arrive with S05',
+      'step 8 (dismissal of step 7): no executor for dismiss steps; inbox actions arrive with S05',
+    ]);
   });
 
   it('fails without a company setup or a ledger reader', async () => {

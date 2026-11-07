@@ -9,6 +9,10 @@ export const STEPS_ARRIVE_WITH = {
   rate: 'rate steps arrive with S03, on the S02 rate table',
   event: 'Hub events arrive with S05',
   job: 'jobs arrive with S07',
+  retry: 'inbox actions arrive with S05',
+  move: 'inbox actions arrive with S05',
+  resolve: 'inbox actions arrive with S05',
+  dismiss: 'inbox actions arrive with S05',
 } as const satisfies Record<StepKind, string>;
 
 /** A case that did not do what its scenario states: every difference, one per line. */
@@ -71,6 +75,22 @@ function executorFor(harness: ScenarioHarness, step: Step): Run | undefined {
       const execute = harness.executors.rate;
       return execute && ((context) => execute(context, step));
     }
+    case 'retry': {
+      const execute = harness.executors.retry;
+      return execute && ((context) => execute(context, step));
+    }
+    case 'move': {
+      const execute = harness.executors.move;
+      return execute && ((context) => execute(context, step));
+    }
+    case 'resolve': {
+      const execute = harness.executors.resolve;
+      return execute && ((context) => execute(context, step));
+    }
+    case 'dismiss': {
+      const execute = harness.executors.dismiss;
+      return execute && ((context) => execute(context, step));
+    }
   }
 }
 
@@ -89,6 +109,14 @@ function describeStep(step: Step): string {
       const what = step.reason === null ? 'rate' : 'rate correction';
       return `${what} ${type} ${base}/${quote} ${rate} on ${effectiveOn}`;
     }
+    case 'retry':
+      return `retry of step ${step.step}`;
+    case 'move':
+      return `move of step ${step.step} to the next open period`;
+    case 'resolve':
+      return `resolution of step ${step.step} by entry ${step.entry}`;
+    case 'dismiss':
+      return `dismissal of step ${step.step}`;
   }
 }
 

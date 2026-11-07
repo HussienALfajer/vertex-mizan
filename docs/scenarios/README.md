@@ -14,7 +14,8 @@ Scenarios are written through `/posting-rule`, before the rule's code.
 - `currency`;
 - `periods`;
 - `opening`;
-- `manual`.
+- `manual`;
+- `inbox`.
 
 ## File format
 
@@ -76,6 +77,14 @@ steps:                              # in order; a Hub event, a manual entry, a r
   - rate: { date: 2026-11-03, base: USD, quote: SYP, rate: "121.0000", type: bulletin,
             reason: "Mistyped" }    # a row recorded now; a second row of a pair, type and date
                                     # is a correction and needs its reason (S02 rule 15)
+  - retry: 1                        # the accountant's actions on a held event (S05 rules 15–17),
+                                    #   naming an earlier event step by its number: retry it now
+  - move: 1                         # post a PERIOD_CLOSED event in the first open period after it
+    reason: "..."                   #   (move, resolve and dismiss each keep a written reason)
+  - resolve: { step: 2, entry: 3 }  # resolve a NEEDS_DECISION event by the case's entry 3
+    reason: "..."                   #   (posting order), a posted manual entry or its reversal
+  - dismiss: 2                      # dismiss a held event: it never posts
+    reason: "..."
 expect:
   entries:                          # the exact set posted, in posting order; every line of every entry
     - source: <event type | job | manual>
@@ -102,6 +111,7 @@ Writing the YAML:
 - **Items** (S04): a manual line on a `document` control account opens an item with `open_item: { ref: M-1, due: 2026-12-03 }` (`due` optional) or moves one with `item: M-1` (a manual reference or a Hub document number). It then takes the item's dimensions, so it states no `dims`. A line on a `running` account names the client in `dims` and neither field. An expected line on an item carries the item's dimensions, and a running item is named in `open_items` by the client's code.
 - `parallel` is stated on every line, balance and open item exactly when the company keeps a parallel ledger. In a ledger's own currency, that ledger's amount is the transaction amount (ADR 0007): a SYP line in SYP books has `book` equal to `amount`.
 - Each expected entry balances in both ledgers, and has at least two lines; a `third` case names a line or a rate in a third currency.
+- An action (`retry`, `move`, `resolve`, `dismiss`) names an earlier `event` step, and `resolve` an expected entry. It may state its `outcome` like any step: a retry that leaves the event held, or an action the inbox refuses (`EVENT_NOT_HELD`, `EVENT_ACTION_NOT_ALLOWED`, `ENTRY_ALREADY_LINKED`). The events an action frees are retried as S05 rule 10 says, and their entries are expected where they post.
 - An unknown or misspelt key is an error.
 
 ## The runner's contract
