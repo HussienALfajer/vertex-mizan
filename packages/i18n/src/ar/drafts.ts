@@ -110,7 +110,6 @@ export const drafts = {
     accountUnknown: 'لا حساب بهذا الرمز.',
     accountHeader: 'حساب رئيسي لا يُرحَّل إليه.',
     accountBlocked: 'الحساب موقوف.',
-    accountControl: 'حساب رقابي: سطوره من عمليات الذمم لا من القيود اليدوية.',
     currencyUnknown: 'رمز عملة غير معروف.',
     dimensionUnknown: 'لا قيمة بهذا الرمز لهذا البعد. افتح القائمة بـ Alt+↓.',
     memoTooLong: 'الشرح أطول من 300 حرف.',
