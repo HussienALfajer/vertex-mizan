@@ -35,6 +35,9 @@ export type NamedValue = { readonly type: string; readonly code: string };
  */
 export function namedDimensionValues(scenarioCase: ScenarioCase): NamedValue[] {
   const named = new Map<string, NamedValue>();
+  const fromHub = new Set(
+    eventValues(scenarioCase).map((value) => JSON.stringify([value.type, value.code])),
+  );
   const add = (dims: unknown) => {
     if (typeof dims !== 'object' || dims === null) return;
     for (const [type, code] of Object.entries(dims)) {
@@ -50,7 +53,38 @@ export function namedDimensionValues(scenarioCase: ScenarioCase): NamedValue[] {
   for (const entry of expect.entries) for (const line of entry.lines) add(line.dims);
   for (const balance of expect.balances) add(balance.dims);
   for (const item of expect.openItems) add(item.dims);
-  return [...named.values()];
+  return [...named.values()].filter(
+    (value) => !fromHub.has(JSON.stringify([value.type, value.code])),
+  );
+}
+
+/**
+ * The values a case's Hub events bring by their references (S05 rule 23): Hub's events make them,
+ * with the code the case names, so the setup leaves them out.
+ */
+export function eventValues(scenarioCase: ScenarioCase): NamedValue[] {
+  const values: NamedValue[] = [];
+  const add = (type: string, code: unknown) => {
+    if (typeof code === 'string') values.push({ type, code });
+  };
+  for (const step of scenarioCase.steps) {
+    if (step.kind !== 'event') continue;
+    const payload = step.payload as Record<string, unknown>;
+    add('client', payload.client);
+    add('department', payload.department);
+    add('service', payload.old_service);
+    add('service', payload.new_service);
+    const contract = payload.contract as { code?: unknown; client?: unknown } | undefined;
+    if (contract !== undefined) {
+      add('contract', contract.code);
+      add('client', contract.client);
+    }
+    const lines = payload.lines;
+    if (Array.isArray(lines)) {
+      for (const line of lines) add('service', (line as { service?: unknown }).service);
+    }
+  }
+  return values;
 }
 
 function executorFor(harness: ScenarioHarness, step: Step): Run | undefined {
@@ -179,7 +213,7 @@ export async function runCase(
   const corrections = new Map(expect.corrections.map((c) => [c.step, c.usedBy]));
 
   for (const [index, run] of runs.entries()) {
-    const result = await run(context);
+    const result = await run({ ...context, step: index + 1 });
     const usedBy = corrections.get(index + 1);
     if (usedBy !== undefined && result.status === 'done') {
       const listed = [...(result.usedBy ?? [])].sort((a, b) => a - b);

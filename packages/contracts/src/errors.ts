@@ -194,6 +194,20 @@ export const errorStatus = {
   OPEN_ITEM_MEMO_REQUIRED: 422,
   /** A change Mizan leaves to Hub, such as a Hub item's due date (S04 rule 15). */
   OPEN_ITEM_FROM_HUB: 409,
+
+  // The posting API and the event inbox (S05, ADR 0014).
+  /** The company assigned the event's document type to another API client, or to none (rule 3). */
+  SOURCE_NOT_ALLOWED: 409,
+  /** An API client has two active keys already: revoke one first (S05 rule 19). */
+  API_KEY_LIMIT: 409,
+  /** The inbox action needs a held event; this one has posted, been resolved or dismissed. */
+  EVENT_NOT_HELD: 409,
+  /** The action does not fit the event's hold: a move needs `PERIOD_CLOSED`, a resolution `NEEDS_DECISION`. */
+  EVENT_ACTION_NOT_ALLOWED: 409,
+  /** The manual entry already resolves another event, or is not a posted manual entry (S05 rule 15). */
+  ENTRY_ALREADY_LINKED: 409,
+  /** The account does not fit the posting slot (S05 "Mapping slots"). */
+  MAPPING_ACCOUNT_INVALID: 422,
 } as const satisfies Record<string, number>;
 
 export type ErrorCode = keyof typeof errorStatus;

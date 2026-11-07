@@ -3,6 +3,7 @@ export * from './allocation.js';
 export * from './balance.js';
 export * from './carried.js';
 export * from './chart.js';
+export * from './hub.js';
 export * from './integrity.js';
 export * from './integrity-check.js';
 export * from './items.js';

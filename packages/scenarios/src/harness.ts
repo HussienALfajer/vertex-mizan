@@ -8,9 +8,9 @@ import type {
   Step,
   StepKind,
 } from './format.js';
-
+import { event } from './hub.js';
 import type { NamedValue } from './run.js';
-import { ledger, manual, rate, reversal, setUp } from './system.js';
+import { actions, ledger, manual, rate, reversal, setUp } from './system.js';
 
 /**
  * The run's fresh database as the runtime roles reach it, the way the API and the worker connect
@@ -19,8 +19,16 @@ import { ledger, manual, rate, reversal, setUp } from './system.js';
  */
 export type ScenarioDatabase = { app: Database; jobs: Database };
 
-/** One case's company in the run's database. */
-export type CaseContext = { database: ScenarioDatabase; companyId: string; company: CaseCompany };
+/**
+ * One case's company in the run's database, and the number of the step that runs (1-based), by
+ * which an inbox action names its event (S05).
+ */
+export type CaseContext = {
+  database: ScenarioDatabase;
+  companyId: string;
+  company: CaseCompany;
+  step?: number;
+};
 
 /**
  * What a step did when it was received: posted (or ran) everything it had to, or was held or
@@ -102,6 +110,6 @@ export type ScenarioHarness = {
  */
 export const bookHarness: ScenarioHarness = {
   setUp,
-  executors: { manual, reversal, rate },
+  executors: { manual, reversal, rate, event, ...actions },
   ledger,
 };

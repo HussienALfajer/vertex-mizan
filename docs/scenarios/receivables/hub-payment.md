@@ -1,6 +1,6 @@
 # Settling a receivable by Hub's payment events
 
-Status: Proposed
+Status: Approved (owner, 2026-11-07)
 
 The expected entries were approved by the owner on 2026-11-06, with three decisions, the first and third revised the same day after the accounting review:
 - **A payment in the other currency:** the gap between Hub's applied amount and the amount received at Hub's `syp_per_usd`, both in the invoice's currency, is a realised exchange difference while it is within a tolerance of 1.00 in the invoice's currency (a company setting, default 1.00 USD or 1.00 SYP), not a discount. A wider gap is an overpayment, a liability (IFRS 15.106), or a concession, so the payment is held `NEEDS_DECISION`.
@@ -9,7 +9,7 @@ The expected entries were approved by the owner on 2026-11-06, with three decisi
 
 S05 added six cases, whose expected entries and outcomes the owner approved on 2026-11-07 (S05 "Scenarios"): the tolerance on a payment in the other currency (a gap of exactly the tolerance posts as a realised difference; one minor unit more is held, in USD and in SYP), an amount above the applied amount in the invoice's currency (held), an invoice void received before its payment's void (held, then posted by the retry), and two payments received before their invoice (held, then posted in order with the entries of Hub's order). No expected value of the earlier cases changed; their payments gained `invoice_currency`, which S05's contract requires (rule 3).
 
-The cases stay `Proposed` until S05 brings their executors: the `event` executor through the event inbox, the posting rules of `invoice.issued`, `invoice.voided`, `invoice.due_date_changed`, `payment.recorded` and `payment.voided`, the mapping of each payment method to its account, the holds `UNKNOWN_REFERENCE`, `WAITING_FOR_EARLIER_EVENT`, `NEEDS_DECISION` and `OPEN_ITEM_HAS_SETTLEMENTS`, and the automatic retries (S04 "Out of scope"; owner, 2026-10-28; S05 rules 8–11). S05's feature slice switches the file to `Approved (owner, 2026-11-07)`.
+S05's feature slice brought their executors: the `event` executor through the event inbox, the posting rules of `invoice.issued`, `invoice.voided`, `invoice.due_date_changed`, `payment.recorded` and `payment.voided`, the mapping of each payment method to its account, the holds `UNKNOWN_REFERENCE`, `WAITING_FOR_EARLIER_EVENT`, `NEEDS_DECISION` and `OPEN_ITEM_HAS_SETTLEMENTS`, and the automatic retries (S04 "Out of scope"; owner, 2026-10-28; S05 rules 8–11).
 
 ## Rule
 

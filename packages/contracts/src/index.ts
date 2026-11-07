@@ -7,6 +7,7 @@ export * from './dimensions.js';
 export * from './email.js';
 export * from './entries.js';
 export * from './errors.js';
+export * from './events.js';
 export * from './health.js';
 export * from './members.js';
 export * from './money.js';

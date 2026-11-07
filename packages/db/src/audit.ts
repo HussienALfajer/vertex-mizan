@@ -14,14 +14,18 @@ export interface RequestFacts {
 }
 
 /**
- * Who did it: a person (with their name as it was and their session) or the system (a server
- * command, a job). API clients join with S05.
+ * Who did it: a person (with their name as it was and their session), an API client (S05: Hub
+ * posting its events, by the client's id and name) or the system (a server command, a job).
  */
 export type AuditActor = RequestFacts &
   (
     | { kind: 'person'; userId: string; name: string; sessionId: string | null }
+    | { kind: 'api_client'; clientId: string; name: string }
     | { kind: 'system'; name: string }
   );
+
+/** An actor of the platform audit log: a person or the system, never an API client. */
+export type PlatformActor = Exclude<AuditActor, { kind: 'api_client' }>;
 
 /** The name the logs show for the server commands and jobs. */
 export const SYSTEM_NAME = 'Vertex';
@@ -69,7 +73,7 @@ export const AUDITED_FIELDS = {
     'blockedReason',
     'archivedReason',
   ],
-  chart: ['templateId', 'templateVersion', 'accountCount', 'format'],
+  chart: ['templateId', 'templateVersion', 'accountCount', 'mappedSlotCount', 'format'],
   account_role: ['role', 'accountId'],
   dimension_type: ['code', 'name', 'nameLatin', 'position', 'archived'],
   dimension_value: [
@@ -125,6 +129,16 @@ export const AUDITED_FIELDS = {
     'pastedResult',
   ],
   company_export: ['state', 'sizeBytes', 'sha256'],
+  // S05: an inbox event's action (retry, move, resolution, dismissal) and what it left.
+  inbound_event: [
+    'type',
+    'documentType',
+    'documentNumber',
+    'state',
+    'holdReason',
+    'postedOn',
+    'entryId',
+  ],
   // S04: a manual item's due date, and the filters of the receivables exports.
   open_item: ['reference', 'dueOn', 'effectiveOn'],
   receivables_export: [
@@ -193,6 +207,7 @@ export async function writeCompanyAudit(
     companyId,
     actorKind: actor.kind,
     actorUserId: actor.kind === 'person' ? actor.userId : null,
+    actorApiClientId: actor.kind === 'api_client' ? actor.clientId : null,
     actorName: actor.name,
     sessionId: actor.kind === 'person' ? actor.sessionId : null,
     requestId: actor.requestId,
@@ -224,6 +239,8 @@ export async function writePlatformAudit(
   entry: PlatformAuditEntry,
 ): Promise<void> {
   const { actor } = entry;
+  // The platform log records people and the system; an API client acts in a company's log only.
+  if (actor.kind === 'api_client') throw new TypeError('An API client has no platform audit row');
   await db.insert(platformAuditEntries).values({
     actorKind: actor.kind,
     actorUserId: actor.kind === 'person' ? actor.userId : null,

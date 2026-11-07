@@ -15,6 +15,7 @@ import { type AuditActor, writeCompanyAudit } from '../audit.js';
 import type { Transaction } from '../client.js';
 import { accountRequiredDimensions, accountRoles, chartAccounts } from '../schema/chart.js';
 import { dimensionTypes } from '../schema/dimensions.js';
+import { postingRuleAccounts } from '../schema/inbox.js';
 import { onUniqueViolation } from '../unique-violation.js';
 
 // The chart's writes that company creation, the API and the scenario book's setup share (S02
@@ -238,6 +239,13 @@ export async function applyChartTemplate(
       : [{ companyId, role: account.role, accountId: ids.get(account.code) as string }],
   );
   if (roles.length > 0) await tx.insert(accountRoles).values(roles);
+  // The template's posting-rule mapping (S05 "Mapping slots"); the general template has none.
+  const mapping = template.postingRules.map((rule) => {
+    const accountId = ids.get(rule.code);
+    if (accountId === undefined) throw new Error(`Template mapping ${rule.slot} has no account`);
+    return { companyId, slot: rule.slot, currency: rule.currency, accountId };
+  });
+  if (mapping.length > 0) await tx.insert(postingRuleAccounts).values(mapping);
   await writeCompanyAudit(tx, companyId, actor, {
     action: 'chart.template_applied',
     entityType: 'chart',
@@ -246,6 +254,7 @@ export async function applyChartTemplate(
       templateId: template.id,
       templateVersion: template.version,
       accountCount: added.length,
+      mappedSlotCount: mapping.length,
     },
   });
 }

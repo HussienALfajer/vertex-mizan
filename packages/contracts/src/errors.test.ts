@@ -109,6 +109,12 @@ describe('error codes', () => {
       ['OPEN_ITEM_HAS_SETTLEMENTS', 409],
       ['OPEN_ITEM_MEMO_REQUIRED', 422],
       ['OPEN_ITEM_FROM_HUB', 409],
+      ['SOURCE_NOT_ALLOWED', 409],
+      ['API_KEY_LIMIT', 409],
+      ['EVENT_NOT_HELD', 409],
+      ['EVENT_ACTION_NOT_ALLOWED', 409],
+      ['ENTRY_ALREADY_LINKED', 409],
+      ['MAPPING_ACCOUNT_INVALID', 422],
     ]);
   });
 

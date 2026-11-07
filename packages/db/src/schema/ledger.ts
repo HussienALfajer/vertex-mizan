@@ -125,6 +125,10 @@ export const journalEntries = pgTable(
     unique('journal_entries_sequence_key').on(t.companyId, t.sequence),
     // One entry follows each link of the chain, the first entry included.
     unique('journal_entries_previous_hash_key').on(t.companyId, t.previousHash).nullsNotDistinct(),
+    // The entries of a Hub document, which its void, change or archive reverses (S05 rule 14).
+    index('journal_entries_company_hub_document_idx')
+      .on(t.companyId, sql`(${t.hubDocument} ->> 'type')`, sql`(${t.hubDocument} ->> 'id')`)
+      .where(sql`${t.hubDocument} is not null`),
     foreignKey({
       name: 'journal_entries_request_fk',
       columns: [t.companyId, t.requestId],

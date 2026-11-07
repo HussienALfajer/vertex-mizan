@@ -1,11 +1,15 @@
 // The error-code guard (ADR 0006: stable error codes, never renamed, removed or reused). Compares
 // `errorStatus` in `packages/contracts/src/errors.ts` with the same file at a base commit (CI passes
 // the pull request's base) and fails unless the base's codes are still there, first, in the same
-// order and with the same HTTP status. New codes may only be appended. Run by CI
+// order and with the same HTTP status. New codes may only be appended. The append-only lists of the
+// event inbox (S05, ADR 0014: the hold reasons and their details, the event states and actions,
+// the posting slots and the document types, in `packages/contracts/src/events.ts`) are guarded the
+// same way: each published value still there, first, in order. Run by CI
 // (`pnpm check:error-codes --base <ref>`); tested by `packages/config/test/error-codes-guard.test.ts`.
 //
-// Options: `--base <ref>` (default `origin/main`), `--repo <dir>` (default this repository) and
-// `--file <path in the repository>` (default the registry above).
+// Options: `--base <ref>` (default `origin/main`), `--repo <dir>` (default this repository),
+// `--file <path in the repository>` (default the registry above) and `--lists-file <path>`
+// (default the event contracts above).
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -39,6 +43,72 @@ export function parseRegistry(source) {
   return entries;
 }
 
+/** The append-only lists the guard keeps, by their exported name (S05, ADR 0014). */
+export const GUARDED_LISTS = [
+  'HOLD_REASONS',
+  'HOLD_DETAILS',
+  'EVENT_STATES',
+  'EVENT_ACTIONS',
+  'POSTING_SLOTS',
+  'DOCUMENT_TYPES',
+];
+
+const LIST_VALUE = /^'([A-Za-z][A-Za-z0-9_.]*)'$/;
+
+/**
+ * The values of `export const <name> = [ … ] as const`, quoted and comma-separated, on one line or
+ * several; null when the source has no such list. Throws on a value it does not recognise.
+ */
+export function parseList(source, name) {
+  const start = source.indexOf(`export const ${name} = [`);
+  if (start === -1) return null;
+  const end = source.indexOf('] as const', start);
+  if (end === -1) throw new Error(`no \`] as const\` closing ${name}`);
+  const body = source.slice(source.indexOf('[', start) + 1, end);
+  const values = [];
+  let comment = false;
+  for (const raw of body.split('\n')) {
+    const line = raw.trim();
+    if (comment) {
+      comment = !line.includes('*/');
+      continue;
+    }
+    if (line === '' || line.startsWith('//')) continue;
+    if (line.startsWith('/*')) {
+      comment = !line.includes('*/');
+      continue;
+    }
+    if (!line.endsWith(',') && !line.endsWith("'")) {
+      throw new Error(`unrecognised line in ${name}: ${line}`);
+    }
+    for (const part of line.split(',')) {
+      const value = part.trim();
+      if (value === '') continue;
+      const match = LIST_VALUE.exec(value);
+      if (!match) throw new Error(`unrecognised line in ${name}: ${line}`);
+      values.push(match[1]);
+    }
+  }
+  return values;
+}
+
+/** The problems that make `head` break a list published in `base`. */
+export function compareLists(name, base, head) {
+  if (head === null) return [`${name} was removed`];
+  const problems = [];
+  base.forEach((value, index) => {
+    const now = head[index];
+    if (now === undefined) problems.push(`${name}: ${value} was removed`);
+    else if (now !== value) problems.push(`${name}: ${value} was renamed, removed or moved`);
+  });
+  const seen = new Set();
+  for (const value of head) {
+    if (seen.has(value)) problems.push(`${name}: ${value} appears twice`);
+    seen.add(value);
+  }
+  return problems;
+}
+
 /** The problems that make `head` break the codes published in `base`. */
 export function compareRegistries(base, head) {
   const problems = [];
@@ -67,6 +137,7 @@ function main(args) {
   const repo = resolve(option(args, '--repo', root));
   const base = option(args, '--base', 'origin/main');
   const file = option(args, '--file', 'packages/contracts/src/errors.ts');
+  const listsFile = option(args, '--lists-file', 'packages/contracts/src/events.ts');
   const git = (...gitArgs) =>
     execFileSync('git', ['-C', repo, ...gitArgs], {
       encoding: 'utf8',
@@ -78,22 +149,41 @@ function main(args) {
     console.error(`error-codes-guard: base ${base} is not a commit here; fetch it first`);
     return 2;
   }
-  let baseSource;
+  const published = (path) => {
+    try {
+      return git('show', `${base}:${path}`);
+    } catch {
+      console.warn(`error-codes-guard: ${path} does not exist at ${base}; nothing published yet`);
+      return null;
+    }
+  };
+  const baseSource = published(file);
+  const baseLists = published(listsFile);
   try {
-    baseSource = git('show', `${base}:${file}`);
-  } catch {
-    console.warn(`error-codes-guard: ${file} does not exist at ${base}; nothing published yet`);
-    return 0;
-  }
-  try {
-    const problems = compareRegistries(
-      parseRegistry(baseSource),
-      parseRegistry(readFileSync(join(repo, file), 'utf8')),
-    );
+    const problems =
+      baseSource === null
+        ? []
+        : compareRegistries(
+            parseRegistry(baseSource),
+            parseRegistry(readFileSync(join(repo, file), 'utf8')),
+          );
+    if (baseLists !== null) {
+      let headLists;
+      try {
+        headLists = readFileSync(join(repo, listsFile), 'utf8');
+      } catch {
+        headLists = '';
+      }
+      for (const name of GUARDED_LISTS) {
+        const before = parseList(baseLists, name);
+        if (before !== null)
+          problems.push(...compareLists(name, before, parseList(headLists, name)));
+      }
+    }
     for (const problem of problems) console.error(`error-codes-guard: ${problem}`);
     if (problems.length > 0) {
       console.error(
-        'Error codes are never renamed, removed or reused (ADR 0006): append new ones.',
+        'Error codes and the inbox lists are never renamed, removed or reused (ADR 0006, ADR 0014): append new ones.',
       );
       return 1;
     }

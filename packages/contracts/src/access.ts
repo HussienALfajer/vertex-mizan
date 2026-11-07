@@ -42,6 +42,14 @@ export const PERMISSIONS = [
   // S04: open items, the ageing, client funds and statements.
   'open_items.read',
   'open_items.manage',
+  // S05: the event inbox, the posting-rule mapping and the API clients.
+  'events.read',
+  'events.manage',
+  'events.dismiss',
+  'posting_rules.read',
+  'posting_rules.manage',
+  'api_clients.read',
+  'api_clients.manage',
 ] as const;
 
 export const permissionSchema = z.enum(PERMISSIONS).meta({ id: 'Permission' });
@@ -69,6 +77,10 @@ export const rolePermissions: Readonly<Record<Role, readonly Permission[]>> = {
     'entries.attach',
     'open_items.read',
     'open_items.manage',
+    'events.read',
+    'events.manage',
+    'posting_rules.read',
+    'posting_rules.manage',
   ],
   approver: [
     'company.read',
@@ -99,6 +111,9 @@ export const rolePermissions: Readonly<Record<Role, readonly Permission[]>> = {
     'drafts.read',
     'integrity.read',
     'open_items.read',
+    'events.read',
+    'posting_rules.read',
+    'api_clients.read',
   ],
 };
 

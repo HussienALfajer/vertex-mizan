@@ -102,6 +102,7 @@ One name per concept. Code, contracts and tables use the English term; the Arabi
 | حدث | event | A business event sent by a connected system (`invoice.issued`) |
 | مفتاح منع التكرار | idempotency key | The event ID that makes a resend post nothing new |
 | صندوق الوارد / حدث معلّق | event inbox / held event | Received events; one that could not post yet, with its reason |
+| سبب التعليق / تفصيل التعليق | hold reason / hold detail | Why an event is held (`NO_MAPPING`, `RATE_MISSING`, …), and what exactly it waits for (`slot_unmapped:project_cost`, `tax_lines`, …) |
 | قاعدة الترحيل | posting rule | How an event type becomes entry lines; accounts mapped by the accountant |
 | ربط الحسابات / خانة الربط | posting-rule mapping / mapping slot | The account a posting rule reads for one purpose (`receivable`, `payment_method.cash` in SYP, …), maintained by the owner and the accountant |
 | مفتاح الربط | API key | A secret that authenticates an API client; shown once, stored as a hash, at most two active per client |

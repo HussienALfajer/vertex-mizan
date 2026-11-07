@@ -7,6 +7,7 @@ import {
   type NormalBalance,
 } from './chart.js';
 import type { BuiltinDimensionType } from './dimensions.js';
+import type { HubCurrency, PostingSlot } from './events.js';
 import type { CurrencyCode } from './money.js';
 import type { ItemKind } from './open-items.js';
 
@@ -38,7 +39,37 @@ export interface ChartTemplate {
   readonly name: string;
   readonly nameLatin: string;
   readonly accounts: readonly TemplateAccount[];
+  /**
+   * The account each posting rule's slot reads at company creation (S05 "Mapping slots"): a payment
+   * method's slot per currency. A template without them starts unmapped, and its events hold
+   * `NO_MAPPING` until the accountant maps them.
+   */
+  readonly postingRules: readonly TemplateMapping[];
 }
+
+/** A slot's default account in a template, by its code. */
+export interface TemplateMapping {
+  readonly slot: PostingSlot;
+  readonly currency: HubCurrency | null;
+  readonly code: string;
+}
+
+/** The service-agency template's mapping (S05 "Mapping slots"). */
+const serviceAgencyMapping: readonly TemplateMapping[] = [
+  { slot: 'receivable', currency: null, code: '112001' },
+  { slot: 'revenue_at_issue', currency: null, code: '411001' },
+  { slot: 'termination_fee_revenue', currency: null, code: '411002' },
+  { slot: 'payment_method.cash', currency: 'SYP', code: '111001' },
+  { slot: 'payment_method.cash', currency: 'USD', code: '111002' },
+  { slot: 'payment_method.bank_transfer', currency: 'SYP', code: '111003' },
+  { slot: 'payment_method.bank_transfer', currency: 'USD', code: '111004' },
+  { slot: 'payment_method.e_wallet', currency: 'SYP', code: '111005' },
+  { slot: 'payment_method.e_wallet', currency: 'USD', code: '111006' },
+  { slot: 'ad_funds', currency: null, code: '213001' },
+  { slot: 'ad_platforms_payable', currency: null, code: '211001' },
+  { slot: 'project_cost', currency: null, code: '511001' },
+  { slot: 'project_expense_awaiting_payment', currency: null, code: '211002' },
+];
 
 /** A header: no flags, the class's normal balance. */
 const h = (code: string, name: string, nameLatin: string): TemplateAccount => ({
@@ -330,6 +361,7 @@ export const CHART_TEMPLATES: readonly ChartTemplate[] = [
     name: 'وكالة خدمات',
     nameLatin: 'Service agency',
     accounts: serviceAgencyAccounts,
+    postingRules: serviceAgencyMapping,
   },
   {
     id: 'general',
@@ -337,6 +369,7 @@ export const CHART_TEMPLATES: readonly ChartTemplate[] = [
     name: 'عام',
     nameLatin: 'General',
     accounts: generalAccounts(),
+    postingRules: [],
   },
 ];
 
