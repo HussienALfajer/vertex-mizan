@@ -329,6 +329,49 @@ describe('readClientStatement', () => {
   });
 });
 
+describe('another company’s ids', () => {
+  it('reads nothing of them inside a company', async () => {
+    const books = await newBooks();
+    const other = await newBooks();
+    const theirs = await example(other);
+    const asOf = '2026-11-30';
+    const reads = await inCompany(books, async (tx) => ({
+      byId: await readItemsAt(tx, { asOf, itemIds: [theirs], includeUnopened: true }),
+      byAccount: await readItemsAt(tx, { asOf, accountIds: [account(other, '112001')] }),
+      byClient: await readItemsAt(tx, { asOf, clientValueId: client(other, 'C1') }),
+      movements: await readItemMovements(tx, theirs, asOf),
+      dueDates: await readDueDates(tx, [theirs]),
+      balances: await readItemBalances(tx, [theirs]),
+      statement: await readClientStatement(tx, {
+        clientValueId: client(other, 'C1'),
+        from: null,
+        to: asOf,
+        ledger: 'book',
+        currency: null,
+      }),
+      state: await readOpenItemState(tx),
+      open: await accountHasOpenItems(tx, account(other, '112001')),
+    }));
+    expect(reads).toEqual({
+      byId: [],
+      byAccount: [],
+      byClient: [],
+      movements: [],
+      dueDates: [],
+      balances: new Map(),
+      statement: {
+        opening: [],
+        openingLedgerMinor: 0n,
+        movements: [],
+        closing: [],
+        closingLedgerMinor: 0n,
+      },
+      state: expect.objectContaining({ items: [], movements: [], balances: [] }),
+      open: false,
+    });
+  });
+});
+
 describe('the integrity check’s state and the archiving check', () => {
   it('reads the books as the posting function keeps them, which the comparisons pass', async () => {
     const books = await newBooks();

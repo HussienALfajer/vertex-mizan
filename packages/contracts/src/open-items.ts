@@ -94,19 +94,16 @@ export const hubDocumentRefSchema = z
 
 const isoDate = () => z.iso.date();
 
+const UUID = '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}';
+
+/**
+ * Account ids in a query, comma-separated. Kept as text so the query converts to JSON Schema both
+ * ways; `ageingAccountIds()` reads them.
+ */
 const idListSchema = z
   .string()
-  .optional()
-  .transform((text, context) => {
-    const ids = text ? text.split(',').filter((id) => id !== '') : [];
-    for (const id of ids) {
-      if (!z.uuid().safeParse(id).success) {
-        context.addIssue({ code: 'custom', message: 'Expected account ids' });
-        return z.NEVER;
-      }
-    }
-    return [...new Set(ids)];
-  });
+  .regex(new RegExp(`^${UUID}(,${UUID})*$`), 'Expected account ids, comma-separated')
+  .optional();
 
 /**
  * `GET /api/open-items`: items by account, client, state and reference text, as of a date (default
@@ -276,6 +273,13 @@ export const ageingQuerySchema = z
   .meta({ id: 'AgeingQuery' });
 
 export type AgeingQuery = z.infer<typeof ageingQuerySchema>;
+
+/** The ageing query's account ids, each once, lowercase; none for the default accounts. */
+export function ageingAccountIds(query: Pick<AgeingQuery, 'accounts'>): string[] {
+  return query.accounts
+    ? [...new Set(query.accounts.split(',').map((id) => id.toLowerCase()))]
+    : [];
+}
 
 /** An item in the ageing: its due date in force, days past due, bucket and amounts at the date. */
 export const ageingItemSchema = z

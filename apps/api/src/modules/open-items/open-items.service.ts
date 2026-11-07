@@ -3,6 +3,7 @@ import {
   AGEING_BUCKETS,
   type AgeingQuery,
   type AgeingReport,
+  ageingAccountIds,
   type BucketAmounts,
   type ChangeDueDate,
   type ClientFunds,
@@ -11,6 +12,7 @@ import {
   type ClientStatement,
   type ClientStatementQuery,
   type CurrencyCode,
+  currencies as currencyTable,
   type Ledger,
   type OpenItem,
   type OpenItemPage,
@@ -25,6 +27,7 @@ import {
   dimensionValues,
   type ItemAtDate,
   type ItemDueDate,
+  openItemBalances,
   openItemDueDates,
   readClientStatement,
   readDueDates,
@@ -170,6 +173,13 @@ export class OpenItemsService {
     const today = todayInDamascus();
     return withCompany(this.db, companyId, async (tx) => {
       await lockCompanyForWrite(tx, companyId);
+      // Two changes of one item serialise on its balance row (the company lock is shared), so the
+      // second reads the first's date and a double submit writes once.
+      await tx
+        .select({ id: openItemBalances.id })
+        .from(openItemBalances)
+        .where(eq(openItemBalances.itemId, id))
+        .for('update');
       const [item] = await readItemsAt(tx, { asOf: today, itemIds: [id], includeUnopened: true });
       if (!item) throw new CodedException('NOT_FOUND', 'No such open item');
       if (item.kind !== 'document') {
@@ -179,6 +189,17 @@ export class OpenItemsService {
       }
       if (item.source !== 'manual') {
         throw new CodedException('OPEN_ITEM_FROM_HUB', 'Hub sets this item’s due date');
+      }
+      // A change takes effect today (rule 15), and the opening's due date from the document date:
+      // on an item dated later this month (S03 rule 6), the opening's row would take over again
+      // on that date. So its due date changes from its document date on.
+      if (item.documentDate > today) {
+        throw new CodedException('VALIDATION_FAILED', 'The item is dated after today', [
+          {
+            path: ['dueOn'],
+            message: `The due date changes from the item's document date, ${item.documentDate}`,
+          },
+        ]);
       }
       const before = dueDateInForce(await readDueDates(tx, [id]), item.documentDate, today);
       if (before !== body.dueOn) {
@@ -310,7 +331,8 @@ export class OpenItemsService {
       return statement;
     });
     return {
-      fileName: `client-statement-${statement.client.code ?? statement.client.id}-${statement.to}.xlsx`,
+      // The value id, never its typed code: a header carries ASCII only.
+      fileName: `client-statement-${statement.client.id}-${statement.to}.xlsx`,
       contentType: XLSX,
       body: await statementWorkbook(statement),
     };
@@ -398,7 +420,7 @@ async function readAgeing(tx: Transaction, query: AgeingQuery): Promise<AgeingRe
   const asOf = query.asOf ?? todayInDamascus();
   const currencies = await ledgerCurrencies(tx);
   const currency = ledgerCurrency(currencies, query.ledger);
-  const accounts = await ageingAccounts(tx, query.accounts);
+  const accounts = await ageingAccounts(tx, ageingAccountIds(query));
   const items =
     accounts.length === 0
       ? []
@@ -551,6 +573,17 @@ const currencyName = (currency: CurrencyCode) =>
 const cell = (amountMinor: string, currency: CurrencyCode) =>
   spreadsheetAmount(BigInt(amountMinor), currency);
 
+/** Every decimal of the currency, grouped: a narrow column shows `####`, never a rounded figure. */
+const amountFormat = (currency: CurrencyCode) => {
+  const { exponent } = currencyTable[currency];
+  return exponent === 0 ? '#,##0' : `#,##0.${'0'.repeat(exponent)}`;
+};
+
+/** Formats the row's amount cells (1-based columns) in their currencies. */
+function formatAmounts(row: ExcelJS.Row, columns: readonly (readonly [number, CurrencyCode])[]) {
+  for (const [column, currency] of columns) row.getCell(column).numFmt = amountFormat(currency);
+}
+
 /** The ageing's workbook: one row per item under its client, amounts as numbers (S04 "Printing"). */
 export async function ageingWorkbook(report: AgeingReport): Promise<Buffer> {
   const labels = ar.openItems.ageingExport;
@@ -577,7 +610,7 @@ export async function ageingWorkbook(report: AgeingReport): Promise<Buffer> {
   header.font = { bold: true };
   for (const client of report.clients) {
     for (const item of client.items) {
-      sheet.addRow([
+      const row = sheet.addRow([
         client.client?.name ?? ar.openItems.labels.noClient,
         client.client?.code ?? '',
         item.account.code,
@@ -591,6 +624,10 @@ export async function ageingWorkbook(report: AgeingReport): Promise<Buffer> {
         currencyName(report.ledgerCurrency),
         cell(item.carryingMinor, report.ledgerCurrency),
         item.adjusted ? labels.adjusted : '',
+      ]);
+      formatAmounts(row, [
+        [10, item.currency],
+        [12, report.ledgerCurrency],
       ]);
     }
   }
@@ -606,7 +643,9 @@ export async function ageingWorkbook(report: AgeingReport): Promise<Buffer> {
     ...AGEING_BUCKETS.map((bucket) => ar.openItems.buckets[bucket]),
   ]);
   totals.font = { bold: true };
-  sheet.addRow([
+  const bucketColumns = (currency: CurrencyCode) =>
+    AGEING_BUCKETS.map((_, index) => [8 + index, currency] as const);
+  const ledgerTotals = sheet.addRow([
     currencyName(report.ledgerCurrency),
     '',
     '',
@@ -616,8 +655,9 @@ export async function ageingWorkbook(report: AgeingReport): Promise<Buffer> {
     '',
     ...AGEING_BUCKETS.map((bucket) => cell(report.buckets[bucket], report.ledgerCurrency)),
   ]);
+  formatAmounts(ledgerTotals, bucketColumns(report.ledgerCurrency));
   for (const total of report.currencyTotals) {
-    sheet.addRow([
+    const row = sheet.addRow([
       currencyName(total.currency),
       '',
       '',
@@ -627,7 +667,12 @@ export async function ageingWorkbook(report: AgeingReport): Promise<Buffer> {
       '',
       ...AGEING_BUCKETS.map((bucket) => cell(total.buckets[bucket], total.currency)),
     ]);
+    formatAmounts(row, bucketColumns(total.currency));
   }
+  const widths = [28, 12, 12, 16, 12, 12, 12, 22, 24, 22, 24, 22, 16];
+  widths.forEach((width, index) => {
+    sheet.getColumn(index + 1).width = width;
+  });
   sheet.getColumn(2).numFmt = '@';
   sheet.getColumn(3).numFmt = '@';
   sheet.getColumn(4).numFmt = '@';
@@ -663,7 +708,7 @@ export async function statementWorkbook(statement: ClientStatement): Promise<Buf
   header.font = { bold: true };
   const ledgerName = currencyName(statement.ledgerCurrency);
   for (const opening of statement.opening) {
-    sheet.addRow([
+    const row = sheet.addRow([
       statement.from ?? '',
       '',
       labels.opening,
@@ -679,9 +724,13 @@ export async function statementWorkbook(statement: ClientStatement): Promise<Buf
       cell(opening.ledgerMinor, statement.ledgerCurrency),
       '',
     ]);
+    formatAmounts(row, [
+      [10, opening.currency],
+      [13, statement.ledgerCurrency],
+    ]);
   }
   for (const line of statement.lines) {
-    sheet.addRow([
+    const row = sheet.addRow([
       line.entryDate,
       `${line.fiscalYear}/${line.number}`,
       line.description,
@@ -697,9 +746,15 @@ export async function statementWorkbook(statement: ClientStatement): Promise<Buf
       cell(line.ledgerBalanceMinor, statement.ledgerCurrency),
       line.adjusted ? labels.adjusted : '',
     ]);
+    formatAmounts(row, [
+      [9, line.currency],
+      [10, line.currency],
+      [12, statement.ledgerCurrency],
+      [13, statement.ledgerCurrency],
+    ]);
   }
   for (const closing of statement.closing) {
-    sheet.addRow([
+    const row = sheet.addRow([
       statement.to,
       '',
       labels.closing,
@@ -715,7 +770,15 @@ export async function statementWorkbook(statement: ClientStatement): Promise<Buf
       cell(closing.ledgerMinor, statement.ledgerCurrency),
       '',
     ]);
+    formatAmounts(row, [
+      [10, closing.currency],
+      [13, statement.ledgerCurrency],
+    ]);
   }
+  const widths = [12, 12, 36, 28, 12, 16, 12, 24, 22, 22, 24, 22, 22, 16];
+  widths.forEach((width, index) => {
+    sheet.getColumn(index + 1).width = width;
+  });
   sheet.getColumn(2).numFmt = '@';
   sheet.getColumn(5).numFmt = '@';
   sheet.getColumn(6).numFmt = '@';

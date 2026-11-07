@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { draftLineInputSchema } from './entries.js';
 import {
   AGEING_BUCKETS,
+  ageingAccountIds,
   ageingBucketOf,
   ageingQuerySchema,
   changeDueDateSchema,
@@ -55,11 +56,11 @@ describe('the receivables queries', () => {
   });
 
   it('reads the ageing accounts as a list of ids, in the book ledger by default', () => {
-    expect(ageingQuerySchema.parse({ accounts: `${ACCOUNT},${OTHER},${ACCOUNT}` })).toEqual({
-      ledger: 'book',
-      accounts: [ACCOUNT, OTHER],
-    });
-    expect(ageingQuerySchema.parse({})).toEqual({ ledger: 'book', accounts: [] });
+    const query = ageingQuerySchema.parse({ accounts: `${ACCOUNT},${OTHER},${ACCOUNT}` });
+    expect(query.ledger).toBe('book');
+    expect(ageingAccountIds(query)).toEqual([ACCOUNT, OTHER]);
+    expect(ageingAccountIds(ageingQuerySchema.parse({}))).toEqual([]);
+    expect(ageingQuerySchema.safeParse({ accounts: `${ACCOUNT},` }).success).toBe(false);
     expect(ageingQuerySchema.safeParse({ accounts: 'not-an-id' }).success).toBe(false);
     expect(ageingQuerySchema.safeParse({ ledger: 'tax' }).success).toBe(false);
   });
@@ -121,6 +122,7 @@ describe('a draft line on a control account (S04 rules 6–7)', () => {
   });
 });
 
+// The output form is converted by `chart.test.ts`, which loads this module without `entries.ts`.
 it('converts every S04 schema to JSON Schema with its id', () => {
   const { schemas } = z.toJSONSchema(z.globalRegistry, {
     target: 'draft-2020-12',

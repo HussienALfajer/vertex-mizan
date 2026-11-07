@@ -122,14 +122,43 @@ async function itemOf(browser: Browser, reference: string): Promise<OpenItem> {
 
 /** A workbook's rows as arrays of cell values, from row 1. */
 async function rowsOf(body: Buffer): Promise<unknown[][]> {
+  return (await sheetOf(body)).rows;
+}
+
+/** A workbook's first sheet: its rows' values and each cell's number format, from row 1. */
+async function sheetOf(body: Buffer): Promise<{ rows: unknown[][]; formats: string[][] }> {
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(body as never);
   const sheet = workbook.worksheets[0];
   const rows: unknown[][] = [];
+  const formats: string[][] = [];
   sheet?.eachRow({ includeEmpty: true }, (row) => {
     rows.push((row.values as unknown[]).slice(1));
+    const cells: string[] = [];
+    row.eachCell({ includeEmpty: true }, (cell, column) => {
+      cells[column - 1] = cell.numFmt ?? '';
+    });
+    formats.push(cells);
   });
-  return rows;
+  return { rows, formats };
+}
+
+/** Records a bulletin and a market rate for a date other than today (a rate must change). */
+async function ratesOn(book: Books, on: string) {
+  for (const [type, rate] of [
+    ['bulletin', '121.6000'],
+    ['market', '122.1000'],
+  ] as const) {
+    const recorded = await book.owner.browser.post('/api/rates', {
+      effectiveOn: on,
+      base: 'USD',
+      quote: 'SYP',
+      rate,
+      type,
+      source: 'manual',
+    });
+    expect(recorded.status, JSON.stringify(recorded.body)).toBe(201);
+  }
 }
 
 describe('the guard on every receivables route', () => {
@@ -354,6 +383,38 @@ describe('an invoice and its receipts through drafts (S04 acceptance steps 2–6
       'VALIDATION_FAILED',
     );
     expect(((await browser.get('/api/open-items')).body as OpenItemPage).items).toEqual([]);
+    // The reports read nothing of the other company, by its account or its client.
+    expect(
+      (
+        await browser.get('/api/receivables/ageing', {
+          accounts: other.accounts.get('112001') as string,
+        })
+      ).body.code,
+    ).toBe('VALIDATION_FAILED');
+    const ageing = await browser.get('/api/receivables/ageing', {
+      client: other.values.get('C1') as string,
+    });
+    expect((ageing.body as AgeingReport).clients).toEqual([]);
+    const exported = await browser.download('/api/receivables/ageing/export', {
+      client: other.values.get('C1') as string,
+    });
+    expect(exported.status).toBe(200);
+    expect((await rowsOf(exported.body)).some((row) => row.includes('M-1'))).toBe(false);
+    await posted(other.owner.browser, {
+      entryDate: today(),
+      description: 'إيداع أمانة',
+      reference: null,
+      dealtRates: [],
+      lines: [
+        line(other, '111004', 'USD', '30000'),
+        { ...line(other, '213001', 'USD', '-30000'), dimensionValueIds: dims(other, 'C1') },
+      ],
+    });
+    expect(((await browser.get('/api/client-funds')).body as ClientFunds).funds).toEqual([]);
+    const theirExport = await browser.get(
+      `/api/clients/${other.values.get('C1')}/statement/export`,
+    );
+    expect(theirExport.body.code).toBe('NOT_FOUND');
   });
 });
 
@@ -389,6 +450,47 @@ describe('a manual item’s due date (S04 rule 15, acceptance step 9)', () => {
       (await browser.put(`/api/open-items/${m1.id}/due-date`, { dueOn: inDays(5) })).body.code,
     ).toBe('VALIDATION_FAILED');
   });
+
+  it('writes once for two identical changes at once', async () => {
+    const book = await receivables();
+    const browser = book.owner.browser;
+    await posted(browser, invoice(book, 'M-1', '100000', 30));
+    const m1 = await itemOf(browser, 'M-1');
+    const change = { dueOn: inDays(60), reason: 'تمديد متفق عليه' };
+    const answers = await Promise.all([
+      browser.put(`/api/open-items/${m1.id}/due-date`, change),
+      browser.put(`/api/open-items/${m1.id}/due-date`, change),
+    ]);
+    expect(answers.map((answer) => answer.status)).toEqual([200, 200]);
+    expect((await itemOf(browser, 'M-1')).dueDates).toHaveLength(2);
+    expect(
+      (await actions(book.companyId)).filter((action) => action === 'open_item.due_date_changed'),
+    ).toHaveLength(1);
+  });
+
+  // An invoice dated later this month (S03 rule 6): its opening's due date applies from that date,
+  // so a change made before it would be overridden then. Not on a month's last day.
+  it.skipIf(inDays(1).slice(0, 7) !== today().slice(0, 7))(
+    'refuses a change before the item’s document date',
+    async () => {
+      const book = await receivables();
+      const browser = book.owner.browser;
+      await ratesOn(book, inDays(1));
+      await posted(browser, { ...invoice(book, 'M-9', '100000', 30), entryDate: inDays(1) });
+      // Absent today (it opens tomorrow, S04 edge case 17), listed as of tomorrow.
+      expect(((await browser.get('/api/open-items')).body as OpenItemPage).items).toEqual([]);
+      const page = await browser.get('/api/open-items', { asOf: inDays(1) });
+      const [m9] = (page.body as OpenItemPage).items;
+      if (!m9) throw new Error('no M-9');
+      expect(m9.documentDate).toBe(inDays(1));
+      const refused = await browser.put(`/api/open-items/${m9.id}/due-date`, {
+        dueOn: inDays(90),
+        reason: 'تمديد مبكر',
+      });
+      expect(refused.body.code).toBe('VALIDATION_FAILED');
+      expect(refused.body.issues[0].path).toEqual(['dueOn']);
+    },
+  );
 
   it('refuses a running item, which has no due date', async () => {
     const book = await receivables();
@@ -578,13 +680,35 @@ describe('client funds and the client statement (S04 rule 17, acceptance step 7)
 
     const exported = await browser.download(`/api/clients/${client}/statement/export`);
     expect(exported.status).toBe(200);
-    const rows = await rowsOf(exported.body);
+    expect(exported.headers['content-disposition']).toBe(
+      `attachment; filename="client-statement-${client}-${today()}.xlsx"`,
+    );
+    const { rows, formats } = await sheetOf(exported.body);
+    const clearedAt = rows.findIndex((row) => row[6] === ar.openItems.movements.clear);
+    expect(formats[clearedAt]?.slice(8, 13)).toEqual([
+      '#,##0.00',
+      '#,##0.00',
+      '',
+      '#,##0.00',
+      '#,##0.00',
+    ]);
     const labels = ar.openItems.statementExport;
     expect(rows[5]?.slice(0, 3)).toEqual([labels.date, labels.entry, labels.description]);
     const cleared = rows.find((row) => row[6] === ar.openItems.movements.clear);
     expect(cleared?.slice(8, 13)).toEqual([-400, 600, ar.accounting.sypPrintedName, -48600, 72900]);
     expect(rows.at(-1)?.[2]).toBe(labels.closing);
     expect(await actions(book.companyId)).toContain('export.client_statement');
+    // A client's typed code never reaches the header: an Arabic one downloads too.
+    const types = (await browser.get('/api/dimension-types')).body as DimensionType[];
+    const arabic = await browser.post('/api/dimension-values', {
+      typeId: types.find((type) => type.code === 'client')?.id,
+      code: 'عميل-"١"',
+      name: 'عميل بترميز عربي',
+    });
+    expect(arabic.status, JSON.stringify(arabic.body)).toBe(201);
+    const theirs = await browser.download(`/api/clients/${arabic.body.id}/statement/export`);
+    expect(theirs.status).toBe(200);
+    expect(theirs.headers['content-disposition']).toContain(arabic.body.id);
   });
 });
 

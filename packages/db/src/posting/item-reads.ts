@@ -450,7 +450,8 @@ export async function readClientStatement(
   }>(sql`
     select * from (
       select m.id, m.entry_id, e.fiscal_year, e.number, m.entry_date::text as entry_date,
-        e.description, l.memo, m.item_id, i.reference as item_reference, i.kind as item_kind,
+        e.description, l.memo, l.line_no, m.item_id, i.reference as item_reference,
+        i.kind as item_kind,
         i.account_id, a.code as account_code, a.name as account_name, m.kind, m.adjusted,
         i.currency, m.amount_minor::text, (${ledgerColumn})::text as ledger_minor,
         (sum(m.amount_minor) over (partition by i.currency order by m.entry_date, e.fiscal_year,
@@ -467,7 +468,7 @@ export async function readClientStatement(
       where ${scope} and ${toEnd}
     ) s
     ${query.from === null ? sql`` : sql`where s.entry_date >= ${query.from}`}
-    order by s.entry_date, s.fiscal_year, s.number, s.id
+    order by s.entry_date, s.fiscal_year, s.number, s.line_no
   `);
   return {
     opening: await balances(beforeFrom),
