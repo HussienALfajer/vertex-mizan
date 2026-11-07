@@ -73,6 +73,8 @@ export const line = (
   currency,
   amountMinor,
   memo,
+  openItemId: null,
+  newItem: null,
 });
 
 /**

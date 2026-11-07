@@ -1,7 +1,13 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { IntegrityCheck, IntegrityReport } from '@vertex-mizan/contracts';
-import { type Database, readChain, readLedgerState, withCompany } from '@vertex-mizan/db';
-import { anchorResult, checkIntegrity } from '@vertex-mizan/ledger';
+import {
+  type Database,
+  readChain,
+  readLedgerState,
+  readOpenItemState,
+  withCompany,
+} from '@vertex-mizan/db';
+import { anchorResult, checkIntegrity, openItemProblems } from '@vertex-mizan/ledger';
 import { sql } from 'drizzle-orm';
 import { actorOf, type CompanyRouteAccess } from '../../core/access/access.js';
 import { writeCompanyAudit } from '../../core/audit/audit.js';
@@ -17,7 +23,8 @@ export class IntegrityService {
   /**
    * `POST /api/integrity/check` (S03 rule 19): the chain, numbers, balances, period balances and
    * head recomputed from the first entry by `packages/ledger`, every stored anchor and the pasted
-   * one compared with the chain, all in one snapshot. Each run is audited with its result.
+   * one compared with the chain, each control account against its items and each item's balance
+   * row against its movements (S04), all in one snapshot. Each run is audited with its result.
    */
   async check(access: CompanyRouteAccess, body: IntegrityCheck): Promise<IntegrityReport> {
     const companyId = access.company.id;
@@ -34,6 +41,10 @@ export class IntegrityService {
         const chain = await readChain(tx);
         const state = await readLedgerState(tx);
         const findings = checkIntegrity({ chain, ...state });
+        const items = openItemProblems({
+          ...(await readOpenItemState(tx)),
+          periodBalances: state.periodBalances,
+        });
         const anchors = state.anchors.map((anchor) => ({
           anchoredOn: anchor.anchoredOn,
           entryCount: Number(anchor.entryCount),
@@ -56,7 +67,11 @@ export class IntegrityService {
           };
         }
         const problemCount =
-          findings.numbering.length + findings.unbalanced.length + findings.periodBalances.length;
+          findings.numbering.length +
+          findings.unbalanced.length +
+          findings.periodBalances.length +
+          items.controlAccounts.length +
+          items.itemBalances.length;
         const ok =
           findings.firstBreak === null &&
           findings.headMatchesChain &&
@@ -98,6 +113,8 @@ export class IntegrityService {
             currency: problem.currency,
             problem: problem.problem,
           })),
+          controlAccounts: [...items.controlAccounts],
+          openItemBalances: [...items.itemBalances],
           anchors,
           pasted,
         };

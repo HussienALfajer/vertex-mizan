@@ -9,7 +9,13 @@ import {
   signedAmount,
   summarizeAmounts,
 } from './money-summary.js';
-import { amountParts, evaluateAmount, formatMinor, parseAmount } from './money-text.js';
+import {
+  amountParts,
+  evaluateAmount,
+  formatMinor,
+  parseAmount,
+  spreadsheetAmount,
+} from './money-text.js';
 
 const ok = (amountMinor: bigint) => ({ ok: true, amountMinor });
 const refused = (error: string) => ({ ok: false, error });
@@ -266,6 +272,36 @@ describe('entry totals', () => {
               ? signedAmount('debit', debitMinor)
               : signedAmount('credit', creditMinor ?? 0n),
           ).toBe(balancing);
+        },
+      ),
+    );
+  });
+});
+
+describe('spreadsheetAmount', () => {
+  it('is a number in major units when a spreadsheet holds it exactly', () => {
+    expect(spreadsheetAmount(12_000_000n, 'SYP')).toBe(120000);
+    expect(spreadsheetAmount(-40_000n, 'USD')).toBe(-400);
+    expect(spreadsheetAmount(5n, 'USD')).toBe(0.05);
+    expect(spreadsheetAmount(0n, 'TRY')).toBe(0);
+    expect(spreadsheetAmount(999_999_999_999_999n, 'USD')).toBe(9_999_999_999_999.99);
+  });
+
+  it('is the exact text beyond 15 significant digits, never a rounded number', () => {
+    expect(spreadsheetAmount(1_000_000_000_000_000n, 'USD')).toBe('10000000000000.00');
+    expect(spreadsheetAmount(-1_234_567_890_123_456_789n, 'SYP')).toBe('-12345678901234567.89');
+  });
+
+  it('round-trips through the money text for every number it gives (property)', () => {
+    fc.assert(
+      fc.property(
+        fc.bigInt({ min: -999_999_999_999_999n, max: 999_999_999_999_999n }),
+        fc.constantFrom(...CURRENCY_CODES),
+        (amount, currency) => {
+          const cell = spreadsheetAmount(amount, currency);
+          expect(typeof cell).toBe('number');
+          const parsed = parseAmount(String(cell), currency);
+          expect(parsed).toEqual({ ok: true, amountMinor: amount });
         },
       ),
     );

@@ -105,6 +105,8 @@ export function contentOf(
       currency: line.currency as NonNullable<DraftLine['currency']>,
       amountMinor: BigInt(line.amountMinor as string),
       memo: line.memo,
+      openItemId: line.openItemId,
+      newItem: line.newItem,
     })),
   };
 }

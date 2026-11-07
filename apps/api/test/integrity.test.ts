@@ -91,6 +91,8 @@ describe('POST /api/integrity/check', () => {
       numbering: [],
       unbalanced: [],
       periodBalances: [],
+      controlAccounts: [],
+      openItemBalances: [],
       anchors: [],
       pasted: null,
     });

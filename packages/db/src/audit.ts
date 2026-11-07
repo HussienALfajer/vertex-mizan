@@ -125,6 +125,18 @@ export const AUDITED_FIELDS = {
     'pastedResult',
   ],
   company_export: ['state', 'sizeBytes', 'sha256'],
+  // S04: a manual item's due date, and the filters of the receivables exports.
+  open_item: ['reference', 'dueOn', 'effectiveOn'],
+  receivables_export: [
+    'format',
+    'asOf',
+    'ledger',
+    'accountIds',
+    'clientValueId',
+    'from',
+    'to',
+    'currency',
+  ],
 } as const satisfies Record<string, readonly string[]>;
 
 export type AuditedEntity = keyof typeof AUDITED_FIELDS;

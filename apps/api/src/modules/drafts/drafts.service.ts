@@ -11,20 +11,27 @@ import {
   type DraftPage,
   type DraftQuery,
   type EntryPreview,
+  type ItemKind,
   type PostedDraft,
+  type PreviewItem,
   type UpdateDraft,
 } from '@vertex-mizan/contracts';
 import {
+  chartAccounts,
   type Database,
   entryAttachments,
   entryDraftLines,
   entryDrafts,
+  openItems,
   type PersonActor,
+  type PreviewLine,
   previewPosting,
+  readItemBalances,
   type Transaction,
   withCompany,
   writeCompanyAudit,
 } from '@vertex-mizan/db';
+import { type CarriedAmounts, itemPositions } from '@vertex-mizan/ledger';
 import { and, count, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import { actorOf, type CompanyRouteAccess } from '../../core/access/access.js';
@@ -205,11 +212,16 @@ export class DraftsService {
       const row = await draftRow(tx, id);
       const lines = await draftLines(tx, id);
       const currencies = await ledgerCurrencies(tx);
-      const answer = (refusals: EntryPreview['refusals'], built: EntryPreview['lines'] = []) => ({
+      const answer = (
+        refusals: EntryPreview['refusals'],
+        built: EntryPreview['lines'] = [],
+        items: EntryPreview['items'] = [],
+      ) => ({
         entryDate: row.entryDate,
         bookCurrency: currencies.book,
         parallelCurrency: currencies.parallel,
         lines: built,
+        items,
         refusals,
       });
       const missing = missingOf(row, lines);
@@ -223,6 +235,7 @@ export class DraftsService {
           tx,
           built.map((line) => line.accountId),
         );
+        const items = await previewItems(tx, built, currencies.parallel !== null);
         return answer(
           [],
           built.map((line) => ({
@@ -239,7 +252,17 @@ export class DraftsService {
             parallelMinor: line.parallelMinor?.toString() ?? null,
             memo: line.memo,
             conversions: line.conversions.map(conversionOf),
+            item:
+              line.item === null
+                ? null
+                : {
+                    id: line.item.id,
+                    reference: items.find((item) => item.id === line.item?.id)?.reference ?? '',
+                    movement: line.item.movement,
+                    adjusted: line.item.adjusted,
+                  },
           })),
+          items,
         );
       } catch (error) {
         if (error instanceof DomainError) return answer([refusalOf(error)]);
@@ -556,4 +579,59 @@ export async function storeAttachment(
     after: { fileName, contentType, sizeBytes: row.sizeBytes, sha256, ...owner },
   });
   return attachmentOf(row, await peopleOf(tx, [actor.userId]));
+}
+
+/**
+ * The items a preview's lines move (S04 "Screens"), in the order of their first line: each with
+ * its account, kind, reference and currency, and what it carries before the entry and after it.
+ * An item the posting would make starts at zero, with the preview's own id.
+ */
+async function previewItems(
+  tx: Transaction,
+  lines: readonly PreviewLine[],
+  keepsParallel: boolean,
+): Promise<PreviewItem[]> {
+  const moved = lines.flatMap((line) => (line.item === null ? [] : [line]));
+  if (moved.length === 0) return [];
+  const existingIds = [
+    ...new Set(moved.flatMap((line) => (line.item?.isNew ? [] : [line.item?.id ?? '']))),
+  ];
+  const stored =
+    existingIds.length === 0
+      ? []
+      : await tx
+          .select({
+            id: openItems.id,
+            kind: openItems.kind,
+            reference: openItems.reference,
+          })
+          .from(openItems)
+          .where(inArray(openItems.id, existingIds));
+  const before = await readItemBalances(tx, existingIds);
+  const accounts = await tx
+    .select({ id: chartAccounts.id, itemKind: chartAccounts.itemKind })
+    .from(chartAccounts)
+    .where(inArray(chartAccounts.id, [...new Set(moved.map((line) => line.accountId))]));
+  return itemPositions(moved, before, keepsParallel).map((position) => {
+    const first = moved.find((line) => line.item?.id === position.id);
+    const row = stored.find((candidate) => candidate.id === position.id);
+    const kind = (row?.kind ??
+      accounts.find((account) => account.id === first?.accountId)?.itemKind ??
+      'document') as ItemKind;
+    const amounts = (carried: CarriedAmounts) => ({
+      openMinor: carried.transaction.amountMinor.toString(),
+      bookMinor: carried.bookMinor.toString(),
+      parallelMinor: carried.parallelMinor?.toString() ?? null,
+    });
+    return {
+      id: position.id,
+      accountId: first?.accountId ?? '',
+      kind,
+      reference: row?.reference ?? first?.item?.reference ?? '',
+      currency: position.after.transaction.currency,
+      isNew: position.isNew,
+      before: amounts(position.before),
+      after: amounts(position.after),
+    };
+  });
 }

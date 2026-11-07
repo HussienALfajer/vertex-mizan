@@ -63,6 +63,7 @@ export const purchaseLines: EntryLine[] = [
     parallelMinor: '10000',
     memo: null,
     conversions: [bulletin],
+    item: null,
   },
   {
     lineNo: 2,
@@ -87,6 +88,7 @@ export const purchaseLines: EntryLine[] = [
         rateType: 'market',
       },
     ],
+    item: null,
   },
   {
     lineNo: 3,
@@ -102,6 +104,7 @@ export const purchaseLines: EntryLine[] = [
     parallelMinor: '0',
     memo: null,
     conversions: [],
+    item: null,
   },
 ];
 
@@ -211,6 +214,8 @@ export function draftOf(input: DraftInput, fields: Partial<Draft> & Pick<Draft, 
       currency: line.currency,
       amountMinor: line.amountMinor,
       memo: line.memo,
+      openItemId: line.openItemId,
+      newItem: line.newItem,
     })),
     preparedBy: ownerRef,
     submitted: null,
@@ -237,6 +242,8 @@ export const purchaseInput: DraftInput = {
       currency: 'USD',
       amountMinor: '10000',
       memo: null,
+      openItemId: null,
+      newItem: null,
     },
     {
       accountId: sypBank.id,
@@ -244,6 +251,8 @@ export const purchaseInput: DraftInput = {
       currency: 'SYP',
       amountMinor: '-1225000',
       memo: null,
+      openItemId: null,
+      newItem: null,
     },
   ],
 };
@@ -298,6 +307,7 @@ export const purchasePreview: EntryPreview = {
   bookCurrency: 'SYP',
   parallelCurrency: 'USD',
   lines: purchaseLines,
+  items: [],
   refusals: [],
 };
 

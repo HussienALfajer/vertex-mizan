@@ -25,6 +25,23 @@ export {
 } from './company-context.js';
 export { describeForLog } from './describe-for-log.js';
 export {
+  accountHasOpenItems,
+  type ClientStatementRows,
+  type ItemAtDate,
+  type ItemDueDate,
+  type ItemFilter,
+  type ItemMovementRow,
+  type OpenItemState,
+  readClientStatement,
+  readDueDates,
+  readItemBalances,
+  readItemMovements,
+  readItemsAt,
+  readOpenItemState,
+  type StatementBalanceRow,
+  type StatementMovementRow,
+} from './posting/item-reads.js';
+export {
   type DealtRateSpec,
   type ManualLineSpec,
   type PostedEntryRef,

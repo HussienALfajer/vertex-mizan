@@ -7,7 +7,31 @@ import {
   rateTypeSchema,
   rateValueSchema,
 } from './money.js';
-import { MINOR_MAX, MINOR_MIN } from './money-arithmetic.js';
+import {
+  itemAmountsSchema,
+  itemKindSchema,
+  itemReferenceSchema,
+  movementKindSchema,
+} from './open-items.js';
+import {
+  type EntryNumber,
+  entryNumberSchema,
+  type MoneyAmount,
+  minorUnitsSchema,
+  moneyAmountSchema,
+  type PersonRef,
+  personRefSchema,
+} from './wire.js';
+
+export {
+  type EntryNumber,
+  entryNumberSchema,
+  type MoneyAmount,
+  minorUnitsSchema,
+  moneyAmountSchema,
+  type PersonRef,
+  personRefSchema,
+};
 
 /**
  * Journal entries and their drafts (S03): the accountant's drafts with their lines and dealt
@@ -64,47 +88,6 @@ export type AttachmentContentType = z.infer<typeof attachmentContentTypeSchema>;
 export const ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024;
 export const ATTACHMENT_LIMIT = 20;
 
-const MINOR_UNITS_PATTERN = /^(0|-?[1-9]\d{0,18})$/;
-
-/**
- * An amount in minor units on the wire: an integer string (`"-1225000"`), because a JSON number
- * loses digits beyond 2^53; within the stored `bigint` range (ADR 0007).
- */
-export const minorUnitsSchema = z
-  .string()
-  .regex(MINOR_UNITS_PATTERN, 'Expected an integer in minor units')
-  .refine((text) => {
-    // Zod runs a refinement even after a failed pattern: that case is the pattern's issue.
-    if (!MINOR_UNITS_PATTERN.test(text)) return true;
-    const value = BigInt(text);
-    return value >= MINOR_MIN && value <= MINOR_MAX;
-  }, 'Outside the stored range')
-  .meta({
-    id: 'MinorUnits',
-    description: 'An integer amount in minor units of its currency, as a decimal string',
-  });
-
-/** An amount with its currency (ADR 0007): never shown or read without it. */
-export const moneyAmountSchema = z
-  .object({ amountMinor: minorUnitsSchema, currency: currencyCodeSchema })
-  .meta({ id: 'MoneyAmount' });
-
-export type MoneyAmount = z.infer<typeof moneyAmountSchema>;
-
-/** A person named on a draft or an entry: who prepared, submitted, approved or posted it. */
-export const personRefSchema = z
-  .object({ id: z.uuid(), name: z.string() })
-  .meta({ id: 'PersonRef' });
-
-export type PersonRef = z.infer<typeof personRefSchema>;
-
-/** An entry's number as it is shown: fiscal year and number (`2026/123`, S03 "Periods"). */
-export const entryNumberSchema = z
-  .object({ fiscalYear: z.int().min(2000).max(9999), number: z.int().min(1) })
-  .meta({ id: 'EntryNumber' });
-
-export type EntryNumber = z.infer<typeof entryNumberSchema>;
-
 /** البيان: 1–500 characters (S03 rule 5). */
 const descriptionSchema = z.string().trim().min(1).max(500);
 
@@ -127,6 +110,16 @@ export const dealtRateSchema = z
 export type DealtRate = z.infer<typeof dealtRateSchema>;
 
 /**
+ * The manual document item a draft line opens (S04 rule 6): a reference unique on the account and
+ * an optional due date, on or after the entry date (checked at posting).
+ */
+export const newItemSchema = z
+  .object({ reference: itemReferenceSchema, dueOn: z.iso.date().nullable().default(null) })
+  .meta({ id: 'NewItem' });
+
+export type NewItem = z.infer<typeof newItemSchema>;
+
+/**
  * A draft line as typed (S03 rule 4): incomplete while typing, so the account, the currency and
  * the amount may be missing; an amount given is never zero (edge case 3), positive a debit and
  * negative a credit. At most one value per dimension type, checked at posting.
@@ -144,6 +137,14 @@ export const draftLineInputSchema = z
       .refine((text) => text !== '0', 'A line of zero amount')
       .nullable(),
     memo: memoSchema.nullable().default(null),
+    /** The open item a line on a control account moves (S04 rule 7). */
+    openItemId: z.uuid().nullable().default(null),
+    /** The manual document item the line opens (S04 rule 6). */
+    newItem: newItemSchema.nullable().default(null),
+  })
+  .refine((line) => line.openItemId === null || line.newItem === null, {
+    message: 'A line moves an item or opens one, not both',
+    path: ['newItem'],
   })
   .meta({ id: 'DraftLineInput' });
 
@@ -190,6 +191,8 @@ export const draftLineSchema = z
     currency: currencyCodeSchema.nullable(),
     amountMinor: minorUnitsSchema.nullable(),
     memo: z.string().nullable(),
+    openItemId: z.uuid().nullable(),
+    newItem: newItemSchema.nullable(),
   })
   .meta({ id: 'DraftLine' });
 
@@ -305,6 +308,21 @@ export const lineConversionSchema = z
 
 export type LineConversion = z.infer<typeof lineConversionSchema>;
 
+/**
+ * The item a line moves (S04): its id (a new item's is the preview's own until it posts), its
+ * reference, the movement the line is, and `adjusted` for a manual movement on a Hub item (rule 8).
+ */
+export const entryLineItemSchema = z
+  .object({
+    id: z.uuid(),
+    reference: z.string(),
+    movement: movementKindSchema,
+    adjusted: z.boolean(),
+  })
+  .meta({ id: 'EntryLineItem' });
+
+export type EntryLineItem = z.infer<typeof entryLineItemSchema>;
+
 /** A line as posted, or as the preview would post it: the three amounts and how they came. */
 export const entryLineSchema = z
   .object({
@@ -323,6 +341,8 @@ export const entryLineSchema = z
     parallelMinor: minorUnitsSchema.nullable(),
     memo: z.string().nullable(),
     conversions: z.array(lineConversionSchema),
+    /** The open item a line on a control account moves, and how (S04); null on other lines. */
+    item: entryLineItemSchema.nullable(),
   })
   .meta({ id: 'EntryLine' });
 
@@ -341,6 +361,25 @@ export const postingRefusalSchema = z
 export type PostingRefusal = z.infer<typeof postingRefusalSchema>;
 
 /**
+ * An item in the preview (S04 "Screens"): its open and carrying amounts before the entry and after
+ * it; a new item starts at zero. A crossing of zero shows as the item's two lines (`clear`, `add`).
+ */
+export const previewItemSchema = z
+  .object({
+    id: z.uuid(),
+    accountId: z.uuid(),
+    kind: itemKindSchema,
+    reference: z.string(),
+    currency: currencyCodeSchema,
+    isNew: z.boolean(),
+    before: itemAmountsSchema,
+    after: itemAmountsSchema,
+  })
+  .meta({ id: 'PreviewItem' });
+
+export type PreviewItem = z.infer<typeof previewItemSchema>;
+
+/**
  * `POST /api/drafts/:id/preview` (S03 rule 7): the lines as they would post now, rounding and
  * difference lines included, computed by the posting function's own code with no write; or the
  * refusals, and then no lines.
@@ -351,6 +390,8 @@ export const entryPreviewSchema = z
     bookCurrency: currencyCodeSchema,
     parallelCurrency: currencyCodeSchema.nullable(),
     lines: z.array(entryLineSchema),
+    /** Each item the lines move (S04): what it carries before the entry and after it. */
+    items: z.array(previewItemSchema),
     refusals: z.array(postingRefusalSchema),
   })
   .meta({ id: 'EntryPreview' });
@@ -585,10 +626,14 @@ export const NUMBERING_PROBLEMS = ['missing', 'duplicate', 'counter'] as const;
  */
 export const PERIOD_BALANCE_PROBLEMS = ['different', 'missing', 'unexpected'] as const;
 
+/** The amounts the integrity check compares between a control account and its items (S04). */
+export const CONTROL_ACCOUNT_AMOUNTS = ['transaction', 'book', 'parallel'] as const;
+
 /**
  * The integrity check's report (S03 rule 19): the chain recomputed from the first entry, the
  * numbers per fiscal year, each entry's balance in both ledgers, the period balances against the
- * lines, the ledger head, every stored anchor and the pasted one. `ok` only when all hold.
+ * lines, the ledger head, every stored anchor and the pasted one; each control account against
+ * its items and each item's balance row against its movements (S04). `ok` only when all hold.
  */
 export const integrityReportSchema = z
   .object({
@@ -638,6 +683,21 @@ export const integrityReportSchema = z
         currency: currencyCodeSchema,
         problem: z.enum(PERIOD_BALANCE_PROBLEMS),
       }),
+    ),
+    /**
+     * A control account whose period balances disagree with its items' movements in a currency
+     * (S04 "Reports"): which amount differs, the transaction amount or a ledger's.
+     */
+    controlAccounts: z.array(
+      z.object({
+        accountId: z.uuid(),
+        currency: currencyCodeSchema,
+        amount: z.enum(CONTROL_ACCOUNT_AMOUNTS),
+      }),
+    ),
+    /** An item's balance row that disagrees with its movements, or one missing (S04). */
+    openItemBalances: z.array(
+      z.object({ itemId: z.uuid(), problem: z.enum(PERIOD_BALANCE_PROBLEMS) }),
     ),
     anchors: z.array(
       z.object({

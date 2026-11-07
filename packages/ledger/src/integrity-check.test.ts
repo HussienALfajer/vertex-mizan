@@ -6,6 +6,8 @@ import {
   checkIntegrity,
   firstChainBreak,
   numberingProblems,
+  type OpenItemsInput,
+  openItemProblems,
   periodBalanceProblems,
   periodTotalsOf,
   type StoredEntry,
@@ -364,6 +366,211 @@ describe('properties', () => {
           expect(checkIntegrity({ ...sound(chain), chain: tampered }).periodBalances).toHaveLength(
             1,
           );
+        },
+      ),
+    );
+  });
+});
+
+describe('openItemProblems (S04 "Reports")', () => {
+  const RECEIVABLE = '019a0000-0000-7000-8000-000000112001';
+  const FUNDS = '019a0000-0000-7000-8000-000000213001';
+  const M1 = '019a0000-0000-7000-8000-0000000000e1';
+  const R1 = '019a0000-0000-7000-8000-0000000000e2';
+  const period = (
+    month: string,
+    accountId: string,
+    currency: 'USD' | 'SYP',
+    net: [bigint, bigint, bigint],
+  ) => ({
+    period: month,
+    accountId,
+    dimensionKey: PROJECT_KEY,
+    currency,
+    debitMinor: net[0] > 0n ? net[0] : 0n,
+    creditMinor: net[0] < 0n ? -net[0] : 0n,
+    bookDebitMinor: net[1] > 0n ? net[1] : 0n,
+    bookCreditMinor: net[1] < 0n ? -net[1] : 0n,
+    parallelDebitMinor: net[2] > 0n ? net[2] : 0n,
+    parallelCreditMinor: net[2] < 0n ? -net[2] : 0n,
+    lineCount: 1,
+  });
+
+  /** M-1 opened and settled 400 of 1,000 (the manual-settlement scenario's numbers). */
+  const sound: OpenItemsInput = {
+    controlAccountIds: [RECEIVABLE, FUNDS],
+    periodBalances: [
+      period('2026-11', RECEIVABLE, 'USD', [100_000n, 12_000_000n, 100_000n]),
+      {
+        ...period('2026-11', RECEIVABLE, 'USD', [-40_000n, -4_800_000n, -40_000n]),
+        period: '2026-11',
+        dimensionKey: 'other',
+      },
+      period('2026-11', CASH, 'USD', [40_000n, 4_920_000n, 40_000n]),
+    ],
+    items: [
+      { id: M1, accountId: RECEIVABLE, currency: 'USD' },
+      { id: R1, accountId: FUNDS, currency: 'USD' },
+    ],
+    movements: [
+      {
+        itemId: M1,
+        entryDate: '2026-11-03',
+        amountMinor: 100_000n,
+        bookMinor: 12_000_000n,
+        parallelMinor: 100_000n,
+      },
+      {
+        itemId: M1,
+        entryDate: '2026-11-19',
+        amountMinor: -40_000n,
+        bookMinor: -4_800_000n,
+        parallelMinor: -40_000n,
+      },
+    ],
+    balances: [
+      {
+        itemId: M1,
+        openMinor: 60_000n,
+        bookMinor: 7_200_000n,
+        parallelMinor: 60_000n,
+        movementCount: 2,
+        lastMovementOn: '2026-11-19',
+      },
+    ],
+  };
+
+  it('finds nothing when every control account is its items and every row its movements', () => {
+    expect(openItemProblems(sound)).toEqual({ controlAccounts: [], itemBalances: [] });
+  });
+
+  it('names the account and the amount that differ', () => {
+    const [first, ...rest] = sound.periodBalances;
+    if (!first) throw new Error('no balance');
+    const findings = openItemProblems({
+      ...sound,
+      periodBalances: [{ ...first, bookDebitMinor: first.bookDebitMinor + 1n }, ...rest],
+    });
+    expect(findings.controlAccounts).toEqual([
+      { accountId: RECEIVABLE, currency: 'USD', amount: 'book' },
+    ]);
+  });
+
+  it('finds a control account line with no item, on an account without items too', () => {
+    const findings = openItemProblems({
+      ...sound,
+      periodBalances: [
+        ...sound.periodBalances,
+        period('2026-12', FUNDS, 'USD', [-500n, -60_000n, -500n]),
+      ],
+    });
+    expect(findings.controlAccounts).toEqual([
+      { accountId: FUNDS, currency: 'USD', amount: 'transaction' },
+      { accountId: FUNDS, currency: 'USD', amount: 'book' },
+      { accountId: FUNDS, currency: 'USD', amount: 'parallel' },
+    ]);
+  });
+
+  it('names an item row that differs, one missing and one no movement explains', () => {
+    const [row] = sound.balances;
+    if (!row) throw new Error('no row');
+    expect(
+      openItemProblems({ ...sound, balances: [{ ...row, movementCount: 3 }] }).itemBalances,
+    ).toEqual([{ itemId: M1, problem: 'different' }]);
+    expect(
+      openItemProblems({ ...sound, balances: [{ ...row, lastMovementOn: '2026-11-03' }] })
+        .itemBalances,
+    ).toEqual([{ itemId: M1, problem: 'different' }]);
+    expect(openItemProblems({ ...sound, balances: [] }).itemBalances).toEqual([
+      { itemId: M1, problem: 'missing' },
+    ]);
+    expect(
+      openItemProblems({
+        ...sound,
+        balances: [...sound.balances, { ...row, itemId: R1 }],
+      }).itemBalances,
+    ).toEqual([{ itemId: R1, problem: 'unexpected' }]);
+  });
+
+  const movement = fc.record({
+    item: fc.constantFrom(M1, R1),
+    entryDate: fc.constantFrom('2026-11-03', '2026-11-19', '2026-12-01'),
+    amountMinor: fc.bigInt({ min: -1_000_000n, max: 1_000_000n }),
+    bookMinor: fc.bigInt({ min: -100_000_000n, max: 100_000_000n }),
+    parallelMinor: fc.bigInt({ min: -1_000_000n, max: 1_000_000n }),
+  });
+
+  type Move = typeof movement extends fc.Arbitrary<infer T> ? T : never;
+  /** Period balances and rows built from the movements, as the posting function keeps them. */
+  function consistent(moves: readonly Move[]): OpenItemsInput {
+    const items = [
+      { id: M1, accountId: RECEIVABLE, currency: 'USD' as const },
+      { id: R1, accountId: FUNDS, currency: 'USD' as const },
+    ];
+    const accountOf = new Map(items.map((item) => [item.id, item.accountId]));
+    const movements = moves.map((move) => ({ ...move, itemId: move.item }));
+    const balances = items.flatMap((item) => {
+      const own = movements.filter((move) => move.itemId === item.id);
+      if (own.length === 0) return [];
+      const sum = (pick: (move: (typeof own)[number]) => bigint) =>
+        own.reduce((a, m) => a + pick(m), 0n);
+      return [
+        {
+          itemId: item.id,
+          openMinor: sum((m) => m.amountMinor),
+          bookMinor: sum((m) => m.bookMinor),
+          parallelMinor: sum((m) => m.parallelMinor),
+          movementCount: own.length,
+          lastMovementOn:
+            own
+              .map((m) => m.entryDate)
+              .sort()
+              .at(-1) ?? '',
+        },
+      ];
+    });
+    return {
+      controlAccountIds: [RECEIVABLE, FUNDS],
+      periodBalances: movements.map((move) =>
+        period(move.entryDate.slice(0, 7), accountOf.get(move.itemId) ?? '', 'USD', [
+          move.amountMinor,
+          move.bookMinor,
+          move.parallelMinor,
+        ]),
+      ),
+      items,
+      movements,
+      balances,
+    };
+  }
+
+  it('passes the books the posting function keeps, and finds any amount changed (property)', () => {
+    fc.assert(
+      fc.property(
+        fc.array(movement, { minLength: 1, maxLength: 20 }),
+        fc.nat(),
+        fc.bigInt({ min: 1n, max: 1000n }),
+        (moves, pick, delta) => {
+          const input = consistent(moves);
+          expect(openItemProblems(input)).toEqual({ controlAccounts: [], itemBalances: [] });
+          const rows = [...input.balances];
+          const index = pick % rows.length;
+          const row = rows[index];
+          if (!row) throw new Error('no row');
+          rows[index] = { ...row, bookMinor: row.bookMinor + delta };
+          expect(openItemProblems({ ...input, balances: rows }).itemBalances).toEqual([
+            { itemId: row.itemId, problem: 'different' },
+          ]);
+          const changed = [...input.movements];
+          const at = pick % changed.length;
+          const move = changed[at];
+          if (!move) throw new Error('no movement');
+          changed[at] = { ...move, amountMinor: move.amountMinor + delta };
+          const findings = openItemProblems({ ...input, movements: changed });
+          expect(findings.controlAccounts).toContainEqual(
+            expect.objectContaining({ amount: 'transaction' }),
+          );
+          expect(findings.itemBalances).toEqual([{ itemId: move.itemId, problem: 'different' }]);
         },
       ),
     );

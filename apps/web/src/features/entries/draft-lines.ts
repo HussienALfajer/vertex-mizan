@@ -24,6 +24,12 @@ export interface EditLine {
   /** Signed: positive a debit, negative a credit. */
   readonly amountMinor: bigint | null;
   readonly memo: string;
+  /**
+   * The open item a line on a control account moves, or the manual item it opens (S04 rules 6–7),
+   * kept as saved; the item cell arrives with S04's screens.
+   */
+  readonly openItemId: string | null;
+  readonly newItem: { readonly reference: string; readonly dueOn: string | null } | null;
 }
 
 /** A dealt rate as typed, for a pair the entry has (rule 13): `null` when none is given. */
@@ -57,6 +63,8 @@ export function emptyLine(): EditLine {
     currency: null,
     amountMinor: null,
     memo: '',
+    openItemId: null,
+    newItem: null,
   };
 }
 
@@ -88,6 +96,8 @@ export function editDraftOf(draft: Draft): EditDraft {
             currency: line.currency,
             amountMinor: line.amountMinor === null ? null : BigInt(line.amountMinor),
             memo: line.memo ?? '',
+            openItemId: line.openItemId,
+            newItem: line.newItem,
           })),
   };
 }
@@ -99,7 +109,9 @@ export function isBlankLine(line: EditLine): boolean {
     line.dimensionValueIds.length === 0 &&
     line.currency === null &&
     line.amountMinor === null &&
-    line.memo.trim() === ''
+    line.memo.trim() === '' &&
+    line.openItemId === null &&
+    line.newItem === null
   );
 }
 
@@ -148,6 +160,8 @@ export function draftInputOf(
                 ? null
                 : line.amountMinor.toString(),
             memo: text(line.memo),
+            openItemId: line.openItemId,
+            newItem: line.newItem,
           })),
   };
 }

@@ -1213,8 +1213,18 @@ export interface PreviewLine {
   readonly parallelMinor: bigint | null;
   readonly memo: string | null;
   readonly conversions: readonly ChainConversion[];
-  /** The item the line moves and how (S04); a new item's id is the preview's own. */
-  readonly item: { readonly id: string; readonly movement: MovementKind } | null;
+  /**
+   * The item the line moves and how (S04), `adjusted` for a manual movement on a Hub or opening
+   * item (rule 8); an item the posting would make has the preview's own id and `isNew`, with its
+   * reference (a running item's: its client's code).
+   */
+  readonly item: {
+    readonly id: string;
+    readonly movement: MovementKind;
+    readonly adjusted: boolean;
+    readonly isNew: boolean;
+    readonly reference: string | null;
+  } | null;
 }
 
 /**
@@ -1243,7 +1253,8 @@ export async function previewPosting(
     refuse('PERIOD_CLOSED', `The period ${period} is closed`, { period });
   }
   const built = await buildLines(tx, content, on, ledgers, settings.bulletinDaysOff, false);
-  return built.lines.map(({ line, memo }, index) => ({
+  const made = new Map(built.newItems.map((item) => [item.id, item]));
+  return built.lines.map(({ line, memo, adjusted }, index) => ({
     lineNo: index + 1,
     accountId: line.account,
     dimensionValueIds: Object.values(line.dimensions),
@@ -1255,7 +1266,15 @@ export async function previewPosting(
     parallelMinor: line.parallelMinor,
     memo,
     conversions: conversionsOf(line, built.rateIds, content.kind === 'manual'),
-    item: line.item ?? null,
+    item:
+      line.item === undefined
+        ? null
+        : {
+            ...line.item,
+            adjusted,
+            isNew: made.has(line.item.id),
+            reference: made.get(line.item.id)?.reference ?? null,
+          },
   }));
 }
 

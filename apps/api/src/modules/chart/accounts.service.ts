@@ -16,6 +16,7 @@ import {
 import {
   ACCOUNT_CODE_TAKEN,
   type AccountRow,
+  accountHasOpenItems,
   accountRequiredDimensions,
   accountRoles,
   addRequiredDimensions,
@@ -242,7 +243,7 @@ export class AccountsService {
   /**
    * `POST /api/accounts/:id/archive` (rule 6): not a root (`ACCOUNT_LOCKED`), no unarchived child
    * (`ACCOUNT_HAS_CHILDREN`), no role (`ACCOUNT_IN_ROLE`), and a zero balance in both ledgers
-   * (`ACCOUNT_HAS_BALANCE`, S03; open items join with S04). The ledger head is locked before the
+   * (`ACCOUNT_HAS_BALANCE`, S03), and no item that is not zero (S04 edge case 13). The ledger head is locked before the
    * account, in the posting function's order (ADR 0008), so no posting lands between the balance
    * read and the archive (S02 abuse case).
    */
@@ -254,7 +255,7 @@ export class AccountsService {
         throw new CodedException('ACCOUNT_HAS_CHILDREN', 'The account has unarchived children');
       }
       await this.refuseInRole(tx, id);
-      if (await hasLedgerBalance(tx, id)) {
+      if ((await hasLedgerBalance(tx, id)) || (await accountHasOpenItems(tx, id))) {
         throw new CodedException('ACCOUNT_HAS_BALANCE', 'The account has a balance');
       }
       await tx

@@ -103,6 +103,9 @@ export const audit = {
     'integrity.checked': 'شغّل فحص السلامة',
     'export.requested': 'طلب تصدير بيانات الشركة',
     'export.downloaded': 'نزّل تصدير بيانات الشركة',
+    'open_item.due_date_changed': 'غيّر تاريخ استحقاق بند',
+    'export.ageing': 'صدّر أعمار الذمم',
+    'export.client_statement': 'صدّر كشف حساب عميل',
   } satisfies Record<CompanyAuditAction, string>,
   /** The audited entities (`AUDITED_FIELDS` in `packages/db`). */
   entities: {
@@ -124,6 +127,8 @@ export const audit = {
     journal_entry: 'القيد',
     entry_draft: 'مسودة القيد',
     attachment: 'المرفق',
+    open_item: 'البند المفتوح',
+    receivables_export: 'تقرير الذمم',
   },
   /** The audited fields, by entity field name. */
   fields: {
@@ -204,5 +209,12 @@ export const audit = {
     sha256: 'بصمة SHA-256',
     draftId: 'المسودة',
     entryId: 'القيد',
+    dueOn: 'تاريخ الاستحقاق',
+    asOf: 'حتى تاريخ',
+    ledger: 'الدفتر',
+    accountIds: 'الحسابات',
+    clientValueId: 'العميل',
+    from: 'من تاريخ',
+    to: 'إلى تاريخ',
   },
 };
