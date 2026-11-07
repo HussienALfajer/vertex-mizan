@@ -270,6 +270,17 @@ export function EntryEditor({
     };
   }
 
+  /**
+   * The line with a dimension value set or removed. A changed client drops the open item it
+   * moved, which is that client's (rule 7); a new item, which has no client yet, stays.
+   */
+  function withDimension(line: EditLine, typeId: string, valueId: string | null): EditLine {
+    const next = withDimensionValue(line, typeId, valueId, catalog.byId);
+    return typeId === clientType?.id && clientOf(next) !== clientOf(line)
+      ? { ...next, openItemId: null }
+      : next;
+  }
+
   /** The line moving an open item: it takes the item's currency (rule 7). */
   function withItem(line: EditLine, item: OpenItemSummary): EditLine {
     return { ...line, openItemId: item.id, newItem: null, currency: item.currency };
@@ -385,7 +396,8 @@ export function EntryEditor({
       id: 'currency',
       type: 'text',
       header: te.currency,
-      readOnly: !linesEditable,
+      // A line moving an item is in the item's currency (rule 7).
+      readOnly: (row) => !linesEditable || row.openItemId !== null,
       value: (row) => row.currency ?? '',
       validate: (text) =>
         text.trim() === '' || CURRENCY_CODES.includes(text.trim().toUpperCase() as CurrencyCode)
@@ -443,7 +455,7 @@ export function EntryEditor({
           const typeId = column.slice(4);
           const value =
             text === '' ? undefined : findDimensionValue(catalog.valuesOf(typeId), text);
-          next[cell.row] = withDimensionValue(line, typeId, value?.id ?? null, catalog.byId);
+          next[cell.row] = withDimension(line, typeId, value?.id ?? null);
         } else if (column === 'item') {
           next[cell.row] = withItemText(line, text);
         } else if (column === 'currency') {
@@ -797,7 +809,7 @@ export function EntryEditor({
             bookCurrency={bookCurrency}
             onAccount={(key, account) => updateLine(key, (line) => withAccount(line, account))}
             onDimension={(key, typeId, valueId) =>
-              updateLine(key, (line) => withDimensionValue(line, typeId, valueId, catalog.byId))
+              updateLine(key, (line) => withDimension(line, typeId, valueId))
             }
             onCurrency={(key, currency) => updateLine(key, (line) => ({ ...line, currency }))}
             onSide={(key, side, magnitude) =>
@@ -1043,7 +1055,7 @@ export function EntryEditor({
                 labels={dimensionPickerLabels}
                 onValueChange={(id) => {
                   updateLine(lookupLine.key, (line) =>
-                    withDimensionValue(line, lookup.column.slice(4), id, catalog.byId),
+                    withDimension(line, lookup.column.slice(4), id),
                   );
                   closeLookup();
                 }}
@@ -1421,7 +1433,7 @@ function LineCards({
                 label={te.currency}
                 value={line.currency}
                 options={CURRENCY_CODES.map((code) => ({ value: code, label: code }))}
-                disabled={!editable}
+                disabled={!editable || line.openItemId !== null}
                 onValueChange={(code) => onCurrency(line.key, code)}
               />
               <div className="grid grid-cols-2 gap-3">

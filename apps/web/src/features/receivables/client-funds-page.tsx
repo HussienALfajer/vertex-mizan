@@ -76,13 +76,14 @@ export function ClientFundsPage() {
         </Field>
       </Card>
       <ReportLedgerSwitch companyId={companyId} value={ledger} onValueChange={setLedger} />
-      {asOf === '' ? null : accounts.isPending || funds.isPending ? (
+      {asOf === '' ? null : accounts.isError || funds.isError ? (
+        // A failed chart read leaves the funds query disabled, so the error comes first.
+        <FormError error={accounts.error ?? funds.error} />
+      ) : accounts.isPending || funds.isPending ? (
         <div className="flex flex-col gap-2" aria-busy="true">
           <Skeleton className="h-row" />
           <Skeleton className="h-row" />
         </div>
-      ) : accounts.isError || funds.isError ? (
-        <FormError error={accounts.error ?? funds.error} />
       ) : funds.data.funds.length === 0 ? (
         <EmptyState icon={<WalletIcon />} title={t.empty} />
       ) : (

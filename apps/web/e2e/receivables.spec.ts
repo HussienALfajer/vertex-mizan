@@ -147,6 +147,12 @@ test.describe('the receivables ageing', () => {
     await expect(page).toHaveURL(new RegExp(`/open-items/${hubItem.id}$`));
   });
 
+  test('the client funds say when the chart cannot be read', async ({ page }) => {
+    await answer(page, 'GET', '/accounts', refusal(403, 'FORBIDDEN'));
+    await page.goto('/client-funds');
+    await expect(page.getByText(ar.errors.FORBIDDEN)).toBeVisible();
+  });
+
   test('shows the client funds, a debit balance marked', async ({ page }) => {
     await page.goto('/receivables');
     await page.getByRole('link', { name: t.ageing.clientFunds }).click();
@@ -190,7 +196,7 @@ test.describe('the client statement', () => {
 });
 
 test.describe('a viewer', () => {
-  test.use({ me: { ...viewer, permissions: rolePermissions.viewer } });
+  test.use({ me: { ...viewer, permissions: [...rolePermissions.viewer] } });
 
   test('reads the statement and an item, with no receipt or due-date change', async ({ page }) => {
     await page.goto(`/receivables/clients/${client.id}`);
@@ -264,6 +270,59 @@ test.describe('the entry screen with open items', () => {
         newItem: null,
       },
     ]);
+  });
+
+  test("a changed client drops the picked item, and its currency stays the item's", async ({
+    page,
+  }) => {
+    const created = await answer(page, 'POST', '/drafts', (request) => ({
+      status: 201,
+      json: draftOf(request.postDataJSON() as DraftInput, { id: ownDraft.id }),
+    }));
+    await page.goto(`/entries/new?client=${client.id}`);
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(te.newTitle);
+    const grid = page.getByRole('grid', { name: te.lines });
+    const cell = (row: number, column: number) =>
+      grid.locator(`[data-row="${row}"][data-column="${column}"]`);
+    await cell(1, 1).click();
+    await page.keyboard.type('112001');
+    await page.keyboard.press('Enter');
+    await cell(1, 3).click();
+    await page.keyboard.type('M-1');
+    await page.keyboard.press('Enter');
+    await expect(cell(1, 3)).toContainText('600.00');
+    // The currency of a line moving an item is the item's: typing over it changes nothing.
+    await cell(1, 4).click();
+    await page.keyboard.type('SYP');
+    await page.keyboard.press('Enter');
+    await expect(cell(1, 4)).toHaveText('USD');
+    // Another client: the item, which was the first client's, is dropped.
+    await cell(1, 2).click();
+    await page.mouse.move(0, 0);
+    await page.keyboard.press('Alt+ArrowDown');
+    const lookup = page.getByRole('dialog', { name: te.chooseDimension });
+    await expect(lookup.getByRole('combobox')).toBeFocused();
+    await page.keyboard.press('Control+a');
+    await page.keyboard.type('للتسويق');
+    await page.keyboard.press('ArrowDown');
+    await expect(page.getByRole('option', { name: hubClient.name })).toHaveAttribute(
+      'data-highlighted',
+      '',
+    );
+    await page.keyboard.press('Enter');
+    await expect(lookup).toBeHidden();
+    await expect(cell(1, 2)).toContainText(hubClient.name);
+    await expect(cell(1, 3)).toHaveText('');
+
+    await page.keyboard.press('Control+s');
+    await expect.poll(() => created.length).toBe(1);
+    const body = created[0]?.postDataJSON() as DraftInput;
+    expect(body.lines[0]).toMatchObject({
+      accountId: accountOf('112001').id,
+      dimensionValueIds: [hubClient.id],
+      openItemId: null,
+      newItem: null,
+    });
   });
 
   test('an invoice opens a new item with its reference and due date', async ({ page }) => {
