@@ -2,9 +2,9 @@
 
 Status: Proposed
 
-S05 wrote these cases (S05 "Scenarios"); they await the owner's approval of their expected entries and outcomes.
+S05 wrote these cases (S05 "Scenarios"); the owner approved their expected entries and outcomes on 2026-11-07, the three cases S05 rule 13 adds included: a change of `spent_on`, measured at the new date's bulletin; a change after the bulletin of `spent_on` was corrected, measured at the corrected rate; and a general-template company held `NO_MAPPING`.
 
-The cases stay `Proposed` until S05 brings their executors: the `event` executor through the event inbox, the posting rules of `project_expense.recorded`, `project_expense.changed` and `project_expense.archived`, the mapping slots `project_cost` and `project_expense_awaiting_payment`, a contract value made from the event (its kind and client, S05 rule 23), and the hold `NO_MAPPING` (S05 rules 8, 12–14). S05's feature slice switches the file to `Approved (owner, <the approval's date>)`.
+The cases stay `Proposed` until S05 brings their executors: the `event` executor through the event inbox, the posting rules of `project_expense.recorded`, `project_expense.changed` and `project_expense.archived`, the mapping slots `project_cost` and `project_expense_awaiting_payment`, a contract value made from the event (its kind and client, S05 rule 23), and the hold `NO_MAPPING` (S05 rules 8, 12–14). S05's feature slice switches the file to `Approved (owner, 2026-11-07)`.
 
 ## Rule
 
