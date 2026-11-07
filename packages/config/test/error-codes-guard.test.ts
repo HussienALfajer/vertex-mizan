@@ -31,13 +31,19 @@ const PUBLISHED = [
 ].join('\n');
 
 /** A repository with `base` committed as `errors.ts`, then `head` written over it. */
-function guard(base: string | null, head: string, args: string[] = []) {
+function guard(
+  base: string | null,
+  head: string,
+  args: string[] = [],
+  lists?: { base: string; head: string },
+) {
   const dir = mkdtempSync(join(tmpdir(), 'error-codes-guard-'));
   dirs.push(dir);
   const git = (...gitArgs: string[]) => execFileSync('git', ['-C', dir, ...gitArgs]);
   git('init', '--quiet');
   writeFileSync(join(dir, 'README'), 'fixture\n');
   if (base !== null) writeFileSync(join(dir, 'errors.ts'), base);
+  if (lists) writeFileSync(join(dir, 'events.ts'), lists.base);
   git('add', '--all');
   git(
     '-c',
@@ -50,9 +56,21 @@ function guard(base: string | null, head: string, args: string[] = []) {
     'base',
   );
   writeFileSync(join(dir, 'errors.ts'), head);
+  if (lists) writeFileSync(join(dir, 'events.ts'), lists.head);
   const result = spawnSync(
     process.execPath,
-    [script, '--repo', dir, '--file', 'errors.ts', '--base', 'HEAD', ...args],
+    [
+      script,
+      '--repo',
+      dir,
+      '--file',
+      'errors.ts',
+      '--lists-file',
+      'events.ts',
+      '--base',
+      'HEAD',
+      ...args,
+    ],
     { encoding: 'utf8' },
   );
   return { status: result.status, output: result.stderr };
@@ -107,6 +125,22 @@ describe('error-code guard', () => {
     expect(guard(registry(PUBLISHED), registry(PUBLISHED), ['--base', 'no-such-ref']).status).toBe(
       2,
     );
+  });
+
+  it('guards the inbox lists the same way: appended values pass, anything else fails', () => {
+    const lists = (values: string) =>
+      `export const HOLD_REASONS = [\n${values}\n] as const;\n\nexport const EVENT_STATES = [\n  'held',\n] as const;\n`;
+    const published = "  'PERIOD_CLOSED',\n  // S05\n  'NO_MAPPING',";
+    const run = (base: string, head: string) =>
+      guard(registry(PUBLISHED), registry(PUBLISHED), [], { base, head });
+    expect(run(lists(published), lists(`${published}\n  'RATE_MISSING',`)).status).toBe(0);
+    const renamed = run(lists(published), lists("  'PERIOD_CLOSED',\n  'NO_RULE',"));
+    expect(renamed).toMatchObject({ status: 1 });
+    expect(renamed.output).toContain('HOLD_REASONS: NO_MAPPING was renamed, removed or moved');
+    const removed = run(lists(published), "export const EVENT_STATES = [\n  'held',\n] as const;\n");
+    expect(removed.output).toContain('HOLD_REASONS was removed');
+    const unread = run(lists(published), lists(`${published}\n  OTHER,`));
+    expect(unread.output).toContain('unrecognised line in HOLD_REASONS');
   });
 
   it("reads this repository's registry", () => {

@@ -89,6 +89,17 @@ export const COMPANY_AUDIT_ACTIONS = [
   'open_item.due_date_changed',
   'export.ageing',
   'export.client_statement',
+  // S05: API clients, document sources, the posting-rule mapping and the inbox's actions.
+  'api_client.created',
+  'api_client.updated',
+  'api_client_key.created',
+  'api_client_key.revoked',
+  'document_source.set',
+  'posting_rule.mapped',
+  'event.retried',
+  'event.moved_to_open_period',
+  'event.resolved',
+  'event.dismissed',
 ] as const;
 
 export const companyAuditActionSchema = z

@@ -106,6 +106,16 @@ export const audit = {
     'open_item.due_date_changed': 'غيّر تاريخ استحقاق بند',
     'export.ageing': 'صدّر أعمار الذمم',
     'export.client_statement': 'صدّر كشف حساب عميل',
+    'api_client.created': 'أنشأ عميل واجهة برمجية',
+    'api_client.updated': 'عدّل عميل واجهة برمجية',
+    'api_client_key.created': 'أنشأ مفتاح واجهة برمجية',
+    'api_client_key.revoked': 'ألغى مفتاح واجهة برمجية',
+    'document_source.set': 'غيّر مصدر نوع مستند',
+    'posting_rule.mapped': 'غيّر ربط حساب بقاعدة ترحيل',
+    'event.retried': 'أعاد محاولة حدث معلّق',
+    'event.moved_to_open_period': 'رحّل حدثاً معلّقاً في الفترة المفتوحة التالية',
+    'event.resolved': 'حلّ حدثاً معلّقاً بقيد يدوي',
+    'event.dismissed': 'أسقط حدثاً معلّقاً',
   } satisfies Record<CompanyAuditAction, string>,
   /** The audited entities (`AUDITED_FIELDS` in `packages/db`). */
   entities: {

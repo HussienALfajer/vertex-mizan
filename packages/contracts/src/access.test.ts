@@ -36,6 +36,13 @@ describe('the permission map', () => {
         'company.export',
         'open_items.read',
         'open_items.manage',
+        'events.read',
+        'events.manage',
+        'events.dismiss',
+        'posting_rules.read',
+        'posting_rules.manage',
+        'api_clients.read',
+        'api_clients.manage',
       ],
       accountant: [
         'company.read',
@@ -52,6 +59,10 @@ describe('the permission map', () => {
         'entries.attach',
         'open_items.read',
         'open_items.manage',
+        'events.read',
+        'events.manage',
+        'posting_rules.read',
+        'posting_rules.manage',
       ],
       approver: [
         'company.read',
@@ -82,6 +93,9 @@ describe('the permission map', () => {
         'drafts.read',
         'integrity.read',
         'open_items.read',
+        'events.read',
+        'posting_rules.read',
+        'api_clients.read',
       ],
     });
   });
@@ -104,6 +118,18 @@ describe('the permission map', () => {
       ROLES.filter((role) => rolePermissions[role].includes(key));
     expect(holders('open_items.read')).toEqual([...ROLES]);
     expect(holders('open_items.manage')).toEqual(['owner', 'accountant']);
+  });
+
+  it('gives the inbox, the mapping and the API clients to the roles of S05 "Access"', () => {
+    const holders = (key: (typeof PERMISSIONS)[number]) =>
+      ROLES.filter((role) => rolePermissions[role].includes(key));
+    expect(holders('events.read')).toEqual(['owner', 'accountant', 'auditor']);
+    expect(holders('events.manage')).toEqual(['owner', 'accountant']);
+    expect(holders('events.dismiss')).toEqual(['owner']);
+    expect(holders('posting_rules.read')).toEqual(['owner', 'accountant', 'auditor']);
+    expect(holders('posting_rules.manage')).toEqual(['owner', 'accountant']);
+    expect(holders('api_clients.read')).toEqual(['owner', 'auditor']);
+    expect(holders('api_clients.manage')).toEqual(['owner']);
   });
 
   it('lets every role read the company profile, the chart, dimensions and rates', () => {
