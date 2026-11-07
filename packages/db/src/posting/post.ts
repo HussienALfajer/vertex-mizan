@@ -99,6 +99,12 @@ export interface ManualLineSpec {
   readonly openItemId?: string | null;
   /** The manual document item the line opens (S04 rule 6): its reference and due date. */
   readonly newItem?: { readonly reference: string; readonly dueOn: string | null } | null;
+  /**
+   * A Hub rule's line that carries what the entry's item lines move, in every ledger, instead of a
+   * new measurement: an ad spend's payable (S05, `ad-funds/running-balance`). Refused on a manual
+   * entry's line.
+   */
+  readonly carriesItems?: boolean;
 }
 
 /**
@@ -275,6 +281,7 @@ function linesPayload(lines: readonly ManualLineSpec[]): CanonicalValue {
     ...(line.newItem && {
       newItem: { reference: line.newItem.reference, dueOn: line.newItem.dueOn },
     }),
+    ...(line.carriesItems === true && { carriesItems: true }),
   }));
 }
 
@@ -723,6 +730,11 @@ async function manualLines(
         lineNo: index + 1,
       });
     }
+    if (spec.carriesItems === true && (hub === null || spec.openItemId || spec.newItem)) {
+      refuse('VALIDATION_FAILED', 'Only a Hub rule’s line off an item carries the items', {
+        lineNo: index + 1,
+      });
+    }
     return spec;
   });
   const existing = await itemsOf(
@@ -914,11 +926,15 @@ async function manualLines(
         }
       }
     }
+    if (spec.carriesItems === true && item !== undefined) {
+      refuse('VALIDATION_FAILED', 'A line on an item cannot carry the items', { lineNo });
+    }
     lines.push({
       account: spec.accountId,
       dimensions,
       amount: money(spec.amountMinor, spec.currency),
       ...(item !== undefined && { item }),
+      ...(spec.carriesItems === true && { carriesItems: true as const }),
     });
     adjustedOf.push(adjusted);
   }

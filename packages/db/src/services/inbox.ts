@@ -49,6 +49,7 @@ import {
   journalLines,
   ledgerHeads,
   periods,
+  postingRequests,
 } from '../schema/ledger.js';
 import { openItemBalances, openItemDueDates, openItems } from '../schema/open-items.js';
 import { ledgersOf } from './companies.js';
@@ -279,7 +280,11 @@ async function invoiceItemOf(tx: Transaction, invoiceId: string): Promise<HubIte
   return row === undefined ? null : { ...row, currency: row.currency as CurrencyCode };
 }
 
-/** The entries still standing for a Hub document, latest first: neither reversals nor reversed. */
+/**
+ * The entries still standing for a Hub document, latest first: neither reversals nor reversed, nor
+ * the difference entry that follows a reversal on a running item (S04 rule 13), which is the
+ * reversal's consequence, never the document's posting, so a later change or archive leaves it.
+ */
 async function standingEntriesOf(
   tx: Transaction,
   document: { type: string; id: string },
@@ -287,8 +292,16 @@ async function standingEntriesOf(
   const rows = await tx
     .select({ id: journalEntries.id })
     .from(journalEntries)
+    .innerJoin(
+      postingRequests,
+      and(
+        eq(postingRequests.companyId, journalEntries.companyId),
+        eq(postingRequests.id, journalEntries.requestId),
+      ),
+    )
     .where(
       and(
+        sql`${postingRequests.idempotencyKey} not like '%:difference'`,
         sql`${journalEntries.hubDocument} ->> 'type' = ${document.type}`,
         sql`${journalEntries.hubDocument} ->> 'id' = ${document.id}`,
         isNull(journalEntries.reversesEntryId),
@@ -443,6 +456,24 @@ function descriptionOf(event: EventEnvelope): string {
       return `دفعة ${event.payload.payment.number} على ${event.payload.invoice.number}`;
     case 'payment.voided':
       return `إلغاء دفعة ${event.payload.payment.number} على ${event.payload.invoice.number}`;
+    case 'ad_wallet.deposited':
+      return `إيداع ${event.payload.entry.number} في رصيد إعلانات ${event.payload.client.name}`;
+    case 'ad_wallet.refunded':
+      return `استرداد ${event.payload.entry.number} من رصيد إعلانات ${event.payload.client.name}`;
+    case 'ad_wallet.entry_voided':
+      return `إلغاء حركة ${event.payload.entry.number} في رصيد إعلانات ${event.payload.client.name}`;
+    case 'ad_spend.recorded':
+      return `إنفاق إعلاني ${event.payload.update.number} — ${event.payload.client.name}`;
+    case 'ad_spend.changed':
+      return `تعديل إنفاق إعلاني ${event.payload.update.number} — ${event.payload.client.name}`;
+    case 'ad_spend.archived':
+      return `أرشفة إنفاق إعلاني ${event.payload.update.number} — ${event.payload.client.name}`;
+    case 'project_expense.recorded':
+      return `مصروف مشروع ${event.payload.expense.number} — ${event.payload.client.name}`;
+    case 'project_expense.changed':
+      return `تعديل مصروف مشروع ${event.payload.expense.number} — ${event.payload.client.name}`;
+    case 'project_expense.archived':
+      return `أرشفة مصروف مشروع ${event.payload.expense.number}`;
     default:
       return `حدث ${event.type} من Hub`;
   }
@@ -628,7 +659,15 @@ async function contentOf(
     case 'lines': {
       const lines: ManualLineSpec[] = [];
       for (const line of planned.lines) lines.push(await lineSpecOf(line, values));
-      return { kind: 'hub', lines, dealtRates: planned.dealtRates, measuredOn, today, hub };
+      return {
+        kind: 'hub',
+        lines,
+        dealtRates: planned.dealtRates,
+        // A `.changed` event's new state is measured at its document's own date (rule 13).
+        measuredOn: planned.measuredOn ?? measuredOn,
+        today,
+        hub,
+      };
     }
     case 'reversal':
       return { kind: 'hub_reversal', entryId: planned.entryId, today, hub };
@@ -710,6 +749,7 @@ async function lineSpecOf(line: HubLine, values: HubValues): Promise<ManualLineS
     ...(line.item?.kind === 'open' && {
       newItem: { reference: line.item.reference, dueOn: line.item.dueOn },
     }),
+    ...(line.carriesItems === true && { carriesItems: true }),
   };
 }
 
