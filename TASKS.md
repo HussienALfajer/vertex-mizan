@@ -21,7 +21,8 @@ Spec: `docs/specs/S04-open-items-settlements.md` (Approved, owner 2026-10-28) ·
 - [x] api: the `open-items` module (`GET /api/open-items`, `GET /api/open-items/:id`, `PUT /api/open-items/:id/due-date`), the ageing and its Excel export, client funds, the client statement and its Excel export, the drafts' item fields through save, preview, post and approve, the integrity check's new comparisons, `ACCOUNT_HAS_BALANCE` reading open items; per endpoint: success, 401, 403, another company, an idempotent replay; a Hub item's due date refused; `ar.openItems` for the exports' headings
 - [x] bridge: OpenAPI regenerated, breaking-change check
 - [x] wiring (Contracts, Database, API), docs (`apps/api/CLAUDE.md`, `packages/db/CLAUDE.md`, `docs/ROADMAP.md`)
-- [ ] checks and reviewers (`reviewer`, `accountant-reviewer`), PR with auto-merge and Auto-fix
+- [x] checks and reviewers (`reviewer`, `accountant-reviewer`), PR opened (auto-merge off until the decision below)
+- [ ] the owner's decision on a due-date change before a manual item's document date (refused for now; or effective from the document date, a guard change), recorded in S04 rule 15 and its edge cases; then auto-merge on
 
 ## PR 3 — The receivables screens (ui, web, e2e)
 - [ ] ui: `AgeingTable` (buckets with totals and drill-down) and `OpenItemPicker` (`Alt+↓`, a client's open items with open and carrying amounts), tested, both densities, on the design-system page
