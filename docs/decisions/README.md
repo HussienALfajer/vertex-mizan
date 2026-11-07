@@ -17,3 +17,4 @@ Short records of decisions that shape the system. Each has a status: **Accepted*
 | [0011](0011-chart-dimensions-and-bulletin-rate.md) | Chart of accounts, the contract dimension and the bulletin rate of the day | Accepted (amends 0007) |
 | [0012](0012-journal-entries-and-ledger-state.md) | Journal entries: numbering year, manual rates, approval and the ledger's derived state | Accepted (amends 0005, 0007, 0008; residuals of manual entries amended by 0013) |
 | [0013](0013-open-items-and-settlements.md) | Open items and settlements: item kinds, manual movements, settlement in proportion to what remains | Accepted (amends 0007, 0012) |
+| [0014](0014-event-inbox-holds-and-order.md) | The event inbox: outcomes, order per item, the accountant's actions and the dates of changes | Proposed (amends 0006, 0008) |
