@@ -225,7 +225,7 @@ export async function writeCompanyAudit(
 export interface PlatformAuditEntry {
   action: PlatformAuditAction;
   /** Null for an unknown person: a failed sign-in or a reset request for an unknown email. */
-  actor: PlatformActor | (RequestFacts & { kind: 'system'; name?: string });
+  actor: AuditActor | (RequestFacts & { kind: 'system'; name?: string });
   subjectCompanyId?: string | null;
   /** The address typed on a failed sign-in or reset request. */
   email?: string | null;
@@ -239,6 +239,8 @@ export async function writePlatformAudit(
   entry: PlatformAuditEntry,
 ): Promise<void> {
   const { actor } = entry;
+  // The platform log records people and the system; an API client acts in a company's log only.
+  if (actor.kind === 'api_client') throw new TypeError('An API client has no platform audit row');
   await db.insert(platformAuditEntries).values({
     actorKind: actor.kind,
     actorUserId: actor.kind === 'person' ? actor.userId : null,

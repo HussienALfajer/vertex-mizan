@@ -9,12 +9,14 @@ import {
   parseEventEnvelope,
 } from '@vertex-mizan/contracts';
 import { and, asc, eq, sql } from 'drizzle-orm';
+import fc from 'fast-check';
 import { v7 as uuidv7 } from 'uuid';
 import { beforeAll, describe, expect, it } from 'vitest';
 import {
   type AuditActor,
   chartAccounts,
   createCompanyBooks,
+  dismissEvent,
   exchangeRates,
   INBOUND_ACTOR_KINDS,
   INBOUND_EVENT_ACTIONS,
@@ -35,6 +37,7 @@ import {
   type RetryTrigger,
   receiveEvent,
   recordRate,
+  resolveEvent,
   retryEvent,
   retryFreed,
   type Transaction,
@@ -129,15 +132,21 @@ const ids = (n: number) => `01934b6e-0000-7000-8000-${String(n).padStart(12, '0'
 const C1 = { external_id: ids(9001), code: 'C1', name: 'عميل تجريبي' };
 const S1 = { external_id: ids(9002), code: 'S1', name: 'خدمة تجريبية' };
 
+/** The bodies Hub sent, by event id: what the inbox keeps and hashes as received. */
+const bodies = new Map<string, Record<string, unknown>>();
+
 function envelope(type: string, on: string, payload: unknown, id = uuidv7()): EventEnvelope {
-  return parseEventEnvelope({
+  const raw = {
     id,
     type,
     version: 1,
     occurred_at: `${on}T12:00:00+03:00`,
     accounting_date: on,
     payload,
-  });
+  };
+  const parsed = parseEventEnvelope(raw);
+  bodies.set(id, raw);
+  return parsed;
 }
 
 const invoiceRef = (n: number) => ({ id: ids(100 + n), number: `INV-2026-${n}` });
@@ -167,12 +176,17 @@ const paid = (n: number, invoice: number, on: string, amount: number) =>
   });
 
 /** Receives an event as `POST /v1/events` does, then runs the retries it frees. */
-async function receive(companyId: string, event: EventEnvelope, today = '2026-11-30') {
+async function receive(
+  companyId: string,
+  event: EventEnvelope,
+  today = '2026-11-30',
+  raw: Record<string, unknown> = bodies.get(event.id) ?? (event as Record<string, unknown>),
+) {
   const result = await inCompany(companyId, (tx) =>
     receiveEvent(
       tx,
       companyId,
-      { envelope: event, apiClientId: CLIENT_ID, requestId: 'request-inbox-test' },
+      { raw, envelope: event, apiClientId: CLIENT_ID, requestId: 'request-inbox-test' },
       { actor: hub, today },
     ),
   );
@@ -300,7 +314,20 @@ describe('an event received (S05 rules 1–7)', () => {
       ...event,
       payload: { ...event.payload, syp_per_usd: '119.5000' },
     } as EventEnvelope;
-    await expect(receive(company, changed)).rejects.toMatchObject({ code: 'IDEMPOTENCY_CONFLICT' });
+    await expect(receive(company, changed, '2026-11-30', changed)).rejects.toMatchObject({
+      code: 'IDEMPOTENCY_CONFLICT',
+    });
+    // A body that parses to the same envelope is still another payload: a field's whitespace, a
+    // field the contract does not know. The hash is of what Hub sent (rule 4).
+    const sent = bodies.get(event.id) as { payload: Record<string, unknown> };
+    for (const payload of [
+      { ...sent.payload, invoice: { id: ids(101), number: ' INV-2026-1' } },
+      { ...sent.payload, note: 'حقل إضافي' },
+    ]) {
+      await expect(
+        receive(company, event, '2026-11-30', { ...sent, payload }),
+      ).rejects.toMatchObject({ code: 'IDEMPOTENCY_CONFLICT' });
+    }
     const stored = await inCompany(company, (tx) => tx.select().from(inboundEvents));
     expect(stored).toHaveLength(1);
   });
@@ -613,5 +640,250 @@ describe('the guards as the app role (0025)', () => {
     expect(await refusal(jobs.select({ id: inboundEvents.id }).from(inboundEvents))).toMatch(
       /permission denied/,
     );
+  });
+});
+
+const recordBulletin = (companyId: string, on: string, rate: string) =>
+  inCompany(companyId, (tx) =>
+    recordRate(tx, companyId, person(), {
+      effectiveOn: on,
+      base: 'USD',
+      quote: 'SYP',
+      rate,
+      type: 'bulletin',
+      source: 'manual',
+    }),
+  );
+
+describe('exactly once through any sequence (S05 "Acceptance", tests)', () => {
+  const events = [
+    issued(1, '2026-11-03', 100_000),
+    paid(1, 1, '2026-11-19', 40_000),
+    paid(2, 1, '2026-11-25', 60_000),
+  ];
+  type Op =
+    | { kind: 'receive'; event: number }
+    | { kind: 'retry'; event: number }
+    | { kind: 'freed'; trigger: 'sweep' | 'item' | 'rate' }
+    | { kind: 'bulletin' };
+  const op: fc.Arbitrary<Op> = fc.oneof(
+    fc.record({ kind: fc.constant('receive' as const), event: fc.integer({ min: 0, max: 2 }) }),
+    fc.record({ kind: fc.constant('retry' as const), event: fc.integer({ min: 0, max: 2 }) }),
+    fc.record({
+      kind: fc.constant('freed' as const),
+      trigger: fc.constantFrom('sweep' as const, 'item' as const, 'rate' as const),
+    }),
+    fc.record({ kind: fc.constant('bulletin' as const) }),
+  );
+
+  it('posts each event once, Hub’s entries, whatever arrives, replays and retries in between', async () => {
+    const expected = await (async () => {
+      const company = await newCompany('service-agency', [
+        ['2026-11-03', '120.0000'],
+        ['2026-11-19', '123.0000'],
+        ['2026-11-25', '123.5000'],
+      ]);
+      for (const event of events) await receive(company, event);
+      return ledger(company);
+    })();
+    await fc.assert(
+      fc.asyncProperty(fc.array(op, { maxLength: 10 }), async (ops) => {
+        // The bulletin of 19 November is missing until a `bulletin` step records it.
+        const company = await newCompany('service-agency', [
+          ['2026-11-03', '120.0000'],
+          ['2026-11-25', '123.5000'],
+        ]);
+        let recorded = false;
+        const inboxIds = new Map<number, string>();
+        const run = async (step: Op) => {
+          switch (step.kind) {
+            case 'receive': {
+              const result = await receive(company, events[step.event] as EventEnvelope);
+              inboxIds.set(step.event, result.event.inboxId);
+              return;
+            }
+            case 'retry': {
+              const id = inboxIds.get(step.event);
+              if (id === undefined) return;
+              await inCompany(company, (tx) =>
+                retryEvent(tx, id, { actor: person(), today: '2026-11-30' }),
+              ).catch((error: { code?: string }) => {
+                if (error.code !== 'EVENT_NOT_HELD') throw error;
+              });
+              return;
+            }
+            case 'freed':
+              await retries(company, [
+                step.trigger === 'item'
+                  ? { kind: 'item', itemKey: `invoice:${ids(101)}` }
+                  : step.trigger === 'rate'
+                    ? { kind: 'rate', on: '2026-11-19' }
+                    : { kind: 'sweep' },
+              ]);
+              return;
+            case 'bulletin':
+              if (!recorded) await recordBulletin(company, '2026-11-19', '123.0000');
+              recorded = true;
+              return;
+          }
+        };
+        for (const step of ops) await run(step);
+        // Then every event arrives (again, for some), the bulletin is recorded and the sweep runs.
+        for (const index of [0, 1, 2]) await run({ kind: 'receive', event: index });
+        if (!recorded) await recordBulletin(company, '2026-11-19', '123.0000');
+        await retries(company, [{ kind: 'rate', on: '2026-11-19' }, { kind: 'sweep' }]);
+        const posted = await ledger(company);
+        expect(posted).toHaveLength(3);
+        for (const entry of expected) expect(posted).toContainEqual(entry);
+        const keys = await inCompany(company, (tx) =>
+          tx.execute<{ n: number }>(
+            sql`select count(*)::int as n from posting_requests group by client, idempotency_key having count(*) > 1`,
+          ),
+        );
+        expect(keys.rows).toEqual([]);
+      }),
+      { numRuns: 12 },
+    );
+  }, 120_000);
+});
+
+describe('two writers at once', () => {
+  it('serialise an invoice and its payment received at once on the ledger head', async () => {
+    const company = await newCompany('service-agency', [
+      ['2026-11-03', '120.0000'],
+      ['2026-11-19', '123.0000'],
+    ]);
+    const [invoice, payment] = await Promise.all([
+      receive(company, issued(1, '2026-11-03', 100_000)),
+      receive(company, paid(1, 1, '2026-11-19', 40_000)),
+    ]);
+    // Whichever committed first, the payment ends posted against the invoice's item, once.
+    if (payment.event.state === 'held') {
+      expect(payment.event.reason).toBe('UNKNOWN_REFERENCE');
+      await retries(company, invoice.triggers);
+    }
+    expect(await ledger(company)).toHaveLength(2);
+  });
+
+  it('post a held event once when the worker’s retry and the accountant’s retry race', async () => {
+    const company = await newCompany('service-agency', [['2026-11-03', '120.0000']]);
+    await receive(company, issued(1, '2026-11-03', 10_000));
+    const held = await receive(company, paid(1, 1, '2026-11-19', 10_000));
+    await recordBulletin(company, '2026-11-19', '123.0000');
+    const outcomes = await Promise.allSettled([
+      retries(company, [{ kind: 'rate', on: '2026-11-19' }]),
+      inCompany(company, (tx) =>
+        retryEvent(tx, held.event.inboxId, { actor: person(), today: '2026-11-30' }),
+      ),
+    ]);
+    for (const outcome of outcomes) {
+      if (outcome.status === 'rejected') {
+        expect(outcome.reason).toMatchObject({ code: 'EVENT_NOT_HELD' });
+      }
+    }
+    expect(await ledger(company)).toHaveLength(2);
+  });
+});
+
+describe('the accountant’s actions refused (rules 15–17)', () => {
+  it('resolve and dismiss only a held event, by a free manual entry, for its own hold', async () => {
+    const company = await newCompany('service-agency', [
+      ['2026-11-03', '120.0000'],
+      ['2026-11-19', '123.0000'],
+    ]);
+    const invoice = await receive(company, issued(1, '2026-11-03', 100_000));
+    const options = { actor: person(), today: '2026-11-30' };
+    const code = (work: Promise<unknown>) =>
+      work.then(
+        () => 'none',
+        (error: { code?: string }) => error.code ?? String(error),
+      );
+    const inboxId = invoice.event.inboxId;
+    const entryId = invoice.event.entries[0]?.id as string;
+    expect(await code(inCompany(company, (tx) => dismissEvent(tx, inboxId, 'سبب', options)))).toBe(
+      'EVENT_NOT_HELD',
+    );
+    // A payment beyond the open amount needs the accountant.
+    const over = await receive(company, paid(1, 1, '2026-11-19', 200_000));
+    expect(over.event).toMatchObject({ reason: 'NEEDS_DECISION', detail: 'payment_exceeds_open' });
+    const id = over.event.inboxId;
+    expect(
+      await code(inCompany(company, (tx) => resolveEvent(tx, id, uuidv7(), 'سبب', options))),
+    ).toBe('NOT_FOUND');
+    // A Hub entry never resolves an event: only a manual entry the accountant posted.
+    expect(
+      await code(inCompany(company, (tx) => resolveEvent(tx, id, entryId, 'سبب', options))),
+    ).toBe('ENTRY_ALREADY_LINKED');
+    expect(await code(inCompany(company, (tx) => moveEvent(tx, id, 'سبب', options)))).toBe(
+      'EVENT_ACTION_NOT_ALLOWED',
+    );
+    expect((await inCompany(company, (tx) => dismissEvent(tx, id, 'سبب', options))).event.state).toBe(
+      'dismissed',
+    );
+    expect(await code(inCompany(company, (tx) => dismissEvent(tx, id, 'سبب', options)))).toBe(
+      'EVENT_NOT_HELD',
+    );
+    // And the guard refuses a dismissed event's return to held, whoever writes it.
+    expect(
+      await refusal(
+        inCompany(company, (tx) =>
+          tx
+            .update(inboundEventStates)
+            .set({ state: 'held', holdReason: 'NEEDS_DECISION' })
+            .where(eq(inboundEventStates.eventId, id)),
+        ),
+      ),
+    ).toMatch(/no longer changes/);
+  });
+});
+
+describe('a line’s service change (revenue/revenue-at-issue; accounting review)', () => {
+  const S3 = { external_id: ids(9003), code: 'S3', name: 'خدمة ثالثة' };
+  const S4 = { external_id: ids(9004), code: 'S4', name: 'خدمة رابعة' };
+  const change = (on: string, from: typeof S1, to: typeof S1) =>
+    envelope('invoice.line_service_changed', on, {
+      invoice: invoiceRef(1),
+      line_id: ids(201),
+      old_service: from,
+      new_service: to,
+      changed_on: on,
+    });
+
+  it('moves the service the line has in the books, whatever old service Hub names', async () => {
+    const company = await newCompany('service-agency', [['2026-11-03', '120.0000']]);
+    await receive(company, issued(1, '2026-11-03', 30_000));
+    await receive(company, change('2026-11-10', S1, S3));
+    // Hub names S1 again: the line is on S3 in the books, so S3 moves to S4.
+    await receive(company, change('2026-11-12', S1, S4));
+    const byService = await inCompany(company, (tx) =>
+      tx.execute<{ code: string; book: string }>(sql`
+        select v.code, sum(l.book_minor)::text as book
+        from journal_lines l
+        join dimension_set_values sv on sv.set_id = l.dimension_set_id
+        join dimension_types t on t.id = sv.type_id and t.code = 'service'
+        join dimension_values v on v.id = sv.value_id
+        group by v.code order by v.code`),
+    );
+    expect(byService.rows).toEqual([
+      { code: 'S1', book: '0' },
+      { code: 'S3', book: '0' },
+      { code: 'S4', book: '-3600000' },
+    ]);
+  });
+
+  it('holds a change received after its invoice’s void: no revenue is left to move', async () => {
+    const company = await newCompany('service-agency', [['2026-11-03', '120.0000']]);
+    await receive(company, issued(1, '2026-11-03', 30_000));
+    await receive(
+      company,
+      envelope('invoice.voided', '2026-11-24', {
+        invoice: invoiceRef(1),
+        voided_on: '2026-11-24',
+        reason: 'أُلغيت',
+      }),
+    );
+    const late = await receive(company, change('2026-11-25', S1, S3));
+    expect(late.event).toMatchObject({ state: 'held', reason: 'UNKNOWN_REFERENCE' });
+    expect(await ledger(company)).toHaveLength(2);
   });
 });

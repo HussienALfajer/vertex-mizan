@@ -36,17 +36,17 @@ import {
   emptyBalance,
   entryHash,
   fiscalYearOf,
+  hubReversalLines,
   type ItemState,
   keptLedgers,
   type Line,
   type LineDimensionValue,
   type MeasureContext,
   manualEntry,
-  hubReversalLines,
   manualReversalLines,
   movementOn,
-  reclassifiedLines,
   periodOf,
+  reclassifiedLines,
   runningVoidDifferenceLines,
   type VoidedRunningItem,
 } from '@vertex-mizan/ledger';
@@ -772,7 +772,9 @@ async function manualLines(
         if (hub !== null) {
           // A Hub rule names its own document's item: no memo, never adjusted (S04 rule 8).
           if (stored.accountId !== spec.accountId || stored.currency !== spec.currency) {
-            refuse('OPEN_ITEM_MISMATCH', 'The line is not on its item', { itemId: spec.openItemId });
+            refuse('OPEN_ITEM_MISMATCH', 'The line is not on its item', {
+              itemId: spec.openItemId,
+            });
           }
           return;
         }
@@ -1080,6 +1082,16 @@ async function reclassificationLines(
   const line = lines[content.lineNo - 1];
   if (original.source !== 'hub_event' || original.reversesEntryId !== null || line === undefined) {
     refuse('ENTRY_NOT_REVERSIBLE', 'Only a line of a Hub entry moves to other values', {
+      entryId: content.entryId,
+    });
+  }
+  // A reversed entry's revenue is no longer recognised: nothing of it moves (S05 rule 14).
+  const [reversal] = await tx
+    .select({ id: journalEntries.id })
+    .from(journalEntries)
+    .where(eq(journalEntries.reversesEntryId, original.id));
+  if (reversal) {
+    refuse('ENTRY_ALREADY_REVERSED', 'The entry is reversed: its line has nothing to move', {
       entryId: content.entryId,
     });
   }

@@ -116,8 +116,8 @@ export type PlannedEntry =
       readonly key: string;
       readonly entryId: string;
       readonly lineNo: number;
-      /** The service the line has now (Hub's `old_service`) and the one it moves to. */
-      readonly from: HubValueRef;
+      /** The Hub line it moves; the posting function reads the service it has now in the books. */
+      readonly lineId: string;
       readonly to: HubValueRef;
     };
 
@@ -311,15 +311,20 @@ export function voidPlan(eventId: string, references: HubReferences): RulePlan {
 
 /**
  * `invoice.line_service_changed` of a line recognised at issue: the line's revenue moved from the
- * old service to the new on the account it posted to, at the amounts it posted at issue in both
- * ledgers (phase 1 scope §6), so no rate is read. Before its issue posted: `UNKNOWN_REFERENCE`.
+ * service it has in the books (after any earlier change) to the new one, on the account it posted
+ * to, at the amounts it posted at issue in both ledgers (phase 1 scope §6), so no rate is read.
+ * Before its issue posted, or after its invoice's void reversed it: `UNKNOWN_REFERENCE`.
  */
 export function lineServiceChangedPlan(
   event: EventOf<'invoice.line_service_changed'>,
   references: HubReferences,
 ): RulePlan {
   const line = references.issueLine;
-  if (line === null) return hold('UNKNOWN_REFERENCE');
+  // Before its issue posted, or once its void reversed it, the line has no recognised revenue to
+  // move (phase 1 scope §6: a reclassification of the revenue already recognised).
+  if (line === null || !references.standing.includes(line.entryId)) {
+    return hold('UNKNOWN_REFERENCE');
+  }
   return {
     kind: 'post',
     entries: [
@@ -328,7 +333,7 @@ export function lineServiceChangedPlan(
         key: event.id,
         entryId: line.entryId,
         lineNo: line.lineNo,
-        from: event.payload.old_service,
+        lineId: event.payload.line_id,
         to: event.payload.new_service,
       },
     ],

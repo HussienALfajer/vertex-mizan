@@ -525,10 +525,20 @@ describe('voids, service changes and due dates', () => {
     expect(
       planEvent(
         changed,
-        { ...NO_REFERENCES, issueLine: { entryId: 'E1', lineNo: 2 } },
+        { ...NO_REFERENCES, standing: ['E1'], issueLine: { entryId: 'E1', lineNo: 2 } },
         contextOf(sypUsd),
       ),
-    ).toMatchObject({ entries: [{ kind: 'reclassification', lineNo: 2, from: S1, to: S2 }] });
+    ).toMatchObject({
+      entries: [{ kind: 'reclassification', lineNo: 2, lineId: ids(200), to: S2 }],
+    });
+    // After the invoice's void reversed its issue entry, nothing is left to move: held.
+    expect(
+      planEvent(
+        changed,
+        { ...NO_REFERENCES, standing: [], issueLine: { entryId: 'E1', lineNo: 2 } },
+        contextOf(sypUsd),
+      ),
+    ).toMatchObject({ kind: 'hold', reason: 'UNKNOWN_REFERENCE' });
   });
 
   it('records a due date on the item; a rate change posts nothing', () => {

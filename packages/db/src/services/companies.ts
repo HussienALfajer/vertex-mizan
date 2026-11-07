@@ -4,7 +4,7 @@ import type {
   CurrencyCode,
   RateType,
 } from '@vertex-mizan/contracts';
-import { type PlatformActor, writePlatformAudit } from '../audit.js';
+import { type AuditActor, writePlatformAudit } from '../audit.js';
 import type { Transaction } from '../client.js';
 import { companies, companySettings } from '../schema/companies.js';
 import { applyChartTemplate } from './chart.js';
@@ -70,7 +70,7 @@ export async function createCompanyBooks(
   tx: Transaction,
   companyId: string,
   input: NewCompanyBooks,
-  actor: PlatformActor,
+  actor: AuditActor,
 ): Promise<{ company: CompanyRow; settings: SettingsRow }> {
   const [company] = await tx
     .insert(companies)

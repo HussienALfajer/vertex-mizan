@@ -1,10 +1,10 @@
 export {
   AUDITED_FIELDS,
   type AuditActor,
-  type PlatformActor,
   type AuditedEntity,
   type CompanyAuditEntry,
   changedFields,
+  type PlatformActor,
   type PlatformAuditEntry,
   type RequestFacts,
   SYSTEM_NAME,
@@ -75,6 +75,6 @@ export {
 export * from './services/chart.js';
 export * from './services/companies.js';
 export * from './services/dimensions.js';
+export * from './services/inbox.js';
 export * from './services/rates.js';
 export { onUniqueViolation } from './unique-violation.js';
-export * from './services/inbox.js';

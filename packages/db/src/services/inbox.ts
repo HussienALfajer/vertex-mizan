@@ -135,17 +135,14 @@ function envelopeOf(row: EventRow): EventEnvelope {
   });
 }
 
-/** The hash that tells a replay from a conflict: everything Hub sent under the key (rule 4). */
-function envelopeHash(envelope: EventEnvelope): string {
-  return sha256(
-    canonicalPayload({
-      type: envelope.type,
-      version: envelope.version,
-      occurred_at: envelope.occurred_at,
-      accounting_date: envelope.accounting_date,
-      payload: envelope.payload,
-    }),
-  );
+/**
+ * The hash that tells a replay from a conflict (rule 4, ADR 0006): the canonical form (RFC 8785)
+ * of everything Hub sent under the key, as it sent it, before any parsing trimmed or dropped a
+ * field. The event's id is the key itself.
+ */
+function envelopeHash(raw: Readonly<Record<string, unknown>>): string {
+  const { id: _key, ...sent } = raw;
+  return sha256(canonicalPayload(sent));
 }
 
 /** The actor's columns of an action row. */
@@ -379,7 +376,8 @@ async function earlierOnKey(tx: Transaction, row: EventRow): Promise<KeyedEvent[
     .where(
       and(
         eq(inboundEvents.itemKey, row.itemKey),
-        sql`(${inboundEvents.receivedAt}, ${inboundEvents.id}) < (${row.receivedAt.toISOString()}::timestamptz, ${row.id}::uuid)`,
+        // Against the stored time itself, to the microsecond: a JavaScript Date keeps milliseconds.
+        sql`(${inboundEvents.receivedAt}, ${inboundEvents.id}) < (select r.received_at, r.id from ${inboundEvents} r where r.id = ${row.id})`,
       ),
     )
     .orderBy(asc(inboundEvents.receivedAt), asc(inboundEvents.id));
@@ -635,25 +633,56 @@ async function contentOf(
     case 'reversal':
       return { kind: 'hub_reversal', entryId: planned.entryId, today, hub };
     case 'reclassification': {
-      // The line keeps every value but its service.
-      const [line] = await tx
-        .select({ setId: journalLines.dimensionSetId })
-        .from(journalLines)
-        .where(
-          and(eq(journalLines.entryId, planned.entryId), eq(journalLines.lineNo, planned.lineNo)),
-        );
-      if (!line) throw new Error('The issue line vanished');
-      const kept = await tx
-        .select({ valueId: dimensionSetValues.valueId, typeCode: dimensionTypes.code })
-        .from(dimensionSetValues)
+      // The line keeps every value but its service, which moves from the one it has in the books:
+      // the issue line's, or the new service of the latest standing change of that line.
+      const valuesOfLine = async (entryId: string, lineNo: number) => {
+        const [line] = await tx
+          .select({ setId: journalLines.dimensionSetId })
+          .from(journalLines)
+          .where(and(eq(journalLines.entryId, entryId), eq(journalLines.lineNo, lineNo)));
+        if (!line) throw new Error('A Hub line vanished');
+        return tx
+          .select({ valueId: dimensionSetValues.valueId, typeCode: dimensionTypes.code })
+          .from(dimensionSetValues)
+          .innerJoin(
+            dimensionTypes,
+            and(
+              eq(dimensionTypes.companyId, dimensionSetValues.companyId),
+              eq(dimensionTypes.id, dimensionSetValues.typeId),
+            ),
+          )
+          .where(eq(dimensionSetValues.setId, line.setId));
+      };
+      const kept = await valuesOfLine(planned.entryId, planned.lineNo);
+      const [latest] = await tx
+        .select({ id: journalEntries.id })
+        .from(journalEntries)
         .innerJoin(
-          dimensionTypes,
+          inboundEvents,
           and(
-            eq(dimensionTypes.companyId, dimensionSetValues.companyId),
-            eq(dimensionTypes.id, dimensionSetValues.typeId),
+            eq(inboundEvents.companyId, journalEntries.companyId),
+            sql`${inboundEvents.id}::text = ${journalEntries.sourceRef}`,
           ),
         )
-        .where(eq(dimensionSetValues.setId, line.setId));
+        .where(
+          and(
+            eq(journalEntries.source, 'hub_event'),
+            eq(inboundEvents.documentType, hub.document.type),
+            eq(inboundEvents.documentId, hub.document.id),
+            eq(inboundEvents.type, 'invoice.line_service_changed'),
+            sql`${inboundEvents.payload} ->> 'line_id' = ${planned.lineId}`,
+            isNull(journalEntries.reversesEntryId),
+            sql`not exists (select 1 from ${journalEntries} r where r.company_id = ${journalEntries.companyId} and r.reverses_entry_id = ${journalEntries.id})`,
+          ),
+        )
+        .orderBy(desc(journalEntries.sequence))
+        .limit(1);
+      // A change's entry carries the line negated, then the line with its new service.
+      const current = latest === undefined ? kept : await valuesOfLine(latest.id, 2);
+      const serviceOf = (rows: typeof kept) =>
+        rows.find((value) => value.typeCode === 'service')?.valueId;
+      const from = serviceOf(current);
+      if (from === undefined) throw new Error('A revenue line without its service');
       const others = kept
         .filter((value) => value.typeCode !== 'service')
         .map((value) => value.valueId);
@@ -661,7 +690,7 @@ async function contentOf(
         kind: 'hub_reclassification',
         entryId: planned.entryId,
         lineNo: planned.lineNo,
-        fromValueIds: [...others, await values.valueOf('service', planned.from, null)],
+        fromValueIds: [...others, from],
         toValueIds: [...others, await values.valueOf('service', planned.to, null)],
         today,
         hub,
@@ -922,14 +951,20 @@ export async function receiveEvent(
   tx: Transaction,
   companyId: string,
   input: {
+    /** The request's JSON body as Hub sent it: kept and hashed as received. */
+    readonly raw: Readonly<Record<string, unknown>>;
+    /** The same body parsed by `eventEnvelopeSchema`, which the rules read. */
     readonly envelope: EventEnvelope;
     readonly apiClientId: string;
     readonly requestId: string;
   },
   options: AttemptOptions,
 ): Promise<InboxResult> {
-  const { envelope } = input;
-  const payloadHash = envelopeHash(envelope);
+  const { envelope, raw } = input;
+  if (raw.id !== envelope.id || typeof raw.payload !== 'object' || raw.payload === null) {
+    throw new TypeError('The raw body is the envelope that was parsed');
+  }
+  const payloadHash = envelopeHash(raw);
   const document = documentOf(envelope);
   const [inserted] = await tx
     .insert(inboundEvents)
@@ -941,7 +976,7 @@ export async function receiveEvent(
       version: envelope.version,
       occurredAt: new Date(envelope.occurred_at),
       accountingDate: envelope.accounting_date,
-      payload: envelope.payload,
+      payload: raw.payload,
       payloadHash,
       documentType: document.type,
       documentId: document.id,
@@ -1133,12 +1168,14 @@ export async function moveEvent(
     closed.map((period) => period.period),
   );
   const { outcome } = await attempt(tx, row, { ...options, postOn });
-  if (outcome.kind === 'posted') {
-    await writeAction(tx, row, options.actor, 'moved_to_open_period', {
-      entryIds: outcome.entryIds,
-      reason,
-    });
-  }
+  // The accountant's action is kept whatever it led to (rule 18): the entries it posted, or the
+  // hold the event is still in.
+  await writeAction(tx, row, options.actor, 'moved_to_open_period', {
+    entryIds: outcome.kind === 'posted' ? outcome.entryIds : [],
+    holdReason: outcome.kind === 'hold' ? outcome.reason : null,
+    holdDetail: outcome.kind === 'hold' ? outcome.detail : null,
+    reason,
+  });
   const event = await viewOf(tx, row);
   await auditAction(tx, row, options.actor, 'event.moved_to_open_period', reason, {
     state: event.state,

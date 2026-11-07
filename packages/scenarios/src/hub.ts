@@ -172,20 +172,21 @@ function asJson(value: unknown): unknown {
   return value;
 }
 
-/** A short-form event step as the envelope Hub sends. */
+/** A short-form event step as the body Hub sends, and that body parsed as `/v1` parses it. */
 export function envelopeOf(
   companyId: string,
   step: Extract<Step, { kind: 'event' }>,
-): EventEnvelope {
+): { raw: Record<string, unknown>; envelope: EventEnvelope } {
   const hub = hubOf(companyId);
-  return parseEventEnvelope({
+  const raw = {
     id: uuidv7(),
     type: step.type,
     version: 1,
     occurred_at: `${step.accountingDate}T12:00:00+03:00`,
     accounting_date: step.accountingDate,
     payload: asJson(payloadOf(companyId, hub, step.type, step.payload as Short)),
-  });
+  };
+  return { raw, envelope: parseEventEnvelope(raw) };
 }
 
 function hubActor(context: CaseContext): AuditActor {
@@ -268,7 +269,7 @@ export function event(
 ): Promise<StepResult> {
   const hub = hubOf(context.companyId);
   if (step.accountingDate > hub.today) hub.today = step.accountingDate;
-  const envelope = envelopeOf(context.companyId, step);
+  const { raw, envelope } = envelopeOf(context.companyId, step);
   const number = context.step;
   return inbox(
     context,
@@ -276,7 +277,7 @@ export function event(
       receiveEvent(
         tx,
         context.companyId,
-        { envelope, apiClientId: hub.clientId, requestId: `scenario-${envelope.id}` },
+        { raw, envelope, apiClientId: hub.clientId, requestId: `scenario-${envelope.id}` },
         { actor, today },
       ),
     hubActor(context),

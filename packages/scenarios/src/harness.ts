@@ -8,9 +8,8 @@ import type {
   Step,
   StepKind,
 } from './format.js';
-
-import type { NamedValue } from './run.js';
 import { event } from './hub.js';
+import type { NamedValue } from './run.js';
 import { actions, ledger, manual, rate, reversal, setUp } from './system.js';
 
 /**
