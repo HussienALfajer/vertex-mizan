@@ -17,7 +17,7 @@ Spec: `docs/specs/S05-posting-api-event-inbox.md` (Approved, owner 2026-11-07) Â
 - [x] db: their attempt paths in the inbox service; tests
 - [x] scenarios: `ad-funds/running-balance` and `expenses/project-expense` `Approved (owner, 2026-11-07)`, counted as run
 - [x] wiring (Ledger, Database), docs (`docs/ROADMAP.md`, `packages/ledger/CLAUDE.md`, `packages/db/CLAUDE.md`, `packages/scenarios/CLAUDE.md`)
-- [ ] checks and reviewers (`reviewer`, `accountant-reviewer`), PR with auto-merge and Auto-fix
+- [x] checks and reviewers (`reviewer`, `accountant-reviewer`; one re-review of the accountant's on the fix commit, no new finding; Q13 recorded for the owner), PR with auto-merge and Auto-fix
 
 ## PR 3 â€” The Hub API and the jobs (contracts, db, api, worker, bridge)
 - [ ] db (`/db-migration`): the platform tables `api_clients` and `api_client_keys` (hashed keys, the two-active-keys trigger, revocation kept), `document_sources`; archiving a company revokes its keys
