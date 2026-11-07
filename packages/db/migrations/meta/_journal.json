@@ -169,6 +169,20 @@
       "when": 1794003122287,
       "tag": "0023_organic_dark_beast",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1794083261893,
+      "tag": "0024_good_madame_hydra",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1794083289904,
+      "tag": "0025_s05_inbox_guards",
+      "breakpoints": true
     }
   ]
 }

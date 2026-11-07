@@ -89,6 +89,12 @@ export const tableRegistry = {
   open_item_movements: { module: 'open-items', scope: 'company', kind: 'append-only' },
   open_item_due_dates: { module: 'open-items', scope: 'company', kind: 'append-only' },
   open_item_balances: { module: 'open-items', scope: 'company', kind: 'ledger-state' },
+  // posting-rules and inbox (S05, ADR 0014): the slots' accounts, and the event inbox: the events
+  // as received and their actions append-only, each event's state a queue.
+  posting_rule_accounts: { module: 'posting-rules', scope: 'company', kind: 'business' },
+  inbound_events: { module: 'inbox', scope: 'company', kind: 'append-only' },
+  inbound_event_states: { module: 'inbox', scope: 'company', kind: 'queue' },
+  inbound_event_actions: { module: 'inbox', scope: 'company', kind: 'append-only' },
 } as const satisfies Record<string, TableInfo>;
 
 export type TableScope = 'company' | 'platform';

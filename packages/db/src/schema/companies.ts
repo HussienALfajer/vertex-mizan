@@ -1,5 +1,15 @@
 import { sql } from 'drizzle-orm';
-import { boolean, check, index, pgTable, smallint, text, unique, uuid } from 'drizzle-orm/pg-core';
+import {
+  bigint,
+  boolean,
+  check,
+  index,
+  pgTable,
+  smallint,
+  text,
+  unique,
+  uuid,
+} from 'drizzle-orm/pg-core';
 import { users } from './access.js';
 import {
   archivedAt,
@@ -89,6 +99,13 @@ export const companySettings = pgTable(
      * 8). Not part of the settings lock: it decides how a posting is made, never a posted amount.
      */
     manualEntryApproval: boolean().notNull().default(false),
+    /**
+     * The payments' tolerance per invoice currency, in minor units (S05 rule 9; owner,
+     * 2026-11-06): 1.00 SYP and 1.00 USD by default. Not part of the settings lock: it decides how
+     * a future event is treated, never a posted amount.
+     */
+    paymentToleranceSypMinor: bigint({ mode: 'bigint' }).notNull().default(sql`100`),
+    paymentToleranceUsdMinor: bigint({ mode: 'bigint' }).notNull().default(sql`100`),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
     archivedAt: archivedAt(),
@@ -126,6 +143,10 @@ export const companySettings = pgTable(
       sql`${t.fiscalYearStartMonth} between 1 and 12`,
     ),
     // Weekdays 1–7; six at most, so one weekday at least is a publication day.
+    check(
+      'company_settings_payment_tolerance',
+      sql`${t.paymentToleranceSypMinor} >= 0 and ${t.paymentToleranceUsdMinor} >= 0`,
+    ),
     check(
       'company_settings_bulletin_days_off',
       sql`${t.bulletinDaysOff} <@ '{1,2,3,4,5,6,7}'::smallint[]

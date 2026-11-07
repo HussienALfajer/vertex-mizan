@@ -1851,6 +1851,50 @@ BEGIN
 END
 `,
     },
+    {
+      name: 'inbound_event_state_rules',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    IF NEW.state NOT IN ('held', 'posted', 'recorded') OR NEW.attempts <> 1 THEN
+      RAISE EXCEPTION 'inbound_event_states: an event is stored held, posted or recorded'
+        USING ERRCODE = 'restrict_violation';
+    END IF;
+  ELSE
+    IF OLD.state <> 'held' THEN
+      RAISE EXCEPTION 'inbound_event_states: event % is % and no longer changes', OLD.event_id,
+        OLD.state
+        USING ERRCODE = 'restrict_violation';
+    END IF;
+    IF NEW.company_id IS DISTINCT FROM OLD.company_id OR NEW.event_id IS DISTINCT FROM OLD.event_id
+      OR NEW.id IS DISTINCT FROM OLD.id OR NEW.created_at IS DISTINCT FROM OLD.created_at
+      OR NEW.attempts < OLD.attempts THEN
+      RAISE EXCEPTION 'inbound_event_states: an event''s state changes, not its event'
+        USING ERRCODE = 'restrict_violation';
+    END IF;
+  END IF;
+  IF NEW.state = 'resolved' AND NOT EXISTS (
+    SELECT 1 FROM public.journal_entries e
+    WHERE e.company_id = NEW.company_id AND e.id = NEW.resolved_by_entry_id
+      AND e.source = 'manual'
+  ) THEN
+    RAISE EXCEPTION 'inbound_event_states: an event is resolved by a posted manual entry'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  RETURN NEW;
+END
+`,
+    },
   ],
   triggers: [
     // The settings lock (S01 rule 11): before every update of a company's ledger settings.
@@ -2515,6 +2559,71 @@ END
       deferred: false,
       on: ['INSERT'],
     },
+    // S05's inbox (0025): the events and their actions append-only, the states and the mapping never
+    // deleted, and only a held event's state changes.
+    {
+      table: 'posting_rule_accounts',
+      name: 'posting_rule_accounts_refuse_delete',
+      function: 'refuse_delete',
+      deferred: false,
+      on: ['DELETE'],
+    },
+    {
+      table: 'posting_rule_accounts',
+      name: 'posting_rule_accounts_refuse_truncate',
+      function: 'refuse_delete',
+      deferred: false,
+      on: ['TRUNCATE'],
+    },
+    {
+      table: 'inbound_events',
+      name: 'inbound_events_refuse_change',
+      function: 'refuse_change',
+      deferred: false,
+      on: ['UPDATE', 'DELETE'],
+    },
+    {
+      table: 'inbound_events',
+      name: 'inbound_events_refuse_truncate',
+      function: 'refuse_change',
+      deferred: false,
+      on: ['TRUNCATE'],
+    },
+    {
+      table: 'inbound_event_actions',
+      name: 'inbound_event_actions_refuse_change',
+      function: 'refuse_change',
+      deferred: false,
+      on: ['UPDATE', 'DELETE'],
+    },
+    {
+      table: 'inbound_event_actions',
+      name: 'inbound_event_actions_refuse_truncate',
+      function: 'refuse_change',
+      deferred: false,
+      on: ['TRUNCATE'],
+    },
+    {
+      table: 'inbound_event_states',
+      name: 'inbound_event_states_refuse_delete',
+      function: 'refuse_delete',
+      deferred: false,
+      on: ['DELETE'],
+    },
+    {
+      table: 'inbound_event_states',
+      name: 'inbound_event_states_refuse_truncate',
+      function: 'refuse_delete',
+      deferred: false,
+      on: ['TRUNCATE'],
+    },
+    {
+      table: 'inbound_event_states',
+      name: 'inbound_event_state_rules',
+      function: 'inbound_event_state_rules',
+      deferred: false,
+      on: ['INSERT', 'UPDATE'],
+    },
   ],
   jobs: {
     grants: [
@@ -2540,6 +2649,8 @@ END
         privilege: 'SELECT',
         columns: ['company_id', 'id', 'state', 'expires_at'],
       },
+      // The inbox's retry sweep and daily email (S05 "Jobs") find the companies with held events.
+      { table: 'inbound_event_states', privilege: 'SELECT', columns: ['company_id', 'state'] },
     ],
     policies: [
       {
@@ -2568,6 +2679,13 @@ END
         name: 'jobs_find_exports',
         command: 'r',
         using: 'true',
+        check: null,
+      },
+      {
+        table: 'inbound_event_states',
+        name: 'jobs_find_held_events',
+        command: 'r',
+        using: "(state = 'held'::text)",
         check: null,
       },
     ],
