@@ -15,6 +15,7 @@ import { exportData } from './export.js';
 import { grid } from './grid.js';
 import { integrity } from './integrity.js';
 import { members } from './members.js';
+import { openItems } from './open-items.js';
 import { permissions } from './permissions.js';
 import { rates } from './rates.js';
 import { roles } from './roles.js';
@@ -45,6 +46,7 @@ export const ar = {
   drafts,
   integrity,
   export: exportData,
+  openItems,
 };
 
 export type Catalog = typeof ar;

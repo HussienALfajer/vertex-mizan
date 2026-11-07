@@ -250,7 +250,7 @@ describe('readItemsAt', () => {
     const all = await inCompany(books, (tx) => readItemsAt(tx, { asOf: '2026-11-30' }));
     expect(all.map((row) => row.reference)).toEqual(['P-3', 'P-2', 'P-1']);
     const next = await inCompany(books, (tx) =>
-      readItemsAt(tx, { asOf: '2026-11-30', afterItemId: all[0]?.id, limit: 1 }),
+      readItemsAt(tx, { asOf: '2026-11-30', afterItemId: all[0]?.id ?? '', limit: 1 }),
     );
     expect(next.map((row) => row.reference)).toEqual(['P-2']);
   });

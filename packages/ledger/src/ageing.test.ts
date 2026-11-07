@@ -1,7 +1,7 @@
 import { AGEING_BUCKETS, CURRENCY_CODES, type CurrencyCode } from '@vertex-mizan/contracts';
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import { type AgeingInput, ageingOf, dueDateInForce } from './ageing.js';
+import { type AgeingInput, ageingOf, dueDateInForce, fundTotals } from './ageing.js';
 import { daysBetween } from './periods.js';
 
 const C1 = 'client-c1';
@@ -190,3 +190,13 @@ describe('ageingOf (S04 rule 16)', () => {
 function zeros() {
   return Object.fromEntries(AGEING_BUCKETS.map((bucket) => [bucket, 0n]));
 }
+
+describe('fundTotals (S04 rule 17)', () => {
+  it('keeps funds held and receivables from clients apart', () => {
+    expect(fundTotals([-3_660_000n, 1_230_000n, 0n, -100n])).toEqual({
+      heldMinor: -3_660_100n,
+      receivableMinor: 1_230_000n,
+    });
+    expect(fundTotals([])).toEqual({ heldMinor: 0n, receivableMinor: 0n });
+  });
+});

@@ -4,11 +4,13 @@ import type {
   CurrencyCode,
   Entry,
   EntryLine,
+  EntryLineItem,
   EntrySource,
   EntrySummary,
   Ledger,
   LineConversion,
   LineKind,
+  MovementKind,
   PersonRef,
   RateSource,
   RateType,
@@ -22,6 +24,8 @@ import {
   journalLines,
   ledgersOf,
   lineConversions,
+  openItemMovements,
+  openItems,
   rateText,
   type Transaction,
   users,
@@ -50,7 +54,7 @@ export async function peopleOf(
 export const personOf = (people: ReadonlyMap<string, PersonRef>, id: string): PersonRef =>
   people.get(id) ?? { id, name: id };
 
-const personOrNull = (people: ReadonlyMap<string, PersonRef>, id: string | null) =>
+export const personOrNull = (people: ReadonlyMap<string, PersonRef>, id: string | null) =>
   id === null ? null : personOf(people, id);
 
 /** An attachment as the API answers it. */
@@ -193,6 +197,7 @@ export async function readEntry(tx: Transaction, id: string): Promise<Entry> {
     ...attachments.map((attachment) => attachment.uploadedByUserId),
   ]);
   const currencies = await ledgerCurrencies(tx);
+  const items = await lineItemsOf(tx, id);
   return {
     id: row.id,
     fiscalYear: row.fiscalYear,
@@ -229,6 +234,7 @@ export async function readEntry(tx: Transaction, id: string): Promise<Entry> {
         conversions: conversions
           .filter((conversion) => conversion.lineId === line.id)
           .map(conversionOf),
+        item: items.get(line.id) ?? null,
       }),
     ),
     attachments: attachments.map((attachment) => attachmentOf(attachment, people)),
@@ -299,4 +305,33 @@ export function summaryOf(
     reversesEntryId: row.reversesEntryId,
     reversedByEntryId: row.reversedByEntryId,
   };
+}
+
+/** The item each line of an entry moves (S04), by line id: its id, reference, movement kind. */
+async function lineItemsOf(tx: Transaction, entryId: string): Promise<Map<string, EntryLineItem>> {
+  const rows = await tx
+    .select({
+      lineId: openItemMovements.lineId,
+      id: openItems.id,
+      reference: openItems.reference,
+      movement: openItemMovements.kind,
+      adjusted: openItemMovements.adjusted,
+    })
+    .from(openItemMovements)
+    .innerJoin(
+      openItems,
+      sql`${openItems.companyId} = ${openItemMovements.companyId} and ${openItems.id} = ${openItemMovements.itemId}`,
+    )
+    .where(eq(openItemMovements.entryId, entryId));
+  return new Map(
+    rows.map((row) => [
+      row.lineId,
+      {
+        id: row.id,
+        reference: row.reference,
+        movement: row.movement as MovementKind,
+        adjusted: row.adjusted,
+      },
+    ]),
+  );
 }

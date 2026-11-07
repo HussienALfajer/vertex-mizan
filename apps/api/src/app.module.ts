@@ -27,6 +27,7 @@ import { IntegrityModule } from './modules/integrity/integrity.module.js';
 import { InvitationsModule } from './modules/invitations/invitations.module.js';
 import { MeModule } from './modules/me/me.module.js';
 import { MembersModule } from './modules/members/members.module.js';
+import { OpenItemsModule } from './modules/open-items/open-items.module.js';
 import { RatesModule } from './modules/rates/rates.module.js';
 
 /**
@@ -74,6 +75,7 @@ export class AppModule {
         DraftsModule,
         IntegrityModule,
         ExportsModule,
+        OpenItemsModule,
         AuthModule,
       ],
       providers: [

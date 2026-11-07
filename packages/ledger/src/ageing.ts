@@ -155,3 +155,20 @@ export function ageingOf(items: readonly AgeingInput[], on: string): Ageing {
       .map(([currency, totals]) => ({ currency, buckets: totals, totalMinor: total(totals) })),
   };
 }
+
+/**
+ * The client funds' totals (S04 rule 17): the credit balances (funds held, a negative sum) and the
+ * debit balances (receivables from clients, a positive sum) apart, never netted (IAS 1.32).
+ */
+export function fundTotals(amounts: readonly bigint[]): {
+  readonly heldMinor: bigint;
+  readonly receivableMinor: bigint;
+} {
+  let heldMinor = 0n;
+  let receivableMinor = 0n;
+  for (const amount of amounts) {
+    if (amount < 0n) heldMinor += amount;
+    else receivableMinor += amount;
+  }
+  return { heldMinor, receivableMinor };
+}

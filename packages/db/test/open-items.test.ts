@@ -614,9 +614,35 @@ describe('post(): manual document items (S04 rules 2, 4, 6, 7, 10)', () => {
     );
     expect(lines.map((line) => [line.amountMinor, line.bookMinor, line.item])).toEqual([
       [40_000n, 4_920_000n, null],
-      [-40_000n, -4_800_000n, { id: m1, movement: 'clear' }],
+      [
+        -40_000n,
+        -4_800_000n,
+        { id: m1, movement: 'clear', adjusted: false, isNew: false, reference: null },
+      ],
       [-120_000n, -120_000n, null],
     ]);
+    expect(await count(books)).toEqual(before);
+    const opening = await inCompany(books.id, (tx) =>
+      previewPosting(tx, {
+        entryDate: '2026-11-19',
+        content: {
+          kind: 'manual',
+          today: '2026-11-30',
+          dealtRates: [],
+          lines: specs(books, [
+            {
+              code: '112001',
+              currency: 'USD',
+              amount: 10_000n,
+              dims: ['C1'],
+              newItem: { reference: 'M-9', dueOn: null },
+            },
+            { code: '411001', currency: 'USD', amount: -10_000n, dims: ['C1', 'S1'] },
+          ]),
+        },
+      }),
+    );
+    expect(opening[0]?.item).toMatchObject({ movement: 'open', isNew: true, reference: 'M-9' });
     expect(await count(books)).toEqual(before);
   });
 

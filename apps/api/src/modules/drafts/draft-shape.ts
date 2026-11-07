@@ -13,6 +13,7 @@ import {
   entryAttachments,
   entryDraftLines,
   entryDrafts,
+  openItems,
   type PersonActor,
   type Transaction,
   writeCompanyAudit,
@@ -55,6 +56,11 @@ function lineOf(row: LineRow): DraftLine {
     currency: row.currency as CurrencyCode | null,
     amountMinor: row.amountMinor?.toString() ?? null,
     memo: row.memo,
+    openItemId: row.openItemId,
+    newItem:
+      row.newItemReference === null
+        ? null
+        : { reference: row.newItemReference, dueOn: row.newItemDueOn },
   };
 }
 
@@ -138,6 +144,8 @@ export const auditedLines = (lines: readonly (DraftLine | DraftLineInput)[]) =>
     currency: line.currency,
     amountMinor: line.amountMinor,
     memo: line.memo,
+    openItemId: line.openItemId,
+    newItem: line.newItem,
   }));
 
 /**
@@ -171,6 +179,28 @@ export async function writeLines(
       : [],
   );
   if (unknown.length > 0) throw new CodedException('VALIDATION_FAILED', 'Unknown account', unknown);
+  // An item of another company, or none, likewise (S04): the item cell names an item by its id.
+  const itemIds = [
+    ...new Set(lines.flatMap((line) => (line.openItemId === null ? [] : [line.openItemId]))),
+  ];
+  const knownItems = new Set(
+    itemIds.length === 0
+      ? []
+      : (
+          await tx
+            .select({ id: openItems.id })
+            .from(openItems)
+            .where(inArray(openItems.id, itemIds))
+        ).map((row) => row.id),
+  );
+  const unknownItems = lines.flatMap((line, index) =>
+    line.openItemId !== null && !knownItems.has(line.openItemId)
+      ? [{ path: ['lines', index, 'openItemId'], message: 'Unknown open item' }]
+      : [],
+  );
+  if (unknownItems.length > 0) {
+    throw new CodedException('VALIDATION_FAILED', 'Unknown open item', unknownItems);
+  }
   const rows = await tx.select().from(entryDraftLines).where(eq(entryDraftLines.draftId, draftId));
   const byNumber = new Map(rows.map((row) => [row.lineNo, row]));
   for (const [index, line] of lines.entries()) {
@@ -180,6 +210,9 @@ export async function writeLines(
       currency: line.currency,
       amountMinor: line.amountMinor === null ? null : BigInt(line.amountMinor),
       memo: line.memo,
+      openItemId: line.openItemId,
+      newItemReference: line.newItem?.reference ?? null,
+      newItemDueOn: line.newItem?.dueOn ?? null,
       archivedAt: null,
     };
     const row = byNumber.get(index + 1);

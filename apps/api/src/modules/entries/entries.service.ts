@@ -235,6 +235,10 @@ export class EntriesService {
             currency: line.currency as CurrencyCode,
             amountMinor: line.amountMinor.toString(),
             memo: line.memo,
+            // A copy names no item: the accountant picks the one to settle, or a new reference,
+            // and the posting refuses a control-account line without one (S04 rule 5).
+            openItemId: null,
+            newItem: null,
           })),
         },
         { copiedFromEntryId: id },
