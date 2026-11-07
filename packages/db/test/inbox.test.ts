@@ -981,6 +981,59 @@ describe('the ad funds’ changes and archives (ad-funds/running-balance; S04 ru
     expect(payable?.amount).toBe('0');
   });
 
+  it('measures a moved void’s difference entry at the void’s own date (rule 15)', async () => {
+    const company = await newCompany('service-agency', [
+      ['2026-11-03', '120.0000'],
+      ['2026-11-10', '122.0000'],
+      ['2026-11-30', '123.0000'],
+      ['2026-12-01', '125.0000'],
+    ]);
+    await receive(company, deposited('2026-11-03', 100_000));
+    await receive(company, spent('ad_spend.recorded', '2026-11-10', '2026-11-10', 30_000));
+    // S07 brings the close; here the superuser closes November, as the ledger tests do.
+    const closer = await superuser.connect();
+    try {
+      await closer.query('begin');
+      await closer.query('alter table periods disable trigger period_rules');
+      await closer.query(
+        `update periods set state = 'closed' where company_id = $1 and period = '2026-11'`,
+        [company],
+      );
+      await closer.query('alter table periods enable always trigger period_rules');
+      await closer.query('commit');
+    } finally {
+      closer.release();
+    }
+    const voided = await receive(
+      company,
+      envelope('ad_wallet.entry_voided', '2026-11-30', {
+        entry: { id: ids(601), number: 'W-1' },
+        client: C1,
+        voided_on: '2026-11-30',
+      }),
+    );
+    expect(voided.event).toMatchObject({ state: 'held', reason: 'PERIOD_CLOSED' });
+    const moved = await inCompany(company, (tx) =>
+      moveEvent(tx, voided.event.inboxId, 'وصل الإلغاء بعد إقفال تشرين الثاني', {
+        actor: person(),
+        today: '2026-12-01',
+      }),
+    );
+    expect(moved.event).toMatchObject({ state: 'posted', postedOn: '2026-12-01' });
+    const [, , reversal, difference] = await ledger(company);
+    expect(reversal?.date).toBe('2026-12-01');
+    // The 300.00 USD beyond zero at the bulletin of 30 November (123), not of 1 December (125):
+    // the move makes no exchange difference.
+    expect(difference).toEqual({
+      date: '2026-12-01',
+      lines: [
+        ['213001', 'USD', -30_000n, -3_600_000n, -30_000n],
+        ['213001', 'USD', 30_000n, 3_690_000n, 30_000n],
+        ['421001', 'SYP', -90_000n, -90_000n, 0n],
+      ],
+    });
+  });
+
   it('answers a replayed deposit with its entry and posts nothing new', async () => {
     const company = await newCompany('service-agency', [['2026-11-03', '120.0000']]);
     const deposit = deposited('2026-11-03', 100_000);

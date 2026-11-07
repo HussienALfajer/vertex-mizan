@@ -150,10 +150,16 @@ export type PostingContent =
       readonly today: string;
       readonly hub: HubSource;
     }
-  /** The exact reversal of a Hub entry by its event: a void, a change, an archive (rule 14). */
+  /**
+   * The exact reversal of a Hub entry by its event: a void, a change, an archive (rule 14). Its
+   * lines read no rate; the difference entry that follows it on a running item (S04 rule 13)
+   * measures at the rates of `measuredOn`, the event's own date even when the accountant moved it
+   * to a later open period (rule 15).
+   */
   | {
       readonly kind: 'hub_reversal';
       readonly entryId: string;
+      readonly measuredOn: string;
       readonly today: string;
       readonly hub: HubSource;
     }
@@ -305,7 +311,12 @@ function contentPayload(content: PostingContent): CanonicalValue {
         inboxId: content.hub.inboxId,
       };
     case 'hub_reversal':
-      return { kind: content.kind, entryId: content.entryId, inboxId: content.hub.inboxId };
+      return {
+        kind: content.kind,
+        entryId: content.entryId,
+        measuredOn: content.measuredOn,
+        inboxId: content.hub.inboxId,
+      };
     case 'hub_reclassification':
       return {
         kind: content.kind,
@@ -1221,14 +1232,17 @@ async function voidDifferenceLines(
   tx: Transaction,
   voided: readonly VoidedRunningItem[],
   on: string,
+  measureOn: string,
   ledgers: CompanyLedgers,
   daysOff: readonly number[],
 ): Promise<Built | null> {
   if (voided.length === 0) return null;
-  const { rates, ids } = await ratesOn(tx, on);
+  // A moved Hub event's difference entry is measured at its own date (S05 rule 15), so the move
+  // makes no exchange difference; it is dated on the posting date.
+  const { rates, ids } = await ratesOn(tx, measureOn);
   const context: MeasureContext = {
     ledgers,
-    on,
+    on: measureOn,
     rates,
     calendar: await publicationCalendar(tx, daysOff),
   };
@@ -1351,7 +1365,7 @@ async function dimensionSetOf(
 function checkDates(on: string, content: PostingContent, ledgers: CompanyLedgers): void {
   checkManualEntryDate(on, content.today);
   for (const [, ledger] of keptLedgers(ledgers)) checkCurrencyDate(ledger.currency, on);
-  if (content.kind === 'hub') {
+  if (content.kind === 'hub' || content.kind === 'hub_reversal') {
     for (const [, ledger] of keptLedgers(ledgers)) {
       checkCurrencyDate(ledger.currency, content.measuredOn);
     }
@@ -1783,6 +1797,7 @@ export async function post(tx: Transaction, request: PostingRequest): Promise<Po
     tx,
     built.voided,
     on,
+    content.kind === 'hub_reversal' ? content.measuredOn : on,
     ledgers,
     settings.bulletinDaysOff,
   );

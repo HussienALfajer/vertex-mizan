@@ -670,7 +670,7 @@ async function contentOf(
       };
     }
     case 'reversal':
-      return { kind: 'hub_reversal', entryId: planned.entryId, today, hub };
+      return { kind: 'hub_reversal', entryId: planned.entryId, measuredOn, today, hub };
     case 'reclassification': {
       // The line keeps every value but its service, which moves from the one it has in the books:
       // the issue line's, or the new service of the latest standing change of that line.
