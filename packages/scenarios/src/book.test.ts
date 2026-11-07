@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { parseCase, parseScenario, readBook, ScenarioFormatError, yamlBlocks } from './book.js';
-import { CASE, CORRECTION, SYP_ONLY } from './test-fixtures.js';
+import { CASE, CORRECTION, INBOX, SYP_ONLY } from './test-fixtures.js';
 
 function file(status: string, ...cases: string[]) {
   return [
@@ -206,7 +206,7 @@ describe('a case', () => {
     [
       'a step of no kind',
       CASE.replace('  - event: invoice.issued', '  - what: invoice.issued'),
-      'event, manual, reversal, job or rate',
+      'event, manual, reversal, job, rate, retry, move, resolve or dismiss',
     ],
     [
       'a step of two kinds',
@@ -389,6 +389,48 @@ describe('a case', () => {
     ],
   ] as const)('refuses %s', (_, [from, to], problem) => {
     expect(refusal(CORRECTION.replace(from, to))).toContain(problem);
+  });
+
+  it("reads the accountant's actions on held events (S05 rules 15–17)", () => {
+    const { steps } = parseCase(INBOX);
+    expect(steps.slice(1, 3)).toEqual([
+      {
+        kind: 'retry',
+        step: 1,
+        outcome: { status: 'held', reason: 'PERIOD_CLOSED', detail: null },
+      },
+      { kind: 'move', step: 1, reason: 'أُغلق تشرين الأول قبل وصول الفاتورة', outcome: null },
+    ]);
+    expect(steps[5]).toEqual({
+      kind: 'resolve',
+      step: 4,
+      entry: 2,
+      reason: 'الزيادة التزام للعميل',
+      outcome: null,
+    });
+    expect(steps[7]).toEqual({
+      kind: 'dismiss',
+      step: 7,
+      reason: 'سُجّلت في Hub خطأً',
+      outcome: null,
+    });
+  });
+
+  it.each([
+    ['a retry of a later step', ['retry: 1', 'retry: 4'], 'Step 4 is not an earlier event step'],
+    ['a move of a step that is no event', ['move: 1', 'move: 2'], 'Step 2 is not an earlier'],
+    ['a move with no reason', ['    reason: "أُغلق تشرين الأول قبل وصول الفاتورة"\n', ''], 'reason'],
+    ['a resolve of no event', ['{ step: 4, entry: 2 }', '{ step: 5, entry: 2 }'], 'Step 5 is not'],
+    [
+      'a resolve by an entry not expected',
+      ['{ step: 4, entry: 2 }', '{ step: 4, entry: 3 }'],
+      'Entry 3 is not',
+    ],
+    ['a resolve with no entry', ['{ step: 4, entry: 2 }', '{ step: 4 }'], 'entry'],
+    ['a dismissal of the step itself', ['dismiss: 7', 'dismiss: 8'], 'Step 8 is not an earlier'],
+    ['a dismissal with a blank reason', ['reason: "سُجّلت في Hub خطأً"', 'reason: " "'], 'reason'],
+  ] as const)('refuses %s', (_, [from, to], problem) => {
+    expect(refusal(INBOX.replace(from, to))).toContain(problem);
   });
 
   const TRY_CASH =

@@ -305,8 +305,21 @@ export type Outcome = z.output<typeof outcomeSchema>;
  */
 const stepOutcome = { outcome: outcomeSchema.optional() };
 
-/** A step is told apart by its one key: `event`, `manual`, `reversal`, `job` or `rate`. */
-export const STEP_KINDS = ['event', 'manual', 'reversal', 'job', 'rate'] as const;
+/**
+ * A step is told apart by its one key: `event`, `manual`, `reversal`, `job` or `rate`, or one of
+ * the accountant's actions on a held event (S05 rules 15–17): `retry`, `move`, `resolve`, `dismiss`.
+ */
+export const STEP_KINDS = [
+  'event',
+  'manual',
+  'reversal',
+  'job',
+  'rate',
+  'retry',
+  'move',
+  'resolve',
+  'dismiss',
+] as const;
 
 export type StepKind = (typeof STEP_KINDS)[number];
 
@@ -393,6 +406,66 @@ const jobStepSchema = z
     outcome: step.outcome ?? null,
   }));
 
+/** The written reason an action keeps (S05 rules 15, 17). */
+const actionReasonSchema = z.string().trim().min(1).max(500);
+
+/** Retry a held event now, by its step number (S05 rule 15). */
+const retryStepSchema = z
+  .strictObject({ kind: z.literal('retry'), retry: countSchema(1), ...stepOutcome })
+  .transform((step) => ({ kind: step.kind, step: step.retry, outcome: step.outcome ?? null }));
+
+/**
+ * Post an event held `PERIOD_CLOSED` on the first day of the first open period after its
+ * accounting date, with a reason (S05 rule 15).
+ */
+const moveStepSchema = z
+  .strictObject({
+    kind: z.literal('move'),
+    move: countSchema(1),
+    reason: actionReasonSchema,
+    ...stepOutcome,
+  })
+  .transform((step) => ({
+    kind: step.kind,
+    step: step.move,
+    reason: step.reason,
+    outcome: step.outcome ?? null,
+  }));
+
+/**
+ * Resolve an event held `NEEDS_DECISION` by a posted manual entry of the case, by its number in
+ * posting order, with a reason (S05 rule 15).
+ */
+const resolveStepSchema = z
+  .strictObject({
+    kind: z.literal('resolve'),
+    resolve: z.strictObject({ step: countSchema(1), entry: countSchema(1) }),
+    reason: actionReasonSchema,
+    ...stepOutcome,
+  })
+  .transform((step) => ({
+    kind: step.kind,
+    step: step.resolve.step,
+    entry: step.resolve.entry,
+    reason: step.reason,
+    outcome: step.outcome ?? null,
+  }));
+
+/** Dismiss a held event, by the owner, with a reason: it never posts (S05 rule 17). */
+const dismissStepSchema = z
+  .strictObject({
+    kind: z.literal('dismiss'),
+    dismiss: countSchema(1),
+    reason: actionReasonSchema,
+    ...stepOutcome,
+  })
+  .transform((step) => ({
+    kind: step.kind,
+    step: step.dismiss,
+    reason: step.reason,
+    outcome: step.outcome ?? null,
+  }));
+
 const stepSchema = z.preprocess(
   (value) => {
     if (typeof value !== 'object' || value === null || Array.isArray(value)) return value;
@@ -401,8 +474,22 @@ const stepSchema = z.preprocess(
   },
   z.discriminatedUnion(
     'kind',
-    [eventStepSchema, manualStepSchema, reversalStepSchema, jobStepSchema, rateStepSchema],
-    { error: 'Expected a step with one of the keys event, manual, reversal, job or rate' },
+    [
+      eventStepSchema,
+      manualStepSchema,
+      reversalStepSchema,
+      jobStepSchema,
+      rateStepSchema,
+      retryStepSchema,
+      moveStepSchema,
+      resolveStepSchema,
+      dismissStepSchema,
+    ],
+    {
+      error:
+        'Expected a step with one of the keys event, manual, reversal, job, rate, retry, move, ' +
+        'resolve or dismiss',
+    },
   ),
 );
 
@@ -576,6 +663,22 @@ export const caseSchema = z
     for (const [s, step] of steps.entries()) {
       if (step.kind === 'reversal' && step.entry > entries.length) {
         issue(`Entry ${step.entry} is not an expected entry`, ['steps', s, 'reversal']);
+      }
+      // S05 rules 15–17: an action names an earlier event step, and a resolve an expected entry.
+      if (
+        step.kind === 'retry' ||
+        step.kind === 'move' ||
+        step.kind === 'resolve' ||
+        step.kind === 'dismiss'
+      ) {
+        const path =
+          step.kind === 'resolve' ? ['steps', s, 'resolve', 'step'] : ['steps', s, step.kind];
+        if (step.step > s || steps[step.step - 1]?.kind !== 'event') {
+          issue(`Step ${step.step} is not an earlier event step`, path);
+        }
+        if (step.kind === 'resolve' && step.entry > entries.length) {
+          issue(`Entry ${step.entry} is not an expected entry`, ['steps', s, 'resolve', 'entry']);
+        }
       }
     }
     if (scenarioCase.expect.outcome && steps.at(-1)?.outcome) {
