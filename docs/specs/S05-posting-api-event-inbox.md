@@ -147,7 +147,7 @@ A key is `mzn_` followed by 40 characters of base62 from a CSPRNG (238 bits). On
     - `project_expense:<id>`, `milestone:<id>`, `project:<id>` for theirs;
     - none for `rate.changed`.
     An event whose key has an earlier held event (by `received_at`) is held `WAITING_FOR_EARLIER_EVENT` with `waiting_for_event_id`, and retries when that one leaves `held`. Two earlier holds never block, because they wait for later events themselves (accounting review, 2026-11-07):
-    - an event held `UNKNOWN_REFERENCE` for the document a later event creates (a payment received before its invoice): the creating event (`invoice.issued`, or a recording that a void or change references) posts, then the referencing events retry in received order;
+    - an event held because the document a later event creates is missing: held `UNKNOWN_REFERENCE` for it, or `WAITING_FOR_EARLIER_EVENT` behind such an event, through any chain (two payments received before their invoice; a wallet void and a spend before the deposit). The creating event (`invoice.issued`, or the recording that a void or change references) posts, then those events retry in received order;
     - an `invoice.voided` held `OPEN_ITEM_HAS_SETTLEMENTS`: the later `payment.voided` events of that invoice post, then the void retries (rule 10).
     Every other later event on the key still waits. So the average of a client's ad funds, and the realised differences of a receivable, never depend on when the accountant records a bulletin. Hub delivers in outbox order per company (ADR 0006), so `received_at` is Hub's order.
 
@@ -263,7 +263,7 @@ Events received: the catalogue of ADR 0006, version 1. Events emitted: none (no 
 New components in `packages/ui`: `EventStateBadge` (state and reason, color and text, never color alone), `JsonViewer` (LTR, monospaced, collapsible, copy), `SecretReveal` (shown once, copy, confirmation that it was saved), `EntryPicker` (a posted entry by number or description). The palette gains "صندوق الوارد" and "حدث…" (by Hub document number).
 
 ## Reports
-No report changes. Hub's entries feed S04's ageing, client statements and funds, and S09's reports. The inbox's counts are not ledger figures. S08 compares Hub's daily totals with the posted events.
+No report changes. Revenue lines carry no department (rule 2): S09's profitability by department reads it from the line's service, which has one department in Hub. Hub's entries feed S04's ageing, client statements and funds, and S09's reports. The inbox's counts are not ledger figures. S08 compares Hub's daily totals with the posted events.
 
 ## Printing and legal books
 None. Hub's entries print in the journal book (S09) like any other, with their description in Arabic ("فاتورة INV-2026-0012 — <client>", "دفعة RC-2026-0007 على INV-2026-0012", …) and their number.
@@ -324,7 +324,7 @@ In `audit_entries`, in the same transaction: `api_client.created`, `api_client.u
 
 ## Scenarios
 Each written and approved through `/posting-rule` before its code:
-- **`receivables/hub-payment.md`** (numbers approved 2026-11-06; S05 adds cases, then `Approved`): a payment gap beyond the tolerance (held), an amount above the applied amount (held), a gap within it (a realised difference); an invoice void held `OPEN_ITEM_HAS_SETTLEMENTS` and posted by itself once the payment's void posts; a payment before its invoice (`UNKNOWN_REFERENCE`; the invoice posts, then the payment), with no expected value of the approved cases changed (rule 2).
+- **`receivables/hub-payment.md`** (numbers approved 2026-11-06; S05 adds cases, then `Approved`): a payment gap beyond the tolerance (held), an amount above the applied amount (held), a gap within it (a realised difference); an invoice void held `OPEN_ITEM_HAS_SETTLEMENTS` and posted by itself once the payment's void posts; two payments before their invoice (`UNKNOWN_REFERENCE`, the second waiting behind the first; the invoice posts, then both payments in order), with no expected value of the approved cases changed (rule 2).
 - **`ad-funds/running-balance.md`** (numbers approved 2026-11-06; S05 adds cases, then `Approved`): an SYP deposit whose `usd_amount` differs within the tolerance (a realised difference) and beyond it (held); a deposit held `RATE_MISSING` with a spend waiting behind it, both posted in order once the bulletin is recorded.
 - **`revenue/revenue-at-issue.md`** (new): an extra-work invoice in USD and in SYP, a manual line, a termination fee, in `syp-usd`, `syp` and `usd-syp`; its void; a service change on a line; an invoice with a retainer line and one with a tax line, both held `NO_MAPPING`.
 - **`expenses/project-expense.md`** (new): an expense in SYP at Hub's rate and in USD; a change of the description in a later month at a different bulletin (nets to zero), a change of the amount, and an archive, all dated on the change date and measured at `spent_on`; in `syp-usd`, `syp` and `usd-syp`.
