@@ -379,6 +379,14 @@ describe('a case', () => {
       ],
       'stated twice',
     ],
+    [
+      'a correction of a step that states an outcome',
+      [
+        'reason: Mistyped }\n',
+        'reason: Mistyped }\n    outcome: { status: refused, reason: RATE_UNCHANGED }\n',
+      ],
+      'Step 2 states an outcome',
+    ],
   ] as const)('refuses %s', (_, [from, to], problem) => {
     expect(refusal(CORRECTION.replace(from, to))).toContain(problem);
   });

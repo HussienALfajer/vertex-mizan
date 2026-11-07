@@ -589,6 +589,11 @@ export const caseSchema = z
       if (step?.kind !== 'rate' || step.reason === null) {
         issue(`Step ${correction.step} is not a rate step with a reason`, [...path, 'step']);
       }
+      // A held or refused step answers no correction, so its stated entries could never be checked.
+      const last = correction.step === steps.length;
+      if (step?.outcome || (last && scenarioCase.expect.outcome)) {
+        issue(`Step ${correction.step} states an outcome, so it lists no entries`, path);
+      }
       if (corrected.has(correction.step)) issue(`Step ${correction.step} is stated twice`, path);
       corrected.add(correction.step);
       for (const [u, entry] of correction.usedBy.entries()) {

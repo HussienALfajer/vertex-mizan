@@ -265,7 +265,9 @@ describe('runCase with an outcome on a step', () => {
   });
 
   it('fails the step when it was done instead', async () => {
-    const { fake } = harness(asPosted(freed), { results: [{ status: 'done' }, { status: 'done' }] });
+    const { fake } = harness(asPosted(freed), {
+      results: [{ status: 'done' }, { status: 'done' }],
+    });
     expect(await differences(runCase(freed, fake, database))).toEqual([
       'step 1 (event payment.recorded on 2026-11-03): done, expected held UNKNOWN_REFERENCE',
     ]);
