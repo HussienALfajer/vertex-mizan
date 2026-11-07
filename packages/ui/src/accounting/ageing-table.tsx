@@ -15,10 +15,13 @@ import {
 import { cn } from '../lib/cn';
 import { Amount } from './amount';
 
-/** A bucket column: its id (a key of each row's `amounts`) and its heading. */
+/**
+ * A bucket column: its id (a key of each row's `amounts`) and its heading; a range of days is
+ * given as an LTR isolate by the app, so `1–30` and `61–90` read alike in RTL.
+ */
 export interface AgeingBucketColumn {
   readonly id: string;
-  readonly label: string;
+  readonly label: ReactNode;
 }
 
 /** The amounts of a row or of the totals, in the table's currency. */
@@ -107,66 +110,68 @@ function AgeingTable({
 
   return (
     <div data-slot="ageing-table" className={cn('flex min-w-0 flex-col gap-3', className)}>
-      <Table className="max-md:hidden">
-        <TableCaption className="sr-only">{caption}</TableCaption>
-        <TableHeader>
-          <TableRow>
-            <TableHead>{labels.row}</TableHead>
-            {buckets.map((bucket) => (
-              <TableHead key={bucket.id} numeric>
-                {bucket.label}
-              </TableHead>
-            ))}
-            <TableHead numeric>{labels.total}</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {rows.flatMap((row, index) => {
-            const shown = open.has(row.key) && row.detail !== undefined;
-            return [
-              <TableRow key={row.key} data-slot="ageing-table-row">
-                <TableHead scope="row" className="font-normal text-foreground">
-                  <span className="flex items-center gap-1">
-                    {opener(row, index)}
-                    <span className="min-w-0">{row.label}</span>
-                  </span>
+      <div className="max-md:hidden">
+        <Table>
+          <TableCaption className="sr-only">{caption}</TableCaption>
+          <TableHeader>
+            <TableRow>
+              <TableHead>{labels.row}</TableHead>
+              {buckets.map((bucket) => (
+                <TableHead key={bucket.id} numeric>
+                  {bucket.label}
                 </TableHead>
-                {buckets.map((bucket) => (
-                  <TableCell key={bucket.id} numeric>
-                    <Amount value={amountOf(row, bucket.id)} currency={currency} zero="dash" />
+              ))}
+              <TableHead numeric>{labels.total}</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows.flatMap((row, index) => {
+              const shown = open.has(row.key) && row.detail !== undefined;
+              return [
+                <TableRow key={row.key} data-slot="ageing-table-row">
+                  <TableHead scope="row" className="font-normal text-foreground">
+                    <span className="flex items-center gap-1">
+                      {opener(row, index)}
+                      <span className="min-w-0">{row.label}</span>
+                    </span>
+                  </TableHead>
+                  {buckets.map((bucket) => (
+                    <TableCell key={bucket.id} numeric>
+                      <Amount value={amountOf(row, bucket.id)} currency={currency} zero="dash" />
+                    </TableCell>
+                  ))}
+                  <TableCell numeric>
+                    <Amount value={row.totalMinor} currency={currency} strong />
                   </TableCell>
-                ))}
-                <TableCell numeric>
-                  <Amount value={row.totalMinor} currency={currency} strong />
+                </TableRow>,
+                shown ? (
+                  <tr key={`${row.key}-detail`} id={detailId(index)} className="bg-muted/30">
+                    <td colSpan={buckets.length + 2} className="px-cell py-2">
+                      {row.detail}
+                    </td>
+                  </tr>
+                ) : null,
+              ];
+            })}
+            <TableRow
+              data-slot="ageing-table-totals"
+              className="border-t border-foreground hover:bg-transparent"
+            >
+              <TableHead scope="row" className="text-foreground">
+                {labels.total}
+              </TableHead>
+              {buckets.map((bucket) => (
+                <TableCell key={bucket.id} numeric>
+                  <GrandTotal value={amountOf(totals, bucket.id)} currency={currency} />
                 </TableCell>
-              </TableRow>,
-              shown ? (
-                <tr key={`${row.key}-detail`} id={detailId(index)} className="bg-muted/30">
-                  <td colSpan={buckets.length + 2} className="px-cell py-2">
-                    {row.detail}
-                  </td>
-                </tr>
-              ) : null,
-            ];
-          })}
-          <TableRow
-            data-slot="ageing-table-totals"
-            className="border-t border-foreground hover:bg-transparent"
-          >
-            <TableHead scope="row" className="text-foreground">
-              {labels.total}
-            </TableHead>
-            {buckets.map((bucket) => (
-              <TableCell key={bucket.id} numeric>
-                <GrandTotal value={amountOf(totals, bucket.id)} currency={currency} />
+              ))}
+              <TableCell numeric>
+                <GrandTotal value={totals.totalMinor} currency={currency} />
               </TableCell>
-            ))}
-            <TableCell numeric>
-              <GrandTotal value={totals.totalMinor} currency={currency} />
-            </TableCell>
-          </TableRow>
-        </TableBody>
-      </Table>
+            </TableRow>
+          </TableBody>
+        </Table>
+      </div>
 
       <ol className="flex flex-col gap-3 md:hidden" aria-label={caption}>
         {rows.map((row, index) => (

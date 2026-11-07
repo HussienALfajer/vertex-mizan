@@ -812,10 +812,21 @@ const sampleItems: OpenItemPickerOption[] = [
   },
 ];
 
-const ageingBuckets = AGEING_BUCKETS.map((bucket) => ({
-  id: bucket,
-  label: ar.openItems.buckets[bucket],
-}));
+// A range of days as an LTR isolate, as the receivables screens show it.
+const ageingBuckets = AGEING_BUCKETS.map((bucket) => {
+  const range = /^(\d+–\d+)(.*)$/.exec(ar.openItems.buckets[bucket]);
+  return {
+    id: bucket,
+    label: range ? (
+      <>
+        <bdi dir="ltr">{range[1]}</bdi>
+        {range[2]}
+      </>
+    ) : (
+      ar.openItems.buckets[bucket]
+    ),
+  };
+});
 
 /** The ageing of two synthetic clients in SYP, one opening to its items. */
 const sampleAgeing: AgeingTableRow[] = [

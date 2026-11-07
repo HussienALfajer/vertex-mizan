@@ -45,6 +45,8 @@ import { accountsQuery } from '../chart/chart-queries';
 import { dimensionPickerLabels, pickerValues } from '../entries/entry-parts';
 import {
   AdjustedBadge,
+  ageingBuckets,
+  bucketLabel,
   ClientName,
   hasRunningAccount,
   ItemLink,
@@ -55,11 +57,6 @@ import { ageingQuery, openItemsQuery, searchOf } from './receivables-queries';
 
 const t = ar.openItems;
 const route = getRouteApi('/_app/_company/receivables/');
-
-export const ageingBuckets = AGEING_BUCKETS.map((bucket) => ({
-  id: bucket,
-  label: t.buckets[bucket],
-}));
 
 /** A bucket row of the API as the table's amounts. */
 function amountsOf(buckets: BucketAmounts): Record<string, bigint> {
@@ -265,7 +262,7 @@ function ClientItems({
             <TableCell numeric>
               <bdi dir="ltr">{item.daysPastDue}</bdi>
             </TableCell>
-            <TableCell>{t.buckets[item.bucket]}</TableCell>
+            <TableCell>{bucketLabel(item.bucket)}</TableCell>
             <TableCell numeric>
               <Amount value={BigInt(item.openMinor)} currency={item.currency} showCurrency />
             </TableCell>

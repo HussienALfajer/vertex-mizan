@@ -14,6 +14,7 @@ import {
   submittedDraft,
 } from './entry-mocks';
 import { rateReads, today } from './rate-mocks';
+import { client, m1, receivablesReads } from './receivables-mocks';
 import { expect, expectNoPageOverflow, screenshot, test, widths } from './test';
 import { brokenReport, emailedAnchor, trustReads } from './trust-mocks';
 
@@ -373,6 +374,85 @@ for (const colorScheme of ['light', 'dark'] as const) {
           await expect(page.getByRole('table', { name: ar.entries.lines.label })).toBeVisible();
           await expectNoPageOverflow(page);
           await screenshot(page, testInfo, `account-lines-${colorScheme}-${width}`);
+        });
+      });
+
+      test.describe('receivables screens', () => {
+        test.use({ me: owner, api: receivablesReads });
+        test.beforeEach(async ({ page }) => {
+          await page.clock.setFixedTime(today);
+        });
+
+        test('receivables ageing', async ({ page }, testInfo) => {
+          await page.goto('/receivables');
+          await expect(page.getByRole('heading', { level: 1 })).toHaveText(
+            ar.openItems.ageing.title,
+          );
+          // A client opened to its items: the table on a tablet and up, its card on a phone.
+          await page
+            .getByRole('button', { name: `${ar.openItems.ageingTable.showDetail} 1` })
+            .filter({ visible: true })
+            .click();
+          await expect(
+            page.getByRole('table', { name: ar.openItems.ageing.itemsLabel }),
+          ).toBeVisible();
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `receivables-${colorScheme}-${width}`);
+        });
+
+        test('client statement', async ({ page }, testInfo) => {
+          await page.goto(`/receivables/clients/${client.id}`);
+          await expect(
+            page.getByRole('table', { name: ar.openItems.statement.label }),
+          ).toBeVisible();
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `client-statement-${colorScheme}-${width}`);
+        });
+
+        test('open item', async ({ page }, testInfo) => {
+          await page.goto(`/open-items/${m1.id}`);
+          await expect(
+            page.getByRole('table', { name: ar.openItems.item.movementsLabel }),
+          ).toBeVisible();
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `open-item-${colorScheme}-${width}`);
+        });
+
+        test('due-date change', async ({ page }, testInfo) => {
+          await page.goto(`/open-items/${m1.id}`);
+          await page.getByRole('button', { name: ar.openItems.item.changeDueDate }).click();
+          await expect(
+            page.getByRole('dialog', { name: ar.openItems.dueDate.title }),
+          ).toBeVisible();
+          await screenshot(page, testInfo, `due-date-${colorScheme}-${width}`, {
+            fullPage: false,
+          });
+        });
+
+        test('client funds', async ({ page }, testInfo) => {
+          await page.goto('/client-funds');
+          await expect(page.getByRole('table', { name: ar.openItems.funds.label })).toBeVisible();
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `client-funds-${colorScheme}-${width}`);
+        });
+
+        test('receipt with its item', async ({ page }, testInfo) => {
+          await page.goto(`/entries/new?client=${client.id}`);
+          await expect(page.getByRole('heading', { level: 1 })).toHaveText(
+            ar.drafts.editor.newTitle,
+          );
+          if (width >= 768) {
+            const grid = page.getByRole('grid', { name: ar.drafts.editor.lines });
+            await grid.locator('[data-row="1"][data-column="1"]').click();
+            await page.keyboard.type('112001');
+            await page.keyboard.press('Enter');
+            await grid.locator('[data-row="1"][data-column="3"]').click();
+            await page.keyboard.type('M-1');
+            await page.keyboard.press('Enter');
+            await expect(grid.locator('[data-row="1"][data-column="3"]')).toContainText('600.00');
+          }
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `receipt-${colorScheme}-${width}`);
         });
       });
 

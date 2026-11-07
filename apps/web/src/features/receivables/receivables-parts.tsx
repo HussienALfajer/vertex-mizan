@@ -1,6 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
-import type { Account, ClientRef } from '@vertex-mizan/contracts';
+import {
+  type Account,
+  AGEING_BUCKETS,
+  type AgeingBucket,
+  type ClientRef,
+} from '@vertex-mizan/contracts';
 import { ar } from '@vertex-mizan/i18n';
 import { Badge, Button, LedgerSwitch } from '@vertex-mizan/ui';
 import { ArrowRightIcon } from 'lucide-react';
@@ -8,6 +13,28 @@ import { companyQuery } from '../company/company-queries';
 import { useDimensionCatalog } from '../entries/entry-queries';
 
 const t = ar.openItems;
+
+/**
+ * A bucket's name with its range of days as an LTR isolate, so `1–30` and `61–90` read alike in
+ * RTL; "not yet due" and "over 180" as written.
+ */
+export function bucketLabel(bucket: AgeingBucket) {
+  const text = t.buckets[bucket];
+  const range = /^(\d+–\d+)(.*)$/.exec(text);
+  if (!range) return text;
+  return (
+    <>
+      <bdi dir="ltr">{range[1]}</bdi>
+      {range[2]}
+    </>
+  );
+}
+
+/** The six bucket columns of an ageing table. */
+export const ageingBuckets = AGEING_BUCKETS.map((bucket) => ({
+  id: bucket,
+  label: bucketLabel(bucket),
+}));
 
 /** A client as the receivables screens name it: its code first when it has one. */
 export function ClientName({ client }: { client: ClientRef | null }) {
