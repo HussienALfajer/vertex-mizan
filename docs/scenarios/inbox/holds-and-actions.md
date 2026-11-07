@@ -2,7 +2,7 @@
 
 Status: Proposed
 
-The cases stay `Proposed` until S05 brings their executors: the `event` executor through the event inbox, the posting rules of `invoice.issued`, `payment.recorded` and `payment.voided`, the holds `PERIOD_CLOSED`, `WAITING_FOR_EARLIER_EVENT` and `NEEDS_DECISION`, the automatic retries, the inbox actions (`retry`, `move`, `resolve`, `dismiss`) and the closed periods of the setup (S05 rules 8–11, 15–17). S05's feature slice switches the file to `Approved (owner, <the approval's date>)`.
+The owner approved the expected entries and outcomes of the five cases on 2026-11-07, with an event moved out of a closed period measured at the rates of its own accounting date, and a document read as the event's own document (the payment for `payment.*`, the invoice for `invoice.*`). The cases stay `Proposed` until S05 brings their executors: the `event` executor through the event inbox, the posting rules of `invoice.issued`, `payment.recorded` and `payment.voided`, the holds `PERIOD_CLOSED`, `WAITING_FOR_EARLIER_EVENT` and `NEEDS_DECISION`, the automatic retries, the inbox actions (`retry`, `move`, `resolve`, `dismiss`) and the closed periods of the setup (S05 rules 8–11, 15–17). S05's feature slice switches the file to `Approved (owner, 2026-11-07)`.
 
 ## Rule
 
