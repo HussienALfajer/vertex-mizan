@@ -118,7 +118,7 @@ expect:
 
 ### Vertex Media: an overpayment resolved by a manual entry, and its void
 
-Hub applies 400.00 USD of a 450.00 USD payment: held `NEEDS_DECISION` (`amount_above_applied`, `receivables/hub-payment`). Moving it is refused, since only a `PERIOD_CLOSED` event can be moved. The accountant posts the payment by hand, the applied part to the invoice's item and the 50.00 USD excess to other payables (IFRS 15.106), and resolves the event with that entry; the event posts nothing itself. When Hub voids the payment, the void is held `document_resolved_manually`. The manual entry already resolved the payment, so it cannot resolve the void. The accountant reverses the manual entry on the void's date and resolves the void with the reversal: the item is back to the whole invoice, and every other account to zero.
+Hub applies 400.00 USD of a 450.00 USD payment: held `NEEDS_DECISION` (`amount_above_applied`, `receivables/hub-payment`). Moving it is refused, since only a `PERIOD_CLOSED` event can be moved. The accountant posts the payment by hand, the applied part to the invoice's item with a line memo, as every manual movement of a Hub item has (S04 rule 8), and the 50.00 USD excess to other payables (IFRS 15.106), and resolves the event with that entry; the event posts nothing itself. When Hub voids the payment, the void is held `document_resolved_manually`. The manual entry already resolved the payment, so it cannot resolve the void. The accountant reverses the manual entry on the void's date and resolves the void with the reversal: the item is back to the whole invoice, and every other account to zero.
 
 ```yaml
 case: 450.00 USD applied as 400.00 is held, resolved by a manual entry with the excess in 211003; its void is held, then resolved by the entry's reversal
@@ -146,7 +146,8 @@ steps:
     accounting_date: 2026-11-19
     payload: { reference: R-2026-1,
                lines: [{ account: "111004", currency: USD, amount: 45000 },
-                       { account: "112001", currency: USD, amount: -40000, item: INV-2026-1 },
+                       { account: "112001", currency: USD, amount: -40000, item: INV-2026-1,
+                         memo: "تسوية يدوية لدفعة PAY-1 المعلّقة" },
                        { account: "211003", currency: USD, amount: -5000, memo: "دفعة زائدة من العميل C1 — PAY-1" }] }
   - resolve: { step: 2, entry: 2 }
     reason: "الزيادة 50.00 دولار التزام للعميل وليست سداداً"
