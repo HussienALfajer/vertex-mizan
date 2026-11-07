@@ -35,7 +35,9 @@ export type NamedValue = { readonly type: string; readonly code: string };
  */
 export function namedDimensionValues(scenarioCase: ScenarioCase): NamedValue[] {
   const named = new Map<string, NamedValue>();
-  const fromHub = new Set(eventValues(scenarioCase).map((value) => JSON.stringify([value.type, value.code])));
+  const fromHub = new Set(
+    eventValues(scenarioCase).map((value) => JSON.stringify([value.type, value.code])),
+  );
   const add = (dims: unknown) => {
     if (typeof dims !== 'object' || dims === null) return;
     for (const [type, code] of Object.entries(dims)) {
@@ -51,7 +53,9 @@ export function namedDimensionValues(scenarioCase: ScenarioCase): NamedValue[] {
   for (const entry of expect.entries) for (const line of entry.lines) add(line.dims);
   for (const balance of expect.balances) add(balance.dims);
   for (const item of expect.openItems) add(item.dims);
-  return [...named.values()].filter((value) => !fromHub.has(JSON.stringify([value.type, value.code])));
+  return [...named.values()].filter(
+    (value) => !fromHub.has(JSON.stringify([value.type, value.code])),
+  );
 }
 
 /**

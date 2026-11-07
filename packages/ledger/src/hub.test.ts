@@ -507,7 +507,9 @@ describe('voids, service changes and due dates', () => {
       },
     });
     expect(
-      rows(reclassifiedLines(issued, { client: 'C1', service: 'S3' }, { client: 'C1', service: 'S4' })),
+      rows(
+        reclassifiedLines(issued, { client: 'C1', service: 'S3' }, { client: 'C1', service: 'S4' }),
+      ),
     ).toEqual([
       ['411002', 'USD', 50_000n, 6_000_000n, 50_000n],
       ['411002', 'USD', -50_000n, -6_000_000n, -50_000n],

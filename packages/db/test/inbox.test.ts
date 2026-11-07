@@ -817,9 +817,9 @@ describe('the accountant’s actions refused (rules 15–17)', () => {
     expect(await code(inCompany(company, (tx) => moveEvent(tx, id, 'سبب', options)))).toBe(
       'EVENT_ACTION_NOT_ALLOWED',
     );
-    expect((await inCompany(company, (tx) => dismissEvent(tx, id, 'سبب', options))).event.state).toBe(
-      'dismissed',
-    );
+    expect(
+      (await inCompany(company, (tx) => dismissEvent(tx, id, 'سبب', options))).event.state,
+    ).toBe('dismissed');
     expect(await code(inCompany(company, (tx) => dismissEvent(tx, id, 'سبب', options)))).toBe(
       'EVENT_NOT_HELD',
     );

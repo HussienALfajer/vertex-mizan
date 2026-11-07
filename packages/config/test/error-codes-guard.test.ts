@@ -137,7 +137,10 @@ describe('error-code guard', () => {
     const renamed = run(lists(published), lists("  'PERIOD_CLOSED',\n  'NO_RULE',"));
     expect(renamed).toMatchObject({ status: 1 });
     expect(renamed.output).toContain('HOLD_REASONS: NO_MAPPING was renamed, removed or moved');
-    const removed = run(lists(published), "export const EVENT_STATES = [\n  'held',\n] as const;\n");
+    const removed = run(
+      lists(published),
+      "export const EVENT_STATES = [\n  'held',\n] as const;\n",
+    );
     expect(removed.output).toContain('HOLD_REASONS was removed');
     const unread = run(lists(published), lists(`${published}\n  OTHER,`));
     expect(unread.output).toContain('unrecognised line in HOLD_REASONS');
