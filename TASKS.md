@@ -14,8 +14,8 @@ Spec: `docs/specs/S05-posting-api-event-inbox.md` (Approved, owner 2026-11-07) Â
 
 ## PR 2 â€” The ad-funds and project-expense rules (ledger, db, scenarios)
 - [x] ledger: the rules of `ad_wallet.deposited`, `.refunded`, `.entry_voided` (the running item's difference entry, S04 rule 13), `ad_spend.recorded`, `.changed`, `.archived`, `wallet_gap_beyond_tolerance`; `project_expense.recorded`, `.changed` (the new state measured at `spent_on`, rule 13), `.archived`; worked examples and properties
-- [ ] db: their attempt paths in the inbox service; tests
-- [ ] scenarios: `ad-funds/running-balance` and `expenses/project-expense` `Approved (owner, 2026-11-07)`, counted as run
+- [x] db: their attempt paths in the inbox service; tests
+- [x] scenarios: `ad-funds/running-balance` and `expenses/project-expense` `Approved (owner, 2026-11-07)`, counted as run
 - [ ] wiring (Ledger, Database), docs (`docs/ROADMAP.md`)
 - [ ] checks and reviewers (`reviewer`, `accountant-reviewer`), PR with auto-merge and Auto-fix
 
