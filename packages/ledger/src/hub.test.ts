@@ -1084,7 +1084,13 @@ describe('the ad funds (ad-funds/running-balance)', () => {
     expect(plan).toMatchObject({
       kind: 'post',
       entries: [
-        { kind: 'reversal', key: `${changed.id}:reversal:1`, entryId: 'spend-entry' },
+        // One change with its new state: no difference entry follows the reversal (Q13).
+        {
+          kind: 'reversal',
+          key: `${changed.id}:reversal:1`,
+          entryId: 'spend-entry',
+          withinChange: true,
+        },
         { kind: 'lines', key: changed.id, measuredOn: '2026-11-19' },
       ],
     });

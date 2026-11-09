@@ -28,10 +28,10 @@ Spec: `docs/specs/S05-posting-api-event-inbox.md` (Approved, owner 2026-11-07) Â
   - [x] the JSON Schema export for Hub (`export:hub-schema`) with one example per type (`eventExamplesV1`), the script that posts them (`post:hub-examples`), and the API test that posts each
 - [x] worker: `events.retry` enqueued after the commits that free held events (rates, holidays, mappings, accounts unblocked or restored; the API's `RetryQueue` as the queue role), `events.retry-sweep` (daily 04:00 and at start), `events.held-digest` (daily 08:00, one email per company, day and person, keyed by the outbox's `dedupe_key`, 0029); safe twice, per company in its context
 - [x] Q13 (`docs/open-questions.md`): the owner approved the recommendation (2026-11-09): within a `.changed`, no difference entry after its reversal; a void or an archive keeps it
-- [ ] Q13's four cases (`docs/scenarios/ad-funds/change-across-zero.md`, `Proposed`): the owner's approval of the numbers, then the rule in `packages/ledger` with a property (a same-amount change nets to zero), the cases moved into `ad-funds/running-balance.md` as `Approved`, `packages/db/test/inbox.test.ts`'s cross-zero test updated, Q13 resolved in `docs/open-questions.md`
+- [x] Q13's four cases, numbers approved by the owner (2026-11-09), in `ad-funds/running-balance.md` and run: the rule in `packages/ledger` (`withinChange`) and `post()`, the property (a same-amount change nets to zero), `inbox.test.ts` updated, Q13 resolved
 - [x] bridge: OpenAPI regenerated, breaking-change check
 - [x] wiring (API and worker), docs (`apps/api/CLAUDE.md`, `apps/worker/CLAUDE.md`, `packages/db/CLAUDE.md`, `packages/contracts/CLAUDE.md`, the `AGENTS.md` commands table, `.env.example`)
-- [ ] `docs/ROADMAP.md` (PR 3 done) once Q13 is settled
+- [x] `docs/ROADMAP.md` (PR 3 done)
 - [ ] checks and reviewers (`reviewer`, `accountant-reviewer`), PR with auto-merge and Auto-fix
 
 ## PR 4 â€” The inbox screens (ui, web, e2e)

@@ -913,7 +913,7 @@ describe('the ad funds’ changes and archives (ad-funds/running-balance; S04 ru
       ...(type === 'ad_spend.changed' && { changed_on: on }),
     });
 
-  it('reverses only what stands for the spend: never the difference entry of a change', async () => {
+  it('posts no difference entry within a change, and the archive’s after its reversal (Q13)', async () => {
     const company = await newCompany('service-agency', [
       ['2026-11-03', '120.0000'],
       ['2026-11-19', '123.0000'],
@@ -928,7 +928,8 @@ describe('the ad funds’ changes and archives (ad-funds/running-balance; S04 ru
       spent('ad_spend.recorded', '2026-11-19', '2026-11-19', 45_000),
     );
     expect(recorded.event.state).toBe('posted');
-    // Changed to 400.00 USD: the reversal crosses zero back, so its difference entry follows.
+    // Changed to 400.00 USD: the reversal crosses zero back, but within a change no difference
+    // entry follows it (Q13; owner, 2026-11-09).
     const changed = await receive(
       company,
       spent('ad_spend.changed', '2026-11-25', '2026-11-19', 40_000),
@@ -947,22 +948,29 @@ describe('the ad funds’ changes and archives (ad-funds/running-balance; S04 ru
     const entries = await inCompany(company, (tx) =>
       tx.select().from(journalEntries).orderBy(asc(journalEntries.sequence)),
     );
-    // The deposit, the spend; the change's reversal, its difference entry and the new state; the
-    // archive's reversal and its own difference entry.
-    expect(entries).toHaveLength(7);
-    const [, spend, reversal, difference, state, archive, archiveDifference] = entries;
+    // The deposit, the spend; the change's reversal and the new state; the archive's reversal and
+    // its difference entry, which a void or an archive keeps (S04 rule 13).
+    expect(entries).toHaveLength(6);
+    const [, spend, reversal, state, archive, archiveDifference] = entries;
     expect(reversal?.reversesEntryId).toBe(spend?.id);
-    expect(difference?.reversesEntryId).toBeNull();
+    expect(state?.reversesEntryId).toBeNull();
     expect(archive?.reversesEntryId).toBe(state?.id);
     expect(archiveDifference?.reversesEntryId).toBeNull();
-    expect(entries.filter((entry) => entry.reversesEntryId === difference?.id)).toEqual([]);
+    expect(entries.filter((entry) => entry.reversesEntryId === archiveDifference?.id)).toEqual([]);
     const lines = await ledger(company);
-    // The new state at its period's end (rule 13): the 300.00 USD credit cleared at what the
-    // difference entry left (300 × 123.5), the 100.00 USD beyond zero at the 19 November bulletin.
-    expect(lines[4]?.lines).toEqual([
-      ['213001', 'USD', 30_000n, 3_705_000n, 30_000n],
+    // The new state against the funds as the reversal left them, a 300.00 USD credit at 36,000.00
+    // SYP: cleared at that, and the 100.00 USD beyond zero at the 19 November bulletin (rule 13).
+    expect(lines[3]?.lines).toEqual([
+      ['213001', 'USD', 30_000n, 3_600_000n, 30_000n],
       ['213001', 'USD', 10_000n, 1_230_000n, 10_000n],
-      ['211001', 'USD', -40_000n, -4_935_000n, -40_000n],
+      ['211001', 'USD', -40_000n, -4_830_000n, -40_000n],
+    ]);
+    // The archive's difference: the 300.00 USD credit the reversal left, at 3,600,000, measured
+    // anew at the 26 November bulletin, 300 × 124 = 3,720,000: a realised loss of 1,200.00 SYP.
+    expect(lines[5]?.lines).toEqual([
+      ['213001', 'USD', 30_000n, 3_600_000n, 30_000n],
+      ['213001', 'USD', -30_000n, -3_720_000n, -30_000n],
+      ['541001', 'SYP', 120_000n, 120_000n, 0n],
     ]);
     // Archived, the spend is gone: the payable is back to zero.
     const [payable] = await inCompany(company, (tx) =>
@@ -979,6 +987,49 @@ describe('the ad funds’ changes and archives (ad-funds/running-balance; S04 ru
         .where(eq(chartAccounts.code, '211001')),
     );
     expect(payable?.amount).toBe('0');
+  });
+
+  it('nets a spend re-sent unchanged to zero in both ledgers, across zero or not (Q13)', async () => {
+    const rate = fc
+      .integer({ min: 1_150_000, max: 1_300_000 })
+      .map((n) => `${Math.floor(n / 10_000)}.${String(n % 10_000).padStart(4, '0')}`);
+    await fc.assert(
+      fc.asyncProperty(
+        fc.integer({ min: 1, max: 500_000 }),
+        fc.integer({ min: 1, max: 900_000 }),
+        fc.tuple(rate, rate, rate),
+        async (deposit, usd, [first, second, third]) => {
+          const company = await newCompany('service-agency', [
+            ['2026-11-03', first],
+            ['2026-11-19', second],
+            ['2026-11-25', third],
+          ]);
+          await receive(company, deposited('2026-11-03', deposit));
+          await receive(company, spent('ad_spend.recorded', '2026-11-19', '2026-11-19', usd));
+          const changed = await receive(
+            company,
+            spent('ad_spend.changed', '2026-11-25', '2026-11-19', usd),
+          );
+          expect(changed.event.state).toBe('posted');
+          // The reversal and the new state, and nothing between them.
+          expect(changed.event.entries).toHaveLength(2);
+          const entries = await ledger(company);
+          const totals = new Map<string, [bigint, bigint, bigint]>();
+          for (const entry of entries.slice(-2)) {
+            for (const [code, , amount, book, parallel] of entry.lines) {
+              const [a, b, c] = totals.get(code as string) ?? [0n, 0n, 0n];
+              totals.set(code as string, [
+                a + (amount as bigint),
+                b + (book as bigint),
+                c + (parallel as bigint),
+              ]);
+            }
+          }
+          for (const [code, total] of totals) expect(total, code).toEqual([0n, 0n, 0n]);
+        },
+      ),
+      { numRuns: 12 },
+    );
   });
 
   it('measures a moved void’s difference entry at the void’s own date (rule 15)', async () => {

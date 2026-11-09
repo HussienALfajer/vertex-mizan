@@ -159,6 +159,8 @@ export type PostingContent =
   | {
       readonly kind: 'hub_reversal';
       readonly entryId: string;
+      /** A `.changed` event's reversal, which its new state follows: no difference entry (Q13). */
+      readonly withinChange?: boolean;
       readonly measuredOn: string;
       readonly today: string;
       readonly hub: HubSource;
@@ -1793,14 +1795,19 @@ export async function post(tx: Transaction, request: PostingRequest): Promise<Po
     follows: null,
     hub,
   });
-  const difference = await voidDifferenceLines(
-    tx,
-    built.voided,
-    on,
-    content.kind === 'hub_reversal' ? content.measuredOn : on,
-    ledgers,
-    settings.bulletinDaysOff,
-  );
+  // Within a `.changed`, the reversal and the new state are one change: no difference entry
+  // between them (Q13; owner, 2026-11-09).
+  const difference =
+    content.kind === 'hub_reversal' && content.withinChange === true
+      ? null
+      : await voidDifferenceLines(
+          tx,
+          built.voided,
+          on,
+          content.kind === 'hub_reversal' ? content.measuredOn : on,
+          ledgers,
+          settings.bulletinDaysOff,
+        );
   if (difference !== null) {
     const differenceKey = `${request.idempotencyKey}:difference`;
     const [differenceRequest] = await tx

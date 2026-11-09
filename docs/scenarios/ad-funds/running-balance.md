@@ -9,16 +9,19 @@ The expected entries were approved by the owner on 2026-11-06, with two decision
 
 S05 added four cases, whose expected entries and outcomes the owner approved on 2026-11-07 (S05 "Scenarios"): the tolerance on an SYP deposit and an SYP refund (a gap of exactly 1.00 USD posts as a realised difference, either way), one minor unit beyond it (held `NEEDS_DECISION`, with a parallel ledger and without), and a deposit held `RATE_MISSING` with a spend waiting behind it, both posted in order once the bulletin is recorded. No expected value of the earlier cases changes.
 
+S05 PR 3 added four cases for Q13 (the owner approved the treatment and the expected entries on 2026-11-09): within an `ad_spend.changed`, the reversal of the standing spend and its new state are one change, so no difference entry follows the reversal, even across zero, and the new state's excess is measured at its own `period_to`; a void or an archive keeps S04 rule 13's difference entry. A spend across zero re-sent unchanged then nets to zero (S05 edge case 14), in `syp-usd`, `syp` and `usd-syp`; a change to an amount the funds cover clears it at the funds' average. No expected value of the earlier cases changes: the one change case before them runs with the balance, where no difference entry followed already.
+
 S05's feature slice brought their executors: the `event` executor through the event inbox, the posting rules of `ad_wallet.deposited`, `ad_wallet.refunded`, `ad_wallet.entry_voided`, `ad_spend.recorded`, `ad_spend.changed` and `ad_spend.archived`, the mapping of each payment method to its account, the void difference entry of a running item, the holds `RATE_MISSING`, `WAITING_FOR_EARLIER_EVENT` and `NEEDS_DECISION`, and the automatic retries (S04 rule 13; S04 "Out of scope"; owner, 2026-10-28; S05 rules 8–11).
 
 ## Rule
 
-Each client's ad funds are one running item on client ad funds held `213001`, per client and in USD. `ad_wallet.deposited` debits the account of the deposit's method in the deposit's currency, a new measurement, and credits the client's item by the USD amount Hub credits. `ad_wallet.refunded` is the opposite entry. `ad_spend.recorded` debits the item and credits ad platforms payable `211001` with the same amounts. A movement against the item's balance clears it at its average carrying amount; a movement with the balance, or on a zero balance, is a new measurement at each ledger's policy rate of the day, or at Hub's `syp_per_usd` for a market ledger that accepts it; a movement that crosses zero clears the whole balance and measures the excess anew. Each ledger's residual, rounding included, posts in that ledger only as a realised exchange difference. `ad_wallet.entry_voided` posts the exact reversal of the wallet entry's posting; `ad_spend.changed` posts the reversal of the spend's posting, then the new spend; `ad_spend.archived` posts the reversal. When a reversal runs against the item's balance or crosses zero, a difference entry follows it and brings the item to the carrying amount it would have if the reversal were a new movement; a reversal with the balance stands alone (owner, 2026-11-06). A deposit or refund in SYP is held `NEEDS_DECISION` when its amount at Hub's `syp_per_usd` differs from its `usd_amount` by more than the company's USD tolerance (1.00 USD by default). Events on one client's funds post in Hub's order: an event received after a held one on the same client waits behind it (`WAITING_FOR_EARLIER_EVENT`), so the funds' average never depends on when a bulletin is recorded.
+Each client's ad funds are one running item on client ad funds held `213001`, per client and in USD. `ad_wallet.deposited` debits the account of the deposit's method in the deposit's currency, a new measurement, and credits the client's item by the USD amount Hub credits. `ad_wallet.refunded` is the opposite entry. `ad_spend.recorded` debits the item and credits ad platforms payable `211001` with the same amounts. A movement against the item's balance clears it at its average carrying amount; a movement with the balance, or on a zero balance, is a new measurement at each ledger's policy rate of the day, or at Hub's `syp_per_usd` for a market ledger that accepts it; a movement that crosses zero clears the whole balance and measures the excess anew. Each ledger's residual, rounding included, posts in that ledger only as a realised exchange difference. `ad_wallet.entry_voided` posts the exact reversal of the wallet entry's posting; `ad_spend.changed` posts the reversal of the spend's posting, then the new spend, as one change: no difference entry follows that reversal, and the new spend measures its excess beyond zero at its `period_to` (Q13, owner, 2026-11-09); `ad_spend.archived` posts the reversal. When a void's or an archive's reversal runs against the item's balance or crosses zero, a difference entry follows it and brings the item to the carrying amount it would have if the reversal were a new movement; a reversal with the balance stands alone (owner, 2026-11-06). A deposit or refund in SYP is held `NEEDS_DECISION` when its amount at Hub's `syp_per_usd` differs from its `usd_amount` by more than the company's USD tolerance (1.00 USD by default). Events on one client's funds post in Hub's order: an event received after a held one on the same client waits behind it (`WAITING_FOR_EARLIER_EVENT`), so the funds' average never depends on when a bulletin is recorded.
 
 ## Basis
 
 - **Conceptual Framework 4.26:** the agency holds the client's money to spend for the client on ad platforms, so the funds are a liability, never revenue (scope Q4), and the spend reduces that liability as it moves to what the agency owes the platform.
 - **IAS 21.21–22:** a deposit, a refund and the excess of a crossing are recorded at the spot rate of their date: the bulletin of the day for the book ledger (S02 rule 16), and for Vertex Media's USD parallel ledger the rate the deposit was dealt at, Hub's `syp_per_usd`, which the ledger's policy accepts.
+- **Q13 (owner, 2026-11-09), IAS 21.21–22 and 21.28:** a `.changed` spend is a transaction of its own `period_to`, measured at that date's rate; a change of its description changes no amount, and the rate's movement on the funds since is realised when they are settled, never by the change.
 - **IAS 21.23(b) and 21.28:** the funds are a monetary item. A movement against them takes their carrying amount and is not converted again. The gap between that and what is paid or received, in each ledger, is a realised exchange difference in profit or loss of the period.
 - **IAS 1.32 and 1.54(h):** a client whose funds turn into a debit balance owes the agency; the balance sheet presents it as a receivable from that client, never netted against other clients' funds (S09).
 - **ADR 0005:** posted entries are append-only; a void or an edit in Hub is a reversal in Mizan, dated on the void or edit date.
@@ -457,6 +460,155 @@ expect:
     - { item: C1, account: "213001", dims: { client: C1 }, currency: USD, amount: -150000, book: -18100000, parallel: -150000 }
 ```
 
+### Vertex Media: a spend across zero re-sent unchanged, then archived
+
+Q13 (owner, 2026-11-09): within an `ad_spend.changed`, the reversal of the standing spend and the new state are one change. The reversal posts alone, with no difference entry after it, though it crosses zero back, so the new state moves the funds exactly as the reversal left them and measures its excess beyond zero at the bulletin of its own `period_to` (S05 rule 13). A spend re-sent with the same amount and period, a description changed in Hub, then nets to zero in both ledgers (S05 edge case 14). The archive is no change: its reversal crosses zero and S04 rule 13's difference entry follows it, measuring the 300.00 USD the client's funds hold again at the archive date's bulletin of 124, a realised loss of 1,200.00 SYP.
+
+```yaml
+case: 300.00 USD deposited at 120; 450.00 USD spent at 123, crossing zero; the spend re-sent unchanged at 123.5, netting to zero; then archived at 124 with its difference entry
+company: { shape: syp-usd, book: SYP, parallel: USD, template: service-agency,
+           rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true } }
+rates:
+  - { date: 2026-11-03, base: USD, quote: SYP, rate: "120.0000", type: bulletin }
+  - { date: 2026-11-19, base: USD, quote: SYP, rate: "123.0000", type: bulletin }
+  - { date: 2026-11-25, base: USD, quote: SYP, rate: "123.5000", type: bulletin }
+  - { date: 2026-11-26, base: USD, quote: SYP, rate: "124.0000", type: bulletin }
+steps:
+  - event: ad_wallet.deposited
+    accounting_date: 2026-11-03
+    payload: { entry: W-1, client: C1, entered_on: 2026-11-03, method: bank_transfer,
+               currency: USD, amount: 30000, syp_per_usd: "122.0000", usd_amount: 30000 }
+  - event: ad_spend.recorded
+    accounting_date: 2026-11-19
+    payload: { update: CU-1, campaign: CMP-1, client: C1, period_from: 2026-11-01,
+               period_to: 2026-11-19, usd_spend: 45000 }
+  - event: ad_spend.changed
+    accounting_date: 2026-11-25
+    payload: { update: CU-1, campaign: CMP-1, client: C1, period_from: 2026-11-01,
+               period_to: 2026-11-19, usd_spend: 45000 }
+  - event: ad_spend.archived
+    accounting_date: 2026-11-26
+    payload: { update: CU-1, campaign: CMP-1, client: C1 }
+expect:
+  entries:
+    - source: ad_wallet.deposited
+      date: 2026-11-03
+      lines:
+        # book: 300.00 USD × 120 = 36,000.00 SYP
+        - { account: "111004", currency: USD, amount: 30000, book: 3600000, parallel: 30000 }
+        - { account: "213001", dims: { client: C1 }, currency: USD, amount: -30000, book: -3600000, parallel: -30000 }
+    - source: ad_spend.recorded
+      date: 2026-11-19
+      lines:
+        # the split at zero: the whole 300.00 USD credit, cleared at what it carries
+        - { account: "213001", dims: { client: C1 }, currency: USD, amount: 30000, book: 3600000, parallel: 30000 }
+        # then the 150.00 USD beyond zero, a new measurement: 150.00 × 123 = 18,450.00 SYP
+        - { account: "213001", dims: { client: C1 }, currency: USD, amount: 15000, book: 1845000, parallel: 15000 }
+        # the payable carries both: 3,600,000 + 1,845,000 = 5,445,000
+        - { account: "211001", dims: { client: C1 }, currency: USD, amount: -45000, book: -5445000, parallel: -45000 }
+    - source: ad_spend.changed
+      date: 2026-11-25
+      lines:
+        # the exact negation of the 19 November entry; the funds back to a 300.00 USD credit at 36,000.00 SYP
+        # it crosses zero back, but within a change no difference entry follows it (Q13)
+        - { account: "213001", dims: { client: C1 }, currency: USD, amount: -30000, book: -3600000, parallel: -30000 }
+        - { account: "213001", dims: { client: C1 }, currency: USD, amount: -15000, book: -1845000, parallel: -15000 }
+        - { account: "211001", dims: { client: C1 }, currency: USD, amount: 45000, book: 5445000, parallel: 45000 }
+    - source: ad_spend.changed
+      date: 2026-11-25
+      lines:
+        # the new state against the 300.00 USD credit at 36,000.00 SYP: cleared whole at what it carries
+        - { account: "213001", dims: { client: C1 }, currency: USD, amount: 30000, book: 3600000, parallel: 30000 }
+        # the 150.00 USD beyond zero at the bulletin of period_to, 19 November: 150.00 × 123 = 18,450.00 SYP, not 123.5
+        - { account: "213001", dims: { client: C1 }, currency: USD, amount: 15000, book: 1845000, parallel: 15000 }
+        - { account: "211001", dims: { client: C1 }, currency: USD, amount: -45000, book: -5445000, parallel: -45000 }
+    - source: ad_spend.archived
+      date: 2026-11-26
+      lines:
+        # the exact negation of the 25 November spend; the funds: a 300.00 USD credit at 36,000.00 SYP
+        - { account: "213001", dims: { client: C1 }, currency: USD, amount: -30000, book: -3600000, parallel: -30000 }
+        - { account: "213001", dims: { client: C1 }, currency: USD, amount: -15000, book: -1845000, parallel: -15000 }
+        - { account: "211001", dims: { client: C1 }, currency: USD, amount: 45000, book: 5445000, parallel: 45000 }
+    - source: ad_spend.archived
+      date: 2026-11-26
+      lines:
+        # as a new movement: clear the 150.00 USD debit at 1,845,000, then 300.00 × 124 = 3,720,000 → a credit of 3,720,000
+        # across zero: the 300.00 USD credit the reversal left, at 3,600,000, cleared to zero
+        - { account: "213001", dims: { client: C1 }, currency: USD, amount: 30000, book: 3600000, parallel: 30000 }
+        # then the 300.00 USD beyond zero measured anew at the 26 November bulletin, its rate recorded
+        - { account: "213001", dims: { client: C1 }, currency: USD, amount: -30000, book: -3720000, parallel: -30000 }
+        # book residual: 3,600,000 − 3,720,000 = −120,000 → realised loss 1,200.00 SYP
+        - { account: "541001", currency: SYP, amount: 120000, book: 120000, parallel: 0 }
+  balances:
+    - { account: "213001", book: -3720000, parallel: -30000 }
+    - { account: "111004", book: 3600000, parallel: 30000 }
+    - { account: "211001", book: 0, parallel: 0 }
+    - { account: "541001", book: 120000, parallel: 0 }
+  open_items:
+    - { item: C1, account: "213001", dims: { client: C1 }, currency: USD, amount: -30000, book: -3720000, parallel: -30000 }
+```
+
+### Vertex Media: a spend across zero changed to an amount the funds cover
+
+The change's reversal puts the funds back to the 300.00 USD credit at 36,000.00 SYP, with no difference entry (Q13), and the new 250.00 USD spend runs against that credit: it clears 250.00 USD at the average and leaves 50.00 USD of funds. No rate of the change's date is read, and nothing is realised.
+
+```yaml
+case: 300.00 USD deposited at 120; 450.00 USD spent at 123, crossing zero; changed at 123.5 to 250.00 USD, within the funds
+company: { shape: syp-usd, book: SYP, parallel: USD, template: service-agency,
+           rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true } }
+rates:
+  - { date: 2026-11-03, base: USD, quote: SYP, rate: "120.0000", type: bulletin }
+  - { date: 2026-11-19, base: USD, quote: SYP, rate: "123.0000", type: bulletin }
+  - { date: 2026-11-25, base: USD, quote: SYP, rate: "123.5000", type: bulletin }
+steps:
+  - event: ad_wallet.deposited
+    accounting_date: 2026-11-03
+    payload: { entry: W-1, client: C1, entered_on: 2026-11-03, method: bank_transfer,
+               currency: USD, amount: 30000, syp_per_usd: "122.0000", usd_amount: 30000 }
+  - event: ad_spend.recorded
+    accounting_date: 2026-11-19
+    payload: { update: CU-1, campaign: CMP-1, client: C1, period_from: 2026-11-01,
+               period_to: 2026-11-19, usd_spend: 45000 }
+  - event: ad_spend.changed
+    accounting_date: 2026-11-25
+    payload: { update: CU-1, campaign: CMP-1, client: C1, period_from: 2026-11-01,
+               period_to: 2026-11-19, usd_spend: 25000 }
+expect:
+  entries:
+    - source: ad_wallet.deposited
+      date: 2026-11-03
+      lines:
+        - { account: "111004", currency: USD, amount: 30000, book: 3600000, parallel: 30000 }
+        - { account: "213001", dims: { client: C1 }, currency: USD, amount: -30000, book: -3600000, parallel: -30000 }
+    - source: ad_spend.recorded
+      date: 2026-11-19
+      lines:
+        - { account: "213001", dims: { client: C1 }, currency: USD, amount: 30000, book: 3600000, parallel: 30000 }
+        # 150.00 × 123 = 18,450.00 SYP
+        - { account: "213001", dims: { client: C1 }, currency: USD, amount: 15000, book: 1845000, parallel: 15000 }
+        - { account: "211001", dims: { client: C1 }, currency: USD, amount: -45000, book: -5445000, parallel: -45000 }
+    - source: ad_spend.changed
+      date: 2026-11-25
+      lines:
+        # the exact negation of the 19 November entry; no difference entry within a change (Q13)
+        - { account: "213001", dims: { client: C1 }, currency: USD, amount: -30000, book: -3600000, parallel: -30000 }
+        - { account: "213001", dims: { client: C1 }, currency: USD, amount: -15000, book: -1845000, parallel: -15000 }
+        - { account: "211001", dims: { client: C1 }, currency: USD, amount: 45000, book: 5445000, parallel: 45000 }
+    - source: ad_spend.changed
+      date: 2026-11-25
+      lines:
+        # the new state against 300.00 USD at 36,000.00 SYP: 3,600,000 × 250 / 300 = 3,000,000 exactly
+        - { account: "213001", dims: { client: C1 }, currency: USD, amount: 25000, book: 3000000, parallel: 25000 }
+        - { account: "211001", dims: { client: C1 }, currency: USD, amount: -25000, book: -3000000, parallel: -25000 }
+  balances:
+    # 3,600,000 − 3,000,000 = 600,000: 50.00 USD of funds at 120
+    - { account: "213001", book: -600000, parallel: -5000 }
+    - { account: "111004", book: 3600000, parallel: 30000 }
+    - { account: "211001", book: -3000000, parallel: -25000 }
+  open_items:
+    - { item: C1, account: "213001", dims: { client: C1 }, currency: USD, amount: -5000, book: -600000, parallel: -5000 }
+```
+
 ### Vertex Media: the tolerance on an SYP deposit and an SYP refund
 
 The gap is measured in USD: the SYP amount at Hub's `syp_per_usd`, rounded half away from zero, against Hub's `usd_amount`. Within the tolerance (1.00 USD, the default), the parallel ledger takes the cash at Hub's rate and the funds by the `usd_amount`, and the gap between them is a realised difference in that ledger. Both gaps here are exactly the tolerance: the deposit's, after rounding, is a parallel gain; the refund's runs the other way, a parallel loss (S05 rule 9).
@@ -750,4 +902,131 @@ expect:
     - { account: "421001", book: 0, parallel: -120000 }
   open_items:
     - { item: C1, account: "213001", dims: { client: C1 }, currency: USD, amount: 40000, book: 40000, parallel: 5000000 }
+```
+
+### SYP books only: a spend across zero re-sent unchanged
+
+Q13 in the book ledger alone: the change's reversal posts with no difference entry, and the new state measures its excess at the bulletin of `period_to`, so a spend re-sent with the same amount nets to zero.
+
+```yaml
+case: SYP books only; 300.00 USD deposited at 120; 450.00 USD spent at 123, crossing zero; re-sent unchanged at 123.5, netting to zero
+company: { shape: syp, book: SYP, template: service-agency, rate_policy: { book: bulletin } }
+rates:
+  - { date: 2026-11-03, base: USD, quote: SYP, rate: "120.0000", type: bulletin }
+  - { date: 2026-11-19, base: USD, quote: SYP, rate: "123.0000", type: bulletin }
+  - { date: 2026-11-25, base: USD, quote: SYP, rate: "123.5000", type: bulletin }
+steps:
+  - event: ad_wallet.deposited
+    accounting_date: 2026-11-03
+    payload: { entry: W-1, client: C1, entered_on: 2026-11-03, method: bank_transfer,
+               currency: USD, amount: 30000, syp_per_usd: "122.0000", usd_amount: 30000 }
+  - event: ad_spend.recorded
+    accounting_date: 2026-11-19
+    payload: { update: CU-1, campaign: CMP-1, client: C1, period_from: 2026-11-01,
+               period_to: 2026-11-19, usd_spend: 45000 }
+  - event: ad_spend.changed
+    accounting_date: 2026-11-25
+    payload: { update: CU-1, campaign: CMP-1, client: C1, period_from: 2026-11-01,
+               period_to: 2026-11-19, usd_spend: 45000 }
+expect:
+  entries:
+    - source: ad_wallet.deposited
+      date: 2026-11-03
+      lines:
+        # book: 300.00 USD × 120 = 36,000.00 SYP; Hub's 122 is not read without a parallel ledger
+        - { account: "111004", currency: USD, amount: 30000, book: 3600000 }
+        - { account: "213001", dims: { client: C1 }, currency: USD, amount: -30000, book: -3600000 }
+    - source: ad_spend.recorded
+      date: 2026-11-19
+      lines:
+        - { account: "213001", dims: { client: C1 }, currency: USD, amount: 30000, book: 3600000 }
+        # 150.00 × 123 = 18,450.00 SYP
+        - { account: "213001", dims: { client: C1 }, currency: USD, amount: 15000, book: 1845000 }
+        - { account: "211001", dims: { client: C1 }, currency: USD, amount: -45000, book: -5445000 }
+    - source: ad_spend.changed
+      date: 2026-11-25
+      lines:
+        # the exact negation; no difference entry within a change (Q13)
+        - { account: "213001", dims: { client: C1 }, currency: USD, amount: -30000, book: -3600000 }
+        - { account: "213001", dims: { client: C1 }, currency: USD, amount: -15000, book: -1845000 }
+        - { account: "211001", dims: { client: C1 }, currency: USD, amount: 45000, book: 5445000 }
+    - source: ad_spend.changed
+      date: 2026-11-25
+      lines:
+        # the new state: the excess at the bulletin of period_to, 19 November, not 123.5
+        - { account: "213001", dims: { client: C1 }, currency: USD, amount: 30000, book: 3600000 }
+        - { account: "213001", dims: { client: C1 }, currency: USD, amount: 15000, book: 1845000 }
+        - { account: "211001", dims: { client: C1 }, currency: USD, amount: -45000, book: -5445000 }
+  balances:
+    - { account: "213001", book: 1845000 }
+    - { account: "111004", book: 3600000 }
+    - { account: "211001", book: -5445000 }
+  open_items:
+    - { item: C1, account: "213001", dims: { client: C1 }, currency: USD, amount: 15000, book: 1845000 }
+```
+
+### USD books with an SYP parallel ledger: a spend across zero re-sent unchanged
+
+The funds are in the book currency, so the change only moves the SYP parallel ledger: its reversal posts with no difference entry, and the new state measures the 150.00 USD beyond zero at the market rate in force on `period_to`, 124 on 19 November, not the 125 of the change's date. The change nets to zero in both ledgers.
+
+```yaml
+case: USD books; 300.00 USD deposited at Hub's 122; 450.00 USD spent, the excess at the 19 November market rate of 124; re-sent unchanged on 25 November, netting to zero
+company: { shape: usd-syp, book: USD, parallel: SYP, template: service-agency,
+           rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true } }
+rates:
+  - { date: 2026-11-03, base: USD, quote: SYP, rate: "120.0000", type: bulletin }
+  - { date: 2026-11-19, base: USD, quote: SYP, rate: "123.0000", type: bulletin }
+  - { date: 2026-11-19, base: USD, quote: SYP, rate: "124.0000", type: market }
+  - { date: 2026-11-25, base: USD, quote: SYP, rate: "123.5000", type: bulletin }
+  - { date: 2026-11-25, base: USD, quote: SYP, rate: "125.0000", type: market }
+steps:
+  - event: ad_wallet.deposited
+    accounting_date: 2026-11-03
+    payload: { entry: W-1, client: C1, entered_on: 2026-11-03, method: bank_transfer,
+               currency: USD, amount: 30000, syp_per_usd: "122.0000", usd_amount: 30000 }
+  - event: ad_spend.recorded
+    accounting_date: 2026-11-19
+    payload: { update: CU-1, campaign: CMP-1, client: C1, period_from: 2026-11-01,
+               period_to: 2026-11-19, usd_spend: 45000 }
+  - event: ad_spend.changed
+    accounting_date: 2026-11-25
+    payload: { update: CU-1, campaign: CMP-1, client: C1, period_from: 2026-11-01,
+               period_to: 2026-11-19, usd_spend: 45000 }
+expect:
+  entries:
+    - source: ad_wallet.deposited
+      date: 2026-11-03
+      lines:
+        # book: USD as is; parallel: 300.00 USD × 122 (Hub's rate, accepted) = 36,600.00 SYP
+        - { account: "111004", currency: USD, amount: 30000, book: 30000, parallel: 3660000 }
+        - { account: "213001", dims: { client: C1 }, currency: USD, amount: -30000, book: -30000, parallel: -3660000 }
+    - source: ad_spend.recorded
+      date: 2026-11-19
+      lines:
+        # the whole 300.00 USD credit at what it carries in the parallel ledger
+        - { account: "213001", dims: { client: C1 }, currency: USD, amount: 30000, book: 30000, parallel: 3660000 }
+        # the 150.00 USD beyond zero: parallel 150.00 × 124 (the 19 November market rate) = 18,600.00 SYP
+        - { account: "213001", dims: { client: C1 }, currency: USD, amount: 15000, book: 15000, parallel: 1860000 }
+        # the payable carries both: 3,660,000 + 1,860,000 = 5,520,000
+        - { account: "211001", dims: { client: C1 }, currency: USD, amount: -45000, book: -45000, parallel: -5520000 }
+    - source: ad_spend.changed
+      date: 2026-11-25
+      lines:
+        # the exact negation; no difference entry within a change (Q13)
+        - { account: "213001", dims: { client: C1 }, currency: USD, amount: -30000, book: -30000, parallel: -3660000 }
+        - { account: "213001", dims: { client: C1 }, currency: USD, amount: -15000, book: -15000, parallel: -1860000 }
+        - { account: "211001", dims: { client: C1 }, currency: USD, amount: 45000, book: 45000, parallel: 5520000 }
+    - source: ad_spend.changed
+      date: 2026-11-25
+      lines:
+        # the new state: the excess at the market rate of period_to, 124, not the 125 of 25 November
+        - { account: "213001", dims: { client: C1 }, currency: USD, amount: 30000, book: 30000, parallel: 3660000 }
+        - { account: "213001", dims: { client: C1 }, currency: USD, amount: 15000, book: 15000, parallel: 1860000 }
+        - { account: "211001", dims: { client: C1 }, currency: USD, amount: -45000, book: -45000, parallel: -5520000 }
+  balances:
+    - { account: "213001", book: 15000, parallel: 1860000 }
+    - { account: "111004", book: 30000, parallel: 3660000 }
+    - { account: "211001", book: -45000, parallel: -5520000 }
+  open_items:
+    - { item: C1, account: "213001", dims: { client: C1 }, currency: USD, amount: 15000, book: 15000, parallel: 1860000 }
 ```
