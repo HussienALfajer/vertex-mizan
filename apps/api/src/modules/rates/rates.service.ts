@@ -40,6 +40,7 @@ import { writeCompanyAudit } from '../../core/audit/audit.js';
 import { DATABASE } from '../../core/database/database.module.js';
 import { CodedException } from '../../core/errors/coded-exception.js';
 import { afterCursor, decodeCursor, pageOf } from '../../core/http/cursor.js';
+import { RetryQueue } from '../../core/jobs/retry-queue.js';
 
 /** A page of rate rows: about two a day per pair (S02 "Volume and performance"). */
 const PAGE_SIZE = 100;
@@ -66,7 +67,10 @@ function eitherWay(a: CurrencyCode, b: CurrencyCode) {
 /** The company rate table and the bulletin publication calendar (S02 rules 14–18). */
 @Injectable()
 export class RatesService {
-  constructor(@Inject(DATABASE) private readonly db: Database) {}
+  constructor(
+    @Inject(DATABASE) private readonly db: Database,
+    @Inject(RetryQueue) private readonly retries: RetryQueue,
+  ) {}
 
   /** `GET /api/rate-pairs`. */
   async pairs(access: CompanyRouteAccess): Promise<RatePair[]> {
@@ -171,7 +175,7 @@ export class RatesService {
    */
   async record(access: CompanyRouteAccess, input: RecordRate): Promise<RecordedRate> {
     const companyId = access.company.id;
-    return withCompany(this.db, companyId, async (tx) => {
+    const recorded = await withCompany(this.db, companyId, async (tx) => {
       await lockCompanyForWrite(tx, companyId);
       const { id, supersededId } = await recordRate(tx, companyId, actorOf(access), input);
       const [recorded] = await readRateRows(tx, [eq(exchangeRates.id, id)], 'recorded', 1);
@@ -181,6 +185,9 @@ export class RatesService {
       if (!recorded) throw new Error('The rate was not recorded');
       return { rate: recorded.entry, superseded: superseded?.entry ?? null };
     });
+    // A rate recorded or corrected for a date frees the events held RATE_MISSING (S05 rule 10).
+    await this.retries.afterCommit(companyId, [{ kind: 'rate', on: input.effectiveOn }]);
+    return recorded;
   }
 
   /** `GET /api/rate-calendar`: the weekly days off and the holidays in force, by date. */
@@ -211,7 +218,7 @@ export class RatesService {
     input: AddBulletinHoliday,
   ): Promise<BulletinHoliday> {
     const companyId = access.company.id;
-    return withCompany(this.db, companyId, async (tx) => {
+    const holiday = await withCompany(this.db, companyId, async (tx) => {
       await lockCompanyForWrite(tx, companyId);
       const row = await addBulletinHoliday(tx, companyId, actorOf(access), input);
       return {
@@ -221,6 +228,9 @@ export class RatesService {
         createdAt: row.createdAt.toISOString(),
       };
     });
+    // A holiday makes the last published bulletin serve its date (S05 rule 10, ADR 0011).
+    await this.retries.afterCommit(companyId, [{ kind: 'rate', on: holiday.on }]);
+    return holiday;
   }
 
   /** `POST /api/rate-calendar/holidays/:id/remove`: archived, so the log keeps it. */

@@ -6,7 +6,7 @@ import { DatabaseModule } from './core/database/database.module.js';
 import { EmailModule } from './core/email/email.module.js';
 import { FilesModule } from './core/files/file-store.js';
 import { QueueModule } from './core/queue/queue.module.js';
-import type { ScheduledJob } from './core/queue/scheduled-job.js';
+import type { WorkerJob } from './core/queue/scheduled-job.js';
 
 /**
  * The worker (ADR 0002): a Nest application context with no HTTP server, its configuration,
@@ -15,7 +15,7 @@ import type { ScheduledJob } from './core/queue/scheduled-job.js';
  */
 @Module({})
 export class WorkerModule {
-  static forRoot(config: Config, jobs: Type<ScheduledJob>[]): DynamicModule {
+  static forRoot(config: Config, jobs: Type<WorkerJob>[]): DynamicModule {
     return {
       module: WorkerModule,
       imports: [

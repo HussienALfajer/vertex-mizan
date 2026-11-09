@@ -6,19 +6,11 @@ import {
   Module,
   type OnApplicationShutdown,
 } from '@nestjs/common';
+import { EVENTS_RETRY_QUEUE, type EventsRetryJob } from '@vertex-mizan/contracts';
 import { describeForLog, type RetryTrigger } from '@vertex-mizan/db';
 import { PgBoss } from 'pg-boss';
 import type { Config } from '../config/config.js';
 import { CONFIG } from '../config/config.module.js';
-
-/** The worker's queue of the automatic retries (S05 rule 10, "Jobs"). */
-export const EVENTS_RETRY_QUEUE = 'events.retry';
-
-/** A job of `events.retry`: the company and what freed its held events. */
-export interface EventsRetryJob {
-  readonly companyId: string;
-  readonly triggers: readonly RetryTrigger[];
-}
 
 /**
  * Queues the automatic retries after the commit of a change that frees held events (S05 rule 10):
@@ -39,7 +31,7 @@ export class RetryQueue implements OnApplicationShutdown {
     if (triggers.length === 0 || !this.config.queueDatabaseUrl) return;
     try {
       const boss = await this.start(this.config.queueDatabaseUrl);
-      const job: EventsRetryJob = { companyId, triggers };
+      const job: EventsRetryJob = { companyId, triggers: [...triggers] };
       await boss.send(EVENTS_RETRY_QUEUE, job);
     } catch (error) {
       this.logger.error(`Could not queue ${EVENTS_RETRY_QUEUE}: ${describeForLog(error)}`);

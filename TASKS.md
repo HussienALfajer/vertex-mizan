@@ -26,10 +26,11 @@ Spec: `docs/specs/S05-posting-api-event-inbox.md` (Approved, owner 2026-11-07) Â
   - [x] `POST /v1/events` (the key header, `ENTRY_DATE_OUT_OF_RANGE`, `SYP_BEFORE_REDENOMINATION`, `SOURCE_NOT_ALLOWED`, the raw body with its envelope, one retry then `503`, the retries queued after the commit through pg-boss as the queue role); an event ID unique per company, so a replay under a type's new client posts nothing twice (rule 21); `GET /v1/periods/status`; tests
   - [x] `/api/inbox`, `/api/inbox/counts`, `/api/inbox/:id` and its four actions; `/api/posting-rules` (`SLOT_READERS`, the held events per slot, a change queues the `mapping` retry); the tolerance in `PATCH /api/company` (S01's settings route; the spec's `PUT /api/company/settings` does not exist); tests
   - [x] the JSON Schema export for Hub (`export:hub-schema`) with one example per type (`eventExamplesV1`), the script that posts them (`post:hub-examples`), and the API test that posts each
-- [ ] worker: `events.retry` enqueued after the commits that free held events (rates, holidays, mappings, accounts unblocked or restored), `events.retry-sweep` (daily 04:00 and at start), `events.held-digest` (daily 08:00, one email per company and day); safe twice, per company in its context
+- [x] worker: `events.retry` enqueued after the commits that free held events (rates, holidays, mappings, accounts unblocked or restored; the API's `RetryQueue` as the queue role), `events.retry-sweep` (daily 04:00 and at start), `events.held-digest` (daily 08:00, one email per company, day and person, keyed by the outbox's `dedupe_key`, 0029); safe twice, per company in its context
 - [ ] Q13 (`docs/open-questions.md`): the owner's answer on an `ad_spend.changed` across zero, and, if it changes the treatment, its `ad-funds/running-balance` case through `/posting-rule` before Hub's events reach Mizan
-- [ ] bridge: OpenAPI regenerated, breaking-change check
-- [ ] wiring (API and worker), docs (`apps/api/CLAUDE.md`, `apps/worker/CLAUDE.md`, the `AGENTS.md` commands table, `docs/ROADMAP.md`)
+- [x] bridge: OpenAPI regenerated, breaking-change check
+- [x] wiring (API and worker), docs (`apps/api/CLAUDE.md`, `apps/worker/CLAUDE.md`, `packages/db/CLAUDE.md`, `packages/contracts/CLAUDE.md`, the `AGENTS.md` commands table, `.env.example`)
+- [ ] `docs/ROADMAP.md` (PR 3 done) once Q13 is settled
 - [ ] checks and reviewers (`reviewer`, `accountant-reviewer`), PR with auto-merge and Auto-fix
 
 ## PR 4 â€” The inbox screens (ui, web, e2e)

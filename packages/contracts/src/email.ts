@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { roleSchema } from './access.js';
+import { holdReasonSchema } from './events.js';
 
 /**
  * The emails Mizan sends (S01): written to the outbox in the transaction of the change that sends
@@ -13,6 +14,8 @@ export const EMAIL_KINDS = [
   // S03: the daily anchor and the full export.
   'daily_anchor',
   'export_ready',
+  // S05: the daily digest of held events.
+  'held_digest',
 ] as const;
 
 export const emailKindSchema = z.enum(EMAIL_KINDS);
@@ -64,6 +67,17 @@ export const emailDataSchemas = {
     companyName: z.string().min(1),
     link: linkSchema,
     expiresAt: z.iso.datetime({ offset: true }),
+  }),
+  /**
+   * The held events of a company (S05 "Jobs"), to its owners and accountants at 08:00 in Damascus
+   * on a day with any: those held since the last digest, and all held, by reason.
+   */
+  held_digest: z.object({
+    companyName: z.string().min(1),
+    day: z.iso.date(),
+    newlyHeld: z.int().min(0),
+    held: z.array(z.object({ reason: holdReasonSchema, count: z.int().min(1) })).min(1),
+    link: linkSchema,
   }),
 } as const satisfies Record<EmailKind, z.ZodType>;
 

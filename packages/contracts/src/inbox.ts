@@ -184,3 +184,24 @@ export const postingSlotParamSchema = z
   .meta({ id: 'PostingSlotParam' });
 
 export type PostingSlotParam = z.infer<typeof postingSlotParamSchema>;
+
+/** What frees held events (rule 10), as the API queues it for the worker after a commit. */
+export const retryTriggerSchema = z
+  .discriminatedUnion('kind', [
+    z.object({ kind: z.literal('item'), itemKey: z.string().min(1).max(200) }),
+    z.object({ kind: z.literal('rate'), on: dateSchema }),
+    z.object({ kind: z.literal('mapping') }),
+    z.object({ kind: z.literal('deploy') }),
+    z.object({ kind: z.literal('sweep') }),
+  ])
+  .meta({ id: 'RetryTrigger' });
+
+/** The worker's queue of the automatic retries (S05 "Jobs"). */
+export const EVENTS_RETRY_QUEUE = 'events.retry';
+
+/** A job of `events.retry`: the company and what freed its held events. */
+export const eventsRetryJobSchema = z
+  .object({ companyId: z.uuid(), triggers: z.array(retryTriggerSchema).min(1).max(100) })
+  .meta({ id: 'EventsRetryJob' });
+
+export type EventsRetryJob = z.infer<typeof eventsRetryJobSchema>;
