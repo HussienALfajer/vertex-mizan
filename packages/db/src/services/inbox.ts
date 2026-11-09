@@ -670,7 +670,14 @@ async function contentOf(
       };
     }
     case 'reversal':
-      return { kind: 'hub_reversal', entryId: planned.entryId, measuredOn, today, hub };
+      return {
+        kind: 'hub_reversal',
+        entryId: planned.entryId,
+        withinChange: planned.withinChange === true,
+        measuredOn,
+        today,
+        hub,
+      };
     case 'reclassification': {
       // The line keeps every value but its service, which moves from the one it has in the books:
       // the issue line's, or the new service of the latest standing change of that line.
@@ -983,8 +990,9 @@ async function eventRow(tx: Transaction, inboxId: string): Promise<EventRow> {
 /**
  * `POST /v1/events` (rules 1–7): the event stored as received and attempted at once. The same
  * event ID with the same envelope stores nothing new, writes `replayed` and answers the event's
- * state; with another envelope it is `IDEMPOTENCY_CONFLICT`. Two requests at once serialise on the
- * unique key; the second answers as a replay. The caller validated the envelope and the company's
+ * state; with another envelope it is `IDEMPOTENCY_CONFLICT`, under the same client or another of the
+ * company's (rule 21). Two requests at once serialise on the unique key; the second answers as a
+ * replay. The caller validated the envelope and the company's
  * source for its document type, and runs the triggers' retries after the commit.
  */
 export async function receiveEvent(
@@ -1024,20 +1032,15 @@ export async function receiveEvent(
       itemKey: itemKeyOf(envelope),
       requestId: input.requestId,
     })
-    .onConflictDoNothing({
-      target: [inboundEvents.companyId, inboundEvents.apiClientId, inboundEvents.eventId],
-    })
+    .onConflictDoNothing()
     .returning();
   if (!inserted) {
+    // The first event of this ID in the company, from this client or the one a document type
+    // moved from (rule 21): the same body is a replay, another one a conflict.
     const [first] = await tx
       .select()
       .from(inboundEvents)
-      .where(
-        and(
-          eq(inboundEvents.apiClientId, input.apiClientId),
-          eq(inboundEvents.eventId, envelope.id),
-        ),
-      );
+      .where(eq(inboundEvents.eventId, envelope.id));
     if (!first) throw new Error('An event neither stored nor found');
     if (first.payloadHash !== payloadHash) {
       refuse('IDEMPOTENCY_CONFLICT', 'The event ID was sent with another payload', {

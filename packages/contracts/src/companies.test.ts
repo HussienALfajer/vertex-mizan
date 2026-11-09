@@ -109,6 +109,17 @@ describe('company changes', () => {
     ).toBe(false);
   });
 
+  it('take the payments’ tolerance as minor units, zero or more (S05)', () => {
+    expect(updateCompanyProfileSchema.safeParse({ paymentToleranceUsd: '0' }).success).toBe(true);
+    expect(updateCompanyProfileSchema.safeParse({ paymentToleranceSyp: '250' }).success).toBe(true);
+    for (const value of ['-1', '1.5', '', 'abc']) {
+      expect(
+        updateCompanyProfileSchema.safeParse({ paymentToleranceSyp: value }).success,
+        value,
+      ).toBe(false);
+    }
+  });
+
   it('need a written reason to archive or restore', () => {
     expect(reasonSchema.safeParse({ reason: '  ' }).success).toBe(false);
     expect(reasonSchema.parse({ reason: ' سبب ' }).reason).toBe('سبب');
@@ -127,6 +138,8 @@ describe('companySchema', () => {
         policyNote: 'نص',
         booksStarted: false,
         manualEntryApproval: false,
+        paymentToleranceSyp: '100',
+        paymentToleranceUsd: '100',
         archived: null,
         createdAt: '2026-10-26T09:00:00.000Z',
       }).booksStarted,

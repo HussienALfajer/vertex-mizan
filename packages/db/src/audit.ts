@@ -48,6 +48,8 @@ export const AUDITED_FIELDS = {
     'policyNote',
     'bulletinDaysOff',
     'manualEntryApproval',
+    'paymentToleranceSypMinor',
+    'paymentToleranceUsdMinor',
   ],
   membership: ['userId', 'role', 'canClosePeriods', 'archivedReason'],
   invitation: ['email', 'role', 'canClosePeriods', 'expiresAt'],
@@ -139,6 +141,11 @@ export const AUDITED_FIELDS = {
     'postedOn',
     'entryId',
   ],
+  // S05: an API client, its keys (never a secret: the prefix only) and the document sources.
+  api_client: ['name', 'system', 'scopes', 'ipAllowList', 'documentTypes'],
+  api_client_key: ['apiClientId', 'prefix', 'revokeReason'],
+  document_source: ['documentType', 'apiClientId'],
+  posting_rule: ['slot', 'currency', 'accountId', 'accountCode'],
   // S04: a manual item's due date, and the filters of the receivables exports.
   open_item: ['reference', 'dueOn', 'effectiveOn'],
   receivables_export: [

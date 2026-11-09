@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { check, index, integer, jsonb, pgTable, text } from 'drizzle-orm/pg-core';
+import { check, index, integer, jsonb, pgTable, text, uniqueIndex } from 'drizzle-orm/pg-core';
 import { createdAt, id, idIsUuidV7, timestamptz, updatedAt } from './columns.js';
 
 // The email module (S01; owner decision 2026-10-26): the outbox. The API writes an email in the
@@ -17,6 +17,8 @@ export const OUTBOX_EMAIL_KINDS = [
   // S03: the daily anchor and the full export.
   'daily_anchor',
   'export_ready',
+  // S05: the daily digest of held events.
+  'held_digest',
 ] as const;
 
 const listed = (values: readonly string[]) =>
@@ -38,18 +40,34 @@ export const emailOutbox = pgTable(
     sendAfter: timestamptz().notNull().defaultNow(),
     /** The code of the last failure (an SMTP or network code), never its message. */
     lastErrorCode: text(),
+    /**
+     * An email queued at most once (S05 "Jobs": the held digest, keyed by its company, day and
+     * person, so a second run of the job queues nothing). Null for every other email.
+     */
+    dedupeKey: text(),
+    /**
+     * When an email with a `dedupe_key` was sent: its row stays, so the key outlasts the send, and
+     * the daily clean-up deletes it two days later. Every other email is deleted once sent.
+     */
+    sentAt: timestamptz(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
   (t) => [
     idIsUuidV7('email_outbox', t.id),
     index('email_outbox_send_after_idx').on(t.sendAfter),
+    uniqueIndex('email_outbox_dedupe_key').on(t.dedupeKey),
     check('email_outbox_kind', sql`${t.kind} in (${listed(OUTBOX_EMAIL_KINDS)})`),
     check(
       'email_outbox_recipient_shape',
       sql`${t.recipient} = lower(${t.recipient}) and char_length(${t.recipient}) <= 254`,
     ),
     check('email_outbox_attempts_not_negative', sql`${t.attempts} >= 0`),
+    check('email_outbox_sent_with_key', sql`${t.sentAt} is null or ${t.dedupeKey} is not null`),
+    check(
+      'email_outbox_dedupe_key_length',
+      sql`${t.dedupeKey} is null or char_length(${t.dedupeKey}) between 1 and 200`,
+    ),
     check(
       'email_outbox_last_error_code_length',
       sql`${t.lastErrorCode} is null or char_length(${t.lastErrorCode}) between 1 and 100`,

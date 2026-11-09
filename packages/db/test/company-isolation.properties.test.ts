@@ -7,6 +7,7 @@ import {
   type AuditActor,
   accountRequiredDimensions,
   accountRoles,
+  apiClients,
   auditEntries,
   bulletinHolidays,
   chainAnchors,
@@ -16,6 +17,7 @@ import {
   companySettings,
   dimensionTypes,
   dimensionValues,
+  documentSources,
   entryAttachments,
   entryDraftLines,
   entryDrafts,
@@ -74,6 +76,7 @@ const COVERED = [
   'inbound_events',
   'inbound_event_states',
   'inbound_event_actions',
+  'document_sources',
 ];
 
 const auditRow = fc.record({
@@ -381,6 +384,7 @@ const expectedRows = (data: CompanyData): Record<string, number> => ({
   inbound_events: 1,
   inbound_event_states: 1,
   inbound_event_actions: 2,
+  document_sources: 1,
 });
 
 /** S05's rows: a slot's account, and an event Hub sent, held, with its two actions. */
@@ -421,6 +425,23 @@ async function seedInbox(tx: Transaction, companyId: string) {
   ]);
 }
 
+/** S05's document source: the company's Hub client is the source of its invoices. */
+async function seedSources(tx: Transaction, companyId: string, userId: string) {
+  const [client] = await tx
+    .insert(apiClients)
+    .values({
+      scopeCompanyId: companyId,
+      name: 'Vertex Hub',
+      system: 'hub',
+      scopes: ['events:write'],
+      createdByUserId: userId,
+    })
+    .returning({ id: apiClients.id });
+  await tx
+    .insert(documentSources)
+    .values({ companyId, documentType: 'invoice', apiClientId: client?.id as string });
+}
+
 async function seed(userId: string, data: CompanyData): Promise<string> {
   const [row] = await app
     .insert(companies)
@@ -451,6 +472,7 @@ async function seed(userId: string, data: CompanyData): Promise<string> {
     await seedLedger(tx, row.id, userId, data);
     await tx.insert(companyExports).values({ companyId: row.id, requestedByUserId: userId });
     await seedInbox(tx, row.id);
+    await seedSources(tx, row.id, userId);
     return tx
       .select({ id: journalEntries.id, hash: journalEntries.hash })
       .from(journalEntries)

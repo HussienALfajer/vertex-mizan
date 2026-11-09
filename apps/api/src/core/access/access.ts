@@ -1,17 +1,18 @@
 import { createParamDecorator, type ExecutionContext, SetMetadata } from '@nestjs/common';
-import type { Permission, Role } from '@vertex-mizan/contracts';
-import type { PersonActor } from '@vertex-mizan/db';
+import type { ApiClientScope, Permission, Role } from '@vertex-mizan/contracts';
+import type { AuditActor, PersonActor } from '@vertex-mizan/db';
 import type { RequestFacts } from '../audit/audit.js';
 import { CodedException } from '../errors/coded-exception.js';
 
 /**
  * The access rule of a route (S01 "Rules of the guard"). Every route declares exactly one:
- * `@Public()`, `@SignedIn()` or `@CompanyRoute(...permissions)`; S05 adds `@ApiClientRoute`.
+ * `@Public()`, `@SignedIn()`, `@CompanyRoute(...permissions)` or (S05) `@ApiClientRoute(...scopes)`.
  */
 export type AccessRule =
   | { kind: 'public' }
   | { kind: 'signed-in'; beforeEnrolment: boolean }
-  | { kind: 'company'; permissions: readonly Permission[] };
+  | { kind: 'company'; permissions: readonly Permission[] }
+  | { kind: 'api-client'; scopes: readonly ApiClientScope[] };
 
 export const ACCESS_RULES = Symbol('ACCESS_RULES');
 export const REAUTHENTICATED = Symbol('REAUTHENTICATED');
@@ -49,6 +50,15 @@ export const SignedIn = (options: { beforeEnrolment?: boolean } = {}) =>
 export const CompanyRoute = (...permissions: Permission[]) =>
   accessRule({ kind: 'company', permissions });
 
+/**
+ * A route of Hub's API under `/v1` (S05 "Access"): `Authorization: Bearer <key>` of an active key
+ * whose client holds every scope, from an address its allow-list admits; the key's company is the
+ * request's company, and a person's session is never read. An archived company is refused on every
+ * call (`COMPANY_ARCHIVED`). A key is never accepted on any other route.
+ */
+export const ApiClientRoute = (...scopes: ApiClientScope[]) =>
+  accessRule({ kind: 'api-client', scopes });
+
 /** A sensitive action: a code typed within the last 5 minutes (`REAUTHENTICATION_REQUIRED`). */
 export const Reauthenticated = () => SetMetadata(REAUTHENTICATED, true);
 
@@ -80,11 +90,28 @@ export interface CompanyAccess {
   permissions: readonly Permission[];
 }
 
+/** The API client of a `/v1` route, from its key (S05 "Access"). */
+export interface ApiClientAccess {
+  id: string;
+  name: string;
+  keyId: string;
+  /** The key's company: the transaction's company (`withCompany`), never the request's. */
+  companyId: string;
+  scopes: readonly ApiClientScope[];
+}
+
 /** What the guard attaches to the request: who asks, from where, and in which company. */
 export interface RequestAccess extends RequestFacts {
   person: Person | null;
   session: SessionState | null;
   company: CompanyAccess | null;
+  client: ApiClientAccess | null;
+}
+
+export interface ApiClientRouteAccess extends RequestAccess {
+  person: null;
+  session: null;
+  client: ApiClientAccess;
 }
 
 export interface SignedInAccess extends RequestAccess {
@@ -122,6 +149,24 @@ export function inCompany(access: RequestAccess): CompanyRouteAccess {
   const signed = signedIn(access);
   if (!signed.company) throw new CodedException('COMPANY_NOT_SELECTED', 'Choose a company first');
   return signed as CompanyRouteAccess;
+}
+
+/** The access of a `/v1` route. */
+export function viaApiClient(access: RequestAccess): ApiClientRouteAccess {
+  if (!access.client) throw new CodedException('UNAUTHENTICATED', 'Send an API key');
+  return access as ApiClientRouteAccess;
+}
+
+/** The API client as the audit logs and the inbox record it. */
+export function clientActorOf(access: ApiClientRouteAccess): AuditActor {
+  return {
+    kind: 'api_client',
+    clientId: access.client.id,
+    name: access.client.name,
+    requestId: access.requestId,
+    ipAddress: access.ipAddress,
+    userAgent: access.userAgent,
+  };
 }
 
 /** The person as the audit logs record them. */

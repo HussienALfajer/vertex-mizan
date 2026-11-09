@@ -12,7 +12,7 @@ import { describeForLog } from '@vertex-mizan/db';
 import { PgBoss } from 'pg-boss';
 import type { Config } from '../config/config.js';
 import { CONFIG } from '../config/config.module.js';
-import type { ScheduledJob } from './scheduled-job.js';
+import { isScheduled, type WorkerJob } from './scheduled-job.js';
 
 /** Injection token for the process's pg-boss, connected as the queue role. */
 export const BOSS = Symbol('BOSS');
@@ -31,7 +31,7 @@ export const QUEUE_SCHEMA = 'pgboss';
 export class QueueModule implements OnModuleInit, OnApplicationShutdown {
   private readonly logger = new Logger('Queue');
 
-  static forRoot(jobs: Type<ScheduledJob>[]): DynamicModule {
+  static forRoot(jobs: Type<WorkerJob>[]): DynamicModule {
     return {
       module: QueueModule,
       providers: [
@@ -50,7 +50,7 @@ export class QueueModule implements OnModuleInit, OnApplicationShutdown {
         {
           provide: SCHEDULED_JOBS,
           inject: jobs,
-          useFactory: (...instances: ScheduledJob[]) => instances,
+          useFactory: (...instances: WorkerJob[]) => instances,
         },
       ],
       exports: [BOSS],
@@ -59,7 +59,7 @@ export class QueueModule implements OnModuleInit, OnApplicationShutdown {
 
   constructor(
     @Inject(BOSS) private readonly boss: PgBoss,
-    @Inject(SCHEDULED_JOBS) private readonly jobs: ScheduledJob[],
+    @Inject(SCHEDULED_JOBS) private readonly jobs: WorkerJob[],
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -68,10 +68,18 @@ export class QueueModule implements OnModuleInit, OnApplicationShutdown {
     await this.boss.start();
     for (const job of this.jobs) {
       await this.boss.createQueue(job.queue, job.queueOptions);
+      if (!isScheduled(job)) {
+        await this.boss.work(job.queue, async (batch) => {
+          for (const one of batch) await job.work(one.data);
+        });
+        this.logger.log(`Working ${job.queue}`);
+        continue;
+      }
       await this.boss.schedule(job.queue, job.cron);
       await this.boss.work(job.queue, async () => {
         await job.run();
       });
+      if (job.runAtStart) await this.boss.send(job.queue, {});
       this.logger.log(`Scheduled ${job.queue} (${job.cron})`);
     }
   }

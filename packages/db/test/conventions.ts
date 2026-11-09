@@ -151,7 +151,7 @@ export type Guards = {
  * settings lock; S02's chart, dimension and rate rules; S03's ledger: the append-only tables, the
  * ledger state, the entry's chain, number, period, balance and reversal, the line's validity and
  * period balances, the dimension sets; the drafts, their lines and attachments; S04's open items,
- * their movements, due dates and balances). S07 adds the period close.
+ * their movements, due dates and balances; S05's inbox and API clients). S07 adds the period close.
  */
 export const GUARDS: Guards = {
   functions: [
@@ -1895,6 +1895,129 @@ BEGIN
 END
 `,
     },
+    {
+      name: 'api_client_rules',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+BEGIN
+  IF (NEW.id, NEW.scope_company_id, NEW.system, NEW.created_by_user_id, NEW.created_at)
+    IS DISTINCT FROM (OLD.id, OLD.scope_company_id, OLD.system, OLD.created_by_user_id,
+      OLD.created_at) THEN
+    RAISE EXCEPTION 'api_clients: a client never moves to another company or system'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  RETURN NEW;
+END
+`,
+    },
+    {
+      name: 'api_client_key_rules',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+DECLARE
+  client record;
+BEGIN
+  IF TG_OP = 'UPDATE' THEN
+    IF (NEW.id, NEW.api_client_id, NEW.scope_company_id, NEW.prefix, NEW.secret_hash,
+        NEW.created_by_user_id, NEW.created_at)
+      IS DISTINCT FROM (OLD.id, OLD.api_client_id, OLD.scope_company_id, OLD.prefix,
+        OLD.secret_hash, OLD.created_by_user_id, OLD.created_at) THEN
+      RAISE EXCEPTION 'api_client_keys: a key changes only by its use and its revocation'
+        USING ERRCODE = 'restrict_violation';
+    END IF;
+    IF OLD.revoked_at IS NOT NULL
+      AND (NEW.revoked_at, NEW.revoked_by_user_id, NEW.revoke_reason, NEW.last_used_at,
+        NEW.last_used_ip, NEW.archived_at)
+      IS DISTINCT FROM (OLD.revoked_at, OLD.revoked_by_user_id, OLD.revoke_reason,
+        OLD.last_used_at, OLD.last_used_ip, OLD.archived_at) THEN
+      RAISE EXCEPTION 'api_client_keys: key % is revoked and never changes again', OLD.prefix
+        USING ERRCODE = 'restrict_violation';
+    END IF;
+    RETURN NEW;
+  END IF;
+  IF NEW.revoked_at IS NOT NULL OR NEW.last_used_at IS NOT NULL THEN
+    RAISE EXCEPTION 'api_client_keys: a key is created active and unused'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  -- The client's row first, so two keys created at once count each other.
+  SELECT c.archived_at, co.archived_at AS company_archived_at INTO client
+  FROM public.api_clients c
+  JOIN public.companies co ON co.id = c.scope_company_id
+  WHERE c.id = NEW.api_client_id AND c.scope_company_id = NEW.scope_company_id
+  FOR UPDATE OF c;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'api_client_keys: a key belongs to a client of its company'
+      USING ERRCODE = 'foreign_key_violation';
+  END IF;
+  IF client.archived_at IS NOT NULL OR client.company_archived_at IS NOT NULL THEN
+    RAISE EXCEPTION 'api_client_keys: an archived client or company gets no key'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF (SELECT count(*) FROM public.api_client_keys k
+      WHERE k.scope_company_id = NEW.scope_company_id AND k.api_client_id = NEW.api_client_id
+        AND k.revoked_at IS NULL) >= 2 THEN
+    RAISE EXCEPTION 'api_client_keys: a client has at most two active keys'
+      USING ERRCODE = 'restrict_violation', HINT = 'API_KEY_LIMIT';
+  END IF;
+  RETURN NEW;
+END
+`,
+    },
+    {
+      name: 'document_source_rules',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+DECLARE
+  client record;
+BEGIN
+  IF TG_OP = 'UPDATE'
+    AND (NEW.id, NEW.company_id, NEW.document_type, NEW.created_at)
+      IS DISTINCT FROM (OLD.id, OLD.company_id, OLD.document_type, OLD.created_at) THEN
+    RAISE EXCEPTION 'document_sources: a source moves to another client, not to another type'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  SELECT c.archived_at INTO client
+  FROM public.api_clients c
+  WHERE c.id = NEW.api_client_id AND c.scope_company_id = NEW.company_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'document_sources: a source is a client of its company'
+      USING ERRCODE = 'foreign_key_violation';
+  END IF;
+  IF NEW.archived_at IS NULL AND client.archived_at IS NOT NULL THEN
+    RAISE EXCEPTION 'document_sources: an archived client is no source'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  RETURN NEW;
+END
+`,
+    },
   ],
   triggers: [
     // The settings lock (S01 rule 11): before every update of a company's ledger settings.
@@ -2621,6 +2744,72 @@ END
       table: 'inbound_event_states',
       name: 'inbound_event_state_rules',
       function: 'inbound_event_state_rules',
+      deferred: false,
+      on: ['INSERT', 'UPDATE'],
+    },
+    // S05's API clients (0027): clients, keys and sources never deleted; a client never moves; a
+    // key created active within the limit and never changed once revoked; a source names a client
+    // of its company.
+    {
+      table: 'api_clients',
+      name: 'api_clients_refuse_delete',
+      function: 'refuse_delete',
+      deferred: false,
+      on: ['DELETE'],
+    },
+    {
+      table: 'api_clients',
+      name: 'api_clients_refuse_truncate',
+      function: 'refuse_delete',
+      deferred: false,
+      on: ['TRUNCATE'],
+    },
+    {
+      table: 'api_client_keys',
+      name: 'api_client_keys_refuse_delete',
+      function: 'refuse_delete',
+      deferred: false,
+      on: ['DELETE'],
+    },
+    {
+      table: 'api_client_keys',
+      name: 'api_client_keys_refuse_truncate',
+      function: 'refuse_delete',
+      deferred: false,
+      on: ['TRUNCATE'],
+    },
+    {
+      table: 'document_sources',
+      name: 'document_sources_refuse_delete',
+      function: 'refuse_delete',
+      deferred: false,
+      on: ['DELETE'],
+    },
+    {
+      table: 'document_sources',
+      name: 'document_sources_refuse_truncate',
+      function: 'refuse_delete',
+      deferred: false,
+      on: ['TRUNCATE'],
+    },
+    {
+      table: 'api_clients',
+      name: 'api_client_rules',
+      function: 'api_client_rules',
+      deferred: false,
+      on: ['UPDATE'],
+    },
+    {
+      table: 'api_client_keys',
+      name: 'api_client_key_rules',
+      function: 'api_client_key_rules',
+      deferred: false,
+      on: ['INSERT', 'UPDATE'],
+    },
+    {
+      table: 'document_sources',
+      name: 'document_source_rules',
+      function: 'document_source_rules',
       deferred: false,
       on: ['INSERT', 'UPDATE'],
     },

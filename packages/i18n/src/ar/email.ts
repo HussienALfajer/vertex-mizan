@@ -28,5 +28,20 @@ export const email = {
     subject: 'تصدير بيانات {companyName} جاهز في ميزان',
     body: 'أصبح التصدير الكامل لبيانات {companyName} جاهزًا للتنزيل.\n\nنزّله من صفحة التصدير بعد تسجيل دخولك:\n{link}\n\nيبقى الملف متاحًا حتى {expiresAt} (توقيت دمشق)، ثم يُحذف. إن لم تطلب هذا التصدير فتواصل مع Vertex فورًا.',
   },
+  heldDigest: {
+    subject: 'أحداث معلّقة من Hub في {companyName}',
+    body: 'في صندوق الوارد لشركة {companyName} أحداث من Hub معلّقة لم تُرحَّل بعد، حتى صباح {day} (توقيت دمشق).\n\nعُلّق منذ الملخص السابق: {newlyHeld}\n\nالمعلّق كله بحسب السبب:\n{held}\n\nراجعها وعالجها من صندوق الوارد:\n{link}\n\nتصلك هذه الرسالة في كل يوم فيه حدث معلّق.',
+    line: '- {reason}: {count}',
+    reasons: {
+      PERIOD_CLOSED: 'الفترة مقفلة',
+      SERVICE_PERIOD_CLOSED: 'فترة الخدمة مقفلة',
+      UNKNOWN_REFERENCE: 'المستند المرجعي لم يصل بعد',
+      NO_MAPPING: 'لا يوجد ربط بحساب',
+      RATE_MISSING: 'سعر الصرف غير مسجّل',
+      NEEDS_DECISION: 'بحاجة إلى قرار المحاسب',
+      OPEN_ITEM_HAS_SETTLEMENTS: 'على البند تسويات قائمة',
+      WAITING_FOR_EARLIER_EVENT: 'بانتظار حدث سابق',
+    },
+  },
   signature: '— ميزان من Vertex',
 } as const;

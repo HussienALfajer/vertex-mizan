@@ -11,9 +11,11 @@ import {
   HOLD_REASONS,
   hubMinor,
   itemKeyOf,
+  monthsOf,
   POSTING_SLOTS,
   parseEventEnvelope,
   paymentMethodSlot,
+  periodStatusQuerySchema,
   slotIsPerCurrency,
 } from './events.js';
 
@@ -305,5 +307,23 @@ describe('JSON Schema', () => {
     const event: EventEnvelope = parseEventEnvelope(envelope('payment.recorded', payment));
     if (event.type !== 'payment.recorded') throw new Error('Expected a payment');
     expect(event.payload.applied_amount).toBe(40_223);
+  });
+});
+
+describe('periodStatusQuerySchema', () => {
+  it('takes a range of at most 24 months and lists its months in order', () => {
+    const range = periodStatusQuerySchema.parse({ from: '2026-11', to: '2027-02' });
+    expect(monthsOf(range)).toEqual(['2026-11', '2026-12', '2027-01', '2027-02']);
+    expect(
+      monthsOf(periodStatusQuerySchema.parse({ from: '2025-02', to: '2027-01' })),
+    ).toHaveLength(24);
+    for (const query of [
+      { from: '2025-01', to: '2027-01' },
+      { from: '2026-05', to: '2026-04' },
+      { from: '2026-00', to: '2026-04' },
+      { from: '2026-4', to: '2026-04' },
+    ]) {
+      expect(periodStatusQuerySchema.safeParse(query).success, JSON.stringify(query)).toBe(false);
+    }
   });
 });

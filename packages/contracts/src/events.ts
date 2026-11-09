@@ -760,3 +760,43 @@ export function slotAccountFits(
       return account.class === 'expense' && !account.isControl;
   }
 }
+
+const monthSchema = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
+
+const monthIndex = (month: string) => Number(month.slice(0, 4)) * 12 + Number(month.slice(5, 7));
+
+/** At most this many months in one `GET /v1/periods/status` (S05 "Periods"). */
+export const PERIOD_STATUS_MONTHS = 24;
+
+/** `GET /v1/periods/status?from=YYYY-MM&to=YYYY-MM`: from on or before to, at most 24 months. */
+export const periodStatusQuerySchema = z
+  .object({ from: monthSchema, to: monthSchema })
+  .refine((range) => monthIndex(range.from) <= monthIndex(range.to), {
+    path: ['to'],
+    message: 'The range ends before it starts',
+  })
+  .refine((range) => monthIndex(range.to) - monthIndex(range.from) < PERIOD_STATUS_MONTHS, {
+    path: ['to'],
+    message: `At most ${PERIOD_STATUS_MONTHS} months`,
+  })
+  .meta({ id: 'PeriodStatusQuery' });
+
+export type PeriodStatusQuery = z.infer<typeof periodStatusQuerySchema>;
+
+/** A month's state for Hub: a month with no period row yet is open (S05 "Periods"). */
+export const periodStatusSchema = z
+  .object({ period: monthSchema, state: z.enum(['open', 'closed']) })
+  .meta({ id: 'PeriodStatus' });
+
+export type PeriodStatus = z.infer<typeof periodStatusSchema>;
+
+/** The months of a range in order, `YYYY-MM`. */
+export function monthsOf(range: PeriodStatusQuery): string[] {
+  const months: string[] = [];
+  for (let index = monthIndex(range.from); index <= monthIndex(range.to); index += 1) {
+    const year = Math.floor((index - 1) / 12);
+    const month = index - year * 12;
+    months.push(`${year}-${String(month).padStart(2, '0')}`);
+  }
+  return months;
+}

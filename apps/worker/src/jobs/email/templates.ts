@@ -98,5 +98,29 @@ export function renderEmail(kind: EmailKind, data: unknown, to: string): Outgoin
         ),
       };
     }
+    case 'held_digest': {
+      const digest = emailDataSchemas.held_digest.parse(data);
+      const held = digest.held
+        .map(({ reason, count }) =>
+          fill(email.heldDigest.line, {
+            reason: email.heldDigest.reasons[reason],
+            count: String(count),
+          }),
+        )
+        .join('\n');
+      return {
+        to,
+        subject: fill(email.heldDigest.subject, { companyName: digest.companyName }),
+        text: signed(
+          fill(email.heldDigest.body, {
+            companyName: digest.companyName,
+            day: digest.day,
+            newlyHeld: String(digest.newlyHeld),
+            held,
+            link: digest.link,
+          }),
+        ),
+      };
+    }
   }
 }

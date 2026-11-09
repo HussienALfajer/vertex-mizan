@@ -183,6 +183,41 @@
       "when": 1794083289904,
       "tag": "0025_s05_inbox_guards",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1794226901866,
+      "tag": "0026_sad_skin",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1794226912798,
+      "tag": "0027_s05_api_client_guards",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1794244834301,
+      "tag": "0028_moaning_ironclad",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1794246346453,
+      "tag": "0029_marvelous_alex_wilder",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1794259009604,
+      "tag": "0030_aromatic_yellow_claw",
+      "breakpoints": true
     }
   ]
 }

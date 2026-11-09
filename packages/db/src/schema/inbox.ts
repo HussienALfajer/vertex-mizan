@@ -155,6 +155,9 @@ export const inboundEvents = pgTable(
     idIsUuidV7('inbound_events', t.id),
     unique('inbound_events_company_id_id_key').on(t.companyId, t.id),
     unique('inbound_events_event_key').on(t.companyId, t.apiClientId, t.eventId),
+    // Hub's event ID is one event of the company whichever client sent it: a replay under the
+    // client a document type moved to answers the first event (S05 rule 21).
+    unique('inbound_events_company_event_key').on(t.companyId, t.eventId),
     index('inbound_events_company_item_idx').on(t.companyId, t.itemKey, t.receivedAt),
     index('inbound_events_company_document_idx').on(t.companyId, t.documentType, t.documentId),
     index('inbound_events_company_date_idx').on(t.companyId, t.accountingDate),

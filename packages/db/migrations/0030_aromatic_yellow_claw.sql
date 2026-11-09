@@ -1,0 +1,2 @@
+ALTER TABLE "email_outbox" ADD COLUMN "sent_at" timestamp with time zone;--> statement-breakpoint
+ALTER TABLE "email_outbox" ADD CONSTRAINT "email_outbox_sent_with_key" CHECK ("email_outbox"."sent_at" is null or "email_outbox"."dedupe_key" is not null);

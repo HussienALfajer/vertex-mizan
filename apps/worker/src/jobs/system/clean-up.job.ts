@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
   auditEntries,
   type Database,
+  emailOutbox,
   invitations,
   rateLimits,
   sessions,
@@ -53,6 +54,11 @@ export class CleanUpJob implements ScheduledJob {
       .delete(rateLimits)
       .where(lt(rateLimits.lastRequest, Date.now() - LONGEST_LIMIT_WINDOW_MS))
       .returning({ id: rateLimits.id });
+    // Keyed emails kept as sent (S05's held digest) outlast their day, then go.
+    const sentEmails = await this.db
+      .delete(emailOutbox)
+      .where(lte(emailOutbox.sentAt, sql`now() - interval '2 days'`))
+      .returning({ id: emailOutbox.id });
 
     // Per company, the marks and their audit rows in one transaction (ADR 0005 invariant 10).
     const companies = await this.db
@@ -90,7 +96,7 @@ export class CleanUpJob implements ScheduledJob {
         return expired.length;
       });
     }
-    const deleted = ended.length + used.length + counters.length;
+    const deleted = ended.length + used.length + counters.length + sentEmails.length;
     this.logger.log(`Clean-up: ${deleted} ended rows deleted, ${marked} invitations expired`);
     return { deleted, invitations: marked };
   }

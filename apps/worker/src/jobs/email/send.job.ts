@@ -24,6 +24,7 @@ interface Claimed {
   recipient: string;
   data: unknown;
   attempts: number;
+  dedupeKey: string | null;
 }
 
 /** The code of a failed send (an SMTP or network code), never its message, which can quote data. */
@@ -35,7 +36,8 @@ function codeOf(error: unknown): string {
 
 /**
  * Sends the email outbox (S01 "Jobs and events"; owner decision 2026-10-26): every minute it claims
- * the emails due, sends each through SMTP and deletes it with its link token; a failure stays with
+ * the emails due, sends each through SMTP and deletes it with its link token (a keyed email, S05's
+ * held digest, is kept as sent until the clean-up); a failure stays with
  * its code and is tried again later. Two runs at once claim different rows (`SKIP LOCKED` and a
  * lease); a crash between sending and deleting sends that email again, which is harmless: the link
  * inside is the same token. pg-boss keeps its finished runs one day.
@@ -53,19 +55,22 @@ export class EmailSendJob implements ScheduledJob {
   ) {}
 
   async run(): Promise<{ sent: number; failed: number }> {
+    // Claimed in queue order and sent in it: an update's RETURNING has no order of its own.
     const claimed = await this.db.execute<Claimed & Record<string, unknown>>(sql`
+      with claimed as (
       update email_outbox
       set send_after = now() + make_interval(mins => ${LEASE_MINUTES}),
           attempts = attempts + 1,
           updated_at = now()
       where id in (
         select id from email_outbox
-        where send_after <= now()
+        where send_after <= now() and sent_at is null
         order by send_after, id
         limit ${BATCH}
         for update skip locked
       )
-      returning id, kind, recipient, data, attempts`);
+      returning id, kind, recipient, data, attempts, dedupe_key as "dedupeKey")
+      select * from claimed order by id`);
     let sent = 0;
     let failed = 0;
     for (const email of claimed.rows) {
@@ -73,7 +78,15 @@ export class EmailSendJob implements ScheduledJob {
         await this.transport.send(
           renderEmail(emailKindSchema.parse(email.kind), email.data, email.recipient),
         );
-        await this.db.delete(emailOutbox).where(eq(emailOutbox.id, email.id));
+        // A keyed email (the held digest) stays as sent, so its key holds for the day (S05).
+        if (email.dedupeKey === null) {
+          await this.db.delete(emailOutbox).where(eq(emailOutbox.id, email.id));
+        } else {
+          await this.db
+            .update(emailOutbox)
+            .set({ sentAt: sql`now()` })
+            .where(eq(emailOutbox.id, email.id));
+        }
         sent++;
       } catch (error) {
         failed++;

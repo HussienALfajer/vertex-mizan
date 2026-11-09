@@ -95,6 +95,11 @@ export const tableRegistry = {
   inbound_events: { module: 'inbox', scope: 'company', kind: 'append-only' },
   inbound_event_states: { module: 'inbox', scope: 'company', kind: 'queue' },
   inbound_event_actions: { module: 'inbox', scope: 'company', kind: 'append-only' },
+  // api-clients (S05, ADR 0003): the systems that post and their keys (platform: a key is looked
+  // up before any company context exists), and each document type's client (company).
+  api_clients: { module: 'api-clients', scope: 'platform', kind: 'business' },
+  api_client_keys: { module: 'api-clients', scope: 'platform', kind: 'business' },
+  document_sources: { module: 'api-clients', scope: 'company', kind: 'business' },
 } as const satisfies Record<string, TableInfo>;
 
 export type TableScope = 'company' | 'platform';
