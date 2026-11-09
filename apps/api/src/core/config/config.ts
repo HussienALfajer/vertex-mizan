@@ -5,6 +5,9 @@ import { z } from 'zod';
 /** The role the API connects as (`packages/db/CLAUDE.md`). */
 export const APP_ROLE = 'mizan_app';
 
+/** The role pg-boss runs as, in its own schema (`packages/db/CLAUDE.md`). */
+export const QUEUE_ROLE = 'mizan_queue';
+
 /**
  * The placeholder `AUTH_SECRET` of `.env.example`. The repository is public, so a server that
  * kept it would sign sessions and encrypt two-factor secrets with a known key: refused (S01).
@@ -66,9 +69,24 @@ const configSchema = z
      * absolute path; required in production.
      */
     MIZAN_FILES_DIR: z.string().refine(isAbsolute).optional(),
+    /**
+     * The queue role, through which the API queues `events.retry` after a commit that frees held
+     * events (S05 "Jobs"); the worker works the queue. Required in production; without it (the
+     * tests) nothing is queued and the worker's daily sweep retries them.
+     */
+    DATABASE_QUEUE_URL: z
+      .url({ protocol: /^postgres(ql)?$/ })
+      .refine((url) => {
+        const parsed = new URL(url);
+        return parsed.username === QUEUE_ROLE && !parsed.searchParams.has('user');
+      })
+      .optional(),
   })
   .refine((env) => env.NODE_ENV !== 'production' || env.MIZAN_FILES_DIR !== undefined, {
     path: ['MIZAN_FILES_DIR'],
+  })
+  .refine((env) => env.NODE_ENV !== 'production' || env.DATABASE_QUEUE_URL !== undefined, {
+    path: ['DATABASE_QUEUE_URL'],
   })
   .transform((env) => ({
     databaseUrl: env.DATABASE_APP_URL,
@@ -79,6 +97,7 @@ const configSchema = z
     environment: env.NODE_ENV,
     logLevel: env.LOG_LEVEL,
     filesDir: env.MIZAN_FILES_DIR ?? DEVELOPMENT_FILES_DIR,
+    queueDatabaseUrl: env.DATABASE_QUEUE_URL ?? null,
   }));
 
 export type Config = z.output<typeof configSchema>;

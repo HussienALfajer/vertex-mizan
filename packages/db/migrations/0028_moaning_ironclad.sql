@@ -1,0 +1,1 @@
+ALTER TABLE "inbound_events" ADD CONSTRAINT "inbound_events_company_event_key" UNIQUE("company_id","event_id");

@@ -20,6 +20,11 @@ export const LIMITS = {
   passwordResets: { windowSeconds: 60 * 60, max: 3 },
   /** Attempts per IP on the other public and code-checking routes, as on sign-in. */
   perIpPerMinute: { windowSeconds: 60, max: 20 },
+  /**
+   * Requests per API client and minute (S05 rule 22), counted under a key of the minute, so a
+   * steady replay is never locked out past its minute.
+   */
+  apiClientPerMinute: { windowSeconds: 60, max: 600 },
 } as const satisfies Record<string, Limit>;
 
 /**

@@ -1,4 +1,4 @@
-import type { INestApplication } from '@nestjs/common';
+import { type INestApplication, RequestMethod } from '@nestjs/common';
 import { METHOD_METADATA, PARAMTYPES_METADATA } from '@nestjs/common/constants.js';
 import { ModulesContainer } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
@@ -7,8 +7,11 @@ import { Logger } from 'nestjs-pino';
 import type { Config } from './core/config/config.js';
 import { sameOriginOnly } from './core/http/same-origin.js';
 
-/** Every route lives under `/api`. */
+/** Every route lives under `/api`, but Hub's API under `/v1` (S05, ADR 0006). */
 export const API_PREFIX = 'api';
+
+/** The largest body any route reads: an event of 200 invoice lines fits (S05 rule 22). */
+export const BODY_LIMIT = '256kb';
 
 /** Settings applied to the application after it is created, in production and in tests alike. */
 export function configureApp(app: INestApplication, config: Config): INestApplication {
@@ -18,7 +21,8 @@ export function configureApp(app: INestApplication, config: Config): INestApplic
   // nginx on the same host forwards the client address; `request.ip` reads it from loopback only.
   express.set('trust proxy', 'loopback');
   express.use(sameOriginOnly(config.appUrl));
-  app.setGlobalPrefix(API_PREFIX);
+  express.useBodyParser('json', { limit: BODY_LIMIT });
+  app.setGlobalPrefix(API_PREFIX, { exclude: [{ path: 'v1/{*path}', method: RequestMethod.ALL }] });
   app.enableShutdownHooks();
   if (config.environment !== 'production') {
     SwaggerModule.setup(`${API_PREFIX}/docs`, app, createOpenApiDocument(app));
@@ -32,7 +36,11 @@ export function configureApp(app: INestApplication, config: Config): INestApplic
  */
 export function createOpenApiDocument(app: INestApplication): OpenAPIObject {
   declareParameterTypes(app);
-  const config = new DocumentBuilder().setTitle('Vertex Mizan API').setVersion('0.0.0').build();
+  const config = new DocumentBuilder()
+    .setTitle('Vertex Mizan API')
+    .setVersion('0.0.0')
+    .addBearerAuth()
+    .build();
   return SwaggerModule.createDocument(app, config);
 }
 

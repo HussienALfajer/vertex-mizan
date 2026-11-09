@@ -15,6 +15,7 @@ describe('loadConfig', () => {
       environment: 'development',
       logLevel: 'info',
       filesDir: DEVELOPMENT_FILES_DIR,
+      queueDatabaseUrl: null,
     });
     expect(DEVELOPMENT_FILES_DIR).toMatch(/[/\\]\.data[/\\]files$/);
   });
@@ -29,6 +30,26 @@ describe('loadConfig', () => {
     expect(() => loadConfig({ DATABASE_APP_URL, AUTH_SECRET, NODE_ENV: 'production' })).toThrow(
       'Invalid API environment: MIZAN_FILES_DIR',
     );
+  });
+
+  it('queues the retries as the queue role, required in production (S05)', () => {
+    const DATABASE_QUEUE_URL = 'postgres://mizan_queue:fake-password@127.0.0.1:55417/vertex_mizan';
+    expect(loadConfig({ DATABASE_APP_URL, AUTH_SECRET, DATABASE_QUEUE_URL }).queueDatabaseUrl).toBe(
+      DATABASE_QUEUE_URL,
+    );
+    for (const url of [DATABASE_APP_URL, `${DATABASE_QUEUE_URL}?user=mizan_owner`]) {
+      expect(() => loadConfig({ DATABASE_APP_URL, AUTH_SECRET, DATABASE_QUEUE_URL: url })).toThrow(
+        'Invalid API environment: DATABASE_QUEUE_URL',
+      );
+    }
+    expect(() =>
+      loadConfig({
+        DATABASE_APP_URL,
+        AUTH_SECRET,
+        NODE_ENV: 'production',
+        MIZAN_FILES_DIR: '/srv/mizan/files',
+      }),
+    ).toThrow('Invalid API environment: DATABASE_QUEUE_URL');
   });
 
   it('names the variables that are wrong, never their values', () => {

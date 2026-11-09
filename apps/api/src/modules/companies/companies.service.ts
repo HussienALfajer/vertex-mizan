@@ -23,6 +23,7 @@ import { lockCompanyForWrite } from '../../core/access/company-lock.js';
 import { type AuditActor, changedFields, writeCompanyAudit } from '../../core/audit/audit.js';
 import { DATABASE } from '../../core/database/database.module.js';
 import { CodedException } from '../../core/errors/coded-exception.js';
+import { revokeKeys } from '../api-clients/api-clients.service.js';
 import { auditedLedgerFields, companyOf, ledgerColumns } from './company-shape.js';
 
 /** Companies (S01 rules 9–13): creation, profile, ledger settings with their lock, archive. */
@@ -166,7 +167,7 @@ export class CompaniesService {
 
   /**
    * `POST /api/company/archive`: read-only from now on (rule 12); pending invitations are revoked
-   * and their links die. Archiving an archived company changes nothing and writes nothing.
+   * and their links die, and every active API key is revoked (S05). Archiving an archived company changes nothing and writes nothing.
    */
   async archive(access: CompanyRouteAccess, reason: string): Promise<Company> {
     const companyId = access.company.id;
@@ -187,6 +188,8 @@ export class CompaniesService {
         after: { archivedReason: reason },
       });
       await this.revokePendingInvitations(tx, companyId, actor, reason);
+      // Its API keys too, which a restore leaves revoked (S01 rule 12, S05 "Access").
+      await revokeKeys(tx, companyId, actor, reason);
       return this.read(tx, companyId);
     });
   }

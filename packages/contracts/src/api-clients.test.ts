@@ -5,8 +5,10 @@ import {
   API_CLIENT_SYSTEMS,
   API_KEY_PREFIX,
   API_KEY_SECRET_LENGTH,
+  allowedNetworkSchema,
   apiClientScopeSchema,
   apiKeySchema,
+  ipAllowListSchema,
 } from './api-clients.js';
 
 describe('API clients', () => {
@@ -34,5 +36,39 @@ describe('API clients', () => {
     expect(Object.keys(schemas)).toEqual(
       expect.arrayContaining(['ApiClientSystem', 'ApiClientScope']),
     );
+  });
+});
+
+describe('allowedNetworkSchema', () => {
+  it('accepts an address or a network with no host bit, in both families', () => {
+    for (const entry of [
+      '192.0.2.7',
+      '192.0.2.0/24',
+      '0.0.0.0/0',
+      '10.0.0.0/8',
+      '2001:db8::/32',
+      '2001:db8::1',
+      '::/0',
+      '2001:db8:0:0:0:0:0:1/128',
+    ]) {
+      expect(allowedNetworkSchema.safeParse(entry).success, entry).toBe(true);
+    }
+  });
+
+  it('refuses host bits after the mask, a mask too long, other text and mapped IPv6', () => {
+    for (const entry of [
+      '10.0.0.1/8',
+      '192.0.2.0/33',
+      '2001:db8::1/32',
+      '2001:db8::/129',
+      '192.0.2.0/24/1',
+      '192.0.2.256',
+      'example.test',
+      '::ffff:192.0.2.1',
+      '',
+    ]) {
+      expect(allowedNetworkSchema.safeParse(entry).success, entry).toBe(false);
+    }
+    expect(ipAllowListSchema.safeParse(Array(51).fill('192.0.2.1')).success).toBe(false);
   });
 });

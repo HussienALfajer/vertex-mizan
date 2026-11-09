@@ -26,6 +26,19 @@ const CODE_BY_STATUS: Partial<Record<number, ErrorCode>> = {
 };
 
 /**
+ * The status of a refusal by Express's body parser (`entity.too.large`, `entity.parse.failed`, an
+ * unsupported charset), which reaches the filter as a plain error; null for anything else.
+ */
+function bodyParserStatus(exception: unknown): number | null {
+  if (typeof exception !== 'object' || exception === null) return null;
+  const { type, status } = exception as { type?: unknown; status?: unknown };
+  const fromParser =
+    typeof type === 'string' &&
+    (type.startsWith('entity.') || type.startsWith('encoding.') || type === 'charset.unsupported');
+  return fromParser && typeof status === 'number' && status >= 400 && status < 500 ? status : null;
+}
+
+/**
  * Every error answer carries a stable code (S01, ADR 0006): a `CodedException` as thrown, a
  * `DomainError` with its code's status, the failed fields it names as `issues` and its other facts
  * as `details`, a framework refusal with the code of its status. A
@@ -72,6 +85,20 @@ export class ErrorFilter implements ExceptionFilter {
         message: exception.message,
       };
       return [coded.statusCode, coded];
+    }
+    const parser = bodyParserStatus(exception);
+    if (parser === HttpStatus.PAYLOAD_TOO_LARGE) {
+      // The body limit (S05 rule 22): no code, as Hub's contract names the status alone.
+      const body: ErrorResponse = { statusCode: parser, message: 'The body is too large' };
+      return [parser, body];
+    }
+    if (parser !== null) {
+      const body: ErrorResponse = {
+        statusCode: errorStatus.VALIDATION_FAILED,
+        code: 'VALIDATION_FAILED',
+        message: 'The body is not readable JSON',
+      };
+      return [body.statusCode, body];
     }
     this.logger.error(`Unexpected error: ${describeForLog(exception)}`);
     const body: ErrorResponse = { statusCode: 500, message: 'Internal server error' };

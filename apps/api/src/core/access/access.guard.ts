@@ -1,17 +1,33 @@
-import { type CanActivate, type ExecutionContext, Inject, Injectable } from '@nestjs/common';
+import {
+  type CanActivate,
+  type ExecutionContext,
+  Inject,
+  Injectable,
+  Logger,
+} from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { effectivePermissions } from '@vertex-mizan/contracts';
-import { companies, type Database, memberships, sessions, users } from '@vertex-mizan/db';
+import { type ApiClientScope, apiKeySchema, effectivePermissions } from '@vertex-mizan/contracts';
+import {
+  apiClientKeys,
+  apiClients,
+  companies,
+  type Database,
+  memberships,
+  sessions,
+  users,
+} from '@vertex-mizan/db';
 import { fromNodeHeaders } from 'better-auth/node';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 import type { Request } from 'express';
 import { AUTH, type Auth } from '../../modules/auth/auth.js';
 import type { RequestFacts } from '../audit/audit.js';
 import { DATABASE } from '../database/database.module.js';
 import { CodedException } from '../errors/coded-exception.js';
+import { consumeLimit, LIMITS } from '../limits/limits.js';
 import {
   ACCESS_RULES,
   type AccessRule,
+  type ApiClientAccess,
   type CompanyAccess,
   type Person,
   REAUTHENTICATED,
@@ -19,6 +35,7 @@ import {
   type SessionState,
   WHILE_ARCHIVED,
 } from './access.js';
+import { clientAddress, secretHashOf } from './api-keys.js';
 import { freshlyAuthenticated, keepActive } from './session-activity.js';
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
@@ -44,6 +61,8 @@ export function factsOf(request: Request & { id?: unknown }): RequestFacts {
  */
 @Injectable()
 export class AccessGuard implements CanActivate {
+  private readonly logger = new Logger('AccessGuard');
+
   constructor(
     @Inject(Reflector) private readonly reflector: Reflector,
     @Inject(DATABASE) private readonly db: Database,
@@ -59,6 +78,16 @@ export class AccessGuard implements CanActivate {
     }
     const request = context.switchToHttp().getRequest<Request & RequestWithAccess>();
     const facts = factsOf(request);
+    // Hub's API reads its key and never a session; every other route never takes a key (S05).
+    const authorization = request.get('authorization');
+    if (rule.kind === 'api-client') {
+      const client = await this.apiClient(authorization, facts.ipAddress, rule.scopes);
+      request.access = { ...facts, person: null, session: null, company: null, client };
+      return true;
+    }
+    if (authorization !== undefined) {
+      throw new CodedException('UNAUTHENTICATED', 'API keys are accepted on /v1 only');
+    }
     const signedIn = await this.session(request);
 
     if (rule.kind === 'public') {
@@ -67,6 +96,7 @@ export class AccessGuard implements CanActivate {
         person: signedIn?.person ?? null,
         session: signedIn?.session ?? null,
         company: null,
+        client: null,
       };
       return true;
     }
@@ -108,8 +138,92 @@ export class AccessGuard implements CanActivate {
     ) {
       throw new CodedException('REAUTHENTICATION_REQUIRED', 'Type a fresh code first');
     }
-    request.access = { ...facts, person, session, company };
+    request.access = { ...facts, person, session, company, client: null };
     return true;
+  }
+
+  /**
+   * The API client of a `/v1` request (S05 "Access", rules 19–22): an active key of a client that
+   * is not archived (`401` otherwise, at once after a revocation), of a company that is not
+   * archived (`COMPANY_ARCHIVED`), from an address of its allow-list (`403`, logged without the
+   * key), within 600 requests a minute per client (`RATE_LIMITED`), holding every scope of the
+   * route (`403`). The key's last use is written at most once a minute.
+   */
+  private async apiClient(
+    authorization: string | undefined,
+    ipAddress: string | null,
+    scopes: readonly ApiClientScope[],
+  ): Promise<ApiClientAccess> {
+    const key = /^Bearer (\S+)$/.exec(authorization ?? '')?.[1];
+    if (!key || !apiKeySchema.safeParse(key).success) {
+      throw new CodedException('UNAUTHENTICATED', 'Send a valid API key');
+    }
+    const address = clientAddress(ipAddress);
+    const [row] = await this.db
+      .select({
+        keyId: apiClientKeys.id,
+        revokedAt: apiClientKeys.revokedAt,
+        clientId: apiClients.id,
+        name: apiClients.name,
+        scopes: apiClients.scopes,
+        clientArchivedAt: apiClients.archivedAt,
+        companyId: companies.id,
+        companyArchivedAt: companies.archivedAt,
+        admitted: sql<boolean>`cardinality(${apiClients.ipAllowList}) = 0
+          or coalesce(${address}::inet <<= any(${apiClients.ipAllowList}), false)`,
+      })
+      .from(apiClientKeys)
+      .innerJoin(
+        apiClients,
+        and(
+          eq(apiClients.scopeCompanyId, apiClientKeys.scopeCompanyId),
+          eq(apiClients.id, apiClientKeys.apiClientId),
+        ),
+      )
+      .innerJoin(companies, eq(companies.id, apiClients.scopeCompanyId))
+      .where(eq(apiClientKeys.secretHash, secretHashOf(key)));
+    if (!row || row.revokedAt || row.clientArchivedAt) {
+      throw new CodedException('UNAUTHENTICATED', 'Send a valid API key');
+    }
+    if (row.companyArchivedAt) {
+      throw new CodedException('COMPANY_ARCHIVED', 'The company is archived');
+    }
+    if (!row.admitted) {
+      this.logger.warn(`API client ${row.clientId} refused from ${address ?? 'no address'}`);
+      throw new CodedException('FORBIDDEN', 'The address is not on the client’s allow-list');
+    }
+    const minute = Math.floor(Date.now() / 60_000);
+    if (
+      !(await consumeLimit(
+        this.db,
+        `api-client:${row.clientId}:${minute}`,
+        LIMITS.apiClientPerMinute,
+      ))
+    ) {
+      throw new CodedException('RATE_LIMITED', 'Too many requests from this client');
+    }
+    const held = row.scopes as ApiClientScope[];
+    if (!scopes.every((scope) => held.includes(scope))) {
+      throw new CodedException('FORBIDDEN', 'The client lacks the scope');
+    }
+    await this.db
+      .update(apiClientKeys)
+      .set({ lastUsedAt: sql`now()`, lastUsedIp: address })
+      .where(
+        and(
+          eq(apiClientKeys.id, row.keyId),
+          isNull(apiClientKeys.revokedAt),
+          sql`(${apiClientKeys.lastUsedAt} is null
+            or ${apiClientKeys.lastUsedAt} < now() - interval '1 minute')`,
+        ),
+      );
+    return {
+      id: row.clientId,
+      name: row.name,
+      keyId: row.keyId,
+      companyId: row.companyId,
+      scopes: held,
+    };
   }
 
   /** The request's live session and its person, or null; an idle session ends here. */

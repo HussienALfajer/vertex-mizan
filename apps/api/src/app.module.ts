@@ -15,6 +15,8 @@ import { CodedException, codeOfIssues, issuesOf } from './core/errors/coded-exce
 import { ErrorFilter } from './core/errors/error.filter.js';
 import { FilesModule } from './core/files/file-store.js';
 import { HealthModule } from './core/health/health.module.js';
+import { JobsModule } from './core/jobs/retry-queue.js';
+import { ApiClientsModule } from './modules/api-clients/api-clients.module.js';
 import { AuditModule } from './modules/audit/audit.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
 import { ChartModule } from './modules/chart/chart.module.js';
@@ -23,6 +25,7 @@ import { DimensionsModule } from './modules/dimensions/dimensions.module.js';
 import { DraftsModule } from './modules/drafts/drafts.module.js';
 import { EntriesModule } from './modules/entries/entries.module.js';
 import { ExportsModule } from './modules/exports/exports.module.js';
+import { HubApiModule } from './modules/hub-api/hub-api.module.js';
 import { IntegrityModule } from './modules/integrity/integrity.module.js';
 import { InvitationsModule } from './modules/invitations/invitations.module.js';
 import { MeModule } from './modules/me/me.module.js';
@@ -62,6 +65,7 @@ export class AppModule {
         }),
         DatabaseModule,
         FilesModule,
+        JobsModule,
         HealthModule,
         MeModule,
         CompaniesModule,
@@ -76,6 +80,8 @@ export class AppModule {
         IntegrityModule,
         ExportsModule,
         OpenItemsModule,
+        ApiClientsModule,
+        HubApiModule,
         AuthModule,
       ],
       providers: [
