@@ -34,7 +34,7 @@ Spec: `docs/specs/S05-posting-api-event-inbox.md` (Approved, owner 2026-11-07) Â
 - [x] `docs/ROADMAP.md` (PR 3 done)
 - [x] the accountant-reviewer's findings on Q13, the owner's decisions of 2026-11-09: no difference entry only while the spend is still the latest movement on its funds, otherwise S04 rule 13's (`movedSince()`, a fifth case with the owner's numbers, the property with a movement between); a slot keeps its account while it holds open items (`ACCOUNT_HAS_BALANCE`)
 - [x] the reviewer's findings: the held digest once a day after its send (`sent_at`, 0030), the cross-company tests, the 256 KB body
-- [ ] checks and reviewers (`reviewer`, `accountant-reviewer`; their re-reviews on the fix commits), PR with auto-merge and Auto-fix
+- [x] checks and reviewers (`reviewer`, `accountant-reviewer`; their re-reviews on the fix commits found nothing new; `pnpm verify --e2e-all` green), PR with auto-merge
 
 ## PR 4 â€” The inbox screens (ui, web, e2e)
 - [ ] ui: `EventStateBadge`, `JsonViewer`, `EntryPicker`, tested, both densities, on the design-system page

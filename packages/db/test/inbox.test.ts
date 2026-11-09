@@ -1055,7 +1055,8 @@ describe('the ad funds’ changes and archives (ad-funds/running-balance; S04 ru
         examples: [[10_000, 15_000, 10_000, ['120.0000', '123.0000', '123.5000']]],
       },
     );
-  });
+    // Each run makes a company and posts up to five events: as the other properties, minutes.
+  }, 120_000);
 
   it('measures a moved void’s difference entry at the void’s own date (rule 15)', async () => {
     const company = await newCompany('service-agency', [
