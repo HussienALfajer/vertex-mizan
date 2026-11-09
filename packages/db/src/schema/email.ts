@@ -41,10 +41,15 @@ export const emailOutbox = pgTable(
     /** The code of the last failure (an SMTP or network code), never its message. */
     lastErrorCode: text(),
     /**
-     * An email sent at most once while it waits to go (S05 "Jobs": the held digest, keyed by its
-     * company and day, so a second run of the job queues nothing). Null for every other email.
+     * An email queued at most once (S05 "Jobs": the held digest, keyed by its company, day and
+     * person, so a second run of the job queues nothing). Null for every other email.
      */
     dedupeKey: text(),
+    /**
+     * When an email with a `dedupe_key` was sent: its row stays, so the key outlasts the send, and
+     * the daily clean-up deletes it two days later. Every other email is deleted once sent.
+     */
+    sentAt: timestamptz(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -58,6 +63,7 @@ export const emailOutbox = pgTable(
       sql`${t.recipient} = lower(${t.recipient}) and char_length(${t.recipient}) <= 254`,
     ),
     check('email_outbox_attempts_not_negative', sql`${t.attempts} >= 0`),
+    check('email_outbox_sent_with_key', sql`${t.sentAt} is null or ${t.dedupeKey} is not null`),
     check(
       'email_outbox_dedupe_key_length',
       sql`${t.dedupeKey} is null or char_length(${t.dedupeKey}) between 1 and 200`,

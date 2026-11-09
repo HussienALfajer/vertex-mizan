@@ -3,6 +3,7 @@ import { type EmailData, emailDataSchemas, type HoldReason } from '@vertex-mizan
 import {
   companies,
   type Database,
+  describeForLog,
   emailOutbox,
   inboundEventStates,
   memberships,
@@ -21,7 +22,8 @@ import type { ScheduledJob } from '../../core/queue/scheduled-job.js';
  * `events.held-digest` (S05 "Jobs"; owner, 2026-11-07): daily at 08:00 in Damascus (05:00 UTC),
  * one email per company and day to its owners and accountants, only when an event is held: those
  * held in the last day and all held, by reason, with a link to the inbox. Keyed by company, day
- * and person in the outbox, so a second run queues nothing. The jobs role finds the companies with
+ * and person in the outbox, whose row stays once sent (`sent_at`) until the clean-up two days later,
+ * so a second run that day, the job's retry included, queues nothing. The jobs role finds the companies with
  * held events; each company's counts and people are read as the app role in its context.
  */
 @Injectable()
@@ -43,10 +45,18 @@ export class EventsHeldDigestJob implements ScheduledJob {
       .from(inboundEventStates)
       .where(eq(inboundEventStates.state, 'held'));
     let queued = 0;
+    let failed = 0;
     for (const { companyId } of found) {
-      queued += await withCompany(this.db, companyId, (tx) => this.digest(tx, companyId, day));
+      try {
+        queued += await withCompany(this.db, companyId, (tx) => this.digest(tx, companyId, day));
+      } catch (error) {
+        failed += 1;
+        this.logger.error(`Held digest of company ${companyId} failed: ${describeForLog(error)}`);
+      }
     }
     if (queued > 0) this.logger.log(`Held digest: ${queued} emails queued`);
+    // The retry finds the companies done already keyed in the outbox, sent or not, and skips them.
+    if (failed > 0) throw new Error(`The held digest failed in ${failed} companies`);
     return { queued };
   }
 

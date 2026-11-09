@@ -156,12 +156,18 @@ describe('POST /v1/events', () => {
     const padded = { ...big, payload: { ...big.payload, note: 'x'.repeat(300 * 1024) } };
     const tooLarge = await hub.send(padded);
     expect(tooLarge.status).toBe(413);
+    // Over the framework's default of 100 KB, under 256 KB: read and posted (an unknown field is
+    // kept in the stored payload, never read by the rule).
+    const large = { ...big, payload: { ...big.payload, note: 'x'.repeat(200 * 1024) } };
+    const read = await hub.send(large);
+    expect(read.status).not.toBe(413);
+    expect(read.status).toBe(201);
     const documents = hubDocuments();
     const many = invoiceIssued(documents, today());
     const [line] = many.payload.lines;
     many.payload.lines = Array.from({ length: 201 }, () => ({ ...line, id: uuidv7() }) as never);
     expect((await hub.send(many)).body.code).toBe('VALIDATION_FAILED');
-    expect(await storedEvents(book.companyId)).toHaveLength(0);
+    expect(await storedEvents(book.companyId)).toHaveLength(1);
   });
 });
 
@@ -212,10 +218,21 @@ describe('the key’s guard', () => {
     const hub = await hubClient(app, book.owner);
     const other = await books(app, db);
     const otherHub = await hubClient(app, other.owner);
-    // The same Hub document sent to the other company stays there.
-    const invoice = invoiceIssued(hubDocuments(), today());
+    // The other company's invoice is unknown to this company's key: its payment is held here, and
+    // nothing reaches the other company's books or its item (S05 "Abuse").
+    const documents = hubDocuments();
+    const invoice = invoiceIssued(documents, today());
     expect((await otherHub.send(invoice)).status).toBe(201);
     expect(await storedEvents(book.companyId)).toHaveLength(0);
+    const payment = await hub.send(paymentRecorded(documents, today()));
+    expect(payment.status, JSON.stringify(payment.body)).toBe(202);
+    expect(payment.body).toMatchObject({ status: 'held', reason: 'UNKNOWN_REFERENCE' });
+    expect(await storedEvents(other.companyId)).toHaveLength(1);
+    expect(await hubEntries(other.companyId)).toHaveLength(1);
+    expect(await hubEntries(book.companyId)).toHaveLength(0);
+    // A payment of that invoice sent with the other company's key posts there, against its item.
+    const crossed = await otherHub.send(paymentRecorded(documents, today()));
+    expect(crossed.status).toBe(201);
     const clients = (await book.owner.browser.get('/api/api-clients')).body as ApiClient[];
     expect(clients.map((client) => client.id)).toEqual([hub.id]);
     // Archived by hand, so the key stays active and the company's archive is what refuses it.

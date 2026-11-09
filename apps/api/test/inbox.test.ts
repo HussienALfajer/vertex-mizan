@@ -200,6 +200,47 @@ describe('the accountant’s actions', () => {
   });
 });
 
+describe('another company', () => {
+  it('finds no event, entry or account of another company for an action or a mapping', async () => {
+    const book = await books(app, db);
+    const hub = await hubClient(app, book.owner);
+    const documents = hubDocuments();
+    await hub.send(invoiceIssued(documents, today()));
+    const held = await hub.send(gapPayment(documents));
+    expect(held.body.reason).toBe('NEEDS_DECISION');
+    const other = await books(app, db);
+    const otherHub = await hubClient(app, other.owner);
+    const otherHeld = await otherHub.send(paymentRecorded(hubDocuments(), today()));
+    const otherEntry = await posted(other.owner.browser, purchase(other));
+    const accountant = await book.join('accountant');
+    // The other company's event, by its id, from this company's accountant and owner.
+    const id = otherHeld.body.inbox_id as string;
+    for (const [browser, path, body] of [
+      [accountant.browser, `/api/inbox/${id}/retry`, undefined],
+      [accountant.browser, `/api/inbox/${id}/post-in-open-period`, { reason: 'نقل' }],
+      [accountant.browser, `/api/inbox/${id}/resolve`, { entryId: otherEntry.id, reason: 'حل' }],
+      [book.owner.browser, `/api/inbox/${id}/dismiss`, { reason: 'إلغاء' }],
+    ] as const) {
+      const answer = await browser.post(path, body);
+      expect(answer.body.code, path).toBe('NOT_FOUND');
+    }
+    // This company's event resolved by the other company's posted manual entry.
+    const crossEntry = await accountant.browser.post(`/api/inbox/${held.body.inbox_id}/resolve`, {
+      entryId: otherEntry.id,
+      reason: 'قيد شركة أخرى',
+    });
+    expect(crossEntry.body.code).toBe('NOT_FOUND');
+    // A slot mapped to the other company's account.
+    const crossAccount = await accountant.browser.put('/api/posting-rules/receivable', {
+      accountId: other.accounts.get('112001'),
+    });
+    expect(crossAccount.body.code).toBe('NOT_FOUND');
+    // The other company's event still held, untouched.
+    const still = await other.owner.browser.get(`/api/inbox/${id}`);
+    expect(still.body).toMatchObject({ state: 'held', reason: 'UNKNOWN_REFERENCE' });
+  });
+});
+
 describe('/api/posting-rules', () => {
   it('lists every slot with the template’s account and maps a slot to an account that fits', async () => {
     const book = await books(app, db);

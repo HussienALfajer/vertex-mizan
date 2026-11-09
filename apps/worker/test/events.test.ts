@@ -19,15 +19,18 @@ import {
   users,
   withCompany,
 } from '@vertex-mizan/db';
-import { and, eq, like } from 'drizzle-orm';
+import { and, eq, like, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import { afterAll, beforeAll, describe, expect, inject, it } from 'vitest';
 import { todayInDamascus } from '../src/core/clock/today.js';
 import { type Config, loadConfig } from '../src/core/config/config.js';
+import { EmailSendJob } from '../src/jobs/email/send.job.js';
 import { renderEmail } from '../src/jobs/email/templates.js';
 import { EventsHeldDigestJob } from '../src/jobs/events/held-digest.job.js';
 import { EventsRetryJob } from '../src/jobs/events/retry.job.js';
 import { EventsRetrySweepJob } from '../src/jobs/events/retry-sweep.job.js';
+import { CleanUpJob } from '../src/jobs/system/clean-up.job.js';
+import { CapturingTransport } from './worker.js';
 
 // S05's inbox jobs on the run's database, run directly: the retries the API queues after a
 // commit, the daily sweep, and the daily digest of held events, each across companies as the jobs
@@ -252,7 +255,17 @@ describe('events.held-digest', () => {
     const rendered = renderEmail('held_digest', data, 'owner@example.test');
     expect(rendered.text).toContain('المستند المرجعي لم يصل بعد: 1');
     expect(rendered.text).toContain('لا يوجد ربط بحساب: 1');
-    // A second run on the same day queues nothing; a company with nothing held gets nothing.
+    // Sent: the rows stay with their key, so a second run that day, a retry after the send
+    // included, queues nothing; a company with nothing held gets nothing.
+    const transport = new CapturingTransport();
+    await new EmailSendJob(db, transport).run();
+    // Sent, with the digests of the earlier tests' companies, whose people are the same two.
+    expect(transport.sent.length).toBeGreaterThanOrEqual(2);
+    const kept = await db
+      .select({ sentAt: emailOutbox.sentAt })
+      .from(emailOutbox)
+      .where(like(emailOutbox.dedupeKey, `held_digest:${companyId}:${day}:%`));
+    expect(kept.map((row) => row.sentAt)).toEqual([expect.any(Date), expect.any(Date)]);
     const again = await job.run(day);
     const forCompany = await db
       .select({ id: emailOutbox.id })
@@ -265,5 +278,18 @@ describe('events.held-digest', () => {
       .from(emailOutbox)
       .where(like(emailOutbox.dedupeKey, `held_digest:${quiet}:%`));
     expect(none).toHaveLength(0);
+    // The clean-up deletes a sent digest two days on, never a recent one.
+    const [old] = await db
+      .update(emailOutbox)
+      .set({ sentAt: sql`now() - interval '3 days'` })
+      .where(like(emailOutbox.dedupeKey, `held_digest:${companyId}:${day}:%`))
+      .returning({ id: emailOutbox.id });
+    await new CleanUpJob(db).run();
+    const left = await db
+      .select({ id: emailOutbox.id })
+      .from(emailOutbox)
+      .where(like(emailOutbox.dedupeKey, `held_digest:${companyId}:${day}:%`));
+    expect(left).toEqual([]);
+    expect(old).toBeDefined();
   });
 });
