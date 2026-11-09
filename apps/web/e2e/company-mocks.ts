@@ -64,6 +64,8 @@ export const company: Company = {
   policyNote: 'العملة الوظيفية هي الليرة السورية: عملة البيئة الاقتصادية الرئيسية للشركة (مثال).',
   booksStarted: false,
   manualEntryApproval: false,
+  paymentToleranceSyp: '100',
+  paymentToleranceUsd: '100',
   archived: null,
   createdAt: '2026-10-20T08:00:00.000Z',
 };

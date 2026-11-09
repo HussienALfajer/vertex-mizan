@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { chartTemplateIdSchema } from './chart.js';
 import { companyLedgersSchema } from './money.js';
+import { minorUnitsSchema } from './wire.js';
 
 /** A company's Arabic name, or its optional Latin name: 1–200 characters after trimming. */
 const companyNameSchema = z.string().trim().min(1).max(200);
@@ -47,8 +48,16 @@ export const createCompanySchema = z
 export type CreateCompany = z.infer<typeof createCompanySchema>;
 
 /**
- * `PATCH /api/company`: the names, the policy note and the approval of manual entries (S03 rule 8,
- * outside the settings lock); at least one of them.
+ * The payments' tolerance in one invoice currency (S05 rule 9), in minor units, zero or more: a
+ * payment in the other currency whose applied amount differs from its amount at Hub's rate by more
+ * is held for the accountant.
+ */
+const toleranceSchema = minorUnitsSchema.refine((text) => !text.startsWith('-'), 'Zero or more');
+
+/**
+ * `PATCH /api/company`: the names, the policy note, the approval of manual entries (S03 rule 8)
+ * and the payments' tolerance per invoice currency (S05), all outside the settings lock; at least
+ * one of them.
  */
 export const updateCompanyProfileSchema = z
   .object({
@@ -56,6 +65,8 @@ export const updateCompanyProfileSchema = z
     nameLatin: companyNameSchema.nullable().optional(),
     policyNote: policyNoteSchema.optional(),
     manualEntryApproval: z.boolean().optional(),
+    paymentToleranceSyp: toleranceSchema.optional(),
+    paymentToleranceUsd: toleranceSchema.optional(),
   })
   .refine((change) => Object.values(change).some((value) => value !== undefined), {
     message: 'Nothing to change',
@@ -87,6 +98,9 @@ export const companySchema = z
     booksStarted: z.boolean(),
     /** Manual entries and reversals are submitted and approved before they post (S03 rule 8). */
     manualEntryApproval: z.boolean(),
+    /** The payments' tolerance per invoice currency, in minor units (S05 rule 9). */
+    paymentToleranceSyp: minorUnitsSchema,
+    paymentToleranceUsd: minorUnitsSchema,
     archived: z.object({ at: z.iso.datetime({ offset: true }), reason: z.string() }).nullable(),
     createdAt: z.iso.datetime({ offset: true }),
   })

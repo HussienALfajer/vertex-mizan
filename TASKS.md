@@ -24,8 +24,8 @@ Spec: `docs/specs/S05-posting-api-event-inbox.md` (Approved, owner 2026-11-07) Â
 - api:
   - [x] `@ApiClientRoute(...scopes)` (Bearer key, the key's company, sessions refused on `/v1` and keys on `/api`, the IP allow-list, 600 requests a minute, 256 KB with `413`, `COMPANY_ARCHIVED`); `/api/api-clients` and its keys (reauthenticated, the secret once, rule 21's free types); archiving a company revokes its keys
   - [x] `POST /v1/events` (the key header, `ENTRY_DATE_OUT_OF_RANGE`, `SYP_BEFORE_REDENOMINATION`, `SOURCE_NOT_ALLOWED`, the raw body with its envelope, one retry then `503`, the retries queued after the commit through pg-boss as the queue role); an event ID unique per company, so a replay under a type's new client posts nothing twice (rule 21); `GET /v1/periods/status`; tests
-  - [ ] `/api/inbox`, `/api/inbox/counts`, `/api/inbox/:id` and its four actions; `/api/posting-rules`; the tolerance in `PUT /api/company/settings`; tests
-  - [ ] the JSON Schema export for Hub with one example payload per type, the script that posts them, and the API test that posts each
+  - [x] `/api/inbox`, `/api/inbox/counts`, `/api/inbox/:id` and its four actions; `/api/posting-rules` (`SLOT_READERS`, the held events per slot, a change queues the `mapping` retry); the tolerance in `PATCH /api/company` (S01's settings route; the spec's `PUT /api/company/settings` does not exist); tests
+  - [x] the JSON Schema export for Hub (`export:hub-schema`) with one example per type (`eventExamplesV1`), the script that posts them (`post:hub-examples`), and the API test that posts each
 - [ ] worker: `events.retry` enqueued after the commits that free held events (rates, holidays, mappings, accounts unblocked or restored), `events.retry-sweep` (daily 04:00 and at start), `events.held-digest` (daily 08:00, one email per company and day); safe twice, per company in its context
 - [ ] Q13 (`docs/open-questions.md`): the owner's answer on an `ad_spend.changed` across zero, and, if it changes the treatment, its `ad-funds/running-balance` case through `/posting-rule` before Hub's events reach Mizan
 - [ ] bridge: OpenAPI regenerated, breaking-change check

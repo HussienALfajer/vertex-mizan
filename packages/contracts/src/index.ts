@@ -10,6 +10,8 @@ export * from './entries.js';
 export * from './errors.js';
 export * from './events.js';
 export * from './health.js';
+export * from './hub-examples.js';
+export * from './inbox.js';
 export * from './members.js';
 export * from './money.js';
 // The one rounding, for allocations and proportional releases in packages/ledger.

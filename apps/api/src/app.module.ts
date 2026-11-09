@@ -26,6 +26,7 @@ import { DraftsModule } from './modules/drafts/drafts.module.js';
 import { EntriesModule } from './modules/entries/entries.module.js';
 import { ExportsModule } from './modules/exports/exports.module.js';
 import { HubApiModule } from './modules/hub-api/hub-api.module.js';
+import { InboxModule } from './modules/inbox/inbox.module.js';
 import { IntegrityModule } from './modules/integrity/integrity.module.js';
 import { InvitationsModule } from './modules/invitations/invitations.module.js';
 import { MeModule } from './modules/me/me.module.js';
@@ -82,6 +83,7 @@ export class AppModule {
         OpenItemsModule,
         ApiClientsModule,
         HubApiModule,
+        InboxModule,
         AuthModule,
       ],
       providers: [

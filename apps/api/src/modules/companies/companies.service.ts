@@ -68,8 +68,8 @@ export class CompaniesService {
   }
 
   /**
-   * `PATCH /api/company`: the names, the policy note and the approval of manual entries (S03 rule
-   * 8). Each change is one audit row with the changed fields before and after; the policy note and
+   * `PATCH /api/company`: the names, the policy note, the approval of manual entries (S03 rule
+   * 8) and the payments' tolerance (S05 rule 9). Each change is one audit row with the changed fields before and after; the policy note and
    * the approval stay editable after the lock (rule 11).
    */
   async updateProfile(access: CompanyRouteAccess, change: UpdateCompanyProfile): Promise<Company> {
@@ -127,6 +127,39 @@ export class CompaniesService {
           entityId: settings.id,
           before: { manualEntryApproval: settings.manualEntryApproval },
           after: { manualEntryApproval: change.manualEntryApproval },
+        });
+      }
+      // S05 rule 9: the payments' tolerance, which decides how a future event is treated, never a
+      // posted amount, so it stays outside the settings lock.
+      const tolerance = changedFields(
+        {
+          paymentToleranceSypMinor: settings.paymentToleranceSypMinor.toString(),
+          paymentToleranceUsdMinor: settings.paymentToleranceUsdMinor.toString(),
+        },
+        {
+          paymentToleranceSypMinor:
+            change.paymentToleranceSyp ?? settings.paymentToleranceSypMinor.toString(),
+          paymentToleranceUsdMinor:
+            change.paymentToleranceUsd ?? settings.paymentToleranceUsdMinor.toString(),
+        },
+      );
+      if (tolerance) {
+        await tx
+          .update(companySettings)
+          .set(
+            Object.fromEntries(
+              Object.entries(tolerance.after).map(([field, value]) => [
+                field,
+                BigInt(String(value)),
+              ]),
+            ),
+          )
+          .where(eq(companySettings.id, settings.id));
+        await writeCompanyAudit(tx, companyId, actor, {
+          action: 'company.settings_updated',
+          entityType: 'company_settings',
+          entityId: settings.id,
+          ...tolerance,
         });
       }
       return this.read(tx, companyId);

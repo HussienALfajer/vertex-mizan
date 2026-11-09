@@ -17,6 +17,8 @@ export function companyOf(company: CompanyRow, settings: SettingsRow): Company {
     policyNote: settings.policyNote,
     booksStarted: settings.booksStartedAt !== null,
     manualEntryApproval: settings.manualEntryApproval,
+    paymentToleranceSyp: settings.paymentToleranceSypMinor.toString(),
+    paymentToleranceUsd: settings.paymentToleranceUsdMinor.toString(),
     archived:
       company.archivedAt && company.archivedReason
         ? { at: company.archivedAt.toISOString(), reason: company.archivedReason }

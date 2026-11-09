@@ -19,8 +19,8 @@ export interface HubClient {
   readonly key: string;
   readonly address: string;
   /** `POST /v1/events` with the envelope's id as `Idempotency-Key`, unless `headers` says else. */
-  send(
-    envelope: { id: string; [field: string]: unknown },
+  send<T extends { readonly id: string }>(
+    envelope: T,
     headers?: Record<string, string>,
   ): Promise<Response>;
   get(path: string, query?: Record<string, string>): Promise<Response>;

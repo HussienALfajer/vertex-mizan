@@ -1,5 +1,5 @@
 import type { INestApplication } from '@nestjs/common';
-import type { ApiClient } from '@vertex-mizan/contracts';
+import { type ApiClient, eventExamplesV1 } from '@vertex-mizan/contracts';
 import {
   companies,
   type Database,
@@ -273,5 +273,40 @@ describe('GET /v1/periods/status', () => {
     expect((await hub.get('/v1/periods/status', { from: '2025-02', to: '2027-01' })).status).toBe(
       200,
     );
+  });
+});
+
+describe('the examples Hub receives', () => {
+  it('post every event type of the catalogue in order, each answered as its rule says', async () => {
+    const book = await books(app, db);
+    const hub = await hubClient(app, book.owner);
+    const answers: [string, number, string, string | null][] = [];
+    for (const example of eventExamplesV1(today())) {
+      const answer = await hub.send(example);
+      answers.push([example.type, answer.status, answer.body.status, answer.body.reason ?? null]);
+    }
+    // S06's milestones and project ends wait for their rules (rule 8, `deferred_revenue`); the
+    // project's second event waits behind its first (rule 11).
+    expect(answers).toEqual([
+      ['invoice.issued', 201, 'posted', null],
+      ['invoice.due_date_changed', 201, 'recorded', null],
+      ['invoice.line_service_changed', 201, 'posted', null],
+      ['payment.recorded', 201, 'posted', null],
+      ['payment.voided', 201, 'posted', null],
+      ['invoice.voided', 201, 'posted', null],
+      ['milestone.done', 202, 'held', 'NO_MAPPING'],
+      ['project.completed', 202, 'held', 'NO_MAPPING'],
+      ['project.cancelled', 202, 'held', 'WAITING_FOR_EARLIER_EVENT'],
+      ['project_expense.recorded', 201, 'posted', null],
+      ['project_expense.changed', 201, 'posted', null],
+      ['project_expense.archived', 201, 'posted', null],
+      ['ad_wallet.deposited', 201, 'posted', null],
+      ['ad_spend.recorded', 201, 'posted', null],
+      ['ad_spend.changed', 201, 'posted', null],
+      ['ad_spend.archived', 201, 'posted', null],
+      ['ad_wallet.refunded', 201, 'posted', null],
+      ['ad_wallet.entry_voided', 201, 'posted', null],
+      ['rate.changed', 201, 'recorded', null],
+    ]);
   });
 });

@@ -1,0 +1,286 @@
+import type { INestApplication } from '@nestjs/common';
+import type {
+  Company,
+  InboxCounts,
+  InboxEventDetail,
+  InboxPage,
+  PostingRule,
+} from '@vertex-mizan/contracts';
+import { auditEntries, type Database, withCompany } from '@vertex-mizan/db';
+import { v7 as uuidv7 } from 'uuid';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { createTestApp } from './app.js';
+import { books, posted, purchase, today } from './books.js';
+import { expectGuarded } from './guards.js';
+import { hubClient, hubDocuments, invoiceIssued, paymentRecorded } from './hub.js';
+import { testDatabase } from './people.js';
+
+// S05's inbox and posting rules over HTTP (rules 15–18, "Mapping slots"): the events with their
+// holds, counts and history, the accountant's retry and resolution, the owner's dismissal, the
+// mapping, and the payments' tolerance. A move needs a closed period, which S07 makes; its success
+// runs in `packages/db/test/inbox.test.ts`. Every value is synthetic.
+
+let app: INestApplication;
+let db: Database;
+
+beforeAll(async () => {
+  app = await createTestApp();
+  db = testDatabase();
+});
+afterAll(async () => {
+  await app.close();
+  await db.$client.end();
+});
+
+/** An SYP payment of a USD invoice whose applied amount is 50.00 USD off at Hub's rate. */
+function gapPayment(documents: ReturnType<typeof hubDocuments>) {
+  const payment = paymentRecorded(documents, today());
+  return {
+    ...payment,
+    payload: { ...payment.payload, currency: 'SYP', amount: 6_100_000, applied_amount: 45_000 },
+  };
+}
+
+describe('GET /api/inbox', () => {
+  it('lists the events with their holds and entries, filters them and counts the held', async () => {
+    const book = await books(app, db);
+    const hub = await hubClient(app, book.owner);
+    const documents = hubDocuments();
+    const held = await hub.send(paymentRecorded(documents, today()));
+    const issued = await hub.send(invoiceIssued(documents, today()));
+    expect([held.status, issued.status]).toEqual([202, 201]);
+
+    const page = await book.owner.browser.get('/api/inbox');
+    expect(page.status, JSON.stringify(page.body)).toBe(200);
+    const { events } = page.body as InboxPage;
+    expect(events.map((event) => [event.type, event.state, event.reason])).toEqual([
+      ['invoice.issued', 'posted', null],
+      ['payment.recorded', 'held', 'UNKNOWN_REFERENCE'],
+    ]);
+    expect(events[0]).toMatchObject({
+      documentType: 'invoice',
+      documentNumber: documents.invoice.number,
+      accountingDate: today(),
+      entries: [{ id: issued.body.entries[0].id }],
+    });
+    const heldOnly = await book.owner.browser.get('/api/inbox', { state: 'held' });
+    expect((heldOnly.body as InboxPage).events).toHaveLength(1);
+    const byType = await book.owner.browser.get('/api/inbox', { type: 'invoice.issued' });
+    expect((byType.body as InboxPage).events).toHaveLength(1);
+    expect((await book.owner.browser.get('/api/inbox', { type: 'invoice.unknown' })).status).toBe(
+      422,
+    );
+    const counts = await book.owner.browser.get('/api/inbox/counts');
+    expect(counts.body as InboxCounts).toEqual({
+      held: 1,
+      reasons: [{ reason: 'UNKNOWN_REFERENCE', count: 1 }],
+    });
+
+    const detail = await book.owner.browser.get(`/api/inbox/${held.body.inbox_id}`);
+    expect(detail.status).toBe(200);
+    const event = detail.body as InboxEventDetail;
+    expect(event.payload).toMatchObject({ method: 'bank_transfer', amount: 50_000 });
+    expect(event.actions.map((action) => action.action)).toEqual(['received', 'held']);
+    expect(event.actions[0]?.actor).toMatchObject({ kind: 'api_client', id: hub.id });
+    // The auditor reads; another company's id is not found.
+    const auditor = await book.join('auditor');
+    expect((await auditor.browser.get('/api/inbox')).status).toBe(200);
+    const viewer = await book.join('viewer');
+    expect((await viewer.browser.get('/api/inbox')).body.code).toBe('FORBIDDEN');
+    const other = await books(app, db);
+    expect((await other.owner.browser.get(`/api/inbox/${held.body.inbox_id}`)).body.code).toBe(
+      'NOT_FOUND',
+    );
+  });
+
+  it('answers the guard on every route', async () => {
+    const id = uuidv7();
+    await expectGuarded(app, db, [
+      { method: 'get', path: '/api/inbox' },
+      { method: 'get', path: '/api/inbox/counts' },
+      { method: 'get', path: `/api/inbox/${id}` },
+      { method: 'post', path: `/api/inbox/${id}/retry` },
+      { method: 'post', path: `/api/inbox/${id}/post-in-open-period` },
+      { method: 'post', path: `/api/inbox/${id}/resolve` },
+      { method: 'post', path: `/api/inbox/${id}/dismiss` },
+      { method: 'get', path: '/api/posting-rules' },
+      { method: 'put', path: '/api/posting-rules/receivable' },
+    ]);
+  });
+});
+
+describe('the accountant’s actions', () => {
+  it('retry a held payment once its invoice posted, and refuse a posted event', async () => {
+    const book = await books(app, db);
+    const hub = await hubClient(app, book.owner);
+    const documents = hubDocuments();
+    const held = await hub.send(paymentRecorded(documents, today()));
+    await hub.send(invoiceIssued(documents, today()));
+    const accountant = await book.join('accountant');
+    const retried = await accountant.browser.post(`/api/inbox/${held.body.inbox_id}/retry`);
+    expect(retried.status, JSON.stringify(retried.body)).toBe(200);
+    expect(retried.body).toMatchObject({ state: 'posted', reason: null });
+    expect((retried.body as InboxEventDetail).entries).toHaveLength(1);
+    expect((retried.body as InboxEventDetail).actions.map((action) => action.action)).toContain(
+      'retried',
+    );
+    const again = await accountant.browser.post(`/api/inbox/${held.body.inbox_id}/retry`);
+    expect(again.body.code).toBe('EVENT_NOT_HELD');
+    // A move needs PERIOD_CLOSED; a resolution NEEDS_DECISION.
+    const other = await hub.send(paymentRecorded(hubDocuments(), today()));
+    const move = await accountant.browser.post(
+      `/api/inbox/${other.body.inbox_id}/post-in-open-period`,
+      { reason: 'نقل تجريبي' },
+    );
+    expect(move.body.code).toBe('EVENT_ACTION_NOT_ALLOWED');
+    const entry = await posted(book.owner.browser, purchase(book));
+    const resolve = await accountant.browser.post(`/api/inbox/${other.body.inbox_id}/resolve`, {
+      entryId: entry.id,
+      reason: 'معالجة يدوية',
+    });
+    expect(resolve.body.code).toBe('EVENT_ACTION_NOT_ALLOWED');
+  });
+
+  it('resolve a payment beyond the tolerance by a manual entry, once', async () => {
+    const book = await books(app, db);
+    const hub = await hubClient(app, book.owner);
+    const documents = hubDocuments();
+    await hub.send(invoiceIssued(documents, today()));
+    const payment = gapPayment(documents);
+    const held = await hub.send(payment);
+    expect(held.body).toMatchObject({
+      status: 'held',
+      reason: 'NEEDS_DECISION',
+      detail: 'payment_gap_beyond_tolerance',
+    });
+    const accountant = await book.join('accountant');
+    const hubEntry = await hub.send(invoiceIssued(hubDocuments(), today()));
+    const notManual = await accountant.browser.post(`/api/inbox/${held.body.inbox_id}/resolve`, {
+      entryId: hubEntry.body.entries[0].id,
+      reason: 'قيد من Hub',
+    });
+    expect(notManual.body.code).toBe('ENTRY_ALREADY_LINKED');
+    const entry = await posted(book.owner.browser, purchase(book));
+    const resolved = await accountant.browser.post(`/api/inbox/${held.body.inbox_id}/resolve`, {
+      entryId: entry.id,
+      reason: 'الفرق خارج التسامح، عولج بقيد يدوي',
+    });
+    expect(resolved.status, JSON.stringify(resolved.body)).toBe(200);
+    expect(resolved.body).toMatchObject({ state: 'resolved', resolvedBy: { id: entry.id } });
+    // Hub's replay answers the resolution, with no entry of its own.
+    const replay = await hub.send(payment);
+    expect(replay.status).toBe(201);
+    expect(replay.body).toEqual({ status: 'resolved', inbox_id: held.body.inbox_id, entries: [] });
+  });
+
+  it('dismiss is the owner’s, with a reason, and the event never returns to held', async () => {
+    const book = await books(app, db);
+    const hub = await hubClient(app, book.owner);
+    const held = await hub.send(paymentRecorded(hubDocuments(), today()));
+    const accountant = await book.join('accountant');
+    const path = `/api/inbox/${held.body.inbox_id}/dismiss`;
+    expect((await accountant.browser.post(path, { reason: 'خطأ' })).body.code).toBe('FORBIDDEN');
+    expect((await book.owner.browser.post(path, {})).body.code).toBe('VALIDATION_FAILED');
+    const dismissed = await book.owner.browser.post(path, { reason: 'دفعة مكررة في Hub' });
+    expect(dismissed.status, JSON.stringify(dismissed.body)).toBe(200);
+    const event = dismissed.body as InboxEventDetail;
+    expect(event.state).toBe('dismissed');
+    expect(event.actions.at(-1)).toMatchObject({
+      action: 'dismissed',
+      note: 'دفعة مكررة في Hub',
+      actor: { kind: 'person', id: book.owner.person.id },
+    });
+    expect((await book.owner.browser.post(path, { reason: 'مرة ثانية' })).body.code).toBe(
+      'EVENT_NOT_HELD',
+    );
+    const audit = await withCompany(db, book.companyId, (tx) =>
+      tx.select({ action: auditEntries.action }).from(auditEntries),
+    );
+    expect(audit.map((row) => row.action)).toContain('event.dismissed');
+  });
+});
+
+describe('/api/posting-rules', () => {
+  it('lists every slot with the template’s account and maps a slot to an account that fits', async () => {
+    const book = await books(app, db);
+    const listed = await book.owner.browser.get('/api/posting-rules');
+    expect(listed.status, JSON.stringify(listed.body)).toBe(200);
+    const rules = listed.body as PostingRule[];
+    expect(rules).toHaveLength(13);
+    expect(rules.find((rule) => rule.slot === 'receivable')).toMatchObject({
+      currency: null,
+      account: { code: '112001' },
+      events: ['invoice.issued'],
+      heldEvents: 0,
+    });
+    expect(
+      rules.find((rule) => rule.slot === 'payment_method.cash' && rule.currency === 'USD')?.account
+        ?.code,
+    ).toBe('111002');
+
+    const accountant = await book.join('accountant');
+    const unfit = await accountant.browser.put('/api/posting-rules/receivable', {
+      accountId: book.accounts.get('411001'),
+    });
+    expect(unfit.body.code).toBe('MAPPING_ACCOUNT_INVALID');
+    const wrongCurrency = await accountant.browser.put('/api/posting-rules/payment_method.cash', {
+      currency: 'USD',
+      accountId: book.accounts.get('111001'),
+    });
+    expect(wrongCurrency.body.code).toBe('MAPPING_ACCOUNT_INVALID');
+    const noCurrency = await accountant.browser.put('/api/posting-rules/payment_method.cash', {
+      accountId: book.accounts.get('111002'),
+    });
+    expect(noCurrency.body.code).toBe('VALIDATION_FAILED');
+    const unknown = await accountant.browser.put('/api/posting-rules/receivable', {
+      accountId: uuidv7(),
+    });
+    expect(unknown.body.code).toBe('NOT_FOUND');
+
+    const mapped = await accountant.browser.put('/api/posting-rules/payment_method.cash', {
+      currency: 'USD',
+      accountId: book.accounts.get('111004'),
+    });
+    expect(mapped.status, JSON.stringify(mapped.body)).toBe(200);
+    expect(mapped.body).toMatchObject({ currency: 'USD', account: { code: '111004' } });
+    const audit = await withCompany(db, book.companyId, (tx) =>
+      tx
+        .select({
+          action: auditEntries.action,
+          before: auditEntries.before,
+          after: auditEntries.after,
+        })
+        .from(auditEntries),
+    );
+    expect(audit.filter((row) => row.action === 'posting_rule.mapped')).toEqual([
+      {
+        action: 'posting_rule.mapped',
+        before: expect.objectContaining({ accountCode: '111002' }),
+        after: expect.objectContaining({ accountCode: '111004', slot: 'payment_method.cash' }),
+      },
+    ]);
+    const viewer = await book.join('viewer');
+    expect((await viewer.browser.get('/api/posting-rules')).body.code).toBe('FORBIDDEN');
+  });
+});
+
+describe('the payments’ tolerance', () => {
+  it('is 1.00 in each currency by default and changed by the owner, audited', async () => {
+    const book = await books(app, db);
+    const before = (await book.owner.browser.get('/api/company')).body as Company;
+    expect([before.paymentToleranceSyp, before.paymentToleranceUsd]).toEqual(['100', '100']);
+    const changed = await book.owner.browser.patch('/api/company', { paymentToleranceUsd: '500' });
+    expect(changed.status, JSON.stringify(changed.body)).toBe(200);
+    expect((changed.body as Company).paymentToleranceUsd).toBe('500');
+    expect(
+      (await book.owner.browser.patch('/api/company', { paymentToleranceSyp: '-1' })).body.code,
+    ).toBe('VALIDATION_FAILED');
+    const audit = await withCompany(db, book.companyId, (tx) =>
+      tx.select({ action: auditEntries.action, after: auditEntries.after }).from(auditEntries),
+    );
+    expect(audit).toContainEqual({
+      action: 'company.settings_updated',
+      after: { paymentToleranceUsdMinor: '500' },
+    });
+  });
+});
