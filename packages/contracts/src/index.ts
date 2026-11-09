@@ -1,4 +1,5 @@
 export * from './access.js';
+export * from './api-clients.js';
 export * from './audit.js';
 export * from './chart.js';
 export * from './chart-templates.js';
