@@ -32,7 +32,7 @@ Spec: `docs/specs/S05-posting-api-event-inbox.md` (Approved, owner 2026-11-07) Â
 - [x] bridge: OpenAPI regenerated, breaking-change check
 - [x] wiring (API and worker), docs (`apps/api/CLAUDE.md`, `apps/worker/CLAUDE.md`, `packages/db/CLAUDE.md`, `packages/contracts/CLAUDE.md`, the `AGENTS.md` commands table, `.env.example`)
 - [x] `docs/ROADMAP.md` (PR 3 done)
-- [ ] the accountant-reviewer's findings on Q13 (a movement on the client's funds between the spend and its change: the change can fail, 503 with nothing stored, and a same-amount change does not net to zero): the owner's decision on the recommended scope (no difference entry only while the spend is still the latest movement on its funds, otherwise S04 rule 13's), then its case through `/posting-rule`; and the owner's decision on remapping `ad_funds` (or `receivable`) while the mapped account holds open items
+- [x] the accountant-reviewer's findings on Q13, the owner's decisions of 2026-11-09: no difference entry only while the spend is still the latest movement on its funds, otherwise S04 rule 13's (`movedSince()`, a fifth case with the owner's numbers, the property with a movement between); a slot keeps its account while it holds open items (`ACCOUNT_HAS_BALANCE`)
 - [x] the reviewer's findings: the held digest once a day after its send (`sent_at`, 0030), the cross-company tests, the 256 KB body
 - [ ] checks and reviewers (`reviewer`, `accountant-reviewer`; their re-reviews on the fix commits), PR with auto-merge and Auto-fix
 

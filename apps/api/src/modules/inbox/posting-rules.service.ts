@@ -12,9 +12,11 @@ import {
   slotIsPerCurrency,
 } from '@vertex-mizan/contracts';
 import {
+  accountHasOpenItems,
   chartAccounts,
   type Database,
   inboundEventStates,
+  ledgerHeads,
   postingRuleAccounts,
   type Transaction,
   withCompany,
@@ -56,7 +58,8 @@ export class PostingRulesService {
   /**
    * `PUT /api/posting-rules/:slot`: an account of the company that fits the slot
    * (`MAPPING_ACCOUNT_INVALID`, also for a blocked or archived account), the currency given exactly
-   * for a payment method's slot.
+   * for a payment method's slot; `ACCOUNT_HAS_BALANCE` while the account mapped now holds open
+   * items (owner, 2026-11-09).
    */
   async map(
     access: CompanyRouteAccess,
@@ -72,6 +75,9 @@ export class PostingRulesService {
     }
     const rule = await withCompany(this.db, companyId, async (tx) => {
       await lockCompanyForWrite(tx, companyId);
+      // The ledger head first, as the posting function locks it (ADR 0008), so no posting adds an
+      // open item between the balance read below and the change.
+      await tx.select({ id: ledgerHeads.id }).from(ledgerHeads).for('update');
       const [account] = await tx
         .select()
         .from(chartAccounts)
@@ -125,6 +131,21 @@ export class PostingRulesService {
         )
         .for('update', { of: postingRuleAccounts });
       const unchanged = current && !current.archivedAt && current.accountId === account.id;
+      // A control account's slot keeps its account while it holds open items: their documents and
+      // clients' funds would otherwise be split between two accounts (owner, 2026-11-09).
+      if (
+        !unchanged &&
+        current &&
+        !current.archivedAt &&
+        (await accountHasOpenItems(tx, current.accountId))
+      ) {
+        throw new CodedException(
+          'ACCOUNT_HAS_BALANCE',
+          'The mapped account holds open items',
+          undefined,
+          { slot, code: current.code },
+        );
+      }
       if (!unchanged) {
         let id: string;
         if (current) {

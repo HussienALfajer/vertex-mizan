@@ -228,7 +228,7 @@ Hub's API under `/v1`, in `openapi.json` and checked by `pnpm check:openapi`; ev
 | `POST /api/inbox/:id/resolve` | `events.manage` | `{ entryId, reason }` | the event | `EVENT_NOT_HELD`, `EVENT_ACTION_NOT_ALLOWED`, `ENTRY_ALREADY_LINKED`, `NOT_FOUND` |
 | `POST /api/inbox/:id/dismiss` | `events.dismiss` | `{ reason }` | the event | `EVENT_NOT_HELD` |
 | `GET /api/posting-rules` | `posting_rules.read` | — | every slot with its account and the rules that read it | — |
-| `PUT /api/posting-rules/:slot` | `posting_rules.manage` | `{ currency?, accountId }` | the slot | `MAPPING_ACCOUNT_INVALID`, `NOT_FOUND` |
+| `PUT /api/posting-rules/:slot` | `posting_rules.manage` | `{ currency?, accountId }` | the slot; refused while the account mapped now holds open items (owner, 2026-11-09) | `MAPPING_ACCOUNT_INVALID`, `NOT_FOUND`, `ACCOUNT_HAS_BALANCE` |
 | `GET /api/api-clients` | `api_clients.read` | — | clients with keys (prefix, dates, last use), scopes, allow-list, document types | — |
 | `POST /api/api-clients` | `api_clients.manage` + reauthentication | `{ name, system, scopes, ipAllowList }` | the client and its first key, once | `REAUTHENTICATION_REQUIRED`, `VALIDATION_FAILED` |
 | `PUT /api/api-clients/:id` | `api_clients.manage` + reauthentication | `{ name?, scopes?, ipAllowList?, documentTypes? }` | the client | `REAUTHENTICATION_REQUIRED` |

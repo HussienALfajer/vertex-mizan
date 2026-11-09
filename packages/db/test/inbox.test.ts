@@ -989,16 +989,18 @@ describe('the ad funds’ changes and archives (ad-funds/running-balance; S04 ru
     expect(payable?.amount).toBe('0');
   });
 
-  it('nets a spend re-sent unchanged to zero in both ledgers, across zero or not (Q13)', async () => {
+  it('nets a spend re-sent unchanged to zero while it is the funds’ latest movement, and posts it after another (Q13)', async () => {
     const rate = fc
       .integer({ min: 1_150_000, max: 1_300_000 })
       .map((n) => `${Math.floor(n / 10_000)}.${String(n % 10_000).padStart(4, '0')}`);
+    let other = 0;
     await fc.assert(
       fc.asyncProperty(
         fc.integer({ min: 1, max: 500_000 }),
         fc.integer({ min: 1, max: 900_000 }),
+        fc.option(fc.integer({ min: 1, max: 900_000 }), { nil: null }),
         fc.tuple(rate, rate, rate),
-        async (deposit, usd, [first, second, third]) => {
+        async (deposit, usd, between, [first, second, third]) => {
           const company = await newCompany('service-agency', [
             ['2026-11-03', first],
             ['2026-11-19', second],
@@ -1006,11 +1008,30 @@ describe('the ad funds’ changes and archives (ad-funds/running-balance; S04 ru
           ]);
           await receive(company, deposited('2026-11-03', deposit));
           await receive(company, spent('ad_spend.recorded', '2026-11-19', '2026-11-19', usd));
+          if (between !== null) {
+            // Another campaign update of the same client, after the spend and before its change.
+            other += 1;
+            const update2 = { id: ids(7000 + other), number: `CU-B-${other}` };
+            const later = await receive(
+              company,
+              envelope('ad_spend.recorded', '2026-11-25', {
+                update: update2,
+                campaign,
+                client: C1,
+                period_from: '2026-11-20',
+                period_to: '2026-11-25',
+                usd_spend: between,
+              }),
+            );
+            expect(later.event.state).toBe('posted');
+          }
           const changed = await receive(
             company,
             spent('ad_spend.changed', '2026-11-25', '2026-11-19', usd),
           );
+          // Posted whatever came between: never a failure, never a hold.
           expect(changed.event.state).toBe('posted');
+          if (between !== null) return;
           // The reversal and the new state, and nothing between them.
           expect(changed.event.entries).toHaveLength(2);
           const entries = await ledger(company);
@@ -1028,7 +1049,11 @@ describe('the ad funds’ changes and archives (ad-funds/running-balance; S04 ru
           for (const [code, total] of totals) expect(total, code).toEqual([0n, 0n, 0n]);
         },
       ),
-      { numRuns: 12 },
+      {
+        numRuns: 16,
+        // The accounting review's case: the reversal would leave 0 USD carrying 350.00 SYP.
+        examples: [[10_000, 15_000, 10_000, ['120.0000', '123.0000', '123.5000']]],
+      },
     );
   });
 

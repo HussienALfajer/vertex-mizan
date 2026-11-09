@@ -305,6 +305,44 @@ describe('/api/posting-rules', () => {
   });
 });
 
+describe('a control account’s slot', () => {
+  it('keeps its account while it holds open items, and moves on a fresh company', async () => {
+    const receivables = async (book: Awaited<ReturnType<typeof books>>) => {
+      const created = await book.owner.browser.post('/api/accounts', {
+        parentId: book.accounts.get('112'),
+        code: '112009',
+        kind: 'postable',
+        name: 'ذمم عملاء أخرى',
+        statementLine: 'bs.trade_receivables',
+        isMonetary: true,
+        isControl: true,
+        itemKind: 'document',
+      });
+      expect(created.status, JSON.stringify(created.body)).toBe(201);
+      return created.body.id as string;
+    };
+    const book = await books(app, db);
+    const second = await receivables(book);
+    const hub = await hubClient(app, book.owner);
+    expect((await hub.send(invoiceIssued(hubDocuments(), today()))).status).toBe(201);
+    const refused = await book.owner.browser.put('/api/posting-rules/receivable', {
+      accountId: second,
+    });
+    expect(refused.status).toBe(409);
+    expect(refused.body).toMatchObject({
+      code: 'ACCOUNT_HAS_BALANCE',
+      details: { code: '112001' },
+    });
+    const fresh = await books(app, db);
+    const freshSecond = await receivables(fresh);
+    const moved = await fresh.owner.browser.put('/api/posting-rules/receivable', {
+      accountId: freshSecond,
+    });
+    expect(moved.status, JSON.stringify(moved.body)).toBe(200);
+    expect(moved.body.account.code).toBe('112009');
+  });
+});
+
 describe('the payments’ tolerance', () => {
   it('is 1.00 in each currency by default and changed by the owner, audited', async () => {
     const book = await books(app, db);

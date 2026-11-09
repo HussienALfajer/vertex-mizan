@@ -1223,6 +1223,38 @@ async function reversalLines(
 }
 
 /**
+ * Whether an entry after `entryId`, other than its reversal `reversalId`, moved one of `itemIds`:
+ * then reversing `entryId` exactly does not put those items back where they were before it (Q13).
+ */
+async function movedSince(
+  tx: Transaction,
+  entryId: string,
+  reversalId: string,
+  itemIds: readonly string[],
+): Promise<boolean> {
+  if (itemIds.length === 0) return false;
+  const [later] = await tx
+    .select({ id: openItemMovements.id })
+    .from(openItemMovements)
+    .innerJoin(
+      journalEntries,
+      and(
+        eq(journalEntries.companyId, openItemMovements.companyId),
+        eq(journalEntries.id, openItemMovements.entryId),
+      ),
+    )
+    .where(
+      and(
+        inArray(openItemMovements.itemId, [...itemIds]),
+        sql`${journalEntries.id} <> ${reversalId}`,
+        sql`${journalEntries.sequence} > (select e.sequence from public.journal_entries e where e.id = ${entryId})`,
+      ),
+    )
+    .limit(1);
+  return later !== undefined;
+}
+
+/**
  * The exchange-difference entry that follows a reversal's movements on running items (S04 rule 13,
  * ADR 0013): on each running item it moved against the balance or across zero, what brings the
  * item to the carrying amount of a new movement under rule 3 (across zero, the item cleared and
@@ -1796,18 +1828,28 @@ export async function post(tx: Transaction, request: PostingRequest): Promise<Po
     hub,
   });
   // Within a `.changed`, the reversal and the new state are one change: no difference entry
-  // between them (Q13; owner, 2026-11-09).
-  const difference =
-    content.kind === 'hub_reversal' && content.withinChange === true
-      ? null
-      : await voidDifferenceLines(
-          tx,
-          built.voided,
-          on,
-          content.kind === 'hub_reversal' ? content.measuredOn : on,
-          ledgers,
-          settings.bulletinDaysOff,
-        );
+  // between them, while the reversed entry is still the latest movement on every running item it
+  // moves, so the exact reversal puts them back where they were. Once another entry moved one of
+  // them, S04 rule 13's difference entry follows, as after a void (Q13; owner, 2026-11-09).
+  const oneChange =
+    content.kind === 'hub_reversal' &&
+    content.withinChange === true &&
+    !(await movedSince(
+      tx,
+      content.entryId,
+      posted.id,
+      built.voided.map((item) => item.id),
+    ));
+  const difference = oneChange
+    ? null
+    : await voidDifferenceLines(
+        tx,
+        built.voided,
+        on,
+        content.kind === 'hub_reversal' ? content.measuredOn : on,
+        ledgers,
+        settings.bulletinDaysOff,
+      );
   if (difference !== null) {
     const differenceKey = `${request.idempotencyKey}:difference`;
     const [differenceRequest] = await tx

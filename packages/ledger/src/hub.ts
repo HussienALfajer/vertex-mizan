@@ -126,8 +126,9 @@ export type PlannedEntry =
       readonly entryId: string;
       /**
        * A `.changed` event's reversal of what stands, which its new state follows as one change: no
-       * difference entry follows it, even across zero (Q13; owner, 2026-11-09). A void's or an
-       * archive's reversal has its difference entry (S04 rule 13).
+       * difference entry follows it, even across zero, while the reversed entry is still the latest
+       * movement on its running items; the posting function checks that (Q13; owner, 2026-11-09).
+       * A void's or an archive's reversal has its difference entry (S04 rule 13).
        */
       readonly withinChange?: true;
     }
@@ -589,9 +590,10 @@ function changedPlan(
 
 /**
  * `ad_spend.changed`: the spend's posting reversed, then the new spend against the funds as the
- * reversal left them, as one change: no difference entry follows the reversal, even across zero,
- * and the new state's excess beyond zero is measured at its own `period_to` (rule 13; Q13, owner
- * 2026-11-09), so a spend re-sent unchanged nets to zero (edge case 14).
+ * reversal left them, as one change: while the spend is still the latest movement on the funds, no
+ * difference entry follows the reversal, even across zero, and the new state's excess beyond zero
+ * is measured at its own `period_to` (rule 13; Q13, owner 2026-11-09), so a spend re-sent
+ * unchanged nets to zero (edge case 14); after another movement the difference entry follows.
  */
 export function spendChangedPlan(
   event: EventOf<'ad_spend.changed'>,

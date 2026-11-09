@@ -189,7 +189,7 @@ export class PostingRulesController {
   @CompanyRoute('posting_rules.manage')
   @SerializeOptions({ schema: postingRuleSchema })
   @ApiOkResponse({ description: 'The slot', standardSchema: postingRuleSchema })
-  @ApiErrors(...COMPANY_WRITE_ERRORS, 'NOT_FOUND', 'MAPPING_ACCOUNT_INVALID')
+  @ApiErrors(...COMPANY_WRITE_ERRORS, 'NOT_FOUND', 'MAPPING_ACCOUNT_INVALID', 'ACCOUNT_HAS_BALANCE')
   async map(
     @Access() access: RequestAccess,
     @Param({ schema: postingSlotParamSchema }) params: PostingSlotParam,
