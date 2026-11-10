@@ -13,7 +13,10 @@ import {
   milestoneDone,
   milestoneItemClearing,
   milestoneItemReference,
+  milestoneReopen,
   overTimeMonths,
+  reissuedMilestoneLine,
+  reissueParts,
   releaseParts,
   remainingReleaseParts,
   voidedCreditParts,
@@ -25,8 +28,8 @@ import { calendar, hubRate, rate, sypOnly, sypUsd, usdSyp } from './test-fixture
  * `docs/scenarios/revenue/over-time-release.md` (owner, 2026-11-10, option A), and a retainer
  * credit's split (S06 rules 6 and 8), with the numbers of `docs/scenarios/revenue/retainer-credit.md`
  * (owner, 2026-11-10); a milestone's done, its invoice and the project's completion (S06 rules 11–14),
- * with the numbers of `docs/scenarios/revenue/milestones.md` (owner, 2026-11-10); and their
- * properties.
+ * with the numbers of `docs/scenarios/revenue/milestones.md` (owner, 2026-11-10); the void's re-issue (S06 rule 9) and a reopen after a void, with the numbers
+ * of `docs/scenarios/revenue/void-and-reissue.md` (owner, 2026-11-10); and their properties.
  */
 
 const usd = (amount: bigint, book: bigint, parallel: bigint | null): CarriedAmounts => ({
@@ -745,8 +748,11 @@ describe('milestoneDone', () => {
     expect(detail(milestoneDone(money(30_000n, 'SYP'), true, standing(deferred)))).toBe(
       'milestone_amount_differs',
     );
-    // A schedule the project's completion released defers nothing: the caller's hold (Q14).
-    expect(() => milestoneDone(money(30_000n, 'USD'), true, standing(usd(0n, 0n, 0n)))).toThrow(
+    // A schedule the project's completion released defers nothing (Q14, owner 2026-11-10).
+    expect(detail(milestoneDone(money(30_000n, 'USD'), true, standing(usd(0n, 0n, 0n))))).toBe(
+      'milestone_released_at_completion',
+    );
+    expect(() => milestoneDone(money(30_000n, 'USD'), true, standing(usd(-1n, 0n, 0n)))).toThrow(
       RangeError,
     );
     expect(() => milestoneDone(money(0n, 'USD'), true, standing(null))).toThrow(RangeError);
@@ -1032,3 +1038,174 @@ describe('a milestone invoiced before its done', () => {
     );
   });
 });
+
+describe('milestoneReopen and reissuedMilestoneLine', () => {
+  const states = [
+    [{ doneStanding: true, doneTakenBackByVoid: false }, 'reverse', 'clear_item'],
+    [{ doneStanding: false, doneTakenBackByVoid: true }, 'record', 'revenue_at_issue'],
+    [{ doneStanding: false, doneTakenBackByVoid: false }, 'unknown_reference', 'defer'],
+  ] as const;
+
+  it('reverses a standing done, records a reopen after the void, and re-issues a line by the same facts', () => {
+    for (const [standing, reopen, line] of states) {
+      expect(milestoneReopen(standing)).toBe(reopen);
+      expect(reissuedMilestoneLine(standing)).toBe(line);
+    }
+    const both = { doneStanding: true, doneTakenBackByVoid: true };
+    expect(() => milestoneReopen(both)).toThrow(TypeError);
+    expect(() => reissuedMilestoneLine(both)).toThrow(TypeError);
+  });
+});
+
+describe('reissueParts', () => {
+  it("catches up November on a re-issue in December and defers December: the first case's numbers", () => {
+    const months = overTimeMonths(90_000n, '2026-11-15', '2026-12-14', '2026-12-07');
+    const { catchUpMinor, months: rest } = reissueParts(months, new Set(['2026-11']));
+    expect(catchUpMinor).toBe(48_000n);
+    expect(rest.map((m) => [m.month, m.transactionMinor, m.elapsed])).toEqual([
+      ['2026-12', 42_000n, false],
+    ]);
+    // At 122: 5,856,000 at issue; the deferral 5,124,000 released in December.
+    const context = measuredOn(sypUsd, '2026-12-07', '122.0000');
+    const lines: Line[] = [
+      measuredLine({ account: '112001', amount: money(90_000n, 'USD') }, context),
+      measuredLine({ account: '411001', amount: money(-catchUpMinor, 'USD') }, context),
+      measuredLine({ account: '212001', amount: money(-42_000n, 'USD') }, context),
+    ];
+    expect(lines.map((line) => line.bookMinor)).toEqual([10_980_000n, -5_856_000n, -5_124_000n]);
+    const deferral = lines[2];
+    if (deferral === undefined) throw new Error('The deferral');
+    expect(releaseParts(negate(deferral), rest, sypUsd).map((part) => part.bookMinor)).toEqual([
+      5_124_000n,
+    ]);
+  });
+
+  it('marks December elapsed on a re-issue in January, and cuts a re-issue at 930.00 by its own days', () => {
+    const january = reissueParts(
+      overTimeMonths(90_000n, '2026-11-15', '2026-12-14', '2027-01-05'),
+      new Set(['2026-11']),
+    );
+    expect(january.catchUpMinor).toBe(48_000n);
+    expect(january.months.map((m) => [m.month, m.transactionMinor, m.elapsed])).toEqual([
+      ['2026-12', 42_000n, true],
+    ]);
+    const other = reissueParts(
+      overTimeMonths(93_000n, '2026-11-15', '2026-12-14', '2026-12-07'),
+      new Set(['2026-11']),
+    );
+    expect([other.catchUpMinor, other.months[0]?.transactionMinor]).toEqual([49_600n, 43_400n]);
+    // The late cycle with October elapsed and November released: all of it at issue.
+    const late = reissueParts(
+      overTimeMonths(62_000n, '2026-10-20', '2026-11-19', '2026-12-07'),
+      new Set(['2026-10', '2026-11']),
+    );
+    expect([late.catchUpMinor, late.months]).toEqual([62_000n, []]);
+    expect(() =>
+      reissueParts(
+        overTimeMonths(90_000n, '2026-11-15', '2026-12-14', '2026-12-07'),
+        new Set(['2026-10']),
+      ),
+    ).toThrow(RangeError);
+  });
+
+  it('converts the USD books case at 122 with no rounding line: 595.08 = 317.38 + 277.70', () => {
+    const months = overTimeMonths(7_260_000n, '2026-11-15', '2026-12-14', '2026-12-07');
+    const { catchUpMinor, months: rest } = reissueParts(months, new Set(['2026-11']));
+    const context = measuredOn(usdSyp, '2026-12-07', '122.0000');
+    const lines: Line[] = [
+      measuredLine({ account: '112001', amount: money(7_260_000n, 'SYP') }, context),
+      measuredLine({ account: '411001', amount: money(-catchUpMinor, 'SYP') }, context),
+      measuredLine(
+        { account: '212001', amount: money(-(rest[0]?.transactionMinor ?? 0n), 'SYP') },
+        context,
+      ),
+    ];
+    expect(lines.map((line) => line.bookMinor)).toEqual([59_508n, -31_738n, -27_770n]);
+    expect(balanceEntry({ ...context, lines, rounding: { account: '541003' } })).toHaveLength(3);
+  });
+});
+
+describe('a re-issue', () => {
+  it('recognises exactly the re-issued amount over its catch-up and its months, and with the voided amount catches up exactly what the void took back', () => {
+    fc.assert(
+      fc.property(
+        deferralArb,
+        fc.bigInt({ min: 1n, max: 10n ** 12n }),
+        fc.integer({ min: 0, max: 400 }),
+        ({ amount, from, to }, reissuedMinor, lateDays) => {
+          // The void took back the months ended before it; the re-issue comes later.
+          const voidedOn = addDays(from, lateDays);
+          const reissuedOn = addDays(voidedOn, 5);
+          const voided = overTimeMonths(amount, from, to, from);
+          const takenBack = new Set(voided.filter((m) => m.lastDay < voidedOn).map((m) => m.month));
+          const reissue = reissueParts(
+            overTimeMonths(reissuedMinor, from, to, reissuedOn),
+            takenBack,
+          );
+          expect(reissue.catchUpMinor + sum(reissue.months.map((m) => m.transactionMinor))).toBe(
+            reissuedMinor,
+          );
+          const same = reissueParts(overTimeMonths(amount, from, to, reissuedOn), takenBack);
+          expect(same.catchUpMinor).toBe(
+            sum(voided.filter((m) => takenBack.has(m.month)).map((m) => m.transactionMinor)),
+          );
+          // A replay of the same re-issue computes the same parts.
+          expect(reissueParts(overTimeMonths(amount, from, to, reissuedOn), takenBack)).toEqual(
+            same,
+          );
+        },
+      ),
+      { numRuns: 300 },
+    );
+  });
+
+  it('builds an issue entry of new measurements that balances in every shape, and whose reversal nets to zero', () => {
+    fc.assert(
+      fc.property(milestoneArb, deferralArb, ({ ledgers, amount, invoice }, { from, to }) => {
+        const months = overTimeMonths(amount.amountMinor, from, to, invoice.on);
+        const takenBack = new Set(months.slice(0, 1).map((m) => m.month));
+        const { catchUpMinor, months: rest } = reissueParts(months, takenBack);
+        const deferredMinor = sum(rest.filter((m) => !m.elapsed).map((m) => m.transactionMinor));
+        const elapsedMinor = sum(rest.filter((m) => m.elapsed).map((m) => m.transactionMinor));
+        const lines: Line[] = [
+          measuredLine(
+            {
+              account: '112001',
+              amount: money(amount.amountMinor - elapsedMinor, amount.currency),
+            },
+            invoice,
+          ),
+        ];
+        if (catchUpMinor !== 0n) {
+          lines.push(
+            measuredLine(
+              { account: '411001', amount: money(-catchUpMinor, amount.currency) },
+              invoice,
+            ),
+          );
+        }
+        if (deferredMinor !== 0n) {
+          lines.push(
+            measuredLine(
+              { account: '212001', amount: money(-deferredMinor, amount.currency) },
+              invoice,
+            ),
+          );
+        }
+        fc.pre(lines.length >= 2);
+        const entry = balanceEntry({ ...invoice, ledgers, lines, rounding: { account: '541003' } });
+        const both = [...entry, ...reverseLines(entry)];
+        expect(sum(entry.map((line) => line.bookMinor))).toBe(0n);
+        expect(sum(entry.map((line) => line.parallelMinor ?? 0n))).toBe(0n);
+        expect(sum(both.map((line) => line.bookMinor))).toBe(0n);
+        expect(sum(both.map((line) => line.parallelMinor ?? 0n))).toBe(0n);
+      }),
+      { numRuns: 300 },
+    );
+  });
+});
+
+function addDays(date: string, days: number): string {
+  const [year, month, day] = date.split('-').map(Number) as [number, number, number];
+  return new Date(Date.UTC(year, month - 1, day + days)).toISOString().slice(0, 10);
+}

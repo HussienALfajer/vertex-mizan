@@ -2,7 +2,7 @@
 
 Status: Proposed
 
-S06 wrote these cases (S06 "Scenarios"), with the owner's answer to open question Q14 (a) of 2026-11-10: a reopen after the void that reversed its done's release is recorded with no entry. They wait for the owner's approval of their expected entries and outcomes, and then stay `Proposed` until S06's feature slice brings their executors: `invoice.voided` of an invoice with schedules, releases, elapsed parts or a done's release; the re-issue of a voided schedule; `milestone.done` and `milestone.reopened`; and the release job `revenue_release_month` (S06 rules 4, 5, 7–9, 11–13).
+S06 wrote these cases (S06 "Scenarios"), with the owner's answer to open question Q14 (a) of 2026-11-10: a reopen after the void that reversed its done's release is recorded with no entry. The owner approved their expected entries and outcomes the same day, with two readings of S06 rule 9: a re-issued over-time line recognises at issue its own part, by its days, of the months the void took back, so at another amount its own share; and a re-issued milestone line clears the milestone's contract asset when a done stands, is revenue at issue when the void reversed its done's release and no reopen followed, and is deferred otherwise. They stay `Proposed` until S06's feature slice brings their executors: `invoice.voided` of an invoice with schedules, releases, elapsed parts or a done's release; the re-issue of a voided schedule; `milestone.done` and `milestone.reopened`; and the release job `revenue_release_month` (S06 rules 4, 5, 7–9, 11–13).
 
 ## Rule
 
