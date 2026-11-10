@@ -7,9 +7,9 @@ import { type CarriedAmounts, carriedLine, type Line, negate } from './lines.js'
 import { measuredLine } from './measure.js';
 import { daysBetween } from './periods.js';
 import {
+  type CreditedSchedule,
   cancelledProjectRemainder,
   cancelledProjectSplit,
-  type CreditedSchedule,
   completedProjectReleases,
   creditParts,
   milestoneDone,
@@ -1386,7 +1386,9 @@ describe('cancelledProjectSplit', () => {
       ],
       refund: money(20_000n, 'USD'),
     });
-    expect(amountsOf(cancellationEntry(sypUsd, on(sypUsd, '124.0000'), [remaining], 10_000n))).toEqual([
+    expect(
+      amountsOf(cancellationEntry(sypUsd, on(sypUsd, '124.0000'), [remaining], 10_000n)),
+    ).toEqual([
       ['212001', 3_600_000n, 30_000n],
       ['411001', -1_200_000n, -10_000n],
       ['211003', -2_480_000n, -20_000n],
@@ -1394,7 +1396,9 @@ describe('cancelledProjectSplit', () => {
     ]);
     // SYP books only: the same book amounts, no parallel.
     const books = usd(30_000n, 3_600_000n, null);
-    expect(amountsOf(cancellationEntry(sypOnly, on(sypOnly, '124.0000'), [books], 10_000n))).toEqual([
+    expect(
+      amountsOf(cancellationEntry(sypOnly, on(sypOnly, '124.0000'), [books], 10_000n)),
+    ).toEqual([
       ['212001', 3_600_000n, null],
       ['411001', -1_200_000n, null],
       ['211003', -2_480_000n, null],
@@ -1435,7 +1439,9 @@ describe('cancelledProjectSplit', () => {
       ],
       refund: null,
     });
-    expect(cancellationEntry(sypUsd, on(sypUsd, '124.0000'), [deposit, milestone], 80_000n)).toHaveLength(4);
+    expect(
+      cancellationEntry(sypUsd, on(sypUsd, '124.0000'), [deposit, milestone], 80_000n),
+    ).toHaveLength(4);
 
     const sypDeposit = syp(3_600_000n, 3_600_000n, 30_000n);
     expect(cancelledProjectSplit(0n, [sypDeposit])).toEqual({
@@ -1537,9 +1543,9 @@ describe("a cancelled project's split", () => {
           if (part.revenue) expect(part.revenue.transaction.amountMinor).toBeGreaterThan(0n);
           if (part.refunded) expect(part.refunded.transaction.amountMinor).toBeGreaterThan(0n);
         });
-        expect(
-          sum(split.parts.map((part) => part.revenue?.transaction.amountMinor ?? 0n)),
-        ).toBe(revenueMinor);
+        expect(sum(split.parts.map((part) => part.revenue?.transaction.amountMinor ?? 0n))).toBe(
+          revenueMinor,
+        );
         expect(split.refund?.amountMinor ?? 0n).toBe(totalMinor - revenueMinor);
       }),
       { numRuns: 1_000 },

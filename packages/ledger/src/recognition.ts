@@ -490,9 +490,7 @@ export function completedProjectReleases(remaining: readonly CarriedAmounts[]): 
  * (`cancelled_project_remainder`) for the accountant's split, with the schedules that still defer
  * something, in the order given (the order they were created).
  */
-export function cancelledProjectRemainder(
-  remaining: readonly CarriedAmounts[],
-):
+export function cancelledProjectRemainder(remaining: readonly CarriedAmounts[]):
   | { readonly kind: 'record' }
   | {
       readonly kind: 'decision';
@@ -549,10 +547,14 @@ export function cancelledProjectSplit(
   const weights = standing.map((amounts) => amounts.transaction.amountMinor);
   const totalMinor = weights.reduce((total, weight) => total + weight, 0n);
   if (revenueMinor < 0n || revenueMinor > totalMinor) {
-    throw new DomainError('VALIDATION_FAILED', 'The revenue part is outside zero to the remainder', {
-      revenueMinor: revenueMinor.toString(),
-      remainingMinor: totalMinor.toString(),
-    });
+    throw new DomainError(
+      'VALIDATION_FAILED',
+      'The revenue part is outside zero to the remainder',
+      {
+        revenueMinor: revenueMinor.toString(),
+        remainingMinor: totalMinor.toString(),
+      },
+    );
   }
   const shares = allocate(revenueMinor, weights);
   const parts = standing.map((amounts, k): CancelledSchedulePart => {
@@ -567,7 +569,9 @@ export function cancelledProjectSplit(
         transaction: money(open - part, amounts.transaction.currency),
         bookMinor: amounts.bookMinor - revenue.bookMinor,
         parallelMinor:
-          amounts.parallelMinor === null ? null : amounts.parallelMinor - (revenue.parallelMinor ?? 0n),
+          amounts.parallelMinor === null
+            ? null
+            : amounts.parallelMinor - (revenue.parallelMinor ?? 0n),
       },
     };
   });
