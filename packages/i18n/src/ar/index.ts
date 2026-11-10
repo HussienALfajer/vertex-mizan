@@ -13,10 +13,12 @@ import { entries } from './entries.js';
 import { errors } from './errors.js';
 import { exportData } from './export.js';
 import { grid } from './grid.js';
+import { inbox } from './inbox.js';
 import { integrity } from './integrity.js';
 import { members } from './members.js';
 import { openItems } from './open-items.js';
 import { permissions } from './permissions.js';
+import { postingRules } from './posting-rules.js';
 import { rates } from './rates.js';
 import { roles } from './roles.js';
 import { shell } from './shell.js';
@@ -47,6 +49,8 @@ export const ar = {
   integrity,
   export: exportData,
   openItems,
+  inbox,
+  postingRules,
 };
 
 export type Catalog = typeof ar;

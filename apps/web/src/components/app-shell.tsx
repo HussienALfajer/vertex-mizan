@@ -42,6 +42,7 @@ import {
   HashIcon,
   HourglassIcon,
   HouseIcon,
+  InboxIcon,
   KeyRoundIcon,
   LandmarkIcon,
   type LucideIcon,
@@ -61,6 +62,7 @@ import {
 } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { useSwitchCompany } from '../features/company/company-queries';
+import { inboxCountsQuery } from '../features/inbox/inbox-queries';
 import { activeMembership, can, meQuery } from '../lib/session';
 
 const t = ar.shell;
@@ -76,6 +78,8 @@ interface NavItem {
   show?: () => boolean;
   /** Lists the item only for a person holding this permission in the active company (cosmetic). */
   permission?: Permission;
+  /** Shows a count beside the label: the inbox's held events (S05), hidden at zero. */
+  count?: 'inbox';
 }
 
 const navItems: NavItem[] = [
@@ -91,6 +95,13 @@ const navItems: NavItem[] = [
   { to: '/dimensions', label: ar.dimensions.nav, icon: TagsIcon, permission: 'dimensions.read' },
   { to: '/entries', label: ar.entries.nav, icon: BookOpenIcon, permission: 'entries.read' },
   { to: '/drafts', label: ar.drafts.nav, icon: FilePenLineIcon, permission: 'drafts.read' },
+  {
+    to: '/inbox',
+    label: ar.inbox.nav,
+    icon: InboxIcon,
+    permission: 'events.read',
+    count: 'inbox',
+  },
   {
     to: '/receivables',
     label: ar.openItems.ageing.nav,
@@ -213,7 +224,7 @@ function Sidebar({ me, onNavigate }: { me: Me | null | undefined; onNavigate?: (
         aria-label={t.navLabel}
         className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto p-3"
       >
-        {listedItems(me).map(({ to, label, icon: Icon, exact }) => (
+        {listedItems(me).map(({ to, label, icon: Icon, exact, count }) => (
           <Link
             key={to}
             to={to}
@@ -223,6 +234,7 @@ function Sidebar({ me, onNavigate }: { me: Me | null | undefined; onNavigate?: (
           >
             <Icon aria-hidden="true" className="size-icon" />
             {label}
+            {count === 'inbox' && me && <HeldCount me={me} />}
           </Link>
         ))}
       </nav>
@@ -234,6 +246,23 @@ function Sidebar({ me, onNavigate }: { me: Me | null | undefined; onNavigate?: (
         />
       </div>
     </div>
+  );
+}
+
+/** The held events of the active company beside the inbox's link (S05), hidden at zero. */
+function HeldCount({ me }: { me: Me }) {
+  const companyId = activeMembership(me)?.company.id;
+  const counts = useQuery({
+    ...inboxCountsQuery(companyId ?? ''),
+    enabled: companyId !== undefined,
+  });
+  const held = counts.data?.held ?? 0;
+  if (held === 0) return null;
+  return (
+    <Badge tone="gold" className="ms-auto" data-slot="held-count">
+      <bdi dir="ltr">{held}</bdi>
+      <span className="sr-only">{ar.inbox.heldCount}</span>
+    </Badge>
   );
 }
 
@@ -335,6 +364,18 @@ function useShellCommands(me: Me | null | undefined): PaletteCommand[] {
             keywords: ['open item', 'invoice', 'reference', 'فاتورة'],
             icon: <HashIcon />,
             run: () => void router.navigate({ to: '/receivables', search: { find: 'item' } }),
+          },
+        ]
+      : []),
+    ...(me && can(me, 'events.read')
+      ? [
+          {
+            id: 'find-event',
+            label: ar.inbox.palette.find,
+            group: t.palette.navigation,
+            keywords: ['hub event', 'inbox', 'حدث', 'Hub'],
+            icon: <InboxIcon />,
+            run: () => void router.navigate({ to: '/inbox', search: { find: 'document' } }),
           },
         ]
       : []),

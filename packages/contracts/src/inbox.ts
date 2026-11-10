@@ -41,6 +41,11 @@ export const inboxEventSchema = z
     documentType: documentTypeSchema,
     documentId: z.string(),
     documentNumber: z.string().nullable(),
+    /**
+     * The client by Hub's name: the payload's, or for an event that names none (a payment, a void)
+     * the one its item's events name; none for a rate or before the item's first event arrives.
+     */
+    clientName: z.string().nullable(),
     accountingDate: dateSchema,
     occurredAt: instantSchema,
     receivedAt: instantSchema,
@@ -60,12 +65,14 @@ export type InboxEvent = z.infer<typeof inboxEventSchema>;
 /** An opaque position in the inbox's pages, newest received first. */
 const cursorSchema = z.string().min(1).max(200);
 
-/** `GET /api/inbox`: by state, reason, type and accounting dates, newest received first. */
+/** `GET /api/inbox`: by state, reason, type, document and accounting dates, newest first. */
 export const inboxQuerySchema = z
   .object({
     state: eventStateSchema.optional(),
     reason: holdReasonSchema.optional(),
     type: eventTypeSchema.optional(),
+    /** Hub's document number: the events of one invoice, payment or expense. */
+    document: z.string().trim().min(1).max(100).optional(),
     from: dateSchema.optional(),
     to: dateSchema.optional(),
     cursor: cursorSchema.optional(),
@@ -117,6 +124,8 @@ export const inboxEventDetailSchema = inboxEventSchema
     payload: z.record(z.string(), z.unknown()),
     payloadHash: z.string(),
     requestId: z.string(),
+    /** For an event held `PERIOD_CLOSED`: the day a move posts it on (rule 15). */
+    moveOn: dateSchema.nullable(),
     actions: z.array(inboxActionSchema),
   })
   .meta({ id: 'InboxEventDetail' });

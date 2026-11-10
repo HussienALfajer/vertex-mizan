@@ -8022,6 +8022,16 @@
             }
           },
           {
+            "name": "document",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            }
+          },
+          {
             "name": "from",
             "required": false,
             "in": "query",
@@ -11980,6 +11990,14 @@
             "nullable": true,
             "type": "string"
           },
+          "hubDocument": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/EntryHubDocument"
+              }
+            ]
+          },
           "description": {
             "type": "string"
           },
@@ -12111,6 +12129,7 @@
           "postedAt",
           "source",
           "sourceRef",
+          "hubDocument",
           "description",
           "reference",
           "reverses",
@@ -12125,6 +12144,27 @@
           "attachments",
           "previousHash",
           "hash"
+        ],
+        "additionalProperties": false
+      },
+      "EntryHubDocument": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "number": {
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "id",
+          "number"
         ],
         "additionalProperties": false
       },
@@ -14139,6 +14179,12 @@
               }
             ]
           },
+          "hubEventId": {
+            "nullable": true,
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
           "openedByEntryId": {
             "type": "string",
             "format": "uuid",
@@ -14183,6 +14229,7 @@
           "adjusted",
           "asOf",
           "hubDocument",
+          "hubEventId",
           "openedByEntryId",
           "bookCurrency",
           "parallelCurrency",
@@ -16862,6 +16909,11 @@
               }
             ]
           },
+          "document": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
           "from": {
             "type": "string",
             "format": "date",
@@ -16981,6 +17033,10 @@
             "nullable": true,
             "type": "string"
           },
+          "clientName": {
+            "nullable": true,
+            "type": "string"
+          },
           "accountingDate": {
             "type": "string",
             "format": "date",
@@ -17044,6 +17100,7 @@
           "documentType",
           "documentId",
           "documentNumber",
+          "clientName",
           "accountingDate",
           "occurredAt",
           "receivedAt",
@@ -17164,6 +17221,10 @@
             "nullable": true,
             "type": "string"
           },
+          "clientName": {
+            "nullable": true,
+            "type": "string"
+          },
           "accountingDate": {
             "type": "string",
             "format": "date",
@@ -17225,6 +17286,12 @@
           "requestId": {
             "type": "string"
           },
+          "moveOn": {
+            "nullable": true,
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          },
           "actions": {
             "type": "array",
             "items": {
@@ -17243,6 +17310,7 @@
           "documentType",
           "documentId",
           "documentNumber",
+          "clientName",
           "accountingDate",
           "occurredAt",
           "receivedAt",
@@ -17255,6 +17323,7 @@
           "payload",
           "payloadHash",
           "requestId",
+          "moveOn",
           "actions"
         ],
         "additionalProperties": false

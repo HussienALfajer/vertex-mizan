@@ -98,6 +98,7 @@ export const m1Item: OpenItem = {
   ...m1,
   asOf: '2026-11-09',
   hubDocument: null,
+  hubEventId: null,
   openedByEntryId: entryId(3),
   bookCurrency: 'SYP',
   parallelCurrency: 'USD',
@@ -150,6 +151,8 @@ export const m1Extended: OpenItem = {
 export const hubOpenItem: OpenItem = {
   ...hubItem,
   asOf: '2026-11-09',
+  // The posted invoice of `inbox-mocks.ts`.
+  hubEventId: '01900000-0000-7000-a000-000000000001',
   hubDocument: {
     type: 'invoice',
     id: '01900000-0000-7000-9000-000000000077',

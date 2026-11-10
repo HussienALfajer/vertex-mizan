@@ -398,6 +398,13 @@ export const entryPreviewSchema = z
 
 export type EntryPreview = z.infer<typeof entryPreviewSchema>;
 
+/** The Hub document behind an entry from Hub (S05): its type, Hub id and number. */
+export const entryHubDocumentSchema = z
+  .object({ type: z.string(), id: z.string(), number: z.string().nullable() })
+  .meta({ id: 'EntryHubDocument' });
+
+export type EntryHubDocument = z.infer<typeof entryHubDocumentSchema>;
+
 /** A posted entry with its lines, attachments, reversal links and place in the chain. */
 export const entrySchema = z
   .object({
@@ -409,6 +416,8 @@ export const entrySchema = z
     postedAt: z.iso.datetime({ offset: true }),
     source: entrySourceSchema,
     sourceRef: z.string().nullable(),
+    /** The Hub document a Hub event's entry posts (S05 "Screens"); `sourceRef` is its event. */
+    hubDocument: entryHubDocumentSchema.nullable(),
     description: z.string(),
     reference: z.string().nullable(),
     reverses: entryNumberSchema.extend({ id: z.uuid() }).nullable(),

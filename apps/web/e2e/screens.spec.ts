@@ -13,10 +13,33 @@ import {
   reversal,
   submittedDraft,
 } from './entry-mocks';
+import {
+  closedMonth,
+  dismissed,
+  inboxReads,
+  overpayment,
+  postedInvoice,
+  rateMissing,
+  recordedRate,
+  resolved,
+  retainerInvoice,
+} from './inbox-mocks';
 import { rateReads, today } from './rate-mocks';
 import { client, m1, receivablesReads } from './receivables-mocks';
 import { expect, expectNoPageOverflow, screenshot, test, widths } from './test';
 import { brokenReport, emailedAnchor, trustReads } from './trust-mocks';
+
+/** `/inbox/:id` in each state, and held for the reasons the page explains differently. */
+const inboxScreenEvents = [
+  rateMissing,
+  overpayment,
+  closedMonth,
+  retainerInvoice,
+  postedInvoice,
+  resolved,
+  dismissed,
+  recordedRate,
+];
 
 // RTL screenshots of every screen in both themes at each width: the design review evidence.
 for (const colorScheme of ['light', 'dark'] as const) {
@@ -374,6 +397,55 @@ for (const colorScheme of ['light', 'dark'] as const) {
           await expect(page.getByRole('table', { name: ar.entries.lines.label })).toBeVisible();
           await expectNoPageOverflow(page);
           await screenshot(page, testInfo, `account-lines-${colorScheme}-${width}`);
+        });
+      });
+
+      test.describe('inbox screens', () => {
+        test.use({ me: owner, api: { ...receivablesReads, ...inboxReads } });
+        test.beforeEach(async ({ page }) => {
+          await page.clock.setFixedTime(today);
+        });
+
+        for (const view of ['held', 'all'] as const) {
+          test(`inbox: ${view}`, async ({ page }, testInfo) => {
+            await page.goto(`/inbox?view=${view}`);
+            await expect(
+              page.getByRole('table', { name: `${ar.inbox.table.label}: ${ar.inbox.views[view]}` }),
+            ).toBeVisible();
+            await expectNoPageOverflow(page);
+            await screenshot(page, testInfo, `inbox-${view}-${colorScheme}-${width}`);
+          });
+        }
+
+        for (const event of inboxScreenEvents) {
+          test(`inbox event: ${event.state} ${event.reason ?? ''}`, async ({ page }, testInfo) => {
+            await page.goto(`/inbox/${event.id}`);
+            await expect(page.getByRole('table', { name: ar.inbox.event.history })).toBeVisible();
+            await expectNoPageOverflow(page);
+            await screenshot(
+              page,
+              testInfo,
+              `inbox-event-${event.state}-${(event.reason ?? 'none').toLowerCase()}-${colorScheme}-${width}`,
+            );
+          });
+        }
+
+        test('inbox: resolve dialog', async ({ page }, testInfo) => {
+          await page.goto(`/inbox/${overpayment.id}`);
+          await page.getByRole('button', { name: ar.inbox.resolve.label }).click();
+          await expect(page.getByRole('dialog', { name: ar.inbox.resolve.title })).toBeVisible();
+          await screenshot(page, testInfo, `inbox-resolve-${colorScheme}-${width}`, {
+            fullPage: false,
+          });
+        });
+
+        test('inbox: move dialog', async ({ page }, testInfo) => {
+          await page.goto(`/inbox/${closedMonth.id}`);
+          await page.getByRole('button', { name: ar.inbox.move.label }).click();
+          await expect(page.getByRole('dialog', { name: ar.inbox.move.title })).toBeVisible();
+          await screenshot(page, testInfo, `inbox-move-${colorScheme}-${width}`, {
+            fullPage: false,
+          });
         });
       });
 

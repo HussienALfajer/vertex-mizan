@@ -37,11 +37,12 @@ Spec: `docs/specs/S05-posting-api-event-inbox.md` (Approved, owner 2026-11-07) �
 - [x] checks and reviewers (`reviewer`, `accountant-reviewer`; their re-reviews on the fix commits found nothing new; `pnpm verify --e2e-all` green), PR with auto-merge
 
 ## PR 4 — The inbox screens (ui, web, e2e)
-- [ ] ui: `EventStateBadge`, `JsonViewer`, `EntryPicker`, tested, both densities, on the design-system page
-- [ ] web: the sidebar's "صندوق الوارد" with the held count; `/inbox` (tabs, filters, retry from the row, empty, loading and error states); `/inbox/:id` (envelope, key fields with Amount, raw JSON, the hold and what fixes it, the event it waits for, actions history, entries; retry, post in the next open period, resolve with `EntryPicker`, dismiss for the owner); the Hub document and event link on `/entries/:id` and `/open-items/:id`; the palette's "صندوق الوارد" and "حدث…"; `ar.inbox`
-- [ ] e2e: the inbox flows; RTL screenshots light and dark at 360, 768 and 1280 px, looked at
-- [ ] wiring (Web), docs (`apps/web/CLAUDE.md`, `packages/ui/CLAUDE.md`, `docs/ROADMAP.md`)
-- [ ] checks and reviewer, PR with auto-merge and Auto-fix
+- [x] api (additive): the inbox's rows name the client, an event held `PERIOD_CLOSED` its move's day (`moveOn`), `GET /api/inbox?document=` one Hub document's events, an entry its Hub document (`hubDocument`), an open item the event that opened it (`hubEventId`); tests; `openapi.json` regenerated
+- [x] ui: `EventStateBadge`, `JsonViewer`, `EntryPicker`, tested, both densities, on the design-system page
+- [x] web: the sidebar's "صندوق الوارد" with the held count; `/inbox` (tabs, filters, retry from the row, empty, loading and error states); `/inbox/:id` (envelope, key fields with Amount, raw JSON, the hold and what fixes it, the event it waits for, actions history, entries; retry, post in the next open period, resolve with `EntryPicker`, dismiss for the owner); the Hub document and event link on `/entries/:id` and `/open-items/:id`; the palette's "صندوق الوارد" and "حدث…"; `ar.inbox`
+- [x] e2e: the inbox flows; RTL screenshots light and dark at 360, 768 and 1280 px, looked at
+- [x] wiring (Web), docs (`apps/web/CLAUDE.md`, `packages/ui/CLAUDE.md`, `packages/i18n/CLAUDE.md`, `packages/contracts/CLAUDE.md`, `docs/ROADMAP.md`)
+- [x] checks and reviewers (`reviewer`, `accountant-reviewer`; their findings fixed: the client of a payment row, the move's day tested, the move's wording; their re-reviews on the fix commit found nothing new; `pnpm verify --e2e-all` green), PR with auto-merge
 
 ## PR 5 — The settings screens (ui, web, e2e)
 - [ ] ui: `SecretReveal`, tested, both densities, on the design-system page

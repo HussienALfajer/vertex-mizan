@@ -1,14 +1,16 @@
 import type { INestApplication } from '@nestjs/common';
 import type {
   Company,
+  Entry,
   InboxCounts,
   InboxEventDetail,
   InboxPage,
   PostingRule,
 } from '@vertex-mizan/contracts';
 import { auditEntries, type Database, withCompany } from '@vertex-mizan/db';
+import pg from 'pg';
 import { v7 as uuidv7 } from 'uuid';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, inject, it } from 'vitest';
 import { createTestApp } from './app.js';
 import { books, posted, purchase, today } from './books.js';
 import { expectGuarded } from './guards.js';
@@ -60,13 +62,35 @@ describe('GET /api/inbox', () => {
     expect(events[0]).toMatchObject({
       documentType: 'invoice',
       documentNumber: documents.invoice.number,
+      clientName: documents.client.name,
       accountingDate: today(),
       entries: [{ id: issued.body.entries[0].id }],
     });
+    // The entry names its Hub document and its event; the item it opened names the event too.
+    const entry = await book.owner.browser.get(`/api/entries/${issued.body.entries[0].id}`);
+    expect(entry.body).toMatchObject({
+      source: 'hub_event',
+      sourceRef: issued.body.inbox_id,
+      hubDocument: { type: 'invoice', id: documents.invoice.id, number: documents.invoice.number },
+    });
+    const itemId = (entry.body as Entry).lines.find((line) => line.item)?.item?.id;
+    const item = await book.owner.browser.get(`/api/open-items/${itemId}`);
+    expect(item.body).toMatchObject({ hubEventId: issued.body.inbox_id });
     const heldOnly = await book.owner.browser.get('/api/inbox', { state: 'held' });
     expect((heldOnly.body as InboxPage).events).toHaveLength(1);
     const byType = await book.owner.browser.get('/api/inbox', { type: 'invoice.issued' });
     expect((byType.body as InboxPage).events).toHaveLength(1);
+    const byDocument = await book.owner.browser.get('/api/inbox', {
+      document: documents.invoice.number,
+    });
+    // A payment names no client: its invoice does.
+    expect(events[1]).toMatchObject({
+      type: 'payment.recorded',
+      clientName: documents.client.name,
+    });
+    expect((byDocument.body as InboxPage).events.map((event) => event.type)).toEqual([
+      'invoice.issued',
+    ]);
     expect((await book.owner.browser.get('/api/inbox', { type: 'invoice.unknown' })).status).toBe(
       422,
     );
@@ -80,6 +104,8 @@ describe('GET /api/inbox', () => {
     expect(detail.status).toBe(200);
     const event = detail.body as InboxEventDetail;
     expect(event.payload).toMatchObject({ method: 'bank_transfer', amount: 50_000 });
+    // Only an event held PERIOD_CLOSED has a day to move to.
+    expect(event.moveOn).toBeNull();
     expect(event.actions.map((action) => action.action)).toEqual(['received', 'held']);
     expect(event.actions[0]?.actor).toMatchObject({ kind: 'api_client', id: hub.id });
     // The auditor reads; another company's id is not found.
@@ -91,6 +117,58 @@ describe('GET /api/inbox', () => {
     expect((await other.owner.browser.get(`/api/inbox/${held.body.inbox_id}`)).body.code).toBe(
       'NOT_FOUND',
     );
+  });
+
+  it('answers the day a move posts on, and the move posts on it', async () => {
+    const book = await books(app, db);
+    const hub = await hubClient(app, book.owner);
+    // An invoice dated in last month, its rates recorded, and last month closed: S07 brings the
+    // close; here the owner role closes it, as the ledger tests close months.
+    const [year, month] = today().split('-').map(Number) as [number, number];
+    const last = month === 1 ? `${year - 1}-12` : `${year}-${String(month - 1).padStart(2, '0')}`;
+    const dated = `${last}-15`;
+    for (const [type, rate] of [
+      ['bulletin', '120.0000'],
+      ['market', '120.5000'],
+    ] as const) {
+      const recorded = await book.owner.browser.post('/api/rates', {
+        effectiveOn: dated,
+        base: 'USD',
+        quote: 'SYP',
+        rate,
+        type,
+        source: 'manual',
+      });
+      expect(recorded.status, JSON.stringify(recorded.body)).toBe(201);
+    }
+    const owner = new pg.Client({ connectionString: inject('ownerUrl') });
+    await owner.connect();
+    try {
+      await owner.query('begin');
+      await owner.query(`select set_config('app.company_id', $1, true)`, [book.companyId]);
+      await owner.query('alter table periods disable trigger period_rules');
+      await owner.query(
+        `insert into periods (id, company_id, period, fiscal_year, state) values ($1, $2, $3, $4, 'closed')`,
+        [uuidv7(), book.companyId, last, Number(last.slice(0, 4))],
+      );
+      await owner.query('alter table periods enable always trigger period_rules');
+      await owner.query('commit');
+    } finally {
+      await owner.end();
+    }
+    const held = await hub.send(invoiceIssued(hubDocuments(), dated));
+    expect(held.body).toMatchObject({ status: 'held', reason: 'PERIOD_CLOSED' });
+    const thisMonth = `${today().slice(0, 7)}-01`;
+    const detail = await book.owner.browser.get(`/api/inbox/${held.body.inbox_id}`);
+    expect((detail.body as InboxEventDetail).moveOn).toBe(thisMonth);
+    const moved = await book.owner.browser.post(
+      `/api/inbox/${held.body.inbox_id}/post-in-open-period`,
+      { reason: 'وصلت الفاتورة بعد الإقفال' },
+    );
+    expect(moved.status, JSON.stringify(moved.body)).toBe(200);
+    const after = moved.body as InboxEventDetail;
+    expect([after.state, after.reason, after.detail]).toEqual(['posted', null, null]);
+    expect(after).toMatchObject({ postedOn: thisMonth, moveOn: null });
   });
 
   it('answers the guard on every route', async () => {

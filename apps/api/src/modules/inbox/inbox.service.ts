@@ -19,6 +19,7 @@ import {
   inboundEvents,
   journalEntries,
   moveEvent,
+  periods,
   resolveEvent,
   retryEvent,
   SYSTEM_NAME,
@@ -26,6 +27,7 @@ import {
   users,
   withCompany,
 } from '@vertex-mizan/db';
+import { firstOpenDayAfter } from '@vertex-mizan/ledger';
 import { and, asc, desc, eq, gte, inArray, lte, sql } from 'drizzle-orm';
 import { actorOf, type CompanyRouteAccess } from '../../core/access/access.js';
 import { lockCompanyForWrite } from '../../core/access/company-lock.js';
@@ -77,6 +79,12 @@ const withState = (tx: Transaction) =>
       ),
     );
 
+/** The client a payload names by Hub's name (S05 "Screens": the inbox's rows), if it names one. */
+function clientNameOf(payload: unknown): string | null {
+  const client = (payload as { client?: { name?: unknown } } | null)?.client;
+  return typeof client?.name === 'string' ? client.name : null;
+}
+
 /**
  * The event inbox (S05 rules 15–18, "API"): the events Hub sent with their states, the held
  * counts, an event with its payload and history, and the accountant's four actions through
@@ -100,6 +108,7 @@ export class InboxService {
             query.state ? eq(inboundEventStates.state, query.state) : undefined,
             query.reason ? eq(inboundEventStates.holdReason, query.reason) : undefined,
             query.type ? eq(inboundEvents.type, query.type) : undefined,
+            query.document ? eq(inboundEvents.documentNumber, query.document) : undefined,
             query.from ? gte(inboundEvents.accountingDate, query.from) : undefined,
             query.to ? lte(inboundEvents.accountingDate, query.to) : undefined,
             after ? afterCursor(inboundEvents.createdAt, inboundEvents.id, after) : undefined,
@@ -201,11 +210,24 @@ export class InboxService {
       .leftJoin(apiClients, eq(apiClients.id, inboundEventActions.actorApiClientId))
       .where(eq(inboundEventActions.eventId, id))
       .orderBy(asc(inboundEventActions.createdAt), asc(inboundEventActions.id));
+    const closed =
+      event.reason === 'PERIOD_CLOSED'
+        ? await tx
+            .select({ period: periods.period })
+            .from(periods)
+            .where(sql`${periods.state} <> 'open'`)
+        : null;
     return {
       ...event,
       payload: row.event.payload as Record<string, unknown>,
       payloadHash: row.event.payloadHash,
       requestId: row.event.requestId,
+      moveOn: closed
+        ? firstOpenDayAfter(
+            event.accountingDate,
+            closed.map((period) => period.period),
+          )
+        : null,
       actions: actions.map(({ action, personName, clientName }): InboxAction => {
         const kind = action.actorKind as InboxAction['actor']['kind'];
         return {
@@ -259,6 +281,35 @@ export class InboxService {
             .select(entryColumns)
             .from(journalEntries)
             .where(inArray(journalEntries.id, resolvedIds));
+    // A payment, a void or a due-date change names no client: its item's events do (the
+    // invoice for `invoice:<id>`, the recorded expense for `project_expense:<id>`).
+    const unnamed = [
+      ...new Set(
+        rows.flatMap(({ event }) =>
+          clientNameOf(event.payload) === null && event.itemKey !== null ? [event.itemKey] : [],
+        ),
+      ),
+    ];
+    const itemClients =
+      unnamed.length === 0
+        ? []
+        : await tx
+            .select({
+              itemKey: inboundEvents.itemKey,
+              name: sql<string>`${inboundEvents.payload} -> 'client' ->> 'name'`,
+            })
+            .from(inboundEvents)
+            .where(
+              and(
+                inArray(inboundEvents.itemKey, unnamed),
+                sql`jsonb_typeof(${inboundEvents.payload} -> 'client' -> 'name') = 'string'`,
+              ),
+            )
+            .orderBy(asc(inboundEvents.receivedAt));
+    const clientOf = (event: Row['event']): string | null =>
+      clientNameOf(event.payload) ??
+      itemClients.find((row) => row.itemKey === event.itemKey)?.name ??
+      null;
     const ref = (entry: InboxEntry): InboxEntry => ({
       id: entry.id,
       fiscalYear: entry.fiscalYear,
@@ -277,6 +328,7 @@ export class InboxService {
         documentType: event.documentType as InboxEvent['documentType'],
         documentId: event.documentId,
         documentNumber: event.documentNumber,
+        clientName: clientOf(event),
         accountingDate: event.accountingDate,
         occurredAt: event.occurredAt.toISOString(),
         receivedAt: event.receivedAt.toISOString(),
