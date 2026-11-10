@@ -320,9 +320,9 @@ function EventList({
             ? t.palette.findNone
             : filtered
               ? t.empty.filtered
-              : view === 'held'
-                ? t.empty.held
-                : t.empty.none
+              : view === 'all'
+                ? t.empty.none
+                : t.empty[view]
         }
       />
     );

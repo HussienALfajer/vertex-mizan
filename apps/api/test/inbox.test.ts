@@ -8,8 +8,9 @@ import type {
   PostingRule,
 } from '@vertex-mizan/contracts';
 import { auditEntries, type Database, withCompany } from '@vertex-mizan/db';
+import pg from 'pg';
 import { v7 as uuidv7 } from 'uuid';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, inject, it } from 'vitest';
 import { createTestApp } from './app.js';
 import { books, posted, purchase, today } from './books.js';
 import { expectGuarded } from './guards.js';
@@ -82,6 +83,11 @@ describe('GET /api/inbox', () => {
     const byDocument = await book.owner.browser.get('/api/inbox', {
       document: documents.invoice.number,
     });
+    // A payment names no client: its invoice does.
+    expect(events[1]).toMatchObject({
+      type: 'payment.recorded',
+      clientName: documents.client.name,
+    });
     expect((byDocument.body as InboxPage).events.map((event) => event.type)).toEqual([
       'invoice.issued',
     ]);
@@ -111,6 +117,58 @@ describe('GET /api/inbox', () => {
     expect((await other.owner.browser.get(`/api/inbox/${held.body.inbox_id}`)).body.code).toBe(
       'NOT_FOUND',
     );
+  });
+
+  it('answers the day a move posts on, and the move posts on it', async () => {
+    const book = await books(app, db);
+    const hub = await hubClient(app, book.owner);
+    // An invoice dated in last month, its rates recorded, and last month closed: S07 brings the
+    // close; here the owner role closes it, as the ledger tests close months.
+    const [year, month] = today().split('-').map(Number) as [number, number];
+    const last = month === 1 ? `${year - 1}-12` : `${year}-${String(month - 1).padStart(2, '0')}`;
+    const dated = `${last}-15`;
+    for (const [type, rate] of [
+      ['bulletin', '120.0000'],
+      ['market', '120.5000'],
+    ] as const) {
+      const recorded = await book.owner.browser.post('/api/rates', {
+        effectiveOn: dated,
+        base: 'USD',
+        quote: 'SYP',
+        rate,
+        type,
+        source: 'manual',
+      });
+      expect(recorded.status, JSON.stringify(recorded.body)).toBe(201);
+    }
+    const owner = new pg.Client({ connectionString: inject('ownerUrl') });
+    await owner.connect();
+    try {
+      await owner.query('begin');
+      await owner.query(`select set_config('app.company_id', $1, true)`, [book.companyId]);
+      await owner.query('alter table periods disable trigger period_rules');
+      await owner.query(
+        `insert into periods (id, company_id, period, fiscal_year, state) values ($1, $2, $3, $4, 'closed')`,
+        [uuidv7(), book.companyId, last, Number(last.slice(0, 4))],
+      );
+      await owner.query('alter table periods enable always trigger period_rules');
+      await owner.query('commit');
+    } finally {
+      await owner.end();
+    }
+    const held = await hub.send(invoiceIssued(hubDocuments(), dated));
+    expect(held.body).toMatchObject({ status: 'held', reason: 'PERIOD_CLOSED' });
+    const thisMonth = `${today().slice(0, 7)}-01`;
+    const detail = await book.owner.browser.get(`/api/inbox/${held.body.inbox_id}`);
+    expect((detail.body as InboxEventDetail).moveOn).toBe(thisMonth);
+    const moved = await book.owner.browser.post(
+      `/api/inbox/${held.body.inbox_id}/post-in-open-period`,
+      { reason: 'وصلت الفاتورة بعد الإقفال' },
+    );
+    expect(moved.status, JSON.stringify(moved.body)).toBe(200);
+    const after = moved.body as InboxEventDetail;
+    expect([after.state, after.reason, after.detail]).toEqual(['posted', null, null]);
+    expect(after).toMatchObject({ postedOn: thisMonth, moveOn: null });
   });
 
   it('answers the guard on every route', async () => {

@@ -41,7 +41,10 @@ export const inboxEventSchema = z
     documentType: documentTypeSchema,
     documentId: z.string(),
     documentNumber: z.string().nullable(),
-    /** The client the payload names, by Hub's name (none for a rate or an expense). */
+    /**
+     * The client by Hub's name: the payload's, or for an event that names none (a payment, a void)
+     * the one its item's events name; none for a rate or before the item's first event arrives.
+     */
     clientName: z.string().nullable(),
     accountingDate: dateSchema,
     occurredAt: instantSchema,

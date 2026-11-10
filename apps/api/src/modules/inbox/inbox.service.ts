@@ -79,7 +79,7 @@ const withState = (tx: Transaction) =>
       ),
     );
 
-/** The client a payload names by Hub's name (S05 "Screens": the inbox's rows). */
+/** The client a payload names by Hub's name (S05 "Screens": the inbox's rows), if it names one. */
 function clientNameOf(payload: unknown): string | null {
   const client = (payload as { client?: { name?: unknown } } | null)?.client;
   return typeof client?.name === 'string' ? client.name : null;
@@ -281,6 +281,35 @@ export class InboxService {
             .select(entryColumns)
             .from(journalEntries)
             .where(inArray(journalEntries.id, resolvedIds));
+    // A payment, a void or a due-date change names no client: its item's events do (the
+    // invoice for `invoice:<id>`, the recorded expense for `project_expense:<id>`).
+    const unnamed = [
+      ...new Set(
+        rows.flatMap(({ event }) =>
+          clientNameOf(event.payload) === null && event.itemKey !== null ? [event.itemKey] : [],
+        ),
+      ),
+    ];
+    const itemClients =
+      unnamed.length === 0
+        ? []
+        : await tx
+            .select({
+              itemKey: inboundEvents.itemKey,
+              name: sql<string>`${inboundEvents.payload} -> 'client' ->> 'name'`,
+            })
+            .from(inboundEvents)
+            .where(
+              and(
+                inArray(inboundEvents.itemKey, unnamed),
+                sql`jsonb_typeof(${inboundEvents.payload} -> 'client' -> 'name') = 'string'`,
+              ),
+            )
+            .orderBy(asc(inboundEvents.receivedAt));
+    const clientOf = (event: Row['event']): string | null =>
+      clientNameOf(event.payload) ??
+      itemClients.find((row) => row.itemKey === event.itemKey)?.name ??
+      null;
     const ref = (entry: InboxEntry): InboxEntry => ({
       id: entry.id,
       fiscalYear: entry.fiscalYear,
@@ -299,7 +328,7 @@ export class InboxService {
         documentType: event.documentType as InboxEvent['documentType'],
         documentId: event.documentId,
         documentNumber: event.documentNumber,
-        clientName: clientNameOf(event.payload),
+        clientName: clientOf(event),
         accountingDate: event.accountingDate,
         occurredAt: event.occurredAt.toISOString(),
         receivedAt: event.receivedAt.toISOString(),
