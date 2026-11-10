@@ -2,7 +2,7 @@ import { type CompanyLedgers, type CurrencyCode, money } from '@vertex-mizan/con
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import { balanceEntry, realisedDifferenceLines } from './balance.js';
-import { reverseLines } from './carried.js';
+import { clearOpenItem, reverseLines } from './carried.js';
 import { type CarriedAmounts, carriedLine, type Line, negate } from './lines.js';
 import { measuredLine } from './measure.js';
 import { daysBetween } from './periods.js';
@@ -1108,6 +1108,31 @@ describe('reissueParts', () => {
     ).toThrow(RangeError);
   });
 
+  it("builds the next month's re-issue: November at 125, December elapsed at 124 and cleared, a 420.00 SYP gain", () => {
+    const { catchUpMinor, months } = reissueParts(
+      overTimeMonths(90_000n, '2026-11-15', '2026-12-14', '2027-01-05'),
+      new Set(['2026-11']),
+    );
+    const december = months[0];
+    if (december === undefined) throw new Error('December');
+    const asset = measuredLine(
+      { account: '113001', amount: money(december.transactionMinor, 'USD') },
+      measuredOn(sypUsd, december.lastDay, '124.0000'),
+    );
+    expect(asset.bookMinor).toBe(5_208_000n);
+    const at = measuredOn(sypUsd, '2027-01-05', '125.0000');
+    const lines: Line[] = [
+      measuredLine({ account: '112001', amount: money(90_000n, 'USD') }, at),
+      measuredLine({ account: '411001', amount: money(-catchUpMinor, 'USD') }, at),
+      carried('113001', clearOpenItem(asset, -december.transactionMinor)),
+    ];
+    expect(lines.map((line) => line.bookMinor)).toEqual([11_250_000n, -6_000_000n, -5_208_000n]);
+    const differences = realisedDifferenceLines(sypUsd, lines, realised);
+    expect(differences.map((line) => [line.account, line.bookMinor, line.parallelMinor])).toEqual([
+      ['421001', -42_000n, 0n],
+    ]);
+  });
+
   it('converts the USD books case at 122 with no rounding line: 595.08 = 317.38 + 277.70', () => {
     const months = overTimeMonths(7_260_000n, '2026-11-15', '2026-12-14', '2026-12-07');
     const { catchUpMinor, months: rest } = reissueParts(months, new Set(['2026-11']));
@@ -1159,47 +1184,92 @@ describe('a re-issue', () => {
     );
   });
 
-  it('builds an issue entry of new measurements that balances in every shape, and whose reversal nets to zero', () => {
+  it('builds the issue entry rule 9 posts: catch-up and deferral measured anew, elapsed items cleared at what they carry with the realised residual; balanced in every shape, its reversal netting to zero', () => {
     fc.assert(
-      fc.property(milestoneArb, deferralArb, ({ ledgers, amount, invoice }, { from, to }) => {
-        const months = overTimeMonths(amount.amountMinor, from, to, invoice.on);
-        const takenBack = new Set(months.slice(0, 1).map((m) => m.month));
-        const { catchUpMinor, months: rest } = reissueParts(months, takenBack);
-        const deferredMinor = sum(rest.filter((m) => !m.elapsed).map((m) => m.transactionMinor));
-        const elapsedMinor = sum(rest.filter((m) => m.elapsed).map((m) => m.transactionMinor));
-        const lines: Line[] = [
-          measuredLine(
-            {
-              account: '112001',
-              amount: money(amount.amountMinor - elapsedMinor, amount.currency),
-            },
-            invoice,
-          ),
-        ];
-        if (catchUpMinor !== 0n) {
-          lines.push(
-            measuredLine(
-              { account: '411001', amount: money(-catchUpMinor, amount.currency) },
-              invoice,
-            ),
+      fc.property(
+        fc.record({
+          start: fc.integer({ min: 0, max: 300 }),
+          length: fc.integer({ min: 0, max: 120 }),
+          voidAfter: fc.integer({ min: 0, max: 200 }),
+          reissueAfter: fc.integer({ min: 1, max: 60 }),
+          amount: fc.bigInt({ min: 1n, max: 10n ** 12n }),
+          reissued: fc.bigInt({ min: 1n, max: 10n ** 12n }),
+          currency: fc.constantFrom<CurrencyCode>('USD', 'SYP'),
+          shape: fc.constantFrom(...shapes),
+          monthEndRate: fc.integer({ min: 1, max: 30_000 }),
+          reissueRate: fc.integer({ min: 1, max: 30_000 }),
+        }),
+        (input) => {
+          const [ledgers] = input.shape;
+          const from = dateAfter(input.start);
+          const to = dateAfter(input.start + input.length);
+          const voidedOn = dateAfter(input.start + input.voidAfter);
+          const reissuedOn = dateAfter(input.start + input.voidAfter + input.reissueAfter);
+          // The void took back the months released before it: those that ended before its date.
+          const takenBack = new Set(
+            overTimeMonths(input.amount, from, to, from)
+              .filter((m) => m.lastDay < voidedOn)
+              .map((m) => m.month),
           );
-        }
-        if (deferredMinor !== 0n) {
-          lines.push(
-            measuredLine(
-              { account: '212001', amount: money(-deferredMinor, amount.currency) },
-              invoice,
-            ),
+          const { catchUpMinor, months } = reissueParts(
+            overTimeMonths(input.reissued, from, to, reissuedOn),
+            takenBack,
           );
-        }
-        fc.pre(lines.length >= 2);
-        const entry = balanceEntry({ ...invoice, ledgers, lines, rounding: { account: '541003' } });
-        const both = [...entry, ...reverseLines(entry)];
-        expect(sum(entry.map((line) => line.bookMinor))).toBe(0n);
-        expect(sum(entry.map((line) => line.parallelMinor ?? 0n))).toBe(0n);
-        expect(sum(both.map((line) => line.bookMinor))).toBe(0n);
-        expect(sum(both.map((line) => line.parallelMinor ?? 0n))).toBe(0n);
-      }),
+          const at = measuredOn(ledgers, reissuedOn, `${input.reissueRate}.0000`);
+          const money_ = (minor: bigint) => money(minor, input.currency);
+          const lines: Line[] = [
+            measuredLine({ account: '112001', amount: money_(input.reissued) }, at),
+          ];
+          if (catchUpMinor !== 0n) {
+            lines.push(measuredLine({ account: '411001', amount: money_(-catchUpMinor) }, at));
+          }
+          const deferredMinor = sum(
+            months.filter((m) => !m.elapsed).map((m) => m.transactionMinor),
+          );
+          if (deferredMinor !== 0n) {
+            lines.push(measuredLine({ account: '212001', amount: money_(-deferredMinor) }, at));
+          }
+          for (const month of months.filter((m) => m.elapsed && m.transactionMinor !== 0n)) {
+            const monthEnd = measuredOn(ledgers, month.lastDay, `${input.monthEndRate}.0000`);
+            const asset = measuredLine(
+              { account: '113001', amount: money_(month.transactionMinor) },
+              monthEnd,
+            );
+            const elapsedEntry = balanceEntry({
+              ...monthEnd,
+              lines: [
+                asset,
+                measuredLine(
+                  { account: '411001', amount: money_(-month.transactionMinor) },
+                  monthEnd,
+                ),
+              ],
+              rounding: { account: '541003' },
+            });
+            expect(elapsedEntry).toHaveLength(2);
+            const clearing = clearOpenItem(asset, -month.transactionMinor);
+            // The item reaches zero in every ledger.
+            expect(clearing).toEqual(negate(asset));
+            lines.push(carried('113001', clearing));
+          }
+          const entry = balanceEntry({
+            ...at,
+            // A carried line makes the residual a realised difference (ADR 0013); new measurements
+            // alone leave rounding only, which balanceEntry() posts (S06 "Residuals").
+            lines: lines.some((line) => line.kind === 'carried')
+              ? [...lines, ...realisedDifferenceLines(ledgers, lines, realised)]
+              : lines,
+            rounding: { account: '541003' },
+          });
+          const own = entry.filter(
+            (line) => line.kind !== 'difference' && line.kind !== 'rounding',
+          );
+          expect(sum(own.map((line) => line.transaction.amountMinor))).toBe(0n);
+          const both = [...entry, ...reverseLines(entry)];
+          expect(sum(both.map((line) => line.bookMinor))).toBe(0n);
+          expect(sum(both.map((line) => line.parallelMinor ?? 0n))).toBe(0n);
+        },
+      ),
       { numRuns: 300 },
     );
   });
