@@ -2,11 +2,11 @@
 
 Status: Proposed
 
-S06 wrote these cases (S06 "Scenarios"); the owner approved their expected entries and outcomes on 2026-11-10, with three readings of S06 rule 15 (the refund payable carries the client and the project; one refund line for the rest of the remainder, measured once, with a liability and a revenue line per schedule; the accountant's split as the `split` step) and two answers: a cancellation with a remainder and no policy rate of its date is held `RATE_MISSING` before `NEEDS_DECISION`, as S06 rule 18 orders the holds, since the decision screen shows the refund's measurement; and the void of an invoice whose schedule the split cleared is held `NEEDS_DECISION` (`schedule_split_at_cancellation`) for a manual entry, since reversing the invoice's entry alone would leave the liability below zero. They stay `Proposed` until S06's feature slice brings their executors: the posting rule of `project.cancelled`, the holds `NEEDS_DECISION` (`cancelled_project_remainder`, `schedule_split_at_cancellation`), the inbox action "تقسيم المتبقي" (split the remainder) that the `split` step runs, the order key `project:<id>`, and the holds `RATE_MISSING` and `WAITING_FOR_EARLIER_EVENT` for this event (S06 rules 8, 15–18). `packages/ledger`'s `cancelledProjectRemainder()` and `cancelledProjectSplit()` compute it.
+S06 wrote these cases (S06 "Scenarios"); the owner approved their expected entries and outcomes on 2026-11-10, with three readings of S06 rule 15 (the refund payable carries the client and the project; one refund line for the rest of the remainder, measured once, with a liability and a revenue line per schedule; the accountant's split as the `split` step) and two answers: a cancellation with a remainder and no policy rate of its date is held `RATE_MISSING` before `NEEDS_DECISION`, as S06 rule 18 orders the holds, since the decision screen shows the refund's measurement; and the void of an invoice whose schedule the split cleared is held `NEEDS_DECISION` (`schedule_split_at_cancellation`) for a manual entry, since reversing the invoice's entry alone would leave the liability below zero. After the accounting review the owner answered two more on the same day: a deposit or milestone invoice issued after its project's cancellation, its milestone not done, is held `NEEDS_DECISION` (`invoiced_after_cancellation`) and split with the same action, all at the invoice's rates; and a void of an invoice with a deposit or milestone line is in its project's order, so it waits behind a held cancellation. The eleventh and twelfth cases follow those answers and await the owner's approval of their numbers. They stay `Proposed` until S06's feature slice brings their executors: the posting rule of `project.cancelled`, the holds `NEEDS_DECISION` (`cancelled_project_remainder`, `schedule_split_at_cancellation`, `invoiced_after_cancellation`), the inbox action "تقسيم المتبقي" (split the remainder) that the `split` step runs, the order key `project:<id>`, and the holds `RATE_MISSING` and `WAITING_FOR_EARLIER_EVENT` for this event (S06 rules 8, 15–18). `packages/ledger`'s `cancelledProjectRemainder()`, `cancelledProjectSplit()`, `milestoneLineAtIssue()` and `invoicedAfterCancellationSplit()` compute it.
 
 ## Rule
 
-When Hub cancels a project, what the project's point-in-time schedules still hold in contract liabilities (deposits and milestones invoiced and never reported done) is the accountant's to split. With nothing remaining, `project.cancelled` is recorded with no entry, and contract assets of milestones done before their invoices stay for those invoices. Otherwise the event is held `NEEDS_DECISION` (`cancelled_project_remainder`) with the remainder per schedule shown, and the accountant splits it: a transaction amount, from zero to the whole remainder, to service revenue, and the rest to a refund payable to the client. One entry dated on the cancellation's date: each schedule's liability is debited at the amounts it carries; the revenue part is credited at its carried share, cut across the schedules with cumulative rounding by transaction amount; the refund payable is a new measurement at each ledger's policy rate of the cancellation's date; each ledger's residual is a realised exchange difference. A later void of an invoice whose schedule the split cleared is held `NEEDS_DECISION` (`schedule_split_at_cancellation`) for the accountant's manual entry.
+When Hub cancels a project, what the project's point-in-time schedules still hold in contract liabilities (deposits and milestones invoiced and never reported done) is the accountant's to split. With nothing remaining, `project.cancelled` is recorded with no entry, and contract assets of milestones done before their invoices stay for those invoices. Otherwise the event is held `NEEDS_DECISION` (`cancelled_project_remainder`) with the remainder per schedule shown, and the accountant splits it: a transaction amount, from zero to the whole remainder, to service revenue, and the rest to a refund payable to the client. One entry dated on the cancellation's date: each schedule's liability is debited at the amounts it carries; the revenue part is credited at its carried share, cut across the schedules with cumulative rounding by transaction amount; the refund payable is a new measurement at each ledger's policy rate of the cancellation's date; each ledger's residual is a realised exchange difference. A later void of an invoice whose schedule the split cleared is held `NEEDS_DECISION` (`schedule_split_at_cancellation`) for the accountant's manual entry; a void received while the cancellation is held waits behind it, in the project's order. A deposit or milestone invoiced after the cancellation, its milestone not done, is held `NEEDS_DECISION` (`invoiced_after_cancellation`) and split the same way, every part measured anew at the invoice's rates.
 
 ## Basis
 
@@ -464,6 +464,110 @@ expect:
   outcome: { status: held, reason: NEEDS_DECISION, detail: schedule_split_at_cancellation }
 ```
 
+### Vertex Media: a deposit invoiced after its project's cancellation
+
+The owner's answer of 2026-11-10 to the accounting review. Hub keeps billing open on a cancelled project (Hub F05 M3) and issues the deposit's draft on 15 December, after the cancellation of 10 December found nothing to split and was recorded. Nothing is left to deliver, so a deferral would never be released: the invoice is held `NEEDS_DECISION` (`invoiced_after_cancellation`), and the accountant splits it with the same action. Its one entry, dated on its issue date, measures the receivable, the revenue part and the refund payable anew at that day's bulletin, 125, so no difference arises.
+
+```yaml
+case: a project cancelled with nothing invoiced is recorded; its 300.00 USD deposit invoiced on 15 Dec at 125 is held NEEDS_DECISION invoiced_after_cancellation; split 100.00 to revenue and 200.00 to the refund payable, all at 125
+company: { shape: syp-usd, book: SYP, parallel: USD, template: service-agency,
+           rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true } }
+rates:
+  - { date: 2026-12-15, base: USD, quote: SYP, rate: "125.0000", type: bulletin }
+steps:
+  - event: project.cancelled
+    accounting_date: 2026-12-10
+    payload: { project: { code: P1, kind: project, client: C1 }, client: C1, on: 2026-12-10 }
+  - event: invoice.issued
+    accounting_date: 2026-12-15
+    payload: { invoice: INV-2026-93, client: C1, contract: { code: P1, kind: project, client: C1 },
+               currency: USD, syp_per_usd: "126.0000", issued_on: 2026-12-15, due_on: 2026-12-30,
+               lines: [{ line: L1, amount: 30000, source: deposit, milestone: MS-1, service: S1 }] }
+    outcome: { status: held, reason: NEEDS_DECISION, detail: invoiced_after_cancellation }
+  - split: { step: 2, revenue: 10000 }
+    reason: "رسوم إلغاء متفق عليها؛ يُرد الباقي"
+expect:
+  entries:
+    - source: invoice.issued
+      date: 2026-12-15
+      lines:
+        # 300.00 USD × 125 = 37,500.00 SYP
+        - { account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 30000, book: 3750000, parallel: 30000 }
+        # 100.00 USD × 125 = 12,500.00 SYP, a new measurement like the receivable
+        - { account: "411001", dims: { client: C1, contract: P1, service: S1 }, currency: USD, amount: -10000, book: -1250000, parallel: -10000 }
+        # 200.00 USD × 125 = 25,000.00 SYP
+        - { account: "211003", dims: { client: C1, contract: P1 }, currency: USD, amount: -20000, book: -2500000, parallel: -20000 }
+  balances:
+    - { account: "212001", book: 0, parallel: 0 }
+    - { account: "411001", book: -1250000, parallel: -10000 }
+    - { account: "211003", book: -2500000, parallel: -20000 }
+  open_items:
+    - { item: INV-2026-93, account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 30000, book: 3750000, parallel: 30000 }
+```
+
+### Vertex Media: a void received while the cancellation waits for the split
+
+The owner's answer of 2026-11-10 to the accounting review. The cancellation of 10 December is held for the accountant with the remainder of the fourth case, 300.00 USD over MS-1 and MS-2. Hub voids MS-2's unpaid invoice on 14 December, before the split. A void of an invoice with a deposit or milestone line is in its project's order (`project:<id>`, S06 rule 17), so it waits behind the held cancellation instead of changing the remainder the accountant is deciding on. The split posts the fourth case's entry; the void, retried after it, finds its schedule cleared by the split and is held `NEEDS_DECISION` (`schedule_split_at_cancellation`), as in the eighth case.
+
+```yaml
+case: a cancellation held for the split; the void of MS-2's invoice on 14 Dec waits behind it; the split posts the fourth case's entry; the void is then held NEEDS_DECISION schedule_split_at_cancellation
+company: { shape: syp-usd, book: SYP, parallel: USD, template: service-agency,
+           rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true } }
+rates:
+  - { date: 2026-11-03, base: USD, quote: SYP, rate: "120.0000", type: bulletin }
+  - { date: 2026-12-01, base: USD, quote: SYP, rate: "122.5000", type: bulletin }
+  - { date: 2026-12-10, base: USD, quote: SYP, rate: "124.0000", type: bulletin }
+steps:
+  - event: invoice.issued
+    accounting_date: 2026-11-03
+    payload: { invoice: INV-2026-94, client: C1, contract: { code: P1, kind: project, client: C1 },
+               currency: USD, syp_per_usd: "122.0000", issued_on: 2026-11-03, due_on: 2026-11-18,
+               lines: [{ line: L1, amount: 7000, source: deposit, milestone: MS-1, service: S1 }] }
+  - event: invoice.issued
+    accounting_date: 2026-12-01
+    payload: { invoice: INV-2026-95, client: C1, contract: { code: P1, kind: project, client: C1 },
+               currency: USD, syp_per_usd: "123.0000", issued_on: 2026-12-01, due_on: 2026-12-16,
+               lines: [{ line: L1, amount: 23000, source: milestone, milestone: MS-2, service: S2 }] }
+  - event: project.cancelled
+    accounting_date: 2026-12-10
+    payload: { project: { code: P1, kind: project, client: C1 }, client: C1, on: 2026-12-10 }
+    outcome: { status: held, reason: NEEDS_DECISION, detail: cancelled_project_remainder }
+  - event: invoice.voided
+    accounting_date: 2026-12-14
+    payload: { invoice: INV-2026-95, voided_on: 2026-12-14, reason: "أُلغيت الفاتورة في Hub" }
+    outcome: { status: held, reason: WAITING_FOR_EARLIER_EVENT }
+  - split: { step: 3, revenue: 10000 }
+    reason: "ثلث المتبقي مستحق عن العمل المنجز"
+  - retry: 4
+    outcome: { status: held, reason: NEEDS_DECISION, detail: schedule_split_at_cancellation }
+expect:
+  entries:
+    - source: invoice.issued
+      date: 2026-11-03
+      lines:
+        - { account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 7000, book: 840000, parallel: 7000 }
+        - { account: "212001", dims: { client: C1, contract: P1 }, currency: USD, amount: -7000, book: -840000, parallel: -7000 }
+    - source: invoice.issued
+      date: 2026-12-01
+      lines:
+        - { account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 23000, book: 2817500, parallel: 23000 }
+        - { account: "212001", dims: { client: C1, contract: P1 }, currency: USD, amount: -23000, book: -2817500, parallel: -23000 }
+    - source: project.cancelled
+      date: 2026-12-10
+      lines:
+        # the fourth case's entry: nothing the void did changed the remainder before the split
+        - { account: "212001", dims: { client: C1, contract: P1 }, currency: USD, amount: 7000, book: 840000, parallel: 7000 }
+        - { account: "212001", dims: { client: C1, contract: P1 }, currency: USD, amount: 23000, book: 2817500, parallel: 23000 }
+        - { account: "411001", dims: { client: C1, contract: P1, service: S1 }, currency: USD, amount: -2333, book: -279960, parallel: -2333 }
+        - { account: "411001", dims: { client: C1, contract: P1, service: S2 }, currency: USD, amount: -7667, book: -939208, parallel: -7667 }
+        - { account: "211003", dims: { client: C1, contract: P1 }, currency: USD, amount: -20000, book: -2480000, parallel: -20000 }
+        - { account: "541001", currency: SYP, amount: 41668, book: 41668, parallel: 0 }
+  balances:
+    - { account: "212001", book: 0, parallel: 0 }
+  open_items:
+    - { item: INV-2026-95, account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 23000, book: 2817500, parallel: 23000 }
+```
+
 ### SYP books only
 
 One ledger: the first case's deposit and split, with no parallel amount anywhere. The book residual is the same 800.00 SYP loss.
@@ -556,10 +660,11 @@ expect:
 ```
 
 Each posted entry balances in both ledgers:
+- **The invoice after the cancellation:** book 3,750,000 − 1,250,000 − 2,500,000 = 0; parallel 30,000 − 10,000 − 20,000 = 0; one rate on every line, so no rounding.
 - **Deferrals, releases and the done before its invoice** balance as in `revenue/milestones.md`; the invoice clearing MS-2's item: book 5,000,000 − 4,880,000 − 120,000 = 0, parallel 40,000 − 40,000 = 0.
 - **The split, USD deposit at 120, 1:2, bulletin 124** (the first, second, eighth and ninth cases): book 3,600,000 − 1,200,000 − 2,480,000 + 80,000 = 0; parallel 30,000 − 10,000 − 20,000 = 0.
 - **The split in halves:** book 3,600,000 − 1,800,000 − 1,860,000 + 60,000 = 0; parallel 30,000 − 15,000 − 15,000 = 0.
-- **Two schedules:** book 840,000 + 2,817,500 − 279,960 − 939,208 − 2,480,000 + 41,668 = 0; parallel 7,000 + 23,000 − 2,333 − 7,667 − 20,000 = 0.
+- **Two schedules** (the fourth and twelfth cases): book 840,000 + 2,817,500 − 279,960 − 939,208 − 2,480,000 + 41,668 = 0; parallel 7,000 + 23,000 − 2,333 − 7,667 − 20,000 = 0.
 - **All to revenue:** book 3,600,000 + 6,100,000 − 3,600,000 − 6,100,000 = 0; parallel 30,000 + 50,000 − 30,000 − 50,000 = 0.
 - **SYP deposit refunded whole:** book 3,600,000 − 3,600,000 = 0; parallel 30,000 − 28,800 − 1,200 = 0.
 - **USD books, SYP deposit:** book 30,000 − 10,000 − 20,667 + 667 = 0; parallel 3,720,000 − 1,240,000 − 2,480,000 = 0.

@@ -12,9 +12,11 @@ import {
   cancelledProjectSplit,
   completedProjectReleases,
   creditParts,
+  invoicedAfterCancellationSplit,
   milestoneDone,
   milestoneItemClearing,
   milestoneItemReference,
+  milestoneLineAtIssue,
   milestoneReopen,
   type OverTimeMonth,
   overTimeMonths,
@@ -1573,6 +1575,74 @@ describe("a cancelled project's split", () => {
         expect(sum(both.map((line) => line.parallelMinor ?? 0n))).toBe(0n);
         expect(cancellationEntry(ledgers, on, remaining, revenueMinor)).toEqual(entry);
       }),
+      { numRuns: 500 },
+    );
+  });
+});
+
+describe('milestoneLineAtIssue', () => {
+  it('clears a standing done, is revenue at issue after the completion, held after the cancellation, and deferred otherwise', () => {
+    expect(milestoneLineAtIssue(true, null)).toBe('clear_item');
+    expect(milestoneLineAtIssue(true, 'cancelled')).toBe('clear_item');
+    expect(milestoneLineAtIssue(true, 'completed')).toBe('clear_item');
+    expect(milestoneLineAtIssue(false, 'completed')).toBe('revenue_at_issue');
+    expect(milestoneLineAtIssue(false, 'cancelled')).toEqual({
+      kind: 'decision',
+      detail: 'invoiced_after_cancellation',
+    });
+    expect(milestoneLineAtIssue(false, null)).toBe('defer');
+  });
+});
+
+describe('invoicedAfterCancellationSplit', () => {
+  it("splits a deposit invoiced after its project's cancellation 1:2: the case's numbers", () => {
+    expect(invoicedAfterCancellationSplit(10_000n, [money(30_000n, 'USD')])).toEqual({
+      revenueMinor: [10_000n],
+      refund: money(20_000n, 'USD'),
+    });
+    const on = measuredOn(sypUsd, '2026-12-15', '125.0000');
+    const entry = balanceEntry({
+      ...on,
+      lines: [
+        measuredLine({ account: '112001', amount: money(30_000n, 'USD') }, on),
+        measuredLine({ account: '411001', amount: money(-10_000n, 'USD') }, on),
+        measuredLine({ account: '211003', amount: money(-20_000n, 'USD') }, on),
+      ],
+      rounding: { account: '541003' },
+    });
+    expect(amountsOf(entry)).toEqual([
+      ['112001', 3_750_000n, 30_000n],
+      ['411001', -1_250_000n, -10_000n],
+      ['211003', -2_500_000n, -20_000n],
+    ]);
+  });
+
+  it('cuts the revenue across the lines exactly, refuses a part outside zero to the total, and is the same on a replay', () => {
+    fc.assert(
+      fc.property(
+        fc.array(fc.bigInt({ min: 1n, max: 10n ** 12n }), { minLength: 1, maxLength: 4 }),
+        fc.constantFrom<CurrencyCode>('USD', 'SYP'),
+        fc.bigInt({ min: 0n, max: 1_000n }),
+        (amounts, currency, share) => {
+          const lines = amounts.map((amount) => money(amount, currency));
+          const totalMinor = sum(amounts);
+          const revenueMinor = (totalMinor * share) / 1_000n;
+          const split = invoicedAfterCancellationSplit(revenueMinor, lines);
+          expect(sum(split.revenueMinor)).toBe(revenueMinor);
+          split.revenueMinor.forEach((part, k) => {
+            expect(part).toBeGreaterThanOrEqual(0n);
+            expect(part).toBeLessThanOrEqual(amounts[k] as bigint);
+          });
+          expect(split.refund?.amountMinor ?? 0n).toBe(totalMinor - revenueMinor);
+          expect(invoicedAfterCancellationSplit(revenueMinor, lines)).toEqual(split);
+          expect(refusal(() => invoicedAfterCancellationSplit(totalMinor + 1n, lines))).toBe(
+            'VALIDATION_FAILED',
+          );
+          expect(refusal(() => invoicedAfterCancellationSplit(-1n, lines))).toBe(
+            'VALIDATION_FAILED',
+          );
+        },
+      ),
       { numRuns: 500 },
     );
   });

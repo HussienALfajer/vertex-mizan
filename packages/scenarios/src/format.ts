@@ -488,7 +488,8 @@ const recogniseStepSchema = z
   }));
 
 /**
- * Split the remainder of a cancelled project held `NEEDS_DECISION` (`cancelled_project_remainder`):
+ * Split the remainder of a cancelled project held `NEEDS_DECISION` (`cancelled_project_remainder`,
+ * or an invoice's `invoiced_after_cancellation`):
  * `revenue`, the transaction amount to revenue in the project's currency, and the rest to the
  * refund payable, with a reason (S06 rules 15–16). Any whole amount is read, so a case can state
  * the inbox's refusal of one outside zero to the remainder.

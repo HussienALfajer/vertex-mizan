@@ -91,9 +91,9 @@ steps:                              # in order; a Hub event, a manual entry, a r
     reason: "..."                   #   months in the first open period after them, each at its
                                     #   own month end's rates (S06 rule 16)
   - split: { step: 2, revenue: 10000 } # split a cancelled project's remainder held NEEDS_DECISION
-    reason: "..."                   #   (cancelled_project_remainder): revenue, the transaction amount
-                                    #   to revenue in the project's currency; the rest to the refund
-                                    #   payable (S06 rules 15–16)
+    reason: "..."                   #   (cancelled_project_remainder, invoiced_after_cancellation):
+                                    #   revenue, the transaction amount to revenue in the project's
+                                    #   currency; the rest to the refund payable (S06 rules 15–16)
 expect:
   entries:                          # the exact set posted, in posting order; every line of every entry
     - source: <event type | job | manual>
