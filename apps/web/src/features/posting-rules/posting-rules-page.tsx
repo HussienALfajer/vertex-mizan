@@ -180,7 +180,7 @@ function RuleCard({
           {t.scenario}:{' '}
           {SCENARIOS[id].map((scenario, index) => (
             <span key={scenario}>
-              {index > 0 && '، '}
+              {index > 0 && ar.common.listSeparator}
               <bdi dir="ltr">{scenario}</bdi>
             </span>
           ))}
@@ -224,7 +224,7 @@ function RuleCard({
                     </div>
                   </TableCell>
                   <TableCell className="min-w-40 whitespace-normal text-muted-foreground max-lg:hidden">
-                    {rule.events.map(typeLabel).join('، ')}
+                    {rule.events.map(typeLabel).join(ar.common.listSeparator)}
                   </TableCell>
                   <TableCell>
                     {rule.heldEvents > 0 ? (

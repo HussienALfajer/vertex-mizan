@@ -14,6 +14,7 @@ import {
   DOCUMENT_TYPES,
   type DocumentType,
   newApiKeySchema,
+  revokeApiKeySchema,
   updateApiClientSchema,
 } from '@vertex-mizan/contracts';
 import { ar } from '@vertex-mizan/i18n';
@@ -259,6 +260,9 @@ function ClientCard({
         reasonLabel={t.revoke.reason}
         submitLabel={t.revoke.confirm}
         destructive
+        schema={revokeApiKeySchema}
+        maxLength={500}
+        lengthError={t.revoke.reasonLength}
         onConfirm={(reason) =>
           api('POST', `/api-clients/${client.id}/keys/${revoking?.id}/revoke`, {
             company: companyId,

@@ -6,6 +6,8 @@ export const common = {
   close: 'إغلاق',
   cancel: 'تراجع',
   save: 'احفظ',
+  /** Between the items of a list written in a sentence. */
+  listSeparator: '، ',
   errorTitle: 'حدث خطأ غير متوقع',
   errorDescription: 'لم تكتمل العملية. أعد المحاولة، وإن تكرر الخطأ فتواصل مع الدعم.',
   /** The title of a refused form's error summary (ADR 0010 §4). */

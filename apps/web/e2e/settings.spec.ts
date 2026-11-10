@@ -132,6 +132,34 @@ test.describe('the posting rules', () => {
     });
   });
 
+  test.describe('for the accountant', () => {
+    test.use({ me: withRole('accountant') });
+
+    test('changes the mapping and has no API clients', async ({ page }) => {
+      const put = await answer(page, 'PUT', '/posting-rules/project_cost', {
+        status: 200,
+        json: mappedProjectCost,
+      });
+      await page.goto('/settings/posting-rules');
+      await expect(page.getByText(p.readOnly)).toHaveCount(0);
+      await page.getByRole('button', { name: `${p.change}: ${p.slots.project_cost}` }).click();
+      const dialog = page.getByRole('dialog', {
+        name: `${p.changeTitle}: ${p.slots.project_cost}`,
+      });
+      await dialog.getByRole('combobox', { name: p.picker }).fill('511001');
+      await page.getByRole('option', { name: /^511001/ }).click();
+      await dialog.getByRole('button', { name: p.save }).click();
+      await expect(dialog).toHaveCount(0);
+      expect(put[0]?.postDataJSON()).toEqual({ accountId: accountOf('511001').id });
+
+      const nav = page.getByRole('navigation', { name: ar.shell.navLabel });
+      await expect(nav.getByRole('link', { name: p.nav })).toBeVisible();
+      await expect(nav.getByRole('link', { name: c.nav })).toHaveCount(0);
+      await page.goto('/settings/api-clients');
+      await expect(page.getByRole('heading', { level: 1, name: c.title })).toHaveCount(0);
+    });
+  });
+
   test.describe('for the auditor', () => {
     test.use({ me: withRole('auditor') });
 
@@ -272,6 +300,13 @@ test.describe('the API clients', () => {
     await page.goto('/settings/api-clients');
     await page.getByRole('button', { name: `${c.keys.revoke}: ${activeKey.prefix}` }).click();
     const dialog = page.getByRole('dialog', { name: c.revoke.title });
+    // The contract keeps 500 characters of a revocation's reason: refused before any code.
+    await dialog.getByLabel(c.revoke.reason).fill('س'.repeat(501));
+    await expect(dialog.getByLabel(c.revoke.reason)).toHaveValue('س'.repeat(500));
+    await dialog.getByLabel(c.revoke.reason).fill(' ');
+    await dialog.getByRole('button', { name: c.revoke.confirm }).click();
+    await expect(fieldError(dialog, ar.company.validation.required)).toBeVisible();
+    expect(revoked).toHaveLength(0);
     await dialog.getByLabel(c.revoke.reason).fill('تدوير المفتاح (مثال)');
     await dialog.getByRole('button', { name: c.revoke.confirm }).click();
     await enterFreshCode(page);
