@@ -2,11 +2,11 @@
 
 Status: Proposed
 
-S06 wrote these cases (S06 "Scenarios"); the owner approved their expected entries and outcomes on 2026-11-10, with two readings of S06 rules 11 and 13: the revenue of a milestone invoiced before its done carries its schedule's current service (the invoice line's, as later service changes leave it), and that of a milestone not invoiced the done's service; and a done after a reopen opens a new contract asset item named `<milestone number>/<n>`, since the reopen settles the earlier one at zero. They stay `Proposed` until S06's feature slice brings their executors: the posting rules of `invoice.issued` with deposit and milestone lines, `milestone.done`, the new `milestone.reopened` and `project.completed`, the order keys `milestone:<id>` and `project:<id>`, S04's unique key on an account's Hub document admitting one contract asset item per done (S06 "Data"), the automatic retry of a reopen when its done posts, and the holds `NEEDS_DECISION` (`milestone_amount_differs`, `milestone_already_done`, `milestone_service_missing`), `UNKNOWN_REFERENCE` and `OPEN_ITEM_HAS_SETTLEMENTS` for these events (S06 rules 1, 2, 11–14, 17–19).
+S06 wrote these cases (S06 "Scenarios"); the owner approved their expected entries and outcomes on 2026-11-10, with two readings of S06 rules 11 and 13: the revenue of a milestone invoiced before its done carries its schedule's current service (the invoice line's, as later service changes leave it), and that of a milestone not invoiced the done's service; and a done after a reopen opens a new contract asset item named `<milestone number>/<n>`, since the reopen settles the earlier one at zero. The twelfth case, a done after the project's completion held `milestone_released_at_completion`, follows the owner's answer to open question Q14 (b) of the same day, and the owner approved its outcome the same day. They stay `Proposed` until S06's feature slice brings their executors: the posting rules of `invoice.issued` with deposit and milestone lines, `milestone.done`, the new `milestone.reopened` and `project.completed`, the order keys `milestone:<id>` and `project:<id>`, S04's unique key on an account's Hub document admitting one contract asset item per done (S06 "Data"), the automatic retry of a reopen when its done posts, and the holds `NEEDS_DECISION` (`milestone_amount_differs`, `milestone_already_done`, `milestone_service_missing`, `milestone_released_at_completion`), `UNKNOWN_REFERENCE` and `OPEN_ITEM_HAS_SETTLEMENTS` for these events (S06 rules 1, 2, 11–14, 17–19).
 
 ## Rule
 
-A project's milestone, its first installment (the deposit) included, is recognised at a point in time: on the day Hub reports it done. A deposit or milestone invoiced before it is done is deferred at issue to contract liabilities; its `milestone.done` releases it to service revenue at the amounts it carries, so no rate is read. A milestone done before it is invoiced is recognised on its done date as a contract asset, one document item per milestone with the client and the project, a new measurement at each ledger's policy rate of `done_on`; its invoice then credits that item at its carried amounts instead of revenue, and each ledger's residual is a realised exchange difference. A milestone whose amount differs from what was invoiced or recognised for it is held `NEEDS_DECISION` (`milestone_amount_differs`), a second done while one stands is held `milestone_already_done`, and a done without its service is held `milestone_service_missing`. `milestone.reopened` posts the exact reversal of the done's entry, while that entry stands, on its own date; a reopen whose item has been invoiced is held `OPEN_ITEM_HAS_SETTLEMENTS`, and one with no done standing is held `UNKNOWN_REFERENCE` and retried when its done posts. `project.completed` releases, at their carried amounts and in one entry, what remains of the project's milestones invoiced and never reported done; with nothing left it is recorded without an entry, and contract assets stay for their invoices.
+A project's milestone, its first installment (the deposit) included, is recognised at a point in time: on the day Hub reports it done. A deposit or milestone invoiced before it is done is deferred at issue to contract liabilities; its `milestone.done` releases it to service revenue at the amounts it carries, so no rate is read. A milestone done before it is invoiced is recognised on its done date as a contract asset, one document item per milestone with the client and the project, a new measurement at each ledger's policy rate of `done_on`; its invoice then credits that item at its carried amounts instead of revenue, and each ledger's residual is a realised exchange difference. A milestone whose amount differs from what was invoiced or recognised for it is held `NEEDS_DECISION` (`milestone_amount_differs`), a second done while one stands is held `milestone_already_done`, and a done without its service is held `milestone_service_missing`. `milestone.reopened` posts the exact reversal of the done's entry, while that entry stands, on its own date; a reopen whose item has been invoiced is held `OPEN_ITEM_HAS_SETTLEMENTS`, and one with no done standing is held `UNKNOWN_REFERENCE` and retried when its done posts. `project.completed` releases, at their carried amounts and in one entry per schedule, what remains of the project's milestones invoiced and never reported done; with nothing left it is recorded without an entry, and contract assets stay for their invoices.
 
 ## Basis
 
@@ -27,7 +27,7 @@ The payloads use the short form of `revenue/over-time-release.md`. A deposit or 
 
 Sources: an entry has its event as its source: `invoice.issued`, `milestone.done`, `milestone.reopened`, `project.completed`. A step whose answer is `recorded` (no entry) completes like a posted one.
 
-The cases leave out what other scenarios own: the void of a milestone's invoice and its re-issue, before and after the done (`revenue/void-and-reissue.md`, S06 edge case 11), and a cancelled project (`revenue/cancelled-project.md`). A reopen after the void of an invoiced milestone's invoice, and a done after the project's completion, wait for the owner's answer to open question Q14. A deposit or milestone line on an invoice without a project is held `recognition_pattern_unclear` like the over-time lines of `revenue/over-time-release.md`. `third` cannot occur: Hub invoices only in SYP and USD (S06 "Currencies, rates and rounding"). A replayed event posts nothing new: a property test, since a step carries no event ID. A done invoiced before reads no rate, so only the dones before their invoices name a rate.
+The cases leave out what other scenarios own: the void of a milestone's invoice and its re-issue, before and after the done (`revenue/void-and-reissue.md`, S06 edge case 11), and a cancelled project (`revenue/cancelled-project.md`). A reopen after the void of an invoiced milestone's invoice is `revenue/void-and-reissue.md`'s (open question Q14 (a)). A deposit or milestone line on an invoice without a project is held `recognition_pattern_unclear` like the over-time lines of `revenue/over-time-release.md`. `third` cannot occur: Hub invoices only in SYP and USD (S06 "Currencies, rates and rounding"). A replayed event posts nothing new: a property test, since a step carries no event ID. A done invoiced before reads no rate, so only the dones before their invoices name a rate.
 
 ### Vertex Media: a deposit invoiced, released at its milestone's done; the project completes with nothing left
 
@@ -462,6 +462,48 @@ expect:
     - { item: MS-12, account: "113001", dims: { client: C1, contract: P1 }, currency: USD, amount: 40000, book: 4880000, parallel: 40000 }
     - { item: INV-2026-67, account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 30000, book: 3600000, parallel: 30000 }
     - { item: INV-2026-68, account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 20000, book: 2460000, parallel: 20000 }
+```
+
+### Vertex Media: a done after the project's completion
+
+Open question Q14 (b), answered by the owner on 2026-11-10. The deposit MS-14 is invoiced and never reported done, so the project's completion on 25 November releases it (S06 rule 14). A done of MS-14 received on 30 November finds its schedule released: it is held `NEEDS_DECISION` (`milestone_released_at_completion`), so its revenue is never recognised twice.
+
+```yaml
+case: a deposit released by the project's completion; its done afterwards is held NEEDS_DECISION milestone_released_at_completion; nothing is recognised twice
+company: { shape: syp-usd, book: SYP, parallel: USD, template: service-agency,
+           rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true } }
+rates:
+  - { date: 2026-11-03, base: USD, quote: SYP, rate: "120.0000", type: bulletin }
+steps:
+  - event: invoice.issued
+    accounting_date: 2026-11-03
+    payload: { invoice: INV-2026-71, client: C1, contract: { code: P1, kind: project, client: C1 },
+               currency: USD, syp_per_usd: "122.0000", issued_on: 2026-11-03, due_on: 2026-11-18,
+               lines: [{ line: L1, amount: 30000, source: deposit, milestone: MS-14, service: S1 }] }
+  - event: project.completed
+    accounting_date: 2026-11-25
+    payload: { project: { code: P1, kind: project, client: C1 }, client: C1, on: 2026-11-25 }
+  - event: milestone.done
+    accounting_date: 2026-11-30
+    payload: { milestone: MS-14, client: C1, project: { code: P1, kind: project, client: C1 },
+               currency: USD, amount: 30000, done_on: 2026-11-30, service: S1 }
+    outcome: { status: held, reason: NEEDS_DECISION, detail: milestone_released_at_completion }
+expect:
+  entries:
+    - source: invoice.issued
+      date: 2026-11-03
+      lines:
+        - { account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 30000, book: 3600000, parallel: 30000 }
+        - { account: "212001", dims: { client: C1, contract: P1 }, currency: USD, amount: -30000, book: -3600000, parallel: -30000 }
+    - source: project.completed
+      date: 2026-11-25
+      lines:
+        - { account: "212001", dims: { client: C1, contract: P1 }, currency: USD, amount: 30000, book: 3600000, parallel: 30000 }
+        - { account: "411001", dims: { client: C1, contract: P1, service: S1 }, currency: USD, amount: -30000, book: -3600000, parallel: -30000 }
+  balances:
+    - { account: "212001", book: 0, parallel: 0 }
+    # the deposit once
+    - { account: "411001", book: -3600000, parallel: -30000 }
 ```
 
 ### SYP books only
