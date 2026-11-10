@@ -1,8 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
-import { type Company, companySchema } from '@vertex-mizan/contracts';
+import {
+  type AmountTextError,
+  type Company,
+  companySchema,
+  type HubCurrency,
+} from '@vertex-mizan/contracts';
 import { ar } from '@vertex-mizan/i18n';
 import {
+  AmountInput,
   Button,
   Callout,
   Card,
@@ -90,6 +96,7 @@ function Settings({
           <Profile company={company} canEdit={canEdit} />
           <PolicyNote company={company} canEdit={canEdit} />
           <ManualEntryApproval company={company} canEdit={canEdit} />
+          <PaymentTolerance company={company} canEdit={canEdit} />
         </div>
         <Ledgers company={company} canEdit={canEdit} />
       </div>
@@ -235,6 +242,99 @@ function ManualEntryApproval({ company, canEdit }: { company: Company; canEdit: 
         onCheckedChange={(checked) => save.mutate(checked)}
       />
       <FormError error={save.error} />
+    </Section>
+  );
+}
+
+/**
+ * The payments' tolerance per invoice currency (S05 rule 9): within it a payment's gap posts as a
+ * realised exchange difference, beyond it the event is held for the accountant. Outside the
+ * settings lock, since it decides how a future event is treated, never a posted amount.
+ */
+function PaymentTolerance({ company, canEdit }: { company: Company; canEdit: boolean }) {
+  const { companyId } = useCompany();
+  const c = t.tolerance;
+  const [values, setValues] = useState<Record<HubCurrency, bigint | null>>({
+    SYP: BigInt(company.paymentToleranceSyp),
+    USD: BigInt(company.paymentToleranceUsd),
+  });
+  const [textErrors, setTextErrors] = useState<Record<HubCurrency, AmountTextError | null>>({
+    SYP: null,
+    USD: null,
+  });
+  const [submitted, setSubmitted] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+  const save = useCompanyWrite(() =>
+    api('PATCH', '/company', {
+      company: companyId,
+      body: {
+        paymentToleranceSyp: String(values.SYP),
+        paymentToleranceUsd: String(values.USD),
+      },
+      schema: companySchema,
+    }),
+  );
+  const errorOf = (currency: HubCurrency) => {
+    const textError = textErrors[currency];
+    if (textError) return ar.accounting.amountInput[textError];
+    return submitted && values[currency] === null ? c.required : undefined;
+  };
+  const fieldId = (currency: HubCurrency) => `tolerance-${currency.toLowerCase()}`;
+  return (
+    <Section title={c.title} description={c.description}>
+      <form
+        noValidate
+        className="flex flex-col gap-4"
+        onSubmit={(event) => {
+          event.preventDefault();
+          setSubmitted(true);
+          const refused =
+            textErrors.SYP !== null ||
+            textErrors.USD !== null ||
+            values.SYP === null ||
+            values.USD === null;
+          if (refused) setAttempt((count) => count + 1);
+          else save.mutate(undefined);
+        }}
+      >
+        <FormErrorSummary
+          attempt={attempt}
+          errors={[
+            [fieldId('SYP'), errorOf('SYP')],
+            [fieldId('USD'), errorOf('USD')],
+          ]}
+        />
+        {(['SYP', 'USD'] as const).map((currency) => {
+          const error = errorOf(currency);
+          return (
+            <Field key={currency} id={fieldId(currency)} invalid={error !== undefined}>
+              <FieldLabel>{currency === 'SYP' ? c.syp : c.usd}</FieldLabel>
+              <AmountInput
+                currency={currency}
+                value={values[currency]}
+                allowNegative={false}
+                readOnly={!canEdit}
+                onValueChange={(value) => {
+                  save.reset();
+                  setValues((current) => ({ ...current, [currency]: value }));
+                }}
+                onTextError={(textError) =>
+                  setTextErrors((current) => ({ ...current, [currency]: textError }))
+                }
+              />
+              <FieldDescription>{c.hint}</FieldDescription>
+              <FieldError match={error !== undefined}>{error}</FieldError>
+            </Field>
+          );
+        })}
+        <FormError error={save.error} />
+        <Saved show={save.isSuccess} title={c.saved} />
+        {canEdit && (
+          <Button type="submit" className="w-fit" loading={save.isPending}>
+            {c.submit}
+          </Button>
+        )}
+      </form>
     </Section>
   );
 }

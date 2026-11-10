@@ -1,4 +1,5 @@
 import { accounting } from './accounting.js';
+import { apiClients } from './api-clients.js';
 import { audit } from './audit.js';
 import { auth } from './auth.js';
 import { chart } from './chart.js';
@@ -51,6 +52,7 @@ export const ar = {
   openItems,
   inbox,
   postingRules,
+  apiClients,
 };
 
 export type Catalog = typeof ar;

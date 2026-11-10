@@ -62,6 +62,7 @@ import {
   QrCode,
   RateInput,
   SecretCodeList,
+  SecretReveal,
   SelectField,
   Sheet,
   SheetClose,
@@ -855,6 +856,34 @@ function InboxSample() {
   );
 }
 
+/** A synthetic key, made at run time: the secret scan refuses literals that look like keys. */
+const sampleSecret = ['mzn', 'Example'.repeat(6).slice(0, 40)].join('_');
+
+/** A secret shown once (S05: an API key), confirmed before it closes. */
+function SecretRevealSample() {
+  const [done, setDone] = useState(false);
+  const r = ar.apiClients.reveal;
+  return (
+    <div className="flex max-w-xl min-w-0 flex-col gap-3">
+      <SecretReveal
+        secret={sampleSecret}
+        label={r.label}
+        warning={r.warning}
+        copyLabel={r.copy}
+        copiedLabel={r.copied}
+        confirmLabel={r.confirm}
+        doneLabel={r.done}
+        onDone={() => setDone(true)}
+      />
+      {done && (
+        <p role="status" className="text-control text-muted-foreground">
+          {t.secretReveal.done}
+        </p>
+      )}
+    </div>
+  );
+}
+
 /** Synthetic open items of one client on a receivables account (S04). */
 const sampleItems: OpenItemPickerOption[] = [
   {
@@ -1105,6 +1134,11 @@ export function DesignSystemPage() {
       <Section id="inbox" title={t.inbox.title}>
         <p className="text-muted-foreground">{t.inbox.hint}</p>
         <InboxSample />
+      </Section>
+
+      <Section id="secret-reveal" title={t.secretReveal.title}>
+        <p className="text-muted-foreground">{t.secretReveal.hint}</p>
+        <SecretRevealSample />
       </Section>
       <Section id="brand" title={t.brand.title}>
         <p className="text-muted-foreground">{t.brand.hint}</p>

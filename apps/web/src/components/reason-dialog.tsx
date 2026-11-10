@@ -32,6 +32,18 @@ interface ReasonDialogProps {
   /** After the action succeeded; the dialog closes itself. */
   onDone?: () => void | Promise<void>;
   children?: ReactNode;
+  /** The endpoint's reason schema when it is not `reasonSchema` (a key's revocation: 500). */
+  schema?: ReasonSchema;
+  /** The schema's longest reason, and the message beside a longer one. */
+  maxLength?: number;
+  lengthError?: string;
+}
+
+/** A contract's `{ reason }` body schema. */
+interface ReasonSchema {
+  safeParse(value: {
+    reason: string;
+  }): { success: true; data: { reason: string } } | { success: false };
 }
 
 /**
@@ -49,6 +61,9 @@ export function ReasonDialog({
   onConfirm,
   onDone,
   children,
+  schema = reasonSchema,
+  maxLength = 1000,
+  lengthError = ar.company.validation.reasonLength,
 }: ReasonDialogProps) {
   const { run, dialog } = useSensitiveAction();
   const [reason, setReason] = useState('');
@@ -86,13 +101,9 @@ export function ReasonDialog({
             onSubmit={(event) => {
               event.preventDefault();
               event.stopPropagation();
-              const parsed = reasonSchema.safeParse({ reason });
+              const parsed = schema.safeParse({ reason });
               if (!parsed.success) {
-                setInvalid(
-                  reason.trim() === ''
-                    ? ar.company.validation.required
-                    : ar.company.validation.reasonLength,
-                );
+                setInvalid(reason.trim() === '' ? ar.company.validation.required : lengthError);
                 setAttempt((count) => count + 1);
                 return;
               }
@@ -110,7 +121,7 @@ export function ReasonDialog({
               <FieldLabel>{reasonLabel}</FieldLabel>
               <Textarea
                 value={reason}
-                maxLength={1000}
+                maxLength={maxLength}
                 onChange={(event) => setReason(event.target.value)}
               />
               <FieldError match={invalid !== undefined}>{invalid}</FieldError>
