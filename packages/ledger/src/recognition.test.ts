@@ -745,9 +745,9 @@ describe('milestoneDone', () => {
     expect(detail(milestoneDone(money(30_000n, 'SYP'), true, standing(deferred)))).toBe(
       'milestone_amount_differs',
     );
-    // A schedule the project's completion already released defers nothing.
-    expect(detail(milestoneDone(money(30_000n, 'USD'), true, standing(usd(0n, 0n, 0n))))).toBe(
-      'milestone_amount_differs',
+    // A schedule the project's completion released defers nothing: the caller's hold (Q14).
+    expect(() => milestoneDone(money(30_000n, 'USD'), true, standing(usd(0n, 0n, 0n)))).toThrow(
+      RangeError,
     );
     expect(() => milestoneDone(money(0n, 'USD'), true, standing(null))).toThrow(RangeError);
   });
@@ -820,6 +820,59 @@ describe('milestoneDone', () => {
     const differences = realisedDifferenceLines(usdSyp, lines, realised);
     expect(differences.map((line) => [line.account, line.bookMinor, line.parallelMinor])).toEqual([
       ['541001', 645n, 0n],
+    ]);
+  });
+
+  it('builds the reopen case: its reversal nets the first done, the second at 124 cleared at 123 with a 400.00 SYP loss', () => {
+    const first = measuredOn(sypUsd, '2026-12-01', '122.0000');
+    const done = [
+      measuredLine({ account: '113001', amount: money(40_000n, 'USD') }, first),
+      measuredLine({ account: '411001', amount: money(-40_000n, 'USD') }, first),
+    ];
+    const reopened = [...done, ...reverseLines(done)];
+    expect(sum(reopened.map((line) => line.bookMinor))).toBe(0n);
+    const again = measuredLine(
+      { account: '113001', amount: money(40_000n, 'USD') },
+      measuredOn(sypUsd, '2026-12-10', '124.0000'),
+    );
+    expect(again.bookMinor).toBe(4_960_000n);
+    const clearing = milestoneItemClearing(money(40_000n, 'USD'), again);
+    if (clearing.kind !== 'clear') throw new Error('The invoice clears the item');
+    const lines: Line[] = [
+      measuredLine(
+        { account: '112001', amount: money(40_000n, 'USD') },
+        measuredOn(sypUsd, '2026-12-15', '123.0000'),
+      ),
+      carried('113001', clearing.amounts),
+    ];
+    const differences = realisedDifferenceLines(sypUsd, lines, realised);
+    expect(differences.map((line) => [line.account, line.bookMinor, line.parallelMinor])).toEqual([
+      ['541001', 40_000n, 0n],
+    ]);
+  });
+
+  it("builds the USD books case of USD: the parallel at the market 122.5 at done, Hub's 124 at invoice, a 600.00 SYP gain", () => {
+    const asset = measuredLine(
+      { account: '113001', amount: money(40_000n, 'USD') },
+      measuredOn(usdSyp, '2026-12-01', '120.0000', '122.5000'),
+    );
+    expect([asset.bookMinor, asset.parallelMinor]).toEqual([40_000n, 4_900_000n]);
+    const clearing = milestoneItemClearing(money(40_000n, 'USD'), asset);
+    if (clearing.kind !== 'clear') throw new Error('The invoice clears the item');
+    const lines: Line[] = [
+      measuredLine(
+        { account: '112001', amount: money(40_000n, 'USD') },
+        {
+          ...measuredOn(usdSyp, '2026-12-03', '123.0000'),
+          transactionRate: hubRate('124.0000', '2026-12-03'),
+        },
+      ),
+      carried('113001', clearing.amounts),
+    ];
+    expect(lines[0]?.parallelMinor).toBe(4_960_000n);
+    const differences = realisedDifferenceLines(usdSyp, lines, realised);
+    expect(differences.map((line) => [line.account, line.bookMinor, line.parallelMinor])).toEqual([
+      ['421001', 0n, -60_000n],
     ]);
   });
 });

@@ -273,12 +273,16 @@ export type MilestoneDecision =
 
 /** What the books hold for a milestone when its `milestone.done` arrives. */
 export interface MilestoneStanding {
-  /** Whether a done of the milestone stands: posted, and not reversed by a reopen. */
+  /**
+   * Whether a done of the milestone stands: its entry posted and not reversed, by a reopen or by
+   * the void of its invoice (open question Q14).
+   */
   readonly done: boolean;
   /**
    * What remains in contract liabilities of the milestone's standing point-in-time schedule
    * (positive amounts) when its deposit or milestone line was invoiced before; null when it was
-   * not, or when that invoice was voided.
+   * not, or when that invoice was voided. A schedule the project's completion released defers
+   * nothing: a done after it is open question Q14, which the caller holds before calling.
    */
   readonly deferred: CarriedAmounts | null;
 }
@@ -297,10 +301,11 @@ export type MilestoneDone =
 /**
  * The rule of a milestone's done (S06 rule 11; IFRS 15.38): a second done while one stands is
  * `milestone_already_done`, a done without Hub's service `milestone_service_missing`, and a done
- * whose amount is not what its standing schedule still defers, in its currency,
- * `milestone_amount_differs` (a change in the transaction price, IFRS 15.87–88; a schedule
- * already released by the project's completion defers nothing). Otherwise a schedule invoiced
- * before is released whole, and a milestone not invoiced opens its contract asset.
+ * whose amount is not its standing schedule's, in its currency, `milestone_amount_differs` (a
+ * change in the transaction price, IFRS 15.87–88). Otherwise a schedule invoiced before is released
+ * whole, and a milestone not invoiced opens its contract asset. A point-in-time schedule defers its
+ * whole amount until its done or the project's completion, so a schedule that defers nothing is
+ * refused here: the caller holds a done after the completion (open question Q14).
  */
 export function milestoneDone(
   amount: Money,
@@ -313,6 +318,9 @@ export function milestoneDone(
   const { deferred } = standing;
   if (deferred === null) return { kind: 'contract_asset', amount };
   const { transaction } = deferred;
+  if (transaction.amountMinor <= 0n) {
+    throw new RangeError('A schedule that defers nothing: a done after the completion (Q14)');
+  }
   if (transaction.currency !== amount.currency || transaction.amountMinor !== amount.amountMinor) {
     return { kind: 'decision', detail: 'milestone_amount_differs' };
   }
