@@ -1,16 +1,25 @@
 import { type CompanyLedgers, type CurrencyCode, money } from '@vertex-mizan/contracts';
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import { balanceEntry } from './balance.js';
+import { balanceEntry, realisedDifferenceLines } from './balance.js';
 import { reverseLines } from './carried.js';
-import { type CarriedAmounts, carriedLine, negate } from './lines.js';
+import { type CarriedAmounts, carriedLine, type Line, negate } from './lines.js';
+import { measuredLine } from './measure.js';
 import { daysBetween } from './periods.js';
-import { overTimeMonths, releaseParts } from './recognition.js';
-import { sypOnly, sypUsd, usdSyp } from './test-fixtures.js';
+import {
+  type CreditedSchedule,
+  creditParts,
+  overTimeMonths,
+  releaseParts,
+  remainingReleaseParts,
+} from './recognition.js';
+import { calendar, rate, sypOnly, sypUsd, usdSyp } from './test-fixtures.js';
 
 /**
  * The day split of revenue recognised over time (S06 rules 3–5 and 7), with the numbers of
- * `docs/scenarios/revenue/over-time-release.md` (owner, 2026-11-10, option A), and its properties.
+ * `docs/scenarios/revenue/over-time-release.md` (owner, 2026-11-10, option A), and a retainer
+ * credit's split (S06 rules 6 and 8), with the numbers of `docs/scenarios/revenue/retainer-credit.md`
+ * (owner, 2026-11-10); and their properties.
  */
 
 const usd = (amount: bigint, book: bigint, parallel: bigint | null): CarriedAmounts => ({
@@ -281,6 +290,317 @@ describe('releases', () => {
         const first = releaseParts(deferred, overTimeMonths(amount, from, to, issuedOn), ledgers);
         const again = releaseParts(deferred, overTimeMonths(amount, from, to, issuedOn), ledgers);
         expect(again).toEqual(first);
+      }),
+      { numRuns: 300 },
+    );
+  });
+});
+
+/** The months of a cycle not yet released, from `month` on (an invoice on time: none elapsed). */
+function monthsFrom(month: string, amount: bigint, from: string, to: string) {
+  return overTimeMonths(amount, from, to, from).filter((m) => m.month >= month);
+}
+
+describe('creditParts', () => {
+  it('splits a credit by the share recognised: 48.00 to revenue and 42.00 to the liability at 121', () => {
+    // INV-2026-41's credit of 90.00 USD to the cycle at 121 with 16/30 released.
+    expect(
+      creditParts(9_000n, [{ netMinor: 90_000n, remaining: usd(42_000n, 5_082_000n, 42_000n) }]),
+    ).toEqual([{ revenueMinor: 4_800n, liability: usd(4_200n, 508_200n, 4_200n) }]);
+    expect(
+      creditParts(9_000n, [{ netMinor: 90_000n, remaining: usd(42_000n, 5_082_000n, null) }]),
+    ).toEqual([{ revenueMinor: 4_800n, liability: usd(4_200n, 508_200n, null) }]);
+    // USD books, an SYP cycle: 726 000 × 3 872 000 ÷ 7 260 000 = 387 200; the book carries 28 000 × 338 800 ÷ 3 388 000.
+    expect(
+      creditParts(726_000n, [
+        { netMinor: 7_260_000n, remaining: syp(3_388_000n, 28_000n, 3_388_000n) },
+      ]),
+    ).toEqual([{ revenueMinor: 387_200n, liability: syp(338_800n, 2_800n, 338_800n) }]);
+  });
+
+  it('gives a fully released cycle all to revenue, and an unreleased one all to its liabilities, shared with cumulative rounding', () => {
+    expect(creditParts(6_000n, [{ netMinor: 60_000n, remaining: usd(0n, 0n, 0n) }])).toEqual([
+      { revenueMinor: 6_000n, liability: null },
+    ]);
+    // 10 001 × 90 000 ÷ 120 000 = 7 500.75 → 7 501; the addition 2 500; each liability at what it carries.
+    expect(
+      creditParts(10_001n, [
+        { netMinor: 90_000n, remaining: usd(90_000n, 10_890_000n, 90_000n) },
+        { netMinor: 30_000n, remaining: usd(30_000n, 3_645_000n, 30_000n) },
+      ]),
+    ).toEqual([
+      { revenueMinor: 0n, liability: usd(7_501n, 907_621n, 7_501n) },
+      { revenueMinor: 0n, liability: usd(2_500n, 303_750n, 2_500n) },
+    ]);
+    // A credit of the whole remaining clears every ledger exactly.
+    expect(
+      creditParts(5_000n, [{ netMinor: 5_000n, remaining: usd(5_000n, 605_001n, 5_000n) }]),
+    ).toEqual([{ revenueMinor: 0n, liability: usd(5_000n, 605_001n, 5_000n) }]);
+  });
+
+  it('refuses a credit larger than the cycle net of earlier credits, of zero, or in two currencies', () => {
+    const credited = { netMinor: 30_000n, remaining: usd(30_000n, 3_630_000n, 30_000n) };
+    expect(() => creditParts(40_000n, [credited])).toThrow(RangeError);
+    expect(creditParts(30_000n, [credited])[0]?.liability).toEqual(
+      usd(30_000n, 3_630_000n, 30_000n),
+    );
+    expect(() => creditParts(0n, [credited])).toThrow(RangeError);
+    expect(() =>
+      creditParts(100n, [credited, { netMinor: 100n, remaining: syp(100n, 100n, 1n) }]),
+    ).toThrow(TypeError);
+    expect(() => creditParts(100n, [{ netMinor: 100n, remaining: usd(101n, 1n, 101n) }])).toThrow(
+      RangeError,
+    );
+  });
+
+  it('builds the credit entry of the first case: an 84.00 SYP realised loss, nothing in the parallel ledger', () => {
+    const context = {
+      ledgers: sypUsd,
+      on: '2026-12-15',
+      rates: [rate('USD', 'SYP', '123.0000', 'bulletin', '2026-12-15')],
+      calendar,
+    };
+    const [part] = creditParts(9_000n, [
+      { netMinor: 90_000n, remaining: usd(42_000n, 5_082_000n, 42_000n) },
+    ]);
+    if (part?.liability == null) throw new Error('A part with its liability');
+    const lines: Line[] = [
+      measuredLine({ account: '112001', amount: money(81_000n, 'USD') }, context),
+      measuredLine({ account: '212001', amount: money(-90_000n, 'USD') }, context),
+      measuredLine({ account: '411001', amount: money(part.revenueMinor, 'USD') }, context),
+      carriedLine({ account: '212001', amounts: part.liability }),
+    ];
+    const differences = realisedDifferenceLines(sypUsd, lines, {
+      gain: { account: '421001' },
+      loss: { account: '541001' },
+    });
+    expect(lines.map((line) => line.bookMinor)).toEqual([
+      9_963_000n,
+      -11_070_000n,
+      590_400n,
+      508_200n,
+    ]);
+    expect(differences.map((line) => [line.account, line.bookMinor, line.parallelMinor])).toEqual([
+      ['541001', 8_400n, 0n],
+    ]);
+    expect(
+      balanceEntry({
+        ...context,
+        lines: [...lines, ...differences],
+        rounding: { account: '541003' },
+      }),
+    ).toHaveLength(5);
+  });
+});
+
+describe('remainingReleaseParts', () => {
+  it('cuts what remains after a credit over the months not released, each ledger by their days', () => {
+    // The cycle of 15 Nov to 14 Dec after a credit of 75.01 on 26 Nov, before November's release.
+    const cycle = monthsFrom('2026-11', 90_000n, '2026-11-15', '2026-12-14');
+    expect(remainingReleaseParts(usd(82_499n, 9_982_379n, 82_499n), cycle, sypUsd)).toEqual([
+      usd(43_999n, 5_323_935n, 43_999n),
+      usd(38_500n, 4_658_444n, 38_500n),
+    ]);
+    expect(remainingReleaseParts(usd(27_500n, 3_341_250n, 27_500n), cycle, sypUsd)).toEqual([
+      usd(14_667n, 1_782_000n, 14_667n),
+      usd(12_833n, 1_559_250n, 12_833n),
+    ]);
+    // A credit of 50.00 then its void after November: 16/30 of 850.00, then all that grew back.
+    expect(remainingReleaseParts(usd(85_000n, 10_285_000n, 85_000n), cycle, sypUsd)[0]).toEqual(
+      usd(45_333n, 5_485_333n, 45_333n),
+    );
+    const december = monthsFrom('2026-12', 90_000n, '2026-11-15', '2026-12-14');
+    expect(remainingReleaseParts(usd(44_667n, 5_404_667n, 44_667n), december, sypUsd)).toEqual([
+      usd(44_667n, 5_404_667n, 44_667n),
+    ]);
+    expect(remainingReleaseParts(usd(37_800n, 4_573_800n, null), december, sypOnly)).toEqual([
+      usd(37_800n, 4_573_800n, null),
+    ]);
+  });
+
+  it('refuses an elapsed month, a remaining with no month, and a ledger of the line currency holding another amount', () => {
+    const late = overTimeMonths(62_000n, '2026-10-20', '2026-11-19', '2026-11-05');
+    expect(() => remainingReleaseParts(usd(38_000n, 4_579_000n, 38_000n), late, sypUsd)).toThrow(
+      RangeError,
+    );
+    expect(remainingReleaseParts(usd(0n, 0n, 0n), [], sypUsd)).toEqual([]);
+    expect(() => remainingReleaseParts(usd(1n, 120n, 1n), [], sypUsd)).toThrow(RangeError);
+    const december = monthsFrom('2026-12', 90_000n, '2026-11-15', '2026-12-14');
+    expect(() => remainingReleaseParts(usd(100n, 12_100n, 99n), december, sypUsd)).toThrow(
+      TypeError,
+    );
+  });
+});
+
+/**
+ * A cycle's schedules before a credit: each one's net amount, what remains of it in liabilities
+ * in every ledger, and a credit no larger than their net amounts.
+ */
+const creditArb = fc
+  .record({
+    currency: fc.constantFrom<CurrencyCode>('USD', 'SYP'),
+    shape: fc.constantFrom(...shapes),
+    schedules: fc.array(
+      fc.record({
+        net: fc.bigInt({ min: 1n, max: 10n ** 12n }),
+        // The share of the net amount still in liabilities, in millionths.
+        left: fc.bigInt({ min: 0n, max: 1_000_000n }),
+        bookRate: fc.bigInt({ min: 1n, max: 20_000n }),
+        parallelRate: fc.bigInt({ min: 1n, max: 20_000n }),
+      }),
+      { minLength: 1, maxLength: 4 },
+    ),
+    creditShare: fc.bigInt({ min: 1n, max: 1_000_000n }),
+    measureRate: fc.integer({ min: 1, max: 30_000 }),
+  })
+  .map((input) => {
+    const [ledgers] = input.shape;
+    const schedules: CreditedSchedule[] = input.schedules.map((schedule) => {
+      const remainingMinor = (schedule.net * schedule.left) / 1_000_000n;
+      const inLedger = (currency: CurrencyCode, rate: bigint) =>
+        currency === input.currency ? remainingMinor : (remainingMinor * rate) / 100n;
+      return {
+        netMinor: schedule.net,
+        remaining: {
+          transaction: money(remainingMinor, input.currency),
+          bookMinor: inLedger(ledgers.book.currency, schedule.bookRate),
+          parallelMinor:
+            ledgers.parallel === null
+              ? null
+              : inLedger(ledgers.parallel.currency, schedule.parallelRate),
+        },
+      };
+    });
+    const totalNet = sum(schedules.map((schedule) => schedule.netMinor));
+    const creditMinor = (totalNet * input.creditShare) / 1_000_000n || 1n;
+    return { ...input, ledgers, schedules, creditMinor };
+  });
+
+/** What remains of a schedule after its part of a credit. */
+function remainingAfter(
+  schedule: CreditedSchedule,
+  liability: CarriedAmounts | null,
+): CarriedAmounts {
+  const { remaining } = schedule;
+  if (liability === null) return remaining;
+  return {
+    transaction: money(
+      remaining.transaction.amountMinor - liability.transaction.amountMinor,
+      remaining.transaction.currency,
+    ),
+    bookMinor: remaining.bookMinor - liability.bookMinor,
+    parallelMinor:
+      remaining.parallelMinor === null || liability.parallelMinor === null
+        ? remaining.parallelMinor
+        : remaining.parallelMinor - liability.parallelMinor,
+  };
+}
+
+describe('a credit', () => {
+  it('is shared exactly, never takes more than remains, and leaves a schedule at zero in every ledger when its remaining reaches zero', () => {
+    fc.assert(
+      fc.property(creditArb, ({ schedules, creditMinor }) => {
+        const parts = creditParts(creditMinor, schedules);
+        const taken = parts.map(
+          (p) => p.revenueMinor + (p.liability?.transaction.amountMinor ?? 0n),
+        );
+        expect(sum(taken)).toBe(creditMinor);
+        for (const [k, part] of parts.entries()) {
+          const schedule = schedules[k] as CreditedSchedule;
+          expect(part.revenueMinor).toBeGreaterThanOrEqual(0n);
+          expect(taken[k]).toBeLessThanOrEqual(schedule.netMinor);
+          const rest = remainingAfter(schedule, part.liability);
+          expect(rest.transaction.amountMinor).toBeGreaterThanOrEqual(0n);
+          if (rest.transaction.amountMinor === 0n) {
+            expect(rest.bookMinor).toBe(0n);
+            expect(rest.parallelMinor ?? 0n).toBe(0n);
+          }
+        }
+      }),
+      { numRuns: 1_000 },
+    );
+  });
+
+  it('keeps the measure of progress: the revenue part is the recognised share of the credit, within half a unit', () => {
+    fc.assert(
+      fc.property(creditArb, ({ schedules, creditMinor }) => {
+        for (const [k, part] of creditParts(creditMinor, schedules).entries()) {
+          const { netMinor, remaining } = schedules[k] as CreditedSchedule;
+          const c = part.revenueMinor + (part.liability?.transaction.amountMinor ?? 0n);
+          const gap =
+            c * (netMinor - remaining.transaction.amountMinor) - netMinor * part.revenueMinor;
+          expect(2n * (gap < 0n ? -gap : gap)).toBeLessThanOrEqual(netMinor);
+        }
+      }),
+      { numRuns: 1_000 },
+    );
+  });
+
+  it('builds an entry that balances in every ledger with its realised residual, and whose reversal nets to zero', () => {
+    fc.assert(
+      fc.property(creditArb, ({ currency, ledgers, schedules, creditMinor, measureRate }) => {
+        // Any whole number of SYP per USD, as the bulletin and the market rate of the credit's date.
+        const quoted = `${measureRate}.0000`;
+        const context = {
+          ledgers,
+          on: '2026-12-15',
+          rates: [
+            rate('USD', 'SYP', quoted, 'bulletin', '2026-12-15'),
+            rate('USD', 'SYP', quoted, 'market', '2026-12-15'),
+          ],
+          calendar,
+        };
+        const lines: Line[] = [
+          measuredLine({ account: '112001', amount: money(-creditMinor, currency) }, context),
+        ];
+        for (const part of creditParts(creditMinor, schedules)) {
+          if (part.revenueMinor !== 0n) {
+            lines.push(
+              measuredLine(
+                { account: '411001', amount: money(part.revenueMinor, currency) },
+                context,
+              ),
+            );
+          }
+          if (part.liability !== null) {
+            lines.push(carriedLine({ account: '212001', amounts: part.liability }));
+          }
+        }
+        const differences = realisedDifferenceLines(ledgers, lines, {
+          gain: { account: '421001' },
+          loss: { account: '541001' },
+        });
+        const entry = balanceEntry({
+          ...context,
+          lines: [...lines, ...differences],
+          rounding: { account: '541003' },
+        });
+        const both = [...entry, ...reverseLines(entry)];
+        // The credit's own lines balance in its currency; the residual lines are in a ledger's.
+        const own = entry.filter((line) => line.kind !== 'difference' && line.kind !== 'rounding');
+        expect(sum(own.map((line) => line.transaction.amountMinor))).toBe(0n);
+        expect(sum(both.map((line) => line.bookMinor))).toBe(0n);
+        expect(sum(both.map((line) => line.parallelMinor ?? 0n))).toBe(0n);
+      }),
+      { numRuns: 300 },
+    );
+  });
+
+  it('leaves a remainder whose releases sum to it exactly in every ledger, and recomputes to the same parts', () => {
+    fc.assert(
+      fc.property(creditArb, deferralArb, ({ schedules, creditMinor, ledgers }, { from, to }) => {
+        const months = overTimeMonths(1n, from, to, from);
+        for (const [k, part] of creditParts(creditMinor, schedules).entries()) {
+          const rest = remainingAfter(schedules[k] as CreditedSchedule, part.liability);
+          const releases = remainingReleaseParts(rest, months, ledgers);
+          expect(remainingReleaseParts(rest, months, ledgers)).toEqual(releases);
+          expect(sum(releases.map((p) => p.transaction.amountMinor))).toBe(
+            rest.transaction.amountMinor,
+          );
+          expect(sum(releases.map((p) => p.bookMinor))).toBe(rest.bookMinor);
+          expect(sum(releases.map((p) => p.parallelMinor ?? 0n))).toBe(rest.parallelMinor ?? 0n);
+        }
+        expect(creditParts(creditMinor, schedules)).toEqual(creditParts(creditMinor, schedules));
       }),
       { numRuns: 300 },
     );
