@@ -8,19 +8,25 @@ import { measuredLine } from './measure.js';
 import { daysBetween } from './periods.js';
 import {
   type CreditedSchedule,
+  completedProjectReleases,
   creditParts,
+  milestoneDone,
+  milestoneItemClearing,
+  milestoneItemReference,
   overTimeMonths,
   releaseParts,
   remainingReleaseParts,
   voidedCreditParts,
 } from './recognition.js';
-import { calendar, rate, sypOnly, sypUsd, usdSyp } from './test-fixtures.js';
+import { calendar, hubRate, rate, sypOnly, sypUsd, usdSyp } from './test-fixtures.js';
 
 /**
  * The day split of revenue recognised over time (S06 rules 3–5 and 7), with the numbers of
  * `docs/scenarios/revenue/over-time-release.md` (owner, 2026-11-10, option A), and a retainer
  * credit's split (S06 rules 6 and 8), with the numbers of `docs/scenarios/revenue/retainer-credit.md`
- * (owner, 2026-11-10); and their properties.
+ * (owner, 2026-11-10); a milestone's done, its invoice and the project's completion (S06 rules 11–14),
+ * with the numbers of `docs/scenarios/revenue/milestones.md` (owner, 2026-11-10); and their
+ * properties.
  */
 
 const usd = (amount: bigint, book: bigint, parallel: bigint | null): CarriedAmounts => ({
@@ -688,6 +694,341 @@ describe("a credit's void", () => {
         },
       ),
       { numRuns: 500 },
+    );
+  });
+});
+
+const realised = { gain: { account: '421001' }, loss: { account: '541001' } } as const;
+
+/** The context of a new measurement on `on` at one bulletin and one market rate of SYP per USD. */
+function measuredOn(ledgers: CompanyLedgers, on: string, bulletin: string, market = bulletin) {
+  return {
+    ledgers,
+    on,
+    rates: [rate('USD', 'SYP', bulletin, 'bulletin', on), rate('USD', 'SYP', market, 'market', on)],
+    calendar,
+  };
+}
+
+/** A carried amount as the line it is: Dr the item or the liability, or its negation. */
+const carried = (account: string, amounts: CarriedAmounts) => carriedLine({ account, amounts });
+
+describe('milestoneDone', () => {
+  const standing = (deferred: CarriedAmounts | null, done = false) => ({ done, deferred });
+
+  it('releases a deposit invoiced before at what the liability carries, and opens a contract asset otherwise', () => {
+    // The first case: 300.00 USD deferred at 120.
+    const deferred = usd(30_000n, 3_600_000n, 30_000n);
+    expect(milestoneDone(money(30_000n, 'USD'), true, standing(deferred))).toEqual({
+      kind: 'release',
+      amounts: deferred,
+    });
+    expect(milestoneDone(money(40_000n, 'USD'), true, standing(null))).toEqual({
+      kind: 'contract_asset',
+      amount: money(40_000n, 'USD'),
+    });
+  });
+
+  it('holds a second done, a done without its service and a done differing from its deferral, in that order', () => {
+    const deferred = usd(30_000n, 3_600_000n, 30_000n);
+    const detail = (outcome: ReturnType<typeof milestoneDone>) =>
+      outcome.kind === 'decision' ? outcome.detail : outcome.kind;
+    expect(detail(milestoneDone(money(40_000n, 'USD'), false, standing(null, true)))).toBe(
+      'milestone_already_done',
+    );
+    expect(detail(milestoneDone(money(40_000n, 'USD'), false, standing(null)))).toBe(
+      'milestone_service_missing',
+    );
+    expect(detail(milestoneDone(money(35_000n, 'USD'), true, standing(deferred)))).toBe(
+      'milestone_amount_differs',
+    );
+    expect(detail(milestoneDone(money(30_000n, 'SYP'), true, standing(deferred)))).toBe(
+      'milestone_amount_differs',
+    );
+    // A schedule the project's completion released defers nothing: the caller's hold (Q14).
+    expect(() => milestoneDone(money(30_000n, 'USD'), true, standing(usd(0n, 0n, 0n)))).toThrow(
+      RangeError,
+    );
+    expect(() => milestoneDone(money(0n, 'USD'), true, standing(null))).toThrow(RangeError);
+  });
+
+  it("builds the second case's entries: the asset at 122, cleared by the invoice at 123 with a 400.00 SYP gain", () => {
+    const done = measuredOn(sypUsd, '2026-12-01', '122.0000');
+    const asset = measuredLine({ account: '113001', amount: money(40_000n, 'USD') }, done);
+    const revenue = measuredLine({ account: '411001', amount: money(-40_000n, 'USD') }, done);
+    expect(
+      balanceEntry({ ...done, lines: [asset, revenue], rounding: { account: '541003' } }),
+    ).toHaveLength(2);
+    const clearing = milestoneItemClearing(money(40_000n, 'USD'), asset);
+    if (clearing.kind !== 'clear') throw new Error('The invoice clears the item');
+    const invoice = measuredOn(sypUsd, '2026-12-03', '123.0000');
+    const lines: Line[] = [
+      measuredLine({ account: '112001', amount: money(40_000n, 'USD') }, invoice),
+      carried('113001', clearing.amounts),
+    ];
+    const differences = realisedDifferenceLines(sypUsd, lines, realised);
+    expect(lines.map((line) => [line.bookMinor, line.parallelMinor])).toEqual([
+      [4_920_000n, 40_000n],
+      [-4_880_000n, -40_000n],
+    ]);
+    expect(differences.map((line) => [line.account, line.bookMinor, line.parallelMinor])).toEqual([
+      ['421001', -40_000n, 0n],
+    ]);
+  });
+
+  it("builds the SYP case: the parallel at the market 122 at done, Hub's 125 at invoice, a 9.60 USD loss", () => {
+    const asset = measuredLine(
+      { account: '113001', amount: money(4_880_000n, 'SYP') },
+      measuredOn(sypUsd, '2026-12-01', '120.0000', '122.0000'),
+    );
+    expect([asset.bookMinor, asset.parallelMinor]).toEqual([4_880_000n, 40_000n]);
+    const clearing = milestoneItemClearing(money(4_880_000n, 'SYP'), asset);
+    if (clearing.kind !== 'clear') throw new Error('The invoice clears the item');
+    const lines: Line[] = [
+      measuredLine(
+        { account: '112001', amount: money(4_880_000n, 'SYP') },
+        {
+          ...measuredOn(sypUsd, '2026-12-03', '123.0000'),
+          transactionRate: hubRate('125.0000', '2026-12-03'),
+        },
+      ),
+      carried('113001', clearing.amounts),
+    ];
+    expect(lines[0]?.parallelMinor).toBe(39_040n);
+    const differences = realisedDifferenceLines(sypUsd, lines, realised);
+    expect(differences.map((line) => [line.account, line.bookMinor, line.parallelMinor])).toEqual([
+      ['541001', 0n, 960n],
+    ]);
+  });
+
+  it('builds the USD books case of SYP: 400.00 USD at 122, 393.55 at 124, a 6.45 USD loss', () => {
+    const asset = measuredLine(
+      { account: '113001', amount: money(4_880_000n, 'SYP') },
+      measuredOn(usdSyp, '2026-12-01', '122.0000'),
+    );
+    expect([asset.bookMinor, asset.parallelMinor]).toEqual([40_000n, 4_880_000n]);
+    const clearing = milestoneItemClearing(money(4_880_000n, 'SYP'), asset);
+    if (clearing.kind !== 'clear') throw new Error('The invoice clears the item');
+    const lines: Line[] = [
+      measuredLine(
+        { account: '112001', amount: money(4_880_000n, 'SYP') },
+        measuredOn(usdSyp, '2026-12-03', '124.0000'),
+      ),
+      carried('113001', clearing.amounts),
+    ];
+    expect(lines[0]?.bookMinor).toBe(39_355n);
+    const differences = realisedDifferenceLines(usdSyp, lines, realised);
+    expect(differences.map((line) => [line.account, line.bookMinor, line.parallelMinor])).toEqual([
+      ['541001', 645n, 0n],
+    ]);
+  });
+
+  it('builds the reopen case: its reversal nets the first done, the second at 124 cleared at 123 with a 400.00 SYP loss', () => {
+    const first = measuredOn(sypUsd, '2026-12-01', '122.0000');
+    const done = [
+      measuredLine({ account: '113001', amount: money(40_000n, 'USD') }, first),
+      measuredLine({ account: '411001', amount: money(-40_000n, 'USD') }, first),
+    ];
+    const reopened = [...done, ...reverseLines(done)];
+    expect(sum(reopened.map((line) => line.bookMinor))).toBe(0n);
+    const again = measuredLine(
+      { account: '113001', amount: money(40_000n, 'USD') },
+      measuredOn(sypUsd, '2026-12-10', '124.0000'),
+    );
+    expect(again.bookMinor).toBe(4_960_000n);
+    const clearing = milestoneItemClearing(money(40_000n, 'USD'), again);
+    if (clearing.kind !== 'clear') throw new Error('The invoice clears the item');
+    const lines: Line[] = [
+      measuredLine(
+        { account: '112001', amount: money(40_000n, 'USD') },
+        measuredOn(sypUsd, '2026-12-15', '123.0000'),
+      ),
+      carried('113001', clearing.amounts),
+    ];
+    const differences = realisedDifferenceLines(sypUsd, lines, realised);
+    expect(differences.map((line) => [line.account, line.bookMinor, line.parallelMinor])).toEqual([
+      ['541001', 40_000n, 0n],
+    ]);
+  });
+
+  it("builds the USD books case of USD: the parallel at the market 122.5 at done, Hub's 124 at invoice, a 600.00 SYP gain", () => {
+    const asset = measuredLine(
+      { account: '113001', amount: money(40_000n, 'USD') },
+      measuredOn(usdSyp, '2026-12-01', '120.0000', '122.5000'),
+    );
+    expect([asset.bookMinor, asset.parallelMinor]).toEqual([40_000n, 4_900_000n]);
+    const clearing = milestoneItemClearing(money(40_000n, 'USD'), asset);
+    if (clearing.kind !== 'clear') throw new Error('The invoice clears the item');
+    const lines: Line[] = [
+      measuredLine(
+        { account: '112001', amount: money(40_000n, 'USD') },
+        {
+          ...measuredOn(usdSyp, '2026-12-03', '123.0000'),
+          transactionRate: hubRate('124.0000', '2026-12-03'),
+        },
+      ),
+      carried('113001', clearing.amounts),
+    ];
+    expect(lines[0]?.parallelMinor).toBe(4_960_000n);
+    const differences = realisedDifferenceLines(usdSyp, lines, realised);
+    expect(differences.map((line) => [line.account, line.bookMinor, line.parallelMinor])).toEqual([
+      ['421001', 0n, -60_000n],
+    ]);
+  });
+});
+
+describe('milestoneItemClearing', () => {
+  it('holds an invoice line of another amount or currency than the item has open', () => {
+    const item = usd(40_000n, 4_880_000n, 40_000n);
+    expect(milestoneItemClearing(money(45_000n, 'USD'), item)).toEqual({
+      kind: 'decision',
+      detail: 'milestone_amount_differs',
+    });
+    expect(milestoneItemClearing(money(40_000n, 'SYP'), item).kind).toBe('decision');
+    expect(() => milestoneItemClearing(money(40_000n, 'USD'), usd(0n, 0n, 0n))).toThrow(RangeError);
+  });
+});
+
+describe('milestoneItemReference', () => {
+  it("names the first done's item by Hub's number, and each done after a reopen by its place", () => {
+    expect(milestoneItemReference('MS-8', 0)).toBe('MS-8');
+    expect(milestoneItemReference('MS-8', 1)).toBe('MS-8/2');
+    expect(milestoneItemReference('MS-8', 2)).toBe('MS-8/3');
+    expect(() => milestoneItemReference('MS-8', -1)).toThrow(RangeError);
+    expect(() => milestoneItemReference('MS-8', 1.5)).toThrow(RangeError);
+  });
+});
+
+describe('completedProjectReleases', () => {
+  it('releases what remains of the schedules never done, and nothing when none defers anything', () => {
+    // The completion case: MS-11 released at its done, MS-13 deferred 200.00 USD at 123.
+    const left = usd(20_000n, 2_460_000n, 20_000n);
+    expect(completedProjectReleases([usd(0n, 0n, 0n), left])).toEqual([left]);
+    expect(completedProjectReleases([usd(0n, 0n, 0n)])).toEqual([]);
+    expect(() => completedProjectReleases([usd(0n, 1n, 0n)])).toThrow(RangeError);
+    expect(() => completedProjectReleases([usd(-1n, -120n, -1n)])).toThrow(RangeError);
+  });
+});
+
+/** A milestone in either currency, in any shape, with whole SYP-per-USD rates at its two dates. */
+const milestoneArb = fc
+  .record({
+    currency: fc.constantFrom<CurrencyCode>('USD', 'SYP'),
+    shape: fc.constantFrom(...shapes),
+    amountMinor: fc.bigInt({ min: 1n, max: 10n ** 12n }),
+    doneBulletin: fc.integer({ min: 1, max: 30_000 }),
+    doneMarket: fc.integer({ min: 1, max: 30_000 }),
+    invoiceBulletin: fc.integer({ min: 1, max: 30_000 }),
+    invoiceMarket: fc.integer({ min: 1, max: 30_000 }),
+  })
+  .map((input) => ({
+    ...input,
+    ledgers: input.shape[0],
+    amount: money(input.amountMinor, input.currency),
+    done: measuredOn(
+      input.shape[0],
+      '2026-12-01',
+      `${input.doneBulletin}.0000`,
+      `${input.doneMarket}.0000`,
+    ),
+    invoice: measuredOn(
+      input.shape[0],
+      '2026-12-03',
+      `${input.invoiceBulletin}.0000`,
+      `${input.invoiceMarket}.0000`,
+    ),
+  }));
+
+describe('a milestone done before its invoice', () => {
+  it('balances at done, clears its item to zero in every ledger at invoice with the realised residual, and its reopen nets to zero', () => {
+    fc.assert(
+      fc.property(milestoneArb, ({ ledgers, amount, done, invoice }) => {
+        const outcome = milestoneDone(amount, true, { done: false, deferred: null });
+        if (outcome.kind !== 'contract_asset') throw new Error('A contract asset');
+        const asset = measuredLine({ account: '113001', amount: outcome.amount }, done);
+        const revenue = measuredLine(
+          { account: '411001', amount: money(-amount.amountMinor, amount.currency) },
+          done,
+        );
+        const doneEntry = balanceEntry({
+          ...done,
+          lines: [asset, revenue],
+          rounding: { account: '541003' },
+        });
+        // One amount measured on both sides: no rounding line.
+        expect(doneEntry).toHaveLength(2);
+        const reopened = [...doneEntry, ...reverseLines(doneEntry)];
+        expect(sum(reopened.map((line) => line.bookMinor))).toBe(0n);
+        expect(sum(reopened.map((line) => line.parallelMinor ?? 0n))).toBe(0n);
+
+        const clearing = milestoneItemClearing(amount, asset);
+        if (clearing.kind !== 'clear') throw new Error('The invoice clears the item');
+        expect(clearing.amounts).toEqual(negate(asset));
+        const lines: Line[] = [
+          measuredLine({ account: '112001', amount }, invoice),
+          carried('113001', clearing.amounts),
+        ];
+        const entry = balanceEntry({
+          ...invoice,
+          lines: [...lines, ...realisedDifferenceLines(ledgers, lines, realised)],
+          rounding: { account: '541003' },
+        });
+        expect(sum(entry.map((line) => line.bookMinor))).toBe(0n);
+        expect(sum(entry.map((line) => line.parallelMinor ?? 0n))).toBe(0n);
+        const both = [...entry, ...reverseLines(entry)];
+        expect(sum(both.map((line) => line.bookMinor))).toBe(0n);
+        expect(sum(both.map((line) => line.parallelMinor ?? 0n))).toBe(0n);
+      }),
+      { numRuns: 300 },
+    );
+  });
+
+  it('never posts a line of another amount: the invoice and a done differing from what stands are decisions', () => {
+    fc.assert(
+      fc.property(
+        milestoneArb,
+        fc.bigInt({ min: 1n, max: 10n ** 12n }),
+        ({ amount, done }, otherMinor) => {
+          fc.pre(otherMinor !== amount.amountMinor);
+          const asset = measuredLine({ account: '113001', amount }, done);
+          const other = money(otherMinor, amount.currency);
+          expect(milestoneItemClearing(other, asset).kind).toBe('decision');
+          expect(milestoneDone(other, true, { done: false, deferred: asset }).kind).toBe(
+            'decision',
+          );
+        },
+      ),
+      { numRuns: 300 },
+    );
+  });
+});
+
+describe('a milestone invoiced before its done', () => {
+  it('is released at its deferral exactly in every ledger, with no rounding line, the same on a replay, and its reopen nets to zero', () => {
+    fc.assert(
+      fc.property(milestoneArb, ({ amount, invoice }) => {
+        const deferral = measuredLine(
+          { account: '212001', amount: money(-amount.amountMinor, amount.currency) },
+          invoice,
+        );
+        const deferred = negate(deferral);
+        const outcome = milestoneDone(amount, true, { done: false, deferred });
+        expect(milestoneDone(amount, true, { done: false, deferred })).toEqual(outcome);
+        if (outcome.kind !== 'release') throw new Error('A release');
+        expect(outcome.amounts).toEqual(deferred);
+        const entry = balanceEntry({
+          ...invoice,
+          lines: [carried('212001', outcome.amounts), carried('411001', negate(outcome.amounts))],
+          rounding: { account: '541003' },
+        });
+        expect(entry).toHaveLength(2);
+        const both = [...entry, ...reverseLines(entry)];
+        expect(sum(both.map((line) => line.bookMinor))).toBe(0n);
+        expect(sum(both.map((line) => line.parallelMinor ?? 0n))).toBe(0n);
+        // The project's completion releases the same amounts while the done never came.
+        expect(completedProjectReleases([deferred])).toEqual([deferred]);
+      }),
+      { numRuns: 300 },
     );
   });
 });

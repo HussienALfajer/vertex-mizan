@@ -1,4 +1,4 @@
-import { type CompanyLedgers, money } from '@vertex-mizan/contracts';
+import { type CompanyLedgers, type Money, money } from '@vertex-mizan/contracts';
 import { allocate, allocateCarried } from './allocation.js';
 import { clearOpenItem } from './carried.js';
 import { type CarriedAmounts, keptLedgers, ledgerAmount, negate } from './lines.js';
@@ -258,6 +258,125 @@ export function remainingReleaseParts(
     bookMinor: book[k] ?? 0n,
     parallelMinor: parallel === undefined ? null : (parallel[k] ?? 0n),
   }));
+}
+
+/**
+ * Revenue recognised at a point in time (S06 rules 11–14; `docs/scenarios/revenue/milestones.md`,
+ * owner 2026-11-10): a project's milestone, its deposit included, on Hub's done date.
+ */
+
+/** The details a milestone's done or its invoice is held `NEEDS_DECISION` with (S06 rule 18). */
+export type MilestoneDecision =
+  | 'milestone_amount_differs'
+  | 'milestone_already_done'
+  | 'milestone_service_missing';
+
+/** What the books hold for a milestone when its `milestone.done` arrives. */
+export interface MilestoneStanding {
+  /**
+   * Whether a done of the milestone stands: its entry posted and not reversed, by a reopen or by
+   * the void of its invoice (open question Q14).
+   */
+  readonly done: boolean;
+  /**
+   * What remains in contract liabilities of the milestone's standing point-in-time schedule
+   * (positive amounts) when its deposit or milestone line was invoiced before; null when it was
+   * not, or when that invoice was voided. A schedule the project's completion released defers
+   * nothing: a done after it is open question Q14, which the caller holds before calling.
+   */
+  readonly deferred: CarriedAmounts | null;
+}
+
+/**
+ * What a `milestone.done` posts: the release of what its invoice deferred, at the amounts the
+ * liability carries (Dr the schedule's liability / Cr revenue; IAS 21.23(b)); a contract asset for
+ * the installment, which the posting rule measures anew at each ledger's policy rate of `done_on`
+ * (IFRS 15.107, IAS 21.21–22); or a decision for the accountant.
+ */
+export type MilestoneDone =
+  | { readonly kind: 'release'; readonly amounts: CarriedAmounts }
+  | { readonly kind: 'contract_asset'; readonly amount: Money }
+  | { readonly kind: 'decision'; readonly detail: MilestoneDecision };
+
+/**
+ * The rule of a milestone's done (S06 rule 11; IFRS 15.38): a second done while one stands is
+ * `milestone_already_done`, a done without Hub's service `milestone_service_missing`, and a done
+ * whose amount is not its standing schedule's, in its currency, `milestone_amount_differs` (a
+ * change in the transaction price, IFRS 15.87–88). Otherwise a schedule invoiced before is released
+ * whole, and a milestone not invoiced opens its contract asset. A point-in-time schedule defers its
+ * whole amount until its done or the project's completion, so a schedule that defers nothing is
+ * refused here: the caller holds a done after the completion (open question Q14).
+ */
+export function milestoneDone(
+  amount: Money,
+  hasService: boolean,
+  standing: MilestoneStanding,
+): MilestoneDone {
+  if (amount.amountMinor <= 0n) throw new RangeError('A milestone of zero or less');
+  if (standing.done) return { kind: 'decision', detail: 'milestone_already_done' };
+  if (!hasService) return { kind: 'decision', detail: 'milestone_service_missing' };
+  const { deferred } = standing;
+  if (deferred === null) return { kind: 'contract_asset', amount };
+  const { transaction } = deferred;
+  if (transaction.amountMinor <= 0n) {
+    throw new RangeError('A schedule that defers nothing: a done after the completion (Q14)');
+  }
+  if (transaction.currency !== amount.currency || transaction.amountMinor !== amount.amountMinor) {
+    return { kind: 'decision', detail: 'milestone_amount_differs' };
+  }
+  return { kind: 'release', amounts: deferred };
+}
+
+/**
+ * The line of a milestone's invoice once the milestone is done (S06 rule 12; IFRS 15.108): the
+ * credit to its contract asset item (`item`, the item's open carrying amounts, a debit) for the
+ * line's amount, at what the item carries, so the item reaches zero in every ledger; the posting
+ * rule posts each ledger's residual of the invoice as a realised difference (IAS 21.28). A line in
+ * another currency or of another amount than the item has open is `milestone_amount_differs`.
+ */
+export function milestoneItemClearing(
+  line: Money,
+  item: CarriedAmounts,
+):
+  | { readonly kind: 'clear'; readonly amounts: CarriedAmounts }
+  | { readonly kind: 'decision'; readonly detail: 'milestone_amount_differs' } {
+  if (item.transaction.amountMinor <= 0n) throw new RangeError('A contract asset item not open');
+  if (
+    line.currency !== item.transaction.currency ||
+    line.amountMinor !== item.transaction.amountMinor
+  ) {
+    return { kind: 'decision', detail: 'milestone_amount_differs' };
+  }
+  return { kind: 'clear', amounts: clearOpenItem(item, -line.amountMinor) };
+}
+
+/**
+ * The reference of a milestone's contract asset item (S06 "Data"): Hub's milestone number for its
+ * first done, and `<number>/<n>` for the *n*-th done after reopens, since a reopen settles the
+ * earlier item at zero and an item is opened once (S04 rule 2; owner, 2026-11-10).
+ */
+export function milestoneItemReference(number: string, earlierItems: number): string {
+  if (!Number.isInteger(earlierItems) || earlierItems < 0) {
+    throw new RangeError('A count of earlier items that is not a whole number');
+  }
+  return earlierItems === 0 ? number : `${number}/${earlierItems + 1}`;
+}
+
+/**
+ * What `project.completed` releases (S06 rule 14): the remaining of each of the project's
+ * point-in-time schedules (positive amounts) that still defers something, at its carried amounts.
+ * None left: the event is recorded with no entry. A remaining of zero in its transaction amount is
+ * zero in every ledger (ADR 0007), or it is a programming error.
+ */
+export function completedProjectReleases(remaining: readonly CarriedAmounts[]): CarriedAmounts[] {
+  return remaining.filter((amounts) => {
+    if (amounts.transaction.amountMinor < 0n) throw new RangeError('A remaining below zero');
+    if (amounts.transaction.amountMinor !== 0n) return true;
+    if (amounts.bookMinor !== 0n || (amounts.parallelMinor ?? 0n) !== 0n) {
+      throw new RangeError('A remaining of zero that is not zero in a ledger');
+    }
+    return false;
+  });
 }
 
 function dayAfter(monthEnd: string): string {
