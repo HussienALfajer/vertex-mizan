@@ -2,7 +2,7 @@
 
 Status: Proposed
 
-S06 wrote these cases (S06 "Scenarios"). They stay `Proposed` until S06's feature slice brings their executors: the posting rules of `invoice.issued` with over-time lines, the release job `revenue_release_month`, the elapsed parts of a late issue, the hold `SERVICE_PERIOD_CLOSED` and the action `recognise` (S06 rules 1–5, 7, 10, 16). The case with a closed month also needs S07's close (`closed_periods`), as `inbox/post-in-next-open-period.md` does.
+S06 wrote these cases (S06 "Scenarios"); the owner approved their expected entries and outcomes on 2026-11-10, with option A of the day split below, the job's clock and the order of a job's releases. They stay `Proposed` until S06's feature slice brings their executors: the posting rules of `invoice.issued` with over-time lines, the release job `revenue_release_month`, the elapsed parts of a late issue, the hold `SERVICE_PERIOD_CLOSED` and the action `recognise` (S06 rules 1–5, 7, 10, 16). The case with a closed month also needs S07's close (`closed_periods`), as `inbox/post-in-next-open-period.md` does.
 
 ## Rule
 
@@ -26,7 +26,7 @@ The payloads use the short form of `revenue/revenue-at-issue.md`. A line's `kind
 
 Sources: the issue entry and an elapsed month's entry have the event as their source (`invoice.issued`); a release's is `revenue_release`. The job `revenue_release_month` for month *m* runs on the first day of *m*+1, so the case's clock moves to that day; an invoice step after it is received after the month's job. The job posts its releases in the order the invoices posted.
 
-**The day split** (S06 rule 3; ADR 0007 "Allocation"): with *A* a line's transaction amount and *T* the days of its period, the transaction part of month *m* is `round(A × days to the end of m ÷ T) − round(A × days to the end of m−1 ÷ T)`, halves away from zero. A ledger in the line's currency takes the transaction part as is (ADR 0007). Any other ledger cuts its own deferred amount the same way, over the days that amount covers: the whole period when the invoice is on time; from the first day of the issue month when months have elapsed (the "deferred manual line" case is the one where this differs from a cut by transaction share).
+**The day split** (S06 rule 3; ADR 0007 "Allocation"): with *A* a line's transaction amount and *T* the days of its period, the transaction part of month *m* is `round(A × days to the end of m ÷ T) − round(A × days to the end of m−1 ÷ T)`, halves away from zero. A ledger in the line's currency takes the transaction part as is (ADR 0007). Any other ledger cuts its own deferred amount the same way, over the days that amount covers: the whole period when the invoice is on time; from the first day of the issue month when months have elapsed (option A, owner 2026-11-10; the "deferred manual line" case is the one where this differs from a cut by transaction share). `packages/ledger`'s `overTimeMonths()` and `releaseParts()` compute it.
 
 The cases leave out what other scenarios own: credits (`revenue/retainer-credit.md`), voids and re-issues (`revenue/void-and-reissue.md`), milestones and deposits (`revenue/milestones.md`). A line of zero is refused by the contract (S05 rule 2), so it has no case; a negative line is a credit. `third` cannot occur: Hub invoices only in SYP and USD (S06 "Currencies, rates and rounding"). A replayed event posts nothing new: a property test, since a step carries no event ID. A release never reads a rate, so no case has a release held `RATE_MISSING`.
 

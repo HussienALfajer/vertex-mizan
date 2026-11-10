@@ -307,7 +307,8 @@ const stepOutcome = { outcome: outcomeSchema.optional() };
 
 /**
  * A step is told apart by its one key: `event`, `manual`, `reversal`, `job` or `rate`, or one of
- * the accountant's actions on a held event (S05 rules 15–17): `retry`, `move`, `resolve`, `dismiss`.
+ * the accountant's actions on a held event (S05 rules 15–17): `retry`, `move`, `resolve`, `dismiss`;
+ * and S06's `recognise` (rule 16).
  */
 export const STEP_KINDS = [
   'event',
@@ -319,6 +320,7 @@ export const STEP_KINDS = [
   'move',
   'resolve',
   'dismiss',
+  'recognise',
 ] as const;
 
 export type StepKind = (typeof STEP_KINDS)[number];
@@ -466,6 +468,24 @@ const dismissStepSchema = z
     outcome: step.outcome ?? null,
   }));
 
+/**
+ * Recognise the elapsed parts of an event held `SERVICE_PERIOD_CLOSED` in the first open period
+ * after them, each measured at its own month's rates, with a reason (S06 rule 16).
+ */
+const recogniseStepSchema = z
+  .strictObject({
+    kind: z.literal('recognise'),
+    recognise: countSchema(1),
+    reason: actionReasonSchema,
+    ...stepOutcome,
+  })
+  .transform((step) => ({
+    kind: step.kind,
+    step: step.recognise,
+    reason: step.reason,
+    outcome: step.outcome ?? null,
+  }));
+
 const stepSchema = z.preprocess(
   (value) => {
     if (typeof value !== 'object' || value === null || Array.isArray(value)) return value;
@@ -484,11 +504,12 @@ const stepSchema = z.preprocess(
       moveStepSchema,
       resolveStepSchema,
       dismissStepSchema,
+      recogniseStepSchema,
     ],
     {
       error:
         'Expected a step with one of the keys event, manual, reversal, job, rate, retry, move, ' +
-        'resolve or dismiss',
+        'resolve, dismiss or recognise',
     },
   ),
 );
@@ -664,12 +685,14 @@ export const caseSchema = z
       if (step.kind === 'reversal' && step.entry > entries.length) {
         issue(`Entry ${step.entry} is not an expected entry`, ['steps', s, 'reversal']);
       }
-      // S05 rules 15–17: an action names an earlier event step, and a resolve an expected entry.
+      // S05 rules 15–17, S06 rule 16: an action names an earlier event step, and a resolve an
+      // expected entry.
       if (
         step.kind === 'retry' ||
         step.kind === 'move' ||
         step.kind === 'resolve' ||
-        step.kind === 'dismiss'
+        step.kind === 'dismiss' ||
+        step.kind === 'recognise'
       ) {
         const path =
           step.kind === 'resolve' ? ['steps', s, 'resolve', 'step'] : ['steps', s, step.kind];
