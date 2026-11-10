@@ -25,6 +25,28 @@ function problems(markdown: string): readonly string[] {
   throw new Error('expected the scenario to be refused');
 }
 
+/** A late invoice held `SERVICE_PERIOD_CLOSED`, recognised in the first open period (S06 rule 16). */
+const RECOGNISE = `
+case: a late part recognised in the first open period
+company: { shape: syp, book: SYP, closed_periods: [2026-10], rate_policy: { book: bulletin } }
+steps:
+  - event: invoice.issued
+    accounting_date: 2026-11-05
+    payload: { invoice: INV-1, client: C1, currency: SYP,
+               lines: [{ amount: 62000, source: retainer_charge, kind: monthly,
+                         cycle_start: 2026-10-20, cycle_end: 2026-11-19, service: S1 }] }
+    outcome: { status: held, reason: SERVICE_PERIOD_CLOSED }
+  - recognise: 1
+    reason: "أُغلق تشرين الأول قبل وصول الفاتورة"
+expect:
+  entries:
+    - source: invoice.issued
+      date: 2026-11-01
+      lines:
+        - { account: "1130", dims: { client: C1 }, currency: SYP, amount: 24000, book: 24000 }
+        - { account: "4110", dims: { client: C1, service: S1 }, currency: SYP, amount: -24000, book: -24000 }
+`;
+
 function refusal(source: string): string {
   return problems(file('Status: Proposed', source)).join('\n');
 }
@@ -206,7 +228,7 @@ describe('a case', () => {
     [
       'a step of no kind',
       CASE.replace('  - event: invoice.issued', '  - what: invoice.issued'),
-      'event, manual, reversal, job, rate, retry, move, resolve or dismiss',
+      'event, manual, reversal, job, rate, retry, move, resolve, dismiss or recognise',
     ],
     [
       'a step of two kinds',
@@ -414,6 +436,22 @@ describe('a case', () => {
       reason: 'سُجّلت في Hub خطأً',
       outcome: null,
     });
+  });
+
+  it('reads the recognition of a held late part in the first open period (S06 rule 16)', () => {
+    const { steps } = parseCase(RECOGNISE);
+    expect(steps[1]).toEqual({
+      kind: 'recognise',
+      step: 1,
+      reason: 'أُغلق تشرين الأول قبل وصول الفاتورة',
+      outcome: null,
+    });
+    expect(refusal(RECOGNISE.replace('recognise: 1', 'recognise: 2'))).toContain(
+      'Step 2 is not an earlier event step',
+    );
+    expect(
+      refusal(RECOGNISE.replace('    reason: "أُغلق تشرين الأول قبل وصول الفاتورة"\n', '')),
+    ).toContain('reason');
   });
 
   it.each([

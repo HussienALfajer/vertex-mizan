@@ -34,8 +34,8 @@ export function allocate(total: bigint, weights: readonly bigint[]): bigint[] {
 }
 
 /**
- * Splits a carried balance by `weights` (a deferral across the months of its service period, a
- * deposit across milestones). Each ledger's amount is allocated separately with the same weights
+ * Splits a carried balance by `weights` (a deposit across milestones; an over-time deferral is
+ * split by `releaseParts()` instead, S06). Each ledger's amount is allocated separately with the same weights
  * (ADR 0007), so every part's amounts come from the balance and are never converted again.
  */
 export function allocateCarried(
