@@ -26,6 +26,7 @@ import {
 } from './inbox-mocks';
 import { rateReads, today } from './rate-mocks';
 import { client, m1, receivablesReads } from './receivables-mocks';
+import { hubClient, newKeyOf, newSecret, settingsReads } from './settings-mocks';
 import { expect, expectNoPageOverflow, screenshot, test, widths } from './test';
 import { brokenReport, emailedAnchor, trustReads } from './trust-mocks';
 
@@ -444,6 +445,66 @@ for (const colorScheme of ['light', 'dark'] as const) {
           await page.getByRole('button', { name: ar.inbox.move.label }).click();
           await expect(page.getByRole('dialog', { name: ar.inbox.move.title })).toBeVisible();
           await screenshot(page, testInfo, `inbox-move-${colorScheme}-${width}`, {
+            fullPage: false,
+          });
+        });
+      });
+
+      test.describe('settings screens', () => {
+        test.use({ me: owner, api: settingsReads });
+
+        test('posting rules', async ({ page }, testInfo) => {
+          await page.goto('/settings/posting-rules');
+          await expect(page.getByRole('heading', { level: 1 })).toHaveText(ar.postingRules.title);
+          await expect(page.getByText(ar.postingRules.unmappedTitle)).toBeVisible();
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `posting-rules-${colorScheme}-${width}`);
+        });
+
+        test('posting rules: map dialog', async ({ page }, testInfo) => {
+          await page.goto('/settings/posting-rules');
+          const name = ar.postingRules.slots.project_cost;
+          await page.getByRole('button', { name: `${ar.postingRules.change}: ${name}` }).click();
+          await expect(
+            page.getByRole('dialog', { name: `${ar.postingRules.changeTitle}: ${name}` }),
+          ).toBeVisible();
+          await screenshot(page, testInfo, `posting-rules-map-${colorScheme}-${width}`, {
+            fullPage: false,
+          });
+        });
+
+        test('API clients', async ({ page }, testInfo) => {
+          await page.goto('/settings/api-clients');
+          await expect(page.getByRole('heading', { level: 1 })).toHaveText(ar.apiClients.title);
+          await expect(page.getByRole('table', { name: ar.apiClients.keys.label })).toBeVisible();
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `api-clients-${colorScheme}-${width}`);
+        });
+
+        test('API clients: new client', async ({ page }, testInfo) => {
+          await page.goto('/settings/api-clients');
+          await page.getByRole('button', { name: ar.apiClients.form.newTitle }).click();
+          await expect(
+            page.getByRole('dialog', { name: ar.apiClients.form.newTitle }),
+          ).toBeVisible();
+          await screenshot(page, testInfo, `api-clients-new-${colorScheme}-${width}`, {
+            fullPage: false,
+          });
+        });
+
+        test('API clients: the key shown once', async ({ page }, testInfo) => {
+          await page.route('**/api/api-clients/*/keys', (route) =>
+            route.fulfill({ status: 201, json: newKeyOf(newSecret()) }),
+          );
+          await page.goto('/settings/api-clients');
+          await page.getByRole('button', { name: ar.apiClients.client.newKey }).click();
+          await page.getByRole('button', { name: ar.apiClients.newKey.confirm }).click();
+          await expect(
+            page.getByRole('dialog', {
+              name: `${ar.apiClients.reveal.title}: ${hubClient.name}`,
+            }),
+          ).toBeVisible();
+          await screenshot(page, testInfo, `api-clients-key-${colorScheme}-${width}`, {
             fullPage: false,
           });
         });

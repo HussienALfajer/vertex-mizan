@@ -43,6 +43,7 @@ export * from './components/password-input';
 export * from './components/popover';
 export * from './components/qr-code';
 export * from './components/secret-code-list';
+export * from './components/secret-reveal';
 export * from './components/select';
 export * from './components/select-field';
 export * from './components/sheet';

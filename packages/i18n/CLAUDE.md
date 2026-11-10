@@ -14,7 +14,7 @@ The Arabic text of every front end (ADR 0009): plain catalogs and locale constan
   - `shell`: the web app's shell (navigation, skip link, system status, home, not-found page);
   - `roles`: the name of each membership role (S01);
   - `auth`: signing in, two-factor, passwords, invitations, enrolment, re-authentication and the account security page, with the name of each platform audit action a person sees there (S01);
-  - `company`: the companies list, a new company, the company settings, the switcher and the archived banner (S01);
+  - `company`: the companies list, a new company, the company settings (with S05's payments' tolerance), the switcher and the archived banner (S01);
   - `members`: members and invitations of the active company (S01);
   - `permissions`: what each permission of the permission map allows (S01);
   - `audit`: the company audit log screen, with the name of each company audit action, audited entity and field (S01);
@@ -27,7 +27,8 @@ The Arabic text of every front end (ADR 0009): plain catalogs and locale constan
   - `export` (the file `export.ts`, `exportData`, since `export` is a keyword): the company's full export, with each export state (S03);
   - `openItems`: the item kinds, states, movements, sources and ageing buckets, the receivables labels, and the columns of the ageing and client statement exports (S04);
   - `inbox`: the event inbox (S05): each state, hold reason and detail, event type, payment method and action, what fixes each reason, the inbox and event pages, the move, resolution and dismissal, the Hub document on an entry or an item, the palette's "حدث…";
-  - `postingRules`: the name of each posting slot (S05; the mapping screen's text comes with PR 5);
+  - `postingRules`: the posting rules' mapping (S05): the name of each slot and the account it takes, the rules that group the slots, the mapping screen;
+  - `apiClients`: the API clients (S05): systems, scopes, clients, keys, the client form, the new key shown once, the rotation and the revocation;
   - `email`: the emails the worker sends (S01), with `{name}` placeholders the worker fills from the email's data.
 - `src/locale.ts`: `defaultLanguage` (`ar`), `textDirection` (`rtl`), `formatLocale` (`ar-SY-u-nu-latn`: Syrian month names, Latin digits; pinned by `locale.test.ts`) for dates and counts, `displayTimeZone` (`Asia/Damascus`).
 - `src/catalog.test.ts`: no empty text, no Arabic-Indic digit, a text for every error code and every amount-input reason.

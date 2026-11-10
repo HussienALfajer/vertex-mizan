@@ -49,6 +49,7 @@ import {
   MenuIcon,
   MoonIcon,
   PackageIcon,
+  PlugZapIcon,
   PlusIcon,
   RowsIcon,
   ScrollTextIcon,
@@ -59,6 +60,7 @@ import {
   TagsIcon,
   UserRoundSearchIcon,
   UsersIcon,
+  WorkflowIcon,
 } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { useSwitchCompany } from '../features/company/company-queries';
@@ -128,6 +130,18 @@ const navItems: NavItem[] = [
     permission: 'company.read',
   },
   { to: '/settings/members', label: ar.members.nav, icon: UsersIcon, permission: 'members.read' },
+  {
+    to: '/settings/posting-rules',
+    label: ar.postingRules.nav,
+    icon: WorkflowIcon,
+    permission: 'posting_rules.read',
+  },
+  {
+    to: '/settings/api-clients',
+    label: ar.apiClients.nav,
+    icon: PlugZapIcon,
+    permission: 'api_clients.read',
+  },
   { to: '/settings/audit', label: ar.audit.nav, icon: ScrollTextIcon, permission: 'audit.read' },
   {
     to: '/integrity',

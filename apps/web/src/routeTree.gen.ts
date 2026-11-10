@@ -39,10 +39,12 @@ import { Route as AppCompanyOpenItemsIdRouteImport } from './routes/_app/_compan
 import { Route as AppCompanyRatesIndexRouteImport } from './routes/_app/_company/rates/index'
 import { Route as AppCompanyRatesCalendarRouteImport } from './routes/_app/_company/rates/calendar'
 import { Route as AppCompanyReceivablesIndexRouteImport } from './routes/_app/_company/receivables/index'
+import { Route as AppCompanySettingsApiClientsRouteImport } from './routes/_app/_company/settings/api-clients'
 import { Route as AppCompanySettingsAuditRouteImport } from './routes/_app/_company/settings/audit'
 import { Route as AppCompanySettingsCompanyRouteImport } from './routes/_app/_company/settings/company'
 import { Route as AppCompanySettingsExportRouteImport } from './routes/_app/_company/settings/export'
 import { Route as AppCompanySettingsMembersRouteImport } from './routes/_app/_company/settings/members'
+import { Route as AppCompanySettingsPostingRulesRouteImport } from './routes/_app/_company/settings/posting-rules'
 import { Route as AppCompanyAccountsIdLinesRouteImport } from './routes/_app/_company/accounts/$id/lines'
 import { Route as AppCompanyReceivablesClientsValueIdRouteImport } from './routes/_app/_company/receivables/clients/$valueId'
 
@@ -194,6 +196,12 @@ const AppCompanyReceivablesIndexRoute =
     path: '/receivables/',
     getParentRoute: () => AppCompanyRoute,
   } as any)
+const AppCompanySettingsApiClientsRoute =
+  AppCompanySettingsApiClientsRouteImport.update({
+    id: '/settings/api-clients',
+    path: '/settings/api-clients',
+    getParentRoute: () => AppCompanyRoute,
+  } as any)
 const AppCompanySettingsAuditRoute = AppCompanySettingsAuditRouteImport.update({
   id: '/settings/audit',
   path: '/settings/audit',
@@ -215,6 +223,12 @@ const AppCompanySettingsMembersRoute =
   AppCompanySettingsMembersRouteImport.update({
     id: '/settings/members',
     path: '/settings/members',
+    getParentRoute: () => AppCompanyRoute,
+  } as any)
+const AppCompanySettingsPostingRulesRoute =
+  AppCompanySettingsPostingRulesRouteImport.update({
+    id: '/settings/posting-rules',
+    path: '/settings/posting-rules',
     getParentRoute: () => AppCompanyRoute,
   } as any)
 const AppCompanyAccountsIdLinesRoute =
@@ -252,10 +266,12 @@ export interface FileRoutesByFullPath {
   '/inbox/$id': typeof AppCompanyInboxIdRoute
   '/open-items/$id': typeof AppCompanyOpenItemsIdRoute
   '/rates/calendar': typeof AppCompanyRatesCalendarRoute
+  '/settings/api-clients': typeof AppCompanySettingsApiClientsRoute
   '/settings/audit': typeof AppCompanySettingsAuditRoute
   '/settings/company': typeof AppCompanySettingsCompanyRoute
   '/settings/export': typeof AppCompanySettingsExportRoute
   '/settings/members': typeof AppCompanySettingsMembersRoute
+  '/settings/posting-rules': typeof AppCompanySettingsPostingRulesRoute
   '/chart/': typeof AppCompanyChartIndexRoute
   '/drafts/': typeof AppCompanyDraftsIndexRoute
   '/entries/': typeof AppCompanyEntriesIndexRoute
@@ -287,10 +303,12 @@ export interface FileRoutesByTo {
   '/inbox/$id': typeof AppCompanyInboxIdRoute
   '/open-items/$id': typeof AppCompanyOpenItemsIdRoute
   '/rates/calendar': typeof AppCompanyRatesCalendarRoute
+  '/settings/api-clients': typeof AppCompanySettingsApiClientsRoute
   '/settings/audit': typeof AppCompanySettingsAuditRoute
   '/settings/company': typeof AppCompanySettingsCompanyRoute
   '/settings/export': typeof AppCompanySettingsExportRoute
   '/settings/members': typeof AppCompanySettingsMembersRoute
+  '/settings/posting-rules': typeof AppCompanySettingsPostingRulesRoute
   '/chart': typeof AppCompanyChartIndexRoute
   '/drafts': typeof AppCompanyDraftsIndexRoute
   '/entries': typeof AppCompanyEntriesIndexRoute
@@ -326,10 +344,12 @@ export interface FileRoutesById {
   '/_app/_company/inbox/$id': typeof AppCompanyInboxIdRoute
   '/_app/_company/open-items/$id': typeof AppCompanyOpenItemsIdRoute
   '/_app/_company/rates/calendar': typeof AppCompanyRatesCalendarRoute
+  '/_app/_company/settings/api-clients': typeof AppCompanySettingsApiClientsRoute
   '/_app/_company/settings/audit': typeof AppCompanySettingsAuditRoute
   '/_app/_company/settings/company': typeof AppCompanySettingsCompanyRoute
   '/_app/_company/settings/export': typeof AppCompanySettingsExportRoute
   '/_app/_company/settings/members': typeof AppCompanySettingsMembersRoute
+  '/_app/_company/settings/posting-rules': typeof AppCompanySettingsPostingRulesRoute
   '/_app/_company/chart/': typeof AppCompanyChartIndexRoute
   '/_app/_company/drafts/': typeof AppCompanyDraftsIndexRoute
   '/_app/_company/entries/': typeof AppCompanyEntriesIndexRoute
@@ -363,10 +383,12 @@ export interface FileRouteTypes {
     | '/inbox/$id'
     | '/open-items/$id'
     | '/rates/calendar'
+    | '/settings/api-clients'
     | '/settings/audit'
     | '/settings/company'
     | '/settings/export'
     | '/settings/members'
+    | '/settings/posting-rules'
     | '/chart/'
     | '/drafts/'
     | '/entries/'
@@ -398,10 +420,12 @@ export interface FileRouteTypes {
     | '/inbox/$id'
     | '/open-items/$id'
     | '/rates/calendar'
+    | '/settings/api-clients'
     | '/settings/audit'
     | '/settings/company'
     | '/settings/export'
     | '/settings/members'
+    | '/settings/posting-rules'
     | '/chart'
     | '/drafts'
     | '/entries'
@@ -436,10 +460,12 @@ export interface FileRouteTypes {
     | '/_app/_company/inbox/$id'
     | '/_app/_company/open-items/$id'
     | '/_app/_company/rates/calendar'
+    | '/_app/_company/settings/api-clients'
     | '/_app/_company/settings/audit'
     | '/_app/_company/settings/company'
     | '/_app/_company/settings/export'
     | '/_app/_company/settings/members'
+    | '/_app/_company/settings/posting-rules'
     | '/_app/_company/chart/'
     | '/_app/_company/drafts/'
     | '/_app/_company/entries/'
@@ -668,6 +694,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppCompanyReceivablesIndexRouteImport
       parentRoute: typeof AppCompanyRoute
     }
+    '/_app/_company/settings/api-clients': {
+      id: '/_app/_company/settings/api-clients'
+      path: '/settings/api-clients'
+      fullPath: '/settings/api-clients'
+      preLoaderRoute: typeof AppCompanySettingsApiClientsRouteImport
+      parentRoute: typeof AppCompanyRoute
+    }
     '/_app/_company/settings/audit': {
       id: '/_app/_company/settings/audit'
       path: '/settings/audit'
@@ -694,6 +727,13 @@ declare module '@tanstack/react-router' {
       path: '/settings/members'
       fullPath: '/settings/members'
       preLoaderRoute: typeof AppCompanySettingsMembersRouteImport
+      parentRoute: typeof AppCompanyRoute
+    }
+    '/_app/_company/settings/posting-rules': {
+      id: '/_app/_company/settings/posting-rules'
+      path: '/settings/posting-rules'
+      fullPath: '/settings/posting-rules'
+      preLoaderRoute: typeof AppCompanySettingsPostingRulesRouteImport
       parentRoute: typeof AppCompanyRoute
     }
     '/_app/_company/accounts/$id/lines': {
@@ -725,10 +765,12 @@ interface AppCompanyRouteChildren {
   AppCompanyInboxIdRoute: typeof AppCompanyInboxIdRoute
   AppCompanyOpenItemsIdRoute: typeof AppCompanyOpenItemsIdRoute
   AppCompanyRatesCalendarRoute: typeof AppCompanyRatesCalendarRoute
+  AppCompanySettingsApiClientsRoute: typeof AppCompanySettingsApiClientsRoute
   AppCompanySettingsAuditRoute: typeof AppCompanySettingsAuditRoute
   AppCompanySettingsCompanyRoute: typeof AppCompanySettingsCompanyRoute
   AppCompanySettingsExportRoute: typeof AppCompanySettingsExportRoute
   AppCompanySettingsMembersRoute: typeof AppCompanySettingsMembersRoute
+  AppCompanySettingsPostingRulesRoute: typeof AppCompanySettingsPostingRulesRoute
   AppCompanyChartIndexRoute: typeof AppCompanyChartIndexRoute
   AppCompanyDraftsIndexRoute: typeof AppCompanyDraftsIndexRoute
   AppCompanyEntriesIndexRoute: typeof AppCompanyEntriesIndexRoute
@@ -751,10 +793,12 @@ const AppCompanyRouteChildren: AppCompanyRouteChildren = {
   AppCompanyInboxIdRoute: AppCompanyInboxIdRoute,
   AppCompanyOpenItemsIdRoute: AppCompanyOpenItemsIdRoute,
   AppCompanyRatesCalendarRoute: AppCompanyRatesCalendarRoute,
+  AppCompanySettingsApiClientsRoute: AppCompanySettingsApiClientsRoute,
   AppCompanySettingsAuditRoute: AppCompanySettingsAuditRoute,
   AppCompanySettingsCompanyRoute: AppCompanySettingsCompanyRoute,
   AppCompanySettingsExportRoute: AppCompanySettingsExportRoute,
   AppCompanySettingsMembersRoute: AppCompanySettingsMembersRoute,
+  AppCompanySettingsPostingRulesRoute: AppCompanySettingsPostingRulesRoute,
   AppCompanyChartIndexRoute: AppCompanyChartIndexRoute,
   AppCompanyDraftsIndexRoute: AppCompanyDraftsIndexRoute,
   AppCompanyEntriesIndexRoute: AppCompanyEntriesIndexRoute,
