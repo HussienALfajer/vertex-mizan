@@ -198,6 +198,8 @@ export const openItemSchema = z
     ...openItemSummarySchema.shape,
     asOf: isoDate(),
     hubDocument: hubDocumentRefSchema.nullable(),
+    /** The inbox id of the Hub event that opened the item (S05 "Screens"). */
+    hubEventId: z.uuid().nullable(),
     openedByEntryId: z.uuid(),
     bookCurrency: currencyCodeSchema,
     parallelCurrency: currencyCodeSchema.nullable(),

@@ -41,6 +41,8 @@ export const inboxEventSchema = z
     documentType: documentTypeSchema,
     documentId: z.string(),
     documentNumber: z.string().nullable(),
+    /** The client the payload names, by Hub's name (none for a rate or an expense). */
+    clientName: z.string().nullable(),
     accountingDate: dateSchema,
     occurredAt: instantSchema,
     receivedAt: instantSchema,
@@ -117,6 +119,8 @@ export const inboxEventDetailSchema = inboxEventSchema
     payload: z.record(z.string(), z.unknown()),
     payloadHash: z.string(),
     requestId: z.string(),
+    /** For an event held `PERIOD_CLOSED`: the day a move posts it on (rule 15). */
+    moveOn: dateSchema.nullable(),
     actions: z.array(inboxActionSchema),
   })
   .meta({ id: 'InboxEventDetail' });

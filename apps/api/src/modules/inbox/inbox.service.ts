@@ -19,6 +19,7 @@ import {
   inboundEvents,
   journalEntries,
   moveEvent,
+  periods,
   resolveEvent,
   retryEvent,
   SYSTEM_NAME,
@@ -26,6 +27,7 @@ import {
   users,
   withCompany,
 } from '@vertex-mizan/db';
+import { firstOpenDayAfter } from '@vertex-mizan/ledger';
 import { and, asc, desc, eq, gte, inArray, lte, sql } from 'drizzle-orm';
 import { actorOf, type CompanyRouteAccess } from '../../core/access/access.js';
 import { lockCompanyForWrite } from '../../core/access/company-lock.js';
@@ -76,6 +78,12 @@ const withState = (tx: Transaction) =>
         eq(inboundEventStates.eventId, inboundEvents.id),
       ),
     );
+
+/** The client a payload names by Hub's name (S05 "Screens": the inbox's rows). */
+function clientNameOf(payload: unknown): string | null {
+  const client = (payload as { client?: { name?: unknown } } | null)?.client;
+  return typeof client?.name === 'string' ? client.name : null;
+}
 
 /**
  * The event inbox (S05 rules 15–18, "API"): the events Hub sent with their states, the held
@@ -201,11 +209,24 @@ export class InboxService {
       .leftJoin(apiClients, eq(apiClients.id, inboundEventActions.actorApiClientId))
       .where(eq(inboundEventActions.eventId, id))
       .orderBy(asc(inboundEventActions.createdAt), asc(inboundEventActions.id));
+    const closed =
+      event.reason === 'PERIOD_CLOSED'
+        ? await tx
+            .select({ period: periods.period })
+            .from(periods)
+            .where(sql`${periods.state} <> 'open'`)
+        : null;
     return {
       ...event,
       payload: row.event.payload as Record<string, unknown>,
       payloadHash: row.event.payloadHash,
       requestId: row.event.requestId,
+      moveOn: closed
+        ? firstOpenDayAfter(
+            event.accountingDate,
+            closed.map((period) => period.period),
+          )
+        : null,
       actions: actions.map(({ action, personName, clientName }): InboxAction => {
         const kind = action.actorKind as InboxAction['actor']['kind'];
         return {
@@ -277,6 +298,7 @@ export class InboxService {
         documentType: event.documentType as InboxEvent['documentType'],
         documentId: event.documentId,
         documentNumber: event.documentNumber,
+        clientName: clientNameOf(event.payload),
         accountingDate: event.accountingDate,
         occurredAt: event.occurredAt.toISOString(),
         receivedAt: event.receivedAt.toISOString(),

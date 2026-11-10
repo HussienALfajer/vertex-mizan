@@ -27,6 +27,7 @@ import {
   dimensionValues,
   type ItemAtDate,
   type ItemDueDate,
+  journalEntries,
   openItemBalances,
   openItemDueDates,
   readClientStatement,
@@ -350,10 +351,23 @@ async function readOpenItem(tx: Transaction, id: string, asOf: string): Promise<
     tx,
     dueDates.map((row) => row.userId),
   );
+  const [opening] =
+    item.source === 'hub_event'
+      ? await tx
+          .select({ sourceRef: journalEntries.sourceRef })
+          .from(journalEntries)
+          .where(
+            and(
+              eq(journalEntries.id, item.openedByEntryId),
+              eq(journalEntries.source, 'hub_event'),
+            ),
+          )
+      : [];
   return {
     ...summaryOf(item, dueDates, asOf),
     asOf,
     hubDocument: item.hubDocument,
+    hubEventId: opening?.sourceRef ?? null,
     openedByEntryId: item.openedByEntryId,
     bookCurrency: currencies.book,
     parallelCurrency: currencies.parallel,

@@ -1,6 +1,7 @@
 import type { INestApplication } from '@nestjs/common';
 import type {
   Company,
+  Entry,
   InboxCounts,
   InboxEventDetail,
   InboxPage,
@@ -60,9 +61,20 @@ describe('GET /api/inbox', () => {
     expect(events[0]).toMatchObject({
       documentType: 'invoice',
       documentNumber: documents.invoice.number,
+      clientName: documents.client.name,
       accountingDate: today(),
       entries: [{ id: issued.body.entries[0].id }],
     });
+    // The entry names its Hub document and its event; the item it opened names the event too.
+    const entry = await book.owner.browser.get(`/api/entries/${issued.body.entries[0].id}`);
+    expect(entry.body).toMatchObject({
+      source: 'hub_event',
+      sourceRef: issued.body.inbox_id,
+      hubDocument: { type: 'invoice', id: documents.invoice.id, number: documents.invoice.number },
+    });
+    const itemId = (entry.body as Entry).lines.find((line) => line.item)?.item?.id;
+    const item = await book.owner.browser.get(`/api/open-items/${itemId}`);
+    expect(item.body).toMatchObject({ hubEventId: issued.body.inbox_id });
     const heldOnly = await book.owner.browser.get('/api/inbox', { state: 'held' });
     expect((heldOnly.body as InboxPage).events).toHaveLength(1);
     const byType = await book.owner.browser.get('/api/inbox', { type: 'invoice.issued' });
@@ -80,6 +92,8 @@ describe('GET /api/inbox', () => {
     expect(detail.status).toBe(200);
     const event = detail.body as InboxEventDetail;
     expect(event.payload).toMatchObject({ method: 'bank_transfer', amount: 50_000 });
+    // Only an event held PERIOD_CLOSED has a day to move to.
+    expect(event.moveOn).toBeNull();
     expect(event.actions.map((action) => action.action)).toEqual(['received', 'held']);
     expect(event.actions[0]?.actor).toMatchObject({ kind: 'api_client', id: hub.id });
     // The auditor reads; another company's id is not found.

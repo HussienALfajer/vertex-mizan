@@ -207,6 +207,7 @@ export async function readEntry(tx: Transaction, id: string): Promise<Entry> {
     postedAt: row.postedAt.toISOString(),
     source: row.source as EntrySource,
     sourceRef: row.sourceRef,
+    hubDocument: (row.hubDocument as Entry['hubDocument']) ?? null,
     description: row.description,
     reference: row.reference,
     reverses: link(linked.find((entry) => entry.id === row.reversesEntryId)),
