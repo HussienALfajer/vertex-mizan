@@ -2,7 +2,7 @@
 
 Status: Proposed
 
-S06 wrote these cases (S06 "Scenarios"); the owner approved their expected entries and outcomes on 2026-11-10, with option A of the day split below, the job's clock and the order of a job's releases. They stay `Proposed` until S06's feature slice brings their executors: the posting rules of `invoice.issued` with over-time lines, the release job `revenue_release_month`, the elapsed parts of a late issue, the hold `SERVICE_PERIOD_CLOSED` and the action `recognise` (S06 rules 1–5, 7, 10, 16). The case with a closed month also needs S07's close (`closed_periods`), as `inbox/post-in-next-open-period.md` does.
+S06 wrote these cases (S06 "Scenarios"); the owner approved the expected entries and outcomes of fourteen of them on 2026-11-10, with option A of the day split below, the job's clock and the order of a job's releases. The case of a missing bulletin on an elapsed month's last day was added after the accounting review and awaits the owner's approval. They stay `Proposed` until S06's feature slice brings their executors: the posting rules of `invoice.issued` with over-time lines, the release job `revenue_release_month`, the elapsed parts of a late issue, the hold `SERVICE_PERIOD_CLOSED` and the action `recognise` (S06 rules 1–5, 7, 10, 16). The case with a closed month also needs S07's close (`closed_periods`), as `inbox/post-in-next-open-period.md` does.
 
 ## Rule
 
@@ -20,7 +20,7 @@ A retainer cycle's `monthly` or `addition` charge, and a `manual` line marked de
 
 ## Cases
 
-The account codes are the service-agency template's (S02): trade receivables `112001` (a `document` control account, client), contract assets `113001` (a `document` control account, monetary, client and contract), contract liabilities `212001` (client and contract, not monetary), service revenue `411001` (client and service; the contract when the invoice names one), realised exchange gains `421001` and losses `541001`. The slots `contract_liability`, `contract_asset` and `released_revenue` take their template defaults (S06 "Data"). Every rate and amount is synthetic. 3, 5, 10, 15, 16, 19 and 25 November 2026, 29 October 2026 and 15 February 2028 are publication days; 30 and 31 October 2026 are a Friday and a Saturday.
+The account codes are the service-agency template's (S02): trade receivables `112001` (a `document` control account, client), contract assets `113001` (a `document` control account, monetary, client and contract), contract liabilities `212001` (client and contract, not monetary), service revenue `411001` (client and service; the contract when the invoice names one), realised exchange gains `421001` and losses `541001`. The slots `contract_liability`, `contract_asset` and `released_revenue` take their template defaults (S06 "Data"). Every rate and amount is synthetic. 3, 5, 10, 15, 16, 19, 25, 26 and 30 November and 3 December 2026, 29 October 2026 and 15 February 2028 are publication days; 30 and 31 October 2026 are a Friday and a Saturday.
 
 The payloads use the short form of `revenue/revenue-at-issue.md`. A line's `kind` is its `charge_kind`; its position is its place in `lines`, from 1. A contract asset item opened for a late issue's elapsed part is named `<invoice number>/<line position>` (S06 "Data") and carries the invoice's client and contract.
 
@@ -28,7 +28,7 @@ Sources: the issue entry and an elapsed month's entry have the event as their so
 
 **The day split** (S06 rule 3; ADR 0007 "Allocation"): with *A* a line's transaction amount and *T* the days of its period, the transaction part of month *m* is `round(A × days to the end of m ÷ T) − round(A × days to the end of m−1 ÷ T)`, halves away from zero. A ledger in the line's currency takes the transaction part as is (ADR 0007). Any other ledger cuts its own deferred amount the same way, over the days that amount covers: the whole period when the invoice is on time; from the first day of the issue month when months have elapsed (option A, owner 2026-11-10; the "deferred manual line" case is the one where this differs from a cut by transaction share). `packages/ledger`'s `overTimeMonths()` and `releaseParts()` compute it.
 
-The cases leave out what other scenarios own: credits (`revenue/retainer-credit.md`), voids and re-issues (`revenue/void-and-reissue.md`), milestones and deposits (`revenue/milestones.md`). A line of zero is refused by the contract (S05 rule 2), so it has no case; a negative line is a credit. `third` cannot occur: Hub invoices only in SYP and USD (S06 "Currencies, rates and rounding"). A replayed event posts nothing new: a property test, since a step carries no event ID. A release never reads a rate, so no case has a release held `RATE_MISSING`.
+The cases leave out what other scenarios own: credits (`revenue/retainer-credit.md`), voids and re-issues (`revenue/void-and-reissue.md`), milestones and deposits (`revenue/milestones.md`). A line of zero is refused by the contract (S05 rule 2), so it has no case; a negative line is a credit. `third` cannot occur: Hub invoices only in SYP and USD (S06 "Currencies, rates and rounding"). A replayed event posts nothing new: a property test, since a step carries no event ID. A release never reads a rate, so no case has a release held `RATE_MISSING`; an elapsed month's part does read the policy rates of its month end, and one case holds it.
 
 ### Vertex Media: a retainer cycle across two months
 
@@ -383,6 +383,60 @@ expect:
     - { item: INV-2026-24/1, account: "113001", dims: { client: C1, contract: R1 }, currency: USD, amount: 0, book: 0, parallel: 0 }
 ```
 
+### Vertex Media: a late issue whose elapsed month end has no bulletin
+
+Monday 30 November is a publication day, and its bulletin is not recorded when the invoice of 3 December arrives: the elapsed November part cannot be measured, so the invoice is held `RATE_MISSING` whole (S06 rule 18; ADR 0011). The bulletin of Thursday 26 November does not stand in for it, nor do Hub's rate or the issue date's. Recording the bulletin of 30 November retries the invoice (S05 rule 10), which then posts as a late issue. The asset is measured at 122 and collected at 120, so the book residual is a realised loss.
+
+```yaml
+case: a 450.00 USD cycle of 20 Nov to 19 Dec issued on 3 Dec at 120; no bulletin on Monday 30 Nov holds it RATE_MISSING; 122 recorded, it posts with a 330.00 SYP loss
+company: { shape: syp-usd, book: SYP, parallel: USD, template: service-agency,
+           rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true } }
+rates:
+  - { date: 2026-11-26, base: USD, quote: SYP, rate: "121.0000", type: bulletin }
+  - { date: 2026-12-03, base: USD, quote: SYP, rate: "120.0000", type: bulletin }
+steps:
+  - event: invoice.issued
+    accounting_date: 2026-12-03
+    payload: { invoice: INV-2026-32, client: C1, contract: { code: R1, kind: retainer, client: C1 },
+               currency: USD, syp_per_usd: "121.5000", issued_on: 2026-12-03, due_on: 2026-12-18,
+               lines: [{ line: L1, amount: 45000, source: retainer_charge, kind: monthly,
+                         cycle_start: 2026-11-20, cycle_end: 2026-12-19, service: S1 }] }
+    outcome: { status: held, reason: RATE_MISSING }
+  - rate: { date: 2026-11-30, base: USD, quote: SYP, rate: "122.0000", type: bulletin }
+  - job: revenue_release_month
+    period: 2026-12
+expect:
+  entries:
+    - source: invoice.issued
+      date: 2026-11-30
+      lines:
+        # November: 45,000 × 11 / 30 = 16,500; 165.00 USD × 122 (30 Nov, not 26 Nov's 121) = 20,130.00 SYP
+        - { account: "113001", dims: { client: C1, contract: R1 }, currency: USD, amount: 16500, book: 2013000, parallel: 16500 }
+        - { account: "411001", dims: { client: C1, contract: R1, service: S1 }, currency: USD, amount: -16500, book: -2013000, parallel: -16500 }
+    - source: invoice.issued
+      date: 2026-12-03
+      lines:
+        # 450.00 USD × 120 = 54,000.00 SYP
+        - { account: "112001", dims: { client: C1, contract: R1 }, currency: USD, amount: 45000, book: 5400000, parallel: 45000 }
+        - { account: "113001", dims: { client: C1, contract: R1 }, currency: USD, amount: -16500, book: -2013000, parallel: -16500 }
+        # the rest: 285.00 USD × 120 = 34,200.00 SYP
+        - { account: "212001", dims: { client: C1, contract: R1 }, currency: USD, amount: -28500, book: -3420000, parallel: -28500 }
+        # book residual: 5,400,000 − 2,013,000 − 3,420,000 = −33,000 → a realised loss of 330.00 SYP; parallel: none
+        - { account: "541001", currency: SYP, amount: 33000, book: 33000, parallel: 0 }
+    - source: revenue_release
+      date: 2026-12-31
+      lines:
+        # December's 19 days: 45,000 − 16,500 = 28,500, all that was deferred, at 3,420,000
+        - { account: "212001", dims: { client: C1, contract: R1 }, currency: USD, amount: 28500, book: 3420000, parallel: 28500 }
+        - { account: "411001", dims: { client: C1, contract: R1, service: S1 }, currency: USD, amount: -28500, book: -3420000, parallel: -28500 }
+  balances:
+    - { account: "212001", book: 0, parallel: 0 }
+    - { account: "411001", book: -5433000, parallel: -45000 }
+    - { account: "541001", book: 33000, parallel: 0 }
+  open_items:
+    - { item: INV-2026-32/1, account: "113001", dims: { client: C1, contract: R1 }, currency: USD, amount: 0, book: 0, parallel: 0 }
+```
+
 ### Vertex Media: an invoice received after its month's job
 
 November's job has run (with nothing to release) when the invoice of 19 November arrives. Its transaction posts the issue and November's release together, the release dated 30 November (S06 rule 5); a later November run posts nothing.
@@ -735,6 +789,7 @@ expect:
 Each posted entry balances in both ledgers:
 - **Releases and the service change** carry one amount to both sides, so they balance as the deferral does.
 - **Late issue, `syp-usd`:** book 7,471,000 − 2,856,000 − 4,579,000 − 36,000 = 0; parallel 62,000 − 24,000 − 38,000 = 0.
+- **Missing bulletin:** book 5,400,000 − 2,013,000 − 3,420,000 + 33,000 = 0; parallel 45,000 − 16,500 − 28,500 = 0.
 - **Deferred manual line:** book 12,000,000 − 4,009,824 − 7,956,480 − 33,696 = 0; parallel 100,000 − 33,696 − 66,304 = 0.
 - **USD books, USD invoice:** book 62,000 − 24,000 − 38,000 = 0; parallel 7,502,000 − 2,844,000 − 4,598,000 − 60,000 = 0.
 - **USD books, SYP invoice:** book 60,000 − 24,000 − 36,774 + 774 = 0; parallel 7,440,000 − 2,880,000 − 4,560,000 = 0.

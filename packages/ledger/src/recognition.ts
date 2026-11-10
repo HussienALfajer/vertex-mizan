@@ -66,8 +66,9 @@ export function overTimeMonths(
 }
 
 /**
- * The release of each month that is not elapsed, from what the line deferred at issue (its
- * contract-liability amounts, in every ledger): the transaction part is the month's part of
+ * The release of each month that is not elapsed, from what the line deferred at issue (what
+ * remains to recognise in contract liabilities, in every ledger, as positive amounts; a release
+ * debits the liability with each part): the transaction part is the month's part of
  * `overTimeMonths()`, which the deferred transaction amount must equal in total. A ledger in the
  * line's currency takes that part as is (ADR 0007); any other ledger cuts its own deferred amount
  * with cumulative rounding by the days of those months only (option A, owner 2026-11-10). The parts
