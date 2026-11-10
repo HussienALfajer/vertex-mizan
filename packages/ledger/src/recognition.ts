@@ -280,6 +280,12 @@ export interface MilestoneStanding {
    */
   readonly done: boolean;
   /**
+   * Whether a re-issue recognised the milestone as revenue at issue after its void took a done's or
+   * the completion's release back, with no reopen since (S06 rule 9): the milestone is recognised,
+   * so a done then is a second one (owner, 2026-11-10).
+   */
+  readonly recognisedAtIssue: boolean;
+  /**
    * What remains in contract liabilities of the milestone's standing point-in-time schedule
    * (positive amounts) when its deposit or milestone line was invoiced before; null when it was
    * not, or when that invoice was voided. A schedule the project's completion released defers
@@ -315,7 +321,9 @@ export function milestoneDone(
   standing: MilestoneStanding,
 ): MilestoneDone {
   if (amount.amountMinor <= 0n) throw new RangeError('A milestone of zero or less');
-  if (standing.done) return { kind: 'decision', detail: 'milestone_already_done' };
+  if (standing.done || standing.recognisedAtIssue) {
+    return { kind: 'decision', detail: 'milestone_already_done' };
+  }
   if (!hasService) return { kind: 'decision', detail: 'milestone_service_missing' };
   const { deferred } = standing;
   if (deferred === null) return { kind: 'contract_asset', amount };
@@ -357,25 +365,33 @@ export function milestoneReopen(
   return standing.doneTakenBackByVoid ? 'record' : 'unknown_reference';
 }
 
+/** What the books hold for a milestone when a re-issue of its voided line arrives. */
+export interface ReissuedMilestoneStanding extends MilestoneReopenStanding {
+  /** Whether the void reversed the project's completion's release of the voided schedule. */
+  readonly completionTakenBackByVoid: boolean;
+}
+
 /**
  * What a re-issued deposit or milestone line posts (S06 rule 9; owner, 2026-11-10,
  * `revenue/void-and-reissue.md`): it clears the milestone's contract asset when a done stands (rule
- * 12); it is revenue at issue when the void reversed the done's release and no reopen followed, since
- * the milestone is delivered and Hub sends no new done; otherwise, the milestone reopened or never
- * done, it is deferred until its done (rule 1).
+ * 12); it is revenue at issue when the void reversed the done's release or the project's
+ * completion's, with no reopen since, since the milestone or the project is delivered and Hub sends
+ * no new done; otherwise, the milestone reopened or never done, it is deferred until its done (rule 1).
  */
 export function reissuedMilestoneLine(
-  standing: MilestoneReopenStanding,
+  standing: ReissuedMilestoneStanding,
 ): 'clear_item' | 'revenue_at_issue' | 'defer' {
-  if (standing.doneStanding && standing.doneTakenBackByVoid) {
+  const takenBack = standing.doneTakenBackByVoid || standing.completionTakenBackByVoid;
+  if (standing.doneStanding && takenBack) {
     throw new TypeError('A done both standing and taken back by its void');
   }
   if (standing.doneStanding) return 'clear_item';
-  return standing.doneTakenBackByVoid ? 'revenue_at_issue' : 'defer';
+  return takenBack ? 'revenue_at_issue' : 'defer';
 }
 
 /** A re-issued over-time line: its part recognised at issue, and the months it still has. */
 export interface ReissueParts {
+  readonly kind: 'parts';
   /**
    * The re-issued line's part of the months the void took back, recognised as revenue at issue,
    * a new measurement at the re-issue's rates.
@@ -394,19 +410,19 @@ export interface ReissueParts {
  * took back, those of the voided schedule released or elapsed before the void. The re-issued line's
  * parts of those months are recognised at issue, so a re-issue at another amount recognises its own
  * part of them (IFRS 15.88), and with the voided line's amount exactly what the void took back. Its
- * other months follow rules 3–7. A month taken back that the line's period does not cover is a
- * programming error.
+ * other months follow rules 3–7. A re-issue whose period does not cover every month taken back
+ * (Hub shortened the cycle) is `reissue_period_differs`, held for the accountant (owner, 2026-11-10).
  */
 export function reissueParts(
   months: readonly OverTimeMonth[],
   takenBack: ReadonlySet<string>,
-): ReissueParts {
+): ReissueParts | { readonly kind: 'decision'; readonly detail: 'reissue_period_differs' } {
   const covered = new Set(months.map((month) => month.month));
   for (const month of takenBack) {
-    if (!covered.has(month))
-      throw new RangeError(`A month taken back outside the period: ${month}`);
+    if (!covered.has(month)) return { kind: 'decision', detail: 'reissue_period_differs' };
   }
   return {
+    kind: 'parts',
     catchUpMinor: months
       .filter((month) => takenBack.has(month.month))
       .reduce((total, month) => total + month.transactionMinor, 0n),
@@ -451,7 +467,9 @@ export function milestoneItemReference(number: string, earlierItems: number): st
 
 /**
  * What `project.completed` releases (S06 rule 14): the remaining of each of the project's
- * point-in-time schedules (positive amounts) that still defers something, at its carried amounts.
+ * point-in-time schedules (positive amounts) that still defers something, at its carried amounts,
+ * each schedule's release its own entry, so a void of its invoice reverses it alone (owner,
+ * 2026-11-10).
  * None left: the event is recorded with no entry. A remaining of zero in its transaction amount is
  * zero in every ledger (ADR 0007), or it is a programming error.
  */
