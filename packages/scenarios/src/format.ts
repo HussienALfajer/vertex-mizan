@@ -308,7 +308,7 @@ const stepOutcome = { outcome: outcomeSchema.optional() };
 /**
  * A step is told apart by its one key: `event`, `manual`, `reversal`, `job` or `rate`, or one of
  * the accountant's actions on a held event (S05 rules 15–17): `retry`, `move`, `resolve`, `dismiss`;
- * and S06's `recognise` (rule 16).
+ * and S06's `recognise` and `split` (rule 16).
  */
 export const STEP_KINDS = [
   'event',
@@ -321,6 +321,7 @@ export const STEP_KINDS = [
   'resolve',
   'dismiss',
   'recognise',
+  'split',
 ] as const;
 
 export type StepKind = (typeof STEP_KINDS)[number];
@@ -486,6 +487,27 @@ const recogniseStepSchema = z
     outcome: step.outcome ?? null,
   }));
 
+/**
+ * Split the remainder of a cancelled project held `NEEDS_DECISION` (`cancelled_project_remainder`):
+ * `revenue`, the transaction amount to revenue in the project's currency, and the rest to the
+ * refund payable, with a reason (S06 rules 15–16). Any whole amount is read, so a case can state
+ * the inbox's refusal of one outside zero to the remainder.
+ */
+const splitStepSchema = z
+  .strictObject({
+    kind: z.literal('split'),
+    split: z.strictObject({ step: countSchema(1), revenue: amountSchema }),
+    reason: actionReasonSchema,
+    ...stepOutcome,
+  })
+  .transform((step) => ({
+    kind: step.kind,
+    step: step.split.step,
+    revenueMinor: step.split.revenue,
+    reason: step.reason,
+    outcome: step.outcome ?? null,
+  }));
+
 const stepSchema = z.preprocess(
   (value) => {
     if (typeof value !== 'object' || value === null || Array.isArray(value)) return value;
@@ -505,11 +527,12 @@ const stepSchema = z.preprocess(
       resolveStepSchema,
       dismissStepSchema,
       recogniseStepSchema,
+      splitStepSchema,
     ],
     {
       error:
         'Expected a step with one of the keys event, manual, reversal, job, rate, retry, move, ' +
-        'resolve, dismiss or recognise',
+        'resolve, dismiss, recognise or split',
     },
   ),
 );
@@ -692,10 +715,13 @@ export const caseSchema = z
         step.kind === 'move' ||
         step.kind === 'resolve' ||
         step.kind === 'dismiss' ||
-        step.kind === 'recognise'
+        step.kind === 'recognise' ||
+        step.kind === 'split'
       ) {
         const path =
-          step.kind === 'resolve' ? ['steps', s, 'resolve', 'step'] : ['steps', s, step.kind];
+          step.kind === 'resolve' || step.kind === 'split'
+            ? ['steps', s, step.kind, 'step']
+            : ['steps', s, step.kind];
         if (step.step > s || steps[step.step - 1]?.kind !== 'event') {
           issue(`Step ${step.step} is not an earlier event step`, path);
         }
