@@ -826,6 +826,8 @@ rates:
   - { date: 2026-11-03, base: USD, quote: SYP, rate: "120.0000", type: bulletin }
   - { date: 2026-12-03, base: USD, quote: SYP, rate: "123.0000", type: bulletin }
   - { date: 2026-12-10, base: USD, quote: SYP, rate: "125.0000", type: bulletin }
+  # the done's date has its bulletin, so the hold is the decision, not RATE_MISSING (S06 rule 18)
+  - { date: 2026-12-15, base: USD, quote: SYP, rate: "125.0000", type: bulletin }
 steps:
   - event: invoice.issued
     accounting_date: 2026-11-03
