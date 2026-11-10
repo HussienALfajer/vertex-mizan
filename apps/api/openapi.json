@@ -8022,6 +8022,16 @@
             }
           },
           {
+            "name": "document",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            }
+          },
+          {
             "name": "from",
             "required": false,
             "in": "query",
@@ -16898,6 +16908,11 @@
                 "$ref": "#/components/schemas/EventType"
               }
             ]
+          },
+          "document": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
           },
           "from": {
             "type": "string",

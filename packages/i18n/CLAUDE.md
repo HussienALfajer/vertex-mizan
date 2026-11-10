@@ -26,6 +26,8 @@ The Arabic text of every front end (ADR 0009): plain catalogs and locale constan
   - `integrity`: the integrity check, its report, the stored anchors and a pasted one, with each anchor result (S03);
   - `export` (the file `export.ts`, `exportData`, since `export` is a keyword): the company's full export, with each export state (S03);
   - `openItems`: the item kinds, states, movements, sources and ageing buckets, the receivables labels, and the columns of the ageing and client statement exports (S04);
+  - `inbox`: the event inbox (S05): each state, hold reason and detail, event type, payment method and action, what fixes each reason, the inbox and event pages, the move, resolution and dismissal, the Hub document on an entry or an item, the palette's "حدث…";
+  - `postingRules`: the name of each posting slot (S05; the mapping screen's text comes with PR 5);
   - `email`: the emails the worker sends (S01), with `{name}` placeholders the worker fills from the email's data.
 - `src/locale.ts`: `defaultLanguage` (`ar`), `textDirection` (`rtl`), `formatLocale` (`ar-SY-u-nu-latn`: Syrian month names, Latin digits; pinned by `locale.test.ts`) for dates and counts, `displayTimeZone` (`Asia/Damascus`).
 - `src/catalog.test.ts`: no empty text, no Arabic-Indic digit, a text for every error code and every amount-input reason.

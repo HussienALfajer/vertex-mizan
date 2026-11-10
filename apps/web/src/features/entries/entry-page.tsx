@@ -36,6 +36,7 @@ import { api, hasCode } from '../../lib/api';
 import { formatDateTime, formatDay, formatEntryNumber } from '../../lib/format';
 import { can, useCompany } from '../../lib/session';
 import { companyQuery } from '../company/company-queries';
+import { HubDocumentLink } from '../inbox/inbox-parts';
 import {
   AttachmentsCard,
   BackLink,
@@ -128,6 +129,14 @@ function EntryView({ entry }: { entry: Entry }) {
           <Fact label={t.entry.date}>{formatDay(entry.entryDate)}</Fact>
           <Fact label={t.entry.postedAt}>{formatDateTime(entry.postedAt)}</Fact>
           <Fact label={t.entry.source}>{t.sources[entry.source]}</Fact>
+          {entry.hubDocument && (
+            <Fact label={ar.inbox.entryLink.hubDocument}>
+              <HubDocumentLink
+                document={entry.hubDocument}
+                eventId={entry.source === 'hub_event' ? entry.sourceRef : null}
+              />
+            </Fact>
+          )}
           <Fact label={t.entry.reference}>
             {entry.reference ? <bdi>{entry.reference}</bdi> : '—'}
           </Fact>

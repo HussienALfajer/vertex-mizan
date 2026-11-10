@@ -108,6 +108,7 @@ export class InboxService {
             query.state ? eq(inboundEventStates.state, query.state) : undefined,
             query.reason ? eq(inboundEventStates.holdReason, query.reason) : undefined,
             query.type ? eq(inboundEvents.type, query.type) : undefined,
+            query.document ? eq(inboundEvents.documentNumber, query.document) : undefined,
             query.from ? gte(inboundEvents.accountingDate, query.from) : undefined,
             query.to ? lte(inboundEvents.accountingDate, query.to) : undefined,
             after ? afterCursor(inboundEvents.createdAt, inboundEvents.id, after) : undefined,

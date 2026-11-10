@@ -79,6 +79,12 @@ describe('GET /api/inbox', () => {
     expect((heldOnly.body as InboxPage).events).toHaveLength(1);
     const byType = await book.owner.browser.get('/api/inbox', { type: 'invoice.issued' });
     expect((byType.body as InboxPage).events).toHaveLength(1);
+    const byDocument = await book.owner.browser.get('/api/inbox', {
+      document: documents.invoice.number,
+    });
+    expect((byDocument.body as InboxPage).events.map((event) => event.type)).toEqual([
+      'invoice.issued',
+    ]);
     expect((await book.owner.browser.get('/api/inbox', { type: 'invoice.unknown' })).status).toBe(
       422,
     );

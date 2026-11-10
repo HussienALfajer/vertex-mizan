@@ -141,7 +141,7 @@ function Branch({
 /**
  * A JSON document as received (S05 "Screens": an event's raw payload, ADR 0010 §7): LTR, its
  * branches opened and closed by their buttons (`aria-expanded`), and a button that copies the
- * whole document, indented by two spaces. The brand has no monospace face (brand/identity.md §8),
+ * whole document, indented by two spaces, from its bar above the document. The brand has no monospace face (brand/identity.md §8),
  * so tabular figures keep the digits in step, as in `Digest`. It scrolls inside its own box.
  */
 function JsonViewer({ value, labels, openDepth = 2, className, ...props }: JsonViewerProps) {
@@ -154,10 +154,10 @@ function JsonViewer({ value, labels, openDepth = 2, className, ...props }: JsonV
   return (
     <div
       data-slot="json-viewer"
-      className={cn('relative min-w-0 rounded-md border border-border bg-muted', className)}
+      className={cn('flex min-w-0 flex-col rounded-md border border-border bg-muted', className)}
       {...props}
     >
-      <div className="absolute end-1 top-1">
+      <div className="flex justify-end border-border border-b p-1">
         <IconButton
           label={copied ? labels.copied : labels.copy}
           onClick={async () => {
@@ -168,7 +168,7 @@ function JsonViewer({ value, labels, openDepth = 2, className, ...props }: JsonV
           {copied ? <CheckIcon aria-hidden="true" /> : <CopyIcon aria-hidden="true" />}
         </IconButton>
       </div>
-      <div dir="ltr" className="overflow-x-auto p-cell pe-12 text-start text-control tabular-nums">
+      <div dir="ltr" className="overflow-x-auto p-cell text-start text-control tabular-nums">
         <ul>
           <Branch
             name={null}

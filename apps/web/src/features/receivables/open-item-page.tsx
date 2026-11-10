@@ -39,6 +39,7 @@ import { api, hasCode } from '../../lib/api';
 import { damascusToday, formatDateTime, formatDay } from '../../lib/format';
 import { can, useCompany } from '../../lib/session';
 import { EntryNumberText, Fact, useFiscalYearStartMonth } from '../entries/entry-parts';
+import { HubDocumentLink } from '../inbox/inbox-parts';
 import { AdjustedBadge, ClientName, ReceivablesBackLink } from './receivables-parts';
 import { openItemQuery } from './receivables-queries';
 
@@ -139,7 +140,7 @@ export function OpenItemPage() {
             {data.hubDocument && (
               <span className="block text-xs text-muted-foreground">
                 {`${t.hubDocument}: `}
-                <bdi dir="ltr">{data.hubDocument.number}</bdi>
+                <HubDocumentLink document={data.hubDocument} eventId={data.hubEventId} />
               </span>
             )}
           </Fact>

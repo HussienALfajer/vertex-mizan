@@ -62,12 +62,14 @@ export type InboxEvent = z.infer<typeof inboxEventSchema>;
 /** An opaque position in the inbox's pages, newest received first. */
 const cursorSchema = z.string().min(1).max(200);
 
-/** `GET /api/inbox`: by state, reason, type and accounting dates, newest received first. */
+/** `GET /api/inbox`: by state, reason, type, document and accounting dates, newest first. */
 export const inboxQuerySchema = z
   .object({
     state: eventStateSchema.optional(),
     reason: holdReasonSchema.optional(),
     type: eventTypeSchema.optional(),
+    /** Hub's document number: the events of one invoice, payment or expense. */
+    document: z.string().trim().min(1).max(100).optional(),
     from: dateSchema.optional(),
     to: dateSchema.optional(),
     cursor: cursorSchema.optional(),

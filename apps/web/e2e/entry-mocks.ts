@@ -133,6 +133,7 @@ export const purchase: Entry = {
   postedAt: '2026-11-08T10:00:00.000Z',
   source: 'manual',
   sourceRef: null,
+  hubDocument: null,
   description: 'شراء دولار',
   reference: 'ص-12',
   reverses: null,

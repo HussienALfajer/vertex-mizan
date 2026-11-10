@@ -33,6 +33,8 @@ import { Route as AppCompanyDraftsIdRouteImport } from './routes/_app/_company/d
 import { Route as AppCompanyEntriesIndexRouteImport } from './routes/_app/_company/entries/index'
 import { Route as AppCompanyEntriesIdRouteImport } from './routes/_app/_company/entries/$id'
 import { Route as AppCompanyEntriesNewRouteImport } from './routes/_app/_company/entries/new'
+import { Route as AppCompanyInboxIndexRouteImport } from './routes/_app/_company/inbox/index'
+import { Route as AppCompanyInboxIdRouteImport } from './routes/_app/_company/inbox/$id'
 import { Route as AppCompanyOpenItemsIdRouteImport } from './routes/_app/_company/open-items/$id'
 import { Route as AppCompanyRatesIndexRouteImport } from './routes/_app/_company/rates/index'
 import { Route as AppCompanyRatesCalendarRouteImport } from './routes/_app/_company/rates/calendar'
@@ -161,6 +163,16 @@ const AppCompanyEntriesNewRoute = AppCompanyEntriesNewRouteImport.update({
   path: '/entries/new',
   getParentRoute: () => AppCompanyRoute,
 } as any)
+const AppCompanyInboxIndexRoute = AppCompanyInboxIndexRouteImport.update({
+  id: '/inbox/',
+  path: '/inbox/',
+  getParentRoute: () => AppCompanyRoute,
+} as any)
+const AppCompanyInboxIdRoute = AppCompanyInboxIdRouteImport.update({
+  id: '/inbox/$id',
+  path: '/inbox/$id',
+  getParentRoute: () => AppCompanyRoute,
+} as any)
 const AppCompanyOpenItemsIdRoute = AppCompanyOpenItemsIdRouteImport.update({
   id: '/open-items/$id',
   path: '/open-items/$id',
@@ -237,6 +249,7 @@ export interface FileRoutesByFullPath {
   '/drafts/$id': typeof AppCompanyDraftsIdRoute
   '/entries/$id': typeof AppCompanyEntriesIdRoute
   '/entries/new': typeof AppCompanyEntriesNewRoute
+  '/inbox/$id': typeof AppCompanyInboxIdRoute
   '/open-items/$id': typeof AppCompanyOpenItemsIdRoute
   '/rates/calendar': typeof AppCompanyRatesCalendarRoute
   '/settings/audit': typeof AppCompanySettingsAuditRoute
@@ -246,6 +259,7 @@ export interface FileRoutesByFullPath {
   '/chart/': typeof AppCompanyChartIndexRoute
   '/drafts/': typeof AppCompanyDraftsIndexRoute
   '/entries/': typeof AppCompanyEntriesIndexRoute
+  '/inbox/': typeof AppCompanyInboxIndexRoute
   '/rates/': typeof AppCompanyRatesIndexRoute
   '/receivables/': typeof AppCompanyReceivablesIndexRoute
   '/accounts/$id/lines': typeof AppCompanyAccountsIdLinesRoute
@@ -270,6 +284,7 @@ export interface FileRoutesByTo {
   '/drafts/$id': typeof AppCompanyDraftsIdRoute
   '/entries/$id': typeof AppCompanyEntriesIdRoute
   '/entries/new': typeof AppCompanyEntriesNewRoute
+  '/inbox/$id': typeof AppCompanyInboxIdRoute
   '/open-items/$id': typeof AppCompanyOpenItemsIdRoute
   '/rates/calendar': typeof AppCompanyRatesCalendarRoute
   '/settings/audit': typeof AppCompanySettingsAuditRoute
@@ -279,6 +294,7 @@ export interface FileRoutesByTo {
   '/chart': typeof AppCompanyChartIndexRoute
   '/drafts': typeof AppCompanyDraftsIndexRoute
   '/entries': typeof AppCompanyEntriesIndexRoute
+  '/inbox': typeof AppCompanyInboxIndexRoute
   '/rates': typeof AppCompanyRatesIndexRoute
   '/receivables': typeof AppCompanyReceivablesIndexRoute
   '/accounts/$id/lines': typeof AppCompanyAccountsIdLinesRoute
@@ -307,6 +323,7 @@ export interface FileRoutesById {
   '/_app/_company/drafts/$id': typeof AppCompanyDraftsIdRoute
   '/_app/_company/entries/$id': typeof AppCompanyEntriesIdRoute
   '/_app/_company/entries/new': typeof AppCompanyEntriesNewRoute
+  '/_app/_company/inbox/$id': typeof AppCompanyInboxIdRoute
   '/_app/_company/open-items/$id': typeof AppCompanyOpenItemsIdRoute
   '/_app/_company/rates/calendar': typeof AppCompanyRatesCalendarRoute
   '/_app/_company/settings/audit': typeof AppCompanySettingsAuditRoute
@@ -316,6 +333,7 @@ export interface FileRoutesById {
   '/_app/_company/chart/': typeof AppCompanyChartIndexRoute
   '/_app/_company/drafts/': typeof AppCompanyDraftsIndexRoute
   '/_app/_company/entries/': typeof AppCompanyEntriesIndexRoute
+  '/_app/_company/inbox/': typeof AppCompanyInboxIndexRoute
   '/_app/_company/rates/': typeof AppCompanyRatesIndexRoute
   '/_app/_company/receivables/': typeof AppCompanyReceivablesIndexRoute
   '/_app/_company/accounts/$id/lines': typeof AppCompanyAccountsIdLinesRoute
@@ -342,6 +360,7 @@ export interface FileRouteTypes {
     | '/drafts/$id'
     | '/entries/$id'
     | '/entries/new'
+    | '/inbox/$id'
     | '/open-items/$id'
     | '/rates/calendar'
     | '/settings/audit'
@@ -351,6 +370,7 @@ export interface FileRouteTypes {
     | '/chart/'
     | '/drafts/'
     | '/entries/'
+    | '/inbox/'
     | '/rates/'
     | '/receivables/'
     | '/accounts/$id/lines'
@@ -375,6 +395,7 @@ export interface FileRouteTypes {
     | '/drafts/$id'
     | '/entries/$id'
     | '/entries/new'
+    | '/inbox/$id'
     | '/open-items/$id'
     | '/rates/calendar'
     | '/settings/audit'
@@ -384,6 +405,7 @@ export interface FileRouteTypes {
     | '/chart'
     | '/drafts'
     | '/entries'
+    | '/inbox'
     | '/rates'
     | '/receivables'
     | '/accounts/$id/lines'
@@ -411,6 +433,7 @@ export interface FileRouteTypes {
     | '/_app/_company/drafts/$id'
     | '/_app/_company/entries/$id'
     | '/_app/_company/entries/new'
+    | '/_app/_company/inbox/$id'
     | '/_app/_company/open-items/$id'
     | '/_app/_company/rates/calendar'
     | '/_app/_company/settings/audit'
@@ -420,6 +443,7 @@ export interface FileRouteTypes {
     | '/_app/_company/chart/'
     | '/_app/_company/drafts/'
     | '/_app/_company/entries/'
+    | '/_app/_company/inbox/'
     | '/_app/_company/rates/'
     | '/_app/_company/receivables/'
     | '/_app/_company/accounts/$id/lines'
@@ -602,6 +626,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppCompanyEntriesNewRouteImport
       parentRoute: typeof AppCompanyRoute
     }
+    '/_app/_company/inbox/': {
+      id: '/_app/_company/inbox/'
+      path: '/inbox'
+      fullPath: '/inbox/'
+      preLoaderRoute: typeof AppCompanyInboxIndexRouteImport
+      parentRoute: typeof AppCompanyRoute
+    }
+    '/_app/_company/inbox/$id': {
+      id: '/_app/_company/inbox/$id'
+      path: '/inbox/$id'
+      fullPath: '/inbox/$id'
+      preLoaderRoute: typeof AppCompanyInboxIdRouteImport
+      parentRoute: typeof AppCompanyRoute
+    }
     '/_app/_company/open-items/$id': {
       id: '/_app/_company/open-items/$id'
       path: '/open-items/$id'
@@ -684,6 +722,7 @@ interface AppCompanyRouteChildren {
   AppCompanyDraftsIdRoute: typeof AppCompanyDraftsIdRoute
   AppCompanyEntriesIdRoute: typeof AppCompanyEntriesIdRoute
   AppCompanyEntriesNewRoute: typeof AppCompanyEntriesNewRoute
+  AppCompanyInboxIdRoute: typeof AppCompanyInboxIdRoute
   AppCompanyOpenItemsIdRoute: typeof AppCompanyOpenItemsIdRoute
   AppCompanyRatesCalendarRoute: typeof AppCompanyRatesCalendarRoute
   AppCompanySettingsAuditRoute: typeof AppCompanySettingsAuditRoute
@@ -693,6 +732,7 @@ interface AppCompanyRouteChildren {
   AppCompanyChartIndexRoute: typeof AppCompanyChartIndexRoute
   AppCompanyDraftsIndexRoute: typeof AppCompanyDraftsIndexRoute
   AppCompanyEntriesIndexRoute: typeof AppCompanyEntriesIndexRoute
+  AppCompanyInboxIndexRoute: typeof AppCompanyInboxIndexRoute
   AppCompanyRatesIndexRoute: typeof AppCompanyRatesIndexRoute
   AppCompanyReceivablesIndexRoute: typeof AppCompanyReceivablesIndexRoute
   AppCompanyAccountsIdLinesRoute: typeof AppCompanyAccountsIdLinesRoute
@@ -708,6 +748,7 @@ const AppCompanyRouteChildren: AppCompanyRouteChildren = {
   AppCompanyDraftsIdRoute: AppCompanyDraftsIdRoute,
   AppCompanyEntriesIdRoute: AppCompanyEntriesIdRoute,
   AppCompanyEntriesNewRoute: AppCompanyEntriesNewRoute,
+  AppCompanyInboxIdRoute: AppCompanyInboxIdRoute,
   AppCompanyOpenItemsIdRoute: AppCompanyOpenItemsIdRoute,
   AppCompanyRatesCalendarRoute: AppCompanyRatesCalendarRoute,
   AppCompanySettingsAuditRoute: AppCompanySettingsAuditRoute,
@@ -717,6 +758,7 @@ const AppCompanyRouteChildren: AppCompanyRouteChildren = {
   AppCompanyChartIndexRoute: AppCompanyChartIndexRoute,
   AppCompanyDraftsIndexRoute: AppCompanyDraftsIndexRoute,
   AppCompanyEntriesIndexRoute: AppCompanyEntriesIndexRoute,
+  AppCompanyInboxIndexRoute: AppCompanyInboxIndexRoute,
   AppCompanyRatesIndexRoute: AppCompanyRatesIndexRoute,
   AppCompanyReceivablesIndexRoute: AppCompanyReceivablesIndexRoute,
   AppCompanyAccountsIdLinesRoute: AppCompanyAccountsIdLinesRoute,
