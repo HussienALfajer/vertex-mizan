@@ -94,7 +94,13 @@ One name per concept. Code, contracts and tables use the English term; the Arabi
 | أصل عقد | contract asset | Revenue earned for work done and not yet invoiced (IFRS 15.107) |
 | جدول الاعتراف بالإيراد | recognition schedule | How a deferred amount is released to revenue over time |
 | تحرير الإيراد | revenue release | The entry moving deferred revenue to revenue |
-| العربون | project deposit | The invoice drafted at quote acceptance, before work starts |
+| العربون | project deposit | The invoice drafted at quote acceptance, before work starts: the first milestone's installment, recognised with that milestone (ADR 0015) |
+| حركة جدول الاعتراف | recognition movement | One change to what a schedule still has to recognise: deferred, elapsed, released, credited, reclassified, reversed, remainder released or refunded (ADR 0015) |
+| موزع على المدة / عند إنجاز المرحلة | over time / at a point in time | The two recognition patterns: evenly over a service period's days, or on a milestone's done date (IFRS 15.35, 15.38) |
+| الجزء المنقضي | elapsed part | The days of a service period in months that ended before its invoice was issued; recognised through a contract asset (A5) |
+| فترة خدمة مغلقة | service period closed | A late invoice whose elapsed part falls in a closed month (`SERVICE_PERIOD_CLOSED`) |
+| إعادة إصدار | re-issue | An invoice for a cycle or milestone whose earlier invoice was voided; it recognises what the void took back on its own date |
+| المتبقي في مشروع ملغى | cancelled project remainder | What a cancelled project still holds in contract liabilities, split by the accountant between revenue and a refund payable |
 | الدورة | retainer cycle | A retainer's billing period, anchored on its start date (Hub) |
 | أمانات إعلانات العملاء | client ad funds held | Client money held for ad spend; a liability |
 | ذمم منصات الإعلان | ad platforms payable | What is owed to ad platforms for client spend |

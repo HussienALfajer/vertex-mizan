@@ -181,9 +181,9 @@ Accounts named here are template accounts; the accountant can remap them (F10). 
   - **Releases carry the amounts booked at issue** in both ledgers, split with cumulative rounding; they are never converted again (ADR 0007).
   - **Credit lines** relate to a cycle. For the part of that cycle already recognised, revenue is reduced on the credit's date (cumulative catch-up, IFRS 15.88). The rest reduces the part of the schedule not yet released. Parts already released are never rewritten.
 - **Termination fee:** revenue at issue (no service is left to deliver).
-- **Project deposit** (the invoice drafted at quote acceptance, before any work):
+- **Project deposit** (the invoice drafted at quote acceptance, before any work; in Hub, the first milestone's installment):
   - **At issue:** Dr Trade receivables / Cr Contract liabilities.
-  - **Release:** when Hub reports a milestone done, deposit × (the milestone's installment / the total of the project's non-deposit installments) is released to revenue, dated on the milestone's done date.
+  - **Release** (owner, 2026-11-10, S06 and ADR 0015, replacing the proportional release): the deposit follows its milestone. When Hub reports that milestone done, the deposit is released to revenue at its carried amounts, dated on the done date. Any other milestone invoiced before it is done is treated the same way.
   - **Completed project:** any remainder is released.
   - **Cancelled project:** the remainder goes to the accountant's decision list (refund liability or revenue).
 - **Milestone done** (`milestone.done`): revenue for the milestone's installment, dated on the done date: Dr Contract assets / Cr Service revenue (IFRS 15.107).
