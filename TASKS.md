@@ -42,7 +42,7 @@ Spec: `docs/specs/S05-posting-api-event-inbox.md` (Approved, owner 2026-11-07) �
 - [x] web: the sidebar's "صندوق الوارد" with the held count; `/inbox` (tabs, filters, retry from the row, empty, loading and error states); `/inbox/:id` (envelope, key fields with Amount, raw JSON, the hold and what fixes it, the event it waits for, actions history, entries; retry, post in the next open period, resolve with `EntryPicker`, dismiss for the owner); the Hub document and event link on `/entries/:id` and `/open-items/:id`; the palette's "صندوق الوارد" and "حدث…"; `ar.inbox`
 - [x] e2e: the inbox flows; RTL screenshots light and dark at 360, 768 and 1280 px, looked at
 - [x] wiring (Web), docs (`apps/web/CLAUDE.md`, `packages/ui/CLAUDE.md`, `packages/i18n/CLAUDE.md`, `packages/contracts/CLAUDE.md`, `docs/ROADMAP.md`)
-- [ ] checks and reviewer, PR with auto-merge and Auto-fix
+- [x] checks and reviewers (`reviewer`, `accountant-reviewer`; their findings fixed: the client of a payment row, the move's day tested, the move's wording; their re-reviews on the fix commit found nothing new; `pnpm verify --e2e-all` green), PR with auto-merge
 
 ## PR 5 — The settings screens (ui, web, e2e)
 - [ ] ui: `SecretReveal`, tested, both densities, on the design-system page
