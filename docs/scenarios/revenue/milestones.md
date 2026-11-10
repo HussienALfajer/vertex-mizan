@@ -2,7 +2,7 @@
 
 Status: Proposed
 
-S06 wrote these cases (S06 "Scenarios"). They wait for the owner's approval of their expected entries and outcomes, and then stay `Proposed` until S06's feature slice brings their executors: the posting rules of `invoice.issued` with deposit and milestone lines, `milestone.done`, the new `milestone.reopened` and `project.completed`, the order keys `milestone:<id>` and `project:<id>`, the automatic retry of a reopen when its done posts, and the holds `NEEDS_DECISION` (`milestone_amount_differs`, `milestone_already_done`, `milestone_service_missing`), `UNKNOWN_REFERENCE` and `OPEN_ITEM_HAS_SETTLEMENTS` for these events (S06 rules 1, 2, 11–14, 17–19).
+S06 wrote these cases (S06 "Scenarios"); the owner approved their expected entries and outcomes on 2026-11-10, with two readings of S06 rules 11 and 13: the revenue of a milestone invoiced before its done carries its schedule's current service (the invoice line's, as later service changes leave it), and that of a milestone not invoiced the done's service; and a done after a reopen opens a new contract asset item named `<milestone number>/<n>`, since the reopen settles the earlier one at zero. They stay `Proposed` until S06's feature slice brings their executors: the posting rules of `invoice.issued` with deposit and milestone lines, `milestone.done`, the new `milestone.reopened` and `project.completed`, the order keys `milestone:<id>` and `project:<id>`, the automatic retry of a reopen when its done posts, and the holds `NEEDS_DECISION` (`milestone_amount_differs`, `milestone_already_done`, `milestone_service_missing`), `UNKNOWN_REFERENCE` and `OPEN_ITEM_HAS_SETTLEMENTS` for these events (S06 rules 1, 2, 11–14, 17–19).
 
 ## Rule
 
