@@ -280,9 +280,9 @@ export interface MilestoneStanding {
    */
   readonly done: boolean;
   /**
-   * Whether a re-issue recognised the milestone as revenue at issue after its void took a done's or
-   * the completion's release back, with no reopen since (S06 rule 9): the milestone is recognised,
-   * so a done then is a second one (owner, 2026-11-10).
+   * Whether a re-issue's revenue at issue for the milestone stands (S06 rule 9): its entry posted
+   * and not reversed by a later void. The milestone is recognised, so a done then is a second one
+   * (owner, 2026-11-10); once a void reverses that entry, it is false again.
    */
   readonly recognisedAtIssue: boolean;
   /**
@@ -344,7 +344,8 @@ export interface MilestoneReopenStanding {
   readonly doneStanding: boolean;
   /**
    * Whether the milestone's latest done had its release reversed by the void of its invoice, with
-   * no reopen since (S06 rule 8).
+   * no reopen since (S06 rule 8). A fact of the milestone's history: it stays true through later
+   * voids and re-issues, so every re-issue after it is revenue at issue.
    */
   readonly doneTakenBackByVoid: boolean;
 }
@@ -367,7 +368,12 @@ export function milestoneReopen(
 
 /** What the books hold for a milestone when a re-issue of its voided line arrives. */
 export interface ReissuedMilestoneStanding extends MilestoneReopenStanding {
-  /** Whether the void reversed the project's completion's release of the voided schedule. */
+  /**
+   * Whether the project's completion released one of the milestone's schedules and a void took
+   * that release back, with no done or reopen of the milestone since. A fact of the milestone's
+   * history, like `doneTakenBackByVoid`: it stays true through later voids and re-issues, so a
+   * second re-issue is revenue at issue too (owner, 2026-11-10); a done since makes it false.
+   */
   readonly completionTakenBackByVoid: boolean;
 }
 

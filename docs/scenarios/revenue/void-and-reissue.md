@@ -2,7 +2,7 @@
 
 Status: Proposed
 
-S06 wrote these cases (S06 "Scenarios"), with the owner's answer to open question Q14 (a) of 2026-11-10: a reopen after the void that reversed its done's release is recorded with no entry. The owner approved their expected entries and outcomes the same day, with two readings of S06 rule 9: a re-issued over-time line recognises at issue its own part, by its days, of the months the void took back, so at another amount its own share; and a re-issued milestone line clears the milestone's contract asset when a done stands, is revenue at issue when the void reversed its done's release and no reopen followed, and is deferred otherwise. After the reviews the owner approved, the same day, three more cases (a void after two releases, milestones voided before their done, a milestone re-issued after the project's completion released it) and four decisions: such a re-issue is revenue at issue; `project.completed` posts one entry per schedule, so a void reverses its schedule's release alone; a done after a re-issue recognised at issue, with no reopen, is held `milestone_already_done`; a re-issue whose period does not cover a month the void took back is held `reissue_period_differs`. They stay `Proposed` until S06's feature slice brings their executors: `invoice.voided` of an invoice with schedules, releases, elapsed parts or a done's release; the re-issue of a voided schedule; `milestone.done` and `milestone.reopened`; and the release job `revenue_release_month` (S06 rules 4, 5, 7–9, 11–13).
+S06 wrote these cases (S06 "Scenarios"), with the owner's answer to open question Q14 (a) of 2026-11-10: a reopen after the void that reversed its done's release is recorded with no entry. The owner approved their expected entries and outcomes the same day, with two readings of S06 rule 9: a re-issued over-time line recognises at issue its own part, by its days, of the months the void took back, so at another amount its own share; and a re-issued milestone line clears the milestone's contract asset when a done stands, is revenue at issue when the void reversed its done's release and no reopen followed, and is deferred otherwise. After the reviews the owner approved, the same day, three more cases (a void after two releases, milestones voided before their done, a milestone re-issued after the project's completion released it) and four decisions (two more cases, a second void and re-issue after the completion with a done after it, and a re-issue not covering a month the void took back, wait for the approval of their outcomes): such a re-issue is revenue at issue; `project.completed` posts one entry per schedule, so a void reverses its schedule's release alone; a done after a re-issue recognised at issue, with no reopen, is held `milestone_already_done`; a re-issue whose period does not cover a month the void took back is held `reissue_period_differs`. They stay `Proposed` until S06's feature slice brings their executors: `invoice.voided` of an invoice with schedules, releases, elapsed parts or a done's release; the re-issue of a voided schedule; `milestone.done` and `milestone.reopened`; and the release job `revenue_release_month` (S06 rules 4, 5, 7–9, 11–13).
 
 ## Rule
 
@@ -812,6 +812,163 @@ expect:
   balances:
     - { account: "212001", book: 0, parallel: 0 }
     - { account: "411001", book: -3690000, parallel: -30000 }
+```
+
+### Vertex Media: a second void and re-issue after the completion, and a done after it
+
+The case above continues. The re-issue INV-2026-99, revenue at issue, is voided on 8 December: its entry is reversed. The completion's release taken back is a fact of the milestone's history, so the second re-issue of 10 December, at 125, is revenue at issue again. A `milestone.done` received after it, with no reopen, would recognise the milestone twice: it is held `NEEDS_DECISION` (`milestone_already_done`).
+
+```yaml
+case: the deposit re-issued at issue after the completion's release was taken back; voided again on 8 Dec; the second re-issue at 125 is revenue at issue; a done after it is held milestone_already_done
+company: { shape: syp-usd, book: SYP, parallel: USD, template: service-agency,
+           rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true } }
+rates:
+  - { date: 2026-11-03, base: USD, quote: SYP, rate: "120.0000", type: bulletin }
+  - { date: 2026-12-03, base: USD, quote: SYP, rate: "123.0000", type: bulletin }
+  - { date: 2026-12-10, base: USD, quote: SYP, rate: "125.0000", type: bulletin }
+steps:
+  - event: invoice.issued
+    accounting_date: 2026-11-03
+    payload: { invoice: INV-2026-98, client: C1, contract: { code: P1, kind: project, client: C1 },
+               currency: USD, syp_per_usd: "122.0000", issued_on: 2026-11-03, due_on: 2026-11-18,
+               lines: [{ line: L1, amount: 30000, source: deposit, milestone: MS-5, service: S1 }] }
+  - event: project.completed
+    accounting_date: 2026-11-25
+    payload: { project: { code: P1, kind: project, client: C1 }, client: C1, on: 2026-11-25 }
+  - event: invoice.voided
+    accounting_date: 2026-12-01
+    payload: { invoice: INV-2026-98, voided_on: 2026-12-01, reason: "أُلغيت الفاتورة في Hub" }
+  - event: invoice.issued
+    accounting_date: 2026-12-03
+    payload: { invoice: INV-2026-99, client: C1, contract: { code: P1, kind: project, client: C1 },
+               currency: USD, syp_per_usd: "124.0000", issued_on: 2026-12-03, due_on: 2026-12-18,
+               lines: [{ line: L1, amount: 30000, source: deposit, milestone: MS-5, service: S1 }] }
+  - event: invoice.voided
+    accounting_date: 2026-12-08
+    payload: { invoice: INV-2026-99, voided_on: 2026-12-08, reason: "أُلغيت الفاتورة في Hub" }
+  - event: invoice.issued
+    accounting_date: 2026-12-10
+    payload: { invoice: INV-2026-100, client: C1, contract: { code: P1, kind: project, client: C1 },
+               currency: USD, syp_per_usd: "126.0000", issued_on: 2026-12-10, due_on: 2026-12-25,
+               lines: [{ line: L1, amount: 30000, source: deposit, milestone: MS-5, service: S1 }] }
+  - event: milestone.done
+    accounting_date: 2026-12-15
+    payload: { milestone: MS-5, client: C1, project: { code: P1, kind: project, client: C1 },
+               currency: USD, amount: 30000, done_on: 2026-12-15, service: S1 }
+    outcome: { status: held, reason: NEEDS_DECISION, detail: milestone_already_done }
+expect:
+  entries:
+    - source: invoice.issued
+      date: 2026-11-03
+      lines:
+        - { account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 30000, book: 3600000, parallel: 30000 }
+        - { account: "212001", dims: { client: C1, contract: P1 }, currency: USD, amount: -30000, book: -3600000, parallel: -30000 }
+    - source: project.completed
+      date: 2026-11-25
+      lines:
+        - { account: "212001", dims: { client: C1, contract: P1 }, currency: USD, amount: 30000, book: 3600000, parallel: 30000 }
+        - { account: "411001", dims: { client: C1, contract: P1, service: S1 }, currency: USD, amount: -30000, book: -3600000, parallel: -30000 }
+    - source: invoice.voided
+      date: 2026-12-01
+      lines:
+        - { account: "411001", dims: { client: C1, contract: P1, service: S1 }, currency: USD, amount: 30000, book: 3600000, parallel: 30000 }
+        - { account: "212001", dims: { client: C1, contract: P1 }, currency: USD, amount: -30000, book: -3600000, parallel: -30000 }
+    - source: invoice.voided
+      date: 2026-12-01
+      lines:
+        - { account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: -30000, book: -3600000, parallel: -30000 }
+        - { account: "212001", dims: { client: C1, contract: P1 }, currency: USD, amount: 30000, book: 3600000, parallel: 30000 }
+    - source: invoice.issued
+      date: 2026-12-03
+      lines:
+        - { account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 30000, book: 3690000, parallel: 30000 }
+        - { account: "411001", dims: { client: C1, contract: P1, service: S1 }, currency: USD, amount: -30000, book: -3690000, parallel: -30000 }
+    - source: invoice.voided
+      date: 2026-12-08
+      lines:
+        # the first re-issue's entry reversed: its revenue at issue taken back
+        - { account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: -30000, book: -3690000, parallel: -30000 }
+        - { account: "411001", dims: { client: C1, contract: P1, service: S1 }, currency: USD, amount: 30000, book: 3690000, parallel: 30000 }
+    - source: invoice.issued
+      date: 2026-12-10
+      lines:
+        # the second re-issue: 300.00 USD × 125 = 37,500.00 SYP, revenue at issue
+        - { account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 30000, book: 3750000, parallel: 30000 }
+        - { account: "411001", dims: { client: C1, contract: P1, service: S1 }, currency: USD, amount: -30000, book: -3750000, parallel: -30000 }
+  balances:
+    - { account: "212001", book: 0, parallel: 0 }
+    # the milestone once, at the second re-issue's 125
+    - { account: "411001", book: -3750000, parallel: -30000 }
+```
+
+### Vertex Media: a re-issue whose period does not cover a month the void took back
+
+Edge case 10's void after both releases, re-issued for 15 to 30 November only (Hub shortened the cycle): December, which the void took back, is outside the re-issue's period. The re-issue is held `NEEDS_DECISION` (`reissue_period_differs`) whole, and nothing of it posts.
+
+```yaml
+case: the 900.00 USD cycle voided after both releases; a re-issue for 15 to 30 Nov only does not cover December and is held reissue_period_differs
+company: { shape: syp-usd, book: SYP, parallel: USD, template: service-agency,
+           rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true } }
+rates:
+  - { date: 2026-11-15, base: USD, quote: SYP, rate: "121.0000", type: bulletin }
+  - { date: 2027-01-07, base: USD, quote: SYP, rate: "125.0000", type: bulletin }
+steps:
+  - event: invoice.issued
+    accounting_date: 2026-11-15
+    payload: { invoice: INV-2026-80, client: C1, contract: { code: R1, kind: retainer, client: C1 },
+               currency: USD, syp_per_usd: "122.0000", issued_on: 2026-11-15, due_on: 2026-11-30,
+               lines: [{ line: L1, amount: 90000, source: retainer_charge, kind: monthly,
+                         cycle_start: 2026-11-15, cycle_end: 2026-12-14, service: S1 }] }
+  - job: revenue_release_month
+    period: 2026-11
+  - job: revenue_release_month
+    period: 2026-12
+  - event: invoice.voided
+    accounting_date: 2027-01-05
+    payload: { invoice: INV-2026-80, voided_on: 2027-01-05, reason: "أُلغيت الفاتورة في Hub" }
+  - event: invoice.issued
+    accounting_date: 2027-01-07
+    payload: { invoice: INV-2027-3, client: C1, contract: { code: R1, kind: retainer, client: C1 },
+               currency: USD, syp_per_usd: "126.0000", issued_on: 2027-01-07, due_on: 2027-01-22,
+               lines: [{ line: L1, amount: 48000, source: retainer_charge, kind: monthly,
+                         cycle_start: 2026-11-15, cycle_end: 2026-11-30, service: S1 }] }
+    outcome: { status: held, reason: NEEDS_DECISION, detail: reissue_period_differs }
+expect:
+  entries:
+    - source: invoice.issued
+      date: 2026-11-15
+      lines:
+        - { account: "112001", dims: { client: C1, contract: R1 }, currency: USD, amount: 90000, book: 10890000, parallel: 90000 }
+        - { account: "212001", dims: { client: C1, contract: R1 }, currency: USD, amount: -90000, book: -10890000, parallel: -90000 }
+    - source: revenue_release
+      date: 2026-11-30
+      lines:
+        - { account: "212001", dims: { client: C1, contract: R1 }, currency: USD, amount: 48000, book: 5808000, parallel: 48000 }
+        - { account: "411001", dims: { client: C1, contract: R1, service: S1 }, currency: USD, amount: -48000, book: -5808000, parallel: -48000 }
+    - source: revenue_release
+      date: 2026-12-31
+      lines:
+        - { account: "212001", dims: { client: C1, contract: R1 }, currency: USD, amount: 42000, book: 5082000, parallel: 42000 }
+        - { account: "411001", dims: { client: C1, contract: R1, service: S1 }, currency: USD, amount: -42000, book: -5082000, parallel: -42000 }
+    - source: invoice.voided
+      date: 2027-01-05
+      lines:
+        - { account: "411001", dims: { client: C1, contract: R1, service: S1 }, currency: USD, amount: 42000, book: 5082000, parallel: 42000 }
+        - { account: "212001", dims: { client: C1, contract: R1 }, currency: USD, amount: -42000, book: -5082000, parallel: -42000 }
+    - source: invoice.voided
+      date: 2027-01-05
+      lines:
+        - { account: "411001", dims: { client: C1, contract: R1, service: S1 }, currency: USD, amount: 48000, book: 5808000, parallel: 48000 }
+        - { account: "212001", dims: { client: C1, contract: R1 }, currency: USD, amount: -48000, book: -5808000, parallel: -48000 }
+    - source: invoice.voided
+      date: 2027-01-05
+      lines:
+        - { account: "112001", dims: { client: C1, contract: R1 }, currency: USD, amount: -90000, book: -10890000, parallel: -90000 }
+        - { account: "212001", dims: { client: C1, contract: R1 }, currency: USD, amount: 90000, book: 10890000, parallel: 90000 }
+  balances:
+    - { account: "112001", book: 0, parallel: 0 }
+    - { account: "212001", book: 0, parallel: 0 }
+    - { account: "411001", book: 0, parallel: 0 }
 ```
 
 ### SYP books only
