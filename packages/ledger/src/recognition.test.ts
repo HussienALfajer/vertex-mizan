@@ -12,6 +12,7 @@ import {
   overTimeMonths,
   releaseParts,
   remainingReleaseParts,
+  voidedCreditParts,
 } from './recognition.js';
 import { calendar, rate, sypOnly, sypUsd, usdSyp } from './test-fixtures.js';
 
@@ -432,6 +433,49 @@ describe('remainingReleaseParts', () => {
   });
 });
 
+describe('voidedCreditParts', () => {
+  it('releases on the void date the share of the months released since the credit, all of it when none is left', () => {
+    // The 50.00 USD credit of 19 Nov voided on 3 Dec: November's 16 of the 30 days not released at the credit.
+    expect(voidedCreditParts(usd(5_000n, 605_000n, 5_000n), 16n, 30n)).toEqual({
+      released: usd(2_667n, 322_667n, 2_667n),
+      remaining: usd(2_333n, 282_333n, 2_333n),
+    });
+    // December then releases 39 667 + 2 333 = 42 000 and 4 799 667 + 282 333 = 5 082 000.
+    const december = monthsFrom('2026-12', 90_000n, '2026-11-15', '2026-12-14');
+    expect(remainingReleaseParts(usd(42_000n, 5_082_000n, 42_000n), december, sypUsd)).toEqual([
+      usd(42_000n, 5_082_000n, 42_000n),
+    ]);
+    // Voided on 5 Jan 2027, after the cycle fully released.
+    expect(voidedCreditParts(usd(5_000n, 605_000n, null), 30n, 30n)).toEqual({
+      released: usd(5_000n, 605_000n, null),
+      remaining: usd(0n, 0n, null),
+    });
+    expect(voidedCreditParts(usd(5_000n, 605_000n, 5_000n), 0n, 30n)).toEqual({
+      released: null,
+      remaining: usd(5_000n, 605_000n, 5_000n),
+    });
+  });
+
+  it('refuses nothing given back, and released days outside the days not released at the credit', () => {
+    expect(() => voidedCreditParts(usd(0n, 0n, 0n), 1n, 30n)).toThrow(RangeError);
+    expect(() => voidedCreditParts(usd(5_000n, 605_000n, 5_000n), 31n, 30n)).toThrow(RangeError);
+    expect(() => voidedCreditParts(usd(5_000n, 605_000n, 5_000n), -1n, 30n)).toThrow(RangeError);
+  });
+
+  it('keeps a ledger amount whole when a part rounds to zero in the transaction amount', () => {
+    // 1 × 2 ÷ 5 = 0.4 → 0, while the book's 2 × 2 ÷ 5 = 0.8 → 1: nothing is released, in any ledger.
+    expect(voidedCreditParts(usd(1n, 2n, null), 2n, 5n)).toEqual({
+      released: null,
+      remaining: usd(1n, 2n, null),
+    });
+    // 1 × 4 ÷ 5 = 0.8 → 1: all of it is released, and nothing is left in any ledger.
+    expect(voidedCreditParts(usd(1n, 3n, 1n), 4n, 5n)).toEqual({
+      released: usd(1n, 3n, 1n),
+      remaining: usd(0n, 0n, 0n),
+    });
+  });
+});
+
 /**
  * A cycle's schedules before a credit: each one's net amount, what remains of it in liabilities
  * in every ledger, and a credit no larger than their net amounts.
@@ -603,6 +647,47 @@ describe('a credit', () => {
         expect(creditParts(creditMinor, schedules)).toEqual(creditParts(creditMinor, schedules));
       }),
       { numRuns: 300 },
+    );
+  });
+});
+
+describe("a credit's void", () => {
+  it('gives back exactly what the credit took from the liability, in every ledger, the released part never more than its days', () => {
+    fc.assert(
+      fc.property(
+        creditArb,
+        fc.bigInt({ min: 1n, max: 400n }),
+        fc.bigInt({ min: 0n, max: 400n }),
+        ({ schedules, creditMinor }, daysAtCredit, released) => {
+          const releasedDays = released > daysAtCredit ? daysAtCredit : released;
+          for (const part of creditParts(creditMinor, schedules)) {
+            if (part.liability === null) continue;
+            const split = voidedCreditParts(part.liability, releasedDays, daysAtCredit);
+            const parts =
+              split.released === null ? [split.remaining] : [split.released, split.remaining];
+            expect(sum(parts.map((p) => p.transaction.amountMinor))).toBe(
+              part.liability.transaction.amountMinor,
+            );
+            expect(sum(parts.map((p) => p.bookMinor))).toBe(part.liability.bookMinor);
+            expect(sum(parts.map((p) => p.parallelMinor ?? 0n))).toBe(
+              part.liability.parallelMinor ?? 0n,
+            );
+            // A part zero in the transaction amount is zero in every ledger.
+            if (split.remaining.transaction.amountMinor === 0n) {
+              expect(split.remaining.bookMinor).toBe(0n);
+              expect(split.remaining.parallelMinor ?? 0n).toBe(0n);
+            }
+            if (split.released !== null) {
+              expect(split.released.transaction.amountMinor).toBeGreaterThan(0n);
+            }
+            if (releasedDays === daysAtCredit) {
+              expect(split.remaining.transaction.amountMinor).toBe(0n);
+            }
+            if (releasedDays === 0n) expect(split.released).toBeNull();
+          }
+        },
+      ),
+      { numRuns: 500 },
     );
   });
 });

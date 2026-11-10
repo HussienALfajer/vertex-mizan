@@ -1,5 +1,5 @@
 import { type CompanyLedgers, money } from '@vertex-mizan/contracts';
-import { allocate } from './allocation.js';
+import { allocate, allocateCarried } from './allocation.js';
 import { clearOpenItem } from './carried.js';
 import { type CarriedAmounts, keptLedgers, ledgerAmount, negate } from './lines.js';
 import { daysBetween, lastDayOfMonth, periodOf } from './periods.js';
@@ -170,6 +170,50 @@ export function creditParts(
       liability: liabilityMinor === 0n ? null : clearOpenItem(negate(remaining), liabilityMinor),
     };
   });
+}
+
+/** What a credit's void gives a schedule back, split for the void's date and for later months. */
+export interface VoidedCreditParts {
+  /** Released on the void date at these carried amounts; null when no day was released since. */
+  readonly released: CarriedAmounts | null;
+  /** Joins the schedule's remaining, which `remainingReleaseParts()` cuts over its later months. */
+  readonly remaining: CarriedAmounts;
+}
+
+/**
+ * Splits the liability part a credit's void gives a schedule back (`givenBack`, positive amounts:
+ * the negation of the reversed `credited` movement; S06 rule 8, owner 2026-11-10): the share of the
+ * months released since the credit, `releasedDays` out of `daysAtCredit` (the days of the months not
+ * released when the credit posted), is released on the void date (IFRS 15.88), all of it when every
+ * one of those days has been released; the rest joins the remaining. Each ledger is split with the
+ * same days with cumulative rounding (`allocateCarried()`), so the two parts sum to what came back
+ * exactly and none is converted again.
+ */
+export function voidedCreditParts(
+  givenBack: CarriedAmounts,
+  releasedDays: bigint,
+  daysAtCredit: bigint,
+): VoidedCreditParts {
+  if (givenBack.transaction.amountMinor <= 0n) throw new RangeError('Nothing given back');
+  if (releasedDays < 0n || releasedDays > daysAtCredit) {
+    throw new RangeError('Released days outside zero and the days not released at the credit');
+  }
+  const [released, remaining] = allocateCarried(givenBack, [
+    releasedDays,
+    daysAtCredit - releasedDays,
+  ]) as [CarriedAmounts, CarriedAmounts];
+  // A part of zero in the transaction amount takes nothing in any ledger, so what is released and
+  // what remains are each zero in every ledger when zero in the transaction (ADR 0007).
+  if (released.transaction.amountMinor === 0n) return { released: null, remaining: givenBack };
+  if (remaining.transaction.amountMinor === 0n) {
+    const { currency } = givenBack.transaction;
+    const none = givenBack.parallelMinor === null ? null : 0n;
+    return {
+      released: givenBack,
+      remaining: { transaction: money(0n, currency), bookMinor: 0n, parallelMinor: none },
+    };
+  }
+  return { released, remaining };
 }
 
 /**
