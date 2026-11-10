@@ -2,7 +2,7 @@
 
 Status: Proposed
 
-S06 wrote these cases (S06 "Scenarios"); the owner approved the expected entries and outcomes of fourteen of them on 2026-11-10, with option A of the day split below, the job's clock and the order of a job's releases. The case of a missing bulletin on an elapsed month's last day was added after the accounting review and awaits the owner's approval. They stay `Proposed` until S06's feature slice brings their executors: the posting rules of `invoice.issued` with over-time lines, the release job `revenue_release_month`, the elapsed parts of a late issue, the hold `SERVICE_PERIOD_CLOSED` and the action `recognise` (S06 rules 1–5, 7, 10, 16). The case with a closed month also needs S07's close (`closed_periods`), as `inbox/post-in-next-open-period.md` does.
+S06 wrote these cases (S06 "Scenarios"); the owner approved their expected entries and outcomes on 2026-11-10: fourteen cases with option A of the day split below, the job's clock and the order of a job's releases, then the case of a missing bulletin on an elapsed month's last day, added after the accounting review. They stay `Proposed` until S06's feature slice brings their executors: the posting rules of `invoice.issued` with over-time lines, the release job `revenue_release_month`, the elapsed parts of a late issue, the hold `SERVICE_PERIOD_CLOSED` and the action `recognise` (S06 rules 1–5, 7, 10, 16). The case with a closed month also needs S07's close (`closed_periods`), as `inbox/post-in-next-open-period.md` does.
 
 ## Rule
 
