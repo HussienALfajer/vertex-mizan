@@ -133,6 +133,9 @@ export function SplitDialog({
           {currency === undefined ? (
             whole.isError ? (
               <FormError error={whole.error} />
+            ) : whole.data ? (
+              // Held with nothing to post: the hold says why no part can be typed.
+              <PreviewEntries preview={whole.data} />
             ) : (
               <Skeleton className="h-control" />
             )

@@ -1619,9 +1619,10 @@ class PreviewRolledBack extends Error {
  * Previews an action of S06 rule 16 for `/inbox/:id` ("Screens"): the event attempted exactly as
  * the action attempts it, through the posting function, with the action's own refusals
  * (`EVENT_NOT_HELD`, `EVENT_ACTION_NOT_ALLOWED`, a split outside zero to the remainder
- * `VALIDATION_FAILED`), then every entry the attempt wrote read back and the savepoint rolled back,
- * so nothing is written: no entry, state, action or audit row. The ledger head stays locked until
- * the caller's transaction ends, as for any attempt.
+ * `VALIDATION_FAILED`), the deferred checks run, then every entry the attempt wrote read back and
+ * the savepoint rolled back, so nothing is written: no entry, state, action or audit row. The
+ * ledger head stays locked until the caller's transaction ends, as for any attempt; the caller's
+ * transaction ends with the preview, since its constraints are then immediate.
  */
 export async function previewAction(
   tx: Transaction,
@@ -1633,7 +1634,11 @@ export async function previewAction(
   const state = await heldState(tx, row);
   if (action.kind === 'recognise') checkRecognisable(state);
   else checkSplittable(state);
-  const [head] = await tx.select({ entryCount: ledgerHeads.entryCount }).from(ledgerHeads);
+  // `heldState()` locked the head: no other posting commits before the attempt posts after it.
+  const [head] = await tx
+    .select({ entryCount: ledgerHeads.entryCount })
+    .from(ledgerHeads)
+    .for('update');
   if (!head) throw new Error('A company without its ledger head');
   const servicePeriods = new Map<string, string | null>();
   try {
@@ -1645,7 +1650,12 @@ export async function previewAction(
           : { split: action.revenueMinor }),
         onPosted: (entryId, on) => servicePeriods.set(entryId, on),
       });
-      const entries = outcome.kind === 'hold' ? [] : await entriesAfter(savepoint, head.entryCount);
+      // The checks deferred to the commit run now, so a preview never shows what the commit
+      // would refuse.
+      await savepoint.execute(sql`set constraints all immediate`);
+      // A hold rolls back the rule's own entries, but not the releases of the ended months a
+      // credit or a void posts first (S06 rules 6, 8): the action keeps them too.
+      const entries = await entriesAfter(savepoint, head.entryCount);
       throw new PreviewRolledBack({
         state: outcome.kind === 'hold' ? 'held' : outcome.kind,
         reason: outcome.kind === 'hold' ? outcome.reason : null,

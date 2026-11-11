@@ -139,10 +139,11 @@ test.describe('the months', () => {
     await expect(page.getByRole('heading', { level: 1 })).toHaveText(t.title);
     // The decisions held in the inbox.
     await expect(page.getByText(t.decisions.title)).toContainText('2');
-    await expect(page.getByRole('link', { name: t.decisions.open })).toHaveAttribute(
-      'href',
-      '/inbox?view=held',
-    );
+    await expect(
+      page.getByRole('link', {
+        name: `${t.decisions.open}: ${ar.inbox.reasons.SERVICE_PERIOD_CLOSED}`,
+      }),
+    ).toHaveAttribute('href', '/inbox?view=held&reason=SERVICE_PERIOD_CLOSED');
     const table = page.getByRole('table', { name: t.months.label });
     const october = table.getByRole('row').filter({ hasText: 'INV-2026-095' });
     await expect(october).toContainText('33,040.00');
@@ -156,6 +157,20 @@ test.describe('the months', () => {
     await expect(dialog).toContainText(cycle.invoiceNumber);
     await expect(dialog).toContainText('58,080.00');
     await expect(dialog).toContainText('480.00');
+  });
+
+  test('opens the decisions in the inbox, filtered by their reason', async ({ page }) => {
+    const asked = await answer(page, 'GET', '/inbox', {
+      status: 200,
+      json: { events: [], nextCursor: null },
+    });
+    await page.goto('/revenue?view=months');
+    await page
+      .getByRole('link', { name: `${t.decisions.open}: ${ar.inbox.reasons.NEEDS_DECISION}` })
+      .click();
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(ar.inbox.title);
+    await expect.poll(() => asked.at(-1)?.url() ?? '').toContain('reason=NEEDS_DECISION');
+    expect(new URL(asked.at(-1)?.url() ?? '').searchParams.get('state')).toBe('held');
   });
 
   test('opens a month’s release entries in the journal, filtered', async ({ page }) => {

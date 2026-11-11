@@ -121,15 +121,18 @@ export function RevenuePage() {
           }
           description={t.decisions.description}
           action={
-            can(me, 'events.read') ? (
-              <Button
-                variant="outline"
-                size="sm"
-                render={<Link to="/inbox" search={{ view: 'held' }} />}
-              >
-                {t.decisions.open}
-              </Button>
-            ) : undefined
+            can(me, 'events.read')
+              ? (['SERVICE_PERIOD_CLOSED', 'NEEDS_DECISION'] as const).map((reason) => (
+                  <Button
+                    key={reason}
+                    variant="outline"
+                    size="sm"
+                    render={<Link to="/inbox" search={{ view: 'held', reason }} />}
+                  >
+                    {`${t.decisions.open}: ${ar.inbox.reasons[reason]}`}
+                  </Button>
+                ))
+              : undefined
           }
         />
       )}

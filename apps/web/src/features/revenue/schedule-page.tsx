@@ -23,7 +23,7 @@ import { FileQuestionIcon, InboxIcon, ReceiptTextIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { FormError } from '../../components/form-error';
 import { hasCode } from '../../lib/api';
-import { formatDay } from '../../lib/format';
+import { formatDate, formatDay } from '../../lib/format';
 import { can, useCompany } from '../../lib/session';
 import { EntryNumberText, Fact, useFiscalYearStartMonth } from '../entries/entry-parts';
 import { openItemsQuery } from '../receivables/receivables-queries';
@@ -243,9 +243,7 @@ function Services({ schedule }: { schedule: RevenueScheduleDetail }) {
         {changes.map((movement) => (
           <li key={movement.id} className="flex flex-wrap items-baseline gap-x-2">
             <span className="text-muted-foreground">
-              {movement.entry
-                ? formatDay(movement.entry.date)
-                : formatDay(movement.createdAt.slice(0, 10))}
+              {movement.entry ? formatDay(movement.entry.date) : formatDate(movement.createdAt)}
             </span>
             <span>{t.serviceChanged}</span>
             <ValueName value={movement.service} />
