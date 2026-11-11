@@ -1581,16 +1581,15 @@ describe("a cancelled project's split", () => {
 });
 
 describe('milestoneLineAtIssue', () => {
-  it('clears a standing done, is revenue at issue after the completion, held after the cancellation, and deferred otherwise', () => {
-    expect(milestoneLineAtIssue(true, null)).toBe('clear_item');
-    expect(milestoneLineAtIssue(true, 'cancelled')).toBe('clear_item');
-    expect(milestoneLineAtIssue(true, 'completed')).toBe('clear_item');
-    expect(milestoneLineAtIssue(false, 'completed')).toBe('revenue_at_issue');
-    expect(milestoneLineAtIssue(false, 'cancelled')).toEqual({
+  it('clears a standing done, holds a line invoiced after the cancellation, and defers otherwise, after the completion too', () => {
+    expect(milestoneLineAtIssue(true, false)).toBe('clear_item');
+    expect(milestoneLineAtIssue(true, true)).toBe('clear_item');
+    expect(milestoneLineAtIssue(false, true)).toEqual({
       kind: 'decision',
       detail: 'invoiced_after_cancellation',
     });
-    expect(milestoneLineAtIssue(false, null)).toBe('defer');
+    // A line invoiced after the completion (a project reopened in Hub) waits for its done.
+    expect(milestoneLineAtIssue(false, false)).toBe('defer');
   });
 });
 

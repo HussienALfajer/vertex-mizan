@@ -280,9 +280,8 @@ export interface MilestoneStanding {
    */
   readonly done: boolean;
   /**
-   * Whether a revenue at issue for the milestone stands (a re-issue's, S06 rule 9, or a line
-   * invoiced after the project's completion, `milestoneLineAtIssue()`): its entry posted and not
-   * reversed by a later void. The milestone is recognised, so a done then is a second one
+   * Whether a re-issue's revenue at issue for the milestone stands (S06 rule 9): its entry posted
+   * and not reversed by a later void. The milestone is recognised, so a done then is a second one
    * (owner, 2026-11-10); once a void reverses that entry, it is false again.
    */
   readonly recognisedAtIssue: boolean;
@@ -581,31 +580,26 @@ export function cancelledProjectSplit(
   return { parts, refund: refundMinor === 0n ? null : money(refundMinor, currency) };
 }
 
-/** Whether the project of a deposit or milestone line has ended in Hub when its invoice arrives. */
-export type ProjectEnded = 'completed' | 'cancelled' | null;
-
 /**
  * What a deposit or milestone line posts at issue, its milestone neither re-issued nor done before
- * on a voided invoice (S06 rules 1, 12, 14 and 15; owner, 2026-11-10): it clears the milestone's
- * contract asset while a done stands (rule 12); otherwise, the project completed, it is revenue at
- * issue, since the project is delivered and no done or completion will release it; the project
- * cancelled, its invoice is held `NEEDS_DECISION` (`invoiced_after_cancellation`) for the
- * accountant's split (`invoicedAfterCancellationSplit()`), since nothing is left to deliver and a
- * deferral would never be released (IFRS 15.15, 15.B21); and otherwise it is deferred to its done.
+ * on a voided invoice (S06 rules 1, 12 and 15; owner, 2026-11-10): it clears the milestone's
+ * contract asset while a done stands (rule 12); otherwise, its project cancelled, its invoice is
+ * held `NEEDS_DECISION` (`invoiced_after_cancellation`) for the accountant's split
+ * (`invoicedAfterCancellationSplit()`), since nothing is left to deliver and a deferral would never
+ * be released (IFRS 15.15, 15.B21); and otherwise it is deferred to its done, after the project's
+ * completion too: Hub completes a project only with every milestone done (Hub F05 rules 6–7), so
+ * such a line comes from a project reopened in Hub, whose milestone is still to be delivered
+ * (IFRS 15.38; owner, 2026-11-11).
  */
 export function milestoneLineAtIssue(
   doneStanding: boolean,
-  projectEnded: ProjectEnded,
+  projectCancelled: boolean,
 ):
   | 'clear_item'
   | 'defer'
-  | 'revenue_at_issue'
   | { readonly kind: 'decision'; readonly detail: 'invoiced_after_cancellation' } {
   if (doneStanding) return 'clear_item';
-  if (projectEnded === 'completed') return 'revenue_at_issue';
-  if (projectEnded === 'cancelled') {
-    return { kind: 'decision', detail: 'invoiced_after_cancellation' };
-  }
+  if (projectCancelled) return { kind: 'decision', detail: 'invoiced_after_cancellation' };
   return 'defer';
 }
 

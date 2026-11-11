@@ -2,7 +2,7 @@
 
 Status: Proposed
 
-S06 wrote these cases (S06 "Scenarios"); the owner approved their expected entries and outcomes on 2026-11-10, with two readings of S06 rules 11 and 13: the revenue of a milestone invoiced before its done carries its schedule's current service (the invoice line's, as later service changes leave it), and that of a milestone not invoiced the done's service; and a done after a reopen opens a new contract asset item named `<milestone number>/<n>`, since the reopen settles the earlier one at zero. The twelfth case, a done after the project's completion held `milestone_released_at_completion`, follows the owner's answer to open question Q14 (b) of the same day, and the owner approved its outcome the same day. The thirteenth case, a milestone invoiced after the project's completion as revenue at issue, follows the owner's answer of the same day to the accounting review of `revenue/cancelled-project.md`, and awaits the owner's approval of its numbers. They stay `Proposed` until S06's feature slice brings their executors: the posting rules of `invoice.issued` with deposit and milestone lines, `milestone.done`, the new `milestone.reopened` and `project.completed`, the order keys `milestone:<id>` and `project:<id>`, S04's unique key on an account's Hub document admitting one contract asset item per done (S06 "Data"), the automatic retry of a reopen when its done posts, the revenue at issue of a milestone line invoiced after its project's completion, and the holds `NEEDS_DECISION` (`milestone_amount_differs`, `milestone_already_done`, `milestone_service_missing`, `milestone_released_at_completion`), `UNKNOWN_REFERENCE` and `OPEN_ITEM_HAS_SETTLEMENTS` for these events (S06 rules 1, 2, 11–14, 17–19).
+S06 wrote these cases (S06 "Scenarios"); the owner approved their expected entries and outcomes on 2026-11-10, with two readings of S06 rules 11 and 13: the revenue of a milestone invoiced before its done carries its schedule's current service (the invoice line's, as later service changes leave it), and that of a milestone not invoiced the done's service; and a done after a reopen opens a new contract asset item named `<milestone number>/<n>`, since the reopen settles the earlier one at zero. The twelfth case, a done after the project's completion held `milestone_released_at_completion`, follows the owner's answer to open question Q14 (b) of the same day, and the owner approved its outcome the same day. The thirteenth case, a milestone invoiced after the project's completion, deferred and released by its done, follows the owner's answer of 2026-11-11 to the accounting reviews of `revenue/cancelled-project.md` (replacing the revenue at issue answered the day before), and the owner approved its numbers that day. They stay `Proposed` until S06's feature slice brings their executors: the posting rules of `invoice.issued` with deposit and milestone lines, `milestone.done`, the new `milestone.reopened` and `project.completed`, the order keys `milestone:<id>` and `project:<id>`, S04's unique key on an account's Hub document admitting one contract asset item per done (S06 "Data"), the automatic retry of a reopen when its done posts, and the holds `NEEDS_DECISION` (`milestone_amount_differs`, `milestone_already_done`, `milestone_service_missing`, `milestone_released_at_completion`), `UNKNOWN_REFERENCE` and `OPEN_ITEM_HAS_SETTLEMENTS` for these events (S06 rules 1, 2, 11–14, 17–19).
 
 ## Rule
 
@@ -508,10 +508,10 @@ expect:
 
 ### Vertex Media: a milestone invoiced after the project's completion
 
-The owner's answer of 2026-11-10 to the accounting review of `revenue/cancelled-project.md`. The project completes on 25 November with nothing deferred (recorded). Hub then issues on 3 December an invoice for MS-23, never reported done. The project is delivered and no done or completion will release a deferral, so the line is revenue at issue, measured with its receivable at 123. A done of MS-23 received afterwards finds it recognised at issue and is held `milestone_already_done`, so it is never recognised twice.
+The owner's answer of 2026-11-11 to the accounting re-review of `revenue/cancelled-project.md`. The project completes on 25 November with nothing deferred (recorded). Hub completes a project only when every milestone is done (Hub F05 rules 6–7), so an invoice for MS-23, never reported done, issued on 3 December can only come from a project reopened in Hub (Q16), whose milestone is still to be delivered. The line is deferred like any milestone invoiced before its done, and its done on 10 December releases it at the amounts it carries.
 
 ```yaml
-case: project.completed with nothing deferred is recorded; a 200.00 USD milestone invoiced on 3 Dec at 123 after it is revenue at issue; its done afterwards is held NEEDS_DECISION milestone_already_done
+case: project.completed with nothing deferred is recorded; a 200.00 USD milestone invoiced on 3 Dec at 123 after it is deferred; its done on 10 Dec releases it at its carried 24,600.00 SYP
 company: { shape: syp-usd, book: SYP, parallel: USD, template: service-agency,
            rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true } }
 rates:
@@ -534,13 +534,18 @@ expect:
     - source: invoice.issued
       date: 2026-12-03
       lines:
-        # 200.00 USD × 123 = 24,600.00 SYP, revenue at issue: nothing is deferred
+        # 200.00 USD × 123 = 24,600.00 SYP, deferred until the done
         - { account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 20000, book: 2460000, parallel: 20000 }
+        - { account: "212001", dims: { client: C1, contract: P1 }, currency: USD, amount: -20000, book: -2460000, parallel: -20000 }
+    - source: milestone.done
+      date: 2026-12-10
+      lines:
+        # released at what the liability carries: no rate read
+        - { account: "212001", dims: { client: C1, contract: P1 }, currency: USD, amount: 20000, book: 2460000, parallel: 20000 }
         - { account: "411001", dims: { client: C1, contract: P1, service: S1 }, currency: USD, amount: -20000, book: -2460000, parallel: -20000 }
   balances:
     - { account: "212001", book: 0, parallel: 0 }
     - { account: "411001", book: -2460000, parallel: -20000 }
-  outcome: { status: held, reason: NEEDS_DECISION, detail: milestone_already_done }
 ```
 
 ### SYP books only
