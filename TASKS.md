@@ -12,7 +12,7 @@ Spec: `docs/specs/S07-revaluation-periods-close.md` (Approved, owner 2026-11-11)
 - [x] api: `GET /api/revaluation/:period?ledger=` (`periods.read`) and `POST /api/revaluation/:period` (`revaluation.post`); tests (success, 401, 403, another company, rules 16 and 17, an idempotent double submit)
 - [x] bridge: OpenAPI regenerated, breaking-change check
 - [x] wiring (Contracts, Ledger, Database, API), docs (`packages/*/CLAUDE.md`, `apps/api/CLAUDE.md`, `docs/glossary.md`, `docs/ROADMAP.md`)
-- [ ] checks and reviewers (`reviewer`, `accountant-reviewer`), PR with auto-merge and Auto-fix
+- [x] checks and reviewers (`reviewer`, `accountant-reviewer`), PR with auto-merge and Auto-fix
 
 ## PR 2 — Periods and the close (contracts, db, api, worker, bridge)
 - [ ] contracts: `PERIOD_STATES`, `CHECKLIST_ITEMS`, the period schemas; error codes `PERIOD_ORDER`, `PERIOD_NOT_CLOSED`, `CHECKLIST_FAILED` appended with their Arabic text; audit actions `period.closed` and `period.reopened`; unit tests
