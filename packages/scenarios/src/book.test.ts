@@ -77,6 +77,35 @@ expect:
         - { account: "2110", dims: { client: C1 }, currency: SYP, amount: -20000, book: -20000 }
 `;
 
+/** A month-end revaluation of each ledger, after an account is blocked (S07 rules 10–18). */
+const REVALUE = `
+case: a blocked account revalued in both ledgers
+company: { shape: syp-usd, book: SYP, parallel: USD, rate_policy: { book: bulletin, parallel: market } }
+steps:
+  - manual: an owner's deposit into the USD e-wallet
+    accounting_date: 2026-11-03
+    payload: { lines: [{ account: "1116", currency: USD, amount: 10000 },
+                       { account: "3130", currency: USD, amount: -10000 }] }
+  - block: "1116"
+    reason: "أوقف مزود المحفظة الحساب"
+  - revalue: book
+    period: 2026-11
+  - revalue: parallel
+    period: 2026-11
+expect:
+  entries:
+    - source: manual
+      date: 2026-11-03
+      lines:
+        - { account: "1116", currency: USD, amount: 10000, book: 1200000, parallel: 10000 }
+        - { account: "3130", currency: USD, amount: -10000, book: -1200000, parallel: -10000 }
+    - source: revaluation
+      date: 2026-11-30
+      lines:
+        - { account: "1116", currency: USD, amount: 0, book: 50000, parallel: 0 }
+        - { account: "4212", currency: SYP, amount: -50000, book: -50000, parallel: 0 }
+`;
+
 function refusal(source: string): string {
   return problems(file('Status: Proposed', source)).join('\n');
 }
@@ -258,7 +287,7 @@ describe('a case', () => {
     [
       'a step of no kind',
       CASE.replace('  - event: invoice.issued', '  - what: invoice.issued'),
-      'event, manual, reversal, job, rate, retry, move, resolve, dismiss, recognise or split',
+      'event, manual, reversal, job, rate, retry, move, resolve, dismiss, recognise, split, revalue or block',
     ],
     [
       'a step of two kinds',
@@ -503,6 +532,35 @@ describe('a case', () => {
     expect(refusal(SPLIT.replace('revenue: 10000 }', 'revenue: 10000, kind: x }'))).toContain(
       'kind',
     );
+  });
+
+  it('reads the month-end revaluation of a ledger and the blocking of an account (S07)', () => {
+    const { steps } = parseCase(REVALUE);
+    expect(steps.slice(1)).toEqual([
+      { kind: 'block', account: '1116', reason: 'أوقف مزود المحفظة الحساب', outcome: null },
+      { kind: 'revalue', ledger: 'book', period: '2026-11', outcome: null },
+      { kind: 'revalue', ledger: 'parallel', period: '2026-11', outcome: null },
+    ]);
+    expect(refusal(REVALUE.replace('revalue: book', 'revalue: both'))).toContain(
+      'book or parallel',
+    );
+    expect(
+      refusal(
+        REVALUE.replace(
+          'period: 2026-11\n  - revalue: parallel',
+          'period: 2026-13\n  - revalue: parallel',
+        ),
+      ),
+    ).toContain('YYYY-MM');
+    expect(refusal(REVALUE.replace('    reason: "أوقف مزود المحفظة الحساب"\n', ''))).toContain(
+      'reason',
+    );
+    expect(refusal(REVALUE.replace('block: "1116"', 'block: 1116'))).toContain('account code');
+    const sypOnly = REVALUE.replace(
+      'company: { shape: syp-usd, book: SYP, parallel: USD, rate_policy: { book: bulletin, parallel: market } }',
+      'company: { shape: syp, book: SYP, rate_policy: { book: bulletin } }',
+    ).replace(/, parallel: -?\d+ \}/g, ' }');
+    expect(refusal(sypOnly)).toContain('The company keeps no parallel ledger to revalue');
   });
 
   it.each([

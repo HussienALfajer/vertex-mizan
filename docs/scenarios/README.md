@@ -76,6 +76,14 @@ steps:                              # in order; a Hub event, a manual entry, a r
     period: 2026-11                 #   a job for month m runs on the first day of m+1: the case's
                                     #   clock moves to that day, so a later event step is received
                                     #   after the month's job (S06 rule 5)
+  - revalue: book                   # the accountant's month-end revaluation of one ledger (book or
+    period: 2026-11                 #   parallel, S07 rules 10–18), posted from its preview once
+                                    #   the month has ended: the clock moves to the first day of
+                                    #   m+1 as for a job; its entry has the source revaluation and
+                                    #   m's last day, its reversal (same transaction) the source
+                                    #   reversal and m+1's first day; all differences zero: no entry
+  - block: "111006"                 # block an account with a reason (S02 rule 5): later lines on
+    reason: "..."                   #   it are refused; a revaluation still remeasures it (S07)
   - rate: { date: 2026-11-03, base: USD, quote: SYP, rate: "121.0000", type: bulletin,
             reason: "Mistyped" }    # a row recorded now; a second row of a pair, type and date
                                     # is a correction and needs its reason (S02 rule 15)
