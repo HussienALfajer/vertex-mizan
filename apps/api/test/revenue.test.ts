@@ -189,15 +189,36 @@ describe('/api/revenue', () => {
       const member = await book.join(role);
       expect((await member.browser.get(`/api/revenue/schedules/${id}`)).status, role).toBe(200);
     }
+    const routes: [string, Record<string, string>][] = [
+      ['/api/revenue/schedules', {}],
+      [`/api/revenue/schedules/${id}`, {}],
+      ['/api/revenue/months', { from: month(), to: month() }],
+      ['/api/revenue/preview', { month: month() }],
+    ];
     for (const role of ['approver', 'viewer'] as const) {
       const member = await book.join(role);
-      const answer = await member.browser.get('/api/revenue/schedules');
-      expect([answer.status, answer.body.code], role).toEqual([403, 'FORBIDDEN']);
+      for (const [path, query] of routes) {
+        const answer = await member.browser.get(path, query);
+        expect([answer.status, answer.body.code], `${role} ${path}`).toEqual([403, 'FORBIDDEN']);
+      }
     }
 
     // Another company finds neither the schedule nor anything in its lists.
     const other = await books(app, db);
     expect((await other.owner.browser.get(`/api/revenue/schedules/${id}`)).status).toBe(404);
+    expect(
+      (await other.owner.browser.get('/api/revenue/months', { from: month(), to: month() }))
+        .body as RevenueMonth[],
+    ).toEqual([
+      {
+        month: month(),
+        releasedBookMinor: '0',
+        releasedParallelMinor: '0',
+        entryCount: 0,
+        missing: [],
+        decisionCount: 0,
+      },
+    ]);
     expect(
       ((await other.owner.browser.get('/api/revenue/schedules')).body as RevenueSchedulePage)
         .schedules,

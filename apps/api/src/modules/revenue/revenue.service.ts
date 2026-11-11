@@ -37,7 +37,12 @@ export class RevenueService {
     query: RevenueScheduleQuery,
   ): Promise<RevenueSchedulePage> {
     const after = query.cursor === undefined ? null : decodeCursor(query.cursor).id;
-    const { cursor: _cursor, ...filter } = query;
+    const filter = {
+      ...(query.state !== undefined && { state: query.state }),
+      ...(query.client !== undefined && { client: query.client }),
+      ...(query.contract !== undefined && { contract: query.contract }),
+      ...(query.month !== undefined && { month: query.month }),
+    };
     return withCompany(this.db, access.company.id, async (tx) => {
       const page = await readRevenueSchedules(tx, filter, after);
       const last = page.schedules.at(-1);
