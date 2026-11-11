@@ -119,20 +119,25 @@ export function RevenuePage() {
               <bdi dir="ltr">{decisions}</bdi>
             </>
           }
-          description={t.decisions.description}
-          action={
-            can(me, 'events.read')
-              ? (['SERVICE_PERIOD_CLOSED', 'NEEDS_DECISION'] as const).map((reason) => (
-                  <Button
-                    key={reason}
-                    variant="outline"
-                    size="sm"
-                    render={<Link to="/inbox" search={{ view: 'held', reason }} />}
-                  >
-                    {`${t.decisions.open}: ${ar.inbox.reasons[reason]}`}
-                  </Button>
-                ))
-              : undefined
+          description={
+            <span className="flex flex-col gap-2">
+              <span>{t.decisions.description}</span>
+              {can(me, 'events.read') && (
+                <span className="flex flex-wrap gap-2">
+                  {(['SERVICE_PERIOD_CLOSED', 'NEEDS_DECISION'] as const).map((reason) => (
+                    <Button
+                      key={reason}
+                      variant="outline"
+                      size="sm"
+                      aria-label={`${t.decisions.open}: ${ar.inbox.reasons[reason]}`}
+                      render={<Link to="/inbox" search={{ view: 'held', reason }} />}
+                    >
+                      {ar.inbox.reasons[reason]}
+                    </Button>
+                  ))}
+                </span>
+              )}
+            </span>
           }
         />
       )}

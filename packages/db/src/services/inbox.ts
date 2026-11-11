@@ -1621,8 +1621,8 @@ class PreviewRolledBack extends Error {
  * (`EVENT_NOT_HELD`, `EVENT_ACTION_NOT_ALLOWED`, a split outside zero to the remainder
  * `VALIDATION_FAILED`), the deferred checks run, then every entry the attempt wrote read back and
  * the savepoint rolled back, so nothing is written: no entry, state, action or audit row. The
- * ledger head stays locked until the caller's transaction ends, as for any attempt; the caller's
- * transaction ends with the preview, since its constraints are then immediate.
+ * ledger head stays locked until the caller's transaction ends, as for any attempt; the immediate
+ * constraints end with the savepoint.
  */
 export async function previewAction(
   tx: Transaction,
