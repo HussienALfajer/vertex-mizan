@@ -78,4 +78,5 @@ export * from './services/dimensions.js';
 export * from './services/inbox.js';
 export * from './services/rates.js';
 export * from './services/recognition.js';
+export * from './services/revenue-reads.js';
 export { onUniqueViolation } from './unique-violation.js';

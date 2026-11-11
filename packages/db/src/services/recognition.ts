@@ -188,7 +188,7 @@ export async function openSchedules(
 }
 
 /** A movement's amounts. */
-function amountsOf(movement: MovementRow, currency: CurrencyCode): CarriedAmounts {
+export function amountsOf(movement: MovementRow, currency: CurrencyCode): CarriedAmounts {
   return {
     transaction: money(movement.transactionMinor, currency),
     bookMinor: movement.bookMinor,
@@ -197,14 +197,14 @@ function amountsOf(movement: MovementRow, currency: CurrencyCode): CarriedAmount
 }
 
 /** The ledgers of the company in context. */
-async function companyLedgers(tx: Transaction): Promise<CompanyLedgers> {
+export async function companyLedgers(tx: Transaction): Promise<CompanyLedgers> {
   const [settings] = await tx.select().from(companySettings);
   if (!settings) throw new Error('A company without its settings');
   return ledgersOf(settings);
 }
 
 /** A schedule's current service: its latest reclassification's, else its own (S06 rule 10). */
-function currentService(schedule: ScheduleRow, movements: readonly MovementRow[]): string {
+export function currentService(schedule: ScheduleRow, movements: readonly MovementRow[]): string {
   const reclassified = movements.filter((movement) => movement.kind === 'reclassified').at(-1);
   return reclassified?.serviceValueId ?? schedule.serviceValueId;
 }
@@ -474,7 +474,7 @@ export interface ReleaseRefusal {
 }
 
 /** The mapped `released_revenue` account, or what holds it (S06 "Jobs": the reason shown). */
-async function releasedRevenueAccount(
+export async function releasedRevenueAccount(
   tx: Transaction,
 ): Promise<{ id: string } | { refusal: string }> {
   const [row] = await tx
@@ -503,7 +503,7 @@ async function releasedRevenueAccount(
 }
 
 /** An issue event's envelope, from its kept row. */
-function issueOf(row: EventRow): EventOf<'invoice.issued'> {
+export function issueOf(row: EventRow): EventOf<'invoice.issued'> {
   const envelope = parseEventEnvelope({
     id: row.eventId,
     type: row.type,
@@ -517,7 +517,7 @@ function issueOf(row: EventRow): EventOf<'invoice.issued'> {
 }
 
 /** A schedule with its movements and the release part of each of its months not elapsed. */
-interface ScheduleState {
+export interface ScheduleState {
   readonly schedule: ScheduleRow;
   readonly movements: readonly MovementRow[];
   /** Its months as the line cuts them, less those its re-issue recognised at issue (rule 9). */
@@ -537,7 +537,7 @@ interface ScheduleState {
 }
 
 /** Each schedule's movements, in the order they were written. */
-async function movementsOf(
+export async function movementsOf(
   tx: Transaction,
   scheduleIds: readonly string[],
 ): Promise<Map<string, MovementRow[]>> {
@@ -590,7 +590,7 @@ async function takenBackOf(tx: Transaction, scheduleId: string): Promise<Set<str
  * of what it deferred at issue; once a credit or a credit's void changed what remains, its months
  * not released cut what remains now by their days (`remainingReleaseParts()`; owner, 2026-11-10).
  */
-async function overTimeStates(
+export async function overTimeStates(
   tx: Transaction,
   schedules: readonly ScheduleRow[],
   ledgers: CompanyLedgers,

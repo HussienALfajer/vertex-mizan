@@ -4,6 +4,7 @@ import {
   type EventEnvelope,
   money,
   parseEventEnvelope,
+  REVENUE_MOVEMENT_KINDS,
 } from '@vertex-mizan/contracts';
 import { negate, recognitionProblems } from '@vertex-mizan/ledger';
 import { and, asc, eq, sql } from 'drizzle-orm';
@@ -25,6 +26,7 @@ import {
   type PersonActor,
   post,
   postingRuleAccounts,
+  RECOGNITION_MOVEMENT_KINDS,
   readRecognitionState,
   receiveEvent,
   recogniseEvent,
@@ -1269,6 +1271,10 @@ describe('milestones and projects (S06 rules 11–17)', () => {
 });
 
 describe('the guards of the recognition tables (0032)', () => {
+  it('check the movement kinds the API answers', () => {
+    expect([...RECOGNITION_MOVEMENT_KINDS]).toEqual([...REVENUE_MOVEMENT_KINDS]);
+  });
+
   it('keep schedules and movements append-only for the app role and the owner', async () => {
     const company = await newCompany([['2026-11-15', '121.0000']]);
     await receive(
