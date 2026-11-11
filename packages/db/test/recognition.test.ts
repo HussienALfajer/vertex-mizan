@@ -253,6 +253,21 @@ async function closePeriod(companyId: string, period: string) {
   }
 }
 
+/** Waits until a backend of the run's database waits for a lock in a statement on `table`. */
+async function waitForLockOn(table: string): Promise<void> {
+  const deadline = Date.now() + 10_000;
+  for (;;) {
+    const waiting = await superuser.query<{ count: string }>(
+      `select count(*)::text as count from pg_stat_activity
+       where datname = current_database() and wait_event_type = 'Lock' and query like $1`,
+      [`%${table}%`],
+    );
+    if (Number(waiting.rows[0]?.count ?? 0) > 0) return;
+    if (Date.now() > deadline) throw new Error(`No statement waits for a lock on ${table}`);
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+}
+
 beforeAll(async () => {
   const [row] = await app
     .insert(users)
@@ -606,6 +621,9 @@ describe('the review’s fixes (S05 rule 15, S06 rules 5 and 10; owner, 2026-11-
     });
     await held;
     const job = runJob(company, '2026-12', '2027-01-01');
+    // The job is waiting on the ledger head before the change commits: had it read the schedules
+    // first, it would release December on S1 (ADR 0008's lock order).
+    await waitForLockOn('ledger_heads');
     release();
     await Promise.all([changing, job]);
     const services = await inCompany(company, async (tx) => {
