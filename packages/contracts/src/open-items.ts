@@ -28,9 +28,10 @@ export type ItemSource = (typeof ITEM_SOURCES)[number];
 /**
  * The kinds of an item's movement: `open`, a document item's opening; `add`, a new measurement on
  * a running item; `clear`, a carried clearing; `difference`, a running void's exchange difference
- * (S04 rule 13). S07 appends `revaluation`.
+ * (S04 rule 13); `revaluation` (S07), a month-end revaluation's line or its reversal's, with a
+ * transaction amount of zero and an amount in one ledger only.
  */
-export const MOVEMENT_KINDS = ['open', 'add', 'clear', 'difference'] as const;
+export const MOVEMENT_KINDS = ['open', 'add', 'clear', 'difference', 'revaluation'] as const;
 
 export type MovementKind = (typeof MOVEMENT_KINDS)[number];
 

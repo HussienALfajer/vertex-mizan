@@ -208,6 +208,12 @@ export const errorStatus = {
   ENTRY_ALREADY_LINKED: 409,
   /** The account does not fit the posting slot (S05 "Mapping slots"). */
   MAPPING_ACCOUNT_INVALID: 422,
+
+  // Month-end revaluation, periods and close (S07, ADR 0016).
+  /** The month has not ended in Asia/Damascus: it is revalued and closed after (S07 rules 2, 16). */
+  PERIOD_NOT_ENDED: 409,
+  /** The preview changed since it was read: post the new one (S07 rule 17; details: fingerprint). */
+  REVALUATION_CHANGED: 409,
 } as const satisfies Record<string, number>;
 
 export type ErrorCode = keyof typeof errorStatus;

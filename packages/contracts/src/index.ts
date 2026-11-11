@@ -20,5 +20,6 @@ export * from './money-summary.js';
 export * from './money-text.js';
 export * from './open-items.js';
 export * from './people.js';
+export * from './periods.js';
 export * from './rates.js';
 export * from './revenue.js';

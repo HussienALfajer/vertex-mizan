@@ -34,4 +34,6 @@ export const permissions = {
   'api_clients.read': 'قراءة عملاء الواجهة البرمجية ومفاتيحهم',
   'api_clients.manage': 'إنشاء عملاء الواجهة البرمجية ومفاتيحهم وإلغاؤها',
   'recognition.read': 'قراءة جداول الاعتراف بالإيراد وتحريراته',
+  'periods.read': 'قراءة الفترات وقائمة التحقق قبل الإقفال ومعاينة إعادة التقييم',
+  'revaluation.post': 'ترحيل إعادة التقييم آخر الشهر',
 } satisfies Record<Permission, string>;

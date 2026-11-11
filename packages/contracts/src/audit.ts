@@ -103,6 +103,8 @@ export const COMPANY_AUDIT_ACTIONS = [
   // S06: the accountant's recognition actions on a held event.
   'event.recognised_in_open_period',
   'event.remainder_split',
+  // S07: a ledger's month-end revaluation (or its adjustment) posted with its reversal.
+  'revaluation.posted',
 ] as const;
 
 export const companyAuditActionSchema = z

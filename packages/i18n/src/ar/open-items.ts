@@ -27,6 +27,7 @@ export const openItems = {
     add: 'إضافة',
     clear: 'تسديد',
     difference: 'فرق صرف',
+    revaluation: 'إعادة تقييم',
   } satisfies Record<MovementKind, string>,
   sources: {
     manual: 'يدوي',
