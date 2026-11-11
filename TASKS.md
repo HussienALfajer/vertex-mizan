@@ -14,7 +14,7 @@ The ledger functions already exist in `packages/ledger/src/recognition.ts` (merg
 - [x] api: `POST /api/inbox/:id/recognise-in-open-period`; tests with another company and a missing permission
 - [x] worker: `revenue.release-month` (daily at 01:00 Asia/Damascus and at start, every ended month missing its release; the template's slots mapped at start and in the sweep), the `revenue:run-release --month` command, the retry of every `NO_MAPPING` event at start; run-twice and race-with-close tests
 - [x] bridge: OpenAPI regenerated, breaking-change check
-- [ ] checks and reviewers, PR with auto-merge and Auto-fix
+- [x] checks and reviewers, PR with auto-merge and Auto-fix
 
 ## PR 2 — Milestones and projects (`feat/s06-milestones`)
 - [ ] contracts: the optional `service` on `milestone.done` (S06 rule 11), alone among `/v1`'s changes in this PR
