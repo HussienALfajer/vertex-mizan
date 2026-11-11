@@ -8,7 +8,7 @@ import type {
   Step,
   StepKind,
 } from './format.js';
-import { event } from './hub.js';
+import { event, job } from './hub.js';
 import type { NamedValue } from './run.js';
 import { actions, ledger, manual, rate, reversal, setUp } from './system.js';
 
@@ -106,10 +106,10 @@ export type ScenarioHarness = {
 /**
  * The harness the book runs with: S03's company setup, ledger reader and `manual`, `reversal` and
  * `rate` executors (`system.ts`), with S04's dimension values, item lines and open-item reader;
- * `event` joins with S05, `job` with S07.
+ * `event` and the inbox actions join with S05; `job` with S06's release job (S07 adds its own).
  */
 export const bookHarness: ScenarioHarness = {
   setUp,
-  executors: { manual, reversal, rate, event, ...actions },
+  executors: { manual, reversal, rate, event, job, ...actions },
   ledger,
 };

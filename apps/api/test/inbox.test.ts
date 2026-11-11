@@ -34,6 +34,33 @@ afterAll(async () => {
   await db.$client.end();
 });
 
+/** Closes a month as S07 will; here the owner role closes it, as the ledger tests close months. */
+async function closeMonth(companyId: string, period: string) {
+  const owner = new pg.Client({ connectionString: inject('ownerUrl') });
+  await owner.connect();
+  try {
+    await owner.query('begin');
+    await owner.query(`select set_config('app.company_id', $1, true)`, [companyId]);
+    await owner.query('alter table periods disable trigger period_rules');
+    await owner.query(
+      `insert into periods (id, company_id, period, fiscal_year, state) values ($1, $2, $3, $4, 'closed')`,
+      [uuidv7(), companyId, period, Number(period.slice(0, 4))],
+    );
+    await owner.query('alter table periods enable always trigger period_rules');
+    await owner.query('commit');
+  } finally {
+    await owner.end();
+  }
+}
+
+/** The month before today's, `YYYY-MM`, and its last day. */
+function lastMonth(): { period: string; lastDay: string } {
+  const [year, month] = today().split('-').map(Number) as [number, number];
+  const period = month === 1 ? `${year - 1}-12` : `${year}-${String(month - 1).padStart(2, '0')}`;
+  const end = new Date(Date.UTC(year, month - 1, 0)).toISOString().slice(0, 10);
+  return { period, lastDay: end };
+}
+
 /** An SYP payment of a USD invoice whose applied amount is 50.00 USD off at Hub's rate. */
 function gapPayment(documents: ReturnType<typeof hubDocuments>) {
   const payment = paymentRecorded(documents, today());
@@ -141,21 +168,7 @@ describe('GET /api/inbox', () => {
       });
       expect(recorded.status, JSON.stringify(recorded.body)).toBe(201);
     }
-    const owner = new pg.Client({ connectionString: inject('ownerUrl') });
-    await owner.connect();
-    try {
-      await owner.query('begin');
-      await owner.query(`select set_config('app.company_id', $1, true)`, [book.companyId]);
-      await owner.query('alter table periods disable trigger period_rules');
-      await owner.query(
-        `insert into periods (id, company_id, period, fiscal_year, state) values ($1, $2, $3, $4, 'closed')`,
-        [uuidv7(), book.companyId, last, Number(last.slice(0, 4))],
-      );
-      await owner.query('alter table periods enable always trigger period_rules');
-      await owner.query('commit');
-    } finally {
-      await owner.end();
-    }
+    await closeMonth(book.companyId, last);
     const held = await hub.send(invoiceIssued(hubDocuments(), dated));
     expect(held.body).toMatchObject({ status: 'held', reason: 'PERIOD_CLOSED' });
     const thisMonth = `${today().slice(0, 7)}-01`;
@@ -179,6 +192,7 @@ describe('GET /api/inbox', () => {
       { method: 'get', path: `/api/inbox/${id}` },
       { method: 'post', path: `/api/inbox/${id}/retry` },
       { method: 'post', path: `/api/inbox/${id}/post-in-open-period` },
+      { method: 'post', path: `/api/inbox/${id}/recognise-in-open-period` },
       { method: 'post', path: `/api/inbox/${id}/resolve` },
       { method: 'post', path: `/api/inbox/${id}/dismiss` },
       { method: 'get', path: '/api/posting-rules' },
@@ -296,6 +310,7 @@ describe('another company', () => {
     for (const [browser, path, body] of [
       [accountant.browser, `/api/inbox/${id}/retry`, undefined],
       [accountant.browser, `/api/inbox/${id}/post-in-open-period`, { reason: 'نقل' }],
+      [accountant.browser, `/api/inbox/${id}/recognise-in-open-period`, { reason: 'اعتراف' }],
       [accountant.browser, `/api/inbox/${id}/resolve`, { entryId: otherEntry.id, reason: 'حل' }],
       [book.owner.browser, `/api/inbox/${id}/dismiss`, { reason: 'إلغاء' }],
     ] as const) {
@@ -325,7 +340,8 @@ describe('/api/posting-rules', () => {
     const listed = await book.owner.browser.get('/api/posting-rules');
     expect(listed.status, JSON.stringify(listed.body)).toBe(200);
     const rules = listed.body as PostingRule[];
-    expect(rules).toHaveLength(13);
+    // S05's thirteen and S06's four.
+    expect(rules).toHaveLength(17);
     expect(rules.find((rule) => rule.slot === 'receivable')).toMatchObject({
       currency: null,
       account: { code: '112001' },
@@ -439,5 +455,93 @@ describe('the payments’ tolerance', () => {
       action: 'company.settings_updated',
       after: { paymentToleranceUsdMinor: '500' },
     });
+  });
+});
+
+describe('POST /api/inbox/:id/recognise-in-open-period (S06 rule 16)', () => {
+  it('posts a closed month’s elapsed part in the first open period, with a reason', async () => {
+    const book = await books(app, db);
+    const hub = await hubClient(app, book.owner);
+    const { period, lastDay } = lastMonth();
+    for (const [type, rate] of [
+      ['bulletin', '119.0000'],
+      ['market', '119.5000'],
+    ] as const) {
+      const recorded = await book.owner.browser.post('/api/rates', {
+        effectiveOn: lastDay,
+        base: 'USD',
+        quote: 'SYP',
+        rate,
+        type,
+        source: 'manual',
+      });
+      expect(recorded.status, JSON.stringify(recorded.body)).toBe(201);
+    }
+    await closeMonth(book.companyId, period);
+    // A manual line deferred over last month and this one, issued today: last month has elapsed.
+    const documents = hubDocuments();
+    const event = invoiceIssued(documents, today());
+    const [line] = event.payload.lines;
+    // The template's contract liabilities and assets name the contract (S06 rule 1's manual case).
+    const contract = {
+      external_id: uuidv7(),
+      name: 'مشروع تجريبي',
+      kind: 'project',
+      client_external_id: documents.client.external_id,
+    };
+    const late = {
+      ...event,
+      payload: {
+        ...event.payload,
+        contract,
+        lines: [
+          {
+            ...line,
+            source: 'manual',
+            deferred: true,
+            cycle_start: `${period}-01`,
+            cycle_end: today(),
+          },
+        ],
+      },
+    };
+    const held = await hub.send(late);
+    expect(held.body).toMatchObject({ status: 'held', reason: 'SERVICE_PERIOD_CLOSED' });
+    const path = `/api/inbox/${held.body.inbox_id}/recognise-in-open-period`;
+    const viewer = await book.join('viewer');
+    expect((await viewer.browser.post(path, { reason: 'سبب' })).body.code).toBe('FORBIDDEN');
+    const accountant = await book.join('accountant');
+    expect((await accountant.browser.post(path, {})).body.code).toBe('VALIDATION_FAILED');
+    const recognised = await accountant.browser.post(path, {
+      reason: 'أُغلق الشهر قبل وصول الفاتورة؛ الجزء غير جوهري',
+    });
+    expect(recognised.status, JSON.stringify(recognised.body)).toBe(200);
+    const detail = recognised.body as InboxEventDetail;
+    expect(detail.state, JSON.stringify([detail.reason, detail.detail])).toBe('posted');
+    expect(detail.actions.at(-1)).toMatchObject({
+      action: 'recognised_in_open_period',
+      note: 'أُغلق الشهر قبل وصول الفاتورة؛ الجزء غير جوهري',
+    });
+    const entries = await Promise.all(
+      detail.entries.map(
+        async (entry) => (await book.owner.browser.get(`/api/entries/${entry.id}`)).body as Entry,
+      ),
+    );
+    // The elapsed part on the first day of this month; the invoice on its own date.
+    expect(entries.map((entry) => entry.entryDate)).toEqual([`${today().slice(0, 7)}-01`, today()]);
+    expect((await accountant.browser.post(path, { reason: 'مرة ثانية' })).body.code).toBe(
+      'EVENT_NOT_HELD',
+    );
+    const audit = await withCompany(db, book.companyId, (tx) =>
+      tx.select({ action: auditEntries.action }).from(auditEntries),
+    );
+    expect(audit.map((row) => row.action)).toContain('event.recognised_in_open_period');
+    // Another reason's hold is not recognised.
+    const other = await hub.send(paymentRecorded(hubDocuments(), today()));
+    const refused = await accountant.browser.post(
+      `/api/inbox/${other.body.inbox_id}/recognise-in-open-period`,
+      { reason: 'سبب' },
+    );
+    expect(refused.body.code).toBe('EVENT_ACTION_NOT_ALLOWED');
   });
 });

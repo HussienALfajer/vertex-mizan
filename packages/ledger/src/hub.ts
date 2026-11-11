@@ -28,6 +28,7 @@ import {
   negate,
 } from './lines.js';
 import { periodOf } from './periods.js';
+import { type OverTimeMonth, overTimeMonths } from './recognition.js';
 
 // The posting rules of Hub's events (S05 rules 8–17, "Accounting treatment"; ADR 0006, 0013, 0014),
 // each from its approved scenario: `revenue/revenue-at-issue`, `receivables/hub-payment`,
@@ -73,10 +74,15 @@ export interface HubDimensions {
   readonly department?: HubValueRef;
 }
 
-/** The item a line on a control account opens (a Hub invoice, by its number) or moves. */
+/**
+ * The item a line on a control account opens (a Hub invoice, by its number) or moves: an item of
+ * the books by its id, or one an earlier entry of the same plan opened, by its reference on the
+ * line's account (a late issue's contract asset, S06 rule 7).
+ */
 export type HubItemRef =
   | { readonly kind: 'open'; readonly reference: string; readonly dueOn: string }
-  | { readonly kind: 'existing'; readonly id: string };
+  | { readonly kind: 'existing'; readonly id: string }
+  | { readonly kind: 'planned'; readonly reference: string };
 
 /** A line a rule specifies: a transaction amount, never a ledger amount (S03 rule 1). */
 export interface HubLine {
@@ -116,9 +122,17 @@ export type PlannedEntry =
       readonly dealtRates: readonly HubDealtRate[];
       /**
        * The date its new measurements read their rates on, when not the event's accounting date:
-       * a `.changed` event's new state at its document's own date (rule 13).
+       * a `.changed` event's new state at its document's own date (rule 13); an elapsed month's
+       * part at the month's last day (S06 rule 7).
        */
       readonly measuredOn?: string;
+      /**
+       * The entry's own date, when not the event's (S06 rule 7: an elapsed month's part on the
+       * month's last day).
+       */
+      readonly on?: string;
+      /** An elapsed month's part: its period closed holds `SERVICE_PERIOD_CLOSED` (S06 rule 18). */
+      readonly servicePeriod?: true;
     }
   | {
       readonly kind: 'reversal';
@@ -140,6 +154,17 @@ export type PlannedEntry =
       /** The Hub line it moves; the posting function reads the service it has now in the books. */
       readonly lineId: string;
       readonly to: HubValueRef;
+    }
+  | {
+      /**
+       * A deferred line's recognised revenue moved to another service at its carried amounts (S06
+       * rule 10): the posting function reads what the line's schedule released and its elapsed
+       * parts, and records the new service for its later releases.
+       */
+      readonly kind: 'recognised_reclassification';
+      readonly key: string;
+      readonly lineId: string;
+      readonly to: HubValueRef;
     };
 
 /** What an event changes without posting (ADR 0014 `recorded`). */
@@ -159,7 +184,41 @@ export type RulePlan =
       readonly kind: 'post';
       readonly entries: readonly PlannedEntry[];
       readonly decision: string | null;
+      /** The over-time schedules the entries open (S06; ADR 0015), written beside them. */
+      readonly schedules?: readonly PlannedSchedule[];
     };
+
+/**
+ * An over-time line's schedule (S06 rules 3, 7; ADR 0015) as its invoice's plan opens it: the Hub
+ * line, its service period with its months, and where the plan's entries carry it: the contract
+ * liability line of the issue entry (none when every month elapsed) and the revenue line of each
+ * elapsed month's entry, by entry key and line number. The posting function reads those lines'
+ * amounts for the schedule's movements.
+ */
+export interface PlannedSchedule {
+  readonly lineId: string;
+  /** The line's place on the invoice, from 1. */
+  readonly position: number;
+  readonly lineSource: 'retainer_charge' | 'manual';
+  readonly chargeKind: 'monthly' | 'addition' | null;
+  readonly serviceFrom: string;
+  readonly serviceTo: string;
+  /** `<retainer external id>:<cycle_start>` for a retainer cycle's charge (rule 6), else null. */
+  readonly cycleKey: string | null;
+  /** The release's dimensions: the client, the contract when named, the line's service. */
+  readonly dimensions: HubDimensions;
+  /** The contract liability account it defers to, which its releases debit (S06 "Data"). */
+  readonly liabilityAccountId: string;
+  readonly months: readonly OverTimeMonth[];
+  /** The issue entry's key and its contract liability line's number, from 1. */
+  readonly deferral: { readonly key: string; readonly lineNo: number } | null;
+  /** Each elapsed month with its entry's key and its revenue line's number, from 1. */
+  readonly elapsed: readonly {
+    readonly month: string;
+    readonly key: string;
+    readonly lineNo: number;
+  }[];
+}
 
 /** A Hub document's item as the posting function read it: its account, currency and open amount. */
 export interface HubItem {
@@ -184,6 +243,8 @@ export interface HubReferences {
   readonly standing: readonly string[];
   /** For a service change: the line of the issue entry that carries the changed Hub line. */
   readonly issueLine: IssueLine | null;
+  /** The invoice's Hub lines that have a recognition schedule (S06; ADR 0015). */
+  readonly scheduledLineIds?: readonly string[];
 }
 
 /**
@@ -233,8 +294,55 @@ export function slotAccount(
 
 const isHold = (value: MappedAccount | Hold): value is Hold => 'kind' in value;
 
-/** Whether an invoice line's revenue is recognised at issue (S05 rule 12; S06 owns the rest). */
-export function recognisedAtIssue(line: EventOf<'invoice.issued'>['payload']['lines'][number]) {
+type InvoiceLine = EventOf<'invoice.issued'>['payload']['lines'][number];
+
+/**
+ * The recognition pattern of an invoice line (S06 rule 1): at issue; over time on its service
+ * period (a retainer cycle's `monthly` or `addition` charge, a `manual` line marked deferred); a
+ * credit to a retainer cycle; at a point in time, its milestone's done. A line without the facts its
+ * pattern needs, or whose period ends before it starts, is `unclear`.
+ */
+export type RecognitionPattern =
+  | { readonly kind: 'at_issue' }
+  | { readonly kind: 'over_time'; readonly from: string; readonly to: string }
+  | { readonly kind: 'credit'; readonly cycleStart: string }
+  | { readonly kind: 'point_in_time'; readonly milestoneId: string }
+  | { readonly kind: 'unclear' };
+
+export function recognitionPatternOf(
+  line: InvoiceLine,
+  contract: HubContractRef | undefined,
+): RecognitionPattern {
+  const period = (): RecognitionPattern =>
+    line.cycle_start !== undefined &&
+    line.cycle_end !== undefined &&
+    line.cycle_end >= line.cycle_start
+      ? { kind: 'over_time', from: line.cycle_start, to: line.cycle_end }
+      : { kind: 'unclear' };
+  switch (line.source) {
+    case 'extra_work':
+      return { kind: 'at_issue' };
+    case 'manual':
+      return line.deferred === true ? period() : { kind: 'at_issue' };
+    case 'retainer_charge':
+      if (line.charge_kind === 'termination_fee') return { kind: 'at_issue' };
+      if (contract?.kind !== 'retainer') return { kind: 'unclear' };
+      if (line.charge_kind === 'credit') {
+        return line.cycle_start === undefined
+          ? { kind: 'unclear' }
+          : { kind: 'credit', cycleStart: line.cycle_start };
+      }
+      return period();
+    case 'deposit':
+    case 'milestone':
+      return line.milestone_id !== undefined && contract?.kind === 'project'
+        ? { kind: 'point_in_time', milestoneId: line.milestone_id }
+        : { kind: 'unclear' };
+  }
+}
+
+/** Whether an invoice line's revenue is recognised at issue (S05 rule 12; S06 rule 1). */
+export function recognisedAtIssue(line: InvoiceLine) {
   switch (line.source) {
     case 'extra_work':
       return true;
@@ -254,59 +362,248 @@ function contractOfAnotherClient(client: HubValueRef, contract: HubContractRef |
 }
 
 /**
- * `invoice.issued` with every line recognised at issue (`revenue/revenue-at-issue`): Dr the
- * receivable, one document item under Hub's number with the client and, when named, the contract,
- * due on `due_on`, for the invoice's total; Cr each line to `revenue_at_issue` or
- * `termination_fee_revenue` with the client, the line's service and the contract. Every line is a
- * new measurement; the residual is conversion rounding (`balanceEntry()`). An invoice with a
- * deferred line holds `NO_MAPPING` (`deferred_revenue`) whole, and one with a non-zero tax
- * (`tax_lines`): one invoice is never split between specs (IFRS 15.31; owner, 2026-11-07).
+ * The contract asset item of a late line's elapsed month (S06 "Data"): `<number>/<position>`. A
+ * document item opens once (S04 rule 3), so a later elapsed month of the same line opens its own,
+ * named with its month: `<number>/<position>/<YYYY-MM>`.
+ */
+export function elapsedItemReference(
+  invoiceNumber: string,
+  position: number,
+  month: string,
+  firstElapsedMonth: string,
+): string {
+  const base = `${invoiceNumber}/${position}`;
+  return month === firstElapsedMonth ? base : `${base}/${month}`;
+}
+
+/** An over-time line of an invoice with its months (S06 rule 3). */
+interface OverTimeLine {
+  readonly line: InvoiceLine;
+  readonly position: number;
+  readonly from: string;
+  readonly to: string;
+  readonly months: readonly OverTimeMonth[];
+}
+
+/**
+ * `invoice.issued` (`revenue/revenue-at-issue`; S06 rules 1–3 and 7, `revenue/over-time-release`).
+ * One entry on the invoice's accounting date (S06 rule 2): Dr the receivable, one document item
+ * under Hub's number with the client and, when named, the contract, due on `due_on`, for the total;
+ * Cr each line recognised at issue, in the invoice's order, to `revenue_at_issue` or
+ * `termination_fee_revenue`, with the client, the line's service and the contract; Cr each
+ * over-time line's months not elapsed to `contract_liability`, with the client and the contract;
+ * then each elapsed month's contract asset item cleared at what it carries. Its new lines are
+ * measured at the invoice's rates; a residual beside a carried clearing is a realised difference,
+ * otherwise conversion rounding (`balanceEntry()`).
+ *
+ * Before it, each month of an over-time line that ended before the issue month (elapsed) posts its
+ * own entry on its last day: Dr a contract asset item `<number>/<position>` / Cr
+ * `released_revenue` with the line's service, measured at each ledger's policy rate of that day
+ * (Hub's `syp_per_usd` is of another date and is not read; IAS 21.21–22). The plan's schedules say
+ * where each over-time line's deferral and elapsed parts are, for its movements (ADR 0015).
+ *
+ * A non-zero tax holds `NO_MAPPING` (`tax_lines`); a credit, deposit or milestone line
+ * `NO_MAPPING` (`deferred_revenue`) until their rules deploy. A line whose pattern is unclear is the
+ * accountant's (`recognition_pattern_unclear:<position>`), decided after the period and rate checks
+ * (rule 8): its lines are planned as revenue at issue only to run those checks.
  */
 export function invoiceIssuedPlan(
   event: EventOf<'invoice.issued'>,
   context: HubRuleContext,
 ): RulePlan {
   const { payload } = event;
-  if (!payload.lines.every(recognisedAtIssue)) return hold('NO_MAPPING', 'deferred_revenue');
+  const { currency, client, contract } = payload;
+  const patterns = payload.lines.map((line) => recognitionPatternOf(line, contract));
+  const unclear = patterns.findIndex((pattern) => pattern.kind === 'unclear');
+  if (
+    unclear === -1 &&
+    patterns.some((pattern) => pattern.kind === 'credit' || pattern.kind === 'point_in_time')
+  ) {
+    return hold('NO_MAPPING', 'deferred_revenue');
+  }
   if (payload.lines.some((line) => (line.taxes ?? []).some((tax) => tax.amount > 0))) {
     return hold('NO_MAPPING', 'tax_lines');
   }
   const receivable = slotAccount(context, 'receivable', null);
   if (isHold(receivable)) return receivable;
-  const revenue: MappedAccount[] = [];
-  for (const line of payload.lines) {
-    const slot = line.source === 'retainer_charge' ? 'termination_fee_revenue' : 'revenue_at_issue';
+  const named = contract === undefined ? {} : { contract };
+  const atIssue: HubLine[] = [];
+  const overTime: OverTimeLine[] = [];
+  for (const [index, line] of payload.lines.entries()) {
+    const pattern = patterns[index];
+    if (pattern?.kind === 'over_time') {
+      overTime.push({
+        line,
+        position: index + 1,
+        from: pattern.from,
+        to: pattern.to,
+        months: overTimeMonths(hubMinor(line.amount), pattern.from, pattern.to, payload.issued_on),
+      });
+      continue;
+    }
+    const slot =
+      line.source === 'retainer_charge' && line.charge_kind === 'termination_fee'
+        ? 'termination_fee_revenue'
+        : 'revenue_at_issue';
     const account = slotAccount(context, slot, null);
     if (isHold(account)) return account;
-    revenue.push(account);
-  }
-  const { currency, client, contract } = payload;
-  const named = contract === undefined ? {} : { contract };
-  const total = payload.lines.reduce((sum, line) => sum + hubMinor(line.amount), 0n);
-  const lines: HubLine[] = [
-    {
-      account: receivable.id,
-      dimensions: { client, ...named },
-      amount: money(total, currency),
-      item: { kind: 'open', reference: payload.invoice.number, dueOn: payload.due_on },
-    },
-    ...payload.lines.map((line, index) => ({
-      account: (revenue[index] as MappedAccount).id,
+    atIssue.push({
+      account: account.id,
       dimensions: { client, ...named, service: line.service },
       amount: money(-hubMinor(line.amount), currency),
-    })),
+    });
+  }
+  const deferredOf = (item: OverTimeLine) =>
+    item.months.filter((m) => !m.elapsed).reduce((sum, m) => sum + m.transactionMinor, 0n);
+  const elapsedOf = (item: OverTimeLine) =>
+    item.months.filter((m) => m.elapsed && m.transactionMinor !== 0n);
+  // Every schedule names the liability it defers to, even one wholly elapsed (S06 "Data").
+  let liability: MappedAccount | null = null;
+  if (overTime.length > 0) {
+    const account = slotAccount(context, 'contract_liability', null);
+    if (isHold(account)) return account;
+    liability = account;
+  }
+  let asset: MappedAccount | null = null;
+  let released: MappedAccount | null = null;
+  if (overTime.some((item) => elapsedOf(item).length > 0)) {
+    const assetAccount = slotAccount(context, 'contract_asset', null);
+    if (isHold(assetAccount)) return assetAccount;
+    const revenueAccount = slotAccount(context, 'released_revenue', null);
+    if (isHold(revenueAccount)) return revenueAccount;
+    asset = assetAccount;
+    released = revenueAccount;
+  }
+
+  // Each elapsed month's entry, in date order, with every line it holds.
+  const monthEntries = new Map<
+    string,
+    { lastDay: string; lines: HubLine[]; revenueLineOf: Map<number, number> }
+  >();
+  const clearings: HubLine[] = [];
+  for (const item of overTime) {
+    const elapsed = elapsedOf(item);
+    const first = elapsed[0]?.month ?? '';
+    for (const month of elapsed) {
+      if (asset === null || released === null) throw new TypeError('Elapsed without its slots');
+      const reference = elapsedItemReference(
+        payload.invoice.number,
+        item.position,
+        month.month,
+        first,
+      );
+      const entry = monthEntries.get(month.month) ?? {
+        lastDay: month.lastDay,
+        lines: [],
+        revenueLineOf: new Map<number, number>(),
+      };
+      monthEntries.set(month.month, entry);
+      entry.lines.push(
+        {
+          account: asset.id,
+          dimensions: { client, ...named },
+          amount: money(month.transactionMinor, currency),
+          item: { kind: 'open', reference, dueOn: month.lastDay },
+        },
+        {
+          account: released.id,
+          dimensions: { client, ...named, service: item.line.service },
+          amount: money(-month.transactionMinor, currency),
+        },
+      );
+      entry.revenueLineOf.set(item.position, entry.lines.length);
+      clearings.push({
+        account: asset.id,
+        dimensions: { client, ...named },
+        amount: money(-month.transactionMinor, currency),
+        item: { kind: 'planned', reference },
+      });
+    }
+  }
+  const deferrals: HubLine[] = [];
+  const deferralLineOf = new Map<number, number>();
+  for (const item of overTime) {
+    const rest = deferredOf(item);
+    if (rest === 0n || liability === null) continue;
+    deferrals.push({
+      account: liability.id,
+      dimensions: { client, ...named },
+      amount: money(-rest, currency),
+    });
+    // After the receivable's line and the lines at issue.
+    deferralLineOf.set(item.position, 1 + atIssue.length + deferrals.length);
+  }
+  const total = payload.lines.reduce((sum, line) => sum + hubMinor(line.amount), 0n);
+  const months = [...monthEntries.keys()].sort();
+  const entries: PlannedEntry[] = [
+    ...months.map((month): PlannedEntry => {
+      const entry = monthEntries.get(month);
+      if (entry === undefined) throw new TypeError('A month without its entry');
+      return {
+        kind: 'lines',
+        key: `${event.id}:elapsed:${month}`,
+        lines: entry.lines,
+        dealtRates: [],
+        measuredOn: entry.lastDay,
+        on: entry.lastDay,
+        servicePeriod: true,
+      };
+    }),
+    {
+      kind: 'lines',
+      key: event.id,
+      lines: [
+        {
+          account: receivable.id,
+          dimensions: { client, ...named },
+          amount: money(total, currency),
+          item: { kind: 'open', reference: payload.invoice.number, dueOn: payload.due_on },
+        },
+        ...atIssue,
+        ...deferrals,
+        ...clearings,
+      ],
+      dealtRates: hubDealtRates(context.ledgers, [currency], payload.syp_per_usd),
+    },
   ];
+  const schedules = overTime.map(
+    (item): PlannedSchedule => ({
+      lineId: item.line.id,
+      position: item.position,
+      lineSource: item.line.source === 'manual' ? 'manual' : 'retainer_charge',
+      chargeKind:
+        item.line.charge_kind === 'monthly' || item.line.charge_kind === 'addition'
+          ? item.line.charge_kind
+          : null,
+      serviceFrom: item.from,
+      serviceTo: item.to,
+      cycleKey:
+        item.line.source === 'retainer_charge' && contract !== undefined
+          ? `${contract.external_id}:${item.from}`
+          : null,
+      dimensions: { client, ...named, service: item.line.service },
+      liabilityAccountId: liability?.id ?? '',
+      months: item.months,
+      deferral: deferralLineOf.has(item.position)
+        ? { key: event.id, lineNo: deferralLineOf.get(item.position) ?? 0 }
+        : null,
+      elapsed: months.flatMap((month) => {
+        const lineNo = monthEntries.get(month)?.revenueLineOf.get(item.position);
+        return lineNo === undefined ? [] : [{ month, key: `${event.id}:elapsed:${month}`, lineNo }];
+      }),
+    }),
+  );
+  const decision =
+    unclear !== -1
+      ? `recognition_pattern_unclear:${unclear + 1}`
+      : contractOfAnotherClient(client, contract)
+        ? 'contract_client_mismatch'
+        : null;
   return {
     kind: 'post',
-    entries: [
-      {
-        kind: 'lines',
-        key: event.id,
-        lines,
-        dealtRates: hubDealtRates(context.ledgers, [currency], payload.syp_per_usd),
-      },
-    ],
-    decision: contractOfAnotherClient(client, contract) ? 'contract_client_mismatch' : null,
+    entries,
+    decision,
+    ...(schedules.length > 0 && { schedules }),
   };
 }
 
@@ -346,6 +643,22 @@ export function lineServiceChangedPlan(
   event: EventOf<'invoice.line_service_changed'>,
   references: HubReferences,
 ): RulePlan {
+  // A deferred line's revenue is what its schedule recognised: it moves at those carried amounts,
+  // and its later releases take the new service (S06 rule 10).
+  if (references.scheduledLineIds?.includes(event.payload.line_id) === true) {
+    return {
+      kind: 'post',
+      entries: [
+        {
+          kind: 'recognised_reclassification',
+          key: event.id,
+          lineId: event.payload.line_id,
+          to: event.payload.new_service,
+        },
+      ],
+      decision: null,
+    };
+  }
   const line = references.issueLine;
   // Before its issue posted, or once its void reversed it, the line has no recognised revenue to
   // move (phase 1 scope §6: a reclassification of the revenue already recognised).
@@ -675,8 +988,8 @@ export function expenseChangedPlan(
 }
 
 /**
- * The plan of any event. S06's deferred revenue arrives after S05: until then its events hold
- * `NO_MAPPING` and are retried when their rules deploy (rule 10).
+ * The plan of any event. S06's milestones and projects arrive after its over-time rules: until then
+ * their events hold `NO_MAPPING` and are retried when their rules deploy (rule 10).
  */
 export function planEvent(
   event: EventEnvelope,
@@ -687,6 +1000,11 @@ export function planEvent(
     case 'invoice.issued':
       return invoiceIssuedPlan(event, context);
     case 'invoice.voided':
+      // The void of an invoice with schedules reverses its releases and elapsed parts too (S06
+      // rule 8), which deploys with S06's credits: until then it holds.
+      if ((references.scheduledLineIds?.length ?? 0) > 0)
+        return hold('NO_MAPPING', 'deferred_revenue');
+      return voidPlan(event.id, references);
     case 'payment.voided':
     case 'ad_wallet.entry_voided':
     case 'ad_spend.archived':
@@ -719,6 +1037,7 @@ export function planEvent(
         },
       };
     case 'milestone.done':
+    case 'milestone.reopened':
     case 'project.completed':
     case 'project.cancelled':
       return hold('NO_MAPPING', 'deferred_revenue');

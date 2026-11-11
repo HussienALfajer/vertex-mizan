@@ -151,7 +151,8 @@ export type Guards = {
  * settings lock; S02's chart, dimension and rate rules; S03's ledger: the append-only tables, the
  * ledger state, the entry's chain, number, period, balance and reversal, the line's validity and
  * period balances, the dimension sets; the drafts, their lines and attachments; S04's open items,
- * their movements, due dates and balances; S05's inbox and API clients). S07 adds the period close.
+ * their movements, due dates and balances; S05's inbox and API clients; S06's recognition schedules
+ * and movements). S07 adds the period close.
  */
 export const GUARDS: Guards = {
   functions: [
@@ -2018,6 +2019,110 @@ BEGIN
 END
 `,
     },
+    {
+      name: 'recognition_schedule_rules',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+DECLARE
+  account record;
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM public.inbound_events e
+    WHERE e.company_id = NEW.company_id AND e.id = NEW.event_id AND e.type = 'invoice.issued'
+  ) THEN
+    RAISE EXCEPTION 'recognition_schedules: a schedule is opened by an invoice.issued event'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  SELECT a.kind, a.class, a.is_control INTO account
+  FROM public.chart_accounts a
+  WHERE a.company_id = NEW.company_id AND a.id = NEW.liability_account_id
+  FOR SHARE;
+  IF NOT FOUND OR account.kind <> 'postable' OR account.class <> 'liability' OR account.is_control THEN
+    RAISE EXCEPTION 'recognition_schedules: a schedule is deferred to a postable liability account'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  RETURN NEW;
+END
+`,
+    },
+    {
+      name: 'recognition_movement_rules',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+DECLARE
+  earlier integer;
+BEGIN
+  IF NEW.entry_id IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM public.journal_entries e
+    WHERE e.company_id = NEW.company_id AND e.id = NEW.entry_id AND e.created_at = now()
+  ) THEN
+    RAISE EXCEPTION 'recognition_movements: a movement describes an entry of its transaction'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  SELECT count(*) INTO earlier
+  FROM public.recognition_movements m
+  WHERE m.company_id = NEW.company_id AND m.schedule_id = NEW.schedule_id;
+  IF (earlier = 0) <> (NEW.kind = 'deferred') THEN
+    RAISE EXCEPTION 'recognition_movements: a schedule opens with its one deferred movement'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  RETURN NEW;
+END
+`,
+    },
+    {
+      name: 'recognition_schedule_remaining',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+DECLARE
+  remaining record;
+BEGIN
+  SELECT sum(m.transaction_minor) AS transaction_minor, sum(m.book_minor) AS book_minor,
+    sum(m.parallel_minor) AS parallel_minor, count(m.parallel_minor) AS parallel_count,
+    count(*) AS movement_count
+  INTO remaining
+  FROM public.recognition_movements m
+  WHERE m.company_id = NEW.company_id AND m.schedule_id = NEW.schedule_id;
+  IF remaining.parallel_count NOT IN (0, remaining.movement_count) THEN
+    RAISE EXCEPTION 'recognition schedule %: a parallel amount on some movements only', NEW.schedule_id
+      USING ERRCODE = 'check_violation';
+  END IF;
+  IF remaining.transaction_minor < 0 OR (remaining.transaction_minor = 0
+    AND (remaining.book_minor <> 0 OR coalesce(remaining.parallel_minor, 0) <> 0)) THEN
+    RAISE EXCEPTION 'recognition schedule %: RELEASE_EXCEEDS_BALANCE', NEW.schedule_id
+      USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NULL;
+END
+`,
+    },
   ],
   triggers: [
     // The settings lock (S01 rule 11): before every update of a company's ledger settings.
@@ -2812,6 +2917,57 @@ END
       function: 'document_source_rules',
       deferred: false,
       on: ['INSERT', 'UPDATE'],
+    },
+    // S06's recognition (0032): schedules and movements append-only; a schedule from an invoice
+    // to a liability account; a movement of its transaction's entry; the remaining at commit.
+    {
+      table: 'recognition_schedules',
+      name: 'recognition_schedules_refuse_change',
+      function: 'refuse_change',
+      deferred: false,
+      on: ['UPDATE', 'DELETE'],
+    },
+    {
+      table: 'recognition_schedules',
+      name: 'recognition_schedules_refuse_truncate',
+      function: 'refuse_change',
+      deferred: false,
+      on: ['TRUNCATE'],
+    },
+    {
+      table: 'recognition_movements',
+      name: 'recognition_movements_refuse_change',
+      function: 'refuse_change',
+      deferred: false,
+      on: ['UPDATE', 'DELETE'],
+    },
+    {
+      table: 'recognition_movements',
+      name: 'recognition_movements_refuse_truncate',
+      function: 'refuse_change',
+      deferred: false,
+      on: ['TRUNCATE'],
+    },
+    {
+      table: 'recognition_schedules',
+      name: 'recognition_schedule_rules',
+      function: 'recognition_schedule_rules',
+      deferred: false,
+      on: ['INSERT'],
+    },
+    {
+      table: 'recognition_movements',
+      name: 'recognition_movement_rules',
+      function: 'recognition_movement_rules',
+      deferred: false,
+      on: ['INSERT'],
+    },
+    {
+      table: 'recognition_movements',
+      name: 'recognition_movements_remaining',
+      function: 'recognition_schedule_remaining',
+      deferred: true,
+      on: ['INSERT'],
     },
   ],
   jobs: {

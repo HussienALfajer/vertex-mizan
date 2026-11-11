@@ -1,4 +1,10 @@
-import { type CompanyLedgers, DomainError, type Money, money } from '@vertex-mizan/contracts';
+import {
+  type CompanyLedgers,
+  type CurrencyCode,
+  DomainError,
+  type Money,
+  money,
+} from '@vertex-mizan/contracts';
 import { allocate, allocateCarried } from './allocation.js';
 import { clearOpenItem } from './carried.js';
 import { type CarriedAmounts, keptLedgers, ledgerAmount, negate } from './lines.js';
@@ -659,4 +665,33 @@ function standingRemainders(remaining: readonly CarriedAmounts[]): CarriedAmount
 function dayAfter(monthEnd: string): string {
   const [year, month] = monthEnd.split('-').map(Number) as [number, number];
   return month === 12 ? `${year + 1}-01-01` : `${year}-${String(month + 1).padStart(2, '0')}-01`;
+}
+
+/**
+ * The sum of a schedule's movements in each ledger (ADR 0015: what it still holds, what it deferred
+ * at issue or what it recognised), exactly, in one currency; zero for none.
+ */
+export function sumCarried(
+  amounts: readonly CarriedAmounts[],
+  currency: CurrencyCode,
+  parallel: boolean,
+): CarriedAmounts {
+  let transaction = 0n;
+  let book = 0n;
+  let parallelTotal: bigint | null = parallel ? 0n : null;
+  for (const item of amounts) {
+    if (item.transaction.currency !== currency)
+      throw new TypeError('A movement in another currency');
+    if ((item.parallelMinor === null) === parallel) {
+      throw new TypeError('A movement without the parallel amount its company keeps');
+    }
+    transaction += item.transaction.amountMinor;
+    book += item.bookMinor;
+    if (parallelTotal !== null && item.parallelMinor !== null) parallelTotal += item.parallelMinor;
+  }
+  return {
+    transaction: money(transaction, currency),
+    bookMinor: book,
+    parallelMinor: parallelTotal,
+  };
 }

@@ -54,7 +54,7 @@ export interface TemplateMapping {
   readonly code: string;
 }
 
-/** The service-agency template's mapping (S05 "Mapping slots"). */
+/** The service-agency template's mapping (S05 "Mapping slots", S06 "Data"). */
 const serviceAgencyMapping: readonly TemplateMapping[] = [
   { slot: 'receivable', currency: null, code: '112001' },
   { slot: 'revenue_at_issue', currency: null, code: '411001' },
@@ -69,6 +69,11 @@ const serviceAgencyMapping: readonly TemplateMapping[] = [
   { slot: 'ad_platforms_payable', currency: null, code: '211001' },
   { slot: 'project_cost', currency: null, code: '511001' },
   { slot: 'project_expense_awaiting_payment', currency: null, code: '211002' },
+  // S06 "Data": revenue recognition.
+  { slot: 'contract_liability', currency: null, code: '212001' },
+  { slot: 'contract_asset', currency: null, code: '113001' },
+  { slot: 'released_revenue', currency: null, code: '411001' },
+  { slot: 'cancelled_project_refund', currency: null, code: '211003' },
 ];
 
 /** A header: no flags, the class's normal balance. */

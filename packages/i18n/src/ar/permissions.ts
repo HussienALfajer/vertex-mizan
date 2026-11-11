@@ -33,4 +33,5 @@ export const permissions = {
   'posting_rules.manage': 'تغيير ربط الحسابات بقواعد الترحيل',
   'api_clients.read': 'قراءة عملاء الواجهة البرمجية ومفاتيحهم',
   'api_clients.manage': 'إنشاء عملاء الواجهة البرمجية ومفاتيحهم وإلغاؤها',
+  'recognition.read': 'قراءة جداول الاعتراف بالإيراد وتحريراته',
 } satisfies Record<Permission, string>;

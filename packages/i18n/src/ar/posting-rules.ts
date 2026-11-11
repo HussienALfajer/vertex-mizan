@@ -21,6 +21,10 @@ export const postingRules = {
     ad_platforms_payable: 'ذمم المنصات الإعلانية',
     project_cost: 'تكلفة المشاريع',
     project_expense_awaiting_payment: 'مصاريف مشاريع بانتظار الدفع',
+    contract_liability: 'التزامات العقود',
+    contract_asset: 'أصول العقود',
+    released_revenue: 'الإيراد المحرَّر',
+    cancelled_project_refund: 'مستحق الرد للعميل',
   } satisfies Record<PostingSlot, string>,
   /** What account each slot takes (S05 "Mapping slots", "Must be"). */
   fits: {
@@ -34,6 +38,10 @@ export const postingRules = {
     ad_platforms_payable: 'حساب التزامات قابل للترحيل',
     project_cost: 'حساب مصاريف قابل للترحيل',
     project_expense_awaiting_payment: 'حساب التزامات قابل للترحيل',
+    contract_liability: 'حساب التزامات قابل للترحيل غير نقدي',
+    contract_asset: 'حساب أصول نقدي مراقِب لبنود المستندات',
+    released_revenue: 'حساب إيرادات قابل للترحيل',
+    cancelled_project_refund: 'حساب التزامات نقدي قابل للترحيل',
   } satisfies Record<PostingSlot, string>,
   /** The rules, each with the slots it owns on this screen and its scenario. */
   rules: {
@@ -53,6 +61,11 @@ export const postingRules = {
     projectExpenses: {
       title: 'مصاريف المشاريع',
       description: 'مصروف المشروع المسجّل وتغييره وأرشفته، مقيسًا بتاريخ صرفه.',
+    },
+    revenueRecognition: {
+      title: 'الاعتراف بالإيراد',
+      description:
+        'الإيراد المؤجل عند الإصدار وتحريره شهريًا، وأصول العقود للأجزاء المنقضية والمراحل المنجزة قبل فوترتها، ومستحق الرد في مشروع ملغى.',
     },
   },
   scenario: 'المثال المحلول',

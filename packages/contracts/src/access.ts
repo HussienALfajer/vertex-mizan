@@ -50,6 +50,8 @@ export const PERMISSIONS = [
   'posting_rules.manage',
   'api_clients.read',
   'api_clients.manage',
+  // S06: revenue recognition schedules, releases and the month summary.
+  'recognition.read',
 ] as const;
 
 export const permissionSchema = z.enum(PERMISSIONS).meta({ id: 'Permission' });
@@ -81,6 +83,7 @@ export const rolePermissions: Readonly<Record<Role, readonly Permission[]>> = {
     'events.manage',
     'posting_rules.read',
     'posting_rules.manage',
+    'recognition.read',
   ],
   approver: [
     'company.read',
@@ -114,6 +117,7 @@ export const rolePermissions: Readonly<Record<Role, readonly Permission[]>> = {
     'events.read',
     'posting_rules.read',
     'api_clients.read',
+    'recognition.read',
   ],
 };
 

@@ -62,6 +62,10 @@ const RULE_OF_SLOT: Readonly<Record<PostingSlot, RuleId>> = {
   ad_platforms_payable: 'adFunds',
   project_cost: 'projectExpenses',
   project_expense_awaiting_payment: 'projectExpenses',
+  contract_liability: 'revenueRecognition',
+  contract_asset: 'revenueRecognition',
+  released_revenue: 'revenueRecognition',
+  cancelled_project_refund: 'revenueRecognition',
 };
 
 const SCENARIOS: Readonly<Record<RuleId, readonly string[]>> = {
@@ -69,6 +73,13 @@ const SCENARIOS: Readonly<Record<RuleId, readonly string[]>> = {
   payments: ['receivables/hub-payment', 'ad-funds/running-balance'],
   adFunds: ['ad-funds/running-balance'],
   projectExpenses: ['expenses/project-expense'],
+  revenueRecognition: [
+    'revenue/over-time-release',
+    'revenue/retainer-credit',
+    'revenue/milestones',
+    'revenue/void-and-reissue',
+    'revenue/cancelled-project',
+  ],
 };
 
 const RULES = Object.keys(SCENARIOS) as RuleId[];

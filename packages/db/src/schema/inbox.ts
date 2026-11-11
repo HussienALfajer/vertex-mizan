@@ -45,6 +45,11 @@ export const postingSlot = pgEnum('posting_slot', [
   'ad_platforms_payable',
   'project_cost',
   'project_expense_awaiting_payment',
+  // S06 "Data".
+  'contract_liability',
+  'contract_asset',
+  'released_revenue',
+  'cancelled_project_refund',
 ]);
 
 /** Hub's currencies (`HUB_CURRENCIES`), the only ones a payment method's slot is mapped in. */
@@ -79,6 +84,9 @@ export const INBOUND_EVENT_ACTIONS = [
   'moved_to_open_period',
   'resolved',
   'dismissed',
+  // S06 rule 16.
+  'recognised_in_open_period',
+  'remainder_split',
 ] as const;
 export const INBOUND_ACTOR_KINDS = ['person', 'api_client', 'system'] as const;
 
@@ -287,7 +295,7 @@ export const inboundEventActions = pgTable(
     check(
       'inbound_event_actions_reason',
       sql`(${t.reason} is null or char_length(${t.reason}) between 1 and 500)
-        and (${t.action} not in ('moved_to_open_period', 'resolved', 'dismissed') or ${t.reason} is not null)`,
+        and (${t.action} not in ('moved_to_open_period', 'resolved', 'dismissed', 'recognised_in_open_period', 'remainder_split') or ${t.reason} is not null)`,
     ),
     check('inbound_event_actions_entries', sql`array_position(${t.entryIds}, null) is null`),
   ],

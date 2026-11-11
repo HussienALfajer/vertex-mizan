@@ -8,6 +8,9 @@ import {
   checkAccountShape,
   DomainError,
   defaultNormalBalance,
+  type PostingSlot,
+  type SlotAccount,
+  slotAccountFits,
 } from '@vertex-mizan/contracts';
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
@@ -257,4 +260,85 @@ export async function applyChartTemplate(
       mappedSlotCount: mapping.length,
     },
   });
+}
+
+/**
+ * The service-agency template's default for each slot a later spec appended (S06 "Data": the four
+ * recognition slots), mapped in the company in context when none of them is mapped yet and its chart
+ * holds every code of them, each account fitting its slot (`slotAccountFits()`); a company of the
+ * general template, or a chart of its own, stays unmapped and holds its events `NO_MAPPING` until
+ * the accountant maps them. Runs at the worker's start after the deploy that appended the slots,
+ * since a value added to the enum cannot be used in the migration's transaction. Safe to run twice:
+ * a slot mapped already is left as it is. Answers how many slots it mapped.
+ */
+export async function mapAppendedTemplateSlots(
+  tx: Transaction,
+  companyId: string,
+  slots: readonly PostingSlot[],
+  actor: AuditActor,
+): Promise<number> {
+  const rules = chartTemplate('service-agency').postingRules.filter((rule) =>
+    slots.includes(rule.slot),
+  );
+  if (rules.length === 0) return 0;
+  // A company with S05's template mapping, none of the appended slots mapped yet.
+  const mapped = await tx.select({ slot: postingRuleAccounts.slot }).from(postingRuleAccounts);
+  if (mapped.length === 0 || mapped.some((row) => slots.includes(row.slot))) return 0;
+  const accounts = await tx
+    .select()
+    .from(chartAccounts)
+    .where(
+      and(
+        inArray(
+          chartAccounts.code,
+          rules.map((rule) => rule.code),
+        ),
+        isNull(chartAccounts.archivedAt),
+      ),
+    );
+  const rows = rules.flatMap((rule) => {
+    const account = accounts.find((candidate) => candidate.code === rule.code);
+    const fits =
+      account !== undefined &&
+      slotAccountFits(rule.slot, rule.currency, {
+        kind: account.kind as SlotAccount['kind'],
+        class: account.class as SlotAccount['class'],
+        isControl: account.isControl,
+        itemKind: account.itemKind as SlotAccount['itemKind'],
+        currency: account.currency,
+        isMonetary: account.isMonetary,
+      });
+    return fits
+      ? [
+          {
+            rule,
+            row: { companyId, slot: rule.slot, currency: rule.currency, accountId: account.id },
+          },
+        ]
+      : [];
+  });
+  if (rows.length !== rules.length) return 0;
+  const inserted = await tx
+    .insert(postingRuleAccounts)
+    .values(rows.map(({ row }) => row))
+    // Two runs at once (the sweep and the release job at the worker's start): the second maps and
+    // audits nothing.
+    .onConflictDoNothing()
+    .returning({ id: postingRuleAccounts.id, slot: postingRuleAccounts.slot });
+  const made = rows.filter(({ rule }) => inserted.some((row) => row.slot === rule.slot));
+  for (const { rule, row } of made) {
+    await writeCompanyAudit(tx, companyId, actor, {
+      action: 'posting_rule.mapped',
+      entityType: 'posting_rule',
+      entityId: inserted.find((made) => made.slot === rule.slot)?.id ?? null,
+      before: null,
+      after: {
+        slot: rule.slot,
+        currency: rule.currency,
+        accountId: row.accountId,
+        accountCode: rule.code,
+      },
+    });
+  }
+  return made.length;
 }

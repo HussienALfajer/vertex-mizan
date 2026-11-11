@@ -11,4 +11,5 @@ export * from './inbox.js';
 export * from './ledger.js';
 export * from './open-items.js';
 export * from './rates.js';
+export * from './recognition.js';
 export * from './trust.js';

@@ -126,6 +126,25 @@ export class InboxController {
     return this.inbox.move(inCompany(access), params.id, body.reason);
   }
 
+  @Post(':id/recognise-in-open-period')
+  @HttpCode(200)
+  @ApiParamsFrom(idParamSchema)
+  @CompanyRoute('events.manage')
+  @SerializeOptions({ schema: inboxEventDetailSchema })
+  @ApiOkResponse({
+    description:
+      'The event, its closed months’ elapsed parts posted in the first open period after them (S06 rule 16)',
+    standardSchema: inboxEventDetailSchema,
+  })
+  @ApiErrors(...COMPANY_WRITE_ERRORS, 'NOT_FOUND', 'EVENT_NOT_HELD', 'EVENT_ACTION_NOT_ALLOWED')
+  async recognise(
+    @Access() access: RequestAccess,
+    @Param({ schema: idParamSchema }) params: IdParam,
+    @Body({ schema: inboxReasonSchema }) body: InboxReason,
+  ): Promise<InboxEventDetail> {
+    return this.inbox.recognise(inCompany(access), params.id, body.reason);
+  }
+
   @Post(':id/resolve')
   @HttpCode(200)
   @ApiParamsFrom(idParamSchema)

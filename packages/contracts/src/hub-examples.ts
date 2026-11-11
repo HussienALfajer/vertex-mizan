@@ -81,6 +81,7 @@ export function eventExamplesV1(on: string): EventExample[] {
       'milestone.done',
       { milestone, client, project, currency: 'USD', amount: 30_000, done_on: on },
     ],
+    ['milestone.reopened', { milestone, client, project, reopened_on: on }],
     ['project.completed', { project, client, on }],
     ['project.cancelled', { project, client, on }],
     [

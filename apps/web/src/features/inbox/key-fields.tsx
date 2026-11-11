@@ -114,6 +114,15 @@ function fieldsOf(event: { type: EventType; payload: unknown }): Field[] {
         [t.doneOn, day(milestone.done_on)],
       ];
     }
+    case 'milestone.reopened': {
+      const reopened = p as Payload<'milestone.reopened'>;
+      return [
+        [t.milestone, number(reopened.milestone.number)],
+        [t.client, name(reopened.client)],
+        [t.project, name(reopened.project)],
+        [t.reopenedOn, day(reopened.reopened_on)],
+      ];
+    }
     case 'project.completed':
     case 'project.cancelled': {
       const project = p as Payload<'project.completed'>;

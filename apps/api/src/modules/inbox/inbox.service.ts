@@ -20,6 +20,7 @@ import {
   journalEntries,
   moveEvent,
   periods,
+  recogniseEvent,
   resolveEvent,
   retryEvent,
   SYSTEM_NAME,
@@ -160,6 +161,11 @@ export class InboxService {
   /** `POST /api/inbox/:id/post-in-open-period` (rule 15): `PERIOD_CLOSED` only. */
   move(access: CompanyRouteAccess, id: string, reason: string): Promise<InboxEventDetail> {
     return this.act(access, id, (tx, options) => moveEvent(tx, id, reason, options));
+  }
+
+  /** `POST /api/inbox/:id/recognise-in-open-period` (S06 rule 16): `SERVICE_PERIOD_CLOSED` only. */
+  recognise(access: CompanyRouteAccess, id: string, reason: string): Promise<InboxEventDetail> {
+    return this.act(access, id, (tx, options) => recogniseEvent(tx, id, reason, options));
   }
 
   /** `POST /api/inbox/:id/resolve` (rule 15): `NEEDS_DECISION` only, by a posted manual entry. */

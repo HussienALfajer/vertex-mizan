@@ -6,6 +6,8 @@ declare module 'vitest' {
     queueUrl: string;
     appUrl: string;
     jobsUrl: string;
+    /** Only to close a month as S07 will (S06's release of a closed month). */
+    ownerUrl: string;
   }
 }
 
@@ -15,5 +17,6 @@ export default async function setup(project: TestProject) {
   project.provide('queueUrl', database.queueUrl);
   project.provide('appUrl', database.appUrl);
   project.provide('jobsUrl', database.jobsUrl);
+  project.provide('ownerUrl', database.ownerUrl);
   return database.drop;
 }

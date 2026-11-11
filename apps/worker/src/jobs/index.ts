@@ -7,6 +7,7 @@ import { EventsHeldDigestJob } from './events/held-digest.job.js';
 import { EventsRetryJob } from './events/retry.job.js';
 import { EventsRetrySweepJob } from './events/retry-sweep.job.js';
 import { DailyAnchorJob } from './ledger/daily-anchor.job.js';
+import { RevenueReleaseMonthJob } from './revenue/release-month.job.js';
 import { CleanUpJob } from './system/clean-up.job.js';
 import { HeartbeatJob } from './system/heartbeat.job.js';
 
@@ -21,4 +22,5 @@ export const jobs: Type<WorkerJob>[] = [
   EventsRetryJob,
   EventsRetrySweepJob,
   EventsHeldDigestJob,
+  RevenueReleaseMonthJob,
 ];

@@ -29,6 +29,7 @@ import {
   planEvent,
   type RulePlan,
   reclassifiedLines,
+  recognitionPatternOf,
   spendChangedPlan,
   walletDecision,
   walletEntryPlan,
@@ -61,6 +62,10 @@ const TEMPLATE: Record<string, string> = {
   ad_platforms_payable: '211001',
   project_cost: '511001',
   project_expense_awaiting_payment: '211002',
+  contract_liability: '212001',
+  contract_asset: '113001',
+  released_revenue: '411001',
+  cancelled_project_refund: '211003',
 };
 
 function contextOf(
@@ -85,6 +90,13 @@ const S1 = { external_id: 'S1', name: 'تصميم' };
 const S2 = { external_id: 'S2', name: 'تصوير' };
 const ids = (n: number) => `01934b6e-0000-7000-8000-${String(n).padStart(12, '0')}`;
 const INVOICE = { id: ids(101), number: 'INV-2026-1' };
+const R1 = {
+  external_id: 'R1',
+  name: 'اشتراك',
+  kind: 'retainer' as const,
+  client_external_id: 'C1',
+};
+const P1 = { external_id: 'P1', name: 'مشروع', kind: 'project' as const, client_external_id: 'C1' };
 
 let seq = 0;
 function event(type: string, payload: unknown, on = '2026-11-03'): EventEnvelope {
@@ -140,9 +152,10 @@ function measure(
   on: string,
   rates: readonly ExchangeRate[],
   items: ReadonlyMap<string, ItemState> = new Map(),
+  index = 0,
 ): Line[] {
   if (plan.kind !== 'post') throw new Error(`Expected a posting, got ${plan.kind}`);
-  const [entry] = plan.entries;
+  const entry = plan.entries[index];
   if (entry?.kind !== 'lines') throw new Error('Expected lines');
   const context: MeasureContext = { ledgers, on, rates, calendar };
   const built = manualEntry(
@@ -161,6 +174,10 @@ function measure(
           },
         }),
         ...(line.item?.kind === 'existing' && { item: items.get(line.item.id) as ItemState }),
+        // An item an earlier entry of the plan opened, by its reference.
+        ...(line.item?.kind === 'planned' && {
+          item: items.get(line.item.reference) as ItemState,
+        }),
       })),
       dealtRates: entry.dealtRates.map((dealt) => ({
         effectiveOn: on,
@@ -261,21 +278,36 @@ describe('invoice.issued at issue (revenue/revenue-at-issue)', () => {
     ]);
   });
 
-  it('holds an invoice with a deferred line or a non-zero tax whole; a zero tax posts', () => {
+  it('holds a credit, deposit or milestone line until its rule deploys, and a non-zero tax', () => {
     const context = contextOf(sypUsd);
-    const retainer = invoice('USD', '122.0000', [
-      { amount: 10_000 },
-      { amount: 100_000, source: 'retainer_charge', charge_kind: 'monthly', service: S2 },
-    ]);
-    expect(invoiceIssuedPlan(retainer, context)).toEqual({
+    const credit = invoice(
+      'USD',
+      '122.0000',
+      [
+        {
+          amount: -10_000,
+          source: 'retainer_charge',
+          charge_kind: 'credit',
+          cycle_start: '2026-10-01',
+        },
+        { amount: 20_000 },
+      ],
+      { contract: R1 },
+    );
+    expect(invoiceIssuedPlan(credit, context)).toEqual({
       kind: 'hold',
       reason: 'NO_MAPPING',
       detail: 'deferred_revenue',
     });
-    const deferred = invoice('USD', '122.0000', [
-      { amount: 10_000, source: 'manual', deferred: true },
-    ]);
-    expect(invoiceIssuedPlan(deferred, context)).toMatchObject({ detail: 'deferred_revenue' });
+    const deposit = invoice(
+      'USD',
+      '122.0000',
+      [{ amount: 10_000, source: 'deposit', milestone_id: ids(501) }],
+      {
+        contract: P1,
+      },
+    );
+    expect(invoiceIssuedPlan(deposit, context)).toMatchObject({ detail: 'deferred_revenue' });
     const taxed = (amount: number) =>
       invoice('USD', '122.0000', [
         { amount: 10_000, taxes: [{ code: 'SALES', base: 10_000, rate: '5.00', amount }] },
@@ -304,6 +336,309 @@ describe('invoice.issued at issue (revenue/revenue-at-issue)', () => {
       kind: 'post',
       decision: 'contract_client_mismatch',
     });
+  });
+});
+
+describe('invoice.issued over time (revenue/over-time-release; S06 rules 1–3, 7)', () => {
+  const monthly = (amount: number, cycleStart: string, cycleEnd: string, service = S1) => ({
+    amount,
+    source: 'retainer_charge',
+    charge_kind: 'monthly',
+    cycle_start: cycleStart,
+    cycle_end: cycleEnd,
+    service,
+  });
+
+  it('reads each line’s pattern, unclear without the facts it needs (S06 rule 1)', () => {
+    const issued = invoice(
+      'USD',
+      '122.0000',
+      [
+        { amount: 1 },
+        { amount: 1, source: 'manual' },
+        {
+          amount: 1,
+          source: 'manual',
+          deferred: true,
+          cycle_start: '2026-11-01',
+          cycle_end: '2026-11-30',
+        },
+        { amount: 1, source: 'manual', deferred: true, cycle_start: '2026-11-01' },
+        monthly(1, '2026-11-01', '2026-11-30'),
+        monthly(1, '2026-11-30', '2026-11-01'),
+        { amount: 1, source: 'retainer_charge', charge_kind: 'termination_fee' },
+        { amount: -1, source: 'retainer_charge', charge_kind: 'credit', cycle_start: '2026-10-01' },
+        { amount: -1, source: 'retainer_charge', charge_kind: 'credit' },
+        { amount: 1, source: 'deposit', milestone_id: ids(501) },
+        { amount: 1, source: 'milestone' },
+      ],
+      { contract: R1 },
+    );
+    expect(issued.payload.lines.map((line) => recognitionPatternOf(line, R1).kind)).toEqual([
+      'at_issue',
+      'at_issue',
+      'over_time',
+      'unclear',
+      'over_time',
+      'unclear',
+      'at_issue',
+      'credit',
+      'unclear',
+      // A deposit or milestone is a project's: a retainer's is unclear.
+      'unclear',
+      'unclear',
+    ]);
+    // A retainer charge needs its invoice's retainer; a deposit its project.
+    const [, , , , charge, , , , , deposit] = issued.payload.lines;
+    expect(charge && recognitionPatternOf(charge, undefined).kind).toBe('unclear');
+    expect(charge && recognitionPatternOf(charge, P1).kind).toBe('unclear');
+    expect(deposit && recognitionPatternOf(deposit, P1)).toEqual({
+      kind: 'point_in_time',
+      milestoneId: ids(501),
+    });
+  });
+
+  it('defers a 900.00 USD cycle of 15 Nov to 14 Dec at bulletin 121 (S06’s example)', () => {
+    const issued = invoice('USD', '122.0000', [monthly(90_000, '2026-11-15', '2026-12-14')], {
+      contract: R1,
+      issued_on: '2026-11-15',
+    });
+    const plan = invoiceIssuedPlan(issued, contextOf(sypUsd));
+    expect(plan.kind === 'post' && plan.entries.map((entry) => entry.key)).toEqual([issued.id]);
+    expect(rows(measure(plan, sypUsd, '2026-11-15', [bulletin('121.0000', '2026-11-15')]))).toEqual(
+      [
+        ['112001', 'USD', 90_000n, 10_890_000n, 90_000n],
+        ['212001', 'USD', -90_000n, -10_890_000n, -90_000n],
+      ],
+    );
+    expect(plan.kind === 'post' && plan.schedules).toEqual([
+      expect.objectContaining({
+        position: 1,
+        lineSource: 'retainer_charge',
+        chargeKind: 'monthly',
+        serviceFrom: '2026-11-15',
+        serviceTo: '2026-12-14',
+        cycleKey: 'R1:2026-11-15',
+        deferral: { key: issued.id, lineNo: 2 },
+        elapsed: [],
+      }),
+    ]);
+  });
+
+  it('recognises a late issue’s elapsed October at 119 and clears it at 120.5 with a 360.00 SYP gain', () => {
+    // 620.00 USD for 20 Oct to 19 Nov (31 days), issued on 5 Nov: October's 12 days elapsed.
+    const issued = invoice('USD', '121.0000', [monthly(62_000, '2026-10-20', '2026-11-19')], {
+      contract: R1,
+      issued_on: '2026-11-05',
+    });
+    const plan = invoiceIssuedPlan(issued, contextOf(sypUsd));
+    if (plan.kind !== 'post') throw new Error('Expected a posting');
+    expect(plan.entries.map((entry) => entry.kind === 'lines' && [entry.key, entry.on])).toEqual([
+      [`${issued.id}:elapsed:2026-10`, '2026-10-31'],
+      [issued.id, undefined],
+    ]);
+    const rates = [bulletin('119.0000', '2026-10-29'), bulletin('120.5000', '2026-11-05')];
+    // The bulletin in force on Saturday 31 October is Thursday's.
+    const elapsed = measure(plan, sypUsd, '2026-10-31', rates);
+    expect(rows(elapsed)).toEqual([
+      ['113001', 'USD', 24_000n, 2_856_000n, 24_000n],
+      ['411001', 'USD', -24_000n, -2_856_000n, -24_000n],
+    ]);
+    const opened: ItemState = {
+      id: 'INV-2026-1/1',
+      kind: 'document',
+      direction: 1,
+      balance: {
+        transaction: money(24_000n, 'USD'),
+        bookMinor: 2_856_000n,
+        parallelMinor: 24_000n,
+      },
+    };
+    const issue = measure(
+      plan,
+      sypUsd,
+      '2026-11-05',
+      rates,
+      new Map([['INV-2026-1/1', opened]]),
+      1,
+    );
+    expect(rows(issue)).toEqual([
+      ['112001', 'USD', 62_000n, 7_471_000n, 62_000n],
+      ['212001', 'USD', -38_000n, -4_579_000n, -38_000n],
+      ['113001', 'USD', -24_000n, -2_856_000n, -24_000n],
+      // A realised difference carries its amount in its ledger's currency (ADR 0007).
+      ['421001', 'SYP', -36_000n, -36_000n, 0n],
+    ]);
+    expect(plan.schedules?.[0]).toMatchObject({
+      deferral: { key: issued.id, lineNo: 2 },
+      elapsed: [{ month: '2026-10', key: `${issued.id}:elapsed:2026-10`, lineNo: 2 }],
+    });
+  });
+
+  it('opens one item per elapsed month of a line, and none for a period wholly elapsed', () => {
+    const issued = invoice(
+      'USD',
+      '121.0000',
+      [
+        {
+          amount: 30_000,
+          source: 'manual',
+          deferred: true,
+          cycle_start: '2026-09-01',
+          cycle_end: '2026-10-31',
+        },
+      ],
+      { issued_on: '2026-11-10' },
+    );
+    const plan = invoiceIssuedPlan(issued, contextOf(sypUsd));
+    if (plan.kind !== 'post') throw new Error('Expected a posting');
+    const references = plan.entries.flatMap((entry) =>
+      entry.kind === 'lines' ? entry.lines.flatMap((line) => (line.item ? [line.item] : [])) : [],
+    );
+    expect(references).toEqual([
+      { kind: 'open', reference: 'INV-2026-1/1', dueOn: '2026-09-30' },
+      { kind: 'open', reference: 'INV-2026-1/1/2026-10', dueOn: '2026-10-31' },
+      { kind: 'open', reference: 'INV-2026-1', dueOn: '2026-12-03' },
+      { kind: 'planned', reference: 'INV-2026-1/1' },
+      { kind: 'planned', reference: 'INV-2026-1/1/2026-10' },
+    ]);
+    // Nothing is deferred: no contract liability line, but the schedule names its liability.
+    expect(plan.schedules?.[0]).toMatchObject({ deferral: null, liabilityAccountId: '212001' });
+  });
+
+  it('lists the lines at issue before the deferrals, so a service change finds its line', () => {
+    const issued = invoice(
+      'USD',
+      '122.0000',
+      [monthly(100_000, '2026-11-01', '2026-11-30', S2), { amount: 10_000 }],
+      { contract: R1 },
+    );
+    const plan = invoiceIssuedPlan(issued, contextOf(sypUsd));
+    const [entry] = plan.kind === 'post' ? plan.entries : [];
+    expect(entry?.kind === 'lines' && entry.lines.map((line) => line.account)).toEqual([
+      '112001',
+      '411001',
+      '212001',
+    ]);
+  });
+
+  it('holds NO_MAPPING on an unmapped recognition slot, naming it', () => {
+    const late = invoice('USD', '121.0000', [monthly(62_000, '2026-10-20', '2026-11-19')], {
+      contract: R1,
+      issued_on: '2026-11-05',
+    });
+    for (const slot of ['contract_liability', 'contract_asset', 'released_revenue']) {
+      expect(invoiceIssuedPlan(late, contextOf(sypUsd, { [slot]: null }))).toEqual({
+        kind: 'hold',
+        reason: 'NO_MAPPING',
+        detail: `slot_unmapped:${slot}`,
+      });
+    }
+  });
+
+  it('leaves a line whose pattern is unclear to the accountant, after the period and rates', () => {
+    const issued = invoice(
+      'USD',
+      '122.0000',
+      [{ amount: 10_000 }, { amount: 20_000, source: 'manual', deferred: true }],
+      { contract: R1 },
+    );
+    expect(invoiceIssuedPlan(issued, contextOf(sypUsd))).toMatchObject({
+      kind: 'post',
+      decision: 'recognition_pattern_unclear:2',
+    });
+  });
+
+  it('moves a deferred line’s recognised revenue at its carried amounts, and holds its void', () => {
+    const line = ids(200);
+    const changed = event(
+      'invoice.line_service_changed',
+      {
+        invoice: INVOICE,
+        line_id: line,
+        old_service: S1,
+        new_service: S2,
+        changed_on: '2026-12-07',
+      },
+      '2026-12-07',
+    ) as EventOf<'invoice.line_service_changed'>;
+    const scheduled = { ...NO_REFERENCES, scheduledLineIds: [line] };
+    expect(planEvent(changed, scheduled, contextOf(sypUsd))).toEqual({
+      kind: 'post',
+      entries: [{ kind: 'recognised_reclassification', key: changed.id, lineId: line, to: S2 }],
+      decision: null,
+    });
+    // A line at issue keeps S05's rule: its issue line moves.
+    expect(planEvent(changed, NO_REFERENCES, contextOf(sypUsd))).toMatchObject({
+      reason: 'UNKNOWN_REFERENCE',
+    });
+    const voided = event('invoice.voided', {
+      invoice: INVOICE,
+      voided_on: '2026-12-10',
+      reason: 'خطأ',
+    });
+    expect(planEvent(voided, { ...scheduled, standing: [ids(900)] }, contextOf(sypUsd))).toEqual({
+      kind: 'hold',
+      reason: 'NO_MAPPING',
+      detail: 'deferred_revenue',
+    });
+  });
+
+  it('balances every entry of an over-time invoice in every shape (a property)', () => {
+    // A bulletin on every day from September to the issue, as a working day needs its own.
+    const bulletins = Array.from({ length: 71 }, (_, n) =>
+      bulletin(
+        `${119 + (n % 3)}.0000`,
+        new Date(Date.UTC(2026, 8, 1 + n)).toISOString().slice(0, 10),
+      ),
+    );
+    const day = fc.integer({ min: 0, max: 100 }).map((n) => {
+      const date = new Date(Date.UTC(2026, 8, 1 + n));
+      return date.toISOString().slice(0, 10);
+    });
+    fc.assert(
+      fc.property(
+        fc.constantFrom(sypOnly, sypUsd, usdSyp),
+        fc.constantFrom<HubCurrency>('USD', 'SYP'),
+        fc.integer({ min: 1, max: 50_000_000 }),
+        day,
+        fc.integer({ min: 0, max: 90 }),
+        (ledgers, currency, amount, from, length) => {
+          const start = new Date(`${from}T00:00:00Z`);
+          const to = new Date(start.getTime() + length * 86_400_000).toISOString().slice(0, 10);
+          const issued = invoice(currency, '122.0000', [monthly(amount, from, to)], {
+            contract: R1,
+            issued_on: '2026-11-10',
+          });
+          const plan = invoiceIssuedPlan(issued, contextOf(ledgers));
+          if (plan.kind !== 'post') throw new Error('Expected a posting');
+          const rates = [rate('USD', 'SYP', '120.0000', 'market', '2026-09-01'), ...bulletins];
+          const opened = new Map<string, ItemState>();
+          for (const [index, entry] of plan.entries.entries()) {
+            if (entry.kind !== 'lines') throw new Error('Expected lines');
+            const lines = measure(plan, ledgers, entry.on ?? '2026-11-10', rates, opened, index);
+            expect(ledgerTotal(lines, 'book')).toBe(0n);
+            if (ledgers.parallel !== null) expect(ledgerTotal(lines, 'parallel')).toBe(0n);
+            // A planned line's place is its built line's: an elapsed month's item opens there.
+            for (const [k, spec] of entry.lines.entries()) {
+              const line = lines[k];
+              if (spec.item?.kind !== 'open' || line === undefined) continue;
+              opened.set(spec.item.reference, {
+                id: spec.item.reference,
+                kind: 'document',
+                direction: 1,
+                balance: {
+                  transaction: line.transaction,
+                  bookMinor: line.bookMinor,
+                  parallelMinor: line.parallelMinor,
+                },
+              });
+            }
+          }
+        },
+      ),
+      { numRuns: 200 },
+    );
   });
 });
 
@@ -789,7 +1124,6 @@ const WALLET = (n: number) => ({ id: ids(600 + n), number: `W-${n}` });
 const UPDATE = { id: ids(701), number: 'CU-1' };
 const CAMPAIGN = { id: ids(702), number: 'CMP-1' };
 const EXPENSE = { id: ids(801), number: 'E-1' };
-const P1 = { external_id: 'P1', name: 'مشروع', kind: 'project', client_external_id: 'C1' };
 const PHOTO = { external_id: 'photography', code: 'photography', name: 'تصوير' };
 
 function wallet(

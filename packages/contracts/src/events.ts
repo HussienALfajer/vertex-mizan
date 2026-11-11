@@ -271,6 +271,16 @@ export const milestoneDoneV1Schema = z
   })
   .meta({ id: 'MilestoneDoneV1' });
 
+/** A done milestone reopened in Hub: the reversal of its done (S06 rule 13; ADR 0015). */
+export const milestoneReopenedV1Schema = z
+  .object({
+    milestone: hubDocumentIdSchema,
+    client: hubValueRefSchema,
+    project: hubContractRefSchema,
+    reopened_on: hubDateSchema,
+  })
+  .meta({ id: 'MilestoneReopenedV1' });
+
 export const projectEndedV1Schema = z
   .object({
     project: hubContractRefSchema,
@@ -391,6 +401,7 @@ export const EVENT_PAYLOADS_V1 = {
   'ad_spend.changed': adSpendV1Schema,
   'ad_spend.archived': adSpendArchivedV1Schema,
   'rate.changed': rateChangedV1Schema,
+  'milestone.reopened': milestoneReopenedV1Schema,
 } as const;
 
 export type EventType = keyof typeof EVENT_PAYLOADS_V1;
@@ -493,6 +504,7 @@ export function documentOf(event: EventEnvelope): EventDocument {
     case 'payment.voided':
       return ref('payment', event.payload.payment);
     case 'milestone.done':
+    case 'milestone.reopened':
       return ref('milestone', event.payload.milestone);
     case 'project.completed':
     case 'project.cancelled':
@@ -539,6 +551,7 @@ export function itemKeyOf(event: EventEnvelope): string | null {
     case 'project_expense.archived':
       return `project_expense:${event.payload.expense.id}`;
     case 'milestone.done':
+    case 'milestone.reopened':
       return `milestone:${event.payload.milestone.id}`;
     case 'project.completed':
     case 'project.cancelled':
@@ -597,12 +610,13 @@ export const holdReasonSchema = z.enum(HOLD_REASONS).meta({ id: 'HoldReason' });
 
 export type HoldReason = z.infer<typeof holdReasonSchema>;
 
-/** The order the reasons are checked in (rule 8); S06's `SERVICE_PERIOD_CLOSED` joins with it. */
+/** The order the reasons are checked in (rule 8; S06 rule 18: an elapsed month after the date). */
 export const HOLD_CHECK_ORDER = [
   'WAITING_FOR_EARLIER_EVENT',
   'UNKNOWN_REFERENCE',
   'NO_MAPPING',
   'PERIOD_CLOSED',
+  'SERVICE_PERIOD_CLOSED',
   'RATE_MISSING',
   'OPEN_ITEM_HAS_SETTLEMENTS',
   'NEEDS_DECISION',
@@ -623,6 +637,20 @@ export const HOLD_DETAILS = [
   'dimension_value_archived',
   'document_resolved_manually',
   'invoice_currency_mismatch',
+  // S06 rule 18: recognition's holds; `recognition_pattern_unclear:<line position>`.
+  'recognition_pattern_unclear',
+  'credit_cycle',
+  'credit_cycle_voided',
+  'credit_exceeds_cycle',
+  'schedule_credited',
+  'milestone_amount_differs',
+  'milestone_already_done',
+  'milestone_service_missing',
+  'milestone_released_at_completion',
+  'reissue_period_differs',
+  'cancelled_project_remainder',
+  'schedule_split_at_cancellation',
+  'invoiced_after_cancellation',
 ] as const;
 
 export type HoldDetailCode = (typeof HOLD_DETAILS)[number];
@@ -647,6 +675,11 @@ export const POSTING_SLOTS = [
   'ad_platforms_payable',
   'project_cost',
   'project_expense_awaiting_payment',
+  // S06 "Data": revenue recognition.
+  'contract_liability',
+  'contract_asset',
+  'released_revenue',
+  'cancelled_project_refund',
 ] as const;
 
 export const postingSlotSchema = z.enum(POSTING_SLOTS).meta({ id: 'PostingSlot' });
@@ -702,6 +735,9 @@ export const EVENT_ACTIONS = [
   'moved_to_open_period',
   'resolved',
   'dismissed',
+  // S06 rule 16: the accountant's recognition actions.
+  'recognised_in_open_period',
+  'remainder_split',
 ] as const;
 
 export const eventActionSchema = z.enum(EVENT_ACTIONS).meta({ id: 'EventAction' });
@@ -758,6 +794,21 @@ export function slotAccountFits(
       return account.class === 'liability' && !account.isControl;
     case 'project_cost':
       return account.class === 'expense' && !account.isControl;
+    // S06 "Data": a contract liability is non-monetary (IAS 21.16), a contract asset a monetary
+    // `document` control account, the refund payable a monetary liability (IAS 21.23(a)).
+    case 'contract_liability':
+      return account.class === 'liability' && !account.isControl && !account.isMonetary;
+    case 'contract_asset':
+      return (
+        account.class === 'asset' &&
+        account.isControl &&
+        account.itemKind === 'document' &&
+        account.isMonetary
+      );
+    case 'released_revenue':
+      return account.class === 'revenue' && !account.isControl;
+    case 'cancelled_project_refund':
+      return account.class === 'liability' && !account.isControl && account.isMonetary;
   }
 }
 

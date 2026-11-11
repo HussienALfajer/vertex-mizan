@@ -43,6 +43,7 @@ describe('the permission map', () => {
         'posting_rules.manage',
         'api_clients.read',
         'api_clients.manage',
+        'recognition.read',
       ],
       accountant: [
         'company.read',
@@ -63,6 +64,7 @@ describe('the permission map', () => {
         'events.manage',
         'posting_rules.read',
         'posting_rules.manage',
+        'recognition.read',
       ],
       approver: [
         'company.read',
@@ -96,6 +98,7 @@ describe('the permission map', () => {
         'events.read',
         'posting_rules.read',
         'api_clients.read',
+        'recognition.read',
       ],
     });
   });
@@ -130,6 +133,12 @@ describe('the permission map', () => {
     expect(holders('posting_rules.manage')).toEqual(['owner', 'accountant']);
     expect(holders('api_clients.read')).toEqual(['owner', 'auditor']);
     expect(holders('api_clients.manage')).toEqual(['owner']);
+  });
+
+  it('gives the recognition schedules to the roles of S06 "Access"', () => {
+    const holders = (key: (typeof PERMISSIONS)[number]) =>
+      ROLES.filter((role) => rolePermissions[role].includes(key));
+    expect(holders('recognition.read')).toEqual(['owner', 'accountant', 'auditor']);
   });
 
   it('lets every role read the company profile, the chart, dimensions and rates', () => {

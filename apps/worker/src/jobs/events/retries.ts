@@ -3,6 +3,8 @@ import {
   type AuditActor,
   companies,
   type Database,
+  mapAppendedTemplateSlots,
+  RECOGNITION_SLOTS,
   type RetryTrigger,
   retryFreed,
   SYSTEM_NAME,
@@ -23,7 +25,9 @@ export const retryActor = (job: string): AuditActor => ({
 /**
  * The held events `triggers` free in one company, retried in its context as the app role
  * (`packages/db`'s `retryFreed()`), in one transaction. An archived company is read-only (S01
- * rule 12): nothing posts. Answers how many events posted.
+ * rule 12): nothing posts. The sweep, which runs at the worker's start after a deploy, first maps
+ * the template's slots a later spec appended (S06's four), so the events held for want of them post
+ * (S06 "Migration and compatibility"). Answers how many events posted.
  */
 export async function retryInCompany(
   db: Database,
@@ -38,6 +42,9 @@ export async function retryInCompany(
       .where(eq(companies.id, companyId))
       .for('share');
     if (!company || company.archivedAt) return 0;
+    if (triggers.some((trigger) => trigger.kind === 'sweep')) {
+      await mapAppendedTemplateSlots(tx, companyId, RECOGNITION_SLOTS, retryActor(job));
+    }
     return retryFreed(tx, triggers as readonly RetryTrigger[], {
       actor: retryActor(job),
       today: todayInDamascus(),
