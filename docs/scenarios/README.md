@@ -72,7 +72,7 @@ steps:                              # in order; a Hub event, a manual entry, a r
                                     #   (S03 rule 13); open_item and item: "Writing the YAML"
   - reversal: 1                     # reverses the case's entry 1 (posting order) at its amounts
     accounting_date: 2026-11-04
-  - job: revenue_release_month      # S06's release job; close_period, ... arrive with S07
+  - job: revenue_release_month      # S06's release job (S07's close and reopen are steps below)
     period: 2026-11                 #   a job for month m runs on the first day of m+1: the case's
                                     #   clock moves to that day, so a later event step is received
                                     #   after the month's job (S06 rule 5)
@@ -84,6 +84,13 @@ steps:                              # in order; a Hub event, a manual entry, a r
                                     #   reversal and m+1's first day; all differences zero: no entry
   - block: "111006"                 # block an account with a reason (S02 rule 5): later lines on
     reason: "..."                   #   it are refused; a revaluation still remeasures it (S07)
+  - close: 2026-11                  # close a month with a reason on the case's clock (S07 rules 2,
+    reason: "..."                   #   5, 7–9); refused with the first failing rule, a failed
+                                    #   checklist as CHECKLIST_FAILED with the failing items as its
+                                    #   detail, comma-separated in the checklist's order
+  - reopen: 2026-11                 # reopen the latest closed month with a reason (S07 rules 3, 6):
+    reason: "..."                   #   it posts as open, and the events it frees are retried as
+                                    #   after a rate step
   - rate: { date: 2026-11-03, base: USD, quote: SYP, rate: "121.0000", type: bulletin,
             reason: "Mistyped" }    # a row recorded now; a second row of a pair, type and date
                                     # is a correction and needs its reason (S02 rule 15)
@@ -130,7 +137,7 @@ Writing the YAML:
 - Each expected entry balances in both ledgers, and has at least two lines; a `third` case names a line or a rate in a third currency.
 - **Hub events** (S05): the payload's short form names each dimension by its code and each document by its number; the runner makes it into the full payload Hub sends (`packages/contracts` `eventEnvelopeSchema`): each document and value gets a stable synthetic Hub id, a value keeps the case's code (so the event makes the value, S05 rule 23, and the setup leaves it out), an invoice line's `kind` is its `charge_kind`, and a `payment.voided` finds its receipt and invoice from the payment's `payment.recorded` step. After each event, rate and inbox step the runner runs the retries the step frees, as the worker does after its commit (S05 rule 10), with the case's clock at its latest date.
 - An action (`retry`, `move`, `resolve`, `dismiss`, `recognise`, `split`) names an earlier `event` step, and `resolve` an expected entry. It may state its `outcome` like any step: a retry that leaves the event held, or an action the inbox refuses (`EVENT_NOT_HELD`, `EVENT_ACTION_NOT_ALLOWED`, `ENTRY_ALREADY_LINKED`, and `VALIDATION_FAILED` for a split outside zero to the remainder). The events an action frees are retried as S05 rule 10 says, and their entries are expected where they post.
-- A `revalue: parallel` step needs a company with a parallel ledger. A `revalue` step that finds every difference zero is done and posts nothing; a missing closing rate is its `refused` outcome `RATE_MISSING`.
+- A `revalue: parallel` step needs a company with a parallel ledger. A `revalue` step for a month already revalued posts the adjusting revaluation: only the differences still to post, with its own reversal (S07 rule 15). A `revalue` step that finds every difference zero is done and posts nothing; a missing closing rate is its `refused` outcome `RATE_MISSING`.
 - An unknown or misspelt key is an error.
 
 ## The runner's contract
