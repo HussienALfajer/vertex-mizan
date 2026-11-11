@@ -53,7 +53,12 @@ const wire = (amounts: CarriedAmounts): RecognitionAmounts => ({
 });
 
 /** The movements that take what a schedule recognised out of its liability. */
-const RECOGNISED: readonly MovementRow['kind'][] = ['released', 'elapsed', 'remainder_released'];
+const RECOGNISED: readonly MovementRow['kind'][] = [
+  'released',
+  'adjusted',
+  'elapsed',
+  'remainder_released',
+];
 
 /** A schedule's derived state (S06 "Data"). */
 function stateOf(movements: readonly MovementRow[], remaining: CarriedAmounts): RecognitionState {
@@ -350,7 +355,7 @@ export async function readRevenueMonths(
     .from(recognitionMovements)
     .where(
       and(
-        eq(recognitionMovements.kind, 'released'),
+        inArray(recognitionMovements.kind, ['released', 'adjusted']),
         sql`${recognitionMovements.month} between ${`${from}-01`} and ${`${to}-01`}`,
       ),
     )

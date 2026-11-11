@@ -65,6 +65,7 @@ import {
   openSchedules,
   projectSchedulesOf,
   reclassifyRecognised,
+  recutSince,
   reissuesOf,
   releaseBeforeChange,
   releaseEndedMonths,
@@ -320,7 +321,8 @@ async function invoiceItemOf(tx: Transaction, invoiceId: string): Promise<HubIte
 /**
  * The entries still standing for a Hub document, latest first: neither reversals nor reversed, nor
  * the difference entry that follows a reversal on a running item (S04 rule 13), which is the
- * reversal's consequence, never the document's posting, so a later change or archive leaves it.
+ * reversal's consequence, never the document's posting, so a later change or archive leaves it,
+ * nor a credit's recut of its cycle's releases (S06), which belongs to the cycle's schedules.
  */
 async function standingEntriesOf(
   tx: Transaction,
@@ -339,6 +341,9 @@ async function standingEntriesOf(
     .where(
       and(
         sql`${postingRequests.idempotencyKey} not like '%:difference'`,
+        // A credit's recut of the months released since its date corrects its cycle's releases,
+        // which its own void leaves standing (S06 rules 6, 8; owner, 2026-11-11).
+        sql`${postingRequests.idempotencyKey} not like '%:recut:%'`,
         sql`${journalEntries.hubDocument} ->> 'type' = ${document.type}`,
         sql`${journalEntries.hubDocument} ->> 'id' = ${document.id}`,
         isNull(journalEntries.reversesEntryId),
@@ -1039,6 +1044,20 @@ async function decide(
         }
         if (plan.movements !== undefined) {
           await writeMovements(savepoint, row.companyId, plan.movements, byKey);
+          // A credit's months released since its date are recut as of it (owner, 2026-11-11).
+          const credited = plan.movements.filter((movement) => movement.kind === 'credited');
+          if (event.type === 'invoice.issued' && credited.length > 0) {
+            posted.push(
+              ...(await recutSince(savepoint, row, {
+                scheduleIds: credited.map((movement) => movement.scheduleId),
+                asOf: row.accountingDate,
+                description: descriptionOf(event),
+                today: options.today,
+                actor: options.actor,
+                hub,
+              })),
+            );
+          }
         }
         // A void's reversals carry their entries' movements back, and a reversed credit gives
         // its schedules their liability part back (S06 rule 8).

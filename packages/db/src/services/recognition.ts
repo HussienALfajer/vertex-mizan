@@ -25,6 +25,7 @@ import {
   type PointInTimeSchedule,
   periodOf,
   type RecognitionAmount,
+  recutReleases,
   reissueKey,
   reissueParts,
   releaseParts,
@@ -533,6 +534,8 @@ export interface ScheduleState {
   readonly remaining: CarriedAmounts;
   /** Its line's transaction amount net of the credits it took (*N*, rule 6). */
   readonly netMinor: bigint;
+  /** Each released month's release with its adjustments, positive amounts. */
+  readonly released: ReadonlyMap<string, CarriedAmounts>;
   /** The service its releases take: the latest reclassification's, else its own. */
   readonly serviceValueId: string;
   readonly voided: boolean;
@@ -638,12 +641,28 @@ export async function overTimeStates(
       months = parts.months;
     }
     const releasing = months.filter((month) => !month.elapsed);
+    // Each released month's release with its adjustments (owner, 2026-11-11), positive amounts.
+    const releasedRows = new Map<string, CarriedAmounts[]>();
+    for (const movement of own) {
+      if (
+        (movement.kind === 'released' || movement.kind === 'adjusted') &&
+        movement.month !== null
+      ) {
+        const month = movement.month.slice(0, 7);
+        releasedRows.set(month, [
+          ...(releasedRows.get(month) ?? []),
+          amountsOf(movement, currency),
+        ]);
+      }
+    }
     const released = new Map(
-      own.flatMap((movement) =>
-        movement.kind === 'released' && movement.month !== null
-          ? [[movement.month.slice(0, 7), negate(amountsOf(movement, currency))] as const]
-          : [],
-      ),
+      [...releasedRows.entries()]
+        .filter(([month]) =>
+          own.some(
+            (movement) => movement.kind === 'released' && movement.month?.slice(0, 7) === month,
+          ),
+        )
+        .map(([month, rows]) => [month, negate(sumCarried(rows, currency, parallel))] as const),
     );
     const remaining = sumCarried(
       own.map((movement) => amountsOf(movement, currency)),
@@ -652,7 +671,9 @@ export async function overTimeStates(
     );
     const credited = own.some(
       (movement) =>
-        movement.kind === 'credited' || (movement.kind === 'released' && movement.month === null),
+        movement.kind === 'credited' ||
+        movement.kind === 'adjusted' ||
+        (movement.kind === 'released' && movement.month === null),
     );
     const voided = own.some((movement) => movement.kind === 'reversed');
     const parts = new Map<string, CarriedAmounts>();
@@ -682,6 +703,7 @@ export async function overTimeStates(
       months,
       parts,
       remaining,
+      released,
       netMinor: netOfCredits(
         hubMinor(line.amount),
         own.map((movement) => movement.creditMinor),
@@ -1082,6 +1104,145 @@ export async function reclassifyRecognised(
   return entries;
 }
 
+/**
+ * A schedule as of a date (S06 rules 6, 8; owner, 2026-11-11): what it held then, its movements but
+ * the releases and adjustments of months that ended on or after the date, which a change of that
+ * date would have cut; its months not released as of then, in order; and the releases posted since
+ * for those months.
+ */
+function asOf(
+  state: ScheduleState,
+  date: string,
+  parallel: boolean,
+): {
+  readonly remaining: CarriedAmounts;
+  readonly open: OverTimeMonth[];
+  readonly posted: Map<string, CarriedAmounts>;
+} {
+  const currency = state.schedule.currency as CurrencyCode;
+  const ended = (month: string) => lastDayOfMonth(`${month}-01`) < date;
+  const kept = state.movements.filter(
+    (movement) =>
+      !(
+        (movement.kind === 'released' || movement.kind === 'adjusted') &&
+        movement.month !== null &&
+        !ended(movement.month.slice(0, 7))
+      ),
+  );
+  const open = state.months.filter((month) => !month.elapsed && !ended(month.month));
+  return {
+    remaining: sumCarried(
+      kept.map((movement) => amountsOf(movement, currency)),
+      currency,
+      parallel,
+    ),
+    open,
+    posted: new Map(
+      open.flatMap((month) => {
+        const posted = state.released.get(month.month);
+        return posted === undefined ? [] : [[month.month, posted] as const];
+      }),
+    ),
+  };
+}
+
+/**
+ * The recut of schedules a credit or a credit's void changed, as of its date (S06 rules 6, 8;
+ * `revenue/retainer-credit.md`, owner 2026-11-11), after its own movements are written: each month
+ * released since that date is cut again from what the schedule held then (`recutReleases()`), and
+ * the difference posts as an adjustment at the carried amounts on the month's last day, or on the
+ * first day of the first open period when the month is closed: Dr `released_revenue` with the
+ * schedule's service / Cr its liability for what the release took too much, the other way for what
+ * it took too little; under `<event id>:recut:<schedule id>:<YYYY-MM>`, each with its `adjusted`
+ * movement. Answers the entries.
+ */
+export async function recutSince(
+  tx: Transaction,
+  row: EventRow,
+  input: {
+    readonly scheduleIds: readonly string[];
+    readonly asOf: string;
+    readonly description: string;
+    readonly today: string;
+    readonly actor: AuditActor;
+    readonly hub: HubSource;
+  },
+): Promise<string[]> {
+  const ids = [...new Set(input.scheduleIds)];
+  if (ids.length === 0) return [];
+  const ledgers = await companyLedgers(tx);
+  const parallel = ledgers.parallel !== null;
+  const schedules = await tx
+    .select()
+    .from(recognitionSchedules)
+    .where(
+      and(inArray(recognitionSchedules.id, ids), eq(recognitionSchedules.pattern, 'over_time')),
+    )
+    .orderBy(asc(recognitionSchedules.createdAt), asc(recognitionSchedules.id));
+  const closed = (
+    await tx.select({ period: periods.period }).from(periods).where(sql`${periods.state} <> 'open'`)
+  ).map((period) => period.period);
+  const posted: string[] = [];
+  for (const state of await overTimeStates(tx, schedules, ledgers)) {
+    if (state.voided) continue;
+    const at = asOf(state, input.asOf, parallel);
+    const recut = recutReleases(at.remaining, at.open, at.posted, ledgers);
+    if (recut.length === 0) continue;
+    const revenue = await releasedRevenueAccount(tx);
+    if ('refusal' in revenue) {
+      throw new DomainError('MAPPING_ACCOUNT_INVALID', 'The released revenue slot is not usable', {
+        detail: revenue.refusal,
+      });
+    }
+    const parties = partiesOf(state.schedule);
+    for (const { month, adjustment } of recut) {
+      const lastDay = lastDayOfMonth(`${month}-01`);
+      const entry = await post(tx, {
+        client: input.hub.clientId,
+        idempotencyKey: `${row.eventId}:recut:${state.schedule.id}:${month}`,
+        entryDate: closed.includes(month) ? firstOpenDayAfter(lastDay, closed) : lastDay,
+        description: input.description,
+        reference: row.documentNumber,
+        draftId: null,
+        preparedByUserId: null,
+        approvedByUserId: null,
+        actor: input.actor,
+        content: {
+          kind: 'carried',
+          source: 'hub_event',
+          lines: [
+            {
+              accountId: revenue.id,
+              dimensionValueIds: [...parties, state.serviceValueId],
+              amounts: adjustment,
+            },
+            {
+              accountId: state.schedule.liabilityAccountId,
+              dimensionValueIds: parties,
+              amounts: negate(adjustment),
+            },
+          ],
+          today: input.today,
+          hub: input.hub,
+        },
+      });
+      posted.push(entry.id);
+      if (entry.replayed) continue;
+      await tx.insert(recognitionMovements).values({
+        companyId: row.companyId,
+        scheduleId: state.schedule.id,
+        kind: 'adjusted',
+        month: `${month}-01`,
+        entryId: entry.id,
+        transactionMinor: adjustment.transaction.amountMinor,
+        bookMinor: adjustment.bookMinor,
+        parallelMinor: adjustment.parallelMinor,
+      });
+    }
+  }
+  return posted;
+}
+
 /** A schedule's client and, when named, contract values. */
 const partiesOf = (schedule: ScheduleRow) =>
   schedule.contractValueId === null
@@ -1146,7 +1307,8 @@ export async function cyclesOf(
           parties: partiesOf(state.schedule),
           serviceValueId: state.serviceValueId,
           netMinor: state.netMinor,
-          remaining: state.remaining,
+          // As of the credit's date: a month released since counts as not recognised yet.
+          remaining: asOf(state, event.accounting_date, ledgers.parallel !== null).remaining,
         }),
       ),
       voided: ofCycle.length > 0 && standing.length === 0,
@@ -1612,27 +1774,23 @@ export async function voidMovements(
     if (!schedule) throw new Error('A movement without its schedule');
     const [state] = await overTimeStates(tx, [schedule], ledgers);
     if (!state) throw new Error('A schedule without its state');
-    // The months released before and since the credit, by their entries' order.
-    const sequenceOf = async (entryId: string) => {
-      const [entry] = await tx
-        .select({ sequence: journalEntries.sequence })
-        .from(journalEntries)
-        .where(eq(journalEntries.id, entryId));
-      if (!entry) throw new Error('A movement without its entry');
-      return entry.sequence;
-    };
+    // As of the void's date (owner, 2026-11-11): the days not released when the credit posted, and
+    // the released months that ended between the credit and the void.
     if (credit.entryId === null) throw new Error('A credit without its entry');
-    const creditSequence = await sequenceOf(credit.entryId);
-    const releasedBefore = new Set<string>();
-    const releasedSince = new Set<string>();
-    for (const movement of state.movements) {
-      if (movement.kind !== 'released' || movement.month === null || movement.entryId === null) {
-        continue;
-      }
-      const month = movement.month.slice(0, 7);
-      if ((await sequenceOf(movement.entryId)) < creditSequence) releasedBefore.add(month);
-      else releasedSince.add(month);
-    }
+    const [creditEntry] = await tx
+      .select({ date: journalEntries.entryDate })
+      .from(journalEntries)
+      .where(eq(journalEntries.id, credit.entryId));
+    if (!creditEntry) throw new Error('A credit without its entry');
+    const lastDayOf = (month: string) => lastDayOfMonth(`${month}-01`);
+    const releasedBefore = new Set(
+      [...state.released.keys()].filter((month) => lastDayOf(month) < creditEntry.date),
+    );
+    const releasedSince = new Set(
+      [...state.released.keys()].filter(
+        (month) => lastDayOf(month) >= creditEntry.date && lastDayOf(month) < input.entryDate,
+      ),
+    );
     const releasing = state.months.filter((month) => !month.elapsed);
     const daysAtCredit = releasing
       .filter((month) => !releasedBefore.has(month.month))
@@ -1691,6 +1849,17 @@ export async function voidMovements(
       parallelMinor: released.parallelMinor,
     });
   }
+  // The months released since the void's date, recut as of it (owner, 2026-11-11).
+  posted.push(
+    ...(await recutSince(tx, row, {
+      scheduleIds: givenBack.map((item) => item.scheduleId),
+      asOf: input.entryDate,
+      description: input.description,
+      today: input.today,
+      actor: input.actor,
+      hub: input.hub,
+    })),
+  );
   return posted;
 }
 

@@ -99,6 +99,7 @@ export const REVENUE_MOVEMENT_KINDS = [
   'reversed',
   'remainder_released',
   'remainder_refunded',
+  'adjusted',
 ] as const;
 
 /** A movement with its entry: signed, positive adds to what is still to recognise. */

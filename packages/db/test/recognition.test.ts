@@ -1071,11 +1071,12 @@ describe('milestones and projects (S06 rules 11–17)', () => {
       ).map((row) => [row.kind, row.t]),
     );
 
-  it('posts what Hub’s order posts whatever the order its events of a client arrive in (a property)', async () => {
+  it('ends each month as Hub’s order on time does, whatever the order and the lateness of its events (a property)', async () => {
     // A retainer cycle, a credit to it and the credit's void; a deposit, its done and its reopen.
     // A credit before its cycle, a void before its invoice and a reopen before its done hold and
-    // are retried when what they wait for posts (S06 rules 17, 19), so any order of arrival posts
-    // the same entries. A done that arrives before its invoice is a done not invoiced (rule 11):
+    // are retried when what they wait for posts (S06 rules 17, 19), and a credit or a void posted
+    // after a month it would have cut recuts that month as of its date (owner, 2026-11-11), so any
+    // order of arrival, all of it late, ends each month with what Hub's order on time does. A done that arrives before its invoice is a done not invoiced (rule 11):
     // nothing in either event tells the books Hub's order, so the deposit's invoice arrives first.
     const bulletins: [string, string][] = [
       ['2026-11-03', '120.0000'],
@@ -1094,27 +1095,51 @@ describe('milestones and projects (S06 rules 11–17)', () => {
       voidOf(93, '2026-12-03'),
     ];
     const [invoiceAt, doneAt] = [0, 3];
-    const settled = async (order: readonly number[]) => {
-      const company = await newCompany(bulletins);
-      for (const index of order)
-        await receive(company, events[index] as EventEnvelope, '2026-12-05');
+    /** Each account's figures per month, in every ledger: what a report of each month reads. */
+    const months = async (company: string) => {
+      const sums = new Map<string, [bigint, bigint, bigint]>();
+      for (const entry of await ledger(company)) {
+        for (const [code, currency, amount, book, parallel] of entry.lines) {
+          const key = `${code}|${currency}|${entry.date.slice(0, 7)}`;
+          const [a, b, c] = sums.get(key) ?? [0n, 0n, 0n];
+          sums.set(key, [
+            a + (amount as bigint),
+            b + (book as bigint),
+            c + ((parallel as bigint | null) ?? 0n),
+          ]);
+        }
+      }
+      return [...sums.entries()]
+        .filter(([, [a, b, c]]) => a !== 0n || b !== 0n || c !== 0n)
+        .map(([key, [a, b, c]]) => `${key}|${a}|${b}|${c}`)
+        .sort();
+    };
+    const outcome = async (company: string) => {
       const states = await inCompany(company, (tx) =>
-        tx.select({ state: inboundEventStates.state }).from(inboundEventStates),
-      );
-      const entries = (await ledger(company)).map((entry) =>
-        JSON.stringify(
-          [entry.source, entry.date, entry.lines.map((line) => line.map(String)).sort()],
-          (_key, value) => (typeof value === 'bigint' ? value.toString() : value),
-        ),
+        tx
+          .select({
+            state: inboundEventStates.state,
+            reason: inboundEventStates.holdReason,
+            detail: inboundEventStates.holdDetail,
+          })
+          .from(inboundEventStates),
       );
       return {
-        states: states.map((row) => row.state).sort(),
-        entries: entries.sort(),
+        states: states.map((row) => [row.state, row.reason, row.detail].join(':')).sort(),
+        months: await months(company),
         problems: await proof(company),
       };
     };
-    const hubOrder = await settled(events.map((_, index) => index));
-    expect(hubOrder.states.every((state) => state === 'posted')).toBe(true);
+    // Hub's order, each event received on its own date and each month's job on the next month's
+    // first day.
+    const onTime = await newCompany(bulletins);
+    for (const event of events) {
+      if (event.accounting_date >= '2026-12-01') await runJob(onTime, '2026-11', '2026-12-01');
+      await receive(onTime, event, event.accounting_date);
+    }
+    await runJob(onTime, '2026-12', '2027-01-01');
+    const hubOrder = await outcome(onTime);
+    expect(hubOrder.states.every((state) => state === 'posted::')).toBe(true);
     expect(hubOrder.problems).toEqual([]);
     await fc.assert(
       fc.asyncProperty(
@@ -1122,7 +1147,14 @@ describe('milestones and projects (S06 rules 11–17)', () => {
           .shuffledSubarray([0, 1, 2, 3, 4, 5], { minLength: 6, maxLength: 6 })
           .filter((order) => order.indexOf(invoiceAt) < order.indexOf(doneAt)),
         async (order) => {
-          expect(await settled(order)).toEqual(hubOrder);
+          // Every event late, received after both months ended (owner, 2026-11-11).
+          const late = await newCompany(bulletins);
+          for (const index of order) {
+            await receive(late, events[index] as EventEnvelope, '2027-01-05');
+          }
+          await runJob(late, '2026-11', '2027-01-05');
+          await runJob(late, '2026-12', '2027-01-05');
+          expect(await outcome(late)).toEqual(hubOrder);
         },
       ),
       { numRuns: 12 },

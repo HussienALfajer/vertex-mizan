@@ -46,6 +46,8 @@ export const RECOGNITION_MOVEMENT_KINDS = [
   'reversed',
   'remainder_released',
   'remainder_refunded',
+  // A month released since a credit's or a credit's void's date, recut as of it (owner, 2026-11-11).
+  'adjusted',
 ] as const;
 
 const listed = (values: readonly string[]) =>
@@ -218,7 +220,7 @@ export const recognitionMovements = pgTable(
     check(
       'recognition_movements_month',
       sql`(${t.month} is null or extract(day from ${t.month}) = 1)
-        and (${t.kind} not in ('elapsed') or ${t.month} is not null)`,
+        and (${t.kind} not in ('elapsed', 'adjusted') or ${t.month} is not null)`,
     ),
     check(
       'recognition_movements_entry',

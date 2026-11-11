@@ -22,6 +22,7 @@ import {
   type OverTimeMonth,
   overTimeMonths,
   type ReissueParts,
+  recutReleases,
   reissuedMilestoneLine,
   reissueParts,
   releaseParts,
@@ -1670,5 +1671,96 @@ describe('netOfCredits and reversedMovement (S06 rules 6, 8)', () => {
       amounts: { transaction: money(4_200n, 'USD'), bookMinor: 508_200n, parallelMinor: null },
       creditMinor: null,
     });
+  });
+});
+
+describe('recutReleases (revenue/retainer-credit, owner 2026-11-11)', () => {
+  const cycle = monthsFrom('2026-11', 90_000n, '2026-11-15', '2026-12-14');
+
+  it('recuts November and December released before a credit of 19 Nov posted', () => {
+    // As of 19 Nov the cycle held 850.00 after the credit; both months were released from 900.00.
+    expect(
+      recutReleases(
+        usd(85_000n, 10_285_000n, 85_000n),
+        cycle,
+        new Map([
+          ['2026-11', usd(48_000n, 5_808_000n, 48_000n)],
+          ['2026-12', usd(42_000n, 5_082_000n, 42_000n)],
+        ]),
+        sypUsd,
+      ),
+    ).toEqual([
+      { month: '2026-11', adjustment: usd(2_667n, 322_667n, 2_667n) },
+      { month: '2026-12', adjustment: usd(2_333n, 282_333n, 2_333n) },
+    ]);
+  });
+
+  it('releases more of December after a credit’s void of 3 Dec posted, and nothing for a month right', () => {
+    const december = monthsFrom('2026-12', 90_000n, '2026-11-15', '2026-12-14');
+    expect(
+      recutReleases(
+        usd(42_000n, 5_082_000n, 42_000n),
+        december,
+        new Map([['2026-12', usd(39_667n, 4_799_667n, 39_667n)]]),
+        sypUsd,
+      ),
+    ).toEqual([{ month: '2026-12', adjustment: usd(-2_333n, -282_333n, -2_333n) }]);
+    expect(
+      recutReleases(
+        usd(42_000n, 5_082_000n, null),
+        december,
+        new Map([['2026-12', usd(42_000n, 5_082_000n, null)]]),
+        sypOnly,
+      ),
+    ).toEqual([]);
+  });
+
+  it('brings every month released to what was held, exactly in every ledger (a property)', () => {
+    fc.assert(
+      fc.property(
+        fc.integer({ min: 0, max: 10_000_000 }),
+        fc.integer({ min: 100, max: 150 }),
+        fc.array(fc.integer({ min: 0, max: 10_000_000 }), { minLength: 2, maxLength: 2 }),
+        (held, rate, releases) => {
+          const remaining = BigInt(held);
+          const at = usd(remaining, remaining * BigInt(rate), remaining);
+          const posted = new Map(
+            cycle.map((month, k) => {
+              const minor = BigInt(releases[k] ?? 0);
+              return [month.month, usd(minor, minor * 121n, minor)] as const;
+            }),
+          );
+          const recut = recutReleases(at, cycle, posted, sypUsd);
+          const net = (pick: (amounts: CarriedAmounts) => bigint) =>
+            cycle.reduce((sum, month) => {
+              const release = posted.get(month.month) as CarriedAmounts;
+              const adjustment = recut.find((item) => item.month === month.month)?.adjustment;
+              return sum + pick(release) - (adjustment === undefined ? 0n : pick(adjustment));
+            }, 0n);
+          expect(net((amounts) => amounts.transaction.amountMinor)).toBe(remaining);
+          expect(net((amounts) => amounts.bookMinor)).toBe(at.bookMinor);
+          expect(net((amounts) => amounts.parallelMinor ?? 0n)).toBe(remaining);
+          // A recut again from the books it leaves changes nothing.
+          const after = new Map(
+            cycle.map((month) => {
+              const release = posted.get(month.month) as CarriedAmounts;
+              const adjustment = recut.find((item) => item.month === month.month)?.adjustment;
+              return [
+                month.month,
+                adjustment === undefined
+                  ? release
+                  : usd(
+                      release.transaction.amountMinor - adjustment.transaction.amountMinor,
+                      release.bookMinor - adjustment.bookMinor,
+                      (release.parallelMinor ?? 0n) - (adjustment.parallelMinor ?? 0n),
+                    ),
+              ] as const;
+            }),
+          );
+          expect(recutReleases(at, cycle, after, sypUsd)).toEqual([]);
+        },
+      ),
+      { numRuns: 300 },
+    );
   });
 });

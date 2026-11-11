@@ -1,0 +1,5 @@
+ALTER TABLE "recognition_movements" DROP CONSTRAINT "recognition_movements_kind";--> statement-breakpoint
+ALTER TABLE "recognition_movements" DROP CONSTRAINT "recognition_movements_month";--> statement-breakpoint
+ALTER TABLE "recognition_movements" ADD CONSTRAINT "recognition_movements_kind" CHECK ("recognition_movements"."kind" in ('deferred', 'elapsed', 'released', 'credited', 'reclassified', 'reversed', 'remainder_released', 'remainder_refunded', 'adjusted'));--> statement-breakpoint
+ALTER TABLE "recognition_movements" ADD CONSTRAINT "recognition_movements_month" CHECK (("recognition_movements"."month" is null or extract(day from "recognition_movements"."month") = 1)
+        and ("recognition_movements"."kind" not in ('elapsed', 'adjusted') or "recognition_movements"."month" is not null));

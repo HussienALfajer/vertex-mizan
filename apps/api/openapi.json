@@ -18652,7 +18652,8 @@
               "reclassified",
               "reversed",
               "remainder_released",
-              "remainder_refunded"
+              "remainder_refunded",
+              "adjusted"
             ]
           },
           "month": {
