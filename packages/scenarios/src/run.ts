@@ -14,6 +14,7 @@ export const STEPS_ARRIVE_WITH = {
   resolve: 'inbox actions arrive with S05',
   dismiss: 'inbox actions arrive with S05',
   recognise: 'recognising in the first open period arrives with S06',
+  split: "splitting a cancelled project's remainder arrives with S06",
 } as const satisfies Record<StepKind, string>;
 
 /** A case that did not do what its scenario states: every difference, one per line. */
@@ -130,6 +131,10 @@ function executorFor(harness: ScenarioHarness, step: Step): Run | undefined {
       const execute = harness.executors.recognise;
       return execute && ((context) => execute(context, step));
     }
+    case 'split': {
+      const execute = harness.executors.split;
+      return execute && ((context) => execute(context, step));
+    }
   }
 }
 
@@ -158,6 +163,8 @@ function describeStep(step: Step): string {
       return `dismissal of step ${step.step}`;
     case 'recognise':
       return `recognition of step ${step.step} in the first open period`;
+    case 'split':
+      return `split of step ${step.step}'s remainder with ${step.revenueMinor} to revenue`;
   }
 }
 

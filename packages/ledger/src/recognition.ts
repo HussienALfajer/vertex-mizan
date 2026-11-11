@@ -1,4 +1,4 @@
-import { type CompanyLedgers, type Money, money } from '@vertex-mizan/contracts';
+import { type CompanyLedgers, DomainError, type Money, money } from '@vertex-mizan/contracts';
 import { allocate, allocateCarried } from './allocation.js';
 import { clearOpenItem } from './carried.js';
 import { type CarriedAmounts, keptLedgers, ledgerAmount, negate } from './lines.js';
@@ -480,6 +480,172 @@ export function milestoneItemReference(number: string, earlierItems: number): st
  * zero in every ledger (ADR 0007), or it is a programming error.
  */
 export function completedProjectReleases(remaining: readonly CarriedAmounts[]): CarriedAmounts[] {
+  return standingRemainders(remaining);
+}
+
+/**
+ * What `project.cancelled` does (S06 rule 15; `revenue/cancelled-project.md`, owner, 2026-11-10):
+ * with nothing left in the project's point-in-time schedules it is recorded with no entry, and
+ * contract assets stay for their invoices; otherwise it is held `NEEDS_DECISION`
+ * (`cancelled_project_remainder`) for the accountant's split, with the schedules that still defer
+ * something, in the order given (the order they were created).
+ */
+export function cancelledProjectRemainder(remaining: readonly CarriedAmounts[]):
+  | { readonly kind: 'record' }
+  | {
+      readonly kind: 'decision';
+      readonly detail: 'cancelled_project_remainder';
+      readonly remaining: CarriedAmounts[];
+    } {
+  const standing = standingRemainders(remaining);
+  if (standing.length === 0) return { kind: 'record' };
+  return { kind: 'decision', detail: 'cancelled_project_remainder', remaining: standing };
+}
+
+/** One schedule's part of a cancelled project's split, positive amounts that sum to its remaining. */
+export interface CancelledSchedulePart {
+  /** Its part to revenue at its carried share (a `remainder_released` movement); null for none. */
+  readonly revenue: CarriedAmounts | null;
+  /** Its part leaving the liability toward the refund (`remainder_refunded`); null for none. */
+  readonly refunded: CarriedAmounts | null;
+}
+
+/** The accountant's split of a cancelled project's remainder (S06 rules 15–16). */
+export interface CancelledProjectSplit {
+  /** Per schedule, in the order given: the liability is debited at its whole remaining. */
+  readonly parts: CancelledSchedulePart[];
+  /**
+   * The refund payable in the project's currency, which the posting rule measures anew at each
+   * ledger's policy rate of the cancellation's date (a monetary liability, IAS 21.23(a)), as one
+   * line; null when all of it goes to revenue. Each ledger's residual is then a realised
+   * difference (ADR 0013).
+   */
+  readonly refund: Money | null;
+}
+
+/**
+ * Splits a cancelled project's remainder (S06 rule 15; owner, 2026-11-10): `revenueMinor`, from
+ * zero to the whole remainder in the project's currency, goes to revenue, cut across the schedules
+ * in the order given by their remaining transaction amounts with cumulative rounding (ADR 0007
+ * "Allocation"); on each, its revenue part takes its carried share of what remains in every ledger
+ * (`clearOpenItem()`, so the whole of it when the part is all of it; IAS 21.23(b)), and the rest of
+ * its remaining leaves toward the refund. The refund is the rest of the remainder, one amount for
+ * the caller to measure anew. An amount outside zero to the remainder is the accountant's mistake:
+ * `VALIDATION_FAILED`. Schedules in other than one currency (Hub's project has one, Hub F05 M2) or
+ * none left are programming errors.
+ */
+export function cancelledProjectSplit(
+  revenueMinor: bigint,
+  remaining: readonly CarriedAmounts[],
+): CancelledProjectSplit {
+  const standing = standingRemainders(remaining);
+  if (standing.length !== remaining.length || standing.length === 0) {
+    throw new RangeError('A split with a schedule that defers nothing, or with none');
+  }
+  const currencies = new Set(standing.map((amounts) => amounts.transaction.currency));
+  if (currencies.size !== 1) throw new TypeError("A project's remainder in more than one currency");
+  const weights = standing.map((amounts) => amounts.transaction.amountMinor);
+  const totalMinor = weights.reduce((total, weight) => total + weight, 0n);
+  if (revenueMinor < 0n || revenueMinor > totalMinor) {
+    throw new DomainError(
+      'VALIDATION_FAILED',
+      'The revenue part is outside zero to the remainder',
+      {
+        revenueMinor: revenueMinor.toString(),
+        remainingMinor: totalMinor.toString(),
+      },
+    );
+  }
+  const shares = allocate(revenueMinor, weights);
+  const parts = standing.map((amounts, k): CancelledSchedulePart => {
+    const part = shares[k] ?? 0n;
+    const open = amounts.transaction.amountMinor;
+    if (part === 0n) return { revenue: null, refunded: amounts };
+    if (part === open) return { revenue: amounts, refunded: null };
+    const revenue = negate(clearOpenItem(amounts, -part));
+    return {
+      revenue,
+      refunded: {
+        transaction: money(open - part, amounts.transaction.currency),
+        bookMinor: amounts.bookMinor - revenue.bookMinor,
+        parallelMinor:
+          amounts.parallelMinor === null
+            ? null
+            : amounts.parallelMinor - (revenue.parallelMinor ?? 0n),
+      },
+    };
+  });
+  const refundMinor = totalMinor - revenueMinor;
+  const { currency } = (standing[0] as CarriedAmounts).transaction;
+  return { parts, refund: refundMinor === 0n ? null : money(refundMinor, currency) };
+}
+
+/**
+ * What a deposit or milestone line posts at issue, its milestone neither re-issued nor done before
+ * on a voided invoice (S06 rules 1, 12 and 15; owner, 2026-11-10): it clears the milestone's
+ * contract asset while a done stands (rule 12); otherwise, its project cancelled, its invoice is
+ * held `NEEDS_DECISION` (`invoiced_after_cancellation`) for the accountant's split
+ * (`invoicedAfterCancellationSplit()`), since nothing is left to deliver and a deferral would never
+ * be released (IFRS 15.15, 15.B21); and otherwise it is deferred to its done, after the project's
+ * completion too: Hub completes a project only with every milestone done (Hub F05 rules 6–7), so
+ * such a line comes from a project reopened in Hub, whose milestone is still to be delivered
+ * (IFRS 15.38; owner, 2026-11-11).
+ */
+export function milestoneLineAtIssue(
+  doneStanding: boolean,
+  projectCancelled: boolean,
+):
+  | 'clear_item'
+  | 'defer'
+  | { readonly kind: 'decision'; readonly detail: 'invoiced_after_cancellation' } {
+  if (doneStanding) return 'clear_item';
+  if (projectCancelled) return { kind: 'decision', detail: 'invoiced_after_cancellation' };
+  return 'defer';
+}
+
+/**
+ * Splits the deposit and milestone lines of an invoice issued after its project's cancellation
+ * (held `invoiced_after_cancellation`; owner, 2026-11-10): `revenueMinor`, from zero to the lines'
+ * total in the invoice's currency, goes to revenue, cut across the lines in their order by their
+ * amounts with cumulative rounding (ADR 0007 "Allocation"); the rest is the refund payable. Every
+ * part is a transaction amount the posting rule measures anew at the invoice's rates with its
+ * receivable, so no residual but rounding arises. Outside zero to the total: `VALIDATION_FAILED`.
+ */
+export function invoicedAfterCancellationSplit(
+  revenueMinor: bigint,
+  lines: readonly Money[],
+): { readonly revenueMinor: bigint[]; readonly refund: Money | null } {
+  const [first] = lines;
+  if (first === undefined) throw new RangeError('A split with no line');
+  if (lines.some((line) => line.currency !== first.currency)) {
+    throw new TypeError("An invoice's lines in more than one currency");
+  }
+  if (lines.some((line) => line.amountMinor <= 0n)) throw new RangeError('A line of zero or less');
+  const weights = lines.map((line) => line.amountMinor);
+  const totalMinor = weights.reduce((total, weight) => total + weight, 0n);
+  if (revenueMinor < 0n || revenueMinor > totalMinor) {
+    throw new DomainError(
+      'VALIDATION_FAILED',
+      "The revenue part is outside zero to the lines' total",
+      {
+        revenueMinor: revenueMinor.toString(),
+        remainingMinor: totalMinor.toString(),
+      },
+    );
+  }
+  const refundMinor = totalMinor - revenueMinor;
+  return {
+    revenueMinor: allocate(revenueMinor, weights),
+    refund: refundMinor === 0n ? null : money(refundMinor, first.currency),
+  };
+}
+
+/**
+ * The remainders of a project's point-in-time schedules that still defer something (positive
+ * amounts). A remaining of zero in its transaction amount is zero in every ledger (ADR 0007), or
+ * it is a programming error.
+ */
+function standingRemainders(remaining: readonly CarriedAmounts[]): CarriedAmounts[] {
   return remaining.filter((amounts) => {
     if (amounts.transaction.amountMinor < 0n) throw new RangeError('A remaining below zero');
     if (amounts.transaction.amountMinor !== 0n) return true;

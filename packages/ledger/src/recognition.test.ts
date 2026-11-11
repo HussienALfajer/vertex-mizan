@@ -8,11 +8,15 @@ import { measuredLine } from './measure.js';
 import { daysBetween } from './periods.js';
 import {
   type CreditedSchedule,
+  cancelledProjectRemainder,
+  cancelledProjectSplit,
   completedProjectReleases,
   creditParts,
+  invoicedAfterCancellationSplit,
   milestoneDone,
   milestoneItemClearing,
   milestoneItemReference,
+  milestoneLineAtIssue,
   milestoneReopen,
   type OverTimeMonth,
   overTimeMonths,
@@ -23,7 +27,7 @@ import {
   remainingReleaseParts,
   voidedCreditParts,
 } from './recognition.js';
-import { calendar, hubRate, rate, sypOnly, sypUsd, usdSyp } from './test-fixtures.js';
+import { calendar, hubRate, rate, refusal, sypOnly, sypUsd, usdSyp } from './test-fixtures.js';
 
 /**
  * The day split of revenue recognised over time (S06 rules 3–5 and 7), with the numbers of
@@ -31,7 +35,9 @@ import { calendar, hubRate, rate, sypOnly, sypUsd, usdSyp } from './test-fixture
  * credit's split (S06 rules 6 and 8), with the numbers of `docs/scenarios/revenue/retainer-credit.md`
  * (owner, 2026-11-10); a milestone's done, its invoice and the project's completion (S06 rules 11–14),
  * with the numbers of `docs/scenarios/revenue/milestones.md` (owner, 2026-11-10); the void's re-issue (S06 rule 9) and a reopen after a void, with the numbers
- * of `docs/scenarios/revenue/void-and-reissue.md` (owner, 2026-11-10); and their properties.
+ * of `docs/scenarios/revenue/void-and-reissue.md` (owner, 2026-11-10); a cancelled project's
+ * remainder split (S06 rule 15), with the numbers of `docs/scenarios/revenue/cancelled-project.md`
+ * (owner, 2026-11-10); and their properties.
  */
 
 const usd = (amount: bigint, book: bigint, parallel: bigint | null): CarriedAmounts => ({
@@ -1321,3 +1327,322 @@ function addDays(date: string, days: number): string {
   const [year, month, day] = date.split('-').map(Number) as [number, number, number];
   return new Date(Date.UTC(year, month - 1, day + days)).toISOString().slice(0, 10);
 }
+
+/**
+ * The entry of a cancelled project's split as S06 rule 15 posts it: Dr each schedule's liability
+ * at its remaining, Cr revenue at each carried share, Cr the refund payable measured anew on the
+ * cancellation's date, and each ledger's residual as a realised difference.
+ */
+function cancellationEntry(
+  ledgers: CompanyLedgers,
+  on: ReturnType<typeof measuredOn>,
+  remaining: readonly CarriedAmounts[],
+  revenueMinor: bigint,
+): Line[] {
+  const split = cancelledProjectSplit(revenueMinor, remaining);
+  const lines: Line[] = remaining.map((amounts) => carried('212001', amounts));
+  for (const part of split.parts) {
+    if (part.revenue) lines.push(carried('411001', negate(part.revenue)));
+  }
+  if (split.refund) {
+    const { amountMinor, currency } = split.refund;
+    lines.push(measuredLine({ account: '211003', amount: money(-amountMinor, currency) }, on));
+  }
+  return balanceEntry({
+    ...on,
+    lines: [...lines, ...realisedDifferenceLines(ledgers, lines, realised)],
+    rounding: { account: '541003' },
+  });
+}
+
+/** Each line as account, book and parallel, in order, for the scenario's numbers. */
+const amountsOf = (entry: readonly Line[]) =>
+  entry.map((line) => [line.account, line.bookMinor, line.parallelMinor]);
+
+describe('cancelledProjectRemainder', () => {
+  it('records a cancellation with nothing deferred and holds one with a remainder for the split', () => {
+    const left = usd(30_000n, 3_600_000n, 30_000n);
+    expect(cancelledProjectRemainder([])).toEqual({ kind: 'record' });
+    expect(cancelledProjectRemainder([usd(0n, 0n, 0n)])).toEqual({ kind: 'record' });
+    expect(cancelledProjectRemainder([usd(0n, 0n, 0n), left])).toEqual({
+      kind: 'decision',
+      detail: 'cancelled_project_remainder',
+      remaining: [left],
+    });
+    expect(() => cancelledProjectRemainder([usd(0n, 1n, 0n)])).toThrow(RangeError);
+  });
+});
+
+describe('cancelledProjectSplit', () => {
+  const on = (ledgers: CompanyLedgers, bulletin: string, market = bulletin) =>
+    measuredOn(ledgers, '2026-12-10', bulletin, market);
+
+  it('splits a deposit 1:2 at its carried share and measures the refund at 124: the first case', () => {
+    const remaining = usd(30_000n, 3_600_000n, 30_000n);
+    expect(cancelledProjectSplit(10_000n, [remaining])).toEqual({
+      parts: [
+        {
+          revenue: usd(10_000n, 1_200_000n, 10_000n),
+          refunded: usd(20_000n, 2_400_000n, 20_000n),
+        },
+      ],
+      refund: money(20_000n, 'USD'),
+    });
+    expect(
+      amountsOf(cancellationEntry(sypUsd, on(sypUsd, '124.0000'), [remaining], 10_000n)),
+    ).toEqual([
+      ['212001', 3_600_000n, 30_000n],
+      ['411001', -1_200_000n, -10_000n],
+      ['211003', -2_480_000n, -20_000n],
+      ['541001', 80_000n, 0n],
+    ]);
+    // SYP books only: the same book amounts, no parallel.
+    const books = usd(30_000n, 3_600_000n, null);
+    expect(
+      amountsOf(cancellationEntry(sypOnly, on(sypOnly, '124.0000'), [books], 10_000n)),
+    ).toEqual([
+      ['212001', 3_600_000n, null],
+      ['411001', -1_200_000n, null],
+      ['211003', -2_480_000n, null],
+      ['541001', 80_000n, null],
+    ]);
+  });
+
+  it('cuts the revenue across two schedules with cumulative rounding and its carried share half away from zero', () => {
+    const first = usd(7_000n, 840_000n, 7_000n);
+    const second = usd(23_000n, 2_817_500n, 23_000n);
+    const split = cancelledProjectSplit(10_000n, [first, second]);
+    // round(10,000 × 7,000 ÷ 30,000) = 2,333; 10,000 − 2,333 = 7,667; 2,817,500 × 7,667 ÷ 23,000 = 939,207.5
+    expect(split.parts.map((part) => part.revenue)).toEqual([
+      usd(2_333n, 279_960n, 2_333n),
+      usd(7_667n, 939_208n, 7_667n),
+    ]);
+    expect(split.refund).toEqual(money(20_000n, 'USD'));
+    expect(
+      amountsOf(cancellationEntry(sypUsd, on(sypUsd, '124.0000'), [first, second], 10_000n)),
+    ).toEqual([
+      ['212001', 840_000n, 7_000n],
+      ['212001', 2_817_500n, 23_000n],
+      ['411001', -279_960n, -2_333n],
+      ['411001', -939_208n, -7_667n],
+      ['211003', -2_480_000n, -20_000n],
+      ['541001', 41_668n, 0n],
+    ]);
+  });
+
+  it('puts all to revenue with no refund and no residual, and refunds an SYP deposit whole at the market rate', () => {
+    const deposit = usd(30_000n, 3_600_000n, 30_000n);
+    const milestone = usd(50_000n, 6_100_000n, 50_000n);
+    const all = cancelledProjectSplit(80_000n, [deposit, milestone]);
+    expect(all).toEqual({
+      parts: [
+        { revenue: deposit, refunded: null },
+        { revenue: milestone, refunded: null },
+      ],
+      refund: null,
+    });
+    expect(
+      cancellationEntry(sypUsd, on(sypUsd, '124.0000'), [deposit, milestone], 80_000n),
+    ).toHaveLength(4);
+
+    const sypDeposit = syp(3_600_000n, 3_600_000n, 30_000n);
+    expect(cancelledProjectSplit(0n, [sypDeposit])).toEqual({
+      parts: [{ revenue: null, refunded: sypDeposit }],
+      refund: money(3_600_000n, 'SYP'),
+    });
+    expect(
+      amountsOf(cancellationEntry(sypUsd, on(sypUsd, '124.0000', '125.0000'), [sypDeposit], 0n)),
+    ).toEqual([
+      ['212001', 3_600_000n, 30_000n],
+      ['211003', -3_600_000n, -28_800n],
+      ['421001', 0n, -1_200n],
+    ]);
+  });
+
+  it('splits an SYP deposit in USD books: the refund at the bulletin of 120 and a 6.67 USD loss', () => {
+    const deposit = syp(3_720_000n, 30_000n, 3_720_000n);
+    expect(
+      amountsOf(cancellationEntry(usdSyp, on(usdSyp, '120.0000'), [deposit], 1_240_000n)),
+    ).toEqual([
+      ['212001', 30_000n, 3_720_000n],
+      ['411001', -10_000n, -1_240_000n],
+      ['211003', -20_667n, -2_480_000n],
+      ['541001', 667n, 0n],
+    ]);
+  });
+
+  it('refuses a revenue part outside zero to the remainder, and a remainder it cannot split', () => {
+    const deposit = usd(30_000n, 3_600_000n, 30_000n);
+    expect(refusal(() => cancelledProjectSplit(30_001n, [deposit]))).toBe('VALIDATION_FAILED');
+    expect(refusal(() => cancelledProjectSplit(-1n, [deposit]))).toBe('VALIDATION_FAILED');
+    expect(refusal(() => cancelledProjectSplit(30_000n, [deposit]))).toBe('none');
+    expect(() => cancelledProjectSplit(0n, [])).toThrow(RangeError);
+    expect(() => cancelledProjectSplit(0n, [deposit, usd(0n, 0n, 0n)])).toThrow(RangeError);
+    expect(() => cancelledProjectSplit(0n, [deposit, syp(100n, 100n, 1n)])).toThrow(TypeError);
+  });
+});
+
+/** A cancelled project: one to four schedules deferred in one currency, a split and the rates of `on`. */
+const cancellationArb = fc
+  .record({
+    currency: fc.constantFrom<CurrencyCode>('USD', 'SYP'),
+    shape: fc.constantFrom(...shapes),
+    schedules: fc.array(
+      fc.record({
+        amountMinor: fc.bigInt({ min: 1n, max: 10n ** 12n }),
+        bulletin: fc.integer({ min: 1, max: 30_000 }),
+        market: fc.integer({ min: 1, max: 30_000 }),
+      }),
+      { minLength: 1, maxLength: 4 },
+    ),
+    revenueShare: fc.bigInt({ min: 0n, max: 1_000n }),
+    onBulletin: fc.integer({ min: 1, max: 30_000 }),
+    onMarket: fc.integer({ min: 1, max: 30_000 }),
+  })
+  .map((input) => {
+    const ledgers = input.shape[0];
+    const remaining = input.schedules.map(({ amountMinor, bulletin, market }) =>
+      negate(
+        measuredLine(
+          { account: '212001', amount: money(-amountMinor, input.currency) },
+          measuredOn(ledgers, '2026-11-03', `${bulletin}.0000`, `${market}.0000`),
+        ),
+      ),
+    );
+    const totalMinor = sum(input.schedules.map((schedule) => schedule.amountMinor));
+    return {
+      ledgers,
+      remaining,
+      totalMinor,
+      // From none to all of it, both ends included.
+      revenueMinor: (totalMinor * input.revenueShare) / 1_000n,
+      on: measuredOn(ledgers, '2026-12-10', `${input.onBulletin}.0000`, `${input.onMarket}.0000`),
+    };
+  });
+
+describe("a cancelled project's split", () => {
+  it('gives each schedule parts that sum to its remaining in every ledger, the revenue exactly and the rest to the refund', () => {
+    fc.assert(
+      fc.property(cancellationArb, ({ remaining, totalMinor, revenueMinor }) => {
+        const split = cancelledProjectSplit(revenueMinor, remaining);
+        const none = (amounts: CarriedAmounts) => ({
+          transaction: money(0n, amounts.transaction.currency),
+          bookMinor: 0n,
+          parallelMinor: amounts.parallelMinor === null ? null : 0n,
+        });
+        split.parts.forEach((part, k) => {
+          const left = remaining[k] as CarriedAmounts;
+          const revenue = part.revenue ?? none(left);
+          const refunded = part.refunded ?? none(left);
+          expect(revenue.transaction.amountMinor + refunded.transaction.amountMinor).toBe(
+            left.transaction.amountMinor,
+          );
+          expect(revenue.bookMinor + refunded.bookMinor).toBe(left.bookMinor);
+          expect((revenue.parallelMinor ?? 0n) + (refunded.parallelMinor ?? 0n)).toBe(
+            left.parallelMinor ?? 0n,
+          );
+          // A part of zero in the transaction amount is no part in any ledger.
+          if (part.revenue) expect(part.revenue.transaction.amountMinor).toBeGreaterThan(0n);
+          if (part.refunded) expect(part.refunded.transaction.amountMinor).toBeGreaterThan(0n);
+        });
+        expect(sum(split.parts.map((part) => part.revenue?.transaction.amountMinor ?? 0n))).toBe(
+          revenueMinor,
+        );
+        expect(split.refund?.amountMinor ?? 0n).toBe(totalMinor - revenueMinor);
+      }),
+      { numRuns: 1_000 },
+    );
+  });
+
+  it('posts an entry balanced in every shape with its realised residual, netting to zero with its reversal, the same on a replay', () => {
+    fc.assert(
+      fc.property(cancellationArb, ({ ledgers, remaining, revenueMinor, on }) => {
+        const entry = cancellationEntry(ledgers, on, remaining, revenueMinor);
+        expect(sum(entry.map((line) => line.bookMinor))).toBe(0n);
+        expect(sum(entry.map((line) => line.parallelMinor ?? 0n))).toBe(0n);
+        // The liability is cleared whole, in every ledger.
+        const liability = entry.filter((line) => line.account === '212001');
+        expect(sum(liability.map((line) => line.bookMinor))).toBe(
+          sum(remaining.map((amounts) => amounts.bookMinor)),
+        );
+        // No refund: every line is carried, so no residual in any ledger.
+        if (revenueMinor === sum(remaining.map((a) => a.transaction.amountMinor))) {
+          expect(entry.every((line) => line.account !== '211003')).toBe(true);
+          expect(entry).toHaveLength(remaining.length * 2);
+        }
+        const both = [...entry, ...reverseLines(entry)];
+        expect(sum(both.map((line) => line.bookMinor))).toBe(0n);
+        expect(sum(both.map((line) => line.parallelMinor ?? 0n))).toBe(0n);
+        expect(cancellationEntry(ledgers, on, remaining, revenueMinor)).toEqual(entry);
+      }),
+      { numRuns: 500 },
+    );
+  });
+});
+
+describe('milestoneLineAtIssue', () => {
+  it('clears a standing done, holds a line invoiced after the cancellation, and defers otherwise, after the completion too', () => {
+    expect(milestoneLineAtIssue(true, false)).toBe('clear_item');
+    expect(milestoneLineAtIssue(true, true)).toBe('clear_item');
+    expect(milestoneLineAtIssue(false, true)).toEqual({
+      kind: 'decision',
+      detail: 'invoiced_after_cancellation',
+    });
+    // A line invoiced after the completion (a project reopened in Hub) waits for its done.
+    expect(milestoneLineAtIssue(false, false)).toBe('defer');
+  });
+});
+
+describe('invoicedAfterCancellationSplit', () => {
+  it("splits a deposit invoiced after its project's cancellation 1:2: the case's numbers", () => {
+    expect(invoicedAfterCancellationSplit(10_000n, [money(30_000n, 'USD')])).toEqual({
+      revenueMinor: [10_000n],
+      refund: money(20_000n, 'USD'),
+    });
+    const on = measuredOn(sypUsd, '2026-12-15', '125.0000');
+    const entry = balanceEntry({
+      ...on,
+      lines: [
+        measuredLine({ account: '112001', amount: money(30_000n, 'USD') }, on),
+        measuredLine({ account: '411001', amount: money(-10_000n, 'USD') }, on),
+        measuredLine({ account: '211003', amount: money(-20_000n, 'USD') }, on),
+      ],
+      rounding: { account: '541003' },
+    });
+    expect(amountsOf(entry)).toEqual([
+      ['112001', 3_750_000n, 30_000n],
+      ['411001', -1_250_000n, -10_000n],
+      ['211003', -2_500_000n, -20_000n],
+    ]);
+  });
+
+  it('cuts the revenue across the lines exactly, refuses a part outside zero to the total, and is the same on a replay', () => {
+    fc.assert(
+      fc.property(
+        fc.array(fc.bigInt({ min: 1n, max: 10n ** 12n }), { minLength: 1, maxLength: 4 }),
+        fc.constantFrom<CurrencyCode>('USD', 'SYP'),
+        fc.bigInt({ min: 0n, max: 1_000n }),
+        (amounts, currency, share) => {
+          const lines = amounts.map((amount) => money(amount, currency));
+          const totalMinor = sum(amounts);
+          const revenueMinor = (totalMinor * share) / 1_000n;
+          const split = invoicedAfterCancellationSplit(revenueMinor, lines);
+          expect(sum(split.revenueMinor)).toBe(revenueMinor);
+          split.revenueMinor.forEach((part, k) => {
+            expect(part).toBeGreaterThanOrEqual(0n);
+            expect(part).toBeLessThanOrEqual(amounts[k] as bigint);
+          });
+          expect(split.refund?.amountMinor ?? 0n).toBe(totalMinor - revenueMinor);
+          expect(invoicedAfterCancellationSplit(revenueMinor, lines)).toEqual(split);
+          expect(refusal(() => invoicedAfterCancellationSplit(totalMinor + 1n, lines))).toBe(
+            'VALIDATION_FAILED',
+          );
+          expect(refusal(() => invoicedAfterCancellationSplit(-1n, lines))).toBe(
+            'VALIDATION_FAILED',
+          );
+        },
+      ),
+      { numRuns: 500 },
+    );
+  });
+});

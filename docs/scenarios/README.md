@@ -90,6 +90,10 @@ steps:                              # in order; a Hub event, a manual entry, a r
   - recognise: 1                    # recognise a SERVICE_PERIOD_CLOSED event's closed elapsed
     reason: "..."                   #   months in the first open period after them, each at its
                                     #   own month end's rates (S06 rule 16)
+  - split: { step: 2, revenue: 10000 } # split a cancelled project's remainder held NEEDS_DECISION
+    reason: "..."                   #   (cancelled_project_remainder, invoiced_after_cancellation):
+                                    #   revenue, the transaction amount to revenue in the project's
+                                    #   currency; the rest to the refund payable (S06 rules 15–16)
 expect:
   entries:                          # the exact set posted, in posting order; every line of every entry
     - source: <event type | job | manual>
@@ -117,7 +121,7 @@ Writing the YAML:
 - `parallel` is stated on every line, balance and open item exactly when the company keeps a parallel ledger. In a ledger's own currency, that ledger's amount is the transaction amount (ADR 0007): a SYP line in SYP books has `book` equal to `amount`.
 - Each expected entry balances in both ledgers, and has at least two lines; a `third` case names a line or a rate in a third currency.
 - **Hub events** (S05): the payload's short form names each dimension by its code and each document by its number; the runner makes it into the full payload Hub sends (`packages/contracts` `eventEnvelopeSchema`): each document and value gets a stable synthetic Hub id, a value keeps the case's code (so the event makes the value, S05 rule 23, and the setup leaves it out), an invoice line's `kind` is its `charge_kind`, and a `payment.voided` finds its receipt and invoice from the payment's `payment.recorded` step. After each event, rate and inbox step the runner runs the retries the step frees, as the worker does after its commit (S05 rule 10), with the case's clock at its latest date.
-- An action (`retry`, `move`, `resolve`, `dismiss`, `recognise`) names an earlier `event` step, and `resolve` an expected entry. It may state its `outcome` like any step: a retry that leaves the event held, or an action the inbox refuses (`EVENT_NOT_HELD`, `EVENT_ACTION_NOT_ALLOWED`, `ENTRY_ALREADY_LINKED`). The events an action frees are retried as S05 rule 10 says, and their entries are expected where they post.
+- An action (`retry`, `move`, `resolve`, `dismiss`, `recognise`, `split`) names an earlier `event` step, and `resolve` an expected entry. It may state its `outcome` like any step: a retry that leaves the event held, or an action the inbox refuses (`EVENT_NOT_HELD`, `EVENT_ACTION_NOT_ALLOWED`, `ENTRY_ALREADY_LINKED`, and `VALIDATION_FAILED` for a split outside zero to the remainder). The events an action frees are retried as S05 rule 10 says, and their entries are expected where they post.
 - An unknown or misspelt key is an error.
 
 ## The runner's contract

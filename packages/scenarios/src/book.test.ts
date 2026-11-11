@@ -47,6 +47,36 @@ expect:
         - { account: "4110", dims: { client: C1, service: S1 }, currency: SYP, amount: -24000, book: -24000 }
 `;
 
+/** A cancelled project's remainder split by the accountant (S06 rules 15–16). */
+const SPLIT = `
+case: a cancelled project's remainder split
+company: { shape: syp, book: SYP, rate_policy: { book: bulletin } }
+steps:
+  - event: invoice.issued
+    accounting_date: 2026-11-03
+    payload: { invoice: INV-1, client: C1, contract: { code: P1, kind: project, client: C1 },
+               currency: SYP, lines: [{ amount: 30000, source: deposit, milestone: MS-1, service: S1 }] }
+  - event: project.cancelled
+    accounting_date: 2026-12-10
+    payload: { project: { code: P1, kind: project, client: C1 }, client: C1, on: 2026-12-10 }
+    outcome: { status: held, reason: NEEDS_DECISION, detail: cancelled_project_remainder }
+  - split: { step: 2, revenue: 10000 }
+    reason: "ثلث الدفعة مستحق"
+expect:
+  entries:
+    - source: invoice.issued
+      date: 2026-11-03
+      lines:
+        - { account: "1120", dims: { client: C1 }, currency: SYP, amount: 30000, book: 30000 }
+        - { account: "2120", dims: { client: C1 }, currency: SYP, amount: -30000, book: -30000 }
+    - source: project.cancelled
+      date: 2026-12-10
+      lines:
+        - { account: "2120", dims: { client: C1 }, currency: SYP, amount: 30000, book: 30000 }
+        - { account: "4110", dims: { client: C1, service: S1 }, currency: SYP, amount: -10000, book: -10000 }
+        - { account: "2110", dims: { client: C1 }, currency: SYP, amount: -20000, book: -20000 }
+`;
+
 function refusal(source: string): string {
   return problems(file('Status: Proposed', source)).join('\n');
 }
@@ -228,7 +258,7 @@ describe('a case', () => {
     [
       'a step of no kind',
       CASE.replace('  - event: invoice.issued', '  - what: invoice.issued'),
-      'event, manual, reversal, job, rate, retry, move, resolve, dismiss or recognise',
+      'event, manual, reversal, job, rate, retry, move, resolve, dismiss, recognise or split',
     ],
     [
       'a step of two kinds',
@@ -452,6 +482,27 @@ describe('a case', () => {
     expect(
       refusal(RECOGNISE.replace('    reason: "أُغلق تشرين الأول قبل وصول الفاتورة"\n', '')),
     ).toContain('reason');
+  });
+
+  it("reads the split of a cancelled project's remainder (S06 rules 15–16)", () => {
+    const { steps } = parseCase(SPLIT);
+    expect(steps[2]).toEqual({
+      kind: 'split',
+      step: 2,
+      revenueMinor: 10000n,
+      reason: 'ثلث الدفعة مستحق',
+      outcome: null,
+    });
+    expect(refusal(SPLIT.replace('split: { step: 2,', 'split: { step: 3,'))).toContain(
+      'Step 3 is not an earlier event step',
+    );
+    expect(refusal(SPLIT.replace('    reason: "ثلث الدفعة مستحق"\n', ''))).toContain('reason');
+    expect(refusal(SPLIT.replace('revenue: 10000 }', 'revenue: 100.5 }'))).toContain(
+      'whole minor units',
+    );
+    expect(refusal(SPLIT.replace('revenue: 10000 }', 'revenue: 10000, kind: x }'))).toContain(
+      'kind',
+    );
   });
 
   it.each([
