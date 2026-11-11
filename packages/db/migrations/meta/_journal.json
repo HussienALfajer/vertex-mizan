@@ -218,6 +218,27 @@
       "when": 1794259009604,
       "tag": "0030_aromatic_yellow_claw",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1794358111582,
+      "tag": "0031_little_eternity",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1794358146235,
+      "tag": "0032_s06_recognition_guards",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1794358372768,
+      "tag": "0033_keen_nightcrawler",
+      "breakpoints": true
     }
   ]
 }

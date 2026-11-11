@@ -26,12 +26,14 @@ import {
   type KeyedEvent,
   type MappedAccount,
   type PlannedEntry,
+  periodOf,
   planEvent,
   type RulePlan,
+  recognisedAtIssue,
   referencedDocuments,
 } from '@vertex-mizan/ledger';
 import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
-import { type AuditActor, writeCompanyAudit } from '../audit.js';
+import { type AuditActor, SYSTEM_NAME, writeCompanyAudit } from '../audit.js';
 import type { Transaction } from '../client.js';
 import { type HubSource, type ManualLineSpec, type PostingContent, post } from '../posting/post.js';
 import { chartAccounts } from '../schema/chart.js';
@@ -54,6 +56,12 @@ import {
 import { openItemBalances, openItemDueDates, openItems } from '../schema/open-items.js';
 import { ledgersOf } from './companies.js';
 import { recordRate } from './rates.js';
+import {
+  openSchedules,
+  reclassifyRecognised,
+  releaseEndedMonths,
+  scheduledLineIdsOf,
+} from './recognition.js';
 
 // The event inbox (S05 rules 4–18, ADR 0014): every event Hub sends is kept with its payload, then
 // attempted: held with a reason and a detail, posted through `post()` by its rule from
@@ -112,6 +120,17 @@ export interface AttemptOptions {
   readonly actor: InboxActor;
   /** Today in Asia/Damascus, from the caller's clock (S03 rule 6). */
   readonly today: string;
+}
+
+/**
+ * How an attempt of the accountant's actions posts: `postOn`, the date a moved event posts on
+ * (rule 15); `closedPeriods`, for the recognition in the first open period (S06 rule 16): an
+ * elapsed month's part whose period is closed posts on the first day of the first open period
+ * after it, measured at its own month's last day.
+ */
+interface ActionOptions {
+  readonly postOn?: string;
+  readonly closedPeriods?: readonly string[];
 }
 
 const sha256 = (text: string) => createHash('sha256').update(text, 'utf8').digest('hex');
@@ -275,6 +294,8 @@ async function invoiceItemOf(tx: Transaction, invoiceId: string): Promise<HubIte
         eq(openItems.source, 'hub_event'),
         sql`${openItems.hubDocument} ->> 'type' = 'invoice'`,
         sql`${openItems.hubDocument} ->> 'id' = ${invoiceId}`,
+        // The receivable's item under Hub's number, not a late line's contract asset (S06).
+        sql`${openItems.reference} = ${openItems.hubDocument} ->> 'number'`,
       ),
     );
   return row === undefined ? null : { ...row, currency: row.currency as CurrencyCode };
@@ -331,6 +352,7 @@ async function issueLineOf(
         eq(openItems.source, 'hub_event'),
         sql`${openItems.hubDocument} ->> 'type' = 'invoice'`,
         sql`${openItems.hubDocument} ->> 'id' = ${invoiceId}`,
+        sql`${openItems.reference} = ${openItems.hubDocument} ->> 'number'`,
       ),
     );
   if (!item) return null;
@@ -347,8 +369,10 @@ async function issueLineOf(
   const envelope = envelopeOf(issued);
   if (envelope.type !== 'invoice.issued') return null;
   const index = envelope.payload.lines.findIndex((line) => line.id === lineId);
-  if (index === -1) return null;
-  const lineNo = index + 2;
+  const changed = envelope.payload.lines[index];
+  if (changed === undefined || !recognisedAtIssue(changed)) return null;
+  // After the receivable's line, the lines at issue in the invoice's order (S06 rule 2).
+  const lineNo = 2 + envelope.payload.lines.slice(0, index).filter(recognisedAtIssue).length;
   const [line] = await tx
     .select({ amountMinor: journalLines.amountMinor })
     .from(journalLines)
@@ -370,6 +394,7 @@ async function referencesOf(tx: Transaction, event: EventEnvelope): Promise<HubR
       event.type === 'invoice.line_service_changed'
         ? await issueLineOf(tx, event.payload.invoice.id, event.payload.line_id)
         : null,
+    scheduledLineIds: invoiceId === null ? [] : await scheduledLineIdsOf(tx, invoiceId),
   };
 }
 
@@ -658,7 +683,7 @@ async function contentOf(
   switch (planned.kind) {
     case 'lines': {
       const lines: ManualLineSpec[] = [];
-      for (const line of planned.lines) lines.push(await lineSpecOf(line, values));
+      for (const line of planned.lines) lines.push(await lineSpecOf(tx, line, values));
       return {
         kind: 'hub',
         lines,
@@ -742,10 +767,32 @@ async function contentOf(
         hub,
       };
     }
+    case 'recognised_reclassification':
+      throw new TypeError('A recognised reclassification is posted by the recognition service');
   }
 }
 
-async function lineSpecOf(line: HubLine, values: HubValues): Promise<ManualLineSpec> {
+/** The item an earlier entry of the plan opened on an account, by its reference (S06 rule 7). */
+async function plannedItemId(tx: Transaction, accountId: string, reference: string) {
+  const [item] = await tx
+    .select({ id: openItems.id })
+    .from(openItems)
+    .where(
+      and(
+        eq(openItems.accountId, accountId),
+        eq(openItems.reference, reference),
+        eq(openItems.kind, 'document'),
+      ),
+    );
+  if (!item) throw new Error(`The plan's item ${reference} was not opened`);
+  return item.id;
+}
+
+async function lineSpecOf(
+  tx: Transaction,
+  line: HubLine,
+  values: HubValues,
+): Promise<ManualLineSpec> {
   return {
     accountId: line.account,
     dimensionValueIds: await values.idsOf(line.dimensions),
@@ -753,6 +800,9 @@ async function lineSpecOf(line: HubLine, values: HubValues): Promise<ManualLineS
     amountMinor: line.amount.amountMinor,
     memo: null,
     ...(line.item?.kind === 'existing' && { openItemId: line.item.id }),
+    ...(line.item?.kind === 'planned' && {
+      openItemId: await plannedItemId(tx, line.account, line.item.reference),
+    }),
     ...(line.item?.kind === 'open' && {
       newItem: { reference: line.item.reference, dueOn: line.item.dueOn },
     }),
@@ -782,7 +832,7 @@ function holdOfRefusal(error: DomainError): Hold {
 async function decide(
   tx: Transaction,
   row: EventRow,
-  options: AttemptOptions & { readonly postOn?: string },
+  options: AttemptOptions & ActionOptions,
 ): Promise<Outcome> {
   const event = envelopeOf(row);
   const blocking = blockingEvent(event, await earlierOnKey(tx, row));
@@ -806,12 +856,51 @@ async function decide(
     clientId: row.apiClientId,
     document: { type: row.documentType, id: row.documentId, number: row.documentNumber },
   };
+  // An elapsed month's part posts on its month's last day; recognised in the first open period
+  // when its period is closed (S06 rule 16); a moved event posts every entry on its day (rule 15).
+  const closed = new Set(options.closedPeriods ?? []);
+  const dateOf = (planned: PlannedEntry): string => {
+    if (options.postOn !== undefined) return options.postOn;
+    if (planned.kind !== 'lines' || planned.on === undefined) return row.accountingDate;
+    if (planned.servicePeriod === true && closed.has(periodOf(planned.on))) {
+      return firstOpenDayAfter(planned.on, [...closed]);
+    }
+    return planned.on;
+  };
+  // The releases of an invoice posted late are the system's (S06 "Audit").
+  const system: InboxActor = {
+    kind: 'system',
+    name: SYSTEM_NAME,
+    requestId: options.actor.requestId,
+    ipAddress: null,
+    userAgent: null,
+  };
   try {
-    const entryIds = await tx.transaction(async (savepoint) => {
+    const outcome = await tx.transaction(async (savepoint): Promise<Outcome> => {
       const values = new HubValues(savepoint, row.companyId, options.actor);
       const posted: string[] = [];
+      const byKey = new Map<string, string>();
+      let planned: PlannedEntry | null = null;
       try {
-        for (const planned of plan.entries) {
+        for (planned of plan.entries) {
+          if (planned.kind === 'recognised_reclassification') {
+            if (event.type !== 'invoice.line_service_changed') {
+              throw new TypeError('A recognised reclassification of another event');
+            }
+            const entryId = await reclassifyRecognised(savepoint, row, {
+              key: planned.key,
+              lineId: planned.lineId,
+              invoiceId: event.payload.invoice.id,
+              toServiceValueId: await values.valueOf('service', planned.to, null),
+              entryDate: dateOf(planned),
+              description: descriptionOf(event),
+              today: options.today,
+              actor: options.actor,
+              hub,
+            });
+            if (entryId !== null) posted.push(entryId);
+            continue;
+          }
           const content = await contentOf(
             savepoint,
             planned,
@@ -823,7 +912,7 @@ async function decide(
           const entry = await post(savepoint, {
             client: row.apiClientId,
             idempotencyKey: planned.key,
-            entryDate: options.postOn ?? row.accountingDate,
+            entryDate: dateOf(planned),
             description: descriptionOf(event),
             reference: row.documentNumber,
             draftId: null,
@@ -833,12 +922,36 @@ async function decide(
             content,
           });
           posted.push(entry.id);
+          byKey.set(planned.key, entry.id);
+        }
+        planned = null;
+        if (plan.schedules !== undefined && event.type === 'invoice.issued') {
+          await openSchedules(
+            savepoint,
+            row,
+            event,
+            plan.schedules,
+            byKey,
+            values,
+            context.ledgers.parallel !== null,
+          );
+          // An invoice posted after its months ended releases them now (S06 rule 5).
+          await releaseEndedMonths(savepoint, row, options.today, system);
         }
       } catch (error) {
         // A refusal of the period, the rates or the settlements comes first in rule 8's order;
         // any other refusal of a decision's lines is the decision's own (a contract's client).
         if (error instanceof DomainError) {
-          const refused = holdOfRefusal(error);
+          let refused = holdOfRefusal(error);
+          // An elapsed month's closed period, when the event's own is open (S06 rule 18).
+          if (
+            refused.reason === 'PERIOD_CLOSED' &&
+            planned?.kind === 'lines' &&
+            planned.servicePeriod === true &&
+            !(await periodClosed(savepoint, row.accountingDate))
+          ) {
+            refused = hold('SERVICE_PERIOD_CLOSED');
+          }
           const decision = plan.decision ?? values.decision;
           if (decision !== null && refused.reason === 'NO_MAPPING') {
             throw new HeldAttempt(hold('NEEDS_DECISION', decision));
@@ -849,13 +962,24 @@ async function decide(
       }
       const decision = plan.decision ?? values.decision;
       if (decision !== null) throw new HeldAttempt(hold('NEEDS_DECISION', decision));
-      return posted;
+      // A service change before anything was recognised moves no revenue: it is recorded.
+      if (posted.length === 0) return { kind: 'recorded', triggers: [] };
+      return { kind: 'posted', entryIds: posted };
     });
-    return { kind: 'posted', entryIds };
+    return outcome;
   } catch (error) {
     if (error instanceof HeldAttempt) return error.outcome;
     throw error;
   }
+}
+
+/** Whether a date's period is closed (a period with no row is open). */
+async function periodClosed(tx: Transaction, on: string): Promise<boolean> {
+  const [row] = await tx
+    .select({ state: periods.state })
+    .from(periods)
+    .where(eq(periods.period, periodOf(on)));
+  return row !== undefined && row.state !== 'open';
 }
 
 /** An event that changes data without posting (ADR 0014 `recorded`). */
@@ -915,7 +1039,7 @@ async function lockCompany(tx: Transaction): Promise<void> {
 async function attempt(
   tx: Transaction,
   row: EventRow,
-  options: AttemptOptions & { readonly postOn?: string },
+  options: AttemptOptions & ActionOptions,
 ): Promise<{ outcome: Outcome; leftHeld: boolean }> {
   await lockCompany(tx);
   const [current] = await tx
@@ -964,7 +1088,7 @@ async function attempt(
         holdDetail: outcome.detail,
       });
     }
-  } else if (options.postOn === undefined) {
+  } else if (options.postOn === undefined && options.closedPeriods === undefined) {
     await writeAction(tx, row, options.actor, outcome.kind, {
       entryIds: outcome.kind === 'posted' ? outcome.entryIds : [],
     });
@@ -1145,7 +1269,12 @@ async function auditAction(
   tx: Transaction,
   row: EventRow,
   actor: InboxActor,
-  action: 'event.retried' | 'event.moved_to_open_period' | 'event.resolved' | 'event.dismissed',
+  action:
+    | 'event.retried'
+    | 'event.moved_to_open_period'
+    | 'event.recognised_in_open_period'
+    | 'event.resolved'
+    | 'event.dismissed',
   reason: string | null,
   after: Record<string, unknown>,
 ): Promise<void> {
@@ -1224,6 +1353,48 @@ export async function moveEvent(
     state: event.state,
     holdReason: event.reason,
     postedOn: event.postedOn,
+  });
+  return { event, replayed: false, triggers: triggersOf(row, outcome) };
+}
+
+/**
+ * Recognise in the first open period (S06 rule 16), for `SERVICE_PERIOD_CLOSED` only, with a
+ * written reason: each elapsed month's part whose period is closed posts on the first day of the
+ * first open period after it, still measured at its own month's last day (IAS 21.21–22); the parts
+ * of open months post on their own dates and the invoice on its own. The action and the audit row
+ * keep the reason and what it led to.
+ */
+export async function recogniseEvent(
+  tx: Transaction,
+  inboxId: string,
+  reason: string,
+  options: AttemptOptions,
+): Promise<InboxResult> {
+  const row = await eventRow(tx, inboxId);
+  const state = await heldState(tx, row);
+  if (state.holdReason !== 'SERVICE_PERIOD_CLOSED') {
+    refuse('EVENT_ACTION_NOT_ALLOWED', 'Only an event held SERVICE_PERIOD_CLOSED is recognised', {
+      reason: state.holdReason,
+    });
+  }
+  const closed = await tx
+    .select({ period: periods.period })
+    .from(periods)
+    .where(sql`${periods.state} <> 'open'`);
+  const { outcome } = await attempt(tx, row, {
+    ...options,
+    closedPeriods: closed.map((period) => period.period),
+  });
+  await writeAction(tx, row, options.actor, 'recognised_in_open_period', {
+    entryIds: outcome.kind === 'posted' ? outcome.entryIds : [],
+    holdReason: outcome.kind === 'hold' ? outcome.reason : null,
+    holdDetail: outcome.kind === 'hold' ? outcome.detail : null,
+    reason,
+  });
+  const event = await viewOf(tx, row);
+  await auditAction(tx, row, options.actor, 'event.recognised_in_open_period', reason, {
+    state: event.state,
+    holdReason: event.reason,
   });
   return { event, replayed: false, triggers: triggersOf(row, outcome) };
 }

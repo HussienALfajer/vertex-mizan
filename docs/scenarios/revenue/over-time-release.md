@@ -1,8 +1,8 @@
 # Revenue released over time
 
-Status: Proposed
+Status: Approved (owner, 2026-11-10)
 
-S06 wrote these cases (S06 "Scenarios"); the owner approved their expected entries and outcomes on 2026-11-10: fourteen cases with option A of the day split below, the job's clock and the order of a job's releases, then the case of a missing bulletin on an elapsed month's last day, added after the accounting review. They stay `Proposed` until S06's feature slice brings their executors: the posting rules of `invoice.issued` with over-time lines, the release job `revenue_release_month`, the elapsed parts of a late issue, the hold `SERVICE_PERIOD_CLOSED` and the action `recognise` (S06 rules 1–5, 7, 10, 16). The case with a closed month also needs S07's close (`closed_periods`), as `inbox/post-in-next-open-period.md` does.
+S06 wrote these cases (S06 "Scenarios"); the owner approved their expected entries and outcomes on 2026-11-10: fourteen cases with option A of the day split below, the job's clock and the order of a job's releases, then the case of a missing bulletin on an elapsed month's last day, added after the accounting review. S06's feature slice (PR 1) brought their executors: the posting rules of `invoice.issued` with over-time lines, the release job `revenue_release_month`, the elapsed parts of a late issue and the service change of a deferred line (S06 rules 1–5, 7, 10). The case of a late issue into a closed month, which also needs S07's close (`closed_periods`), moved unchanged to `revenue/recognise-in-open-period.md`, where it stays `Proposed` until S07, as `inbox/post-in-next-open-period.md` does.
 
 ## Rule
 
@@ -331,56 +331,6 @@ expect:
   open_items:
     - { item: INV-2026-24/1, account: "113001", dims: { client: C1, contract: R1 }, currency: USD, amount: 0, book: 0, parallel: 0 }
     - { item: INV-2026-24, account: "112001", dims: { client: C1, contract: R1 }, currency: USD, amount: 62000, book: 7471000, parallel: 62000 }
-```
-
-### Vertex Media: a late issue into a closed month, recognised in the first open period
-
-The same invoice, with October closed: its elapsed month is closed, so it is held `SERVICE_PERIOD_CLOSED` whole (S06 rule 7). The accountant recognises it in the first open period (S06 rule 16): October's part posts on 1 November, still measured at the bulletin in force on 31 October; the invoice then posts on its own date, as in the case above.
-
-```yaml
-case: the same late invoice with October closed is held SERVICE_PERIOD_CLOSED; recognised on 1 Nov at the rate of 31 Oct
-company: { shape: syp-usd, book: SYP, parallel: USD, template: service-agency, closed_periods: [2026-10],
-           rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true } }
-rates:
-  - { date: 2026-10-29, base: USD, quote: SYP, rate: "119.0000", type: bulletin }
-  - { date: 2026-11-05, base: USD, quote: SYP, rate: "120.5000", type: bulletin }
-steps:
-  - event: invoice.issued
-    accounting_date: 2026-11-05
-    payload: { invoice: INV-2026-24, client: C1, contract: { code: R1, kind: retainer, client: C1 },
-               currency: USD, syp_per_usd: "121.0000", issued_on: 2026-11-05, due_on: 2026-11-20,
-               lines: [{ line: L1, amount: 62000, source: retainer_charge, kind: monthly,
-                         cycle_start: 2026-10-20, cycle_end: 2026-11-19, service: S1 }] }
-    outcome: { status: held, reason: SERVICE_PERIOD_CLOSED }
-  - recognise: 1
-    reason: "أُغلق تشرين الأول قبل وصول الفاتورة؛ الجزء غير جوهري"
-  - job: revenue_release_month
-    period: 2026-11
-expect:
-  entries:
-    - source: invoice.issued
-      date: 2026-11-01
-      lines:
-        # October's 12 days on the first day of the first open period, still at 119 (IAS 21.21–22), not at 1 Nov's rate
-        - { account: "113001", dims: { client: C1, contract: R1 }, currency: USD, amount: 24000, book: 2856000, parallel: 24000 }
-        - { account: "411001", dims: { client: C1, contract: R1, service: S1 }, currency: USD, amount: -24000, book: -2856000, parallel: -24000 }
-    - source: invoice.issued
-      date: 2026-11-05
-      lines:
-        - { account: "112001", dims: { client: C1, contract: R1 }, currency: USD, amount: 62000, book: 7471000, parallel: 62000 }
-        - { account: "113001", dims: { client: C1, contract: R1 }, currency: USD, amount: -24000, book: -2856000, parallel: -24000 }
-        - { account: "212001", dims: { client: C1, contract: R1 }, currency: USD, amount: -38000, book: -4579000, parallel: -38000 }
-        - { account: "421001", currency: SYP, amount: -36000, book: -36000, parallel: 0 }
-    - source: revenue_release
-      date: 2026-11-30
-      lines:
-        - { account: "212001", dims: { client: C1, contract: R1 }, currency: USD, amount: 38000, book: 4579000, parallel: 38000 }
-        - { account: "411001", dims: { client: C1, contract: R1, service: S1 }, currency: USD, amount: -38000, book: -4579000, parallel: -38000 }
-  balances:
-    - { account: "212001", book: 0, parallel: 0 }
-    - { account: "411001", book: -7435000, parallel: -62000 }
-  open_items:
-    - { item: INV-2026-24/1, account: "113001", dims: { client: C1, contract: R1 }, currency: USD, amount: 0, book: 0, parallel: 0 }
 ```
 
 ### Vertex Media: a late issue whose elapsed month end has no bulletin

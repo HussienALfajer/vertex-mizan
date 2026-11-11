@@ -502,11 +502,8 @@ describe('invoice.issued over time (revenue/over-time-release; S06 rules 1–3, 
       { kind: 'planned', reference: 'INV-2026-1/1' },
       { kind: 'planned', reference: 'INV-2026-1/1/2026-10' },
     ]);
-    // Nothing is deferred: no contract liability line and none mapped.
-    expect(plan.schedules?.[0]?.deferral).toBeNull();
-    expect(invoiceIssuedPlan(issued, contextOf(sypUsd, { contract_liability: null })).kind).toBe(
-      'post',
-    );
+    // Nothing is deferred: no contract liability line, but the schedule names its liability.
+    expect(plan.schedules?.[0]).toMatchObject({ deferral: null, liabilityAccountId: '212001' });
   });
 
   it('lists the lines at issue before the deferrals, so a service change finds its line', () => {
@@ -549,6 +546,41 @@ describe('invoice.issued over time (revenue/over-time-release; S06 rules 1–3, 
     expect(invoiceIssuedPlan(issued, contextOf(sypUsd))).toMatchObject({
       kind: 'post',
       decision: 'recognition_pattern_unclear:2',
+    });
+  });
+
+  it('moves a deferred line’s recognised revenue at its carried amounts, and holds its void', () => {
+    const line = ids(200);
+    const changed = event(
+      'invoice.line_service_changed',
+      {
+        invoice: INVOICE,
+        line_id: line,
+        old_service: S1,
+        new_service: S2,
+        changed_on: '2026-12-07',
+      },
+      '2026-12-07',
+    ) as EventOf<'invoice.line_service_changed'>;
+    const scheduled = { ...NO_REFERENCES, scheduledLineIds: [line] };
+    expect(planEvent(changed, scheduled, contextOf(sypUsd))).toEqual({
+      kind: 'post',
+      entries: [{ kind: 'recognised_reclassification', key: changed.id, lineId: line, to: S2 }],
+      decision: null,
+    });
+    // A line at issue keeps S05's rule: its issue line moves.
+    expect(planEvent(changed, NO_REFERENCES, contextOf(sypUsd))).toMatchObject({
+      reason: 'UNKNOWN_REFERENCE',
+    });
+    const voided = event('invoice.voided', {
+      invoice: INVOICE,
+      voided_on: '2026-12-10',
+      reason: 'خطأ',
+    });
+    expect(planEvent(voided, { ...scheduled, standing: [ids(900)] }, contextOf(sypUsd))).toEqual({
+      kind: 'hold',
+      reason: 'NO_MAPPING',
+      detail: 'deferred_revenue',
     });
   });
 

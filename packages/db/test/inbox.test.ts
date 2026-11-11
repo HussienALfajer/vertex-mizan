@@ -262,7 +262,8 @@ describe('the inbox tables', () => {
           .innerJoin(chartAccounts, eq(chartAccounts.id, postingRuleAccounts.accountId)),
       );
     const rows = await mapped(agency);
-    expect(rows).toHaveLength(13);
+    // S05's thirteen and S06's four.
+    expect(rows).toHaveLength(17);
     expect(rows).toContainEqual({ slot: 'payment_method.cash', currency: 'USD', code: '111002' });
     expect(await mapped(general)).toEqual([]);
   });

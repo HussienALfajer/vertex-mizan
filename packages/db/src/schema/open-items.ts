@@ -101,6 +101,7 @@ export const openItems = pgTable(
         t.accountId,
         sql`(${t.hubDocument} ->> 'type')`,
         sql`(${t.hubDocument} ->> 'id')`,
+        t.reference,
       )
       .where(sql`${t.hubDocument} is not null`),
     // The items of an account, by client: the ageing and the statements (S04 "Volume").

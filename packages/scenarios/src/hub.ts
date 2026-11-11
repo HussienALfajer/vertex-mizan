@@ -8,6 +8,8 @@ import {
   moveEvent,
   type RetryTrigger,
   receiveEvent,
+  recogniseEvent,
+  releaseMonth,
   resolveEvent,
   retryEvent,
   retryFreed,
@@ -383,6 +385,13 @@ export function inboxActions(bookkeeper: (companyId: string) => AuditActor) {
         },
         bookkeeper(context.companyId),
       ),
+    recognise: (context: CaseContext, step: Extract<Step, { kind: 'recognise' }>) =>
+      inbox(
+        context,
+        (actor, today, tx) =>
+          recogniseEvent(tx, inboxIdOf(context, step.step), step.reason, { actor, today }),
+        bookkeeper(context.companyId),
+      ),
     dismiss: (context: CaseContext, step: Extract<Step, { kind: 'dismiss' }>) =>
       inbox(
         context,
@@ -397,4 +406,36 @@ export function inboxActions(bookkeeper: (companyId: string) => AuditActor) {
 export function advanceClock(companyId: string, on: string): void {
   const hub = hubOf(companyId);
   if (on > hub.today) hub.today = on;
+}
+
+/** The first day of the month after `month` (`YYYY-MM`). */
+function dayAfterMonth(month: string): string {
+  const [year, number] = month.split('-').map(Number) as [number, number];
+  return number === 12
+    ? `${year + 1}-01-01`
+    : `${year}-${String(number + 1).padStart(2, '0')}-01`;
+}
+
+/**
+ * A job step (S06 brings the first: `revenue_release_month`, the worker's `revenue.release-month`
+ * for the step's month). It runs on the first day of the next month, so the case's clock moves to
+ * that day (`revenue/over-time-release`, "Cases"), in the company's context as the system, as the
+ * worker runs it. A release the job could not post is the step's `refused` with its code. Any
+ * other job arrives with its spec (S07's month end and close).
+ */
+export async function job(
+  context: CaseContext,
+  step: Extract<Step, { kind: 'job' }>,
+): Promise<StepResult> {
+  if (step.name !== 'revenue_release_month') {
+    throw new Error(`The job ${step.name} arrives with its spec`);
+  }
+  advanceClock(context.companyId, dayAfterMonth(step.period));
+  const result = await withCompany(context.database.app, context.companyId, (tx) =>
+    releaseMonth(tx, step.period, hubOf(context.companyId).today, systemActor(context)),
+  );
+  const [refused] = result.refused;
+  return refused === undefined
+    ? { status: 'done' }
+    : { status: 'refused', reason: refused.code, detail: refused.detail };
 }

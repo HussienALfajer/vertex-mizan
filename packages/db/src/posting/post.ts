@@ -26,6 +26,7 @@ import {
   type ChartLine,
   type Conversion,
   canonicalJson,
+  carriedLine,
   chainEntryValue,
   checkDueDate,
   checkItemLine,
@@ -41,6 +42,7 @@ import {
   keptLedgers,
   type Line,
   type LineDimensionValue,
+  ledgerTotal,
   type MeasureContext,
   manualEntry,
   manualReversalLines,
@@ -178,7 +180,29 @@ export type PostingContent =
       readonly toValueIds: readonly string[];
       readonly today: string;
       readonly hub: HubSource;
+    }
+  /**
+   * Lines that carry amounts recognition already holds (S06; ADR 0015): a month's release of an
+   * invoice's schedules (`revenue_release`, rule 4) or an event's move of recognised revenue to
+   * another service (`hub_event`, rule 10). Their amounts are carried, never measured: no rate is
+   * read, and they must balance in every ledger by themselves. The recognition service reads them
+   * from the schedules' movements in the same transaction; no caller outside `packages/db` builds
+   * one.
+   */
+  | {
+      readonly kind: 'carried';
+      readonly source: 'revenue_release' | 'hub_event';
+      readonly lines: readonly CarriedLineSpec[];
+      readonly today: string;
+      readonly hub: HubSource;
     };
+
+/** A carried line: its account, its dimension values and the amounts it carries. */
+export interface CarriedLineSpec {
+  readonly accountId: string;
+  readonly dimensionValueIds: readonly string[];
+  readonly amounts: CarriedAmounts;
+}
 
 type MeasuredContent = Extract<PostingContent, { kind: 'manual' | 'hub' }>;
 
@@ -326,6 +350,20 @@ function contentPayload(content: PostingContent): CanonicalValue {
         lineNo: content.lineNo,
         fromValueIds: [...content.fromValueIds].sort(),
         toValueIds: [...content.toValueIds].sort(),
+        inboxId: content.hub.inboxId,
+      };
+    case 'carried':
+      return {
+        kind: content.kind,
+        source: content.source,
+        lines: content.lines.map((line) => ({
+          accountId: line.accountId,
+          dimensionValueIds: [...line.dimensionValueIds].sort(),
+          currency: line.amounts.transaction.currency,
+          amountMinor: line.amounts.transaction.amountMinor,
+          bookMinor: line.amounts.bookMinor,
+          parallelMinor: line.amounts.parallelMinor,
+        })),
         inboxId: content.hub.inboxId,
       };
   }
@@ -1433,7 +1471,56 @@ async function buildLines(
       return reversalLines(tx, content, on, ledgers, lock);
     case 'hub_reclassification':
       return reclassificationLines(tx, content);
+    case 'carried':
+      return carriedLines(tx, content, ledgers);
   }
+}
+
+/**
+ * The lines of a `carried` request (S06): each carried at its amounts with its values, the
+ * accounts checked again for their state and the values as Hub's; they balance in every ledger by
+ * themselves, or the request is refused (`ENTRY_UNBALANCED`), since nothing here measures.
+ */
+async function carriedLines(
+  tx: Transaction,
+  content: Extract<PostingContent, { kind: 'carried' }>,
+  ledgers: CompanyLedgers,
+): Promise<Built> {
+  const values = await dimensionValuesOf(tx, [
+    ...new Set(content.lines.flatMap((line) => line.dimensionValueIds)),
+  ]);
+  const lines = content.lines.map((spec) => {
+    if (
+      ledgers.parallel === null
+        ? spec.amounts.parallelMinor !== null
+        : spec.amounts.parallelMinor === null
+    ) {
+      throw new TypeError('A carried line without the parallel amount its company keeps');
+    }
+    return carriedLine({
+      account: spec.accountId,
+      dimensions: Object.fromEntries(
+        spec.dimensionValueIds.map((id) => {
+          const value = values.get(id);
+          if (value === undefined) refuse('NOT_FOUND', 'No such dimension value', { valueId: id });
+          return [value.typeId, id];
+        }),
+      ) as Dimensions,
+      amounts: spec.amounts,
+    });
+  });
+  for (const [ledger] of keptLedgers(ledgers)) {
+    if (ledgerTotal(lines, ledger) !== 0n) {
+      refuse('ENTRY_UNBALANCED', 'Carried lines balance in every ledger by themselves', { ledger });
+    }
+  }
+  await checkAgainstChart(tx, lines, 'hub');
+  return {
+    lines: lines.map((line) => ({ line, memo: null, adjusted: false })),
+    rateIds: new Map(),
+    newItems: [],
+    voided: [],
+  };
 }
 
 /** A line as the preview shows it: as `post()` would store it, with its conversions and item. */
@@ -1539,6 +1626,8 @@ interface EntryToWrite {
   readonly follows: string | null;
   /** The Hub event the entry comes from, or null for a manual entry (S05 "Entries"). */
   readonly hub: HubSource | null;
+  /** The entry's source: `manual`, `hub_event`, or `revenue_release` for a release (S06). */
+  readonly source: EntrySource;
 }
 
 /**
@@ -1615,7 +1704,7 @@ async function writeEntry(
     number: counter.lastNumber,
     entryDate: on,
     postedAt: postedAt.toISOString(),
-    source: entry.hub === null ? ('manual' as const) : ('hub_event' as const),
+    source: entry.source,
     sourceRef: entry.hub?.inboxId ?? null,
     hubDocument: entry.hub?.document ?? null,
     description: entry.description,
@@ -1625,7 +1714,8 @@ async function writeEntry(
     preparedByUserId: entry.preparedByUserId,
     approvedByUserId: entry.approvedByUserId,
     postedByUserId: entry.hub === null && actor.kind === 'person' ? actor.userId : null,
-    postedByClientId: entry.hub?.clientId ?? null,
+    // A release is the system's, not the API client's that sent the invoice (S06 "Audit").
+    postedByClientId: entry.source === 'hub_event' ? (entry.hub?.clientId ?? null) : null,
   };
   const chained: ChainEntry = { ...header, lines };
   const hash = entryHash(chainEntryValue(chained), head.lastHash);
@@ -1813,6 +1903,8 @@ export async function post(tx: Transaction, request: PostingRequest): Promise<Po
   const reversesEntryId =
     content.kind === 'reversal' || content.kind === 'hub_reversal' ? content.entryId : null;
   const hub = hubOf(content);
+  const source: EntrySource =
+    content.kind === 'carried' ? content.source : hub === null ? 'manual' : 'hub_event';
   const head: Head = { id: headRow.id, entryCount: headRow.entryCount, lastHash: headRow.lastHash };
   const at = { on, fiscalYear, settingsId: settings.id };
   const posted = await writeEntry(tx, companyId, head, at, request.actor, {
@@ -1826,6 +1918,7 @@ export async function post(tx: Transaction, request: PostingRequest): Promise<Po
     built,
     follows: null,
     hub,
+    source,
   });
   // Within a `.changed`, the reversal and the new state are one change: no difference entry
   // between them, while the reversed entry is still the latest movement on every running item it
@@ -1875,6 +1968,7 @@ export async function post(tx: Transaction, request: PostingRequest): Promise<Po
       built: difference,
       follows: posted.id,
       hub,
+      source,
     });
   }
   return posted;

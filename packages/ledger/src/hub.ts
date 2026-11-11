@@ -154,6 +154,17 @@ export type PlannedEntry =
       /** The Hub line it moves; the posting function reads the service it has now in the books. */
       readonly lineId: string;
       readonly to: HubValueRef;
+    }
+  | {
+      /**
+       * A deferred line's recognised revenue moved to another service at its carried amounts (S06
+       * rule 10): the posting function reads what the line's schedule released and its elapsed
+       * parts, and records the new service for its later releases.
+       */
+      readonly kind: 'recognised_reclassification';
+      readonly key: string;
+      readonly lineId: string;
+      readonly to: HubValueRef;
     };
 
 /** What an event changes without posting (ADR 0014 `recorded`). */
@@ -196,6 +207,8 @@ export interface PlannedSchedule {
   readonly cycleKey: string | null;
   /** The release's dimensions: the client, the contract when named, the line's service. */
   readonly dimensions: HubDimensions;
+  /** The contract liability account it defers to, which its releases debit (S06 "Data"). */
+  readonly liabilityAccountId: string;
   readonly months: readonly OverTimeMonth[];
   /** The issue entry's key and its contract liability line's number, from 1. */
   readonly deferral: { readonly key: string; readonly lineNo: number } | null;
@@ -230,6 +243,8 @@ export interface HubReferences {
   readonly standing: readonly string[];
   /** For a service change: the line of the issue entry that carries the changed Hub line. */
   readonly issueLine: IssueLine | null;
+  /** The invoice's Hub lines that have a recognition schedule (S06; ADR 0015). */
+  readonly scheduledLineIds?: readonly string[];
 }
 
 /**
@@ -442,8 +457,9 @@ export function invoiceIssuedPlan(
     item.months.filter((m) => !m.elapsed).reduce((sum, m) => sum + m.transactionMinor, 0n);
   const elapsedOf = (item: OverTimeLine) =>
     item.months.filter((m) => m.elapsed && m.transactionMinor !== 0n);
+  // Every schedule names the liability it defers to, even one wholly elapsed (S06 "Data").
   let liability: MappedAccount | null = null;
-  if (overTime.some((item) => deferredOf(item) !== 0n)) {
+  if (overTime.length > 0) {
     const account = slotAccount(context, 'contract_liability', null);
     if (isHold(account)) return account;
     liability = account;
@@ -566,6 +582,7 @@ export function invoiceIssuedPlan(
           ? `${contract.external_id}:${item.from}`
           : null,
       dimensions: { client, ...named, service: item.line.service },
+      liabilityAccountId: liability?.id ?? '',
       months: item.months,
       deferral: deferralLineOf.has(item.position)
         ? { key: event.id, lineNo: deferralLineOf.get(item.position) ?? 0 }
@@ -626,6 +643,22 @@ export function lineServiceChangedPlan(
   event: EventOf<'invoice.line_service_changed'>,
   references: HubReferences,
 ): RulePlan {
+  // A deferred line's revenue is what its schedule recognised: it moves at those carried amounts,
+  // and its later releases take the new service (S06 rule 10).
+  if (references.scheduledLineIds?.includes(event.payload.line_id) === true) {
+    return {
+      kind: 'post',
+      entries: [
+        {
+          kind: 'recognised_reclassification',
+          key: event.id,
+          lineId: event.payload.line_id,
+          to: event.payload.new_service,
+        },
+      ],
+      decision: null,
+    };
+  }
   const line = references.issueLine;
   // Before its issue posted, or once its void reversed it, the line has no recognised revenue to
   // move (phase 1 scope §6: a reclassification of the revenue already recognised).
@@ -967,6 +1000,11 @@ export function planEvent(
     case 'invoice.issued':
       return invoiceIssuedPlan(event, context);
     case 'invoice.voided':
+      // The void of an invoice with schedules reverses its releases and elapsed parts too (S06
+      // rule 8), which deploys with S06's credits: until then it holds.
+      if ((references.scheduledLineIds?.length ?? 0) > 0)
+        return hold('NO_MAPPING', 'deferred_revenue');
+      return voidPlan(event.id, references);
     case 'payment.voided':
     case 'ad_wallet.entry_voided':
     case 'ad_spend.archived':

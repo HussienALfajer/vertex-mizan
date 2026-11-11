@@ -29,6 +29,8 @@ import {
   post,
   postingRuleAccounts,
   ratePairs,
+  recognitionMovements,
+  recognitionSchedules,
   type Transaction,
   tableRegistry,
   users,
@@ -77,6 +79,8 @@ const COVERED = [
   'inbound_event_states',
   'inbound_event_actions',
   'document_sources',
+  'recognition_schedules',
+  'recognition_movements',
 ];
 
 const auditRow = fc.record({
@@ -350,11 +354,13 @@ const POSTED = 3;
 
 /** The rows each S02, S03 and S04 table holds for a company seeded with `data`. */
 const expectedRows = (data: CompanyData): Record<string, number> => ({
-  chart_accounts: 5 + data.headers.length + 3 + 4 + 3,
+  // S06 adds a contract liability header, its parent and the account.
+  chart_accounts: 5 + data.headers.length + 3 + 4 + 3 + 3,
   account_required_dimensions: 1,
   account_roles: 1,
   dimension_types: 4,
-  dimension_values: data.clients.length + 1,
+  // S06 adds a client and a service for its schedule.
+  dimension_values: data.clients.length + 1 + 2,
   rate_pairs: data.bookCurrency === 'SYP' ? 1 : 2,
   exchange_rates: data.rates.length + 1,
   bulletin_holidays: data.holidays.length,
@@ -381,10 +387,13 @@ const expectedRows = (data: CompanyData): Record<string, number> => ({
   open_item_due_dates: 1,
   open_item_balances: 1,
   posting_rule_accounts: 1,
-  inbound_events: 1,
+  // S05's held expense and S06's invoice.
+  inbound_events: 2,
   inbound_event_states: 1,
   inbound_event_actions: 2,
   document_sources: 1,
+  recognition_schedules: 1,
+  recognition_movements: 1,
 });
 
 /** S05's rows: a slot's account, and an event Hub sent, held, with its two actions. */
@@ -423,6 +432,77 @@ async function seedInbox(tx: Transaction, companyId: string) {
     { companyId, eventId, action: 'received', actorKind: 'system' },
     { companyId, eventId, action: 'held', holdReason: 'NO_MAPPING', actorKind: 'system' },
   ]);
+}
+
+/**
+ * S06's rows: an invoice's schedule deferred to a contract liability account, with its `deferred`
+ * movement describing an entry of this transaction (the guard of 0032).
+ */
+async function seedRecognition(tx: Transaction, companyId: string) {
+  await addAccount(tx, companyId, '2', { code: '23' });
+  await addAccount(tx, companyId, '23', { code: '231' });
+  const liability = await addAccount(tx, companyId, '231', {
+    code: '231001',
+    kind: 'postable',
+    statementLine: 'bs.contract_liabilities',
+  });
+  const valueOf = async (type: string) => {
+    const [found] = await tx
+      .select({ id: dimensionTypes.id })
+      .from(dimensionTypes)
+      .where(and(eq(dimensionTypes.companyId, companyId), eq(dimensionTypes.code, type)));
+    const [made] = await tx
+      .insert(dimensionValues)
+      .values({ companyId, typeId: found?.id as string, name: `قيمة ${type}` })
+      .returning({ id: dimensionValues.id });
+    return made?.id as string;
+  };
+  const [event] = await tx
+    .insert(inboundEvents)
+    .values({
+      companyId,
+      apiClientId: uuidv7(),
+      eventId: uuidv7(),
+      type: 'invoice.issued',
+      version: 1,
+      occurredAt: new Date('2026-11-10T09:00:00Z'),
+      accountingDate: '2026-11-10',
+      payload: { invoice: { id: uuidv7(), number: 'INV-1' } },
+      payloadHash: 'c'.repeat(64),
+      documentType: 'invoice',
+      documentId: uuidv7(),
+      documentNumber: 'INV-1',
+      itemKey: 'invoice:generated',
+      requestId: 'request-generated',
+    })
+    .returning({ id: inboundEvents.id });
+  const [schedule] = await tx
+    .insert(recognitionSchedules)
+    .values({
+      companyId,
+      eventId: event?.id as string,
+      invoiceDocumentId: uuidv7(),
+      invoiceNumber: 'INV-1',
+      lineId: uuidv7(),
+      pattern: 'over_time',
+      lineSource: 'manual',
+      serviceFrom: '2026-11-01',
+      serviceTo: '2026-11-30',
+      clientValueId: await valueOf('client'),
+      serviceValueId: await valueOf('service'),
+      liabilityAccountId: liability,
+      currency: 'USD',
+    })
+    .returning({ id: recognitionSchedules.id });
+  const [entry] = await tx.select({ id: journalEntries.id }).from(journalEntries).limit(1);
+  await tx.insert(recognitionMovements).values({
+    companyId,
+    scheduleId: schedule?.id as string,
+    kind: 'deferred',
+    entryId: entry?.id as string,
+    transactionMinor: 10_000n,
+    bookMinor: 10_000n,
+  });
 }
 
 /** S05's document source: the company's Hub client is the source of its invoices. */
@@ -473,6 +553,7 @@ async function seed(userId: string, data: CompanyData): Promise<string> {
     await tx.insert(companyExports).values({ companyId: row.id, requestedByUserId: userId });
     await seedInbox(tx, row.id);
     await seedSources(tx, row.id, userId);
+    await seedRecognition(tx, row.id);
     return tx
       .select({ id: journalEntries.id, hash: journalEntries.hash })
       .from(journalEntries)
