@@ -19,6 +19,8 @@ export const STEPS_ARRIVE_WITH = {
   block: 'blocking an account in the book arrives with S07',
   close: 'closing a period arrives with S07',
   reopen: 'reopening a period arrives with S07',
+  draft: "saving a draft in the book arrives with S07's checklist",
+  discard: "discarding a draft in the book arrives with S07's checklist",
 } as const satisfies Record<StepKind, string>;
 
 /** A case that did not do what its scenario states: every difference, one per line. */
@@ -51,7 +53,7 @@ export function namedDimensionValues(scenarioCase: ScenarioCase): NamedValue[] {
     }
   };
   for (const step of scenarioCase.steps) {
-    if (step.kind !== 'manual') continue;
+    if (step.kind !== 'manual' && step.kind !== 'draft') continue;
     const lines = (step.payload as { lines?: unknown }).lines;
     if (Array.isArray(lines)) for (const line of lines) add((line as { dims?: unknown }).dims);
   }
@@ -160,6 +162,14 @@ function executorFor(harness: ScenarioHarness, step: Step): Run | undefined {
       const execute = harness.executors.reopen;
       return execute && ((context) => execute(context, step));
     }
+    case 'draft': {
+      const execute = harness.executors.draft;
+      return execute && ((context) => execute(context, step));
+    }
+    case 'discard': {
+      const execute = harness.executors.discard;
+      return execute && ((context) => execute(context, step));
+    }
   }
 }
 
@@ -198,6 +208,10 @@ function describeStep(step: Step): string {
       return `close of ${step.period}`;
     case 'reopen':
       return `reopen of ${step.period}`;
+    case 'draft':
+      return `draft: ${step.description}`;
+    case 'discard':
+      return `discard of the draft of step ${step.step}`;
   }
 }
 

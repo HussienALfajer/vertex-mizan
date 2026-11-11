@@ -1,3 +1,10 @@
 # TASKS
 
-No task in progress. `/feature-slice <id>` replaces this file with the spec's checklist and commits it on the branch, so a cloud session or another machine continues from the same list.
+`/posting-rule periods/close-and-reopen` (S07, branch `docs/close-and-reopen`): a scenario-only PR; the executors arrive with S07's feature slice.
+
+- [x] The scenario `docs/scenarios/periods/close-and-reopen.md`, seven cases (`syp-usd` ×3, `syp` ×2, `usd-syp`, `third`), `Proposed`
+- [x] The format's `draft` and `discard` steps and a detail of several codes or a month (`README.md`, `format.ts`, `run.ts`, `book.test.ts`, `packages/scenarios/CLAUDE.md`)
+- [ ] The owner's approval of the entries, the outcomes and the four readings of the checklist items
+- [ ] `docs/ROADMAP.md`: the approval and its date
+- [ ] `accountant-reviewer` and `reviewer`, with `pnpm verify --e2e-all` through the `checker`
+- [ ] The PR with auto-merge and Auto-fix
