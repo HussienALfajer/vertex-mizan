@@ -8255,6 +8255,109 @@
         ]
       }
     },
+    "/api/inbox/{id}/preview": {
+      "get": {
+        "operationId": "InboxController_preview",
+        "parameters": [
+          {
+            "name": "action",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "recognise-in-open-period",
+                "split-remainder"
+              ]
+            }
+          },
+          {
+            "name": "revenueAmount",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "pattern": "^(0|-?[1-9]\\d{0,18})$"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "What an action of S06 rule 16 would lead to and the entries it would post, attempted and rolled back",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InboxActionPreview"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "TWO_FACTOR_REQUIRED, FORBIDDEN",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "COMPANY_NOT_SELECTED, COMPANY_SWITCHED, EVENT_NOT_HELD, EVENT_ACTION_NOT_ALLOWED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_FAILED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "inbox"
+        ]
+      }
+    },
     "/api/inbox/{id}/retry": {
       "post": {
         "operationId": "InboxController_retry",
@@ -18072,6 +18175,134 @@
           "recognised_in_open_period",
           "remainder_split"
         ]
+      },
+      "InboxPreviewQuery": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "recognise-in-open-period",
+              "split-remainder"
+            ]
+          },
+          "revenueAmount": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MinorUnits"
+              }
+            ]
+          }
+        },
+        "required": [
+          "action"
+        ]
+      },
+      "InboxActionPreview": {
+        "type": "object",
+        "properties": {
+          "state": {
+            "$ref": "#/components/schemas/EventState"
+          },
+          "reason": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/HoldReason"
+              }
+            ]
+          },
+          "detail": {
+            "nullable": true,
+            "type": "string"
+          },
+          "entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InboxPreviewEntry"
+            }
+          }
+        },
+        "required": [
+          "state",
+          "reason",
+          "detail",
+          "entries"
+        ],
+        "additionalProperties": false
+      },
+      "InboxPreviewEntry": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "hub_event",
+              "revenue_release"
+            ]
+          },
+          "servicePeriodOn": {
+            "nullable": true,
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InboxPreviewLine"
+            }
+          }
+        },
+        "required": [
+          "date",
+          "source",
+          "servicePeriodOn",
+          "lines"
+        ],
+        "additionalProperties": false
+      },
+      "InboxPreviewLine": {
+        "type": "object",
+        "properties": {
+          "accountCode": {
+            "type": "string"
+          },
+          "accountName": {
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/LineKind"
+          },
+          "amount": {
+            "$ref": "#/components/schemas/MoneyAmount"
+          },
+          "bookMinor": {
+            "$ref": "#/components/schemas/MinorUnits"
+          },
+          "parallelMinor": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MinorUnits"
+              }
+            ]
+          }
+        },
+        "required": [
+          "accountCode",
+          "accountName",
+          "kind",
+          "amount",
+          "bookMinor",
+          "parallelMinor"
+        ],
+        "additionalProperties": false
       },
       "InboxReason": {
         "type": "object",

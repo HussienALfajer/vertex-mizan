@@ -192,6 +192,7 @@ Contract liabilities are non-monetary and never revalued; contract assets are mo
 | `GET /api/revenue/preview?month=YYYY-MM` | `recognition.read` | the current or a past open month | the releases the job would post | `VALIDATION_FAILED` |
 | `POST /api/inbox/:id/recognise-in-open-period` | `events.manage` | `{ reason }` | the event | `EVENT_NOT_HELD`, `EVENT_ACTION_NOT_ALLOWED` |
 | `POST /api/inbox/:id/split-remainder` | `events.manage` | `{ revenueAmount: MinorUnits, reason }` | the event | `EVENT_NOT_HELD`, `EVENT_ACTION_NOT_ALLOWED`, `VALIDATION_FAILED` (outside 0 to the remaining) |
+| `GET /api/inbox/:id/preview?action=recognise-in-open-period\|split-remainder&revenueAmount=` | `events.read` | the action, and a split's revenue part (`MinorUnits`, only for a split) | what the action would lead to (state, hold) and each entry it would post with its lines in every ledger and an elapsed month's last day: the action attempted as it is taken, then rolled back, so `/inbox/:id` shows the closed months' parts and the split's entry ("Screens"; added with the screens' PR) | `VALIDATION_FAILED`, `NOT_FOUND`, `EVENT_NOT_HELD`, `EVENT_ACTION_NOT_ALLOWED` |
 
 No new error code. `/v1` stays additive (ADR 0006): a new event type and an optional field; `installment_total` stays accepted and unread. Clients accept the new details and actions they do not know.
 

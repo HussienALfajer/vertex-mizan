@@ -13,15 +13,19 @@ import {
 import { ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import {
   type IdParam,
+  type InboxActionPreview,
   type InboxCounts,
   type InboxEventDetail,
   type InboxPage,
+  type InboxPreviewQuery,
   type InboxQuery,
   type InboxReason,
   idParamSchema,
+  inboxActionPreviewSchema,
   inboxCountsSchema,
   inboxEventDetailSchema,
   inboxPageSchema,
+  inboxPreviewQuerySchema,
   inboxQuerySchema,
   inboxReasonSchema,
   type MapPostingRule,
@@ -91,6 +95,31 @@ export class InboxController {
     @Param({ schema: idParamSchema }) params: IdParam,
   ): Promise<InboxEventDetail> {
     return this.inbox.get(inCompany(access), params.id);
+  }
+
+  @Get(':id/preview')
+  @ApiParamsFrom(idParamSchema)
+  @ApiQueryFrom(inboxPreviewQuerySchema)
+  @CompanyRoute('events.read')
+  @SerializeOptions({ schema: inboxActionPreviewSchema })
+  @ApiOkResponse({
+    description:
+      'What an action of S06 rule 16 would lead to and the entries it would post, attempted and rolled back',
+    standardSchema: inboxActionPreviewSchema,
+  })
+  @ApiErrors(
+    ...COMPANY_READ_ERRORS,
+    'VALIDATION_FAILED',
+    'NOT_FOUND',
+    'EVENT_NOT_HELD',
+    'EVENT_ACTION_NOT_ALLOWED',
+  )
+  async preview(
+    @Access() access: RequestAccess,
+    @Param({ schema: idParamSchema }) params: IdParam,
+    @Query({ schema: inboxPreviewQuerySchema }) query: InboxPreviewQuery,
+  ): Promise<InboxActionPreview> {
+    return this.inbox.preview(inCompany(access), params.id, query);
   }
 
   @Post(':id/retry')

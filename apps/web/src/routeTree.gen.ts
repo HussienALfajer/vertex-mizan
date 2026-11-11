@@ -39,6 +39,8 @@ import { Route as AppCompanyOpenItemsIdRouteImport } from './routes/_app/_compan
 import { Route as AppCompanyRatesIndexRouteImport } from './routes/_app/_company/rates/index'
 import { Route as AppCompanyRatesCalendarRouteImport } from './routes/_app/_company/rates/calendar'
 import { Route as AppCompanyReceivablesIndexRouteImport } from './routes/_app/_company/receivables/index'
+import { Route as AppCompanyRevenueIndexRouteImport } from './routes/_app/_company/revenue/index'
+import { Route as AppCompanyRevenueIdRouteImport } from './routes/_app/_company/revenue/$id'
 import { Route as AppCompanySettingsApiClientsRouteImport } from './routes/_app/_company/settings/api-clients'
 import { Route as AppCompanySettingsAuditRouteImport } from './routes/_app/_company/settings/audit'
 import { Route as AppCompanySettingsCompanyRouteImport } from './routes/_app/_company/settings/company'
@@ -196,6 +198,16 @@ const AppCompanyReceivablesIndexRoute =
     path: '/receivables/',
     getParentRoute: () => AppCompanyRoute,
   } as any)
+const AppCompanyRevenueIndexRoute = AppCompanyRevenueIndexRouteImport.update({
+  id: '/revenue/',
+  path: '/revenue/',
+  getParentRoute: () => AppCompanyRoute,
+} as any)
+const AppCompanyRevenueIdRoute = AppCompanyRevenueIdRouteImport.update({
+  id: '/revenue/$id',
+  path: '/revenue/$id',
+  getParentRoute: () => AppCompanyRoute,
+} as any)
 const AppCompanySettingsApiClientsRoute =
   AppCompanySettingsApiClientsRouteImport.update({
     id: '/settings/api-clients',
@@ -266,6 +278,7 @@ export interface FileRoutesByFullPath {
   '/inbox/$id': typeof AppCompanyInboxIdRoute
   '/open-items/$id': typeof AppCompanyOpenItemsIdRoute
   '/rates/calendar': typeof AppCompanyRatesCalendarRoute
+  '/revenue/$id': typeof AppCompanyRevenueIdRoute
   '/settings/api-clients': typeof AppCompanySettingsApiClientsRoute
   '/settings/audit': typeof AppCompanySettingsAuditRoute
   '/settings/company': typeof AppCompanySettingsCompanyRoute
@@ -278,6 +291,7 @@ export interface FileRoutesByFullPath {
   '/inbox/': typeof AppCompanyInboxIndexRoute
   '/rates/': typeof AppCompanyRatesIndexRoute
   '/receivables/': typeof AppCompanyReceivablesIndexRoute
+  '/revenue/': typeof AppCompanyRevenueIndexRoute
   '/accounts/$id/lines': typeof AppCompanyAccountsIdLinesRoute
   '/receivables/clients/$valueId': typeof AppCompanyReceivablesClientsValueIdRoute
 }
@@ -303,6 +317,7 @@ export interface FileRoutesByTo {
   '/inbox/$id': typeof AppCompanyInboxIdRoute
   '/open-items/$id': typeof AppCompanyOpenItemsIdRoute
   '/rates/calendar': typeof AppCompanyRatesCalendarRoute
+  '/revenue/$id': typeof AppCompanyRevenueIdRoute
   '/settings/api-clients': typeof AppCompanySettingsApiClientsRoute
   '/settings/audit': typeof AppCompanySettingsAuditRoute
   '/settings/company': typeof AppCompanySettingsCompanyRoute
@@ -315,6 +330,7 @@ export interface FileRoutesByTo {
   '/inbox': typeof AppCompanyInboxIndexRoute
   '/rates': typeof AppCompanyRatesIndexRoute
   '/receivables': typeof AppCompanyReceivablesIndexRoute
+  '/revenue': typeof AppCompanyRevenueIndexRoute
   '/accounts/$id/lines': typeof AppCompanyAccountsIdLinesRoute
   '/receivables/clients/$valueId': typeof AppCompanyReceivablesClientsValueIdRoute
 }
@@ -344,6 +360,7 @@ export interface FileRoutesById {
   '/_app/_company/inbox/$id': typeof AppCompanyInboxIdRoute
   '/_app/_company/open-items/$id': typeof AppCompanyOpenItemsIdRoute
   '/_app/_company/rates/calendar': typeof AppCompanyRatesCalendarRoute
+  '/_app/_company/revenue/$id': typeof AppCompanyRevenueIdRoute
   '/_app/_company/settings/api-clients': typeof AppCompanySettingsApiClientsRoute
   '/_app/_company/settings/audit': typeof AppCompanySettingsAuditRoute
   '/_app/_company/settings/company': typeof AppCompanySettingsCompanyRoute
@@ -356,6 +373,7 @@ export interface FileRoutesById {
   '/_app/_company/inbox/': typeof AppCompanyInboxIndexRoute
   '/_app/_company/rates/': typeof AppCompanyRatesIndexRoute
   '/_app/_company/receivables/': typeof AppCompanyReceivablesIndexRoute
+  '/_app/_company/revenue/': typeof AppCompanyRevenueIndexRoute
   '/_app/_company/accounts/$id/lines': typeof AppCompanyAccountsIdLinesRoute
   '/_app/_company/receivables/clients/$valueId': typeof AppCompanyReceivablesClientsValueIdRoute
 }
@@ -383,6 +401,7 @@ export interface FileRouteTypes {
     | '/inbox/$id'
     | '/open-items/$id'
     | '/rates/calendar'
+    | '/revenue/$id'
     | '/settings/api-clients'
     | '/settings/audit'
     | '/settings/company'
@@ -395,6 +414,7 @@ export interface FileRouteTypes {
     | '/inbox/'
     | '/rates/'
     | '/receivables/'
+    | '/revenue/'
     | '/accounts/$id/lines'
     | '/receivables/clients/$valueId'
   fileRoutesByTo: FileRoutesByTo
@@ -420,6 +440,7 @@ export interface FileRouteTypes {
     | '/inbox/$id'
     | '/open-items/$id'
     | '/rates/calendar'
+    | '/revenue/$id'
     | '/settings/api-clients'
     | '/settings/audit'
     | '/settings/company'
@@ -432,6 +453,7 @@ export interface FileRouteTypes {
     | '/inbox'
     | '/rates'
     | '/receivables'
+    | '/revenue'
     | '/accounts/$id/lines'
     | '/receivables/clients/$valueId'
   id:
@@ -460,6 +482,7 @@ export interface FileRouteTypes {
     | '/_app/_company/inbox/$id'
     | '/_app/_company/open-items/$id'
     | '/_app/_company/rates/calendar'
+    | '/_app/_company/revenue/$id'
     | '/_app/_company/settings/api-clients'
     | '/_app/_company/settings/audit'
     | '/_app/_company/settings/company'
@@ -472,6 +495,7 @@ export interface FileRouteTypes {
     | '/_app/_company/inbox/'
     | '/_app/_company/rates/'
     | '/_app/_company/receivables/'
+    | '/_app/_company/revenue/'
     | '/_app/_company/accounts/$id/lines'
     | '/_app/_company/receivables/clients/$valueId'
   fileRoutesById: FileRoutesById
@@ -694,6 +718,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppCompanyReceivablesIndexRouteImport
       parentRoute: typeof AppCompanyRoute
     }
+    '/_app/_company/revenue/': {
+      id: '/_app/_company/revenue/'
+      path: '/revenue'
+      fullPath: '/revenue/'
+      preLoaderRoute: typeof AppCompanyRevenueIndexRouteImport
+      parentRoute: typeof AppCompanyRoute
+    }
+    '/_app/_company/revenue/$id': {
+      id: '/_app/_company/revenue/$id'
+      path: '/revenue/$id'
+      fullPath: '/revenue/$id'
+      preLoaderRoute: typeof AppCompanyRevenueIdRouteImport
+      parentRoute: typeof AppCompanyRoute
+    }
     '/_app/_company/settings/api-clients': {
       id: '/_app/_company/settings/api-clients'
       path: '/settings/api-clients'
@@ -765,6 +803,7 @@ interface AppCompanyRouteChildren {
   AppCompanyInboxIdRoute: typeof AppCompanyInboxIdRoute
   AppCompanyOpenItemsIdRoute: typeof AppCompanyOpenItemsIdRoute
   AppCompanyRatesCalendarRoute: typeof AppCompanyRatesCalendarRoute
+  AppCompanyRevenueIdRoute: typeof AppCompanyRevenueIdRoute
   AppCompanySettingsApiClientsRoute: typeof AppCompanySettingsApiClientsRoute
   AppCompanySettingsAuditRoute: typeof AppCompanySettingsAuditRoute
   AppCompanySettingsCompanyRoute: typeof AppCompanySettingsCompanyRoute
@@ -777,6 +816,7 @@ interface AppCompanyRouteChildren {
   AppCompanyInboxIndexRoute: typeof AppCompanyInboxIndexRoute
   AppCompanyRatesIndexRoute: typeof AppCompanyRatesIndexRoute
   AppCompanyReceivablesIndexRoute: typeof AppCompanyReceivablesIndexRoute
+  AppCompanyRevenueIndexRoute: typeof AppCompanyRevenueIndexRoute
   AppCompanyAccountsIdLinesRoute: typeof AppCompanyAccountsIdLinesRoute
   AppCompanyReceivablesClientsValueIdRoute: typeof AppCompanyReceivablesClientsValueIdRoute
 }
@@ -793,6 +833,7 @@ const AppCompanyRouteChildren: AppCompanyRouteChildren = {
   AppCompanyInboxIdRoute: AppCompanyInboxIdRoute,
   AppCompanyOpenItemsIdRoute: AppCompanyOpenItemsIdRoute,
   AppCompanyRatesCalendarRoute: AppCompanyRatesCalendarRoute,
+  AppCompanyRevenueIdRoute: AppCompanyRevenueIdRoute,
   AppCompanySettingsApiClientsRoute: AppCompanySettingsApiClientsRoute,
   AppCompanySettingsAuditRoute: AppCompanySettingsAuditRoute,
   AppCompanySettingsCompanyRoute: AppCompanySettingsCompanyRoute,
@@ -805,6 +846,7 @@ const AppCompanyRouteChildren: AppCompanyRouteChildren = {
   AppCompanyInboxIndexRoute: AppCompanyInboxIndexRoute,
   AppCompanyRatesIndexRoute: AppCompanyRatesIndexRoute,
   AppCompanyReceivablesIndexRoute: AppCompanyReceivablesIndexRoute,
+  AppCompanyRevenueIndexRoute: AppCompanyRevenueIndexRoute,
   AppCompanyAccountsIdLinesRoute: AppCompanyAccountsIdLinesRoute,
   AppCompanyReceivablesClientsValueIdRoute:
     AppCompanyReceivablesClientsValueIdRoute,

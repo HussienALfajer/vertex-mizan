@@ -35,6 +35,7 @@ import {
   BookOpenIcon,
   BuildingIcon,
   CalendarDaysIcon,
+  CalendarRangeIcon,
   CheckIcon,
   ChevronDownIcon,
   FilePenLineIcon,
@@ -109,6 +110,12 @@ const navItems: NavItem[] = [
     label: ar.openItems.ageing.nav,
     icon: HourglassIcon,
     permission: 'open_items.read',
+  },
+  {
+    to: '/revenue',
+    label: ar.revenue.nav,
+    icon: CalendarRangeIcon,
+    permission: 'recognition.read',
   },
   {
     to: '/rates',

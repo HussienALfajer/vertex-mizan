@@ -2,6 +2,7 @@ import type { INestApplication } from '@nestjs/common';
 import type {
   Company,
   Entry,
+  InboxActionPreview,
   InboxCounts,
   InboxEventDetail,
   InboxPage,
@@ -192,6 +193,7 @@ describe('GET /api/inbox', () => {
       { method: 'get', path: `/api/inbox/${id}` },
       { method: 'post', path: `/api/inbox/${id}/retry` },
       { method: 'post', path: `/api/inbox/${id}/post-in-open-period` },
+      { method: 'get', path: `/api/inbox/${id}/preview?action=recognise-in-open-period` },
       { method: 'post', path: `/api/inbox/${id}/recognise-in-open-period` },
       { method: 'post', path: `/api/inbox/${id}/split-remainder` },
       { method: 'post', path: `/api/inbox/${id}/resolve` },
@@ -514,7 +516,36 @@ describe('POST /api/inbox/:id/recognise-in-open-period (S06 rule 16)', () => {
     const held = await hub.send(late);
     expect(held.body).toMatchObject({ status: 'held', reason: 'SERVICE_PERIOD_CLOSED' });
     const path = `/api/inbox/${held.body.inbox_id}/recognise-in-open-period`;
+    // The preview, read-only for the auditor: the elapsed part on the first open day.
+    const auditor = await book.join('auditor');
+    const previewPath = `/api/inbox/${held.body.inbox_id}/preview`;
+    const preview = await auditor.browser.get(`${previewPath}?action=recognise-in-open-period`);
+    expect(preview.status, JSON.stringify(preview.body)).toBe(200);
+    expect(preview.body as InboxActionPreview).toMatchObject({ state: 'posted', reason: null });
+    expect(
+      (preview.body as InboxActionPreview).entries.map((entry) => [
+        entry.date,
+        entry.servicePeriodOn,
+      ]),
+    ).toEqual([
+      [`${today().slice(0, 7)}-01`, lastDay],
+      [today(), null],
+    ]);
+    expect((await auditor.browser.post(path, { reason: 'سبب' })).body.code).toBe('FORBIDDEN');
+    expect(
+      (await auditor.browser.get(`${previewPath}?action=split-remainder&revenueAmount=0`)).body
+        .code,
+    ).toBe('EVENT_ACTION_NOT_ALLOWED');
+    // Another company's event is not found.
+    const otherBook = await books(app, db);
+    expect(
+      (await otherBook.owner.browser.get(`${previewPath}?action=recognise-in-open-period`)).body
+        .code,
+    ).toBe('NOT_FOUND');
     const viewer = await book.join('viewer');
+    expect(
+      (await viewer.browser.get(`${previewPath}?action=recognise-in-open-period`)).body.code,
+    ).toBe('FORBIDDEN');
     expect((await viewer.browser.post(path, { reason: 'سبب' })).body.code).toBe('FORBIDDEN');
     const accountant = await book.join('accountant');
     expect((await accountant.browser.post(path, {})).body.code).toBe('VALIDATION_FAILED');
@@ -572,6 +603,33 @@ describe('POST /api/inbox/:id/split-remainder (S06 rules 15–16)', () => {
     expect((await accountant.browser.post(path, { reason: 'سبب' })).body.code).toBe(
       'VALIDATION_FAILED',
     );
+    // The preview: the entry the split would post, nothing written.
+    const previewPath = `/api/inbox/${held.body.inbox_id}/preview?action=split-remainder`;
+    expect((await accountant.browser.get(previewPath)).body.code).toBe('VALIDATION_FAILED');
+    const outside = await accountant.browser.get(`${previewPath}&revenueAmount=30001`);
+    expect(outside.body).toMatchObject({
+      code: 'VALIDATION_FAILED',
+      details: { remainingMinor: '30000' },
+    });
+    const preview = await accountant.browser.get(`${previewPath}&revenueAmount=10000`);
+    expect(preview.status, JSON.stringify(preview.body)).toBe(200);
+    const previewed = preview.body as InboxActionPreview;
+    expect(previewed.state).toBe('posted');
+    expect(
+      previewed.entries.flatMap((entry) =>
+        entry.lines.map((line) => [line.accountCode, line.amount.amountMinor]),
+      ),
+    ).toEqual(
+      expect.arrayContaining([
+        ['212001', '30000'],
+        ['411001', '-10000'],
+        ['211003', '-20000'],
+      ]),
+    );
+    expect(
+      ((await accountant.browser.get(`/api/inbox/${held.body.inbox_id}`)).body as InboxEventDetail)
+        .state,
+    ).toBe('held');
     // Above the 300.00 USD remainder: refused, nothing written.
     const above = await accountant.browser.post(path, { ...body, revenueAmount: '30001' });
     expect(above.body.code).toBe('VALIDATION_FAILED');

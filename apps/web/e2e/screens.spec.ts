@@ -26,6 +26,14 @@ import {
 } from './inbox-mocks';
 import { rateReads, today } from './rate-mocks';
 import { client, m1, receivablesReads } from './receivables-mocks';
+import {
+  cancelledProject,
+  contractAssetItem,
+  cycle,
+  releasedCycle,
+  revenueReads,
+  serviceClosed,
+} from './revenue-mocks';
 import { hubClient, newKeyOf, newSecret, settingsReads } from './settings-mocks';
 import { expect, expectNoPageOverflow, screenshot, test, widths } from './test';
 import { brokenReport, emailedAnchor, trustReads } from './trust-mocks';
@@ -447,6 +455,104 @@ for (const colorScheme of ['light', 'dark'] as const) {
           await screenshot(page, testInfo, `inbox-move-${colorScheme}-${width}`, {
             fullPage: false,
           });
+        });
+      });
+
+      test.describe('revenue screens', () => {
+        test.use({ me: owner, api: revenueReads });
+        test.beforeEach(async ({ page }) => {
+          await page.clock.setFixedTime(today);
+        });
+
+        test('revenue: schedules', async ({ page }, testInfo) => {
+          await page.goto('/revenue');
+          await expect(page.getByRole('table', { name: ar.revenue.table.label })).toBeVisible();
+          await expect(page.getByText(ar.revenue.decisions.title)).toBeVisible();
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `revenue-schedules-${colorScheme}-${width}`);
+        });
+
+        test('revenue: months', async ({ page }, testInfo) => {
+          await page.goto('/revenue?view=months');
+          await expect(page.getByRole('table', { name: ar.revenue.months.label })).toBeVisible();
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `revenue-months-${colorScheme}-${width}`);
+        });
+
+        test('revenue: month preview', async ({ page }, testInfo) => {
+          await page.goto('/revenue?view=months');
+          await page.getByRole('button', { name: ar.revenue.preview.open }).click();
+          const dialog = page.getByRole('dialog', { name: new RegExp(ar.revenue.preview.title) });
+          await expect(dialog).toContainText(cycle.invoiceNumber);
+          await screenshot(page, testInfo, `revenue-preview-${colorScheme}-${width}`, {
+            fullPage: false,
+          });
+        });
+
+        for (const schedule of [cycle, releasedCycle]) {
+          test(`revenue schedule: ${schedule.state}`, async ({ page }, testInfo) => {
+            await page.goto(`/revenue/${schedule.id}`);
+            await expect(
+              page.getByRole('table', { name: ar.revenue.schedule.movementsLabel }),
+            ).toBeVisible();
+            await expectNoPageOverflow(page);
+            await screenshot(
+              page,
+              testInfo,
+              `revenue-schedule-${schedule.state}-${colorScheme}-${width}`,
+            );
+          });
+        }
+
+        test('inbox event: service period closed', async ({ page }, testInfo) => {
+          await page.goto(`/inbox/${serviceClosed.id}`);
+          await expect(
+            page.getByRole('table', { name: ar.revenue.actions.recognise.closedPartsLabel }),
+          ).toBeVisible();
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `inbox-event-service-closed-${colorScheme}-${width}`);
+        });
+
+        test('inbox: recognise dialog', async ({ page }, testInfo) => {
+          await page.goto(`/inbox/${serviceClosed.id}`);
+          await page.getByRole('button', { name: ar.revenue.actions.recognise.label }).click();
+          const dialog = page.getByRole('dialog', { name: ar.revenue.actions.recognise.title });
+          await expect(
+            dialog
+              .getByText(ar.revenue.previewEntries.release)
+              .or(dialog.getByRole('table').first()),
+          ).toBeVisible();
+          await screenshot(page, testInfo, `inbox-recognise-${colorScheme}-${width}`, {
+            fullPage: false,
+          });
+        });
+
+        test('inbox event: cancelled project remainder', async ({ page }, testInfo) => {
+          await page.goto(`/inbox/${cancelledProject.id}`);
+          // The refund payable's line of the whole remainder refunded.
+          await expect(page.getByText('211003').first()).toBeVisible();
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `inbox-event-remainder-${colorScheme}-${width}`);
+        });
+
+        test('inbox: split dialog', async ({ page }, testInfo) => {
+          await page.goto(`/inbox/${cancelledProject.id}`);
+          await page.getByRole('button', { name: ar.revenue.actions.split.label }).click();
+          const dialog = page.getByRole('dialog', { name: ar.revenue.actions.split.title });
+          const amount = dialog.getByLabel(new RegExp(ar.revenue.actions.split.revenue));
+          await amount.fill('100');
+          await amount.press('Tab');
+          await expect(dialog).toContainText('-12,000.00');
+          await screenshot(page, testInfo, `inbox-split-${colorScheme}-${width}`, {
+            fullPage: false,
+          });
+        });
+
+        test('contract asset item', async ({ page }, testInfo) => {
+          await page.goto(`/open-items/${contractAssetItem.id}`);
+          await expect(page.getByText(ar.revenue.contractAsset.label)).toBeVisible();
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `contract-asset-item-${colorScheme}-${width}`);
         });
       });
 
