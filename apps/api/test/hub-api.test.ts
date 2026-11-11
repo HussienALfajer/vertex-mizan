@@ -248,7 +248,9 @@ describe('the key’s guard', () => {
     const book = await books(app, db);
     const hub = await hubClient(app, book.owner);
     const answers = [];
-    for (let batch = 0; batch < 13; batch += 1) {
+    // The limit counts per calendar minute, so a run may straddle one boundary: 1,250 requests are
+    // more than two minutes' 600, so some are refused wherever the boundary falls.
+    for (let batch = 0; batch < 25; batch += 1) {
       answers.push(
         ...(await Promise.all(
           Array.from({ length: 50 }, () =>
@@ -258,8 +260,7 @@ describe('the key’s guard', () => {
       );
     }
     const limited = answers.filter((answer) => answer.status === 429);
-    // A minute boundary inside the run can let a few more through; never all 650.
-    expect(limited.length).toBeGreaterThan(0);
+    expect(limited.length).toBeGreaterThanOrEqual(1_250 - 2 * 600);
     expect(limited[0]?.body.code).toBe('RATE_LIMITED');
   });
 });
