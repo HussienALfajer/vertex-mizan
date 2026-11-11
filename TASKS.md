@@ -4,7 +4,7 @@
 
 - [x] The scenario `docs/scenarios/periods/close-and-reopen.md`, seven cases (`syp-usd` ×3, `syp` ×2, `usd-syp`, `third`), `Proposed`
 - [x] The format's `draft` and `discard` steps and a detail of several codes or a month (`README.md`, `format.ts`, `run.ts`, `book.test.ts`, `packages/scenarios/CLAUDE.md`)
-- [ ] The owner's approval of the entries, the outcomes and the four readings of the checklist items
-- [ ] `docs/ROADMAP.md`: the approval and its date
+- [x] The owner's approval of the entries, the outcomes and the four readings of the checklist items (2026-11-12)
+- [x] `docs/ROADMAP.md`: the approval and its date
 - [ ] `accountant-reviewer` and `reviewer`, with `pnpm verify --e2e-all` through the `checker`
 - [ ] The PR with auto-merge and Auto-fix
