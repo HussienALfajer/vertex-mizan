@@ -2,7 +2,7 @@
 
 Status: Proposed
 
-S07 wrote these cases (S07 "Scenarios"). They wait for the owner's approval of their expected entries and outcomes; once approved, the file stays `Proposed` until S07's feature slice brings the `revalue`, `close` and `reopen` executors, then becomes `Approved (owner, <the approval's date>)`.
+S07 wrote these cases (S07 "Scenarios"); the owner approved their expected entries and outcomes on 2026-11-12. The file stays `Proposed` until S07's feature slice brings the `revalue`, `close` and `reopen` executors, then becomes `Approved (owner, 2026-11-12)`.
 
 ## Rule
 
