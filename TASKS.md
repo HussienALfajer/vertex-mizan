@@ -6,17 +6,18 @@ The ledger functions already exist in `packages/ledger/src/recognition.ts` (merg
 
 ## PR 1 — Foundation and over-time recognition (`feat/s06-over-time`)
 - [x] Owner approval (2026-11-11): the new outcome of `revenue/revenue-at-issue.md` "an invoice with a retainer line" (posts through S06 instead of `NO_MAPPING`)
-- [x] contracts: `milestone.reopened` v1, optional `service`/`number` on `milestone.done`, the new hold details, the actions `recognise`/`split_remainder`, the slots `contract_liability`, `contract_asset`, `released_revenue`, `cancelled_project_refund`, `SERVICE_PERIOD_CLOSED` in `HOLD_CHECK_ORDER`, the permission `recognition.read`, the audit actions; i18n of each
+- [x] contracts: `milestone.reopened` v1 (the optional `service` on `milestone.done` moves to PR 2: oasdiff pairs a changed `oneOf` variant of `/v1/events` only when no variant is added in the same diff, so each `/v1` change goes in its own PR; Hub's `number` is already on the milestone's reference), the new hold details, the actions `recognise`/`split_remainder`, the slots `contract_liability`, `contract_asset`, `released_revenue`, `cancelled_project_refund`, `SERVICE_PERIOD_CLOSED` in `HOLD_CHECK_ORDER`, the permission `recognition.read`, the audit actions; i18n of each
 - [x] ledger: `recognitionPatternOf()` (rule 1) and the over-time posting lines of `invoice.issued` (rules 2, 3, 7) on top of `hub.ts`; S05's `deferred_revenue` tests changed
 - [x] db (`/db-migration`): `recognition_schedules`, `recognition_movements` (append-only, forced RLS, registry, remaining-never-below-zero trigger, unique `released` per month), the four slots (their defaults for existing companies at the worker's start), `open_items_hub_document_key` with the reference (one item per reference: a late line's contract assets, then one per done); invariant and isolation tests
 - [x] db: the recognition service in the posting transaction: deferral at issue, elapsed months as contract-asset items, the release of ended months in a late invoice's transaction, the service change of a deferred line, `recognition_pattern_unclear`, `SERVICE_PERIOD_CLOSED` and the `recognise` action (the integrity check's new proof moves to PR 3, with the read API; `order_keys` to PR 2, with the milestones that use it)
 - [x] scenario book: `revenue/over-time-release.md` (all cases but the closed-month one, which waits for S07's close) and `revenue/revenue-at-issue.md` run `Approved`
-- [ ] api: `POST /api/inbox/:id/recognise-in-open-period`; tests with another company and a missing permission
+- [x] api: `POST /api/inbox/:id/recognise-in-open-period`; tests with another company and a missing permission
 - [ ] worker: `revenue.release-month` (01:00 Asia/Damascus on day 1, at start and in the 04:00 sweep), the `revenue:run-release --month` command, the retry of every `NO_MAPPING` event at start; run-twice and race-with-close tests
-- [ ] bridge: OpenAPI regenerated, breaking-change check
+- [x] bridge: OpenAPI regenerated, breaking-change check
 - [ ] checks and reviewers, PR with auto-merge and Auto-fix
 
 ## PR 2 — Milestones and projects (`feat/s06-milestones`)
+- [ ] contracts: the optional `service` on `milestone.done` (S06 rule 11), alone among `/v1`'s changes in this PR
 - [ ] db: `inbound_events.order_keys` with its GIN index (rule 17)
 - [ ] ledger/db: deposit and milestone lines at issue (rules 1, 2, 12), `milestone.done` (rule 11), `milestone.reopened` (rule 13), `project.completed` (rule 14), `project.cancelled` and its split (rule 15), the order keys `milestone:<id>` and `project:<id>` (rule 17), the retries of rule 19
 - [ ] scenario book: `revenue/milestones.md`, `revenue/cancelled-project.md` run `Approved`

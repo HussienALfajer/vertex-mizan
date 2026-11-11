@@ -112,7 +112,6 @@ function fieldsOf(event: { type: EventType; payload: unknown }): Field[] {
         [t.project, name(milestone.project)],
         [t.amount, money(milestone.amount, milestone.currency)],
         [t.doneOn, day(milestone.done_on)],
-        ...(milestone.service ? [[t.service, name(milestone.service)] as const] : []),
       ];
     }
     case 'milestone.reopened': {

@@ -313,6 +313,8 @@ describe('the examples Hub receives', () => {
       ['payment.voided', 201, 'posted', null],
       ['invoice.voided', 201, 'posted', null],
       ['milestone.done', 202, 'held', 'NO_MAPPING'],
+      // A reopen waits behind its milestone's held done (rule 11).
+      ['milestone.reopened', 202, 'held', 'WAITING_FOR_EARLIER_EVENT'],
       ['project.completed', 202, 'held', 'NO_MAPPING'],
       ['project.cancelled', 202, 'held', 'WAITING_FOR_EARLIER_EVENT'],
       ['project_expense.recorded', 201, 'posted', null],

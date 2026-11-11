@@ -268,8 +268,6 @@ export const milestoneDoneV1Schema = z
     currency: hubCurrencySchema,
     amount: positiveMinorSchema,
     done_on: hubDateSchema,
-    /** The milestone's service, which its revenue carries when it was not invoiced (S06 rule 11). */
-    service: hubValueRefSchema.optional(),
   })
   .meta({ id: 'MilestoneDoneV1' });
 

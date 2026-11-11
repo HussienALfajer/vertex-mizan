@@ -1460,7 +1460,9 @@
                 "event.retried",
                 "event.moved_to_open_period",
                 "event.resolved",
-                "event.dismissed"
+                "event.dismissed",
+                "event.recognised_in_open_period",
+                "event.remainder_split"
               ]
             }
           },
@@ -8017,7 +8019,8 @@
                 "ad_spend.recorded",
                 "ad_spend.changed",
                 "ad_spend.archived",
-                "rate.changed"
+                "rate.changed",
+                "milestone.reopened"
               ]
             }
           },
@@ -8426,6 +8429,98 @@
         ]
       }
     },
+    "/api/inbox/{id}/recognise-in-open-period": {
+      "post": {
+        "operationId": "InboxController_recognise",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InboxReason"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The event, its closed months’ elapsed parts posted in the first open period after them (S06 rule 16)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InboxEventDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "TWO_FACTOR_REQUIRED, FORBIDDEN",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "COMPANY_NOT_SELECTED, COMPANY_SWITCHED, COMPANY_ARCHIVED, EVENT_NOT_HELD, EVENT_ACTION_NOT_ALLOWED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_FAILED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "inbox"
+        ]
+      }
+    },
     "/api/inbox/{id}/resolve": {
       "post": {
         "operationId": "InboxController_resolve",
@@ -8684,7 +8779,11 @@
                 "ad_funds",
                 "ad_platforms_payable",
                 "project_cost",
-                "project_expense_awaiting_payment"
+                "project_expense_awaiting_payment",
+                "contract_liability",
+                "contract_asset",
+                "released_revenue",
+                "cancelled_project_refund"
               ]
             }
           }
@@ -9439,7 +9538,8 @@
           "posting_rules.read",
           "posting_rules.manage",
           "api_clients.read",
-          "api_clients.manage"
+          "api_clients.manage",
+          "recognition.read"
         ]
       },
       "ErrorResponse": {
@@ -10339,7 +10439,9 @@
           "event.retried",
           "event.moved_to_open_period",
           "event.resolved",
-          "event.dismissed"
+          "event.dismissed",
+          "event.recognised_in_open_period",
+          "event.remainder_split"
         ]
       },
       "AuditPage": {
@@ -16045,6 +16147,49 @@
               "version",
               "payload"
             ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              "occurred_at": {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+              },
+              "accounting_date": {
+                "type": "string",
+                "format": "date",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "milestone.reopened"
+                ]
+              },
+              "version": {
+                "type": "number",
+                "enum": [
+                  1
+                ]
+              },
+              "payload": {
+                "$ref": "#/components/schemas/MilestoneReopenedV1"
+              }
+            },
+            "required": [
+              "id",
+              "occurred_at",
+              "accounting_date",
+              "type",
+              "version",
+              "payload"
+            ]
           }
         ]
       },
@@ -16734,6 +16879,31 @@
           "syp_per_usd"
         ]
       },
+      "MilestoneReopenedV1": {
+        "type": "object",
+        "properties": {
+          "milestone": {
+            "$ref": "#/components/schemas/HubDocumentId"
+          },
+          "client": {
+            "$ref": "#/components/schemas/HubValueRef"
+          },
+          "project": {
+            "$ref": "#/components/schemas/HubContractRef"
+          },
+          "reopened_on": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          }
+        },
+        "required": [
+          "milestone",
+          "client",
+          "project",
+          "reopened_on"
+        ]
+      },
       "EventOutcome": {
         "oneOf": [
           {
@@ -16962,7 +17132,8 @@
           "ad_spend.recorded",
           "ad_spend.changed",
           "ad_spend.archived",
-          "rate.changed"
+          "rate.changed",
+          "milestone.reopened"
         ]
       },
       "InboxPage": {
@@ -17416,7 +17587,9 @@
           "retried",
           "moved_to_open_period",
           "resolved",
-          "dismissed"
+          "dismissed",
+          "recognised_in_open_period",
+          "remainder_split"
         ]
       },
       "InboxReason": {
@@ -17528,7 +17701,11 @@
           "ad_funds",
           "ad_platforms_payable",
           "project_cost",
-          "project_expense_awaiting_payment"
+          "project_expense_awaiting_payment",
+          "contract_liability",
+          "contract_asset",
+          "released_revenue",
+          "cancelled_project_refund"
         ]
       },
       "PostingSlotParam": {
