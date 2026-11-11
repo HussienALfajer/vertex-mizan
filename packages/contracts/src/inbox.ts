@@ -11,7 +11,7 @@ import {
   type PostingSlot,
   postingSlotSchema,
 } from './events.js';
-import { entryNumberSchema } from './wire.js';
+import { entryNumberSchema, minorUnitsSchema } from './wire.js';
 
 // The internal API of the event inbox and the posting rules (S05 "API", "Screens"): what the
 // accountant reads and does on `/api/inbox` and `/api/posting-rules`.
@@ -145,6 +145,16 @@ export const resolveEventSchema = z
   .meta({ id: 'ResolveEvent' });
 
 export type ResolveEvent = z.infer<typeof resolveEventSchema>;
+
+/**
+ * `POST /api/inbox/:id/split-remainder` (S06 rules 15–16): the transaction amount of the remainder
+ * to revenue, in the project's currency, from zero to the remainder; the rest is refunded.
+ */
+export const splitRemainderSchema = z
+  .object({ revenueAmount: minorUnitsSchema, reason: z.string().trim().min(1).max(500) })
+  .meta({ id: 'SplitRemainder' });
+
+export type SplitRemainder = z.infer<typeof splitRemainderSchema>;
 
 /**
  * The events whose rules read each slot (`packages/ledger`'s `hub.ts`), for the mapping screen:
