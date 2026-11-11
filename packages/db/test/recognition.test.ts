@@ -27,6 +27,7 @@ import {
   type PersonActor,
   post,
   postingRuleAccounts,
+  previewAction,
   RECOGNITION_MOVEMENT_KINDS,
   readRecognitionState,
   receiveEvent,
@@ -1098,34 +1099,36 @@ describe('the template’s recognition slots for an existing company (S06 "Data"
   });
 });
 
+// A project, its milestones and a deposit invoice (`revenue/milestones`, `revenue/cancelled-project`).
+const P1 = {
+  external_id: ids(9005),
+  code: 'P1',
+  name: 'مشروع تجريبي',
+  kind: 'project',
+  client_external_id: C1.external_id,
+};
+const MS = (n: number) => ({ id: ids(500 + n), number: `MS-${n}` });
+const deposit = (n: number, on: string, amount: number, milestone: number) =>
+  envelope('invoice.issued', on, {
+    invoice: invoiceRef(n),
+    client: C1,
+    contract: P1,
+    currency: 'USD',
+    syp_per_usd: '122.0000',
+    issued_on: on,
+    due_on: '2026-12-31',
+    lines: [
+      {
+        id: ids(200 + n),
+        amount,
+        service: S1,
+        source: 'deposit',
+        milestone_id: MS(milestone).id,
+      },
+    ],
+  });
+
 describe('milestones and projects (S06 rules 11–17)', () => {
-  const P1 = {
-    external_id: ids(9005),
-    code: 'P1',
-    name: 'مشروع تجريبي',
-    kind: 'project',
-    client_external_id: C1.external_id,
-  };
-  const MS = (n: number) => ({ id: ids(500 + n), number: `MS-${n}` });
-  const deposit = (n: number, on: string, amount: number, milestone: number) =>
-    envelope('invoice.issued', on, {
-      invoice: invoiceRef(n),
-      client: C1,
-      contract: P1,
-      currency: 'USD',
-      syp_per_usd: '122.0000',
-      issued_on: on,
-      due_on: '2026-12-31',
-      lines: [
-        {
-          id: ids(200 + n),
-          amount,
-          service: S1,
-          source: 'deposit',
-          milestone_id: MS(milestone).id,
-        },
-      ],
-    });
   const done = (milestone: number, on: string, amount: number) =>
     envelope('milestone.done', on, {
       milestone: MS(milestone),
@@ -1460,6 +1463,124 @@ describe('milestones and projects (S06 rules 11–17)', () => {
       detail: 'schedule_split_at_cancellation',
     });
     expect(actions.filter((row) => row.action === 'remainder_split')).toHaveLength(1);
+  });
+});
+
+describe('the previews of the accountant’s actions (S06 "Screens", rule 16)', () => {
+  /** Every row an action could write: entries, lines, states, actions and audit rows. */
+  const written = (companyId: string) =>
+    inCompany(companyId, async (tx) => {
+      const { rows } = await tx.execute<Record<string, string>>(sql`select
+        (select count(*) from journal_entries) as entries,
+        (select count(*) from journal_lines) as lines,
+        (select count(*) from inbound_event_actions) as actions,
+        (select count(*) from audit_entries) as audits,
+        (select count(*) from recognition_movements) as movements,
+        (select string_agg(state || ':' || coalesce(hold_reason, ''), ',' order by id)
+          from inbound_event_states) as states`);
+      return rows[0];
+    });
+  const linesOf = (preview: Awaited<ReturnType<typeof previewAction>>) =>
+    preview.entries.map((entry) => ({
+      date: entry.date,
+      lines: entry.lines.map((line) => [
+        line.accountCode,
+        line.currency,
+        line.amountMinor,
+        line.bookMinor,
+        line.parallelMinor,
+      ]),
+    }));
+
+  it('previews the recognition in the first open period as it then posts, writing nothing', async () => {
+    const company = await newCompany([
+      ['2026-10-29', '119.0000'],
+      ['2026-11-05', '120.5000'],
+    ]);
+    await closePeriod(company, '2026-10');
+    const invoice = await receive(
+      company,
+      cycle(25, '2026-11-05', 62_000, '2026-10-20', '2026-11-19'),
+      '2026-11-05',
+    );
+    expect(invoice.event).toMatchObject({ reason: 'SERVICE_PERIOD_CLOSED' });
+    const before = await written(company);
+    const options = { actor: person(), today: '2026-11-05' };
+    const preview = await inCompany(company, (tx) =>
+      previewAction(tx, invoice.event.inboxId, { kind: 'recognise' }, options),
+    );
+    expect(await written(company)).toEqual(before);
+    expect(preview).toMatchObject({ state: 'posted', reason: null, detail: null });
+    // October's part on 1 November, measured at 31 October.
+    expect(
+      preview.entries.map((entry) => [entry.date, entry.source, entry.servicePeriodOn]),
+    ).toEqual([
+      ['2026-11-01', 'hub_event', '2026-10-31'],
+      ['2026-11-05', 'hub_event', null],
+    ]);
+    await expect(
+      inCompany(company, (tx) =>
+        previewAction(tx, invoice.event.inboxId, { kind: 'split', revenueMinor: 0n }, options),
+      ),
+    ).rejects.toMatchObject({ code: 'EVENT_ACTION_NOT_ALLOWED' });
+    await inCompany(company, (tx) =>
+      recogniseEvent(tx, invoice.event.inboxId, 'وصلت الفاتورة بعد الإقفال', options),
+    );
+    expect((await ledger(company)).map(({ date, lines }) => ({ date, lines }))).toEqual(
+      linesOf(preview),
+    );
+    await expect(
+      inCompany(company, (tx) =>
+        previewAction(tx, invoice.event.inboxId, { kind: 'recognise' }, options),
+      ),
+    ).rejects.toMatchObject({ code: 'EVENT_NOT_HELD' });
+  });
+
+  it('previews a cancelled project’s split as it then posts, and refuses one outside the remainder', async () => {
+    const company = await newCompany([
+      ['2026-11-03', '120.0000'],
+      ['2026-12-10', '124.0000'],
+    ]);
+    await receive(company, deposit(81, '2026-11-03', 30_000, 1), '2026-11-03');
+    const held = await receive(
+      company,
+      envelope('project.cancelled', '2026-12-10', { project: P1, client: C1, on: '2026-12-10' }),
+      '2026-12-10',
+    );
+    expect(held.event).toMatchObject({ detail: 'cancelled_project_remainder' });
+    const options = { actor: person(), today: '2026-12-14' };
+    const before = await written(company);
+    const preview = (revenueMinor: bigint) =>
+      inCompany(company, (tx) =>
+        previewAction(tx, held.event.inboxId, { kind: 'split', revenueMinor }, options),
+      );
+    const all = await preview(0n);
+    expect(linesOf(all)).toEqual([
+      {
+        date: '2026-12-10',
+        lines: [
+          ['212001', 'USD', 30_000n, 3_600_000n, 30_000n],
+          ['211003', 'USD', -30_000n, -3_720_000n, -30_000n],
+          ['541001', 'SYP', 120_000n, 120_000n, 0n],
+        ],
+      },
+    ]);
+    await expect(preview(30_001n)).rejects.toMatchObject({
+      code: 'VALIDATION_FAILED',
+      details: { remainingMinor: '30000' },
+    });
+    const part = await preview(10_000n);
+    expect(await written(company)).toEqual(before);
+    await expect(
+      inCompany(company, (tx) =>
+        previewAction(tx, held.event.inboxId, { kind: 'recognise' }, options),
+      ),
+    ).rejects.toMatchObject({ code: 'EVENT_ACTION_NOT_ALLOWED' });
+    await inCompany(company, (tx) =>
+      splitEvent(tx, held.event.inboxId, 10_000n, 'ثلث الدفعة مستحق', options),
+    );
+    const [, entry] = await ledger(company);
+    expect(linesOf(part)).toEqual([{ date: entry?.date, lines: entry?.lines }]);
   });
 });
 

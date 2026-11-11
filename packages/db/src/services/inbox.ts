@@ -35,7 +35,7 @@ import {
   recognisedAtIssue,
   referencedDocuments,
 } from '@vertex-mizan/ledger';
-import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, inArray, isNull, sql } from 'drizzle-orm';
 import { type AuditActor, SYSTEM_NAME, writeCompanyAudit } from '../audit.js';
 import type { Transaction } from '../client.js';
 import { type HubSource, type ManualLineSpec, type PostingContent, post } from '../posting/post.js';
@@ -149,6 +149,8 @@ interface ActionOptions {
   readonly closedPeriods?: readonly string[];
   /** The accountant's revenue part of a cancelled project's remainder (S06 rule 16). */
   readonly split?: bigint;
+  /** Told of each entry the rule posts, with the elapsed month's last day it recognises. */
+  readonly onPosted?: (entryId: string, servicePeriodOn: string | null) => void;
 }
 
 const sha256 = (text: string) => createHash('sha256').update(text, 'utf8').digest('hex');
@@ -1033,6 +1035,12 @@ async function decide(
           });
           posted.push(entry.id);
           byKey.set(planned.key, entry.id);
+          options.onPosted?.(
+            entry.id,
+            planned.kind === 'lines' && planned.servicePeriod === true
+              ? (planned.on ?? null)
+              : null,
+          );
         }
         planned = null;
         if (plan.schedules !== undefined && event.type === 'invoice.issued') {
@@ -1537,6 +1545,173 @@ export async function moveEvent(
   return { event, replayed: false, triggers: triggersOf(row, outcome) };
 }
 
+/** Recognition in the first open period is for `SERVICE_PERIOD_CLOSED` only (S06 rule 16). */
+function checkRecognisable(state: StateRow): void {
+  if (state.holdReason !== 'SERVICE_PERIOD_CLOSED') {
+    refuse('EVENT_ACTION_NOT_ALLOWED', 'Only an event held SERVICE_PERIOD_CLOSED is recognised', {
+      reason: state.holdReason,
+    });
+  }
+}
+
+/** A split is for a cancelled project's remainder or an invoice after it (S06 rule 16). */
+function checkSplittable(state: StateRow): void {
+  if (
+    state.holdReason !== 'NEEDS_DECISION' ||
+    (state.holdDetail !== 'cancelled_project_remainder' &&
+      state.holdDetail !== 'invoiced_after_cancellation')
+  ) {
+    refuse('EVENT_ACTION_NOT_ALLOWED', 'Only a cancelled project’s remainder is split', {
+      reason: state.holdReason,
+      detail: state.holdDetail,
+    });
+  }
+}
+
+async function closedPeriodsOf(tx: Transaction): Promise<string[]> {
+  const closed = await tx
+    .select({ period: periods.period })
+    .from(periods)
+    .where(sql`${periods.state} <> 'open'`);
+  return closed.map((period) => period.period);
+}
+
+/** An action of S06 rule 16 to preview: the recognition, or a split with its revenue part. */
+export type PreviewedAction =
+  | { readonly kind: 'recognise' }
+  | { readonly kind: 'split'; readonly revenueMinor: bigint };
+
+/** One line of a previewed entry, as the posting function wrote it. */
+export interface PreviewedLine {
+  readonly accountCode: string;
+  readonly accountName: string;
+  readonly kind: string;
+  readonly currency: string;
+  readonly amountMinor: bigint;
+  readonly bookMinor: bigint;
+  readonly parallelMinor: bigint | null;
+}
+
+/** An entry the action would post, and the elapsed month's last day it recognises, if any. */
+export interface PreviewedEntry {
+  readonly date: string;
+  readonly source: string;
+  readonly servicePeriodOn: string | null;
+  readonly lines: readonly PreviewedLine[];
+}
+
+/** What an action would lead to: the event's state, its hold, and the entries it would post. */
+export interface ActionPreview {
+  readonly state: 'held' | 'posted' | 'recorded';
+  readonly reason: HoldReason | null;
+  readonly detail: string | null;
+  readonly entries: readonly PreviewedEntry[];
+}
+
+/** A sentinel that rolls a preview's savepoint back once its entries are read. */
+class PreviewRolledBack extends Error {
+  constructor(readonly preview: ActionPreview) {
+    super('previewed');
+  }
+}
+
+/**
+ * Previews an action of S06 rule 16 for `/inbox/:id` ("Screens"): the event attempted exactly as
+ * the action attempts it, through the posting function, with the action's own refusals
+ * (`EVENT_NOT_HELD`, `EVENT_ACTION_NOT_ALLOWED`, a split outside zero to the remainder
+ * `VALIDATION_FAILED`), then every entry the attempt wrote read back and the savepoint rolled back,
+ * so nothing is written: no entry, state, action or audit row. The ledger head stays locked until
+ * the caller's transaction ends, as for any attempt.
+ */
+export async function previewAction(
+  tx: Transaction,
+  inboxId: string,
+  action: PreviewedAction,
+  options: AttemptOptions,
+): Promise<ActionPreview> {
+  const row = await eventRow(tx, inboxId);
+  const state = await heldState(tx, row);
+  if (action.kind === 'recognise') checkRecognisable(state);
+  else checkSplittable(state);
+  const [head] = await tx.select({ entryCount: ledgerHeads.entryCount }).from(ledgerHeads);
+  if (!head) throw new Error('A company without its ledger head');
+  const servicePeriods = new Map<string, string | null>();
+  try {
+    await tx.transaction(async (savepoint) => {
+      const { outcome } = await attempt(savepoint, row, {
+        ...options,
+        ...(action.kind === 'recognise'
+          ? { closedPeriods: await closedPeriodsOf(savepoint) }
+          : { split: action.revenueMinor }),
+        onPosted: (entryId, on) => servicePeriods.set(entryId, on),
+      });
+      const entries = outcome.kind === 'hold' ? [] : await entriesAfter(savepoint, head.entryCount);
+      throw new PreviewRolledBack({
+        state: outcome.kind === 'hold' ? 'held' : outcome.kind,
+        reason: outcome.kind === 'hold' ? outcome.reason : null,
+        detail: outcome.kind === 'hold' ? outcome.detail : null,
+        entries: entries.map((entry) => ({
+          ...entry,
+          servicePeriodOn: servicePeriods.get(entry.id) ?? null,
+        })),
+      });
+    });
+  } catch (error) {
+    if (error instanceof PreviewRolledBack) return error.preview;
+    throw error;
+  }
+  throw new Error('A preview that was not rolled back');
+}
+
+/** The entries posted after the head's count, in posting order, with their lines. */
+async function entriesAfter(
+  tx: Transaction,
+  entryCount: bigint,
+): Promise<(Omit<PreviewedEntry, 'servicePeriodOn'> & { readonly id: string })[]> {
+  const entries = await tx
+    .select({
+      id: journalEntries.id,
+      date: journalEntries.entryDate,
+      source: journalEntries.source,
+    })
+    .from(journalEntries)
+    .where(gt(journalEntries.sequence, entryCount))
+    .orderBy(asc(journalEntries.sequence));
+  if (entries.length === 0) return [];
+  const lines = await tx
+    .select({
+      entryId: journalLines.entryId,
+      accountCode: chartAccounts.code,
+      accountName: chartAccounts.name,
+      kind: journalLines.kind,
+      currency: journalLines.currency,
+      amountMinor: journalLines.amountMinor,
+      bookMinor: journalLines.bookMinor,
+      parallelMinor: journalLines.parallelMinor,
+    })
+    .from(journalLines)
+    .innerJoin(
+      chartAccounts,
+      and(
+        eq(chartAccounts.companyId, journalLines.companyId),
+        eq(chartAccounts.id, journalLines.accountId),
+      ),
+    )
+    .where(
+      inArray(
+        journalLines.entryId,
+        entries.map((entry) => entry.id),
+      ),
+    )
+    .orderBy(asc(journalLines.entryId), asc(journalLines.lineNo));
+  return entries.map((entry) => ({
+    ...entry,
+    lines: lines
+      .filter((line) => line.entryId === entry.id)
+      .map(({ entryId: _entryId, ...line }) => line),
+  }));
+}
+
 /**
  * Recognise in the first open period (S06 rule 16), for `SERVICE_PERIOD_CLOSED` only, with a
  * written reason: each elapsed month's part whose period is closed posts on the first day of the
@@ -1551,19 +1726,10 @@ export async function recogniseEvent(
   options: AttemptOptions,
 ): Promise<InboxResult> {
   const row = await eventRow(tx, inboxId);
-  const state = await heldState(tx, row);
-  if (state.holdReason !== 'SERVICE_PERIOD_CLOSED') {
-    refuse('EVENT_ACTION_NOT_ALLOWED', 'Only an event held SERVICE_PERIOD_CLOSED is recognised', {
-      reason: state.holdReason,
-    });
-  }
-  const closed = await tx
-    .select({ period: periods.period })
-    .from(periods)
-    .where(sql`${periods.state} <> 'open'`);
+  checkRecognisable(await heldState(tx, row));
   const { outcome } = await attempt(tx, row, {
     ...options,
-    closedPeriods: closed.map((period) => period.period),
+    closedPeriods: await closedPeriodsOf(tx),
   });
   await writeAction(tx, row, options.actor, 'recognised_in_open_period', {
     entryIds: outcome.kind === 'posted' ? outcome.entryIds : [],
@@ -1594,17 +1760,7 @@ export async function splitEvent(
   options: AttemptOptions,
 ): Promise<InboxResult> {
   const row = await eventRow(tx, inboxId);
-  const state = await heldState(tx, row);
-  if (
-    state.holdReason !== 'NEEDS_DECISION' ||
-    (state.holdDetail !== 'cancelled_project_remainder' &&
-      state.holdDetail !== 'invoiced_after_cancellation')
-  ) {
-    refuse('EVENT_ACTION_NOT_ALLOWED', 'Only a cancelled project’s remainder is split', {
-      reason: state.holdReason,
-      detail: state.holdDetail,
-    });
-  }
+  checkSplittable(await heldState(tx, row));
   const { outcome } = await attempt(tx, row, { ...options, split: revenueMinor });
   await writeAction(tx, row, options.actor, 'remainder_split', {
     entryIds: outcome.kind === 'posted' ? outcome.entryIds : [],

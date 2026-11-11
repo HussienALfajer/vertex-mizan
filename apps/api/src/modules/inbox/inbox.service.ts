@@ -2,11 +2,13 @@ import { Inject, Injectable } from '@nestjs/common';
 import type {
   HoldReason,
   InboxAction,
+  InboxActionPreview,
   InboxCounts,
   InboxEntry,
   InboxEvent,
   InboxEventDetail,
   InboxPage,
+  InboxPreviewQuery,
   InboxQuery,
 } from '@vertex-mizan/contracts';
 import {
@@ -20,6 +22,7 @@ import {
   journalEntries,
   moveEvent,
   periods,
+  previewAction,
   recogniseEvent,
   resolveEvent,
   retryEvent,
@@ -180,6 +183,50 @@ export class InboxService {
     reason: string,
   ): Promise<InboxEventDetail> {
     return this.act(access, id, (tx, options) => splitEvent(tx, id, revenueMinor, reason, options));
+  }
+
+  /**
+   * `GET /api/inbox/:id/preview` (S06 "Screens"): what the recognition in the first open period,
+   * or a split with its revenue part, would lead to and post, attempted as the action attempts it
+   * and rolled back; nothing is written and no retry is queued.
+   */
+  preview(
+    access: CompanyRouteAccess,
+    id: string,
+    query: InboxPreviewQuery,
+  ): Promise<InboxActionPreview> {
+    return withCompany(this.db, access.company.id, async (tx) => {
+      const preview = await previewAction(
+        tx,
+        id,
+        query.action === 'split-remainder'
+          ? { kind: 'split', revenueMinor: BigInt(query.revenueAmount ?? '0') }
+          : { kind: 'recognise' },
+        { actor: actorOf(access), today: todayInDamascus() },
+      );
+      return {
+        state: preview.state,
+        reason: preview.reason,
+        detail: preview.detail,
+        entries: preview.entries.map((entry) => ({
+          date: entry.date,
+          source: entry.source as InboxActionPreview['entries'][number]['source'],
+          servicePeriodOn: entry.servicePeriodOn,
+          lines: entry.lines.map((line) => ({
+            accountCode: line.accountCode,
+            accountName: line.accountName,
+            kind: line.kind as InboxActionPreview['entries'][number]['lines'][number]['kind'],
+            amount: {
+              amountMinor: line.amountMinor.toString(),
+              currency:
+                line.currency as InboxActionPreview['entries'][number]['lines'][number]['amount']['currency'],
+            },
+            bookMinor: line.bookMinor.toString(),
+            parallelMinor: line.parallelMinor === null ? null : line.parallelMinor.toString(),
+          })),
+        })),
+      };
+    });
   }
 
   /** `POST /api/inbox/:id/resolve` (rule 15): `NEEDS_DECISION` only, by a posted manual entry. */

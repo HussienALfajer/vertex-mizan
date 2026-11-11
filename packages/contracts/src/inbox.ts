@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { actorKindSchema } from './audit.js';
+import { lineKindSchema } from './entries.js';
 import {
   documentTypeSchema,
   type EventType,
@@ -11,7 +12,7 @@ import {
   type PostingSlot,
   postingSlotSchema,
 } from './events.js';
-import { entryNumberSchema, minorUnitsSchema } from './wire.js';
+import { entryNumberSchema, minorUnitsSchema, moneyAmountSchema } from './wire.js';
 
 // The internal API of the event inbox and the posting rules (S05 "API", "Screens"): what the
 // accountant reads and does on `/api/inbox` and `/api/posting-rules`.
@@ -155,6 +156,65 @@ export const splitRemainderSchema = z
   .meta({ id: 'SplitRemainder' });
 
 export type SplitRemainder = z.infer<typeof splitRemainderSchema>;
+
+/** The accountant's actions of S06 rule 16 that `/inbox/:id` previews before they are taken. */
+export const INBOX_PREVIEW_ACTIONS = ['recognise-in-open-period', 'split-remainder'] as const;
+
+export type InboxPreviewAction = (typeof INBOX_PREVIEW_ACTIONS)[number];
+
+/**
+ * `GET /api/inbox/:id/preview` (S06 "Screens"): an action attempted as it would be taken and
+ * rolled back; a split names its revenue part, as `POST /api/inbox/:id/split-remainder` does.
+ */
+export const inboxPreviewQuerySchema = z
+  .object({
+    action: z.enum(INBOX_PREVIEW_ACTIONS),
+    revenueAmount: minorUnitsSchema.optional(),
+  })
+  .refine((query) => (query.action === 'split-remainder') === (query.revenueAmount !== undefined), {
+    path: ['revenueAmount'],
+    message: 'A split names its revenue part, and only a split',
+  })
+  .meta({ id: 'InboxPreviewQuery' });
+
+export type InboxPreviewQuery = z.infer<typeof inboxPreviewQuerySchema>;
+
+/** One line of a previewed entry: its account and its three amounts (ADR 0007). */
+export const inboxPreviewLineSchema = z
+  .object({
+    accountCode: z.string(),
+    accountName: z.string(),
+    kind: lineKindSchema,
+    /** The transaction amount, signed: positive is a debit. */
+    amount: moneyAmountSchema,
+    bookMinor: minorUnitsSchema,
+    parallelMinor: minorUnitsSchema.nullable(),
+  })
+  .meta({ id: 'InboxPreviewLine' });
+
+/** An entry the action would post, in posting order. */
+export const inboxPreviewEntrySchema = z
+  .object({
+    date: dateSchema,
+    /** `hub_event` for the event's own entries, `revenue_release` for a month's release. */
+    source: z.enum(['hub_event', 'revenue_release']),
+    /** For an elapsed month's part: the month's last day, which it is measured at (S06 rule 16). */
+    servicePeriodOn: dateSchema.nullable(),
+    lines: z.array(inboxPreviewLineSchema),
+  })
+  .meta({ id: 'InboxPreviewEntry' });
+
+/** What the action would lead to: the event's state and hold, and the entries it would post. */
+export const inboxActionPreviewSchema = z
+  .object({
+    state: eventStateSchema,
+    reason: holdReasonSchema.nullable(),
+    detail: z.string().nullable(),
+    entries: z.array(inboxPreviewEntrySchema),
+  })
+  .meta({ id: 'InboxActionPreview' });
+
+export type InboxActionPreview = z.infer<typeof inboxActionPreviewSchema>;
 
 /**
  * The events whose rules read each slot (`packages/ledger`'s `hub.ts`), for the mapping screen:
