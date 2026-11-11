@@ -10,6 +10,7 @@ import {
 import {
   addBulletinHoliday,
   auditEntries,
+  blockAccount,
   chartAccounts,
   createAccount,
   createCompanyBooks,
@@ -21,10 +22,14 @@ import {
   inboundEvents,
   journalEntries,
   journalLines,
+  ledgerHeads,
+  lockedAccount,
   openItemBalances,
   openItems,
   type PersonActor,
   post,
+  postRevaluation,
+  previewRevaluation,
   recordRate,
   setBulletinDaysOff,
   type Transaction,
@@ -46,7 +51,7 @@ import type {
   ScenarioDatabase,
   StepResult,
 } from './harness.js';
-import { advanceClock, inboxActions, runRetries } from './hub.js';
+import { advanceClock, caseToday, dayAfterMonth, inboxActions, runRetries } from './hub.js';
 import type { NamedValue } from './run.js';
 
 // The parts of the book that run through the system itself (S03): the case's company made by the
@@ -337,6 +342,60 @@ export function reversal(
         actor,
         content: { kind: 'reversal', entryId: original.id, today: step.accountingDate },
       });
+    }),
+  );
+}
+
+/**
+ * The accountant's month-end revaluation of one ledger (S07 rules 16–18), as `/revaluation` posts
+ * it: the preview read, then posted with its fingerprint. The case's clock moves to the first day
+ * of the next month, as a job step's does, since a month is revalued once it has ended. Every
+ * difference zero posts nothing and is done (`posted: false`); a refusal is the step's outcome.
+ */
+export function revalue(
+  context: CaseContext,
+  step: Extract<Step, { kind: 'revalue' }>,
+): Promise<StepResult> {
+  const actor = bookkeeperOf(context.companyId);
+  advanceClock(context.companyId, dayAfterMonth(step.period));
+  const today = caseToday(context.companyId);
+  return outcomeOf(
+    withCompany(context.database.app, context.companyId, async (tx) => {
+      const { fingerprint } = await previewRevaluation(tx, {
+        period: step.period,
+        ledger: step.ledger,
+        today,
+      });
+      await postRevaluation(tx, {
+        period: step.period,
+        ledger: step.ledger,
+        fingerprint,
+        today,
+        actor,
+      });
+    }),
+  );
+}
+
+/** An account blocked with a reason, as the chart's screen blocks it (S02 rule 5). */
+export function block(
+  context: CaseContext,
+  step: Extract<Step, { kind: 'block' }>,
+): Promise<StepResult> {
+  const actor = bookkeeperOf(context.companyId);
+  return outcomeOf(
+    withCompany(context.database.app, context.companyId, async (tx) => {
+      // The ledger head before the account, as the posting function locks them (ADR 0008).
+      await tx.select({ id: ledgerHeads.id }).from(ledgerHeads).for('update');
+      const id = (await accountIdsByCode(tx)).get(step.account);
+      if (id === undefined) throw new Error(`No account ${step.account} in the case's chart`);
+      await blockAccount(
+        tx,
+        context.companyId,
+        actor,
+        await lockedAccount(tx, id, 'update'),
+        step.reason,
+      );
     }),
   );
 }

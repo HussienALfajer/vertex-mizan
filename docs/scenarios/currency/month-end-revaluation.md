@@ -1,8 +1,8 @@
 # The month-end revaluation of each ledger
 
-Status: Proposed
+Status: Approved (owner, 2026-11-11)
 
-S07 wrote these cases (S07 "Scenarios"); the owner approved their expected entries and outcomes on 2026-11-11, with the project-expense clearing account `211002` revalued as Hub posts it, without dimensions, so one balance per currency (S05's posting rule, `expenses/project-expense.md`, is unchanged). The file stays `Proposed` until S07's feature slice brings the `revalue` and `block` executors, then becomes `Approved (owner, 2026-11-11)`.
+S07 wrote these cases (S07 "Scenarios"); the owner approved their expected entries and outcomes on 2026-11-11, with the project-expense clearing account `211002` revalued as Hub posts it, without dimensions, so one balance per currency (S05's posting rule, `expenses/project-expense.md`, is unchanged). S07's feature slice (PR 1) brought the `revalue` and `block` executors; no expected value changed.
 
 ## Rule
 

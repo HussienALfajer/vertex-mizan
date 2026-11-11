@@ -71,6 +71,43 @@ export async function lockedAccount(
   return row;
 }
 
+/**
+ * Blocks a postable account with a reason (S02 rule 5), the account's row locked by the caller
+ * after the ledger head (ADR 0008): new postings to it stop (`ACCOUNT_NOT_POSTABLE` on a header);
+ * an account that holds a role stays open (`ACCOUNT_IN_ROLE`). Blocking a blocked account changes
+ * nothing. Used by `POST /api/accounts/:id/block` and the scenario book's `block` step.
+ */
+export async function blockAccount(
+  tx: Transaction,
+  companyId: string,
+  actor: AuditActor,
+  row: AccountRow,
+  reason: string,
+): Promise<void> {
+  if (row.kind !== 'postable') {
+    throw new DomainError('ACCOUNT_NOT_POSTABLE', 'Only a postable account is blocked');
+  }
+  if (row.blockedAt) return;
+  const [role] = await tx
+    .select({ role: accountRoles.role })
+    .from(accountRoles)
+    .where(and(eq(accountRoles.accountId, row.id), isNull(accountRoles.archivedAt)))
+    .limit(1);
+  if (role) throw new DomainError('ACCOUNT_IN_ROLE', `The account holds ${role.role}`);
+  await tx
+    .update(chartAccounts)
+    .set({ blockedAt: new Date(), blockedReason: reason })
+    .where(eq(chartAccounts.id, row.id));
+  await writeCompanyAudit(tx, companyId, actor, {
+    action: 'account.blocked',
+    entityType: 'account',
+    entityId: row.id,
+    reason,
+    before: { blockedReason: null },
+    after: { blockedReason: reason },
+  });
+}
+
 /** Every required dimension type exists in the company and is not archived (`NOT_FOUND`). */
 export async function checkDimensionTypes(
   tx: Transaction,
