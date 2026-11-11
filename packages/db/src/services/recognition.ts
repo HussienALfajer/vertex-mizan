@@ -5,6 +5,7 @@ import {
   type EventOf,
   hubMinor,
   money,
+  type PostingSlot,
   parseEventEnvelope,
 } from '@vertex-mizan/contracts';
 import {
@@ -14,6 +15,7 @@ import {
   negate,
   overTimeMonths,
   type PlannedSchedule,
+  periodOf,
   releaseParts,
   sumCarried,
 } from '@vertex-mizan/ledger';
@@ -599,4 +601,54 @@ export async function reclassifyRecognised(
     serviceValueId: input.toServiceValueId,
   });
   return entryId;
+}
+
+/** S06's slots, appended to the template after companies were made (`mapAppendedTemplateSlots()`). */
+export const RECOGNITION_SLOTS = [
+  'contract_liability',
+  'contract_asset',
+  'released_revenue',
+  'cancelled_project_refund',
+] as const satisfies readonly PostingSlot[];
+
+/** The month after `month` (`YYYY-MM`). */
+function nextMonth(month: string): string {
+  const [year, number] = month.split('-').map(Number) as [number, number];
+  return number === 12 ? `${year + 1}-01` : `${year}-${String(number + 1).padStart(2, '0')}`;
+}
+
+/**
+ * Every month that has ended before `today` and that some over-time schedule of the company in
+ * context touches, released by `releaseMonth()` in order (S06 rule 5: the job of the first day of
+ * the next month, and again at the worker's start and each day for any past month still missing
+ * its release). A month released already posts nothing, so this is safe to run any number of
+ * times; a closed month's missing release is the period's (S07's checklist).
+ */
+export async function releaseMissingMonths(
+  tx: Transaction,
+  today: string,
+  actor: AuditActor,
+): Promise<MonthRelease> {
+  const [span] = await tx
+    .select({
+      from: sql<string | null>`min(${recognitionSchedules.serviceFrom})::text`,
+      to: sql<string | null>`max(${recognitionSchedules.serviceTo})::text`,
+    })
+    .from(recognitionSchedules)
+    .where(eq(recognitionSchedules.pattern, 'over_time'));
+  if (!span?.from || !span.to) return { posted: 0, refused: [] };
+  const current = periodOf(today);
+  const last = periodOf(span.to);
+  let posted = 0;
+  const refused: ReleaseRefusal[] = [];
+  for (
+    let month = periodOf(span.from);
+    month < current && month <= last;
+    month = nextMonth(month)
+  ) {
+    const result = await releaseMonth(tx, month, today, actor);
+    posted += result.posted;
+    refused.push(...result.refused);
+  }
+  return { posted, refused };
 }

@@ -12,7 +12,7 @@ The ledger functions already exist in `packages/ledger/src/recognition.ts` (merg
 - [x] db: the recognition service in the posting transaction: deferral at issue, elapsed months as contract-asset items, the release of ended months in a late invoice's transaction, the service change of a deferred line, `recognition_pattern_unclear`, `SERVICE_PERIOD_CLOSED` and the `recognise` action (the integrity check's new proof moves to PR 3, with the read API; `order_keys` to PR 2, with the milestones that use it)
 - [x] scenario book: `revenue/over-time-release.md` (all cases but the closed-month one, which waits for S07's close) and `revenue/revenue-at-issue.md` run `Approved`
 - [x] api: `POST /api/inbox/:id/recognise-in-open-period`; tests with another company and a missing permission
-- [ ] worker: `revenue.release-month` (01:00 Asia/Damascus on day 1, at start and in the 04:00 sweep), the `revenue:run-release --month` command, the retry of every `NO_MAPPING` event at start; run-twice and race-with-close tests
+- [x] worker: `revenue.release-month` (daily at 01:00 Asia/Damascus and at start, every ended month missing its release; the template's slots mapped at start and in the sweep), the `revenue:run-release --month` command, the retry of every `NO_MAPPING` event at start; run-twice and race-with-close tests
 - [x] bridge: OpenAPI regenerated, breaking-change check
 - [ ] checks and reviewers, PR with auto-merge and Auto-fix
 

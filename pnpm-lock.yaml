@@ -406,6 +406,9 @@ importers:
       '@types/nodemailer':
         specifier: 8.0.2
         version: 8.0.2
+      '@types/pg':
+        specifier: 8.23.1
+        version: 8.23.1
       '@types/yauzl':
         specifier: 3.4.0
         version: 3.4.0
@@ -415,6 +418,9 @@ importers:
       '@vertex-mizan/config':
         specifier: workspace:*
         version: link:../../packages/config
+      pg:
+        specifier: 8.23.1
+        version: 8.23.1
       pino-pretty:
         specifier: 13.2.0
         version: 13.2.0
