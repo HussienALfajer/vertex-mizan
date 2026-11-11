@@ -145,3 +145,56 @@ export function paymentRecorded(
     },
   };
 }
+
+/** A project of Hub with one milestone, and its events dated `on` (S06). */
+export function projectEvents(documents: ReturnType<typeof hubDocuments>, on: string) {
+  const project = {
+    external_id: ids(),
+    code: `P${randomInt(1000, 9999)}`,
+    name: 'مشروع تجريبي',
+    kind: 'project',
+    client_external_id: documents.client.external_id,
+  };
+  const milestone = { id: ids(), number: `MS-${randomInt(1000, 9999)}` };
+  const envelope = (type: string, payload: Record<string, unknown>) => ({
+    id: ids(),
+    type,
+    version: 1,
+    occurred_at: `${on}T11:00:00+03:00`,
+    accounting_date: on,
+    payload,
+  });
+  return {
+    /** The milestone's deposit, 300.00 USD, invoiced before its done. */
+    deposit: () => {
+      const issued = invoiceIssued(documents, on, 30_000);
+      const [line] = issued.payload.lines;
+      return {
+        ...issued,
+        payload: {
+          ...issued.payload,
+          contract: project,
+          lines: [{ ...line, source: 'deposit', milestone_id: milestone.id }],
+        },
+      };
+    },
+    done: () =>
+      envelope('milestone.done', {
+        milestone,
+        client: documents.client,
+        project,
+        currency: 'USD',
+        amount: 30_000,
+        done_on: on,
+        service: documents.service,
+      }),
+    reopened: () =>
+      envelope('milestone.reopened', {
+        milestone,
+        client: documents.client,
+        project,
+        reopened_on: on,
+      }),
+    cancelled: () => envelope('project.cancelled', { project, client: documents.client, on }),
+  };
+}

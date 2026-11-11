@@ -24,6 +24,7 @@ import {
   resolveEvent,
   retryEvent,
   SYSTEM_NAME,
+  splitEvent,
   type Transaction,
   users,
   withCompany,
@@ -166,6 +167,19 @@ export class InboxService {
   /** `POST /api/inbox/:id/recognise-in-open-period` (S06 rule 16): `SERVICE_PERIOD_CLOSED` only. */
   recognise(access: CompanyRouteAccess, id: string, reason: string): Promise<InboxEventDetail> {
     return this.act(access, id, (tx, options) => recogniseEvent(tx, id, reason, options));
+  }
+
+  /**
+   * `POST /api/inbox/:id/split-remainder` (S06 rules 15–16): `NEEDS_DECISION`
+   * `cancelled_project_remainder` or `invoiced_after_cancellation` only.
+   */
+  split(
+    access: CompanyRouteAccess,
+    id: string,
+    revenueMinor: bigint,
+    reason: string,
+  ): Promise<InboxEventDetail> {
+    return this.act(access, id, (tx, options) => splitEvent(tx, id, revenueMinor, reason, options));
   }
 
   /** `POST /api/inbox/:id/resolve` (rule 15): `NEEDS_DECISION` only, by a posted manual entry. */

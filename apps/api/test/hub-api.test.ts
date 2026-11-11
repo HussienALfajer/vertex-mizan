@@ -15,7 +15,15 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createTestApp } from './app.js';
 import { books, today } from './books.js';
 import { Browser } from './browser.js';
-import { clientOf, hubClient, hubDocuments, invoiceIssued, paymentRecorded, v1 } from './hub.js';
+import {
+  clientOf,
+  hubClient,
+  hubDocuments,
+  invoiceIssued,
+  paymentRecorded,
+  projectEvents,
+  v1,
+} from './hub.js';
 import { testDatabase } from './people.js';
 
 // S05's Hub API under `/v1` (rules 1–7, 19–22, "Periods"): an event posted, held and replayed in
@@ -76,6 +84,28 @@ describe('POST /v1/events', () => {
     expect(actions.map((row) => row.action)).toContain('replayed');
     // The payment waits for the worker's retry (rule 10); the invoice posted once.
     expect(await hubEntries(book.companyId)).toHaveLength(1);
+  });
+
+  it('posts a milestone done before its invoice and its reopen, and answers the reopen’s replay with its entry (S06 rules 11, 13)', async () => {
+    const book = await books(app, db);
+    const hub = await hubClient(app, book.owner);
+    const project = projectEvents(hubDocuments(), today());
+    const done = await hub.send(project.done());
+    expect(done.status, JSON.stringify(done.body)).toBe(201);
+    expect(done.body.entries).toHaveLength(1);
+    const reopen = project.reopened();
+    const reopened = await hub.send(reopen);
+    expect(reopened.status, JSON.stringify(reopened.body)).toBe(201);
+    expect(reopened.body).toMatchObject({ status: 'posted' });
+    expect(reopened.body.entries).toHaveLength(1);
+    const replay = await hub.send(reopen);
+    expect(replay.status).toBe(201);
+    expect(replay.body).toEqual(reopened.body);
+    expect(await hubEntries(book.companyId)).toHaveLength(2);
+    // A second reopen finds no done standing: held, never refused (S06 rule 13).
+    const again = await hub.send(project.reopened());
+    expect(again.status).toBe(202);
+    expect(again.body).toMatchObject({ status: 'held', reason: 'UNKNOWN_REFERENCE' });
   });
 
   it('serialises two requests with one key: one stores, the other answers as a replay', async () => {
@@ -303,8 +333,8 @@ describe('the examples Hub receives', () => {
       const answer = await hub.send(example);
       answers.push([example.type, answer.status, answer.body.status, answer.body.reason ?? null]);
     }
-    // S06's milestones and project ends wait for their rules (rule 8, `deferred_revenue`); the
-    // project's second event waits behind its first (rule 11).
+    // S06: the milestone, never invoiced, is a contract asset at its done, which its reopen
+    // reverses; the project's end finds nothing deferred and is recorded (rules 11, 13–15).
     expect(answers).toEqual([
       ['invoice.issued', 201, 'posted', null],
       ['invoice.due_date_changed', 201, 'recorded', null],
@@ -312,11 +342,10 @@ describe('the examples Hub receives', () => {
       ['payment.recorded', 201, 'posted', null],
       ['payment.voided', 201, 'posted', null],
       ['invoice.voided', 201, 'posted', null],
-      ['milestone.done', 202, 'held', 'NO_MAPPING'],
-      // A reopen waits behind its milestone's held done (rule 11).
-      ['milestone.reopened', 202, 'held', 'WAITING_FOR_EARLIER_EVENT'],
-      ['project.completed', 202, 'held', 'NO_MAPPING'],
-      ['project.cancelled', 202, 'held', 'WAITING_FOR_EARLIER_EVENT'],
+      ['milestone.done', 201, 'posted', null],
+      ['milestone.reopened', 201, 'posted', null],
+      ['project.completed', 201, 'recorded', null],
+      ['project.cancelled', 201, 'recorded', null],
       ['project_expense.recorded', 201, 'posted', null],
       ['project_expense.changed', 201, 'posted', null],
       ['project_expense.archived', 201, 'posted', null],
