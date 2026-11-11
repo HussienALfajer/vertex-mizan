@@ -60,7 +60,7 @@ const dimensionsSchema = z.record(
   z.string().min(1),
 );
 
-/** An event type (`invoice.issued`), a job (`month_end_revaluation`) or `manual`. */
+/** An event type (`invoice.issued`), a job (`revenue_release_month`), `manual`, `revaluation` or `reversal`. */
 const sourceSchema = z
   .string()
   .regex(/^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)*$/, 'Expected an event type, a job or manual');
@@ -74,7 +74,7 @@ const eventTypeSchema = z
 
 const jobNameSchema = z
   .string()
-  .regex(/^[a-z][a-z0-9_]*$/, 'Expected a job name such as month_end_revaluation');
+  .regex(/^[a-z][a-z0-9_]*$/, 'Expected a job name such as revenue_release_month');
 
 /** The currency shapes of ADR 0007 and ADR 0008: the book and parallel currency of each. */
 export const SHAPES = {
