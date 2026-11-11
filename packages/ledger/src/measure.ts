@@ -1,5 +1,6 @@
 import {
   type CompanyLedgers,
+  type CrossRate,
   type CurrencyCode,
   convert,
   DomainError,
@@ -71,20 +72,42 @@ function measureIn(
       conversion: { basis: 'transaction', rate: own },
     };
   }
-  const via = crossVia(context.ledgers, ledger);
-  const rate = policyRate(
-    context.rates,
-    { type: rateType, from: amount.currency, to, on: context.on, via },
-    context.calendar,
-  );
+  const rate = ledgerPolicyRate({ ...context, ledger, from: amount.currency });
+  return { minor: convert(amount, to, rate).amountMinor, conversion: { basis: 'policy', rate } };
+}
+
+/** What `ledgerPolicyRate()` reads: a ledger, a currency to convert from and the rates of `on`. */
+export interface PolicyRateQuery {
+  readonly ledgers: CompanyLedgers;
+  readonly ledger: Ledger;
+  readonly from: CurrencyCode;
+  readonly on: string;
+  readonly rates: readonly ExchangeRate[];
+  readonly calendar: PublicationCalendar;
+}
+
+/**
+ * The rate of a ledger's policy in force on `on` for converting `from` into the ledger's currency,
+ * direct or crossed through the company's other ledger currency, never a transaction's own rate:
+ * a new measurement's when its policy takes no transaction rate, and a month end's closing rate
+ * (S07 rule 11). A missing rate is refused with `RATE_MISSING`, naming the pair and the date.
+ */
+export function ledgerPolicyRate(query: PolicyRateQuery): ExchangeRate | CrossRate {
+  const settings = query.ledger === 'book' ? query.ledgers.book : query.ledgers.parallel;
+  if (settings === null) throw new TypeError('The company keeps no parallel ledger');
+  const { ledger, from, on } = query;
+  const to = settings.currency;
+  const { rateType } = settings.ratePolicy;
+  const via = crossVia(query.ledgers, ledger);
+  const rate = policyRate(query.rates, { type: rateType, from, to, on, via }, query.calendar);
   if (rate === null) {
     throw new DomainError(
       'RATE_MISSING',
-      `No ${rateType} rate between ${amount.currency} and ${to} in force on ${context.on} for the ${ledger} ledger`,
-      { ledger, rateType, from: amount.currency, to, on: context.on },
+      `No ${rateType} rate between ${from} and ${to} in force on ${on} for the ${ledger} ledger`,
+      { ledger, rateType, from, to, on },
     );
   }
-  return { minor: convert(amount, to, rate).amountMinor, conversion: { basis: 'policy', rate } };
+  return rate;
 }
 
 /**

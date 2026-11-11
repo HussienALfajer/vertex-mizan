@@ -42,7 +42,11 @@ export interface LineDimensionValue {
  * - `reversal`: a line that negates a posted line exactly (S03 rule 9, ADR 0005 invariant 3). Its
  *   currency, dimensions and account are the original's, which the chart accepted then: a
  *   required dimension added since applies to postings from then on (S02 rule 4) and an archived
- *   value stays, so only the account's state is checked again.
+ *   value stays, so only the account's state is checked again;
+ * - `revaluation`: a month-end revaluation's line on a balance, or its reversal's (S07 rules 10,
+ *   14): it remeasures a balance the chart accepted, so a blocked account and an archived value are
+ *   accepted (owner, 2026-11-11), and only the account's being known, postable and not archived is
+ *   checked.
  */
 export interface ChartLine {
   /** Undefined when the account id is unknown to the company. */
@@ -50,7 +54,7 @@ export interface ChartLine {
   /** The line's transaction currency; a difference line keeps its item's (ADR 0007). */
   readonly currency: CurrencyCode;
   readonly dimensions: readonly LineDimensionValue[];
-  readonly origin: 'manual' | 'hub' | 'reversal';
+  readonly origin: 'manual' | 'hub' | 'reversal' | 'revaluation';
   /**
    * The open item the line names (S04 rules 5–9): a new document item it opens, or an existing
    * item; undefined when it names none, as a line on a running account, whose item is the client's.
@@ -65,7 +69,8 @@ function refuse(code: ErrorCode, message: string, details: Record<string, unknow
 /**
  * Checks a line against the chart (S02 rule 8), the refusals in this order:
  * - the account is unknown (`NOT_FOUND`), a header (`ACCOUNT_NOT_POSTABLE`), archived
- *   (`ACCOUNT_ARCHIVED`) or blocked (`ACCOUNT_BLOCKED`), whatever the origin;
+ *   (`ACCOUNT_ARCHIVED`), whatever the origin, or blocked (`ACCOUNT_BLOCKED`), but on a
+ *   revaluation's line;
  * - from here on a reversal's line is accepted: it carries a line the chart accepted;
  * - an item named on an account that is not a control account (`ACCOUNT_NOT_CONTROL`), a line on a
  *   `document` control account that names no item (`OPEN_ITEM_REQUIRED`; S04 rule 5, which
@@ -88,6 +93,7 @@ export function checkLineAgainstChart(line: ChartLine): void {
   }
   if (account.archived)
     refuse('ACCOUNT_ARCHIVED', `Account ${accountId} is archived`, { accountId });
+  if (line.origin === 'revaluation') return;
   if (account.blocked) refuse('ACCOUNT_BLOCKED', `Account ${accountId} is blocked`, { accountId });
   if (line.origin === 'reversal') return;
   if (line.item !== undefined && !account.isControl) {
