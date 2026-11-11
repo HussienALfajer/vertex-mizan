@@ -1449,10 +1449,7 @@ describe('credits, voids and re-issues (revenue/retainer-credit, revenue/void-an
     const issued = invoice(
       'SYP',
       '120.0000',
-      [
-        charge(7_260_000, 'monthly', '2026-12-15', '2027-01-14'),
-        credit(-726_000, '2026-11-15'),
-      ],
+      [charge(7_260_000, 'monthly', '2026-12-15', '2027-01-14'), credit(-726_000, '2026-11-15')],
       { contract: R1, issued_on: '2026-12-15', due_on: '2026-12-30' },
     );
     const syp = (transaction: bigint, parallel: bigint): CarriedAmounts => ({
@@ -1651,9 +1648,11 @@ describe('credits, voids and re-issues (revenue/retainer-credit, revenue/void-an
         { milestone: MS5, client: C1, project: P1, reopened_on: '2026-12-02' },
         '2026-12-02',
       );
-      expect(planEvent(reopened, facts({ doneTakenBackByVoid: true }), contextOf(sypUsd))).toEqual(
-        { kind: 'post', entries: [], decision: null },
-      );
+      expect(planEvent(reopened, facts({ doneTakenBackByVoid: true }), contextOf(sypUsd))).toEqual({
+        kind: 'post',
+        entries: [],
+        decision: null,
+      });
       expect(planEvent(reopened, facts({}), contextOf(sypUsd))).toMatchObject({
         reason: 'UNKNOWN_REFERENCE',
       });
@@ -1661,7 +1660,11 @@ describe('credits, voids and re-issues (revenue/retainer-credit, revenue/void-an
   });
 
   it('holds the void of a cycle another invoice’s credit reduces, with its reversals planned', () => {
-    const voided = event('invoice.voided', { invoice: INVOICE, voided_on: '2026-11-25', reason: 'x' });
+    const voided = event('invoice.voided', {
+      invoice: INVOICE,
+      voided_on: '2026-11-25',
+      reason: 'x',
+    });
     expect(
       planEvent(
         voided,

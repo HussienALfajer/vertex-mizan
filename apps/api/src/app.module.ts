@@ -32,8 +32,8 @@ import { InvitationsModule } from './modules/invitations/invitations.module.js';
 import { MeModule } from './modules/me/me.module.js';
 import { MembersModule } from './modules/members/members.module.js';
 import { OpenItemsModule } from './modules/open-items/open-items.module.js';
-import { RevenueModule } from './modules/revenue/revenue.module.js';
 import { RatesModule } from './modules/rates/rates.module.js';
+import { RevenueModule } from './modules/revenue/revenue.module.js';
 
 /**
  * The API: the core (configuration, logging, the database, request validation and response

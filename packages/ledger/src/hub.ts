@@ -663,7 +663,8 @@ export function invoiceIssuedPlan(
   const cancelled: InvoiceLine[] = [];
   let milestoneDecision: string | null = null;
   const reissued = new Set<string>();
-  const releasedAccount = (): MappedAccount | Hold => slotAccount(context, 'released_revenue', null);
+  const releasedAccount = (): MappedAccount | Hold =>
+    slotAccount(context, 'released_revenue', null);
   for (const [index, line] of payload.lines.entries()) {
     const pattern = patterns[index];
     if (pattern?.kind === 'credit') continue;
@@ -689,7 +690,8 @@ export function invoiceIssuedPlan(
         if (voided !== undefined) {
           const parts = reissueParts(months, new Set(voided.takenBack));
           // Held whole for the accountant, nothing planned (`revenue/void-and-reissue.md`).
-          if (parts.kind === 'decision') return { kind: 'post', entries: [], decision: parts.detail };
+          if (parts.kind === 'decision')
+            return { kind: 'post', entries: [], decision: parts.detail };
           reissued.add(voided.scheduleId);
           reissueOf = voided.scheduleId;
           months = parts.months;
@@ -1122,10 +1124,12 @@ function zeroCarried(like: CarriedAmounts): CarriedAmounts {
 /** Two carried amounts added, ledger by ledger. */
 function addCarried(a: CarriedAmounts, b: CarriedAmounts): CarriedAmounts {
   return {
-    transaction: money(a.transaction.amountMinor + b.transaction.amountMinor, a.transaction.currency),
+    transaction: money(
+      a.transaction.amountMinor + b.transaction.amountMinor,
+      a.transaction.currency,
+    ),
     bookMinor: a.bookMinor + b.bookMinor,
-    parallelMinor:
-      a.parallelMinor === null ? null : a.parallelMinor + (b.parallelMinor ?? 0n),
+    parallelMinor: a.parallelMinor === null ? null : a.parallelMinor + (b.parallelMinor ?? 0n),
   };
 }
 

@@ -8,6 +8,7 @@ import {
 } from '@vertex-mizan/contracts';
 import { negate, recognitionProblems } from '@vertex-mizan/ledger';
 import { and, asc, eq, sql } from 'drizzle-orm';
+import fc from 'fast-check';
 import { v7 as uuidv7 } from 'uuid';
 import { beforeAll, describe, expect, it } from 'vitest';
 import {
@@ -771,7 +772,11 @@ describe('credits, voids and re-issues (S06 rules 6, 8, 9)', () => {
       ['2026-11-15', '121.0000'],
       ['2026-11-19', '121.0000'],
     ]);
-    await receive(company, cycle(40, '2026-11-15', 90_000, '2026-11-15', '2026-12-14'), '2026-11-15');
+    await receive(
+      company,
+      cycle(40, '2026-11-15', 90_000, '2026-11-15', '2026-12-14'),
+      '2026-11-15',
+    );
     const credit = await receive(
       company,
       creditInvoice(46, '2026-11-19', 10_000, -5_000, '2026-11-15'),
@@ -852,7 +857,11 @@ describe('credits, voids and re-issues (S06 rules 6, 8, 9)', () => {
       ['2026-11-03', '120.0000'],
       ['2026-12-01', '123.0000'],
     ]);
-    await receive(company, cycle(42, '2026-11-03', 60_000, '2026-11-01', '2026-11-30'), '2026-11-03');
+    await receive(
+      company,
+      cycle(42, '2026-11-03', 60_000, '2026-11-01', '2026-11-30'),
+      '2026-11-03',
+    );
     await receive(
       company,
       creditInvoice(43, '2026-12-01', 60_000, -6_000, '2026-11-01'),
@@ -876,10 +885,18 @@ describe('credits, voids and re-issues (S06 rules 6, 8, 9)', () => {
       ['2026-11-19', '121.0000'],
       ['2026-12-07', '122.0000'],
     ]);
-    await receive(company, cycle(80, '2026-11-15', 90_000, '2026-11-15', '2026-12-14'), '2026-11-15');
+    await receive(
+      company,
+      cycle(80, '2026-11-15', 90_000, '2026-11-15', '2026-12-14'),
+      '2026-11-15',
+    );
     await runJob(company, '2026-11', '2026-12-01');
     await receive(company, voidOf(80, '2026-12-03'), '2026-12-03');
-    await receive(company, cycle(81, '2026-12-07', 90_000, '2026-11-15', '2026-12-14'), '2026-12-07');
+    await receive(
+      company,
+      cycle(81, '2026-12-07', 90_000, '2026-11-15', '2026-12-14'),
+      '2026-12-07',
+    );
     const entries = await ledger(company);
     expect(entries.slice(2, 5).map((entry) => entry.lines)).toEqual([
       [
@@ -922,7 +939,11 @@ describe('credits, voids and re-issues (S06 rules 6, 8, 9)', () => {
 
   it('refuses a credited movement without its credit part, and a credit part on another kind', async () => {
     const company = await newCompany([['2026-11-15', '121.0000']]);
-    await receive(company, cycle(20, '2026-11-15', 90_000, '2026-11-15', '2026-12-14'), '2026-11-15');
+    await receive(
+      company,
+      cycle(20, '2026-11-15', 90_000, '2026-11-15', '2026-12-14'),
+      '2026-11-15',
+    );
     const forge = (kind: 'credited' | 'released', creditMinor: bigint | null) =>
       inCompany(company, async (tx) => {
         const [schedule] = await tx.select().from(recognitionSchedules);
@@ -1049,6 +1070,64 @@ describe('milestones and projects (S06 rules 11–17)', () => {
           .orderBy(asc(recognitionMovements.createdAt), asc(recognitionMovements.id))
       ).map((row) => [row.kind, row.t]),
     );
+
+  it('posts what Hub’s order posts whatever the order its events of a client arrive in (a property)', async () => {
+    // A retainer cycle, a credit to it and the credit's void; a deposit, its done and its reopen.
+    // A credit before its cycle, a void before its invoice and a reopen before its done hold and
+    // are retried when what they wait for posts (S06 rules 17, 19), so any order of arrival posts
+    // the same entries. A done that arrives before its invoice is a done not invoiced (rule 11):
+    // nothing in either event tells the books Hub's order, so the deposit's invoice arrives first.
+    const bulletins: [string, string][] = [
+      ['2026-11-03', '120.0000'],
+      ['2026-11-15', '121.0000'],
+      ['2026-11-19', '121.5000'],
+      ['2026-11-20', '122.0000'],
+      ['2026-11-25', '122.0000'],
+      ['2026-12-03', '123.0000'],
+    ];
+    const events = [
+      deposit(91, '2026-11-03', 30_000, 7),
+      cycle(92, '2026-11-15', 90_000, '2026-11-15', '2026-12-14'),
+      creditInvoice(93, '2026-11-19', 10_000, -5_000, '2026-11-15'),
+      done(7, '2026-11-20', 30_000),
+      reopened(7, '2026-11-25'),
+      voidOf(93, '2026-12-03'),
+    ];
+    const [invoiceAt, doneAt] = [0, 3];
+    const settled = async (order: readonly number[]) => {
+      const company = await newCompany(bulletins);
+      for (const index of order)
+        await receive(company, events[index] as EventEnvelope, '2026-12-05');
+      const states = await inCompany(company, (tx) =>
+        tx.select({ state: inboundEventStates.state }).from(inboundEventStates),
+      );
+      const entries = (await ledger(company)).map((entry) =>
+        JSON.stringify(
+          [entry.source, entry.date, entry.lines.map((line) => line.map(String)).sort()],
+          (_key, value) => (typeof value === 'bigint' ? value.toString() : value),
+        ),
+      );
+      return {
+        states: states.map((row) => row.state).sort(),
+        entries: entries.sort(),
+        problems: await proof(company),
+      };
+    };
+    const hubOrder = await settled(events.map((_, index) => index));
+    expect(hubOrder.states.every((state) => state === 'posted')).toBe(true);
+    expect(hubOrder.problems).toEqual([]);
+    await fc.assert(
+      fc.asyncProperty(
+        fc
+          .shuffledSubarray([0, 1, 2, 3, 4, 5], { minLength: 6, maxLength: 6 })
+          .filter((order) => order.indexOf(invoiceAt) < order.indexOf(doneAt)),
+        async (order) => {
+          expect(await settled(order)).toEqual(hubOrder);
+        },
+      ),
+      { numRuns: 12 },
+    );
+  }, 120_000);
 
   it('releases a deposit at its done, gives it back on a reopen and releases it again; a replay posts nothing', async () => {
     const companyId = await newCompany([['2026-11-03', '120.0000']]);

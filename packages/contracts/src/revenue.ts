@@ -107,10 +107,7 @@ export const revenueMovementSchema = z
     id: z.uuid(),
     kind: z.enum(REVENUE_MOVEMENT_KINDS),
     month: monthSchema.nullable(),
-    entry: z
-      .object({ id: z.uuid(), date: dateSchema })
-      .extend(entryNumberSchema.shape)
-      .nullable(),
+    entry: z.object({ id: z.uuid(), date: dateSchema }).extend(entryNumberSchema.shape).nullable(),
     amounts: recognitionAmountsSchema,
     /** A credit's part of the schedule (positive), or its void's (negative). */
     creditMinor: minorUnitsSchema.nullable(),

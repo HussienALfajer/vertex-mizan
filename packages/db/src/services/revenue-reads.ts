@@ -68,14 +68,21 @@ async function valuesOf(tx: Transaction, ids: readonly string[]) {
     unique.length === 0
       ? []
       : await tx
-          .select({ id: dimensionValues.id, code: dimensionValues.code, name: dimensionValues.name })
+          .select({
+            id: dimensionValues.id,
+            code: dimensionValues.code,
+            name: dimensionValues.name,
+          })
           .from(dimensionValues)
           .where(inArray(dimensionValues.id, unique));
   return new Map(rows.map((row) => [row.id, row]));
 }
 
 /** Schedules as `/revenue` lists them, from their rows. */
-async function shape(tx: Transaction, schedules: readonly ScheduleRow[]): Promise<RevenueSchedule[]> {
+async function shape(
+  tx: Transaction,
+  schedules: readonly ScheduleRow[],
+): Promise<RevenueSchedule[]> {
   if (schedules.length === 0) return [];
   const ledgers = await companyLedgers(tx);
   const parallel = ledgers.parallel !== null;
@@ -94,11 +101,14 @@ async function shape(tx: Transaction, schedules: readonly ScheduleRow[]): Promis
       currentService(schedule, movements.get(schedule.id) ?? []),
     ]),
   );
-  const values = await valuesOf(tx, [
-    ...schedules.flatMap((schedule) => [schedule.clientValueId, schedule.contractValueId ?? []]),
-    ...services.values(),
-  ].flat());
-  const valueOf = (id: string) => {
+  const values = await valuesOf(
+    tx,
+    [
+      ...schedules.flatMap((schedule) => [schedule.clientValueId, schedule.contractValueId ?? []]),
+      ...services.values(),
+    ].flat(),
+  );
+  const valueById = (id: string) => {
     const value = values.get(id);
     if (!value) throw new Error('A schedule names a value that is not there');
     return value;
@@ -127,16 +137,14 @@ async function shape(tx: Transaction, schedules: readonly ScheduleRow[]): Promis
       lineSource: schedule.lineSource as RevenueSchedule['lineSource'],
       chargeKind: schedule.chargeKind as RevenueSchedule['chargeKind'],
       currency: currency as RevenueSchedule['currency'],
-      client: valueOf(schedule.clientValueId),
-      contract: schedule.contractValueId === null ? null : valueOf(schedule.contractValueId),
-      service: valueOf(services.get(schedule.id) as string),
+      client: valueById(schedule.clientValueId),
+      contract: schedule.contractValueId === null ? null : valueById(schedule.contractValueId),
+      service: valueById(services.get(schedule.id) as string),
       serviceFrom: schedule.serviceFrom,
       serviceTo: schedule.serviceTo,
       milestoneId: schedule.milestoneId,
       amountMinor: hubMinor(line.amount).toString(),
-      released: wire(
-        negate(sum(own.filter((movement) => RECOGNISED.includes(movement.kind)))),
-      ),
+      released: wire(negate(sum(own.filter((movement) => RECOGNISED.includes(movement.kind))))),
       remaining: wire(remaining),
       state: stateOf(own, remaining),
       reissueOfId: schedule.reissueOfScheduleId,
@@ -350,7 +358,10 @@ export async function readRevenueMonths(
   const byMonth = new Map(released.map((row) => [row.month, row]));
   const closed = new Set(
     (
-      await tx.select({ period: periods.period }).from(periods).where(sql`${periods.state} <> 'open'`)
+      await tx
+        .select({ period: periods.period })
+        .from(periods)
+        .where(sql`${periods.state} <> 'open'`)
     ).map((row) => row.period),
   );
   const revenue = await releasedRevenueAccount(tx);
@@ -440,13 +451,15 @@ export async function previewRevenueMonth(
   const states = await statesTouching(tx, month, month);
   const values = await valuesOf(
     tx,
-    states.flatMap((state) => [
-      state.schedule.clientValueId,
-      state.schedule.contractValueId ?? [],
-      state.serviceValueId,
-    ]).flat(),
+    states
+      .flatMap((state) => [
+        state.schedule.clientValueId,
+        state.schedule.contractValueId ?? [],
+        state.serviceValueId,
+      ])
+      .flat(),
   );
-  const valueOf = (id: string) => values.get(id) as NonNullable<ReturnType<typeof values.get>>;
+  const valueById = (id: string) => values.get(id) as NonNullable<ReturnType<typeof values.get>>;
   const byInvoice = new Map<string, RevenuePreview['entries'][number]>();
   for (const state of states) {
     const part = unreleased(state, month);
@@ -460,9 +473,9 @@ export async function previewRevenueMonth(
     };
     entry.lines.push({
       scheduleId: schedule.id,
-      client: valueOf(schedule.clientValueId),
-      contract: schedule.contractValueId === null ? null : valueOf(schedule.contractValueId),
-      service: valueOf(state.serviceValueId),
+      client: valueById(schedule.clientValueId),
+      contract: schedule.contractValueId === null ? null : valueById(schedule.contractValueId),
+      service: valueById(state.serviceValueId),
       amounts: wire(part),
     });
     byInvoice.set(schedule.eventId, entry);

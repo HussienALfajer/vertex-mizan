@@ -695,3 +695,24 @@ export function sumCarried(
     parallelMinor: parallelTotal,
   };
 }
+
+/**
+ * A schedule's transaction amount net of the credits it took (*N*, S06 rule 6): its line's amount
+ * less each credit's part (`creditMinor` of its `credited` movements; a credit's void gives its part
+ * back as a negative one). Null parts are movements of other kinds.
+ */
+export function netOfCredits(lineMinor: bigint, creditParts: readonly (bigint | null)[]): bigint {
+  return creditParts.reduce<bigint>((net, part) => net - (part ?? 0n), lineMinor);
+}
+
+/**
+ * The movement a reversal writes for a movement of the entry it reverses (S06 rule 8): its amounts
+ * negated in every ledger, and a credit's part negated, so a credit's void gives the schedule its
+ * part back.
+ */
+export function reversedMovement(
+  amounts: CarriedAmounts,
+  creditMinor: bigint | null,
+): { readonly amounts: CarriedAmounts; readonly creditMinor: bigint | null } {
+  return { amounts: negate(amounts), creditMinor: creditMinor === null ? null : -creditMinor };
+}

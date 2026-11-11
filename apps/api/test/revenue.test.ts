@@ -117,11 +117,12 @@ describe('/api/revenue', () => {
     expect(await filtered({ client: schedule?.client.id as string })).toBe(1);
     expect(await filtered({ state: 'voided' })).toBe(0);
     expect(await filtered({ month: nextMonth(month()) })).toBe(0);
-    expect((await book.owner.browser.get('/api/revenue/schedules', { month: '2026-13' })).status).toBe(
-      422,
-    );
     expect(
-      (await book.owner.browser.get('/api/revenue/schedules', { cursor: 'not-a-cursor' })).body.code,
+      (await book.owner.browser.get('/api/revenue/schedules', { month: '2026-13' })).status,
+    ).toBe(422);
+    expect(
+      (await book.owner.browser.get('/api/revenue/schedules', { cursor: 'not-a-cursor' })).body
+        .code,
     ).toBe('VALIDATION_FAILED');
 
     const detail = await book.owner.browser.get(`/api/revenue/schedules/${id}`);
@@ -134,7 +135,11 @@ describe('/api/revenue', () => {
         month: month(),
         days: 1,
         elapsed: false,
-        part: { transactionMinor: '90000', bookMinor: read.remaining.bookMinor, parallelMinor: '90000' },
+        part: {
+          transactionMinor: '90000',
+          bookMinor: read.remaining.bookMinor,
+          parallelMinor: '90000',
+        },
         released: false,
       },
     ]);
@@ -198,8 +203,10 @@ describe('/api/revenue', () => {
         .schedules,
     ).toEqual([]);
     expect(
-      ((await other.owner.browser.get('/api/revenue/preview', { month: month() })).body as RevenuePreview)
-        .entries,
+      (
+        (await other.owner.browser.get('/api/revenue/preview', { month: month() }))
+          .body as RevenuePreview
+      ).entries,
     ).toEqual([]);
   });
 

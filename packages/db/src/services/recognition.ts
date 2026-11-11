@@ -17,6 +17,7 @@ import {
   lastDayOfMonth,
   type MilestoneReferences,
   negate,
+  netOfCredits,
   type OverTimeMonth,
   overTimeMonths,
   type PlannedMovement,
@@ -24,10 +25,11 @@ import {
   type PointInTimeSchedule,
   periodOf,
   type RecognitionAmount,
-  reissueParts,
   reissueKey,
+  reissueParts,
   releaseParts,
   remainingReleaseParts,
+  reversedMovement,
   sumCarried,
   type VoidedOverTime,
   voidedCreditParts,
@@ -603,9 +605,7 @@ export async function overTimeStates(
   const issues = await tx
     .select()
     .from(inboundEvents)
-    .where(
-      inArray(inboundEvents.id, [...new Set(schedules.map((schedule) => schedule.eventId))]),
-    );
+    .where(inArray(inboundEvents.id, [...new Set(schedules.map((schedule) => schedule.eventId))]));
   const issueById = new Map(issues.map((issue) => [issue.id, issueOf(issue)]));
   const parallel = ledgers.parallel !== null;
   const states: ScheduleState[] = [];
@@ -676,14 +676,16 @@ export async function overTimeStates(
         if (part !== undefined) parts.set(month.month, part);
       }
     }
-    const creditedMinor = own.reduce((total, movement) => total + (movement.creditMinor ?? 0n), 0n);
     states.push({
       schedule,
       movements: own,
       months,
       parts,
       remaining,
-      netMinor: hubMinor(line.amount) - creditedMinor,
+      netMinor: netOfCredits(
+        hubMinor(line.amount),
+        own.map((movement) => movement.creditMinor),
+      ),
       serviceValueId: currentService(schedule, own),
       voided,
     });
@@ -1217,7 +1219,12 @@ async function mainEntryOf(tx: Transaction, row: EventRow): Promise<string | nul
         eq(postingRequests.id, journalEntries.requestId),
       ),
     )
-    .where(and(eq(postingRequests.client, row.apiClientId), eq(postingRequests.idempotencyKey, row.eventId)));
+    .where(
+      and(
+        eq(postingRequests.client, row.apiClientId),
+        eq(postingRequests.idempotencyKey, row.eventId),
+      ),
+    );
   return entry?.id ?? null;
 }
 
@@ -1359,7 +1366,10 @@ async function invoiceMovementEntries(tx: Transaction, invoiceId: string) {
 }
 
 /** Whether an entry stands: neither reversed nor itself a reversal. */
-async function standingEntryIds(tx: Transaction, entryIds: readonly string[]): Promise<Set<string>> {
+async function standingEntryIds(
+  tx: Transaction,
+  entryIds: readonly string[],
+): Promise<Set<string>> {
   if (entryIds.length === 0) return new Set();
   const rows = await tx
     .select({ id: journalEntries.id })
@@ -1406,7 +1416,9 @@ export async function voidStandingOf(
     ...candidates,
     ...credits.flatMap((movement) => movement.entryId ?? []),
   ]);
-  const ids = [...new Set([...documentStanding, ...candidates.filter((id) => standingIds.has(id))])];
+  const ids = [
+    ...new Set([...documentStanding, ...candidates.filter((id) => standingIds.has(id))]),
+  ];
   const ordered =
     ids.length === 0
       ? []
@@ -1559,16 +1571,25 @@ export async function voidMovements(
     for (const movement of movements) {
       if (movement.kind === 'reclassified') continue;
       const credit = movement.kind === 'credited';
+      const [schedule] = await tx
+        .select({ currency: recognitionSchedules.currency })
+        .from(recognitionSchedules)
+        .where(eq(recognitionSchedules.id, movement.scheduleId));
+      if (!schedule) throw new Error('A movement without its schedule');
+      const back = reversedMovement(
+        amountsOf(movement, schedule.currency as CurrencyCode),
+        credit ? movement.creditMinor : null,
+      );
       await tx.insert(recognitionMovements).values({
         companyId: row.companyId,
         scheduleId: movement.scheduleId,
         kind: credit ? 'credited' : 'reversed',
         month: null,
         entryId: reversal,
-        transactionMinor: -movement.transactionMinor,
-        bookMinor: -movement.bookMinor,
-        parallelMinor: movement.parallelMinor === null ? null : -movement.parallelMinor,
-        creditMinor: credit ? -(movement.creditMinor ?? 0n) : null,
+        transactionMinor: back.amounts.transaction.amountMinor,
+        bookMinor: back.amounts.bookMinor,
+        parallelMinor: back.amounts.parallelMinor,
+        creditMinor: back.creditMinor,
       });
       if (credit && movement.transactionMinor < 0n) {
         givenBack.push({ scheduleId: movement.scheduleId, credit: movement });

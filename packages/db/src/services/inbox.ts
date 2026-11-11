@@ -60,8 +60,8 @@ import { openItemBalances, openItemDueDates, openItems } from '../schema/open-it
 import { ledgersOf } from './companies.js';
 import { recordRate } from './rates.js';
 import {
-  milestoneFactsOf,
   cyclesOf,
+  milestoneFactsOf,
   openSchedules,
   projectSchedulesOf,
   reclassifyRecognised,

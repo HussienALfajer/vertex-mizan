@@ -21,10 +21,12 @@ import {
   type OverTimeMonth,
   overTimeMonths,
   type ReissueParts,
+  netOfCredits,
   reissuedMilestoneLine,
   reissueParts,
   releaseParts,
   remainingReleaseParts,
+  reversedMovement,
   voidedCreditParts,
 } from './recognition.js';
 import { calendar, hubRate, rate, refusal, sypOnly, sypUsd, usdSyp } from './test-fixtures.js';
@@ -1644,5 +1646,29 @@ describe('invoicedAfterCancellationSplit', () => {
       ),
       { numRuns: 500 },
     );
+  });
+});
+
+describe('netOfCredits and reversedMovement (S06 rules 6, 8)', () => {
+  it('takes each credit’s part off the line, a void’s negative part giving it back', () => {
+    // The 900.00 USD cycle credited 600.00, then 100.00, then the first credit voided.
+    expect(netOfCredits(90_000n, [null, 60_000n, null])).toBe(30_000n);
+    expect(netOfCredits(90_000n, [60_000n, 10_000n, -60_000n])).toBe(80_000n);
+  });
+
+  it('negates a movement in every ledger and its credit part', () => {
+    const credited = {
+      transaction: money(-4_200n, 'USD'),
+      bookMinor: -508_200n,
+      parallelMinor: -4_200n,
+    };
+    expect(reversedMovement(credited, 9_000n)).toEqual({
+      amounts: { transaction: money(4_200n, 'USD'), bookMinor: 508_200n, parallelMinor: 4_200n },
+      creditMinor: -9_000n,
+    });
+    expect(reversedMovement({ ...credited, parallelMinor: null }, null)).toEqual({
+      amounts: { transaction: money(4_200n, 'USD'), bookMinor: 508_200n, parallelMinor: null },
+      creditMinor: null,
+    });
   });
 });

@@ -534,7 +534,8 @@ export function recognitionProblems(input: {
     const { contractValueId, currency, net, lines } = sides.get(key) as NonNullable<
       ReturnType<typeof sides.get>
     >;
-    if (net.amount !== lines.amount) problems.push({ contractValueId, currency, amount: 'transaction' });
+    if (net.amount !== lines.amount)
+      problems.push({ contractValueId, currency, amount: 'transaction' });
     if (net.book !== lines.book) problems.push({ contractValueId, currency, amount: 'book' });
     if (net.parallel !== lines.parallel) {
       problems.push({ contractValueId, currency, amount: 'parallel' });
