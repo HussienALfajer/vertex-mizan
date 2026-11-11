@@ -308,7 +308,8 @@ const stepOutcome = { outcome: outcomeSchema.optional() };
 /**
  * A step is told apart by its one key: `event`, `manual`, `reversal`, `job` or `rate`, or one of
  * the accountant's actions on a held event (S05 rules 15–17): `retry`, `move`, `resolve`, `dismiss`;
- * S06's `recognise` and `split` (rule 16); S07's `revalue` (rules 10–18) and `block` (S02 rule 5).
+ * S06's `recognise` and `split` (rule 16); S07's `revalue` (rules 10–18), `block` (S02 rule 5),
+ * `close` and `reopen` (rules 2–9).
  */
 export const STEP_KINDS = [
   'event',
@@ -324,6 +325,8 @@ export const STEP_KINDS = [
   'split',
   'revalue',
   'block',
+  'close',
+  'reopen',
 ] as const;
 
 export type StepKind = (typeof STEP_KINDS)[number];
@@ -545,6 +548,39 @@ const blockStepSchema = z
     outcome: step.outcome ?? null,
   }));
 
+/**
+ * Close a month with a reason (S07 rules 2, 5, 7–9), on the case's clock: refused with the first
+ * failing rule, a failed checklist as `CHECKLIST_FAILED` with the failing items as its detail.
+ */
+const closeStepSchema = z
+  .strictObject({
+    kind: z.literal('close'),
+    close: periodSchema,
+    reason: actionReasonSchema,
+    ...stepOutcome,
+  })
+  .transform((step) => ({
+    kind: step.kind,
+    period: step.close,
+    reason: step.reason,
+    outcome: step.outcome ?? null,
+  }));
+
+/** Reopen the latest closed month with a reason (S07 rules 3, 6); its held events are retried. */
+const reopenStepSchema = z
+  .strictObject({
+    kind: z.literal('reopen'),
+    reopen: periodSchema,
+    reason: actionReasonSchema,
+    ...stepOutcome,
+  })
+  .transform((step) => ({
+    kind: step.kind,
+    period: step.reopen,
+    reason: step.reason,
+    outcome: step.outcome ?? null,
+  }));
+
 const stepSchema = z.preprocess(
   (value) => {
     if (typeof value !== 'object' || value === null || Array.isArray(value)) return value;
@@ -567,11 +603,13 @@ const stepSchema = z.preprocess(
       splitStepSchema,
       revalueStepSchema,
       blockStepSchema,
+      closeStepSchema,
+      reopenStepSchema,
     ],
     {
       error:
         'Expected a step with one of the keys event, manual, reversal, job, rate, retry, move, ' +
-        'resolve, dismiss, recognise, split, revalue or block',
+        'resolve, dismiss, recognise, split, revalue, block, close or reopen',
     },
   ),
 );

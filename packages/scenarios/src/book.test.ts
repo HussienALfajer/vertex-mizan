@@ -287,7 +287,7 @@ describe('a case', () => {
     [
       'a step of no kind',
       CASE.replace('  - event: invoice.issued', '  - what: invoice.issued'),
-      'event, manual, reversal, job, rate, retry, move, resolve, dismiss, recognise, split, revalue or block',
+      'event, manual, reversal, job, rate, retry, move, resolve, dismiss, recognise, split, revalue, block, close or reopen',
     ],
     [
       'a step of two kinds',
@@ -561,6 +561,32 @@ describe('a case', () => {
       'company: { shape: syp, book: SYP, rate_policy: { book: bulletin } }',
     ).replace(/, parallel: -?\d+ \}/g, ' }');
     expect(refusal(sypOnly)).toContain('The company keeps no parallel ledger to revalue');
+  });
+
+  it('reads the close and the reopen of a period, each with its reason (S07)', () => {
+    const closeAndReopen = REVALUE.replace(
+      '  - revalue: parallel\n    period: 2026-11\n',
+      '  - revalue: parallel\n    period: 2026-11\n' +
+        '  - close: 2026-11\n    reason: "إقفال تشرين الثاني"\n' +
+        '  - reopen: 2026-11\n    reason: "دفعة متأخرة"\n' +
+        '  - close: 2026-11\n    reason: "إعادة الإقفال"\n' +
+        '    outcome: { status: refused, reason: CHECKLIST_FAILED, detail: revaluation_current }\n',
+    );
+    const { steps } = parseCase(closeAndReopen);
+    expect(steps.slice(4)).toEqual([
+      { kind: 'close', period: '2026-11', reason: 'إقفال تشرين الثاني', outcome: null },
+      { kind: 'reopen', period: '2026-11', reason: 'دفعة متأخرة', outcome: null },
+      {
+        kind: 'close',
+        period: '2026-11',
+        reason: 'إعادة الإقفال',
+        outcome: { status: 'refused', reason: 'CHECKLIST_FAILED', detail: 'revaluation_current' },
+      },
+    ]);
+    expect(refusal(closeAndReopen.replace('close: 2026-11', 'close: 2026-13'))).toContain(
+      'YYYY-MM',
+    );
+    expect(refusal(closeAndReopen.replace('    reason: "دفعة متأخرة"\n', ''))).toContain('reason');
   });
 
   it.each([
