@@ -1,0 +1,3 @@
+ALTER TABLE "inbound_events" ADD COLUMN "order_keys" text[] DEFAULT '{}'::text[] NOT NULL;--> statement-breakpoint
+CREATE INDEX "inbound_events_company_order_keys_idx" ON "inbound_events" USING gin ("company_id","order_keys");--> statement-breakpoint
+ALTER TABLE "inbound_events" ADD CONSTRAINT "inbound_events_order_keys" CHECK (cardinality("inbound_events"."order_keys") <= 201 and array_position("inbound_events"."order_keys", null) is null);

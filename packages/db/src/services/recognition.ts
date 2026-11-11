@@ -13,9 +13,12 @@ import {
   firstOpenDayAfter,
   type HubDimensions,
   lastDayOfMonth,
+  type MilestoneReferences,
   negate,
   overTimeMonths,
+  type PlannedMovement,
   type PlannedSchedule,
+  type PointInTimeSchedule,
   periodOf,
   releaseParts,
   sumCarried,
@@ -26,8 +29,10 @@ import type { Transaction } from '../client.js';
 import { type CarriedLineSpec, type HubSource, post } from '../posting/post.js';
 import { chartAccounts } from '../schema/chart.js';
 import { companySettings } from '../schema/companies.js';
-import { inboundEvents, postingRuleAccounts } from '../schema/inbox.js';
+import { dimensionValues } from '../schema/dimensions.js';
+import { inboundEventStates, inboundEvents, postingRuleAccounts } from '../schema/inbox.js';
 import { journalEntries, journalLines, ledgerHeads, periods } from '../schema/ledger.js';
+import { openItemBalances, openItems } from '../schema/open-items.js';
 import { recognitionMovements, recognitionSchedules } from '../schema/recognition.js';
 import { ledgersOf } from './companies.js';
 
@@ -69,8 +74,8 @@ async function lineAmounts(
 }
 
 /**
- * The schedules of an invoice's over-time lines (ADR 0015), after its entries posted: one row per
- * line, then its `deferred` movement (what it adds to recognise: its contract liability line and its
+ * The schedules of an invoice's deferred lines (ADR 0015), after its entries posted: one row per
+ * over-time or point-in-time line, then its `deferred` movement (what it adds to recognise: its contract liability line and its
  * elapsed parts, positive) and one `elapsed` movement per elapsed month (its revenue line,
  * negative), so the remaining is what the liability holds for it in every ledger.
  */
@@ -106,11 +111,12 @@ export async function openSchedules(
         invoiceDocumentId: event.payload.invoice.id,
         invoiceNumber: event.payload.invoice.number,
         lineId: schedule.lineId,
-        pattern: 'over_time',
+        pattern: schedule.pattern,
         lineSource: schedule.lineSource,
         chargeKind: schedule.chargeKind,
         serviceFrom: schedule.serviceFrom,
         serviceTo: schedule.serviceTo,
+        milestoneId: schedule.milestoneId,
         cycleKey: schedule.cycleKey,
         clientValueId,
         contractValueId: contractValueId ?? null,
@@ -179,6 +185,242 @@ async function companyLedgers(tx: Transaction): Promise<CompanyLedgers> {
   const [settings] = await tx.select().from(companySettings);
   if (!settings) throw new Error('A company without its settings');
   return ledgersOf(settings);
+}
+
+/** A schedule's current service: its latest reclassification's, else its own (S06 rule 10). */
+function currentService(schedule: ScheduleRow, movements: readonly MovementRow[]): string {
+  const reclassified = movements.filter((movement) => movement.kind === 'reclassified').at(-1);
+  return reclassified?.serviceValueId ?? schedule.serviceValueId;
+}
+
+/**
+ * The point-in-time schedules that stand (no `reversed` movement), in the order they were made,
+ * with what each still holds (S06 rules 11, 14, 15).
+ */
+async function standingPointInTime(
+  tx: Transaction,
+  where: ReturnType<typeof eq>,
+  parallel: boolean,
+): Promise<PointInTimeSchedule[]> {
+  const schedules = await tx
+    .select()
+    .from(recognitionSchedules)
+    .where(and(eq(recognitionSchedules.pattern, 'point_in_time'), where))
+    .orderBy(asc(recognitionSchedules.createdAt), asc(recognitionSchedules.id));
+  if (schedules.length === 0) return [];
+  const movements = await tx
+    .select()
+    .from(recognitionMovements)
+    .where(
+      inArray(
+        recognitionMovements.scheduleId,
+        schedules.map((schedule) => schedule.id),
+      ),
+    )
+    .orderBy(asc(recognitionMovements.createdAt), asc(recognitionMovements.id));
+  return schedules.flatMap((schedule) => {
+    const own = movements.filter((movement) => movement.scheduleId === schedule.id);
+    if (own.some((movement) => movement.kind === 'reversed')) return [];
+    const currency = schedule.currency as CurrencyCode;
+    return [
+      {
+        id: schedule.id,
+        liabilityAccountId: schedule.liabilityAccountId,
+        parties:
+          schedule.contractValueId === null
+            ? [schedule.clientValueId]
+            : [schedule.clientValueId, schedule.contractValueId],
+        serviceValueId: currentService(schedule, own),
+        remaining: sumCarried(
+          own.map((movement) => amountsOf(movement, currency)),
+          currency,
+          parallel,
+        ),
+      },
+    ];
+  });
+}
+
+/** The project's standing point-in-time schedules, by Hub's project id (S06 rules 14–15). */
+export async function projectSchedulesOf(
+  tx: Transaction,
+  projectId: string,
+): Promise<PointInTimeSchedule[]> {
+  const ledgers = await companyLedgers(tx);
+  const contracts = tx
+    .select({ id: dimensionValues.id })
+    .from(dimensionValues)
+    .where(
+      and(eq(dimensionValues.externalSource, 'hub'), eq(dimensionValues.externalId, projectId)),
+    );
+  return standingPointInTime(
+    tx,
+    inArray(recognitionSchedules.contractValueId, contracts),
+    ledgers.parallel !== null,
+  );
+}
+
+/**
+ * What the books hold for a milestone (`MilestoneReferences`; S06 rules 11–13): `standing`, the
+ * entries of its `milestone` document still standing (its done), latest first; `projectId`, Hub's
+ * id of its project, when the event names one.
+ */
+export async function milestoneFactsOf(
+  tx: Transaction,
+  milestoneId: string,
+  projectId: string | null,
+  standing: readonly string[],
+): Promise<MilestoneReferences> {
+  const ledgers = await companyLedgers(tx);
+  const parallel = ledgers.parallel !== null;
+  const [doneEntry] = standing;
+  let item: MilestoneReferences['item'] = null;
+  let doneRelease: MilestoneReferences['doneRelease'] = null;
+  if (doneEntry !== undefined) {
+    const [opened] = await tx
+      .select({
+        id: openItems.id,
+        accountId: openItems.accountId,
+        currency: openItems.currency,
+        openMinor: openItemBalances.openMinor,
+        bookMinor: openItemBalances.bookMinor,
+        parallelMinor: openItemBalances.parallelMinor,
+      })
+      .from(openItems)
+      .innerJoin(
+        openItemBalances,
+        and(
+          eq(openItemBalances.companyId, openItems.companyId),
+          eq(openItemBalances.itemId, openItems.id),
+        ),
+      )
+      .where(and(eq(openItems.openedByEntryId, doneEntry), eq(openItems.kind, 'document')));
+    if (opened) {
+      const currency = opened.currency as CurrencyCode;
+      item = {
+        id: opened.id,
+        accountId: opened.accountId,
+        currency,
+        openMinor: opened.openMinor,
+        carried: {
+          transaction: money(opened.openMinor, currency),
+          bookMinor: opened.bookMinor,
+          parallelMinor: opened.parallelMinor,
+        },
+      };
+    }
+    const [release] = await tx
+      .select()
+      .from(recognitionMovements)
+      .where(
+        and(eq(recognitionMovements.entryId, doneEntry), eq(recognitionMovements.kind, 'released')),
+      );
+    if (release) {
+      const [schedule] = await tx
+        .select({ currency: recognitionSchedules.currency })
+        .from(recognitionSchedules)
+        .where(eq(recognitionSchedules.id, release.scheduleId));
+      if (!schedule) throw new Error('A movement without its schedule');
+      doneRelease = {
+        entryId: doneEntry,
+        scheduleId: release.scheduleId,
+        amounts: negate(amountsOf(release, schedule.currency as CurrencyCode)),
+      };
+    }
+  }
+  const schedules = await standingPointInTime(
+    tx,
+    eq(recognitionSchedules.milestoneId, milestoneId),
+    parallel,
+  );
+  const [items] = await tx
+    .select({ n: sql<number>`count(*)::int` })
+    .from(openItems)
+    .where(
+      and(
+        sql`${openItems.hubDocument} ->> 'type' = 'milestone'`,
+        sql`${openItems.hubDocument} ->> 'id' = ${milestoneId}`,
+      ),
+    );
+  let projectCancelled = false;
+  if (projectId !== null) {
+    const [cancelled] = await tx
+      .select({ id: inboundEvents.id })
+      .from(inboundEvents)
+      .innerJoin(
+        inboundEventStates,
+        and(
+          eq(inboundEventStates.companyId, inboundEvents.companyId),
+          eq(inboundEventStates.eventId, inboundEvents.id),
+        ),
+      )
+      .where(
+        and(
+          eq(inboundEvents.type, 'project.cancelled'),
+          eq(inboundEvents.documentType, 'project'),
+          eq(inboundEvents.documentId, projectId),
+          inArray(inboundEventStates.state, ['posted', 'recorded', 'resolved']),
+        ),
+      )
+      .limit(1);
+    projectCancelled = cancelled !== undefined;
+  }
+  return {
+    doneStanding: doneEntry !== undefined,
+    item,
+    doneRelease,
+    schedule: schedules.at(-1) ?? null,
+    items: items?.n ?? 0,
+    projectCancelled,
+  };
+}
+
+/** Whether a schedule of the invoice was cleared by its project's split (S06 rule 8). */
+export async function splitAtCancellation(tx: Transaction, invoiceId: string): Promise<boolean> {
+  const [found] = await tx
+    .select({ id: recognitionMovements.id })
+    .from(recognitionMovements)
+    .innerJoin(
+      recognitionSchedules,
+      and(
+        eq(recognitionSchedules.companyId, recognitionMovements.companyId),
+        eq(recognitionSchedules.id, recognitionMovements.scheduleId),
+      ),
+    )
+    .where(
+      and(
+        eq(recognitionSchedules.invoiceDocumentId, invoiceId),
+        inArray(recognitionMovements.kind, ['remainder_released', 'remainder_refunded']),
+      ),
+    )
+    .limit(1);
+  return found !== undefined;
+}
+
+/**
+ * The movements a plan's entries make on standing schedules (S06 rules 11, 13–15), after they
+ * posted, each describing its entry by the plan's key.
+ */
+export async function writeMovements(
+  tx: Transaction,
+  companyId: string,
+  movements: readonly PlannedMovement[],
+  posted: ReadonlyMap<string, string>,
+): Promise<void> {
+  for (const movement of movements) {
+    const entryId = posted.get(movement.key);
+    if (entryId === undefined) throw new Error(`The plan's entry ${movement.key} did not post`);
+    await tx.insert(recognitionMovements).values({
+      companyId,
+      scheduleId: movement.scheduleId,
+      kind: movement.kind,
+      month: null,
+      entryId,
+      transactionMinor: movement.amounts.transaction.amountMinor,
+      bookMinor: movement.amounts.bookMinor,
+      parallelMinor: movement.amounts.parallelMinor,
+    });
+  }
 }
 
 /** What stops a month's release of an invoice, for `/revenue` and the checklist (S06 "Jobs"). */
@@ -545,9 +787,28 @@ export async function reclassifyRecognised(
     .where(eq(inboundEvents.id, schedule.eventId));
   if (!issue) throw new Error('A schedule without its event');
   const ledgers = await companyLedgers(tx);
-  const state = (await scheduleStates(tx, issue, ledgers)).find(
-    (candidate) => candidate.schedule.id === schedule.id,
-  );
+  // A point-in-time schedule recognises by its done or its project's end, not by months: what its
+  // movements released is what moves (rule 10).
+  const own =
+    schedule.pattern === 'point_in_time'
+      ? await tx
+          .select()
+          .from(recognitionMovements)
+          .where(eq(recognitionMovements.scheduleId, schedule.id))
+          .orderBy(asc(recognitionMovements.createdAt), asc(recognitionMovements.id))
+      : null;
+  const state =
+    own === null
+      ? (await scheduleStates(tx, issue, ledgers)).find(
+          (candidate) => candidate.schedule.id === schedule.id,
+        )
+      : {
+          schedule,
+          movements: own,
+          parts: new Map<string, CarriedAmounts>(),
+          serviceValueId: currentService(schedule, own),
+          voided: own.some((movement) => movement.kind === 'reversed'),
+        };
   if (!state) throw new Error('A schedule without its state');
   const currency = schedule.currency as CurrencyCode;
   const parallel = ledgers.parallel !== null;
@@ -566,7 +827,10 @@ export async function reclassifyRecognised(
   const dateOf = (movement: MovementRow) =>
     movement.entryId === null ? null : (dates.get(movement.entryId) ?? null);
   const recognised = state.movements.filter(
-    (movement) => movement.kind === 'released' || movement.kind === 'elapsed',
+    (movement) =>
+      movement.kind === 'released' ||
+      movement.kind === 'elapsed' ||
+      movement.kind === 'remainder_released',
   );
   const later = recognised.filter((movement) => {
     const date = dateOf(movement);
