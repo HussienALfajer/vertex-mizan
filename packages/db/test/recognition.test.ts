@@ -14,6 +14,7 @@ import {
   chartAccounts,
   createCompanyBooks,
   inboundEventActions,
+  inboundEventStates,
   inboundEvents,
   journalEntries,
   journalLines,
@@ -30,6 +31,7 @@ import {
   recognitionSchedules,
   recordRate,
   releaseMonth,
+  resolveEvent,
   retryFreed,
   splitEvent,
   type Transaction,
@@ -910,6 +912,98 @@ describe('milestones and projects (S06 rules 11–17)', () => {
       ['411001', 'USD', 30_000n, 3_600_000n, 30_000n],
     ]);
     expect(entries[3]?.lines).toEqual(entries[1]?.lines);
+  });
+
+  it('holds a completion for the accountant once a done of its milestone was resolved by hand (S05 rule 16)', async () => {
+    const companyId = await newCompany([
+      ['2026-11-03', '120.0000'],
+      ['2026-11-25', '121.0000'],
+    ]);
+    await receive(companyId, deposit(70, '2026-11-03', 30_000, 1), '2026-11-03');
+    const withoutService = envelope('milestone.done', '2026-11-20', {
+      milestone: MS(1),
+      client: C1,
+      project: P1,
+      currency: 'USD',
+      amount: 30_000,
+      done_on: '2026-11-20',
+    });
+    const held = await receive(companyId, withoutService, '2026-11-20');
+    expect(held.event).toMatchObject({
+      reason: 'NEEDS_DECISION',
+      detail: 'milestone_service_missing',
+    });
+    const completed = envelope('project.completed', '2026-11-25', {
+      project: P1,
+      client: C1,
+      on: '2026-11-25',
+    });
+    // In the project's order, behind the held done (S06 rule 17).
+    expect((await receive(companyId, completed, '2026-11-25')).event.reason).toBe(
+      'WAITING_FOR_EARLIER_EVENT',
+    );
+    // The accountant releases the deposit by hand and resolves the done with that entry.
+    const resolved = await inCompany(companyId, async (tx) => {
+      const [schedule] = await tx.select().from(recognitionSchedules);
+      if (!schedule?.contractValueId) throw new Error('No schedule');
+      const account = async (code: string) => {
+        const [row] = await tx
+          .select({ id: chartAccounts.id })
+          .from(chartAccounts)
+          .where(eq(chartAccounts.code, code));
+        return row?.id as string;
+      };
+      const parties = [schedule.clientValueId, schedule.contractValueId];
+      const entry = await post(tx, {
+        client: 'manual',
+        idempotencyKey: uuidv7(),
+        entryDate: '2026-11-25',
+        description: 'تحرير الدفعة يدويًا',
+        reference: null,
+        draftId: null,
+        preparedByUserId: personId,
+        approvedByUserId: null,
+        actor: person(),
+        content: {
+          kind: 'manual',
+          dealtRates: [],
+          today: '2026-11-25',
+          lines: [
+            {
+              accountId: await account('212001'),
+              dimensionValueIds: parties,
+              currency: 'USD',
+              amountMinor: 30_000n,
+              memo: null,
+            },
+            {
+              accountId: await account('411001'),
+              dimensionValueIds: [...parties, schedule.serviceValueId],
+              currency: 'USD',
+              amountMinor: -30_000n,
+              memo: null,
+            },
+          ],
+        },
+      });
+      return resolveEvent(tx, held.event.inboxId, entry.id, 'أُنجزت المرحلة', {
+        actor: person(),
+        today: '2026-11-25',
+      });
+    });
+    await inCompany(companyId, (tx) =>
+      retryFreed(tx, resolved.triggers, { actor: system, today: '2026-11-25' }),
+    );
+    // The completion does not release the deposit a second time.
+    const states = await inCompany(companyId, (tx) =>
+      tx
+        .select({ type: inboundEvents.type, detail: inboundEventStates.holdDetail })
+        .from(inboundEvents)
+        .innerJoin(inboundEventStates, eq(inboundEventStates.eventId, inboundEvents.id))
+        .where(eq(inboundEvents.type, 'project.completed')),
+    );
+    expect(states).toEqual([{ type: 'project.completed', detail: 'document_resolved_manually' }]);
+    expect((await ledger(companyId)).map((entry) => entry.source)).toEqual(['hub_event', 'manual']);
   });
 
   it('splits a held cancellation once when two splits arrive at once; its void waits behind it, then is held', async () => {

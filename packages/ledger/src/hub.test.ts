@@ -1193,6 +1193,25 @@ describe('milestones and projects (revenue/milestones, revenue/cancelled-project
       ['212001', 'USD', 20_000n, 2_460_000n, 20_000n],
       ['411001', 'USD', -20_000n, -2_460_000n, -20_000n],
     ]);
+    // A milestone the accountant resolved by hand: its schedule is the accountant's (S05 rule 16).
+    const byHand: HubReferences = {
+      ...NO_REFERENCES,
+      projectSchedules: [
+        { ...schedule('sch-13', usd(20_000n, 2_460_000n, 20_000n)), resolvedByHand: true },
+      ],
+    };
+    expect(planEvent(completed, byHand, context)).toEqual({
+      kind: 'post',
+      entries: [],
+      decision: 'document_resolved_manually',
+    });
+    const cancelled = event('project.cancelled', { project: P1, client: C1, on: '2026-12-10' });
+    expect(planEvent(cancelled, byHand, context)).toMatchObject({
+      decision: 'document_resolved_manually',
+    });
+    expect(refusal(() => planEvent(cancelled, byHand, context, 0n))).toBe(
+      'EVENT_ACTION_NOT_ALLOWED',
+    );
   });
 
   it('holds a cancelled project’s remainder for the split, then posts it with an 800.00 SYP loss (rule 15)', () => {

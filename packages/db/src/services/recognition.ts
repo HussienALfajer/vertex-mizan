@@ -218,6 +218,29 @@ async function standingPointInTime(
       ),
     )
     .orderBy(asc(recognitionMovements.createdAt), asc(recognitionMovements.id));
+  // The milestones whose events the accountant resolved by a manual entry (S05 rule 16).
+  const milestoneIds = [...new Set(schedules.flatMap((schedule) => schedule.milestoneId ?? []))];
+  const resolved =
+    milestoneIds.length === 0
+      ? []
+      : await tx
+          .select({ milestoneId: inboundEvents.documentId })
+          .from(inboundEvents)
+          .innerJoin(
+            inboundEventStates,
+            and(
+              eq(inboundEventStates.companyId, inboundEvents.companyId),
+              eq(inboundEventStates.eventId, inboundEvents.id),
+            ),
+          )
+          .where(
+            and(
+              eq(inboundEvents.documentType, 'milestone'),
+              inArray(inboundEvents.documentId, milestoneIds),
+              eq(inboundEventStates.state, 'resolved'),
+            ),
+          );
+  const resolvedMilestones = new Set(resolved.map((row) => row.milestoneId));
   return schedules.flatMap((schedule) => {
     const own = movements.filter((movement) => movement.scheduleId === schedule.id);
     if (own.some((movement) => movement.kind === 'reversed')) return [];
@@ -231,6 +254,8 @@ async function standingPointInTime(
             ? [schedule.clientValueId]
             : [schedule.clientValueId, schedule.contractValueId],
         serviceValueId: currentService(schedule, own),
+        resolvedByHand:
+          schedule.milestoneId !== null && resolvedMilestones.has(schedule.milestoneId),
         remaining: sumCarried(
           own.map((movement) => amountsOf(movement, currency)),
           currency,
@@ -852,7 +877,8 @@ export async function reclassifyRecognised(
   }
   for (const movement of later) {
     moves.push({
-      key: `${input.key}:${(movement.month ?? '').slice(0, 7)}`,
+      // A point-in-time release has no month: its movement names its entry (a done, a reopen).
+      key: `${input.key}:${movement.month?.slice(0, 7) ?? movement.id}`,
       date: dateOf(movement) as string,
       amounts: negate(amountsOf(movement, currency)),
     });

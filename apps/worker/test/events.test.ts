@@ -116,9 +116,14 @@ async function company(): Promise<string> {
 }
 
 /** Hub's event received and attempted in the company, as `POST /v1/events` does. */
-const receive = (companyId: string, type: string, clientId = uuidv7()) =>
+const receive = (
+  companyId: string,
+  type: string,
+  clientId = uuidv7(),
+  edit: (raw: ReturnType<typeof example>) => ReturnType<typeof example> = (raw) => raw,
+) =>
   withCompany(db, companyId, (tx) => {
-    const raw = example(type);
+    const raw = edit(example(type));
     return receiveEvent(
       tx,
       companyId,
@@ -131,6 +136,27 @@ const receive = (companyId: string, type: string, clientId = uuidv7()) =>
       { actor: hub(clientId), today },
     );
   });
+
+/**
+ * An invoice of its own with a tax on its line: held `NO_MAPPING` (`tax_lines`) while taxes are not
+ * posted (S05 "Out"), so no retry posts it.
+ */
+const taxed = (raw: ReturnType<typeof example>): ReturnType<typeof example> => {
+  const payload = raw.payload as Record<string, unknown> & { lines: Record<string, unknown>[] };
+  return {
+    ...raw,
+    id: uuidv7(),
+    payload: {
+      ...payload,
+      invoice: { id: uuidv7(), number: 'INV-TAX-1' },
+      lines: payload.lines.map((line) => ({
+        ...line,
+        id: uuidv7(),
+        taxes: [{ code: 'VAT', base: 50_000, rate: '5', amount: 2_500 }],
+      })),
+    },
+  } as ReturnType<typeof example>;
+};
 
 const stateOf = (companyId: string, inboxId: string) =>
   withCompany(db, companyId, async (tx) => {
@@ -203,10 +229,10 @@ describe('events.retry-sweep', () => {
       state: 'posted',
       reason: null,
     });
-    // A milestone holds NO_MAPPING until S06 brings its rule: the sweep leaves it held.
-    const milestone = await receive(companyId, 'milestone.done', clientId);
+    // A taxed invoice holds NO_MAPPING while taxes are not posted: the sweep leaves it held.
+    const held = await receive(companyId, 'invoice.issued', clientId, taxed);
     await sweep.run();
-    expect(await stateOf(companyId, milestone.event.inboxId)).toEqual({
+    expect(await stateOf(companyId, held.event.inboxId)).toEqual({
       state: 'held',
       reason: 'NO_MAPPING',
     });
@@ -218,7 +244,7 @@ describe('events.held-digest', () => {
     const companyId = await company();
     const quiet = await company();
     await receive(companyId, 'payment.recorded');
-    await receive(companyId, 'milestone.done');
+    await receive(companyId, 'invoice.issued', uuidv7(), taxed);
     const job = new EventsHeldDigestJob(jobs, db, config);
     const day = `2099-${today.slice(5)}`;
     const first = await job.run(day);

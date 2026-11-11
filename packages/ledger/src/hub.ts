@@ -310,6 +310,11 @@ export interface PointInTimeSchedule {
   readonly serviceValueId: string;
   /** What it still holds in contract liabilities, positive amounts, carried. */
   readonly remaining: CarriedAmounts;
+  /**
+   * Whether an event of its milestone was resolved by the accountant's manual entry (S05 rule 16),
+   * which moves no schedule: what the schedule holds is then the accountant's, not the project's.
+   */
+  readonly resolvedByHand?: boolean;
 }
 
 /** What the books hold for a milestone (S06 rules 11–13). */
@@ -1013,6 +1018,11 @@ export function projectCompletedPlan(
   );
   const releases = completedProjectReleases(schedules.map((schedule) => schedule.remaining));
   if (releases.length === 0) return { kind: 'post', entries: [], decision: null };
+  // A milestone the accountant resolved by hand may have been recognised by that entry (S05 rule
+  // 16): releasing its schedule again could recognise it twice (IFRS 15.31).
+  if (schedules.some((schedule) => schedule.resolvedByHand === true)) {
+    return { kind: 'post', entries: [], decision: 'document_resolved_manually' };
+  }
   const released = slotAccount(context, 'released_revenue', null);
   if (isHold(released)) return released;
   const keyOf = (schedule: PointInTimeSchedule) => `${event.id}:schedule:${schedule.id}`;
@@ -1048,7 +1058,9 @@ export function projectCompletedPlan(
  * line with the client and the project measured anew at each ledger's policy rate of the date (a
  * monetary liability, IAS 21.23(a)); each ledger's residual a realised difference (ADR 0013). Each
  * schedule takes its `remainder_released` and `remainder_refunded` movements. A revenue part outside
- * zero to the remainder is `VALIDATION_FAILED`.
+ * zero to the remainder is `VALIDATION_FAILED`. A schedule whose milestone the accountant resolved
+ * by a manual entry (S05 rule 16), at completion or cancellation, holds the event `NEEDS_DECISION`
+ * (`document_resolved_manually`): that entry may have recognised it, which no movement records.
  */
 export function projectCancelledPlan(
   event: EventOf<'project.cancelled'>,
@@ -1065,6 +1077,13 @@ export function projectCancelledPlan(
       throw new DomainError('EVENT_ACTION_NOT_ALLOWED', 'The cancellation has nothing to split');
     }
     return { kind: 'post', entries: [], decision: null };
+  }
+  // As for a completion: a milestone resolved by hand leaves the remainder to a manual entry.
+  if (schedules.some((schedule) => schedule.resolvedByHand === true)) {
+    if (split !== undefined) {
+      throw new DomainError('EVENT_ACTION_NOT_ALLOWED', 'The remainder is the accountant’s');
+    }
+    return { kind: 'post', entries: [], decision: 'document_resolved_manually' };
   }
   const released = slotAccount(context, 'released_revenue', null);
   if (isHold(released)) return released;
