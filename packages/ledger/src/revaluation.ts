@@ -113,6 +113,24 @@ export function revaluationLines(
   });
 }
 
+/**
+ * The gains and the losses a revaluation's differences post (rule 13, "Screens"), each as a
+ * positive total in the ledger's currency, never netted: a positive difference raises a balance's
+ * debit, a gain; a negative one, a loss.
+ */
+export function revaluationTotals(differences: readonly bigint[]): {
+  readonly gainMinor: bigint;
+  readonly lossMinor: bigint;
+} {
+  let gainMinor = 0n;
+  let lossMinor = 0n;
+  for (const difference of differences) {
+    if (difference > 0n) gainMinor += difference;
+    else lossMinor -= difference;
+  }
+  return { gainMinor, lossMinor };
+}
+
 /** The first day of the month after the month of `on`. */
 export function firstDayOfNextMonth(on: string): string {
   const year = Number(on.slice(0, 4));

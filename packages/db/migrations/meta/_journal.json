@@ -267,6 +267,20 @@
       "when": 1794417563464,
       "tag": "0037_slippery_zaladane",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1794434797953,
+      "tag": "0038_supreme_warpath",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1794434818979,
+      "tag": "0039_s07_revaluation_guards",
+      "breakpoints": true
     }
   ]
 }

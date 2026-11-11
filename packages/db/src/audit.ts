@@ -148,6 +148,16 @@ export const AUDITED_FIELDS = {
   api_client_key: ['apiClientId', 'prefix', 'revokeReason'],
   document_source: ['documentType', 'apiClientId'],
   posting_rule: ['slot', 'currency', 'accountId', 'accountCode'],
+  // S07: a ledger's month-end revaluation, its entry and reversal, and the rate rows it used.
+  revaluation: [
+    'period',
+    'ledger',
+    'adjusting',
+    'fingerprint',
+    'rates',
+    'entryId',
+    'reversalEntryId',
+  ],
   // S04: a manual item's due date, and the filters of the receivables exports.
   open_item: ['reference', 'dueOn', 'effectiveOn'],
   receivables_export: [

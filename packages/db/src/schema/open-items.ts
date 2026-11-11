@@ -32,8 +32,17 @@ export const OPEN_ITEM_KINDS = ['document', 'running'] as const;
 /** `ITEM_SOURCES` of contracts; a test keeps them equal. */
 export const OPEN_ITEM_SOURCES = ['manual', 'hub_event', 'opening'] as const;
 
-/** `MOVEMENT_KINDS` of contracts; a test keeps them equal. S07 appends `revaluation`. */
-export const OPEN_ITEM_MOVEMENT_KINDS = ['open', 'add', 'clear', 'difference'] as const;
+/**
+ * `MOVEMENT_KINDS` of contracts; a test keeps them equal. `revaluation` (S07): a month-end
+ * revaluation's line on the item, or its reversal's, kept apart from the carrying amount.
+ */
+export const OPEN_ITEM_MOVEMENT_KINDS = [
+  'open',
+  'add',
+  'clear',
+  'difference',
+  'revaluation',
+] as const;
 
 /** `DUE_DATE_SETTERS` of contracts; a test keeps them equal. */
 export const OPEN_ITEM_DUE_DATE_SETTERS = ['opening', 'user', 'hub_event'] as const;
@@ -218,8 +227,10 @@ export const openItemDueDates = pgTable(
 
 /**
  * What an item carries (ADR 0012 `ledger-state`): its open transaction amount and its carrying
- * amount in each ledger, the sum of its movements. Written only by the trigger on movements; the
- * posting function reads it `FOR UPDATE` to clear the item.
+ * amount in each ledger, the sum of its movements other than revaluations; and apart, the sum of
+ * its `revaluation` movements in each ledger (S07, ADR 0007: a carrying amount never includes a
+ * revaluation, which reverses the next day). Written only by the trigger on movements; the posting
+ * function reads it `FOR UPDATE` to clear the item at its carrying amount.
  */
 export const openItemBalances = pgTable(
   'open_item_balances',
@@ -230,6 +241,13 @@ export const openItemBalances = pgTable(
     openMinor: bigint({ mode: 'bigint' }).notNull(),
     bookMinor: bigint({ mode: 'bigint' }).notNull(),
     parallelMinor: bigint({ mode: 'bigint' }),
+    /**
+     * The item's revaluation movements in each ledger (S07). Zero with no revaluation standing, and
+     * zero in the parallel ledger of a company that keeps none: a column added to rows the trigger
+     * alone writes takes its default, so it is never null.
+     */
+    revaluationBookMinor: bigint({ mode: 'bigint' }).notNull().default(sql`0`),
+    revaluationParallelMinor: bigint({ mode: 'bigint' }).notNull().default(sql`0`),
     movementCount: integer().notNull(),
     lastMovementOn: date().notNull(),
     createdAt: createdAt(),

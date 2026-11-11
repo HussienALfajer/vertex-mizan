@@ -520,6 +520,7 @@ export async function readOpenItemState(tx: Transaction): Promise<OpenItemState>
   const movements = await tx
     .select({
       itemId: openItemMovements.itemId,
+      kind: openItemMovements.kind,
       entryDate: openItemMovements.entryDate,
       amountMinor: openItemMovements.amountMinor,
       bookMinor: openItemMovements.bookMinor,
@@ -532,6 +533,8 @@ export async function readOpenItemState(tx: Transaction): Promise<OpenItemState>
       openMinor: openItemBalances.openMinor,
       bookMinor: openItemBalances.bookMinor,
       parallelMinor: openItemBalances.parallelMinor,
+      revaluationBookMinor: openItemBalances.revaluationBookMinor,
+      revaluationParallelMinor: openItemBalances.revaluationParallelMinor,
       movementCount: openItemBalances.movementCount,
       lastMovementOn: openItemBalances.lastMovementOn,
     })
@@ -539,7 +542,7 @@ export async function readOpenItemState(tx: Transaction): Promise<OpenItemState>
   return {
     controlAccountIds: accounts.map((account) => account.id),
     items: items.map((item) => ({ ...item, currency: item.currency as CurrencyCode })),
-    movements,
+    movements: movements.map((movement) => ({ ...movement, kind: movement.kind as MovementKind })),
     balances,
   };
 }

@@ -1,4 +1,4 @@
-import type { AnchorResult, CurrencyCode, Ledger } from '@vertex-mizan/contracts';
+import type { AnchorResult, CurrencyCode, Ledger, MovementKind } from '@vertex-mizan/contracts';
 import { type ChainEntry, chainEntryValue, entryHash } from './integrity.js';
 import { periodOf } from './periods.js';
 
@@ -351,6 +351,8 @@ export interface StoredItem {
 /** A movement as stored (`open_item_movements`). */
 export interface StoredMovement {
   readonly itemId: string;
+  /** `revaluation` (S07) counts apart from the carrying amounts. */
+  readonly kind: MovementKind;
   readonly entryDate: string;
   readonly amountMinor: bigint;
   readonly bookMinor: bigint;
@@ -363,6 +365,9 @@ export interface StoredItemBalance {
   readonly openMinor: bigint;
   readonly bookMinor: bigint;
   readonly parallelMinor: bigint | null;
+  /** The sums of its `revaluation` movements (S07). */
+  readonly revaluationBookMinor: bigint;
+  readonly revaluationParallelMinor: bigint;
   readonly movementCount: number;
   readonly lastMovementOn: string;
 }
@@ -404,8 +409,9 @@ interface Net {
  * The integrity check's comparisons of the open items (S04 "Reports"):
  * - each control account's period balances, net per transaction currency and in each ledger,
  *   against the sum of its items' movements in that currency;
- * - each item's balance row (open and carrying amounts, movement count, last movement date)
- *   against its movements.
+ * - each item's balance row against its movements: the open amount, the carrying amounts of all
+ *   but its `revaluation` movements and the revaluation amounts of those (S07), the movement count,
+ *   and the date of its last movement that is not a revaluation.
  *
  * The period balances are compared as stored: `periodBalanceProblems()` checks them against the
  * lines separately. An amount missing in a ledger counts as zero on both sides, so a company
@@ -426,7 +432,7 @@ export function openItemProblems(input: OpenItemsInput): OpenItemFindings {
   }
   const items = new Map(input.items.map((item) => [item.id, item]));
   const fromItems = new Map<string, Net>();
-  const byItem = new Map<string, { net: Net; count: number; last: string }>();
+  const byItem = new Map<string, { net: Net; revalued: Net; count: number; last: string }>();
   for (const movement of input.movements) {
     const item = items.get(movement.itemId);
     if (item === undefined) throw new RangeError(`A movement of no item: ${movement.itemId}`);
@@ -438,14 +444,18 @@ export function openItemProblems(input: OpenItemsInput): OpenItemFindings {
     fromItems.set(key, net);
     const own = byItem.get(item.id) ?? {
       net: { amount: 0n, book: 0n, parallel: 0n },
+      revalued: { amount: 0n, book: 0n, parallel: 0n },
       count: 0,
-      last: movement.entryDate,
+      last: '',
     };
+    const into = movement.kind === 'revaluation' ? own.revalued : own.net;
     own.net.amount += movement.amountMinor;
-    own.net.book += movement.bookMinor;
-    own.net.parallel += movement.parallelMinor ?? 0n;
+    into.book += movement.bookMinor;
+    into.parallel += movement.parallelMinor ?? 0n;
     own.count += 1;
-    if (movement.entryDate > own.last) own.last = movement.entryDate;
+    if (movement.kind !== 'revaluation' && movement.entryDate > own.last) {
+      own.last = movement.entryDate;
+    }
     byItem.set(item.id, own);
   }
   const controlAccounts: ControlAccountProblem[] = [];
@@ -471,6 +481,8 @@ export function openItemProblems(input: OpenItemsInput): OpenItemFindings {
       row.openMinor !== own.net.amount ||
       row.bookMinor !== own.net.book ||
       (row.parallelMinor ?? 0n) !== own.net.parallel ||
+      row.revaluationBookMinor !== own.revalued.book ||
+      row.revaluationParallelMinor !== own.revalued.parallel ||
       row.movementCount !== own.count ||
       row.lastMovementOn !== own.last
     ) {

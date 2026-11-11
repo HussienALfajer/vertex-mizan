@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import {
+  type ClosingRate,
   type CompanyLedgers,
   type CrossRate,
   type CurrencyCode,
@@ -36,6 +37,7 @@ import {
   type EntrySource,
   emptyBalance,
   entryHash,
+  firstDayOfNextMonth,
   fiscalYearOf,
   hubReversalLines,
   type ItemState,
@@ -48,7 +50,10 @@ import {
   manualReversalLines,
   movementOn,
   periodOf,
+  type RevaluedBalance,
   reclassifiedLines,
+  revaluationLines,
+  revaluationReversalLines,
   runningVoidDifferenceLines,
   type VoidedRunningItem,
 } from '@vertex-mizan/ledger';
@@ -69,6 +74,7 @@ import {
   lineConversions,
   periods,
   postingRequests,
+  revaluations,
 } from '../schema/ledger.js';
 import {
   openItemBalances,
@@ -201,6 +207,24 @@ export type PostingContent =
       readonly lines: readonly CarriedLineSpec[];
       readonly today: string;
       readonly hub: HubSource;
+    }
+  /**
+   * A ledger's month-end revaluation of `period` (S07 rules 10–14), dated on its last day: the
+   * balances with the differences the revaluation service found under the head lock, in the same
+   * transaction, from what the books hold and the closing rates; `revaluationLines()` makes each
+   * difference two difference lines in `ledger` only. Each balance's `account` is an account id,
+   * its `dimensions` value ids by type id and its `item` an open item id. The posting writes the
+   * entry, its reversal on the next month's first day and the revaluation's row with the preview's
+   * `fingerprint` and the closing `rates`. No caller outside `packages/db` builds one.
+   */
+  | {
+      readonly kind: 'revaluation';
+      readonly period: string;
+      readonly ledger: Ledger;
+      readonly fingerprint: string;
+      readonly rates: readonly ClosingRate[];
+      readonly balances: readonly RevaluedBalance[];
+      readonly today: string;
     };
 
 /** A carried line: its account, its dimension values and the amounts it carries. */
@@ -283,7 +307,12 @@ interface Built {
   readonly voided: readonly VoidedRunningItem[];
 }
 
-type Role = 'conversion_rounding' | 'fx_realised_gain' | 'fx_realised_loss';
+type Role =
+  | 'conversion_rounding'
+  | 'fx_realised_gain'
+  | 'fx_realised_loss'
+  | 'fx_unrealised_gain'
+  | 'fx_unrealised_loss';
 
 /** Where a role's line goes until the role's account is read: replaced, or `ACCOUNT_ROLE_MISSING`. */
 const roleTarget = (role: Role) => `role:${role}`;
@@ -377,6 +406,24 @@ function contentPayload(content: PostingContent): CanonicalValue {
           parallelMinor: line.amounts.parallelMinor,
         })),
         inboxId: content.hub.inboxId,
+      };
+    case 'revaluation':
+      return {
+        kind: content.kind,
+        period: content.period,
+        ledger: content.ledger,
+        fingerprint: content.fingerprint,
+        balances: content.balances.map((balance) => ({
+          accountId: balance.account,
+          dimensionValueIds: Object.values(balance.dimensions).sort(),
+          itemId: balance.item ?? null,
+          currency: balance.currency,
+          transactionMinor: balance.transactionMinor,
+          carryingMinor: balance.carryingMinor,
+          revaluedMinor: balance.revaluedMinor,
+          targetMinor: balance.targetMinor,
+          differenceMinor: balance.differenceMinor,
+        })),
       };
   }
 }
@@ -509,7 +556,7 @@ async function roleAccounts(tx: Transaction): Promise<Map<string, string>> {
  * The rate rows that can be in force on `on`: of each pair and type, the newest row effective on
  * or before it, never a superseded one (S02 rules 15–16), with each row's id.
  */
-async function ratesOn(
+export async function ratesOn(
   tx: Transaction,
   on: string,
 ): Promise<{ rates: ExchangeRate[]; ids: Map<ExchangeRate, string> }> {
@@ -1500,7 +1547,102 @@ async function buildLines(
       return reclassificationLines(tx, content);
     case 'carried':
       return carriedLines(tx, content, ledgers);
+    case 'revaluation':
+      return revaluationContentLines(tx, content, on, ledgers, lock);
   }
+}
+
+/**
+ * The lines of a ledger's revaluation (S07 rule 13): two difference lines per balance with a
+ * difference, built by `revaluationLines()`, on the unrealised gain and loss accounts of the
+ * company's roles (`ACCOUNT_ROLE_MISSING` without them). A balance's account is checked as a
+ * revaluation's (a blocked account and an archived value accepted, owner 2026-11-11), the gain and
+ * loss accounts as any line's. Each item a line revalues has its balance row read `FOR UPDATE`
+ * when posting (the lock order: the head, the period, then the items).
+ */
+async function revaluationContentLines(
+  tx: Transaction,
+  content: Extract<PostingContent, { kind: 'revaluation' }>,
+  on: string,
+  ledgers: CompanyLedgers,
+  lock: boolean,
+): Promise<Built> {
+  const built = revaluationLines(ledgers, content.ledger, content.balances, {
+    gain: { account: roleTarget('fx_unrealised_gain') },
+    loss: { account: roleTarget('fx_unrealised_loss') },
+  });
+  const lines = withRoleAccounts(built, await roleAccounts(tx));
+  // Each balance's line, then its gain or loss line (`revaluationLines()`).
+  await checkAgainstChart(
+    tx,
+    lines.filter((_, index) => index % 2 === 0),
+    'revaluation',
+  );
+  await checkAgainstChart(
+    tx,
+    lines.filter((_, index) => index % 2 === 1),
+    'manual',
+  );
+  await itemsOf(
+    tx,
+    content.balances.flatMap((balance) => (balance.item === undefined ? [] : [balance.item])),
+    lock,
+  );
+  const balanced = balanceEntry({
+    on,
+    ledgers,
+    lines,
+    rounding: { account: roleTarget('conversion_rounding') },
+  });
+  if (balanced.length !== lines.length) throw new Error('A revaluation needed a rounding line');
+  return {
+    lines: lines.map((line) => ({ line, memo: null, adjusted: false })),
+    rateIds: new Map(),
+    newItems: [],
+    voided: [],
+  };
+}
+
+/**
+ * The reversal of a revaluation entry (S07 rule 14): its lines negated exactly on the next month's
+ * first day, each keeping its item, so its movements are `revaluation` too; the accounts checked as
+ * a revaluation's. No S04 rule 13 difference follows: a revaluation is not a movement of the items.
+ */
+async function revaluationReversalBuilt(
+  tx: Transaction,
+  entryId: string,
+  on: string,
+  ledgers: CompanyLedgers,
+): Promise<Built> {
+  const { original, lines } = await storedEntry(tx, entryId);
+  const [reversal] = await tx
+    .select({ id: journalEntries.id })
+    .from(journalEntries)
+    .where(eq(journalEntries.reversesEntryId, original.id));
+  const negated = revaluationReversalLines(
+    {
+      source: original.source as EntrySource,
+      date: original.entryDate,
+      isReversal: original.reversesEntryId !== null,
+      reversed: reversal !== undefined,
+      lines,
+    },
+    on,
+  );
+  await checkAgainstChart(tx, negated, 'revaluation');
+  const balanced = balanceEntry({
+    on,
+    ledgers,
+    lines: negated,
+    rounding: { account: roleTarget('conversion_rounding') },
+  });
+  if (balanced.length !== negated.length) throw new Error('A reversal needed a rounding line');
+  return {
+    lines: negated.map((line) => ({ line, memo: null, adjusted: false })),
+    rateIds: new Map(),
+    newItems: [],
+    voided: [],
+  };
 }
 
 /**
@@ -1858,6 +2000,110 @@ async function writeEntry(
 }
 
 /**
+ * The period of an entry dated `on`, made open when missing and read `FOR SHARE`, after the head
+ * (ADR 0008's lock order): its id, or `PERIOD_CLOSED`.
+ */
+async function openPeriod(
+  tx: Transaction,
+  companyId: string,
+  on: string,
+  fiscalYear: number,
+): Promise<string> {
+  const period = periodOf(on);
+  await tx
+    .insert(periods)
+    .values({ companyId, period, fiscalYear, state: 'open' })
+    .onConflictDoNothing({ target: [periods.companyId, periods.period] });
+  const [periodRow] = await tx
+    .select({ id: periods.id, state: periods.state })
+    .from(periods)
+    .where(eq(periods.period, period))
+    .for('share');
+  if (periodRow?.state !== 'open') {
+    refuse('PERIOD_CLOSED', `The period ${period} is closed`, { period });
+  }
+  return periodRow.id;
+}
+
+/**
+ * What follows a revaluation entry in its posting (S07 rules 13, 14): its exact reversal on the
+ * next month's first day, under its own request `<key>:reversal` with its own number (in the next
+ * fiscal year after December, ADR 0012) and audit row, and the revaluation's row, `adjusting` when
+ * one of the same period and ledger stands. A revaluation is posted by a person.
+ */
+async function writeRevaluationReversal(
+  tx: Transaction,
+  companyId: string,
+  head: Head,
+  request: PostingRequest,
+  posting: {
+    readonly entryId: string;
+    readonly periodId: string;
+    readonly content: Extract<PostingContent, { kind: 'revaluation' }>;
+    readonly ledgers: CompanyLedgers;
+    readonly settings: { readonly id: string; readonly fiscalYearStartMonth: number };
+  },
+): Promise<void> {
+  const { actor } = request;
+  if (actor.kind !== 'person') throw new TypeError('A revaluation is posted by a person');
+  const { content, ledgers, settings } = posting;
+  const on = firstDayOfNextMonth(request.entryDate);
+  const fiscalYear = fiscalYearOf(on, settings.fiscalYearStartMonth);
+  await openPeriod(tx, companyId, on, fiscalYear);
+  const built = await revaluationReversalBuilt(tx, posting.entryId, on, ledgers);
+  const [reversalRequest] = await tx
+    .insert(postingRequests)
+    .values({
+      companyId,
+      client: request.client,
+      idempotencyKey: `${request.idempotencyKey}:reversal`,
+      payloadHash: sha256(
+        canonicalJson({ client: request.client, reverses: posting.entryId, entryDate: on }),
+      ),
+    })
+    .returning({ id: postingRequests.id });
+  if (!reversalRequest) throw new Error('No posting request for the reversal');
+  const reversal = await writeEntry(
+    tx,
+    companyId,
+    head,
+    { on, fiscalYear, settingsId: settings.id },
+    actor,
+    {
+      requestId: reversalRequest.id,
+      description: `عكس ${request.description}`,
+      reference: request.reference,
+      reversesEntryId: posting.entryId,
+      draftId: null,
+      preparedByUserId: request.preparedByUserId,
+      approvedByUserId: null,
+      built,
+      follows: null,
+      hub: null,
+      source: 'revaluation',
+    },
+  );
+  const [standing] = await tx
+    .select({ id: revaluations.id })
+    .from(revaluations)
+    .where(
+      and(eq(revaluations.periodId, posting.periodId), eq(revaluations.ledger, content.ledger)),
+    )
+    .limit(1);
+  await tx.insert(revaluations).values({
+    companyId,
+    periodId: posting.periodId,
+    ledger: content.ledger,
+    entryId: posting.entryId,
+    reversalEntryId: reversal.id,
+    adjusting: standing !== undefined,
+    fingerprint: content.fingerprint,
+    rates: content.rates,
+    userId: actor.userId,
+  });
+}
+
+/**
  * Posts an entry, inside `withCompany` (S03 rules 1–3), in the lock order of ADR 0008:
  * 1. the posting request: its key posted before with the same payload answers that entry and posts
  *    nothing; with another payload it is `IDEMPOTENCY_CONFLICT`; a reversal's key
@@ -1912,26 +2158,20 @@ export async function post(tx: Transaction, request: PostingRequest): Promise<Po
   const { content } = request;
   checkDates(on, content, ledgers);
   const fiscalYear = fiscalYearOf(on, settings.fiscalYearStartMonth);
-  const period = periodOf(on);
-  await tx
-    .insert(periods)
-    .values({ companyId, period, fiscalYear, state: 'open' })
-    .onConflictDoNothing({ target: [periods.companyId, periods.period] });
-  const [periodRow] = await tx
-    .select({ state: periods.state })
-    .from(periods)
-    .where(eq(periods.period, period))
-    .for('share');
-  if (periodRow?.state !== 'open') {
-    refuse('PERIOD_CLOSED', `The period ${period} is closed`, { period });
-  }
+  const periodId = await openPeriod(tx, companyId, on, fiscalYear);
 
   const built = await buildLines(tx, content, on, ledgers, settings.bulletinDaysOff, true);
   const reversesEntryId =
     content.kind === 'reversal' || content.kind === 'hub_reversal' ? content.entryId : null;
   const hub = hubOf(content);
   const source: EntrySource =
-    content.kind === 'carried' ? content.source : hub === null ? 'manual' : 'hub_event';
+    content.kind === 'carried'
+      ? content.source
+      : content.kind === 'revaluation'
+        ? 'revaluation'
+        : hub === null
+          ? 'manual'
+          : 'hub_event';
   const head: Head = { id: headRow.id, entryCount: headRow.entryCount, lastHash: headRow.lastHash };
   const at = { on, fiscalYear, settingsId: settings.id };
   const posted = await writeEntry(tx, companyId, head, at, request.actor, {
@@ -1947,6 +2187,16 @@ export async function post(tx: Transaction, request: PostingRequest): Promise<Po
     hub,
     source,
   });
+  if (content.kind === 'revaluation') {
+    await writeRevaluationReversal(tx, companyId, head, request, {
+      entryId: posted.id,
+      periodId,
+      content,
+      ledgers,
+      settings,
+    });
+    return posted;
+  }
   // Within a `.changed`, the reversal and the new state are one change: no difference entry
   // between them, while the reversed entry is still the latest movement on every running item it
   // moves, so the exact reversal puts them back where they were. Once another entry moved one of

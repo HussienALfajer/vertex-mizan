@@ -416,6 +416,7 @@ describe('openItemProblems (S04 "Reports")', () => {
     movements: [
       {
         itemId: M1,
+        kind: 'open',
         entryDate: '2026-11-03',
         amountMinor: 100_000n,
         bookMinor: 12_000_000n,
@@ -423,6 +424,7 @@ describe('openItemProblems (S04 "Reports")', () => {
       },
       {
         itemId: M1,
+        kind: 'clear',
         entryDate: '2026-11-19',
         amountMinor: -40_000n,
         bookMinor: -4_800_000n,
@@ -435,6 +437,8 @@ describe('openItemProblems (S04 "Reports")', () => {
         openMinor: 60_000n,
         bookMinor: 7_200_000n,
         parallelMinor: 60_000n,
+        revaluationBookMinor: 0n,
+        revaluationParallelMinor: 0n,
         movementCount: 2,
         lastMovementOn: '2026-11-19',
       },
@@ -493,6 +497,41 @@ describe('openItemProblems (S04 "Reports")', () => {
     ).toEqual([{ itemId: R1, problem: 'unexpected' }]);
   });
 
+  it('keeps an item revaluation apart from its carrying amount and last movement (S07)', () => {
+    const [row] = sound.balances;
+    if (!row) throw new Error('no row');
+    const revaluation = {
+      itemId: M1,
+      kind: 'revaluation' as const,
+      entryDate: '2026-11-30',
+      amountMinor: 0n,
+      bookMinor: 300_000n,
+      parallelMinor: 0n,
+    };
+    const [first, ...rest] = sound.periodBalances;
+    if (!first) throw new Error('no balance');
+    const input = {
+      ...sound,
+      // The revaluation line is on the control account too.
+      periodBalances: [{ ...first, bookDebitMinor: first.bookDebitMinor + 300_000n }, ...rest],
+      movements: [...sound.movements, revaluation],
+    };
+    const revalued = { ...row, revaluationBookMinor: 300_000n, movementCount: 3 };
+    expect(openItemProblems({ ...input, balances: [revalued] })).toEqual({
+      controlAccounts: [],
+      itemBalances: [],
+    });
+    // A revaluation counted in the carrying amount, or its date as the last movement, differs.
+    for (const wrong of [
+      { ...revalued, bookMinor: row.bookMinor + 300_000n, revaluationBookMinor: 0n },
+      { ...revalued, lastMovementOn: '2026-11-30' },
+    ]) {
+      expect(openItemProblems({ ...input, balances: [wrong] }).itemBalances).toEqual([
+        { itemId: M1, problem: 'different' },
+      ]);
+    }
+  });
+
   const movement = fc.record({
     item: fc.constantFrom(M1, R1),
     entryDate: fc.constantFrom('2026-11-03', '2026-11-19', '2026-12-01'),
@@ -509,7 +548,7 @@ describe('openItemProblems (S04 "Reports")', () => {
       { id: R1, accountId: FUNDS, currency: 'USD' as const },
     ];
     const accountOf = new Map(items.map((item) => [item.id, item.accountId]));
-    const movements = moves.map((move) => ({ ...move, itemId: move.item }));
+    const movements = moves.map((move) => ({ ...move, itemId: move.item, kind: 'add' as const }));
     const balances = items.flatMap((item) => {
       const own = movements.filter((move) => move.itemId === item.id);
       if (own.length === 0) return [];
@@ -521,6 +560,8 @@ describe('openItemProblems (S04 "Reports")', () => {
           openMinor: sum((m) => m.amountMinor),
           bookMinor: sum((m) => m.bookMinor),
           parallelMinor: sum((m) => m.parallelMinor),
+          revaluationBookMinor: 0n,
+          revaluationParallelMinor: 0n,
           movementCount: own.length,
           lastMovementOn:
             own

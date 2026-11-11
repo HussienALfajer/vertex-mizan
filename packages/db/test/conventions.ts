@@ -152,7 +152,8 @@ export type Guards = {
  * ledger state, the entry's chain, number, period, balance and reversal, the line's validity and
  * period balances, the dimension sets; the drafts, their lines and attachments; S04's open items,
  * their movements, due dates and balances; S05's inbox and API clients; S06's recognition schedules
- * and movements). S07 adds the period close.
+ * and movements; S07's revaluations, and its item movements and balances with revaluations).
+ * S07's second PR adds the period close.
  */
 export const GUARDS: Guards = {
   functions: [
@@ -1558,13 +1559,16 @@ BEGIN
       USING ERRCODE = 'restrict_violation';
   END IF;
   IF NOT (
-    (item.kind = 'document' AND NEW.kind IN ('open', 'clear'))
-    OR (item.kind = 'running' AND NEW.kind IN ('add', 'clear', 'difference'))
+    (item.kind = 'document' AND NEW.kind IN ('open', 'clear', 'revaluation'))
+    OR (item.kind = 'running' AND NEW.kind IN ('add', 'clear', 'difference', 'revaluation'))
   ) OR line.kind IS DISTINCT FROM (CASE NEW.kind
       WHEN 'open' THEN 'measured' WHEN 'add' THEN 'measured'
-      WHEN 'clear' THEN 'carried' WHEN 'difference' THEN 'difference' END) THEN
-    RAISE EXCEPTION 'open_item_movements: a % movement does not fit a % item on a % line',
-      NEW.kind, item.kind, line.kind
+      WHEN 'clear' THEN 'carried' WHEN 'difference' THEN 'difference'
+      WHEN 'revaluation' THEN 'difference' END)
+    OR (NEW.kind = 'revaluation') IS DISTINCT FROM (entry.source = 'revaluation')
+    OR (NEW.kind = 'revaluation' AND NEW.amount_minor <> 0) THEN
+    RAISE EXCEPTION 'open_item_movements: a % movement does not fit a % item on a % line of a % entry',
+      NEW.kind, item.kind, line.kind, entry.source
       USING ERRCODE = 'restrict_violation';
   END IF;
   IF NEW.kind = 'open' AND NOT (
@@ -1620,20 +1624,29 @@ END
       config: null,
       owner: OWNER_ROLE,
       source: `
+DECLARE
+  revalued boolean := NEW.kind = 'revaluation';
 BEGIN
   INSERT INTO public.open_item_balances AS b (
-    id, company_id, item_id, open_minor, book_minor, parallel_minor, movement_count,
-    last_movement_on
+    id, company_id, item_id, open_minor, book_minor, parallel_minor, revaluation_book_minor,
+    revaluation_parallel_minor, movement_count, last_movement_on
   ) VALUES (
-    public.new_uuidv7(), NEW.company_id, NEW.item_id, NEW.amount_minor, NEW.book_minor,
-    NEW.parallel_minor, 1, NEW.entry_date
+    public.new_uuidv7(), NEW.company_id, NEW.item_id, NEW.amount_minor,
+    CASE WHEN revalued THEN 0 ELSE NEW.book_minor END,
+    CASE WHEN revalued AND NEW.parallel_minor IS NOT NULL THEN 0 ELSE NEW.parallel_minor END,
+    CASE WHEN revalued THEN NEW.book_minor ELSE 0 END,
+    CASE WHEN revalued THEN coalesce(NEW.parallel_minor, 0) ELSE 0 END,
+    1, NEW.entry_date
   )
   ON CONFLICT (company_id, item_id) DO UPDATE SET
     open_minor = b.open_minor + excluded.open_minor,
     book_minor = b.book_minor + excluded.book_minor,
     parallel_minor = b.parallel_minor + excluded.parallel_minor,
+    revaluation_book_minor = b.revaluation_book_minor + excluded.revaluation_book_minor,
+    revaluation_parallel_minor = b.revaluation_parallel_minor + excluded.revaluation_parallel_minor,
     movement_count = b.movement_count + 1,
-    last_movement_on = greatest(b.last_movement_on, excluded.last_movement_on),
+    last_movement_on = CASE WHEN revalued THEN b.last_movement_on
+      ELSE greatest(b.last_movement_on, excluded.last_movement_on) END,
     updated_at = now();
   RETURN NULL;
 END
@@ -1694,12 +1707,17 @@ DECLARE
   item_kind text;
   opening bigint;
 BEGIN
-  SELECT b.open_minor, b.book_minor, b.parallel_minor, b.movement_count INTO balance
+  SELECT b.open_minor, b.book_minor, b.parallel_minor, b.revaluation_book_minor,
+         b.revaluation_parallel_minor, b.movement_count INTO balance
   FROM public.open_item_balances b
   WHERE b.company_id = NEW.company_id AND b.item_id = NEW.item_id;
   SELECT count(*) AS movements, coalesce(sum(m.amount_minor), 0) AS amount,
-         coalesce(sum(m.book_minor), 0) AS book, count(m.parallel_minor) AS parallel_movements,
-         coalesce(sum(m.parallel_minor), 0) AS parallel
+         coalesce(sum(m.book_minor) FILTER (WHERE m.kind <> 'revaluation'), 0) AS book,
+         count(m.parallel_minor) AS parallel_movements,
+         coalesce(sum(m.parallel_minor) FILTER (WHERE m.kind <> 'revaluation'), 0) AS parallel,
+         coalesce(sum(m.book_minor) FILTER (WHERE m.kind = 'revaluation'), 0) AS revaluation_book,
+         coalesce(sum(m.parallel_minor) FILTER (WHERE m.kind = 'revaluation'), 0)
+           AS revaluation_parallel
     INTO totals
   FROM public.open_item_movements m
   WHERE m.company_id = NEW.company_id AND m.item_id = NEW.item_id;
@@ -1711,7 +1729,9 @@ BEGIN
     OR totals.book <> balance.book_minor
     OR totals.parallel_movements <> (CASE WHEN balance.parallel_minor IS NULL THEN 0
       ELSE totals.movements END)
-    OR totals.parallel <> coalesce(balance.parallel_minor, 0) THEN
+    OR totals.parallel <> coalesce(balance.parallel_minor, 0)
+    OR totals.revaluation_book <> balance.revaluation_book_minor
+    OR totals.revaluation_parallel <> balance.revaluation_parallel_minor THEN
     RAISE EXCEPTION 'open item % is not the sum of its movements', NEW.item_id
       USING ERRCODE = 'check_violation';
   END IF;
@@ -2117,6 +2137,95 @@ BEGIN
   IF remaining.transaction_minor < 0 OR (remaining.transaction_minor = 0
     AND (remaining.book_minor <> 0 OR coalesce(remaining.parallel_minor, 0) <> 0)) THEN
     RAISE EXCEPTION 'recognition schedule %: RELEASE_EXCEEDS_BALANCE', NEW.schedule_id
+      USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NULL;
+END
+`,
+    },
+    {
+      name: 'revaluation_rules',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+DECLARE
+  period text;
+  entry record;
+  reversal record;
+  last_day date;
+BEGIN
+  SELECT p.period INTO period
+  FROM public.periods p
+  WHERE p.company_id = NEW.company_id AND p.id = NEW.period_id;
+  SELECT e.entry_date, e.source, e.reverses_entry_id, e.posted_by_user_id INTO entry
+  FROM public.journal_entries e
+  WHERE e.company_id = NEW.company_id AND e.id = NEW.entry_id;
+  SELECT e.entry_date, e.source, e.reverses_entry_id INTO reversal
+  FROM public.journal_entries e
+  WHERE e.company_id = NEW.company_id AND e.id = NEW.reversal_entry_id;
+  IF period IS NULL OR entry.entry_date IS NULL OR reversal.entry_date IS NULL THEN
+    RAISE EXCEPTION 'revaluations: a revaluation names its period, entry and reversal'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  last_day := (to_date(period || '-01', 'YYYY-MM-DD') + interval '1 month' - interval '1 day')::date;
+  IF entry.source <> 'revaluation' OR entry.reverses_entry_id IS NOT NULL
+    OR entry.entry_date <> last_day
+    OR reversal.source <> 'revaluation' OR reversal.reverses_entry_id IS DISTINCT FROM NEW.entry_id
+    OR reversal.entry_date <> last_day + 1 THEN
+    RAISE EXCEPTION 'revaluations: a revaluation entry on its period''s last day, reversed on the next day'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM public.journal_lines l
+    WHERE l.company_id = NEW.company_id AND l.entry_id = NEW.entry_id
+      AND (l.kind <> 'difference' OR l.ledger IS DISTINCT FROM NEW.ledger)
+  ) THEN
+    RAISE EXCEPTION 'revaluations: a revaluation entry has difference lines in its ledger only'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF NEW.adjusting IS DISTINCT FROM EXISTS (
+    SELECT 1 FROM public.revaluations r
+    WHERE r.company_id = NEW.company_id AND r.period_id = NEW.period_id AND r.ledger = NEW.ledger
+  ) THEN
+    RAISE EXCEPTION 'revaluations: adjusting exactly when a revaluation of the period and ledger stands'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF entry.posted_by_user_id IS DISTINCT FROM NEW.user_id THEN
+    RAISE EXCEPTION 'revaluations: a revaluation is its entry''s poster''s'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  RETURN NEW;
+END
+`,
+    },
+    {
+      name: 'journal_entry_revaluation_recorded',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+BEGIN
+  IF NEW.source = 'revaluation' AND NOT EXISTS (
+    SELECT 1 FROM public.revaluations r
+    WHERE r.company_id = NEW.company_id
+      AND (r.entry_id = NEW.id OR r.reversal_entry_id = NEW.id)
+  ) THEN
+    RAISE EXCEPTION 'journal entry % is a revaluation without its revaluation row', NEW.id
       USING ERRCODE = 'check_violation';
   END IF;
   RETURN NULL;
@@ -2966,6 +3075,34 @@ END
       table: 'recognition_movements',
       name: 'recognition_movements_remaining',
       function: 'recognition_schedule_remaining',
+      deferred: true,
+      on: ['INSERT'],
+    },
+    {
+      table: 'revaluations',
+      name: 'revaluations_refuse_change',
+      function: 'refuse_change',
+      deferred: false,
+      on: ['UPDATE', 'DELETE'],
+    },
+    {
+      table: 'revaluations',
+      name: 'revaluations_refuse_truncate',
+      function: 'refuse_change',
+      deferred: false,
+      on: ['TRUNCATE'],
+    },
+    {
+      table: 'revaluations',
+      name: 'revaluation_rules',
+      function: 'revaluation_rules',
+      deferred: false,
+      on: ['INSERT'],
+    },
+    {
+      table: 'journal_entries',
+      name: 'journal_entries_revaluation_recorded',
+      function: 'journal_entry_revaluation_recorded',
       deferred: true,
       on: ['INSERT'],
     },

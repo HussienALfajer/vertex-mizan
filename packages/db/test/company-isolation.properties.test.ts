@@ -1,4 +1,5 @@
 import { CURRENCY_CODES } from '@vertex-mizan/contracts';
+import { fiscalYearOf } from '@vertex-mizan/ledger';
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import fc from 'fast-check';
 import { v7 as uuidv7 } from 'uuid';
@@ -28,6 +29,8 @@ import {
   journalEntries,
   post,
   postingRuleAccounts,
+  postRevaluation,
+  previewRevaluation,
   ratePairs,
   recognitionMovements,
   recognitionSchedules,
@@ -65,6 +68,7 @@ const COVERED = [
   'entry_number_counters',
   'periods',
   'period_balances',
+  'revaluations',
   'entry_drafts',
   'entry_draft_lines',
   'entry_attachments',
@@ -349,34 +353,43 @@ async function seedLedger(tx: Transaction, companyId: string, userId: string, da
   }
 }
 
-/** The entries `seedLedger` posts, each with one audit row. */
-const POSTED = 3;
+/** The entries `seedLedger` and `seedRevaluation` post, each with one audit row. */
+const POSTED = 6;
 
 /** The rows each S02, S03 and S04 table holds for a company seeded with `data`. */
 const expectedRows = (data: CompanyData): Record<string, number> => ({
-  // S06 adds a contract liability header, its parent and the account.
-  chart_accounts: 5 + data.headers.length + 3 + 4 + 3 + 3,
+  // S06 adds a contract liability header, its parent and the account; S07 a monetary account and
+  // the unrealised gain and loss accounts.
+  chart_accounts: 5 + data.headers.length + 3 + 4 + 3 + 3 + 3,
   account_required_dimensions: 1,
-  account_roles: 1,
+  account_roles: 3,
   dimension_types: 4,
   // S06 adds a client and a service for its schedule.
   dimension_values: data.clients.length + 1 + 2,
   rate_pairs: data.bookCurrency === 'SYP' ? 1 : 2,
-  exchange_rates: data.rates.length + 1,
+  exchange_rates: data.rates.length + 2,
   bulletin_holidays: data.holidays.length,
   posting_requests: POSTED,
   journal_entries: POSTED,
-  journal_lines: 6,
-  // The expense's two lines convert into the book currency; the reversal carries its amounts, and
-  // the invoice is in the book currency.
-  line_conversions: 2,
+  journal_lines: 12,
+  // The expense's and S07's cash entry's two lines convert into the book currency; the reversal
+  // carries its amounts, the invoice is in the book currency and a revaluation converts nothing.
+  line_conversions: 4,
   dimension_sets: 2,
   dimension_set_values: 1,
   ledger_heads: 1,
-  entry_number_counters: 1,
-  periods: 1,
-  // The expense's two accounts in its currency, the invoice's two in the book currency.
-  period_balances: 4,
+  // The revaluation's reversal falls in the next fiscal year when it starts in December.
+  entry_number_counters:
+    fiscalYearOf('2026-12-01', data.fiscalYearStartMonth) ===
+    fiscalYearOf('2026-11-30', data.fiscalYearStartMonth)
+      ? 1
+      : 2,
+  // November, and December for the revaluation's reversal.
+  periods: 2,
+  // The expense's two accounts in its currency, the invoice's two in the book currency; S07's cash
+  // account in the foreign currency and the gain account in the book currency, in November and
+  // again in December.
+  period_balances: 8,
   entry_drafts: 1,
   entry_draft_lines: 2,
   entry_attachments: 2,
@@ -394,7 +407,111 @@ const expectedRows = (data: CompanyData): Record<string, number> => ({
   document_sources: 1,
   recognition_schedules: 1,
   recognition_movements: 1,
+  revaluations: 1,
 });
+
+/**
+ * S07's rows: a monetary account in the foreign currency, funded on 6 November at the market rate
+ * of 2, and revalued in the book ledger at 2.5 on 30 November through the revaluation service, with
+ * its entry, its reversal on 1 December and its revaluation row.
+ */
+async function seedRevaluation(
+  tx: Transaction,
+  companyId: string,
+  userId: string,
+  data: CompanyData,
+) {
+  const foreign = data.bookCurrency === 'USD' ? 'EUR' : 'USD';
+  const cash = await addAccount(tx, companyId, '131', {
+    code: '131002',
+    kind: 'postable',
+    statementLine: 'bs.trade_receivables',
+    isMonetary: true,
+  });
+  const gain = await addAccount(tx, companyId, '411', {
+    code: '411002',
+    kind: 'postable',
+    statementLine: 'is.revenue',
+  });
+  const loss = await addAccount(tx, companyId, '591', {
+    code: '591003',
+    kind: 'postable',
+    statementLine: 'is.other_expenses',
+  });
+  await tx.insert(accountRoles).values([
+    { companyId, role: 'fx_unrealised_gain', accountId: gain },
+    { companyId, role: 'fx_unrealised_loss', accountId: loss },
+  ]);
+  await tx.insert(exchangeRates).values({
+    companyId,
+    effectiveOn: '2026-11-29',
+    base: foreign,
+    quote: data.bookCurrency,
+    rate: '2.5000',
+    type: 'market',
+    source: 'manual',
+    recordedByUserId: userId,
+  });
+  const [credit] = await tx
+    .select({ id: chartAccounts.id })
+    .from(chartAccounts)
+    .where(and(eq(chartAccounts.companyId, companyId), eq(chartAccounts.code, '591002')));
+  const actor: AuditActor = {
+    kind: 'person',
+    userId,
+    name: 'شخص مولّد',
+    sessionId: null,
+    requestId: 'request-generated',
+    ipAddress: null,
+    userAgent: null,
+  };
+  await post(tx, {
+    client: 'manual',
+    idempotencyKey: `generated-cash-${companyId}`,
+    entryDate: '2026-11-06',
+    description: 'قيد مولّد',
+    reference: null,
+    draftId: null,
+    preparedByUserId: userId,
+    approvedByUserId: null,
+    actor,
+    content: {
+      kind: 'manual',
+      today: '2026-11-30',
+      dealtRates: [],
+      lines: [
+        {
+          accountId: cash,
+          dimensionValueIds: [],
+          currency: foreign,
+          amountMinor: 1_000n,
+          memo: null,
+        },
+        {
+          accountId: credit?.id as string,
+          dimensionValueIds: [],
+          currency: foreign,
+          amountMinor: -1_000n,
+          memo: null,
+        },
+      ],
+    },
+  });
+  const today = '2026-12-01';
+  const { fingerprint } = await previewRevaluation(tx, {
+    period: '2026-11',
+    ledger: 'book',
+    today,
+  });
+  const posted = await postRevaluation(tx, {
+    period: '2026-11',
+    ledger: 'book',
+    fingerprint,
+    today,
+    actor,
+  });
+  if (!posted.posted) throw new Error('no revaluation posted');
+}
 
 /** S05's rows: a slot's account, and an event Hub sent, held, with its two actions. */
 async function seedInbox(tx: Transaction, companyId: string) {
@@ -550,6 +667,7 @@ async function seed(userId: string, data: CompanyData): Promise<string> {
     }
     await seedChart(tx, row.id, userId, data);
     await seedLedger(tx, row.id, userId, data);
+    await seedRevaluation(tx, row.id, userId, data);
     await tx.insert(companyExports).values({ companyId: row.id, requestedByUserId: userId });
     await seedInbox(tx, row.id);
     await seedSources(tx, row.id, userId);
@@ -603,7 +721,8 @@ describe('company isolation, as a property', () => {
               .where(inArray(auditEntries.companyId, ids)),
           }));
           expect(seen.settings).toEqual([{ companyId: id, note: data.policyNote }]);
-          expect(seen.audit).toHaveLength(data.audit.length + POSTED);
+          // Each entry's row, and S07's revaluation.posted.
+          expect(seen.audit).toHaveLength(data.audit.length + POSTED + 1);
           for (const row of seen.audit) expect(row.companyId).toBe(id);
           const listed = sql.join(
             ids.map((value) => sql`${value}::uuid`),
