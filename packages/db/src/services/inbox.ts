@@ -5,11 +5,13 @@ import {
   DomainError,
   documentOf,
   type EventEnvelope,
+  type EventOf,
   type HoldReason,
   type HubContractRef,
   type HubCurrency,
   type HubValueRef,
   itemKeyOf,
+  orderKeysOf,
   type PostingSlot,
   parseEventEnvelope,
 } from '@vertex-mizan/contracts';
@@ -25,6 +27,7 @@ import {
   hold,
   type KeyedEvent,
   type MappedAccount,
+  type MilestoneReferences,
   type PlannedEntry,
   periodOf,
   planEvent,
@@ -57,10 +60,14 @@ import { openItemBalances, openItemDueDates, openItems } from '../schema/open-it
 import { ledgersOf } from './companies.js';
 import { recordRate } from './rates.js';
 import {
+  milestoneFactsOf,
   openSchedules,
+  projectSchedulesOf,
   reclassifyRecognised,
   releaseEndedMonths,
   scheduledLineIdsOf,
+  splitAtCancellation,
+  writeMovements,
 } from './recognition.js';
 
 // The event inbox (S05 rules 4–18, ADR 0014): every event Hub sends is kept with its payload, then
@@ -131,6 +138,8 @@ export interface AttemptOptions {
 interface ActionOptions {
   readonly postOn?: string;
   readonly closedPeriods?: readonly string[];
+  /** The accountant's revenue part of a cancelled project's remainder (S06 rule 16). */
+  readonly split?: bigint;
 }
 
 const sha256 = (text: string) => createHash('sha256').update(text, 'utf8').digest('hex');
@@ -384,9 +393,42 @@ async function issueLineOf(
   return { entryId: item.entryId, lineNo };
 }
 
+/** The milestones an event names, with its project's Hub id (S06 rules 11–13). */
+function milestonesOf(event: EventEnvelope): { ids: string[]; projectId: string | null } {
+  switch (event.type) {
+    case 'invoice.issued': {
+      const { contract, lines } = event.payload;
+      return {
+        ids: [
+          ...new Set(
+            lines.flatMap((line) =>
+              (line.source === 'deposit' || line.source === 'milestone') &&
+              line.milestone_id !== undefined
+                ? [line.milestone_id]
+                : [],
+            ),
+          ),
+        ],
+        projectId: contract?.kind === 'project' ? contract.external_id : null,
+      };
+    }
+    case 'milestone.done':
+    case 'milestone.reopened':
+      return { ids: [event.payload.milestone.id], projectId: event.payload.project.external_id };
+    default:
+      return { ids: [], projectId: null };
+  }
+}
+
 /** What a rule reads of the books for its event (`HubReferences`). */
 async function referencesOf(tx: Transaction, event: EventEnvelope): Promise<HubReferences> {
   const invoiceId = 'invoice' in event.payload ? event.payload.invoice.id : null;
+  const named = milestonesOf(event);
+  const milestones = new Map<string, MilestoneReferences>();
+  for (const id of named.ids) {
+    const standing = await standingEntriesOf(tx, { type: 'milestone', id });
+    milestones.set(id, await milestoneFactsOf(tx, id, named.projectId, standing));
+  }
   return {
     invoiceItem: invoiceId === null ? null : await invoiceItemOf(tx, invoiceId),
     standing: await standingEntriesOf(tx, documentOf(event)),
@@ -395,12 +437,34 @@ async function referencesOf(tx: Transaction, event: EventEnvelope): Promise<HubR
         ? await issueLineOf(tx, event.payload.invoice.id, event.payload.line_id)
         : null,
     scheduledLineIds: invoiceId === null ? [] : await scheduledLineIdsOf(tx, invoiceId),
+    milestones,
+    ...((event.type === 'project.completed' || event.type === 'project.cancelled') && {
+      projectSchedules: await projectSchedulesOf(tx, event.payload.project.external_id),
+    }),
+    ...(event.type === 'invoice.voided' && {
+      splitAtCancellation: await splitAtCancellation(tx, event.payload.invoice.id),
+    }),
   };
+}
+
+/** The item keys an event takes part in: its own and its further order keys (S06 rule 17). */
+function keysOf(row: EventRow): string[] {
+  return row.itemKey === null ? row.orderKeys : [row.itemKey, ...row.orderKeys];
+}
+
+/** Events of any of the keys: their own key one of them, or one of their further order keys. */
+function onKeys(keys: readonly string[]) {
+  const array = sql`array[${sql.join(
+    keys.map((key) => sql`${key}`),
+    sql`, `,
+  )}]::text[]`;
+  return sql`(${inboundEvents.itemKey} = any(${array}) or ${inboundEvents.orderKeys} && ${array})`;
 }
 
 /** The earlier events of the event's item key, in received order, with their states (rule 11). */
 async function earlierOnKey(tx: Transaction, row: EventRow): Promise<KeyedEvent[]> {
-  if (row.itemKey === null) return [];
+  const keys = keysOf(row);
+  if (keys.length === 0) return [];
   const rows = await tx
     .select({ event: inboundEvents, state: inboundEventStates })
     .from(inboundEvents)
@@ -413,7 +477,7 @@ async function earlierOnKey(tx: Transaction, row: EventRow): Promise<KeyedEvent[
     )
     .where(
       and(
-        eq(inboundEvents.itemKey, row.itemKey),
+        onKeys(keys),
         // Against the stored time itself, to the microsecond: a JavaScript Date keeps milliseconds.
         sql`(${inboundEvents.receivedAt}, ${inboundEvents.id}) < (select r.received_at, r.id from ${inboundEvents} r where r.id = ${row.id})`,
       ),
@@ -795,7 +859,8 @@ async function lineSpecOf(
 ): Promise<ManualLineSpec> {
   return {
     accountId: line.account,
-    dimensionValueIds: await values.idsOf(line.dimensions),
+    // A schedule's lines name the values the books hold for it (S06 "Data").
+    dimensionValueIds: line.valueIds ?? (await values.idsOf(line.dimensions)),
     currency: line.amount.currency,
     amountMinor: line.amount.amountMinor,
     memo: null,
@@ -807,6 +872,7 @@ async function lineSpecOf(
       newItem: { reference: line.item.reference, dueOn: line.item.dueOn },
     }),
     ...(line.carriesItems === true && { carriesItems: true }),
+    ...(line.carried !== undefined && { carried: line.carried }),
   };
 }
 
@@ -848,7 +914,9 @@ async function decide(
     mapping: await mappingOf(tx),
     tolerance: { SYP: settings.paymentToleranceSypMinor, USD: settings.paymentToleranceUsdMinor },
   };
-  const plan: RulePlan = planEvent(event, await referencesOf(tx, event), context);
+  // A split outside zero to the remainder is the action's refusal (`VALIDATION_FAILED`), thrown
+  // before anything is written (S06 rule 16).
+  const plan: RulePlan = planEvent(event, await referencesOf(tx, event), context, options.split);
   if (plan.kind === 'hold') return plan;
   if (plan.kind === 'record') return record(tx, row, plan.record, options.actor);
   const hub: HubSource = {
@@ -937,6 +1005,9 @@ async function decide(
           );
           // An invoice posted after its months ended releases them now (S06 rule 5).
           await releaseEndedMonths(savepoint, row, options.today, system);
+        }
+        if (plan.movements !== undefined) {
+          await writeMovements(savepoint, row.companyId, plan.movements, byKey);
         }
       } catch (error) {
         // A refusal of the period, the rates or the settlements comes first in rule 8's order;
@@ -1088,7 +1159,11 @@ async function attempt(
         holdDetail: outcome.detail,
       });
     }
-  } else if (options.postOn === undefined && options.closedPeriods === undefined) {
+  } else if (
+    options.postOn === undefined &&
+    options.closedPeriods === undefined &&
+    options.split === undefined
+  ) {
     await writeAction(tx, row, options.actor, outcome.kind, {
       entryIds: outcome.kind === 'posted' ? outcome.entryIds : [],
     });
@@ -1099,8 +1174,7 @@ async function attempt(
 /** What an event's change frees: the events of its item key, and a rate's date. */
 function triggersOf(row: EventRow, outcome: Outcome): RetryTrigger[] {
   if (outcome.kind === 'hold') return [];
-  const triggers: RetryTrigger[] =
-    row.itemKey === null ? [] : [{ kind: 'item', itemKey: row.itemKey }];
+  const triggers: RetryTrigger[] = keysOf(row).map((itemKey) => ({ kind: 'item', itemKey }));
   return outcome.kind === 'recorded' ? [...triggers, ...outcome.triggers] : triggers;
 }
 
@@ -1138,6 +1212,24 @@ export async function receiveEvent(
   }
   const payloadHash = envelopeHash(raw);
   const document = documentOf(envelope);
+  // A void of a project invoice takes part in its project's order, read from its issue (rule 17).
+  let issued: EventOf<'invoice.issued'>['payload'] | null = null;
+  if (envelope.type === 'invoice.voided') {
+    const [issue] = await tx
+      .select()
+      .from(inboundEvents)
+      .where(
+        and(
+          eq(inboundEvents.type, 'invoice.issued'),
+          eq(inboundEvents.documentType, 'invoice'),
+          eq(inboundEvents.documentId, envelope.payload.invoice.id),
+        ),
+      )
+      .orderBy(asc(inboundEvents.receivedAt), asc(inboundEvents.id))
+      .limit(1);
+    const parsed = issue === undefined ? null : envelopeOf(issue);
+    issued = parsed?.type === 'invoice.issued' ? parsed.payload : null;
+  }
   const [inserted] = await tx
     .insert(inboundEvents)
     .values({
@@ -1154,6 +1246,7 @@ export async function receiveEvent(
       documentId: document.id,
       documentNumber: document.number,
       itemKey: itemKeyOf(envelope),
+      orderKeys: orderKeysOf(envelope, issued),
       requestId: input.requestId,
     })
     .onConflictDoNothing()
@@ -1213,7 +1306,7 @@ async function heldFreedBy(tx: Transaction, trigger: RetryTrigger): Promise<Even
       and(
         eq(inboundEventStates.state, 'held'),
         inArray(inboundEventStates.holdReason, [...reasons[trigger.kind]]),
-        trigger.kind === 'item' ? eq(inboundEvents.itemKey, trigger.itemKey) : undefined,
+        trigger.kind === 'item' ? onKeys([trigger.itemKey]) : undefined,
         // A bulletin of a date serves the days after it until the next publication (ADR 0011).
         trigger.kind === 'rate' ? sql`${inboundEvents.accountingDate} >= ${trigger.on}` : undefined,
       ),
@@ -1273,6 +1366,7 @@ async function auditAction(
     | 'event.retried'
     | 'event.moved_to_open_period'
     | 'event.recognised_in_open_period'
+    | 'event.remainder_split'
     | 'event.resolved'
     | 'event.dismissed',
   reason: string | null,
@@ -1400,6 +1494,48 @@ export async function recogniseEvent(
 }
 
 /**
+ * Split the remainder (S06 rules 15–16), for `NEEDS_DECISION` `cancelled_project_remainder` and
+ * `invoiced_after_cancellation` only, with a written reason: `revenueMinor`, the transaction amount
+ * to revenue in the project's currency, from zero to the remainder (`VALIDATION_FAILED` otherwise);
+ * the rest goes to the refund payable. The event is attempted with the split, so every earlier
+ * check runs again; the action and the audit row keep the reason, the amounts and what it led to.
+ */
+export async function splitEvent(
+  tx: Transaction,
+  inboxId: string,
+  revenueMinor: bigint,
+  reason: string,
+  options: AttemptOptions,
+): Promise<InboxResult> {
+  const row = await eventRow(tx, inboxId);
+  const state = await heldState(tx, row);
+  if (
+    state.holdReason !== 'NEEDS_DECISION' ||
+    (state.holdDetail !== 'cancelled_project_remainder' &&
+      state.holdDetail !== 'invoiced_after_cancellation')
+  ) {
+    refuse('EVENT_ACTION_NOT_ALLOWED', 'Only a cancelled project’s remainder is split', {
+      reason: state.holdReason,
+      detail: state.holdDetail,
+    });
+  }
+  const { outcome } = await attempt(tx, row, { ...options, split: revenueMinor });
+  await writeAction(tx, row, options.actor, 'remainder_split', {
+    entryIds: outcome.kind === 'posted' ? outcome.entryIds : [],
+    holdReason: outcome.kind === 'hold' ? outcome.reason : null,
+    holdDetail: outcome.kind === 'hold' ? outcome.detail : null,
+    reason,
+  });
+  const event = await viewOf(tx, row);
+  await auditAction(tx, row, options.actor, 'event.remainder_split', reason, {
+    state: event.state,
+    holdReason: event.reason,
+    revenueMinor: revenueMinor.toString(),
+  });
+  return { event, replayed: false, triggers: triggersOf(row, outcome) };
+}
+
+/**
  * Resolve by a manual entry (rule 15), for `NEEDS_DECISION` only: the event linked to a posted
  * manual entry the accountant made for it, which resolves no other event (`ENTRY_ALREADY_LINKED`);
  * the event becomes `resolved` and never posts.
@@ -1451,7 +1587,7 @@ export async function resolveEvent(
   return {
     event,
     replayed: false,
-    triggers: row.itemKey === null ? [] : [{ kind: 'item', itemKey: row.itemKey }],
+    triggers: keysOf(row).map((itemKey) => ({ kind: 'item', itemKey })),
   };
 }
 
@@ -1477,7 +1613,7 @@ export async function dismissEvent(
   return {
     event,
     replayed: false,
-    triggers: row.itemKey === null ? [] : [{ kind: 'item', itemKey: row.itemKey }],
+    triggers: keysOf(row).map((itemKey) => ({ kind: 'item', itemKey })),
   };
 }
 

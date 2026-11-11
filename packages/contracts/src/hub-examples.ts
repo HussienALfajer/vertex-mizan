@@ -79,7 +79,7 @@ export function eventExamplesV1(on: string): EventExample[] {
     ['invoice.voided', { invoice, voided_on: on, reason: 'فاتورة ملغاة' }],
     [
       'milestone.done',
-      { milestone, client, project, currency: 'USD', amount: 30_000, done_on: on },
+      { milestone, client, project, currency: 'USD', amount: 30_000, done_on: on, service },
     ],
     ['milestone.reopened', { milestone, client, project, reopened_on: on }],
     ['project.completed', { project, client, on }],

@@ -107,6 +107,12 @@ export interface ManualLineSpec {
    * entry's line.
    */
   readonly carriesItems?: boolean;
+  /**
+   * A Hub rule's line that carries amounts a recognition schedule holds instead of a new
+   * measurement (S06 rules 11, 14, 15): its `currency` and `amountMinor` are the carried
+   * transaction amount. Refused on a manual entry's line and on a line on an item.
+   */
+  readonly carried?: CarriedAmounts;
 }
 
 /**
@@ -314,6 +320,12 @@ function linesPayload(lines: readonly ManualLineSpec[]): CanonicalValue {
       newItem: { reference: line.newItem.reference, dueOn: line.newItem.dueOn },
     }),
     ...(line.carriesItems === true && { carriesItems: true }),
+    ...(line.carried !== undefined && {
+      carried: {
+        bookMinor: line.carried.bookMinor,
+        parallelMinor: line.carried.parallelMinor,
+      },
+    }),
   }));
 }
 
@@ -786,6 +798,20 @@ async function manualLines(
         lineNo: index + 1,
       });
     }
+    if (
+      spec.carried !== undefined &&
+      (hub === null ||
+        spec.openItemId ||
+        spec.newItem ||
+        spec.carriesItems === true ||
+        spec.carried.transaction.currency !== spec.currency ||
+        spec.carried.transaction.amountMinor !== spec.amountMinor ||
+        (spec.carried.parallelMinor === null) !== (ledgers.parallel === null))
+    ) {
+      refuse('VALIDATION_FAILED', 'Only a Hub rule’s line off an item carries its own amounts', {
+        lineNo: index + 1,
+      });
+    }
     return spec;
   });
   const existing = await itemsOf(
@@ -986,6 +1012,7 @@ async function manualLines(
       amount: money(spec.amountMinor, spec.currency),
       ...(item !== undefined && { item }),
       ...(spec.carriesItems === true && { carriesItems: true as const }),
+      ...(spec.carried !== undefined && { carried: spec.carried }),
     });
     adjustedOf.push(adjusted);
   }

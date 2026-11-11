@@ -18,12 +18,15 @@ import {
   type HubLine,
   type HubReferences,
   type HubRuleContext,
+  hold,
   hubDealtRates,
   hubReversalLines,
   invoiceIssuedPlan,
   type KeyedEvent,
   type MappedAccount,
+  type MilestoneReferences,
   type PlannedEntry,
+  type PointInTimeSchedule,
   paymentDecision,
   paymentRecordedPlan,
   planEvent,
@@ -35,7 +38,7 @@ import {
   walletEntryPlan,
 } from './hub.js';
 import { emptyBalance, type ItemState } from './items.js';
-import { type CarriedAmounts, carriedLine, type Line } from './lines.js';
+import { type CarriedAmounts, carriedLine, type Line, negate } from './lines.js';
 import { manualEntry } from './manual.js';
 import type { MeasureContext } from './measure.js';
 import { calendar, rate, refusal, sypOnly, sypUsd, usdSyp } from './test-fixtures.js';
@@ -162,8 +165,13 @@ function measure(
     {
       lines: entry.lines.map((line) => ({
         account: line.account,
-        dimensions: dims(line),
+        // A schedule's values stand for themselves, by their place.
+        dimensions:
+          line.valueIds === undefined
+            ? dims(line)
+            : Object.fromEntries(line.valueIds.map((value, k) => [`value${k}`, value])),
         amount: line.amount,
+        ...(line.carried !== undefined && { carried: line.carried }),
         ...(line.item?.kind === 'open' && {
           item: {
             id: line.item.reference,
@@ -278,7 +286,7 @@ describe('invoice.issued at issue (revenue/revenue-at-issue)', () => {
     ]);
   });
 
-  it('holds a credit, deposit or milestone line until its rule deploys, and a non-zero tax', () => {
+  it('holds a credit line until its rule deploys, and a non-zero tax', () => {
     const context = contextOf(sypUsd);
     const credit = invoice(
       'USD',
@@ -307,7 +315,8 @@ describe('invoice.issued at issue (revenue/revenue-at-issue)', () => {
         contract: P1,
       },
     );
-    expect(invoiceIssuedPlan(deposit, context)).toMatchObject({ detail: 'deferred_revenue' });
+    // A deposit is deferred to its milestone's done (S06 rule 1).
+    expect(invoiceIssuedPlan(deposit, context)).toMatchObject({ kind: 'post', decision: null });
     const taxed = (amount: number) =>
       invoice('USD', '122.0000', [
         { amount: 10_000, taxes: [{ code: 'SALES', base: 10_000, rate: '5.00', amount }] },
@@ -927,19 +936,375 @@ describe('voids, service changes and due dates', () => {
     );
     expect(refusal(() => hubReversalLines(entry, '2026-11-02'))).toBe('REVERSAL_BEFORE_ORIGINAL');
   });
+});
 
-  it('holds S06’s events NO_MAPPING until their rules deploy', () => {
-    const done = event('milestone.done', {
-      milestone: { id: ids(501), number: 'M-1' },
-      client: C1,
-      project: { external_id: 'P1', name: 'مشروع', kind: 'project', client_external_id: 'C1' },
-      currency: 'USD',
-      amount: 10_000,
-      done_on: '2026-11-03',
+describe('milestones and projects (revenue/milestones, revenue/cancelled-project)', () => {
+  const MS = (n: number) => ({ id: ids(500 + n), number: `MS-${n}` });
+  const done = (n: number, amount: number, on: string, service: typeof S1 | null = S1) =>
+    event(
+      'milestone.done',
+      {
+        milestone: MS(n),
+        client: C1,
+        project: P1,
+        currency: 'USD',
+        amount,
+        done_on: on,
+        ...(service !== null && { service }),
+      },
+      on,
+    ) as EventOf<'milestone.done'>;
+  const usd = (transaction: bigint, book: bigint, parallel: bigint): CarriedAmounts => ({
+    transaction: money(transaction, 'USD'),
+    bookMinor: book,
+    parallelMinor: parallel,
+  });
+  const schedule = (id: string, remaining: CarriedAmounts): PointInTimeSchedule => ({
+    id,
+    liabilityAccountId: '212001',
+    parties: ['client-C1', 'contract-P1'],
+    serviceValueId: 'service-S1',
+    remaining,
+  });
+  const facts = (overrides: Partial<MilestoneReferences>): MilestoneReferences => ({
+    doneStanding: false,
+    item: null,
+    doneRelease: null,
+    schedule: null,
+    items: 0,
+    projectCancelled: false,
+    ...overrides,
+  });
+  const withMilestone = (n: number, milestone: MilestoneReferences): HubReferences => ({
+    ...NO_REFERENCES,
+    milestones: new Map([[MS(n).id, milestone]]),
+  });
+  const deposit = (amount: number, n = 1, extra = {}) =>
+    invoice('USD', '122.0000', [{ amount, source: 'deposit', milestone_id: MS(n).id }], {
+      contract: P1,
+      ...extra,
     });
-    expect(planEvent(done, NO_REFERENCES, contextOf(sypUsd))).toMatchObject({
-      reason: 'NO_MAPPING',
-      detail: 'deferred_revenue',
+
+  it('defers a 300.00 USD deposit at 120 with its point-in-time schedule (S06 rules 1, 2)', () => {
+    const issued = deposit(30_000);
+    const plan = invoiceIssuedPlan(issued, contextOf(sypUsd));
+    expect(rows(measure(plan, sypUsd, '2026-11-03', [bulletin('120.0000', '2026-11-03')]))).toEqual(
+      [
+        ['112001', 'USD', 30_000n, 3_600_000n, 30_000n],
+        ['212001', 'USD', -30_000n, -3_600_000n, -30_000n],
+      ],
+    );
+    expect(plan.kind === 'post' && plan.schedules).toEqual([
+      expect.objectContaining({
+        pattern: 'point_in_time',
+        lineSource: 'deposit',
+        milestoneId: MS(1).id,
+        serviceFrom: null,
+        serviceTo: null,
+        cycleKey: null,
+        deferral: { key: issued.id, lineNo: 2 },
+        months: [],
+      }),
+    ]);
+  });
+
+  it('releases the deposit at its done at the 36,000.00 SYP it carries, reading no rate (rule 11)', () => {
+    const carried = usd(30_000n, 3_600_000n, 30_000n);
+    const event = done(1, 30_000, '2026-11-20');
+    const plan = planEvent(
+      event,
+      withMilestone(1, facts({ schedule: schedule('sch-1', carried) })),
+      contextOf(sypUsd),
+    );
+    // No rate is given: a release reads none.
+    expect(rows(measure(plan, sypUsd, '2026-11-20', []))).toEqual([
+      ['212001', 'USD', 30_000n, 3_600_000n, 30_000n],
+      ['411001', 'USD', -30_000n, -3_600_000n, -30_000n],
+    ]);
+    expect(plan).toMatchObject({
+      decision: null,
+      movements: [
+        { scheduleId: 'sch-1', kind: 'released', key: event.id, amounts: negate(carried) },
+      ],
+    });
+  });
+
+  it('opens a contract asset at 122 for a milestone done before its invoice, MS-8/2 after a reopen', () => {
+    const plan = planEvent(done(2, 40_000, '2026-12-01'), NO_REFERENCES, contextOf(sypUsd));
+    expect(rows(measure(plan, sypUsd, '2026-12-01', [bulletin('122.0000', '2026-12-01')]))).toEqual(
+      [
+        ['113001', 'USD', 40_000n, 4_880_000n, 40_000n],
+        ['411001', 'USD', -40_000n, -4_880_000n, -40_000n],
+      ],
+    );
+    const lines =
+      plan.kind === 'post' && plan.entries[0]?.kind === 'lines' && plan.entries[0].lines;
+    expect(lines ? lines[0]?.item : null).toEqual({
+      kind: 'open',
+      reference: 'MS-2',
+      dueOn: '2026-12-01',
+    });
+    const again = planEvent(
+      done(8, 40_000, '2026-12-10'),
+      withMilestone(8, facts({ items: 1 })),
+      contextOf(sypUsd),
+    );
+    expect(
+      again.kind === 'post' &&
+        again.entries[0]?.kind === 'lines' &&
+        again.entries[0].lines[0]?.item,
+    ).toMatchObject({ reference: 'MS-8/2' });
+  });
+
+  it('clears the done milestone’s item at what it carries, with a 400.00 SYP realised gain (rule 12)', () => {
+    const issued = invoice(
+      'USD',
+      '124.0000',
+      [{ amount: 40_000, source: 'milestone', milestone_id: MS(2).id }],
+      { contract: P1, issued_on: '2026-12-03' },
+    );
+    const carried = usd(40_000n, 4_880_000n, 40_000n);
+    const item = {
+      id: 'item-MS-2',
+      accountId: '113001',
+      currency: 'USD' as const,
+      openMinor: 40_000n,
+    };
+    const references = withMilestone(2, facts({ doneStanding: true, item: { ...item, carried } }));
+    const plan = planEvent(issued, references, contextOf(sypUsd));
+    const state: ItemState = { id: 'item-MS-2', kind: 'document', direction: 1, balance: carried };
+    expect(
+      rows(
+        measure(
+          plan,
+          sypUsd,
+          '2026-12-03',
+          [bulletin('123.0000', '2026-12-03')],
+          new Map([['item-MS-2', state]]),
+        ),
+      ),
+    ).toEqual([
+      ['112001', 'USD', 40_000n, 4_920_000n, 40_000n],
+      ['113001', 'USD', -40_000n, -4_880_000n, -40_000n],
+      ['421001', 'SYP', -40_000n, -40_000n, 0n],
+    ]);
+    expect(plan.kind === 'post' && plan.schedules).toBeUndefined();
+    // Another amount than the item has open is the accountant's.
+    const differs = invoice(
+      'USD',
+      '124.0000',
+      [{ amount: 45_000, source: 'milestone', milestone_id: MS(2).id }],
+      { contract: P1, issued_on: '2026-12-03' },
+    );
+    expect(planEvent(differs, references, contextOf(sypUsd))).toMatchObject({
+      kind: 'post',
+      decision: 'milestone_amount_differs',
+    });
+  });
+
+  it('holds a done’s decisions for the accountant (rule 11)', () => {
+    const deferred = schedule('sch-4', usd(30_000n, 3_600_000n, 30_000n));
+    const context = contextOf(sypUsd);
+    expect(
+      planEvent(
+        done(4, 35_000, '2026-12-01'),
+        withMilestone(4, facts({ schedule: deferred })),
+        context,
+      ),
+    ).toMatchObject({ decision: 'milestone_amount_differs' });
+    expect(planEvent(done(6, 40_000, '2026-12-01', null), NO_REFERENCES, context)).toMatchObject({
+      decision: 'milestone_service_missing',
+    });
+    expect(
+      planEvent(
+        done(7, 40_000, '2026-12-03'),
+        withMilestone(7, facts({ doneStanding: true })),
+        context,
+      ),
+    ).toEqual({ kind: 'post', entries: [], decision: 'milestone_already_done' });
+    const released = schedule('sch-14', usd(0n, 0n, 0n));
+    expect(
+      planEvent(
+        done(14, 30_000, '2026-11-30'),
+        withMilestone(14, facts({ schedule: released })),
+        context,
+      ),
+    ).toEqual({ kind: 'post', entries: [], decision: 'milestone_released_at_completion' });
+  });
+
+  it('reverses a standing done on its reopen, and holds a reopen with no done (rule 13)', () => {
+    const reopened = event(
+      'milestone.reopened',
+      { milestone: MS(8), client: C1, project: P1, reopened_on: '2026-12-03' },
+      '2026-12-03',
+    );
+    expect(planEvent(reopened, NO_REFERENCES, contextOf(sypUsd))).toEqual(
+      hold('UNKNOWN_REFERENCE'),
+    );
+    expect(
+      planEvent(reopened, { ...NO_REFERENCES, standing: ['done-entry'] }, contextOf(sypUsd)),
+    ).toEqual({
+      kind: 'post',
+      entries: [{ kind: 'reversal', key: `${reopened.id}:reversal:1`, entryId: 'done-entry' }],
+      decision: null,
+    });
+    // A done that released its schedule gives the schedule its remaining back.
+    const amounts = usd(30_000n, 3_600_000n, 30_000n);
+    const references: HubReferences = {
+      ...withMilestone(
+        8,
+        facts({
+          doneStanding: true,
+          doneRelease: { entryId: 'done-entry', scheduleId: 'sch-8', amounts },
+        }),
+      ),
+      standing: ['done-entry'],
+    };
+    expect(planEvent(reopened, references, contextOf(sypUsd))).toMatchObject({
+      movements: [
+        { scheduleId: 'sch-8', kind: 'released', key: `${reopened.id}:reversal:1`, amounts },
+      ],
+    });
+  });
+
+  it('releases what a completed project’s schedules hold, one entry each, or records it (rule 14)', () => {
+    const completed = event('project.completed', { project: P1, client: C1, on: '2026-12-10' });
+    const context = contextOf(sypUsd);
+    expect(planEvent(completed, NO_REFERENCES, context)).toEqual({
+      kind: 'post',
+      entries: [],
+      decision: null,
+    });
+    const plan = planEvent(
+      completed,
+      {
+        ...NO_REFERENCES,
+        projectSchedules: [
+          schedule('sch-11', usd(0n, 0n, 0n)),
+          schedule('sch-13', usd(20_000n, 2_460_000n, 20_000n)),
+        ],
+      },
+      context,
+    );
+    expect(plan.kind === 'post' && plan.entries.map((entry) => entry.key)).toEqual([
+      `${completed.id}:schedule:sch-13`,
+    ]);
+    expect(rows(measure(plan, sypUsd, '2026-12-10', []))).toEqual([
+      ['212001', 'USD', 20_000n, 2_460_000n, 20_000n],
+      ['411001', 'USD', -20_000n, -2_460_000n, -20_000n],
+    ]);
+    // A milestone the accountant resolved by hand: its schedule is the accountant's (S05 rule 16).
+    const byHand: HubReferences = {
+      ...NO_REFERENCES,
+      projectSchedules: [
+        { ...schedule('sch-13', usd(20_000n, 2_460_000n, 20_000n)), resolvedByHand: true },
+      ],
+    };
+    expect(planEvent(completed, byHand, context)).toEqual({
+      kind: 'post',
+      entries: [],
+      decision: 'document_resolved_manually',
+    });
+    const cancelled = event('project.cancelled', { project: P1, client: C1, on: '2026-12-10' });
+    expect(planEvent(cancelled, byHand, context)).toMatchObject({
+      decision: 'document_resolved_manually',
+    });
+    expect(refusal(() => planEvent(cancelled, byHand, context, 0n))).toBe(
+      'EVENT_ACTION_NOT_ALLOWED',
+    );
+  });
+
+  it('holds a cancelled project’s remainder for the split, then posts it with an 800.00 SYP loss (rule 15)', () => {
+    const cancelled = event('project.cancelled', { project: P1, client: C1, on: '2026-12-10' });
+    const context = contextOf(sypUsd);
+    const references: HubReferences = {
+      ...NO_REFERENCES,
+      projectSchedules: [schedule('sch-1', usd(30_000n, 3_600_000n, 30_000n))],
+    };
+    expect(planEvent(cancelled, NO_REFERENCES, context)).toEqual({
+      kind: 'post',
+      entries: [],
+      decision: null,
+    });
+    const held = planEvent(cancelled, references, context);
+    expect(held).toMatchObject({ decision: 'cancelled_project_remainder' });
+    // Planned with the whole remainder refunded, so the refund's rate is checked first.
+    expect(rows(measure(held, sypUsd, '2026-12-10', [bulletin('124.0000', '2026-12-10')]))).toEqual(
+      [
+        ['212001', 'USD', 30_000n, 3_600_000n, 30_000n],
+        ['211003', 'USD', -30_000n, -3_720_000n, -30_000n],
+        ['541001', 'SYP', 120_000n, 120_000n, 0n],
+      ],
+    );
+    const split = planEvent(cancelled, references, context, 10_000n);
+    expect(
+      rows(measure(split, sypUsd, '2026-12-10', [bulletin('124.0000', '2026-12-10')])),
+    ).toEqual([
+      ['212001', 'USD', 30_000n, 3_600_000n, 30_000n],
+      ['411001', 'USD', -10_000n, -1_200_000n, -10_000n],
+      ['211003', 'USD', -20_000n, -2_480_000n, -20_000n],
+      ['541001', 'SYP', 80_000n, 80_000n, 0n],
+    ]);
+    expect(split).toMatchObject({
+      decision: null,
+      movements: [
+        {
+          scheduleId: 'sch-1',
+          kind: 'remainder_released',
+          amounts: usd(-10_000n, -1_200_000n, -10_000n),
+        },
+        {
+          scheduleId: 'sch-1',
+          kind: 'remainder_refunded',
+          amounts: usd(-20_000n, -2_400_000n, -20_000n),
+        },
+      ],
+    });
+    expect(refusal(() => planEvent(cancelled, references, context, 30_001n))).toBe(
+      'VALIDATION_FAILED',
+    );
+    expect(refusal(() => planEvent(cancelled, NO_REFERENCES, context, 0n))).toBe(
+      'EVENT_ACTION_NOT_ALLOWED',
+    );
+  });
+
+  it('holds a deposit invoiced after its project’s cancellation, then splits it at 125 (rule 15)', () => {
+    const issued = deposit(30_000, 1, { issued_on: '2026-12-15', due_on: '2026-12-30' });
+    const references = withMilestone(1, facts({ projectCancelled: true }));
+    const context = contextOf(sypUsd);
+    expect(planEvent(issued, references, context)).toMatchObject({
+      decision: 'invoiced_after_cancellation',
+    });
+    const split = planEvent(issued, references, context, 10_000n);
+    expect(split.kind === 'post' && split.schedules).toBeUndefined();
+    expect(
+      rows(measure(split, sypUsd, '2026-12-15', [bulletin('125.0000', '2026-12-15')])),
+    ).toEqual([
+      ['112001', 'USD', 30_000n, 3_750_000n, 30_000n],
+      ['411001', 'USD', -10_000n, -1_250_000n, -10_000n],
+      ['211003', 'USD', -20_000n, -2_500_000n, -20_000n],
+    ]);
+    expect(refusal(() => planEvent(deposit(30_000), NO_REFERENCES, context, 0n))).toBe(
+      'EVENT_ACTION_NOT_ALLOWED',
+    );
+  });
+
+  it('holds the void of an invoice its project’s split cleared for the accountant (rule 8)', () => {
+    const voided = event('invoice.voided', {
+      invoice: INVOICE,
+      voided_on: '2026-12-15',
+      reason: 'ملغاة',
+    });
+    const references: HubReferences = {
+      ...NO_REFERENCES,
+      standing: ['issue-entry'],
+      scheduledLineIds: [ids(200)],
+      splitAtCancellation: true,
+    };
+    expect(planEvent(voided, references, contextOf(sypUsd))).toEqual({
+      kind: 'post',
+      entries: [{ kind: 'reversal', key: `${voided.id}:reversal:1`, entryId: 'issue-entry' }],
+      decision: 'schedule_split_at_cancellation',
     });
   });
 });
@@ -983,6 +1348,28 @@ describe('the order per item (rule 11)', () => {
     const behind = keyed(second, 'held', 'WAITING_FOR_EARLIER_EVENT', paid.id);
     expect(blockingEvent(issued, [first, behind])).toBeNull();
     expect(blockingEvent(second, [first])).toBe(first);
+  });
+
+  it('lets a done pass its reopen held before it, and keeps it behind its held invoice (S06 rule 17)', () => {
+    const milestone = { id: ids(510), number: 'MS-10' };
+    const reopened = event('milestone.reopened', {
+      milestone,
+      client: C1,
+      project: P1,
+      reopened_on: '2026-12-03',
+    });
+    const done = event('milestone.done', {
+      milestone,
+      client: C1,
+      project: P1,
+      currency: 'USD',
+      amount: 40_000,
+      done_on: '2026-12-01',
+      service: S1,
+    });
+    expect(blockingEvent(done, [keyed(reopened, 'held', 'UNKNOWN_REFERENCE')])).toBeNull();
+    const held = keyed(issued, 'held', 'RATE_MISSING');
+    expect(blockingEvent(done, [held])).toBe(held);
   });
 
   it('keeps every later event behind any other hold, and passes posted ones', () => {

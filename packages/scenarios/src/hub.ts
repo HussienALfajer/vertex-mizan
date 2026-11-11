@@ -14,6 +14,7 @@ import {
   retryEvent,
   retryFreed,
   SYSTEM_NAME,
+  splitEvent,
   withCompany,
 } from '@vertex-mizan/db';
 import { eq } from 'drizzle-orm';
@@ -121,11 +122,15 @@ function payloadOf(
         invoice: invoice(),
         client: client(),
         ...(contract !== undefined && { contract: contractRef(companyId, contract) }),
-        lines: lines.map(({ line, kind, service: code, ...fields }) => ({
+        lines: lines.map(({ line, kind, service: code, milestone, ...fields }) => ({
           ...fields,
           id: idOf(companyId, 'invoice_line', `${number}:${asCode(line, 'line')}`),
           service: service(code),
           ...(kind !== undefined && { charge_kind: kind }),
+          // A deposit or milestone line names its milestone by Hub's number (S06).
+          ...(milestone !== undefined && {
+            milestone_id: idOf(companyId, 'milestone', asCode(milestone, 'milestone')),
+          }),
         })),
       };
     }
@@ -215,6 +220,24 @@ function payloadOf(
       return {
         ...short,
         expense: documentRef(companyId, 'project_expense', asCode(short.expense, 'expense')),
+      };
+    case 'milestone.done':
+    case 'milestone.reopened': {
+      const { milestone, project, service: code, ...rest } = short;
+      return {
+        ...rest,
+        milestone: documentRef(companyId, 'milestone', asCode(milestone, 'milestone')),
+        client: client(),
+        project: contractRef(companyId, project),
+        ...(code !== undefined && { service: service(code) }),
+      };
+    }
+    case 'project.completed':
+    case 'project.cancelled':
+      return {
+        ...short,
+        project: contractRef(companyId, short.project),
+        client: client(),
       };
     default:
       throw new Error(`The short form of ${type} arrives with its rule`);
@@ -390,6 +413,16 @@ export function inboxActions(bookkeeper: (companyId: string) => AuditActor) {
         context,
         (actor, today, tx) =>
           recogniseEvent(tx, inboxIdOf(context, step.step), step.reason, { actor, today }),
+        bookkeeper(context.companyId),
+      ),
+    split: (context: CaseContext, step: Extract<Step, { kind: 'split' }>) =>
+      inbox(
+        context,
+        (actor, today, tx) =>
+          splitEvent(tx, inboxIdOf(context, step.step), step.revenueMinor, step.reason, {
+            actor,
+            today,
+          }),
         bookkeeper(context.companyId),
       ),
     dismiss: (context: CaseContext, step: Extract<Step, { kind: 'dismiss' }>) =>

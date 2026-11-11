@@ -14,7 +14,7 @@ import { afterAll, beforeAll, describe, expect, inject, it } from 'vitest';
 import { createTestApp } from './app.js';
 import { books, posted, purchase, today } from './books.js';
 import { expectGuarded } from './guards.js';
-import { hubClient, hubDocuments, invoiceIssued, paymentRecorded } from './hub.js';
+import { hubClient, hubDocuments, invoiceIssued, paymentRecorded, projectEvents } from './hub.js';
 import { testDatabase } from './people.js';
 
 // S05's inbox and posting rules over HTTP (rules 15–18, "Mapping slots"): the events with their
@@ -193,6 +193,7 @@ describe('GET /api/inbox', () => {
       { method: 'post', path: `/api/inbox/${id}/retry` },
       { method: 'post', path: `/api/inbox/${id}/post-in-open-period` },
       { method: 'post', path: `/api/inbox/${id}/recognise-in-open-period` },
+      { method: 'post', path: `/api/inbox/${id}/split-remainder` },
       { method: 'post', path: `/api/inbox/${id}/resolve` },
       { method: 'post', path: `/api/inbox/${id}/dismiss` },
       { method: 'get', path: '/api/posting-rules' },
@@ -311,6 +312,11 @@ describe('another company', () => {
       [accountant.browser, `/api/inbox/${id}/retry`, undefined],
       [accountant.browser, `/api/inbox/${id}/post-in-open-period`, { reason: 'نقل' }],
       [accountant.browser, `/api/inbox/${id}/recognise-in-open-period`, { reason: 'اعتراف' }],
+      [
+        accountant.browser,
+        `/api/inbox/${id}/split-remainder`,
+        { revenueAmount: '0', reason: 'تقسيم' },
+      ],
       [accountant.browser, `/api/inbox/${id}/resolve`, { entryId: otherEntry.id, reason: 'حل' }],
       [book.owner.browser, `/api/inbox/${id}/dismiss`, { reason: 'إلغاء' }],
     ] as const) {
@@ -541,6 +547,61 @@ describe('POST /api/inbox/:id/recognise-in-open-period (S06 rule 16)', () => {
     const refused = await accountant.browser.post(
       `/api/inbox/${other.body.inbox_id}/recognise-in-open-period`,
       { reason: 'سبب' },
+    );
+    expect(refused.body.code).toBe('EVENT_ACTION_NOT_ALLOWED');
+  });
+});
+
+describe('POST /api/inbox/:id/split-remainder (S06 rules 15–16)', () => {
+  it('splits a cancelled project’s remainder with a reason, within zero to the remainder', async () => {
+    const book = await books(app, db);
+    const hub = await hubClient(app, book.owner);
+    const project = projectEvents(hubDocuments(), today());
+    expect((await hub.send(project.deposit())).status).toBe(201);
+    const held = await hub.send(project.cancelled());
+    expect(held.body).toMatchObject({
+      status: 'held',
+      reason: 'NEEDS_DECISION',
+      detail: 'cancelled_project_remainder',
+    });
+    const path = `/api/inbox/${held.body.inbox_id}/split-remainder`;
+    const viewer = await book.join('viewer');
+    const body = { revenueAmount: '10000', reason: 'ثلث الدفعة مستحق عن العمل المنجز' };
+    expect((await viewer.browser.post(path, body)).body.code).toBe('FORBIDDEN');
+    const accountant = await book.join('accountant');
+    expect((await accountant.browser.post(path, { reason: 'سبب' })).body.code).toBe(
+      'VALIDATION_FAILED',
+    );
+    // Above the 300.00 USD remainder: refused, nothing written.
+    const above = await accountant.browser.post(path, { ...body, revenueAmount: '30001' });
+    expect(above.body.code).toBe('VALIDATION_FAILED');
+    const split = await accountant.browser.post(path, body);
+    expect(split.status, JSON.stringify(split.body)).toBe(200);
+    const detail = split.body as InboxEventDetail;
+    expect([detail.state, detail.reason]).toEqual(['posted', null]);
+    expect(detail.entries).toHaveLength(1);
+    expect(detail.actions.at(-1)).toMatchObject({ action: 'remainder_split', note: body.reason });
+    const [entry] = detail.entries;
+    const lines = ((await book.owner.browser.get(`/api/entries/${entry?.id}`)).body as Entry).lines;
+    expect(lines.map((line) => [line.accountCode, line.amountMinor])).toEqual(
+      expect.arrayContaining([
+        ['212001', '30000'],
+        ['411001', '-10000'],
+        ['211003', '-20000'],
+      ]),
+    );
+    expect((await accountant.browser.post(path, body)).body.code).toBe('EVENT_NOT_HELD');
+    const audit = await withCompany(db, book.companyId, (tx) =>
+      tx.select({ action: auditEntries.action, after: auditEntries.after }).from(auditEntries),
+    );
+    expect(audit.find((row) => row.action === 'event.remainder_split')?.after).toMatchObject({
+      revenueMinor: '10000',
+    });
+    // Another reason's hold is not split.
+    const other = await hub.send(paymentRecorded(hubDocuments(), today()));
+    const refused = await accountant.browser.post(
+      `/api/inbox/${other.body.inbox_id}/split-remainder`,
+      body,
     );
     expect(refused.body.code).toBe('EVENT_ACTION_NOT_ALLOWED');
   });

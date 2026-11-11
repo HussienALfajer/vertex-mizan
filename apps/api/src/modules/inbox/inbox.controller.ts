@@ -32,6 +32,8 @@ import {
   postingSlotParamSchema,
   type ResolveEvent,
   resolveEventSchema,
+  type SplitRemainder,
+  splitRemainderSchema,
 } from '@vertex-mizan/contracts';
 import { z } from 'zod';
 import { Access, CompanyRoute, inCompany, type RequestAccess } from '../../core/access/access.js';
@@ -143,6 +145,25 @@ export class InboxController {
     @Body({ schema: inboxReasonSchema }) body: InboxReason,
   ): Promise<InboxEventDetail> {
     return this.inbox.recognise(inCompany(access), params.id, body.reason);
+  }
+
+  @Post(':id/split-remainder')
+  @HttpCode(200)
+  @ApiParamsFrom(idParamSchema)
+  @CompanyRoute('events.manage')
+  @SerializeOptions({ schema: inboxEventDetailSchema })
+  @ApiOkResponse({
+    description:
+      'The event, a cancelled project’s remainder split between revenue and the refund payable (S06 rules 15–16)',
+    standardSchema: inboxEventDetailSchema,
+  })
+  @ApiErrors(...COMPANY_WRITE_ERRORS, 'NOT_FOUND', 'EVENT_NOT_HELD', 'EVENT_ACTION_NOT_ALLOWED')
+  async split(
+    @Access() access: RequestAccess,
+    @Param({ schema: idParamSchema }) params: IdParam,
+    @Body({ schema: splitRemainderSchema }) body: SplitRemainder,
+  ): Promise<InboxEventDetail> {
+    return this.inbox.split(inCompany(access), params.id, BigInt(body.revenueAmount), body.reason);
   }
 
   @Post(':id/resolve')

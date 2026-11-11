@@ -239,6 +239,20 @@
       "when": 1794358372768,
       "tag": "0033_keen_nightcrawler",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1794384910663,
+      "tag": "0034_s06_order_keys_extension",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1794384921237,
+      "tag": "0035_unknown_roland_deschain",
+      "breakpoints": true
     }
   ]
 }

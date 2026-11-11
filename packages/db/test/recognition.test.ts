@@ -1,5 +1,6 @@
 import {
   type CompanyLedgers,
+  DomainError,
   type EventEnvelope,
   money,
   parseEventEnvelope,
@@ -13,6 +14,8 @@ import {
   chartAccounts,
   createCompanyBooks,
   inboundEventActions,
+  inboundEventStates,
+  inboundEvents,
   journalEntries,
   journalLines,
   mapAppendedTemplateSlots,
@@ -28,7 +31,9 @@ import {
   recognitionSchedules,
   recordRate,
   releaseMonth,
+  resolveEvent,
   retryFreed,
+  splitEvent,
   type Transaction,
   users,
   withCompany,
@@ -799,6 +804,281 @@ describe('the template’s recognition slots for an existing company (S06 "Data"
       { slot: 'contract_liability', code: '212001' },
       { slot: 'released_revenue', code: '411001' },
     ]);
+  });
+});
+
+describe('milestones and projects (S06 rules 11–17)', () => {
+  const P1 = {
+    external_id: ids(9005),
+    code: 'P1',
+    name: 'مشروع تجريبي',
+    kind: 'project',
+    client_external_id: C1.external_id,
+  };
+  const MS = (n: number) => ({ id: ids(500 + n), number: `MS-${n}` });
+  const deposit = (n: number, on: string, amount: number, milestone: number) =>
+    envelope('invoice.issued', on, {
+      invoice: invoiceRef(n),
+      client: C1,
+      contract: P1,
+      currency: 'USD',
+      syp_per_usd: '122.0000',
+      issued_on: on,
+      due_on: '2026-12-31',
+      lines: [
+        {
+          id: ids(200 + n),
+          amount,
+          service: S1,
+          source: 'deposit',
+          milestone_id: MS(milestone).id,
+        },
+      ],
+    });
+  const done = (milestone: number, on: string, amount: number) =>
+    envelope('milestone.done', on, {
+      milestone: MS(milestone),
+      client: C1,
+      project: P1,
+      currency: 'USD',
+      amount,
+      done_on: on,
+      service: S1,
+    });
+  const reopened = (milestone: number, on: string) =>
+    envelope('milestone.reopened', on, {
+      milestone: MS(milestone),
+      client: C1,
+      project: P1,
+      reopened_on: on,
+    });
+  const kinds = (companyId: string) =>
+    inCompany(companyId, async (tx) =>
+      (
+        await tx
+          .select({ kind: recognitionMovements.kind, t: recognitionMovements.transactionMinor })
+          .from(recognitionMovements)
+          .orderBy(asc(recognitionMovements.createdAt), asc(recognitionMovements.id))
+      ).map((row) => [row.kind, row.t]),
+    );
+
+  it('releases a deposit at its done, gives it back on a reopen and releases it again; a replay posts nothing', async () => {
+    const companyId = await newCompany([['2026-11-03', '120.0000']]);
+    const issued = deposit(60, '2026-11-03', 30_000, 1);
+    expect((await receive(companyId, issued, '2026-11-03')).event.state).toBe('posted');
+    const keys = await inCompany(companyId, (tx) =>
+      tx
+        .select({ itemKey: inboundEvents.itemKey, orderKeys: inboundEvents.orderKeys })
+        .from(inboundEvents),
+    );
+    expect(keys).toEqual([
+      {
+        itemKey: `invoice:${invoiceRef(60).id}`,
+        orderKeys: [`milestone:${MS(1).id}`, `project:${P1.external_id}`],
+      },
+    ]);
+    const first = done(1, '2026-11-20', 30_000);
+    expect((await receive(companyId, first, '2026-11-20')).event.state).toBe('posted');
+    expect((await receive(companyId, first, '2026-11-20')).replayed).toBe(true);
+    expect(await remaining(companyId)).toEqual([[0n, 0n, 0n]]);
+    expect((await receive(companyId, reopened(1, '2026-12-03'), '2026-12-03')).event.state).toBe(
+      'posted',
+    );
+    // The reopen gives the schedule what the done released.
+    expect(await remaining(companyId)).toEqual([[30_000n, 3_600_000n, 30_000n]]);
+    expect(
+      (await receive(companyId, done(1, '2026-12-10', 30_000), '2026-12-10')).event.state,
+    ).toBe('posted');
+    expect(await kinds(companyId)).toEqual([
+      ['deferred', 30_000n],
+      ['released', -30_000n],
+      ['released', 30_000n],
+      ['released', -30_000n],
+    ]);
+    const entries = await ledger(companyId);
+    expect(entries.map((entry) => [entry.source, entry.date])).toEqual([
+      ['hub_event', '2026-11-03'],
+      ['hub_event', '2026-11-20'],
+      ['hub_event', '2026-12-03'],
+      ['hub_event', '2026-12-10'],
+    ]);
+    // Each release at the 36,000.00 SYP the liability carries; the reopen its exact reversal.
+    expect(entries[1]?.lines).toEqual([
+      ['212001', 'USD', 30_000n, 3_600_000n, 30_000n],
+      ['411001', 'USD', -30_000n, -3_600_000n, -30_000n],
+    ]);
+    expect(entries[2]?.lines).toEqual([
+      ['212001', 'USD', -30_000n, -3_600_000n, -30_000n],
+      ['411001', 'USD', 30_000n, 3_600_000n, 30_000n],
+    ]);
+    expect(entries[3]?.lines).toEqual(entries[1]?.lines);
+  });
+
+  it('holds a completion for the accountant once a done of its milestone was resolved by hand (S05 rule 16)', async () => {
+    const companyId = await newCompany([
+      ['2026-11-03', '120.0000'],
+      ['2026-11-25', '121.0000'],
+    ]);
+    await receive(companyId, deposit(70, '2026-11-03', 30_000, 1), '2026-11-03');
+    const withoutService = envelope('milestone.done', '2026-11-20', {
+      milestone: MS(1),
+      client: C1,
+      project: P1,
+      currency: 'USD',
+      amount: 30_000,
+      done_on: '2026-11-20',
+    });
+    const held = await receive(companyId, withoutService, '2026-11-20');
+    expect(held.event).toMatchObject({
+      reason: 'NEEDS_DECISION',
+      detail: 'milestone_service_missing',
+    });
+    const completed = envelope('project.completed', '2026-11-25', {
+      project: P1,
+      client: C1,
+      on: '2026-11-25',
+    });
+    // In the project's order, behind the held done (S06 rule 17).
+    expect((await receive(companyId, completed, '2026-11-25')).event.reason).toBe(
+      'WAITING_FOR_EARLIER_EVENT',
+    );
+    // The accountant releases the deposit by hand and resolves the done with that entry.
+    const resolved = await inCompany(companyId, async (tx) => {
+      const [schedule] = await tx.select().from(recognitionSchedules);
+      if (!schedule?.contractValueId) throw new Error('No schedule');
+      const account = async (code: string) => {
+        const [row] = await tx
+          .select({ id: chartAccounts.id })
+          .from(chartAccounts)
+          .where(eq(chartAccounts.code, code));
+        return row?.id as string;
+      };
+      const parties = [schedule.clientValueId, schedule.contractValueId];
+      const entry = await post(tx, {
+        client: 'manual',
+        idempotencyKey: uuidv7(),
+        entryDate: '2026-11-25',
+        description: 'تحرير الدفعة يدويًا',
+        reference: null,
+        draftId: null,
+        preparedByUserId: personId,
+        approvedByUserId: null,
+        actor: person(),
+        content: {
+          kind: 'manual',
+          dealtRates: [],
+          today: '2026-11-25',
+          lines: [
+            {
+              accountId: await account('212001'),
+              dimensionValueIds: parties,
+              currency: 'USD',
+              amountMinor: 30_000n,
+              memo: null,
+            },
+            {
+              accountId: await account('411001'),
+              dimensionValueIds: [...parties, schedule.serviceValueId],
+              currency: 'USD',
+              amountMinor: -30_000n,
+              memo: null,
+            },
+          ],
+        },
+      });
+      return resolveEvent(tx, held.event.inboxId, entry.id, 'أُنجزت المرحلة', {
+        actor: person(),
+        today: '2026-11-25',
+      });
+    });
+    await inCompany(companyId, (tx) =>
+      retryFreed(tx, resolved.triggers, { actor: system, today: '2026-11-25' }),
+    );
+    // The completion does not release the deposit a second time.
+    const states = await inCompany(companyId, (tx) =>
+      tx
+        .select({ type: inboundEvents.type, detail: inboundEventStates.holdDetail })
+        .from(inboundEvents)
+        .innerJoin(inboundEventStates, eq(inboundEventStates.eventId, inboundEvents.id))
+        .where(eq(inboundEvents.type, 'project.completed')),
+    );
+    expect(states).toEqual([{ type: 'project.completed', detail: 'document_resolved_manually' }]);
+    expect((await ledger(companyId)).map((entry) => entry.source)).toEqual(['hub_event', 'manual']);
+  });
+
+  it('splits a held cancellation once when two splits arrive at once; its void waits behind it, then is held', async () => {
+    const companyId = await newCompany([
+      ['2026-11-03', '120.0000'],
+      ['2026-12-10', '124.0000'],
+    ]);
+    await receive(companyId, deposit(80, '2026-11-03', 30_000, 1), '2026-11-03');
+    const cancelled = envelope('project.cancelled', '2026-12-10', {
+      project: P1,
+      client: C1,
+      on: '2026-12-10',
+    });
+    const held = await receive(companyId, cancelled, '2026-12-10');
+    expect(held.event).toMatchObject({
+      state: 'held',
+      reason: 'NEEDS_DECISION',
+      detail: 'cancelled_project_remainder',
+    });
+    const voided = envelope('invoice.voided', '2026-12-14', {
+      invoice: invoiceRef(80),
+      voided_on: '2026-12-14',
+      reason: 'ملغاة في Hub',
+    });
+    // In its project's order, behind the cancellation (S06 rule 17).
+    expect((await receive(companyId, voided, '2026-12-14')).event).toMatchObject({
+      state: 'held',
+      reason: 'WAITING_FOR_EARLIER_EVENT',
+      waitingForInboxId: held.event.inboxId,
+    });
+    const split = () =>
+      inCompany(companyId, (tx) =>
+        splitEvent(tx, held.event.inboxId, 10_000n, 'ثلث الدفعة مستحق', {
+          actor: person(),
+          today: '2026-12-14',
+        }),
+      ).then(
+        (result) => result,
+        (error: unknown) => {
+          if (error instanceof DomainError) return error.code;
+          throw error;
+        },
+      );
+    const answers = await Promise.all([split(), split()]);
+    const results = answers.filter((answer) => typeof answer !== 'string');
+    expect(answers.filter((answer) => typeof answer === 'string')).toEqual(['EVENT_NOT_HELD']);
+    expect(results.map((result) => result.event.state)).toEqual(['posted']);
+    expect(await remaining(companyId)).toEqual([[0n, 0n, 0n]]);
+    expect(await kinds(companyId)).toEqual([
+      ['deferred', 30_000n],
+      ['remainder_released', -10_000n],
+      ['remainder_refunded', -20_000n],
+    ]);
+    const [, entry] = await ledger(companyId);
+    expect(entry?.lines).toEqual([
+      ['212001', 'USD', 30_000n, 3_600_000n, 30_000n],
+      ['411001', 'USD', -10_000n, -1_200_000n, -10_000n],
+      ['211003', 'USD', -20_000n, -2_480_000n, -20_000n],
+      ['541001', 'SYP', 80_000n, 80_000n, 0n],
+    ]);
+    // The split frees the project's order: the void, retried, is the accountant's.
+    await inCompany(companyId, (tx) =>
+      retryFreed(tx, results[0]?.triggers ?? [], { actor: system, today: '2026-12-14' }),
+    );
+    const actions = await inCompany(companyId, (tx) =>
+      tx
+        .select({ action: inboundEventActions.action, detail: inboundEventActions.holdDetail })
+        .from(inboundEventActions)
+        .orderBy(asc(inboundEventActions.createdAt), asc(inboundEventActions.id)),
+    );
+    expect(actions.at(-1)).toEqual({
+      action: 'attempted',
+      detail: 'schedule_split_at_cancellation',
+    });
+    expect(actions.filter((row) => row.action === 'remainder_split')).toHaveLength(1);
   });
 });
 

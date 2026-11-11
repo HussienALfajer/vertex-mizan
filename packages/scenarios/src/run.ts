@@ -76,7 +76,12 @@ export function eventValues(scenarioCase: ScenarioCase): NamedValue[] {
     add('department', payload.department);
     add('service', payload.old_service);
     add('service', payload.new_service);
-    const contract = payload.contract as { code?: unknown; client?: unknown } | undefined;
+    // A milestone's done names its service (S06 rule 11).
+    add('service', payload.service);
+    // A project's events name it as `project` (S06), an invoice or an expense as `contract`.
+    const contract = (payload.contract ?? payload.project) as
+      | { code?: unknown; client?: unknown }
+      | undefined;
     if (contract !== undefined) {
       add('contract', contract.code);
       add('client', contract.client);

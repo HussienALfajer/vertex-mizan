@@ -12,6 +12,7 @@ import {
   hubMinor,
   itemKeyOf,
   monthsOf,
+  orderKeysOf,
   POSTING_SLOTS,
   parseEventEnvelope,
   paymentMethodSlot,
@@ -216,6 +217,76 @@ describe('an event’s document and item key (rules 11 and 16)', () => {
       usd_spend: 70_000,
     });
     expect(itemKeyOf(spend)).toBe(`ad_funds:${client.external_id}`);
+  });
+
+  it("orders a project's invoices, dones, reopens and voids on its milestones and project (S06 rule 17)", () => {
+    const milestone = '01934b6e-0000-7000-8000-000000000501';
+    const project = {
+      external_id: '01934b6e-0000-7000-8000-00000000p001',
+      name: 'مشروع',
+      kind: 'project',
+      client_external_id: client.external_id,
+    };
+    const deposit = {
+      id: ID.line,
+      amount: 30_000,
+      service,
+      source: 'deposit',
+      milestone_id: milestone,
+    };
+    const issued = parsed('invoice.issued', {
+      ...invoice,
+      contract: project,
+      lines: [
+        deposit,
+        { ...deposit, id: ID.entry, source: 'milestone' },
+        { ...invoice.lines[0], id: ID.event },
+      ],
+    });
+    expect(orderKeysOf(issued)).toEqual([
+      `milestone:${milestone}`,
+      `project:${project.external_id}`,
+    ]);
+    // An invoice with no deposit or milestone line keeps its own key only.
+    expect(orderKeysOf(parsed('invoice.issued', { ...invoice, contract: project }))).toEqual([]);
+    const done = parsed('milestone.done', {
+      milestone: { id: milestone, number: 'M-1' },
+      client,
+      project,
+      currency: 'USD',
+      amount: 30_000,
+      done_on: '2026-11-20',
+      service,
+    });
+    expect(itemKeyOf(done)).toBe(`milestone:${milestone}`);
+    expect(orderKeysOf(done)).toEqual([`project:${project.external_id}`]);
+    const voided = parsed('invoice.voided', {
+      invoice: invoice.invoice,
+      voided_on: '2026-12-14',
+      reason: 'ملغاة',
+    });
+    expect(orderKeysOf(voided, issued.type === 'invoice.issued' ? issued.payload : null)).toEqual([
+      `project:${project.external_id}`,
+    ]);
+    expect(orderKeysOf(voided)).toEqual([]);
+  });
+
+  it('accepts a done without its service, which the rule holds for the accountant (S06 rule 11)', () => {
+    const done = {
+      milestone: { id: ID.payment, number: 'M-1' },
+      client,
+      project: {
+        external_id: '01934b6e-0000-7000-8000-00000000p001',
+        name: 'مشروع',
+        kind: 'project',
+        client_external_id: client.external_id,
+      },
+      currency: 'USD',
+      amount: 30_000,
+      done_on: '2026-11-20',
+    };
+    expect(parsed('milestone.done', done).payload).not.toHaveProperty('service');
+    expect(parsed('milestone.done', { ...done, service }).payload).toMatchObject({ service });
   });
 });
 

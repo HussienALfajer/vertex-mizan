@@ -140,6 +140,8 @@ export const AUDITED_FIELDS = {
     'holdReason',
     'postedOn',
     'entryId',
+    // S06 rule 16: the revenue part of a split remainder, in minor units.
+    'revenueMinor',
   ],
   // S05: an API client, its keys (never a secret: the prefix only) and the document sources.
   api_client: ['name', 'system', 'scopes', 'ipAllowList', 'documentTypes'],

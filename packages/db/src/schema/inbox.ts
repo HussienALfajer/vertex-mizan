@@ -155,6 +155,12 @@ export const inboundEvents = pgTable(
     documentId: text().notNull(),
     documentNumber: text(),
     itemKey: text(),
+    /**
+     * The further item keys it takes part in (S06 rule 17, `orderKeysOf()`): a project invoice's
+     * milestones and project, a done's or a reopen's project, the void of such an invoice's.
+     * Empty for every other event and for the events received before S06's milestones.
+     */
+    orderKeys: text().array().notNull().default(sql`'{}'::text[]`),
     receivedAt: timestamptz().notNull().defaultNow(),
     requestId: text().notNull(),
     createdAt: createdAt(),
@@ -169,6 +175,7 @@ export const inboundEvents = pgTable(
     index('inbound_events_company_item_idx').on(t.companyId, t.itemKey, t.receivedAt),
     index('inbound_events_company_document_idx').on(t.companyId, t.documentType, t.documentId),
     index('inbound_events_company_date_idx').on(t.companyId, t.accountingDate),
+    index('inbound_events_company_order_keys_idx').using('gin', t.companyId, t.orderKeys),
     check('inbound_events_version', sql`${t.version} >= 1`),
     check('inbound_events_type', sql`${t.type} ~ '^[a-z][a-z_]*\\.[a-z][a-z_]*$'`),
     check('inbound_events_payload_hash', sql`${t.payloadHash} ~ '^[0-9a-f]{64}$'`),
@@ -179,6 +186,11 @@ export const inboundEvents = pgTable(
         and char_length(${t.documentId}) between 1 and 100
         and (${t.documentNumber} is null or char_length(${t.documentNumber}) between 1 and 100)
         and (${t.itemKey} is null or char_length(${t.itemKey}) between 1 and 200)`,
+    ),
+    // An invoice holds at most 200 lines (S05 rule 22): a milestone key each and its project's.
+    check(
+      'inbound_events_order_keys',
+      sql`cardinality(${t.orderKeys}) <= 201 and array_position(${t.orderKeys}, null) is null`,
     ),
     check('inbound_events_request_id', sql`char_length(${t.requestId}) between 1 and 200`),
   ],

@@ -260,6 +260,11 @@ export const paymentVoidedV1Schema = z
 
 export type PaymentVoidedV1 = z.infer<typeof paymentVoidedV1Schema>;
 
+/**
+ * A milestone reported done in Hub (S06 rule 11). `service` is the milestone's service, which a
+ * milestone not invoiced recognises on (optional in `/v1`, ADR 0006; a done without it is held for
+ * the accountant, `milestone_service_missing`).
+ */
 export const milestoneDoneV1Schema = z
   .object({
     milestone: hubDocumentIdSchema,
@@ -268,6 +273,7 @@ export const milestoneDoneV1Schema = z
     currency: hubCurrencySchema,
     amount: positiveMinorSchema,
     done_on: hubDateSchema,
+    service: hubValueRefSchema.optional(),
   })
   .meta({ id: 'MilestoneDoneV1' });
 
@@ -558,6 +564,40 @@ export function itemKeyOf(event: EventEnvelope): string | null {
       return `project:${event.payload.project.external_id}`;
     case 'rate.changed':
       return null;
+  }
+}
+
+/**
+ * The further item keys an event takes part in besides its own (S06 rule 17), so it waits behind a
+ * held event of any of them and frees them when it leaves held: an invoice with a deposit or
+ * milestone line, `milestone:<id>` of each and `project:<id>` of its project; a milestone's done or
+ * reopen, `project:<id>`; the void of such an invoice, `project:<id>`, read from its issue
+ * (`issued`, the invoice's `invoice.issued` as received, or null when it has not arrived).
+ */
+export function orderKeysOf(event: EventEnvelope, issued: InvoiceIssuedV1 | null = null): string[] {
+  const ofInvoice = (invoice: InvoiceIssuedV1, milestones: boolean): string[] => {
+    const lines = invoice.lines.filter(
+      (line) =>
+        (line.source === 'deposit' || line.source === 'milestone') &&
+        line.milestone_id !== undefined,
+    );
+    if (lines.length === 0) return [];
+    const keys = milestones
+      ? [...new Set(lines.map((line) => `milestone:${line.milestone_id as string}`))]
+      : [];
+    if (invoice.contract?.kind === 'project') keys.push(`project:${invoice.contract.external_id}`);
+    return keys;
+  };
+  switch (event.type) {
+    case 'invoice.issued':
+      return ofInvoice(event.payload, true);
+    case 'invoice.voided':
+      return issued === null ? [] : ofInvoice(issued, false);
+    case 'milestone.done':
+    case 'milestone.reopened':
+      return [`project:${event.payload.project.external_id}`];
+    default:
+      return [];
   }
 }
 
