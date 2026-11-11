@@ -439,6 +439,8 @@ test.describe('invitation', () => {
       await page.getByLabel(t.fields.email).fill(newPersonInvitation.email);
       await page.getByLabel(t.fields.password, { exact: true }).fill(password);
       await page.getByRole('button', { name: t.signIn.submit }).click();
+      // The code goes into the two-factor step, not into the sign-in form still on screen.
+      await expect(page).toHaveURL(/\/sign-in\/two-factor\?redirect=%2Finvitation/);
       await page.getByRole('textbox').first().click();
       await page.keyboard.type('123456');
       // Back without the fragment: the token waited in this tab's session storage.
