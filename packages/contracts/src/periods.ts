@@ -16,6 +16,11 @@ export const periodSchema = z
   .regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'Expected a month as YYYY-MM')
   .meta({ id: 'Period' });
 
+/** A route's month (`/api/revaluation/:period`). */
+export const periodParamSchema = z.object({ period: periodSchema }).meta({ id: 'PeriodParam' });
+
+export type PeriodParam = z.infer<typeof periodParamSchema>;
+
 /** A ledger's revaluation of a month (S07 rule 15, "API"). */
 export const REVALUATION_STATES = ['current', 'to_post', 'rate_missing'] as const;
 

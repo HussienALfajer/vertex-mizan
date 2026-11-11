@@ -9,8 +9,8 @@ Spec: `docs/specs/S07-revaluation-periods-close.md` (Approved, owner 2026-11-11)
 - [x] db: the revaluation service — the preview per ledger (closing rates under each policy with their rows and dates, a third currency through the cross, `RATE_MISSING`, blocked accounts and archived values marked, `state`, `fingerprint`), the posting through `post()` (source `revaluation`, the head lock, recomputed and refused `REVALUATION_CHANGED`, idempotency key `revaluation:<period>:<ledger>:<fingerprint>`, `PERIOD_NOT_ENDED` in Asia/Damascus, `PERIOD_CLOSED`, the reversal on the next month's first day in the same transaction, adjusting revaluations, the `revaluation.posted` audit row); manual reversal of a revaluation refused `ENTRY_NOT_REVERSIBLE`
 - [x] db tests: invariants as `mizan_app` (`revaluations` append-only under forced RLS; invariant 9 ignoring revaluation movements), isolation, two postings of the same preview at once
 - [x] scenarios: the `revalue` and `block` executors; `currency/month-end-revaluation` `Approved (owner, 2026-11-11)`, no expected value changed, counted as run
-- [ ] api: `GET /api/revaluation/:period?ledger=` (`periods.read`) and `POST /api/revaluation/:period` (`revaluation.post`); tests (success, 401, 403, another company, rules 16 and 17, an idempotent double submit)
-- [ ] bridge: OpenAPI regenerated, breaking-change check
+- [x] api: `GET /api/revaluation/:period?ledger=` (`periods.read`) and `POST /api/revaluation/:period` (`revaluation.post`); tests (success, 401, 403, another company, rules 16 and 17, an idempotent double submit)
+- [x] bridge: OpenAPI regenerated, breaking-change check
 - [ ] wiring (Contracts, Ledger, Database, API), docs (`packages/*/CLAUDE.md`, `apps/api/CLAUDE.md`, `docs/glossary.md`, `docs/ROADMAP.md`)
 - [ ] checks and reviewers (`reviewer`, `accountant-reviewer`), PR with auto-merge and Auto-fix
 
