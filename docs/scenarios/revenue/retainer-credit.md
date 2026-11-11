@@ -1,12 +1,12 @@
 # Credits on a retainer cycle
 
-Status: Approved (owner, 2026-11-10)
+Status: Approved (owner, 2026-11-11)
 
-S06 wrote these cases (S06 "Scenarios"); the owner approved their expected entries and outcomes on 2026-11-10, with three readings of S06 rule 6: a credit is shared across the cycle's schedules by each one's amount net of earlier credits; on each, the share already recognised reduces revenue and the rest the liability; and an invoice whose total the credit brings to zero has no receivable line and no item. After the accounting review the owner approved, the same day, three more decisions and their cases: a credit first releases the months of its cycle that ended before its date; a credit's void releases on its date, at the carried amounts, the part it gives back for the months released since the credit (option A, which changes the entries of the case "the void of the credit invoice", not its months' totals); and the case of an SYP cycle at Vertex Media. S06's feature slice (PR 3) brought their executors, so they run `Approved` with the date of the last approval: the posting rules of `invoice.issued` with over-time and credit lines, `invoice.voided` of an invoice with schedules or credits, the release job `revenue_release_month` and the holds `UNKNOWN_REFERENCE` (`credit_cycle`) and `NEEDS_DECISION` (`credit_cycle_voided`, `credit_exceeds_cycle`, `schedule_credited`) (S06 rules 1, 2, 4–6, 8, 18, 19).
+S06 wrote these cases (S06 "Scenarios"); the owner approved their expected entries and outcomes on 2026-11-10, with three readings of S06 rule 6: a credit is shared across the cycle's schedules by each one's amount net of earlier credits; on each, the share already recognised reduces revenue and the rest the liability; and an invoice whose total the credit brings to zero has no receivable line and no item. After the accounting review the owner approved, the same day, three more decisions and their cases: a credit first releases the months of its cycle that ended before its date; a credit's void releases on its date, at the carried amounts, the part it gives back for the months released since the credit (option A, which changes the entries of the case "the void of the credit invoice", not its months' totals); and the case of an SYP cycle at Vertex Media. On 2026-11-11, after the reviews of S06's PR 3, the owner approved two more cases and their decision: a credit and a credit's void are measured as of their own date whenever they post, the months released since recut by adjustments at the carried amounts on their last days (a credit processed after its cycle's later months were released; a credit's void processed after a later month's release), and the corrected balance of `112001` in the case of a credit that brings the invoice to zero (INV-2026-42's receivable stays open). S06's feature slice (PR 3) brought their executors, so they run `Approved` with the date of the last approval: the posting rules of `invoice.issued` with over-time and credit lines, `invoice.voided` of an invoice with schedules or credits, the release job `revenue_release_month` and the holds `UNKNOWN_REFERENCE` (`credit_cycle`) and `NEEDS_DECISION` (`credit_cycle_voided`, `credit_exceeds_cycle`, `schedule_credited`) (S06 rules 1, 2, 4–6, 8, 18, 19).
 
 ## Rule
 
-A retainer `credit` line (negative) reduces the cycle it names: the retainer of its invoice and the line's `cycle_start`. The credit is shared among the cycle's active over-time schedules (its `monthly` and `addition` lines) in proportion to each schedule's amount net of earlier credits, with cumulative rounding in the order the schedules were created. On each schedule, on the credit invoice's date and inside that invoice's one entry, the credit's part is split by what the schedule has recognised so far (its releases and elapsed parts, out of its amount net of earlier credits): that share reduces service revenue, a new measurement at the credit invoice's rates (cumulative catch-up); the rest reduces the contract liability at the schedule's carried amounts for that transaction amount, rounded in proportion to what remains in each ledger. The months not yet released then cut what remains of the schedule by their days, in every ledger, with cumulative rounding (prospective). The receivable is the invoice's total, net of the credit; each ledger's residual of the entry is a realised exchange difference. A credit whose cycle has no schedule is held `UNKNOWN_REFERENCE` (`credit_cycle`) and retried when the cycle's invoice posts; one whose cycle's schedules are all voided, or that is larger than the cycle's amount net of earlier credits, is held `NEEDS_DECISION`. Before the split, the credit posts in the same transaction the release of every month of the cycle that ended before its date, so the share recognised never depends on when the month's job ran. A void of the credit invoice reverses its entry and gives the credited schedules their liability part back: the share of it for the months released since the credit (by their days, out of the days not released when the credit posted) is released on the void date at its carried amounts, all of it when no month is left; the rest joins what the later months release. A void of a credited cycle while the credit stands is held `NEEDS_DECISION` (`schedule_credited`).
+A retainer `credit` line (negative) reduces the cycle it names: the retainer of its invoice and the line's `cycle_start`. The credit is shared among the cycle's active over-time schedules (its `monthly` and `addition` lines) in proportion to each schedule's amount net of earlier credits, with cumulative rounding in the order the schedules were created. On each schedule, on the credit invoice's date and inside that invoice's one entry, the credit's part is split by what the schedule has recognised so far (its releases and elapsed parts, out of its amount net of earlier credits): that share reduces service revenue, a new measurement at the credit invoice's rates (cumulative catch-up); the rest reduces the contract liability at the schedule's carried amounts for that transaction amount, rounded in proportion to what remains in each ledger. The months not yet released then cut what remains of the schedule by their days, in every ledger, with cumulative rounding (prospective). The receivable is the invoice's total, net of the credit; each ledger's residual of the entry is a realised exchange difference. A credit whose cycle has no schedule is held `UNKNOWN_REFERENCE` (`credit_cycle`) and retried when the cycle's invoice posts; one whose cycle's schedules are all voided, or that is larger than the cycle's amount net of earlier credits, is held `NEEDS_DECISION`. Before the split, the credit posts in the same transaction the release of every month of the cycle that ended before its date, so the share recognised never depends on when the month's job ran. A void of the credit invoice reverses its entry and gives the credited schedules their liability part back: the share of it for the months released since the credit (by their days, out of the days not released when the credit posted) is released on the void date at its carried amounts, all of it when no month is left; the rest joins what the later months release. A void of a credited cycle while the credit stands is held `NEEDS_DECISION` (`schedule_credited`). A credit and a credit's void are each measured as of their own date, whenever they post (owner, 2026-11-11): what was recognised and released counts only for the months that ended before that date; each month released since, which the credit or the void would have cut, is recut as of that date and corrected by an adjustment at the carried amounts, dated on the month's last day (on the first day of the first open period when the month is closed), so the books end as in Hub's order.
 
 ## Basis
 
@@ -513,6 +513,165 @@ expect:
         - { account: "411001", dims: { client: C1, contract: R1, service: S1 }, currency: USD, amount: -5000, book: -605000, parallel: -5000 }
   balances:
     - { account: "212001", book: 0, parallel: 0 }
+    - { account: "411001", dims: { service: S1 }, book: -10890000, parallel: -90000 }
+    - { account: "411001", dims: { service: S3 }, book: 0, parallel: 0 }
+```
+
+### Vertex Media: a credit processed after its cycle's later months were released
+
+The credit of 19 November (50.00 USD) arrives before its cycle's invoice and is held `UNKNOWN_REFERENCE` (`credit_cycle`). The cycle's invoice of 15 November arrives only on 1 January: it posts, and in its own transaction November's and December's releases at 16/30 and 14/30 of 900.00 USD (S06 rule 5). The credit is then retried and posts, dated 19 November, as of its own date (owner, 2026-11-11): nothing of the cycle had been recognised on 19 November, so all of it reduces the liability, as in the case "a credit received before its cycle's invoice". The months released since, which the credit would have cut, are each recut as of the credit's date and corrected by an adjustment dated on the month's last day, at the carried amounts: November 480.00 becomes 453.33, December 420.00 becomes 396.67, as if the events had arrived in Hub's order. A month that is closed takes its adjustment on the first day of the first open period, as a closed month's release does.
+
+```yaml
+case: a 50.00 USD credit of 19 Nov posted after November and December were released; as of its date all of it to the liability, then November and December recut by adjustments on their last days
+company: { shape: syp-usd, book: SYP, parallel: USD, template: service-agency,
+           rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true } }
+rates:
+  - { date: 2026-11-15, base: USD, quote: SYP, rate: "121.0000", type: bulletin }
+  - { date: 2026-11-19, base: USD, quote: SYP, rate: "121.0000", type: bulletin }
+steps:
+  - event: invoice.issued
+    accounting_date: 2026-11-19
+    payload: { invoice: INV-2026-46, client: C1, contract: { code: R1, kind: retainer, client: C1 },
+               currency: USD, syp_per_usd: "122.0000", issued_on: 2026-11-19, due_on: 2026-12-04,
+               lines: [{ line: L1, amount: 10000, source: extra_work, service: S3 },
+                       { line: L2, amount: -5000, source: retainer_charge, kind: credit,
+                         cycle_start: 2026-11-15, service: S1 }] }
+    outcome: { status: held, reason: UNKNOWN_REFERENCE, detail: credit_cycle }
+  - job: revenue_release_month
+    period: 2026-11
+  - job: revenue_release_month
+    period: 2026-12
+  - event: invoice.issued
+    accounting_date: 2026-11-15
+    payload: { invoice: INV-2026-40, client: C1, contract: { code: R1, kind: retainer, client: C1 },
+               currency: USD, syp_per_usd: "122.0000", issued_on: 2026-11-15, due_on: 2026-11-30,
+               lines: [{ line: L1, amount: 90000, source: retainer_charge, kind: monthly,
+                         cycle_start: 2026-11-15, cycle_end: 2026-12-14, service: S1 }] }
+expect:
+  entries:
+    - source: invoice.issued
+      date: 2026-11-15
+      lines:
+        - { account: "112001", dims: { client: C1, contract: R1 }, currency: USD, amount: 90000, book: 10890000, parallel: 90000 }
+        - { account: "212001", dims: { client: C1, contract: R1 }, currency: USD, amount: -90000, book: -10890000, parallel: -90000 }
+    - source: revenue_release
+      date: 2026-11-30
+      lines:
+        # posted in the cycle invoice's transaction on 1 Jan (S06 rule 5): 16 / 30 of 900.00
+        - { account: "212001", dims: { client: C1, contract: R1 }, currency: USD, amount: 48000, book: 5808000, parallel: 48000 }
+        - { account: "411001", dims: { client: C1, contract: R1, service: S1 }, currency: USD, amount: -48000, book: -5808000, parallel: -48000 }
+    - source: revenue_release
+      date: 2026-12-31
+      lines:
+        - { account: "212001", dims: { client: C1, contract: R1 }, currency: USD, amount: 42000, book: 5082000, parallel: 42000 }
+        - { account: "411001", dims: { client: C1, contract: R1, service: S1 }, currency: USD, amount: -42000, book: -5082000, parallel: -42000 }
+    - source: invoice.issued
+      date: 2026-11-19
+      lines:
+        # as of 19 Nov nothing was recognised (no month had ended): all 5,000 to the liability,
+        # carried 10,890,000 × 5,000 / 90,000 = 605,000; residual 0, no line
+        - { account: "112001", dims: { client: C1, contract: R1 }, currency: USD, amount: 5000, book: 605000, parallel: 5000 }
+        - { account: "411001", dims: { client: C1, contract: R1, service: S3 }, currency: USD, amount: -10000, book: -1210000, parallel: -10000 }
+        - { account: "212001", dims: { client: C1, contract: R1 }, currency: USD, amount: 5000, book: 605000, parallel: 5000 }
+    - source: invoice.issued
+      date: 2026-11-30
+      lines:
+        # November recut as of 19 Nov: 85,000 × 16 / 30 = 45,333; book 10,285,000 × 16 / 30 = 5,485,333;
+        # released 48,000 / 5,808,000, so 2,667 / 322,667 too much, carried back to the liability
+        - { account: "411001", dims: { client: C1, contract: R1, service: S1 }, currency: USD, amount: 2667, book: 322667, parallel: 2667 }
+        - { account: "212001", dims: { client: C1, contract: R1 }, currency: USD, amount: -2667, book: -322667, parallel: -2667 }
+    - source: invoice.issued
+      date: 2026-12-31
+      lines:
+        # December, the last month, takes what remains: 85,000 − 45,333 = 39,667; book 4,799,667;
+        # released 42,000 / 5,082,000, so 2,333 / 282,333 too much
+        - { account: "411001", dims: { client: C1, contract: R1, service: S1 }, currency: USD, amount: 2333, book: 282333, parallel: 2333 }
+        - { account: "212001", dims: { client: C1, contract: R1 }, currency: USD, amount: -2333, book: -282333, parallel: -2333 }
+  balances:
+    - { account: "212001", book: 0, parallel: 0 }
+    # November 45,333 and December 39,667, as in Hub's order: 850.00 USD
+    - { account: "411001", dims: { service: S1 }, book: -10285000, parallel: -85000 }
+    - { account: "411001", dims: { service: S3 }, book: -1210000, parallel: -10000 }
+```
+
+### Vertex Media: a credit's void processed after a later month's release
+
+The credit of 19 November (50.00 USD, all to the liability) posts on time, and November releases 16/30 of 850.00. Hub voids the credit invoice on 3 December, but the void arrives only on 1 January, after December's job released the rest of the credited cycle, 396.67 USD. The void posts as of its own date (owner, 2026-11-11): its reversal, then the share of what comes back for the months released between the credit and the void (November's 16 of the 30 days not released at the credit), 26.67 USD on 3 December, as in the case "the void of the credit invoice". December, released since the void's date, is recut as of it: it should have released 420.00, so an adjustment dated 31 December releases the 23.33 USD more, carried.
+
+```yaml
+case: a 50.00 USD credit voided on 3 Dec, the void received after December's release; 16/30 of the 50.00 released on 3 Dec, and December brought to 420.00 by an adjustment on 31 Dec
+company: { shape: syp-usd, book: SYP, parallel: USD, template: service-agency,
+           rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true } }
+rates:
+  - { date: 2026-11-15, base: USD, quote: SYP, rate: "121.0000", type: bulletin }
+  - { date: 2026-11-19, base: USD, quote: SYP, rate: "121.0000", type: bulletin }
+steps:
+  - event: invoice.issued
+    accounting_date: 2026-11-15
+    payload: { invoice: INV-2026-40, client: C1, contract: { code: R1, kind: retainer, client: C1 },
+               currency: USD, syp_per_usd: "122.0000", issued_on: 2026-11-15, due_on: 2026-11-30,
+               lines: [{ line: L1, amount: 90000, source: retainer_charge, kind: monthly,
+                         cycle_start: 2026-11-15, cycle_end: 2026-12-14, service: S1 }] }
+  - event: invoice.issued
+    accounting_date: 2026-11-19
+    payload: { invoice: INV-2026-46, client: C1, contract: { code: R1, kind: retainer, client: C1 },
+               currency: USD, syp_per_usd: "122.0000", issued_on: 2026-11-19, due_on: 2026-12-04,
+               lines: [{ line: L1, amount: 10000, source: extra_work, service: S3 },
+                       { line: L2, amount: -5000, source: retainer_charge, kind: credit,
+                         cycle_start: 2026-11-15, service: S1 }] }
+  - job: revenue_release_month
+    period: 2026-11
+  - job: revenue_release_month
+    period: 2026-12
+  - event: invoice.voided
+    accounting_date: 2026-12-03
+    payload: { invoice: INV-2026-46, voided_on: 2026-12-03, reason: "أُلغي الإشعار الدائن في Hub" }
+expect:
+  entries:
+    - source: invoice.issued
+      date: 2026-11-15
+      lines:
+        - { account: "112001", dims: { client: C1, contract: R1 }, currency: USD, amount: 90000, book: 10890000, parallel: 90000 }
+        - { account: "212001", dims: { client: C1, contract: R1 }, currency: USD, amount: -90000, book: -10890000, parallel: -90000 }
+    - source: invoice.issued
+      date: 2026-11-19
+      lines:
+        - { account: "112001", dims: { client: C1, contract: R1 }, currency: USD, amount: 5000, book: 605000, parallel: 5000 }
+        - { account: "411001", dims: { client: C1, contract: R1, service: S3 }, currency: USD, amount: -10000, book: -1210000, parallel: -10000 }
+        - { account: "212001", dims: { client: C1, contract: R1 }, currency: USD, amount: 5000, book: 605000, parallel: 5000 }
+    - source: revenue_release
+      date: 2026-11-30
+      lines:
+        - { account: "212001", dims: { client: C1, contract: R1 }, currency: USD, amount: 45333, book: 5485333, parallel: 45333 }
+        - { account: "411001", dims: { client: C1, contract: R1, service: S1 }, currency: USD, amount: -45333, book: -5485333, parallel: -45333 }
+    - source: revenue_release
+      date: 2026-12-31
+      lines:
+        # the rest of the credited cycle: 85,000 − 45,333 = 39,667; book 10,285,000 − 5,485,333 = 4,799,667
+        - { account: "212001", dims: { client: C1, contract: R1 }, currency: USD, amount: 39667, book: 4799667, parallel: 39667 }
+        - { account: "411001", dims: { client: C1, contract: R1, service: S1 }, currency: USD, amount: -39667, book: -4799667, parallel: -39667 }
+    - source: invoice.voided
+      date: 2026-12-03
+      lines:
+        - { account: "112001", dims: { client: C1, contract: R1 }, currency: USD, amount: -5000, book: -605000, parallel: -5000 }
+        - { account: "411001", dims: { client: C1, contract: R1, service: S3 }, currency: USD, amount: 10000, book: 1210000, parallel: 10000 }
+        - { account: "212001", dims: { client: C1, contract: R1 }, currency: USD, amount: -5000, book: -605000, parallel: -5000 }
+    - source: invoice.voided
+      date: 2026-12-03
+      lines:
+        # as of 3 Dec only November was released since the credit: 16 of the 30 days, 2,667 / 322,667, carried
+        - { account: "212001", dims: { client: C1, contract: R1 }, currency: USD, amount: 2667, book: 322667, parallel: 2667 }
+        - { account: "411001", dims: { client: C1, contract: R1, service: S1 }, currency: USD, amount: -2667, book: -322667, parallel: -2667 }
+    - source: invoice.voided
+      date: 2026-12-31
+      lines:
+        # December recut as of 3 Dec: what remains, 39,667 + 2,333 = 42,000 / 4,799,667 + 282,333 = 5,082,000;
+        # released 39,667 / 4,799,667, so 2,333 / 282,333 more, carried
+        - { account: "212001", dims: { client: C1, contract: R1 }, currency: USD, amount: 2333, book: 282333, parallel: 2333 }
+        - { account: "411001", dims: { client: C1, contract: R1, service: S1 }, currency: USD, amount: -2333, book: -282333, parallel: -2333 }
+  balances:
+    - { account: "212001", book: 0, parallel: 0 }
+    # November 453.33 + 26.67 on 3 Dec, December 420.00: the cycle's 900.00, as in Hub's order
     - { account: "411001", dims: { service: S1 }, book: -10890000, parallel: -90000 }
     - { account: "411001", dims: { service: S3 }, book: 0, parallel: 0 }
 ```
