@@ -15,6 +15,8 @@ export const STEPS_ARRIVE_WITH = {
   dismiss: 'inbox actions arrive with S05',
   recognise: 'recognising in the first open period arrives with S06',
   split: "splitting a cancelled project's remainder arrives with S06",
+  revalue: 'the month-end revaluation arrives with S07',
+  block: 'blocking an account in the book arrives with S07',
 } as const satisfies Record<StepKind, string>;
 
 /** A case that did not do what its scenario states: every difference, one per line. */
@@ -140,6 +142,14 @@ function executorFor(harness: ScenarioHarness, step: Step): Run | undefined {
       const execute = harness.executors.split;
       return execute && ((context) => execute(context, step));
     }
+    case 'revalue': {
+      const execute = harness.executors.revalue;
+      return execute && ((context) => execute(context, step));
+    }
+    case 'block': {
+      const execute = harness.executors.block;
+      return execute && ((context) => execute(context, step));
+    }
   }
 }
 
@@ -170,6 +180,10 @@ function describeStep(step: Step): string {
       return `recognition of step ${step.step} in the first open period`;
     case 'split':
       return `split of step ${step.step}'s remainder with ${step.revenueMinor} to revenue`;
+    case 'revalue':
+      return `revaluation of the ${step.ledger} ledger for ${step.period}`;
+    case 'block':
+      return `block of account ${step.account}`;
   }
 }
 

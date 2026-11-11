@@ -60,7 +60,7 @@ const dimensionsSchema = z.record(
   z.string().min(1),
 );
 
-/** An event type (`invoice.issued`), a job (`month_end_revaluation`) or `manual`. */
+/** An event type (`invoice.issued`), a job (`revenue_release_month`), `manual`, `revaluation` or `reversal`. */
 const sourceSchema = z
   .string()
   .regex(/^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)*$/, 'Expected an event type, a job or manual');
@@ -74,7 +74,7 @@ const eventTypeSchema = z
 
 const jobNameSchema = z
   .string()
-  .regex(/^[a-z][a-z0-9_]*$/, 'Expected a job name such as month_end_revaluation');
+  .regex(/^[a-z][a-z0-9_]*$/, 'Expected a job name such as revenue_release_month');
 
 /** The currency shapes of ADR 0007 and ADR 0008: the book and parallel currency of each. */
 export const SHAPES = {
@@ -308,7 +308,7 @@ const stepOutcome = { outcome: outcomeSchema.optional() };
 /**
  * A step is told apart by its one key: `event`, `manual`, `reversal`, `job` or `rate`, or one of
  * the accountant's actions on a held event (S05 rules 15–17): `retry`, `move`, `resolve`, `dismiss`;
- * and S06's `recognise` and `split` (rule 16).
+ * S06's `recognise` and `split` (rule 16); S07's `revalue` (rules 10–18) and `block` (S02 rule 5).
  */
 export const STEP_KINDS = [
   'event',
@@ -322,6 +322,8 @@ export const STEP_KINDS = [
   'dismiss',
   'recognise',
   'split',
+  'revalue',
+  'block',
 ] as const;
 
 export type StepKind = (typeof STEP_KINDS)[number];
@@ -509,6 +511,40 @@ const splitStepSchema = z
     outcome: step.outcome ?? null,
   }));
 
+/**
+ * The accountant's month-end revaluation of one ledger (S07 rules 10–18): the preview's
+ * differences, dated on the month's last day, with their reversal on the next month's first day;
+ * nothing when every difference is zero.
+ */
+const revalueStepSchema = z
+  .strictObject({
+    kind: z.literal('revalue'),
+    revalue: z.enum(['book', 'parallel'], { error: 'Expected the ledger: book or parallel' }),
+    period: periodSchema,
+    ...stepOutcome,
+  })
+  .transform((step) => ({
+    kind: step.kind,
+    ledger: step.revalue,
+    period: step.period,
+    outcome: step.outcome ?? null,
+  }));
+
+/** Block an account with a reason, as the accountant does in the chart (S02 rule 5). */
+const blockStepSchema = z
+  .strictObject({
+    kind: z.literal('block'),
+    block: accountSchema,
+    reason: actionReasonSchema,
+    ...stepOutcome,
+  })
+  .transform((step) => ({
+    kind: step.kind,
+    account: step.block,
+    reason: step.reason,
+    outcome: step.outcome ?? null,
+  }));
+
 const stepSchema = z.preprocess(
   (value) => {
     if (typeof value !== 'object' || value === null || Array.isArray(value)) return value;
@@ -529,11 +565,13 @@ const stepSchema = z.preprocess(
       dismissStepSchema,
       recogniseStepSchema,
       splitStepSchema,
+      revalueStepSchema,
+      blockStepSchema,
     ],
     {
       error:
         'Expected a step with one of the keys event, manual, reversal, job, rate, retry, move, ' +
-        'resolve, dismiss, recognise or split',
+        'resolve, dismiss, recognise, split, revalue or block',
     },
   ),
 );
@@ -708,6 +746,9 @@ export const caseSchema = z
     for (const [s, step] of steps.entries()) {
       if (step.kind === 'reversal' && step.entry > entries.length) {
         issue(`Entry ${step.entry} is not an expected entry`, ['steps', s, 'reversal']);
+      }
+      if (step.kind === 'revalue' && step.ledger === 'parallel' && parallel === null) {
+        issue('The company keeps no parallel ledger to revalue', ['steps', s, 'revalue']);
       }
       // S05 rules 15–17, S06 rule 16: an action names an earlier event step, and a resolve an
       // expected entry.
