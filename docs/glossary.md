@@ -68,9 +68,13 @@ One name per concept. Code, contracts and tables use the English term; the Arabi
 | قائمة الدخل | income statement | Revenue and expenses for a period |
 | الميزانية العمومية / قائمة المركز المالي | balance sheet | Assets, liabilities and equity at a date |
 | السنة المالية | fiscal year | The calendar year by default |
-| الفترة | period | A month of the fiscal year: open or closed |
+| الفترة | period | A month of the fiscal year: open, closed or reopened (ADR 0016) |
 | إقفال الفترة / إعادة فتحها | close / reopen a period | Stop / allow postings dated inside it |
 | قائمة التحقق قبل الإقفال | pre-close checklist | Conditions a period must meet before it closes |
+| فترة معاد فتحها | reopened period | A closed month opened again with a reason; it takes postings as an open one |
+| سعر الإقفال | closing rate | A ledger's policy rate in force on a month's last day, used by the revaluation (IAS 21.23) |
+| إعادة تقييم حالية / قديمة | current / stale revaluation | Whether recomputing a month's revaluation gives no difference (ADR 0016) |
+| قيد تسوية لإعادة التقييم | adjusting revaluation | The differences a stale revaluation still needs, posted on the same month end with its own reversal |
 | عملة الدفاتر | book currency | The currency of the statutory books (SYP by default and for Vertex Media) |
 | العملة الموازية | parallel currency | The currency of the optional full parallel ledger (USD for Vertex Media) |
 | الدفتر الموازي | parallel ledger | A complete ledger in the parallel currency, with its own exchange differences and revaluation |
