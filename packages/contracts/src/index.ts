@@ -21,3 +21,4 @@ export * from './money-text.js';
 export * from './open-items.js';
 export * from './people.js';
 export * from './rates.js';
+export * from './revenue.js';

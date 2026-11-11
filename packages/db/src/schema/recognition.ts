@@ -46,6 +46,8 @@ export const RECOGNITION_MOVEMENT_KINDS = [
   'reversed',
   'remainder_released',
   'remainder_refunded',
+  // A month released since a credit's or a credit's void's date, recut as of it (owner, 2026-11-11).
+  'adjusted',
 ] as const;
 
 const listed = (values: readonly string[]) =>
@@ -182,6 +184,12 @@ export const recognitionMovements = pgTable(
     bookMinor: bigint({ mode: 'bigint' }).notNull(),
     parallelMinor: bigint({ mode: 'bigint' }),
     serviceValueId: uuid(),
+    /**
+     * A credit's part of the schedule's transaction amount, its revenue and liability parts
+     * together (S06 rule 6): positive on a credit, negative on its void. The schedule's amount net
+     * of credits is its line's amount less their sum; only on a `credited` movement.
+     */
+    creditMinor: bigint({ mode: 'bigint' }),
     createdAt: createdAt(),
   },
   (t) => [
@@ -212,7 +220,7 @@ export const recognitionMovements = pgTable(
     check(
       'recognition_movements_month',
       sql`(${t.month} is null or extract(day from ${t.month}) = 1)
-        and (${t.kind} not in ('elapsed') or ${t.month} is not null)`,
+        and (${t.kind} not in ('elapsed', 'adjusted') or ${t.month} is not null)`,
     ),
     check(
       'recognition_movements_entry',
@@ -223,6 +231,11 @@ export const recognitionMovements = pgTable(
     check(
       'recognition_movements_service',
       sql`(${t.kind} = 'reclassified') = (${t.serviceValueId} is not null)`,
+    ),
+    check(
+      'recognition_movements_credit',
+      sql`(${t.kind} = 'credited') = (${t.creditMinor} is not null)
+        and (${t.creditMinor} is null or ${t.creditMinor} <> 0)`,
     ),
   ],
 );

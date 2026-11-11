@@ -4,9 +4,11 @@ import {
   type EventEnvelope,
   money,
   parseEventEnvelope,
+  REVENUE_MOVEMENT_KINDS,
 } from '@vertex-mizan/contracts';
-import { negate } from '@vertex-mizan/ledger';
+import { negate, recognitionProblems } from '@vertex-mizan/ledger';
 import { and, asc, eq, sql } from 'drizzle-orm';
+import fc from 'fast-check';
 import { v7 as uuidv7 } from 'uuid';
 import { beforeAll, describe, expect, it } from 'vitest';
 import {
@@ -25,6 +27,8 @@ import {
   type PersonActor,
   post,
   postingRuleAccounts,
+  RECOGNITION_MOVEMENT_KINDS,
+  readRecognitionState,
   receiveEvent,
   recogniseEvent,
   recognitionMovements,
@@ -32,6 +36,7 @@ import {
   recordRate,
   releaseMonth,
   resolveEvent,
+  retryEvent,
   retryFreed,
   splitEvent,
   type Transaction,
@@ -706,29 +711,6 @@ describe('the holds of over-time recognition (S06 rules 1, 7, 8, 16, 18)', () =>
     ).rejects.toMatchObject({ code: 'EVENT_ACTION_NOT_ALLOWED' });
   });
 
-  it('holds the void of a deferred invoice until S06’s void rule deploys', async () => {
-    const company = await newCompany([['2026-11-15', '121.0000']]);
-    await receive(
-      company,
-      cycle(20, '2026-11-15', 90_000, '2026-11-15', '2026-12-14'),
-      '2026-11-15',
-    );
-    const voided = await receive(
-      company,
-      envelope('invoice.voided', '2026-11-20', {
-        invoice: invoiceRef(20),
-        voided_on: '2026-11-20',
-        reason: 'خطأ',
-      }),
-      '2026-11-20',
-    );
-    expect(voided.event).toMatchObject({
-      state: 'held',
-      reason: 'NO_MAPPING',
-      detail: 'deferred_revenue',
-    });
-  });
-
   it('leaves a month’s release missing, with its reason, while the revenue slot is unmapped', async () => {
     const company = await newCompany([['2026-11-15', '121.0000']]);
     await receive(
@@ -752,6 +734,315 @@ describe('the holds of over-time recognition (S06 rules 1, 7, 8, 16, 18)', () =>
         },
       ],
     });
+  });
+});
+
+/** The integrity check's recognition proof on the company's books (S06 "Data"). */
+const proof = (companyId: string) =>
+  inCompany(companyId, async (tx) => recognitionProblems(await readRecognitionState(tx)));
+
+/** An invoice of the retainer with extra work and a credit to a cycle (`revenue/retainer-credit`). */
+const creditInvoice = (n: number, on: string, extra: number, credit: number, cycleStart: string) =>
+  envelope('invoice.issued', on, {
+    invoice: invoiceRef(n),
+    client: C1,
+    contract: R1,
+    currency: 'USD',
+    syp_per_usd: '122.0000',
+    issued_on: on,
+    due_on: '2026-12-31',
+    lines: [
+      { id: ids(300 + n), amount: extra, service: S2, source: 'extra_work' },
+      {
+        id: ids(400 + n),
+        amount: credit,
+        service: S1,
+        source: 'retainer_charge',
+        charge_kind: 'credit',
+        cycle_start: cycleStart,
+      },
+    ],
+  });
+
+const voidOf = (n: number, on: string) =>
+  envelope('invoice.voided', on, { invoice: invoiceRef(n), voided_on: on, reason: 'أُلغيت في Hub' });
+
+describe('credits, voids and re-issues (S06 rules 6, 8, 9)', () => {
+  it('credits a cycle, then its void gives the part back: 16/30 released on the void date, the rest in December', async () => {
+    const company = await newCompany([
+      ['2026-11-15', '121.0000'],
+      ['2026-11-19', '121.0000'],
+    ]);
+    await receive(
+      company,
+      cycle(40, '2026-11-15', 90_000, '2026-11-15', '2026-12-14'),
+      '2026-11-15',
+    );
+    const credit = await receive(
+      company,
+      creditInvoice(46, '2026-11-19', 10_000, -5_000, '2026-11-15'),
+      '2026-11-19',
+    );
+    expect(credit.event).toMatchObject({ state: 'posted' });
+    await runJob(company, '2026-11', '2026-12-01');
+    const voiding = voidOf(46, '2026-12-03');
+    const voided = await receive(company, voiding, '2026-12-03');
+    expect(voided.event).toMatchObject({ state: 'posted' });
+    // A replay of the void posts nothing new.
+    expect((await receive(company, voiding, '2026-12-03')).replayed).toBe(true);
+    await runJob(company, '2026-12', '2027-01-01');
+    const entries = await ledger(company);
+    expect(entries.map((entry) => [entry.source, entry.date])).toEqual([
+      ['hub_event', '2026-11-15'],
+      ['hub_event', '2026-11-19'],
+      ['revenue_release', '2026-11-30'],
+      ['hub_event', '2026-12-03'],
+      ['hub_event', '2026-12-03'],
+      ['revenue_release', '2026-12-31'],
+    ]);
+    expect(entries[4]?.lines).toEqual([
+      ['212001', 'USD', 2_667n, 322_667n, 2_667n],
+      ['411001', 'USD', -2_667n, -322_667n, -2_667n],
+    ]);
+    expect(entries[5]?.lines).toEqual([
+      ['212001', 'USD', 42_000n, 5_082_000n, 42_000n],
+      ['411001', 'USD', -42_000n, -5_082_000n, -42_000n],
+    ]);
+    // The cycle is fully released, and the credit's movements were given back.
+    expect(await remaining(company)).toEqual([[0n, 0n, 0n]]);
+    const credits = await inCompany(company, (tx) =>
+      tx
+        .select({ creditMinor: recognitionMovements.creditMinor })
+        .from(recognitionMovements)
+        .where(eq(recognitionMovements.kind, 'credited'))
+        .orderBy(asc(recognitionMovements.createdAt), asc(recognitionMovements.id)),
+    );
+    expect(credits).toEqual([{ creditMinor: 5_000n }, { creditMinor: -5_000n }]);
+    expect(await proof(company)).toEqual([]);
+  });
+
+  it('holds a credit before its cycle UNKNOWN_REFERENCE, and posts it once the cycle’s invoice posts', async () => {
+    const company = await newCompany([
+      ['2026-11-15', '121.0000'],
+      ['2026-11-19', '121.0000'],
+    ]);
+    const early = await receive(
+      company,
+      creditInvoice(46, '2026-11-19', 10_000, -5_000, '2026-11-15'),
+      '2026-11-19',
+    );
+    expect(early.event).toMatchObject({
+      state: 'held',
+      reason: 'UNKNOWN_REFERENCE',
+      detail: 'credit_cycle',
+    });
+    const issued = await receive(
+      company,
+      cycle(40, '2026-11-15', 90_000, '2026-11-15', '2026-12-14'),
+      '2026-11-19',
+    );
+    expect(issued.triggers).toContainEqual({ kind: 'cycle' });
+    const [state] = await inCompany(company, (tx) =>
+      tx
+        .select({ state: inboundEventStates.state })
+        .from(inboundEventStates)
+        .where(eq(inboundEventStates.eventId, early.event.inboxId)),
+    );
+    expect(state).toEqual({ state: 'posted' });
+    expect(await remaining(company)).toEqual([[85_000n, 10_285_000n, 85_000n]]);
+    expect(await proof(company)).toEqual([]);
+  });
+
+  it('posts the ended month’s release in the credit’s transaction, so the job posts nothing after', async () => {
+    const company = await newCompany([
+      ['2026-11-03', '120.0000'],
+      ['2026-12-01', '123.0000'],
+    ]);
+    await receive(
+      company,
+      cycle(42, '2026-11-03', 60_000, '2026-11-01', '2026-11-30'),
+      '2026-11-03',
+    );
+    await receive(
+      company,
+      creditInvoice(43, '2026-12-01', 60_000, -6_000, '2026-11-01'),
+      '2026-12-01',
+    );
+    expect(await runJob(company, '2026-11', '2026-12-01')).toEqual({ posted: 0, refused: [] });
+    const entries = await ledger(company);
+    expect(entries.map((entry) => [entry.source, entry.date])).toEqual([
+      ['hub_event', '2026-11-03'],
+      ['revenue_release', '2026-11-30'],
+      ['hub_event', '2026-12-01'],
+    ]);
+    // All of it reduces revenue at 123: the cycle was fully released first.
+    expect(entries[2]?.lines).toContainEqual(['411001', 'USD', 6_000n, 738_000n, 6_000n]);
+    expect(await proof(company)).toEqual([]);
+  });
+
+  it('reverses a released cycle latest first, re-issues it with November at issue, and holds a credited cycle’s void', async () => {
+    const company = await newCompany([
+      ['2026-11-15', '121.0000'],
+      ['2026-11-19', '121.0000'],
+      ['2026-12-07', '122.0000'],
+    ]);
+    await receive(
+      company,
+      cycle(80, '2026-11-15', 90_000, '2026-11-15', '2026-12-14'),
+      '2026-11-15',
+    );
+    await runJob(company, '2026-11', '2026-12-01');
+    await receive(company, voidOf(80, '2026-12-03'), '2026-12-03');
+    await receive(
+      company,
+      cycle(81, '2026-12-07', 90_000, '2026-11-15', '2026-12-14'),
+      '2026-12-07',
+    );
+    const entries = await ledger(company);
+    expect(entries.slice(2, 5).map((entry) => entry.lines)).toEqual([
+      [
+        ['212001', 'USD', -48_000n, -5_808_000n, -48_000n],
+        ['411001', 'USD', 48_000n, 5_808_000n, 48_000n],
+      ],
+      [
+        ['112001', 'USD', -90_000n, -10_890_000n, -90_000n],
+        ['212001', 'USD', 90_000n, 10_890_000n, 90_000n],
+      ],
+      [
+        ['112001', 'USD', 90_000n, 10_980_000n, 90_000n],
+        ['411001', 'USD', -48_000n, -5_856_000n, -48_000n],
+        ['212001', 'USD', -42_000n, -5_124_000n, -42_000n],
+      ],
+    ]);
+    const schedules = await inCompany(company, (tx) =>
+      tx.select().from(recognitionSchedules).orderBy(asc(recognitionSchedules.createdAt)),
+    );
+    expect(schedules[1]?.reissueOfScheduleId).toBe(schedules[0]?.id);
+    // The voided schedule holds nothing, the re-issue December's 420.00 USD.
+    expect(await remaining(company)).toEqual([
+      [0n, 0n, 0n],
+      [42_000n, 5_124_000n, 42_000n],
+    ]);
+    // Another invoice credits the re-issued cycle: its void is the accountant's.
+    await receive(
+      company,
+      creditInvoice(46, '2026-12-07', 10_000, -5_000, '2026-11-15'),
+      '2026-12-07',
+    );
+    const held = await receive(company, voidOf(81, '2026-12-07'), '2026-12-07');
+    expect(held.event).toMatchObject({
+      state: 'held',
+      reason: 'NEEDS_DECISION',
+      detail: 'schedule_credited',
+    });
+    expect(await proof(company)).toEqual([]);
+  });
+
+  it('frees a credit held after a later credit once Hub voids that credit (owner, 2026-11-11)', async () => {
+    const company = await newCompany([
+      ['2026-11-15', '121.0000'],
+      ['2026-11-19', '121.0000'],
+      ['2026-12-03', '123.0000'],
+    ]);
+    await receive(
+      company,
+      cycle(40, '2026-11-15', 90_000, '2026-11-15', '2026-12-14'),
+      '2026-11-15',
+    );
+    await runJob(company, '2026-11', '2026-12-01');
+    await receive(
+      company,
+      creditInvoice(47, '2026-12-03', 10_000, -3_000, '2026-11-15'),
+      '2026-12-03',
+    );
+    const early = await receive(
+      company,
+      creditInvoice(46, '2026-11-19', 10_000, -5_000, '2026-11-15'),
+      '2026-12-03',
+    );
+    expect(early.event).toMatchObject({
+      state: 'held',
+      reason: 'NEEDS_DECISION',
+      detail: 'credit_after_later_change',
+    });
+    expect((await receive(company, voidOf(47, '2026-12-05'), '2026-12-05')).event.state).toBe(
+      'posted',
+    );
+    const retried = await inCompany(company, (tx) =>
+      retryEvent(tx, early.event.inboxId, { actor: person(), today: '2026-12-05' }),
+    );
+    expect(retried.event.state).toBe('posted');
+    // As of 19 Nov all of it goes to the liability, and November is recut to 453.33.
+    const entries = await ledger(company);
+    expect(entries.at(-1)).toEqual({
+      source: 'hub_event',
+      date: '2026-11-30',
+      lines: [
+        ['411001', 'USD', 2_667n, 322_667n, 2_667n],
+        ['212001', 'USD', -2_667n, -322_667n, -2_667n],
+      ],
+    });
+    expect(await proof(company)).toEqual([]);
+  });
+
+  it('dates a moved change by its own date: a later credit of a closed month is not held for it', async () => {
+    const company = await newCompany([
+      ['2026-10-29', '120.0000'],
+      ['2026-11-19', '121.0000'],
+      ['2026-11-25', '121.0000'],
+    ]);
+    // The cycle invoiced in advance, in October, so November has no period row before it closes.
+    await receive(
+      company,
+      cycle(40, '2026-10-29', 90_000, '2026-11-15', '2026-12-14'),
+      '2026-10-29',
+    );
+    await closePeriod(company, '2026-11');
+    const moved = async (n: number, on: string) => {
+      const held = await receive(
+        company,
+        creditInvoice(n, on, 10_000, -5_000, '2026-11-15'),
+        '2026-12-02',
+      );
+      expect(held.event).toMatchObject({ state: 'held', reason: 'PERIOD_CLOSED' });
+      const result = await inCompany(company, (tx) =>
+        moveEvent(tx, held.event.inboxId, 'وصل الإشعار بعد إقفال تشرين الثاني', {
+          actor: person(),
+          today: '2026-12-02',
+        }),
+      );
+      expect(result.event).toMatchObject({ state: 'posted', postedOn: '2026-12-01' });
+    };
+    // The credit of 19 Nov posts on 1 Dec; the one of 25 Nov is dated after it, so it posts too.
+    await moved(46, '2026-11-19');
+    await moved(49, '2026-11-25');
+    expect(await proof(company)).toEqual([]);
+  });
+
+  it('refuses a credited movement without its credit part, and a credit part on another kind', async () => {
+    const company = await newCompany([['2026-11-15', '121.0000']]);
+    await receive(
+      company,
+      cycle(20, '2026-11-15', 90_000, '2026-11-15', '2026-12-14'),
+      '2026-11-15',
+    );
+    const forge = (kind: 'credited' | 'released', creditMinor: bigint | null) =>
+      inCompany(company, async (tx) => {
+        const [schedule] = await tx.select().from(recognitionSchedules);
+        await tx.insert(recognitionMovements).values({
+          companyId: company,
+          scheduleId: schedule?.id as string,
+          kind,
+          month: null,
+          entryId: null,
+          transactionMinor: 0n,
+          bookMinor: 0n,
+          parallelMinor: 0n,
+          creditMinor,
+        });
+      });
+    expect(await refusal(forge('credited', null))).toMatch(/recognition_movements/);
+    expect(await refusal(forge('released', 1n))).toMatch(/recognition_movements/);
   });
 });
 
@@ -861,6 +1152,96 @@ describe('milestones and projects (S06 rules 11–17)', () => {
           .orderBy(asc(recognitionMovements.createdAt), asc(recognitionMovements.id))
       ).map((row) => [row.kind, row.t]),
     );
+
+  it('ends each month as Hub’s order on time does, whatever the order and the lateness of its events (a property)', async () => {
+    // A retainer cycle, a credit to it and the credit's void; a deposit, its done and its reopen.
+    // A credit before its cycle, a void before its invoice and a reopen before its done hold and
+    // are retried when what they wait for posts (S06 rules 17, 19), and a credit or a void posted
+    // after a month it would have cut recuts that month as of its date (owner, 2026-11-11), so any
+    // order of arrival, all of it late, ends each month with what Hub's order on time does. A done that arrives before its invoice is a done not invoiced (rule 11):
+    // nothing in either event tells the books Hub's order, so the deposit's invoice arrives first.
+    const bulletins: [string, string][] = [
+      ['2026-11-03', '120.0000'],
+      ['2026-11-15', '121.0000'],
+      ['2026-11-19', '121.5000'],
+      ['2026-11-20', '122.0000'],
+      ['2026-11-25', '122.0000'],
+      ['2026-12-03', '123.0000'],
+    ];
+    const events = [
+      deposit(91, '2026-11-03', 30_000, 7),
+      cycle(92, '2026-11-15', 90_000, '2026-11-15', '2026-12-14'),
+      creditInvoice(93, '2026-11-19', 10_000, -5_000, '2026-11-15'),
+      done(7, '2026-11-20', 30_000),
+      reopened(7, '2026-11-25'),
+      voidOf(93, '2026-12-03'),
+    ];
+    const [invoiceAt, doneAt] = [0, 3];
+    /** Each account's figures per month, in every ledger: what a report of each month reads. */
+    const months = async (company: string) => {
+      const sums = new Map<string, [bigint, bigint, bigint]>();
+      for (const entry of await ledger(company)) {
+        for (const [code, currency, amount, book, parallel] of entry.lines) {
+          const key = `${code}|${currency}|${entry.date.slice(0, 7)}`;
+          const [a, b, c] = sums.get(key) ?? [0n, 0n, 0n];
+          sums.set(key, [
+            a + (amount as bigint),
+            b + (book as bigint),
+            c + ((parallel as bigint | null) ?? 0n),
+          ]);
+        }
+      }
+      return [...sums.entries()]
+        .filter(([, [a, b, c]]) => a !== 0n || b !== 0n || c !== 0n)
+        .map(([key, [a, b, c]]) => `${key}|${a}|${b}|${c}`)
+        .sort();
+    };
+    const outcome = async (company: string) => {
+      const states = await inCompany(company, (tx) =>
+        tx
+          .select({
+            state: inboundEventStates.state,
+            reason: inboundEventStates.holdReason,
+            detail: inboundEventStates.holdDetail,
+          })
+          .from(inboundEventStates),
+      );
+      return {
+        states: states.map((row) => [row.state, row.reason, row.detail].join(':')).sort(),
+        months: await months(company),
+        problems: await proof(company),
+      };
+    };
+    // Hub's order, each event received on its own date and each month's job on the next month's
+    // first day.
+    const onTime = await newCompany(bulletins);
+    for (const event of events) {
+      if (event.accounting_date >= '2026-12-01') await runJob(onTime, '2026-11', '2026-12-01');
+      await receive(onTime, event, event.accounting_date);
+    }
+    await runJob(onTime, '2026-12', '2027-01-01');
+    const hubOrder = await outcome(onTime);
+    expect(hubOrder.states.every((state) => state === 'posted::')).toBe(true);
+    expect(hubOrder.problems).toEqual([]);
+    await fc.assert(
+      fc.asyncProperty(
+        fc
+          .shuffledSubarray([0, 1, 2, 3, 4, 5], { minLength: 6, maxLength: 6 })
+          .filter((order) => order.indexOf(invoiceAt) < order.indexOf(doneAt)),
+        async (order) => {
+          // Every event late, received after both months ended (owner, 2026-11-11).
+          const late = await newCompany(bulletins);
+          for (const index of order) {
+            await receive(late, events[index] as EventEnvelope, '2027-01-05');
+          }
+          await runJob(late, '2026-11', '2027-01-05');
+          await runJob(late, '2026-12', '2027-01-05');
+          expect(await outcome(late)).toEqual(hubOrder);
+        },
+      ),
+      { numRuns: 12 },
+    );
+  }, 120_000);
 
   it('releases a deposit at its done, gives it back on a reopen and releases it again; a replay posts nothing', async () => {
     const companyId = await newCompany([['2026-11-03', '120.0000']]);
@@ -1083,6 +1464,10 @@ describe('milestones and projects (S06 rules 11–17)', () => {
 });
 
 describe('the guards of the recognition tables (0032)', () => {
+  it('check the movement kinds the API answers', () => {
+    expect([...RECOGNITION_MOVEMENT_KINDS]).toEqual([...REVENUE_MOVEMENT_KINDS]);
+  });
+
   it('keep schedules and movements append-only for the app role and the owner', async () => {
     const company = await newCompany([['2026-11-15', '121.0000']]);
     await receive(

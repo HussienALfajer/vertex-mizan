@@ -695,3 +695,90 @@ export function sumCarried(
     parallelMinor: parallelTotal,
   };
 }
+
+/**
+ * A schedule's transaction amount net of the credits it took (*N*, S06 rule 6): its line's amount
+ * less each credit's part (`creditMinor` of its `credited` movements; a credit's void gives its part
+ * back as a negative one). Null parts are movements of other kinds.
+ */
+export function netOfCredits(lineMinor: bigint, creditParts: readonly (bigint | null)[]): bigint {
+  return creditParts.reduce<bigint>((net, part) => net - (part ?? 0n), lineMinor);
+}
+
+/**
+ * The movement a reversal writes for a movement of the entry it reverses (S06 rule 8): its amounts
+ * negated in every ledger, and a credit's part negated, so a credit's void gives the schedule its
+ * part back.
+ */
+export function reversedMovement(
+  amounts: CarriedAmounts,
+  creditMinor: bigint | null,
+): { readonly amounts: CarriedAmounts; readonly creditMinor: bigint | null } {
+  return { amounts: negate(amounts), creditMinor: creditMinor === null ? null : -creditMinor };
+}
+
+/** A month released after a credit's or a void's date, and the adjustment it takes (S06 rules 6, 8). */
+export interface RecutMonth {
+  readonly month: string;
+  /**
+   * What the month's release took over what it would have taken as of the change's date, positive
+   * amounts: positive gives that much back to the liability (Dr revenue / Cr liability), negative
+   * releases that much more (owner, 2026-11-11).
+   */
+  readonly adjustment: CarriedAmounts;
+}
+
+/**
+ * The recut of an over-time schedule's months released since a credit's or a credit's void's date
+ * (S06 rules 6 and 8; `revenue/retainer-credit.md`, owner 2026-11-11): from what the schedule held
+ * as of that date, its change included (`remaining`, positive), its months not released as of then
+ * (`months`, in order) are cut again one after the other, each month's part what
+ * `remainingReleaseParts()` gives it from what is left then, as the month's job would have released
+ * it; a month already released (`posted`, its release with any earlier adjustment, positive) takes
+ * the difference as its adjustment, at the carried amounts, so no rate is read and the months end as
+ * in Hub's order. A month of zero difference has none.
+ */
+export function recutReleases(
+  remaining: CarriedAmounts,
+  months: readonly OverTimeMonth[],
+  posted: ReadonlyMap<string, CarriedAmounts>,
+  ledgers: CompanyLedgers,
+): RecutMonth[] {
+  const recut: RecutMonth[] = [];
+  let left = remaining;
+  for (const [k, month] of months.entries()) {
+    const [part] = remainingReleaseParts(left, months.slice(k), ledgers);
+    if (part === undefined) throw new RangeError('A month without its part');
+    const released = posted.get(month.month);
+    if (released !== undefined) {
+      const adjustment = subtractCarried(released, part);
+      if (
+        adjustment.transaction.amountMinor !== 0n ||
+        adjustment.bookMinor !== 0n ||
+        (adjustment.parallelMinor ?? 0n) !== 0n
+      ) {
+        recut.push({ month: month.month, adjustment });
+      }
+    }
+    left = subtractCarried(left, part);
+  }
+  return recut;
+}
+
+/** `a − b` in every ledger, in `a`'s currency. */
+function subtractCarried(a: CarriedAmounts, b: CarriedAmounts): CarriedAmounts {
+  if (a.transaction.currency !== b.transaction.currency) {
+    throw new TypeError('Amounts in two currencies');
+  }
+  return {
+    transaction: money(
+      a.transaction.amountMinor - b.transaction.amountMinor,
+      a.transaction.currency,
+    ),
+    bookMinor: a.bookMinor - b.bookMinor,
+    parallelMinor:
+      a.parallelMinor === null || b.parallelMinor === null
+        ? a.parallelMinor
+        : a.parallelMinor - b.parallelMinor,
+  };
+}

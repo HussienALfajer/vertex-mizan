@@ -13,6 +13,7 @@ import { describe, expect, it } from 'vitest';
 import { balanceEntry, ledgerTotal } from './balance.js';
 import {
   blockingEvent,
+  type CreditableSchedule,
   firstOpenDayAfter,
   type HubItem,
   type HubLine,
@@ -33,6 +34,7 @@ import {
   type RulePlan,
   reclassifiedLines,
   recognitionPatternOf,
+  reissueKey,
   spendChangedPlan,
   walletDecision,
   walletEntryPlan,
@@ -286,7 +288,7 @@ describe('invoice.issued at issue (revenue/revenue-at-issue)', () => {
     ]);
   });
 
-  it('holds a credit line until its rule deploys, and a non-zero tax', () => {
+  it('holds a credit to a cycle the books do not hold, and a non-zero tax', () => {
     const context = contextOf(sypUsd);
     const credit = invoice(
       'USD',
@@ -302,10 +304,11 @@ describe('invoice.issued at issue (revenue/revenue-at-issue)', () => {
       ],
       { contract: R1 },
     );
+    // No schedule for the cycle: the credit waits for its cycle's invoice (S06 rule 6).
     expect(invoiceIssuedPlan(credit, context)).toEqual({
       kind: 'hold',
-      reason: 'NO_MAPPING',
-      detail: 'deferred_revenue',
+      reason: 'UNKNOWN_REFERENCE',
+      detail: 'credit_cycle',
     });
     const deposit = invoice(
       'USD',
@@ -558,7 +561,7 @@ describe('invoice.issued over time (revenue/over-time-release; S06 rules 1–3, 
     });
   });
 
-  it('moves a deferred line’s recognised revenue at its carried amounts, and holds its void', () => {
+  it('moves a deferred line’s recognised revenue at its carried amounts, and reverses its void', () => {
     const line = ids(200);
     const changed = event(
       'invoice.line_service_changed',
@@ -586,10 +589,16 @@ describe('invoice.issued over time (revenue/over-time-release; S06 rules 1–3, 
       voided_on: '2026-12-10',
       reason: 'خطأ',
     });
-    expect(planEvent(voided, { ...scheduled, standing: [ids(900)] }, contextOf(sypUsd))).toEqual({
-      kind: 'hold',
-      reason: 'NO_MAPPING',
-      detail: 'deferred_revenue',
+    // Its releases, issue and elapsed parts are reversed, latest first (S06 rule 8).
+    expect(
+      planEvent(voided, { ...scheduled, standing: [ids(901), ids(900)] }, contextOf(sypUsd)),
+    ).toEqual({
+      kind: 'post',
+      entries: [
+        { kind: 'reversal', key: `${voided.id}:reversal:1`, entryId: ids(901) },
+        { kind: 'reversal', key: `${voided.id}:reversal:2`, entryId: ids(900) },
+      ],
+      decision: null,
     });
   });
 
@@ -1306,6 +1315,488 @@ describe('milestones and projects (revenue/milestones, revenue/cancelled-project
       entries: [{ kind: 'reversal', key: `${voided.id}:reversal:1`, entryId: 'issue-entry' }],
       decision: 'schedule_split_at_cancellation',
     });
+  });
+});
+
+describe('credits, voids and re-issues (revenue/retainer-credit, revenue/void-and-reissue)', () => {
+  const usd = (transaction: bigint, book: bigint, parallel: bigint | null): CarriedAmounts => ({
+    transaction: money(transaction, 'USD'),
+    bookMinor: book,
+    parallelMinor: parallel,
+  });
+  const cycleOf = (
+    id: string,
+    netMinor: bigint,
+    remaining: CarriedAmounts,
+    service = 'service-S1',
+  ): CreditableSchedule => ({
+    id,
+    liabilityAccountId: '212001',
+    parties: ['client-C1', 'contract-R1'],
+    serviceValueId: service,
+    netMinor,
+    remaining,
+  });
+  const charge = (
+    amount: number,
+    kind: 'monthly' | 'addition',
+    cycleStart: string,
+    cycleEnd: string,
+    service = S1,
+  ) => ({
+    amount,
+    source: 'retainer_charge',
+    charge_kind: kind,
+    cycle_start: cycleStart,
+    cycle_end: cycleEnd,
+    service,
+  });
+  const credit = (amount: number, cycleStart: string) => ({
+    amount,
+    source: 'retainer_charge',
+    charge_kind: 'credit',
+    cycle_start: cycleStart,
+  });
+  const issuedOn = (on: string, lines: InvoiceLine[], currency: HubCurrency = 'USD') =>
+    invoice(currency, '124.0000', lines, { contract: R1, issued_on: on, due_on: on });
+  const withCycle = (cycleKey: string, standing: CreditableSchedule[], voided = false) => ({
+    ...NO_REFERENCES,
+    cycles: new Map([[cycleKey, { standing, voided }]]),
+  });
+  const R1_NOV = 'R1:2026-11-15';
+
+  it('splits a 90.00 USD credit at 123 between released revenue and the liability at 121', () => {
+    // INV-2026-41: the next cycle's 900.00 USD and a credit of 90.00 to the cycle with 16/30 released.
+    const issued = issuedOn('2026-12-15', [
+      charge(90_000, 'monthly', '2026-12-15', '2027-01-14'),
+      credit(-9_000, '2026-11-15'),
+    ]);
+    const first = cycleOf('schedule-40', 90_000n, usd(42_000n, 5_082_000n, 42_000n));
+    const plan = planEvent(issued, withCycle(R1_NOV, [first]), contextOf(sypUsd));
+    expect(rows(measure(plan, sypUsd, '2026-12-15', [bulletin('123.0000', '2026-12-15')]))).toEqual(
+      [
+        ['112001', 'USD', 81_000n, 9_963_000n, 81_000n],
+        ['212001', 'USD', -90_000n, -11_070_000n, -90_000n],
+        // N = 90,000, R = 42,000: 4,800 of revenue, a new measurement at 123
+        ['411001', 'USD', 4_800n, 590_400n, 4_800n],
+        // 4,200 of the liability, carried at the 121 it holds
+        ['212001', 'USD', 4_200n, 508_200n, 4_200n],
+        ['541001', 'SYP', 8_400n, 8_400n, 0n],
+      ],
+    );
+    expect(plan.kind === 'post' && plan.movements).toEqual([
+      {
+        scheduleId: 'schedule-40',
+        kind: 'credited',
+        key: issued.id,
+        amounts: usd(-4_200n, -508_200n, -4_200n),
+        creditMinor: 9_000n,
+      },
+    ]);
+    // The new cycle's deferral is its schedule's, after the receivable's line.
+    expect(plan.kind === 'post' && plan.schedules?.[0]?.deferral).toEqual({
+      key: issued.id,
+      lineNo: 2,
+    });
+  });
+
+  it('shares a 100.01 USD credit 75.01 / 25.00 over a cycle not released yet, each liability carried', () => {
+    const issued = issuedOn('2026-11-26', [
+      { amount: 20_000, service: S2 },
+      credit(-10_001, '2026-11-15'),
+    ]);
+    const plan = planEvent(
+      issued,
+      withCycle(R1_NOV, [
+        cycleOf('monthly', 90_000n, usd(90_000n, 10_890_000n, 90_000n)),
+        cycleOf('addition', 30_000n, usd(30_000n, 3_645_000n, 30_000n), 'service-S2'),
+      ]),
+      contextOf(sypUsd),
+    );
+    expect(rows(measure(plan, sypUsd, '2026-11-26', [bulletin('122.0000', '2026-11-26')]))).toEqual(
+      [
+        ['112001', 'USD', 9_999n, 1_219_878n, 9_999n],
+        ['411001', 'USD', -20_000n, -2_440_000n, -20_000n],
+        ['212001', 'USD', 7_501n, 907_621n, 7_501n],
+        ['212001', 'USD', 2_500n, 303_750n, 2_500n],
+        ['541001', 'SYP', 8_751n, 8_751n, 0n],
+      ],
+    );
+  });
+
+  it('reduces revenue only on a cycle fully released, and drops the receivable of a zero total', () => {
+    const released = cycleOf('schedule-42', 60_000n, usd(0n, 0n, 0n));
+    const zero = issuedOn('2026-12-03', [
+      charge(60_000, 'monthly', '2026-12-01', '2026-12-31'),
+      credit(-60_000, '2026-11-01'),
+    ]);
+    const plan = planEvent(zero, withCycle('R1:2026-11-01', [released]), contextOf(sypUsd));
+    expect(rows(measure(plan, sypUsd, '2026-12-03', [bulletin('123.0000', '2026-12-03')]))).toEqual(
+      [
+        ['212001', 'USD', -60_000n, -7_380_000n, -60_000n],
+        ['411001', 'USD', 60_000n, 7_380_000n, 60_000n],
+      ],
+    );
+    // Its movement records the credit's part with no liability amount.
+    expect(plan.kind === 'post' && plan.movements?.[0]).toMatchObject({
+      kind: 'credited',
+      amounts: usd(0n, 0n, 0n),
+      creditMinor: 60_000n,
+    });
+  });
+
+  it('measures an SYP credit at Hub’s 120 in the USD parallel ledger, a 0.23 USD realised loss', () => {
+    const issued = invoice(
+      'SYP',
+      '120.0000',
+      [charge(7_260_000, 'monthly', '2026-12-15', '2027-01-14'), credit(-726_000, '2026-11-15')],
+      { contract: R1, issued_on: '2026-12-15', due_on: '2026-12-30' },
+    );
+    const syp = (transaction: bigint, parallel: bigint): CarriedAmounts => ({
+      transaction: money(transaction, 'SYP'),
+      bookMinor: transaction,
+      parallelMinor: parallel,
+    });
+    const first: CreditableSchedule = {
+      ...cycleOf('schedule-51', 7_260_000n, usd(0n, 0n, 0n)),
+      remaining: syp(3_388_000n, 28_000n),
+    };
+    const plan = planEvent(issued, withCycle(R1_NOV, [first]), contextOf(sypUsd));
+    expect(rows(measure(plan, sypUsd, '2026-12-15', []))).toEqual([
+      ['112001', 'SYP', 6_534_000n, 6_534_000n, 54_450n],
+      ['212001', 'SYP', -7_260_000n, -7_260_000n, -60_500n],
+      ['411001', 'SYP', 387_200n, 387_200n, 3_227n],
+      ['212001', 'SYP', 338_800n, 338_800n, 2_800n],
+      ['541001', 'USD', 23n, 0n, 23n],
+    ]);
+  });
+
+  it('holds credits the accountant decides, whole, with nothing planned', () => {
+    const issued = issuedOn('2026-11-24', [{ amount: 50_000 }, credit(-40_000, '2026-11-15')]);
+    // Already credited 600.00 USD: 300.00 USD left net of credits.
+    const credited = cycleOf('schedule-40', 30_000n, usd(30_000n, 3_630_000n, 30_000n));
+    expect(planEvent(issued, withCycle(R1_NOV, [credited]), contextOf(sypUsd))).toEqual({
+      kind: 'post',
+      entries: [],
+      decision: 'credit_exceeds_cycle',
+    });
+    expect(planEvent(issued, withCycle(R1_NOV, [], true), contextOf(sypUsd))).toEqual({
+      kind: 'post',
+      entries: [],
+      decision: 'credit_cycle_voided',
+    });
+  });
+
+  it('re-issues a voided cycle: November taken back is revenue at issue at 122, December deferred', () => {
+    const issued = issuedOn('2026-12-07', [charge(90_000, 'monthly', '2026-11-15', '2026-12-14')]);
+    const references = {
+      ...NO_REFERENCES,
+      reissues: new Map([
+        [reissueKey(R1_NOV, 'monthly'), [{ scheduleId: 'voided-80', takenBack: ['2026-11'] }]],
+      ]),
+    };
+    const plan = planEvent(issued, references, contextOf(sypUsd));
+    expect(rows(measure(plan, sypUsd, '2026-12-07', [bulletin('122.0000', '2026-12-07')]))).toEqual(
+      [
+        ['112001', 'USD', 90_000n, 10_980_000n, 90_000n],
+        ['411001', 'USD', -48_000n, -5_856_000n, -48_000n],
+        ['212001', 'USD', -42_000n, -5_124_000n, -42_000n],
+      ],
+    );
+    expect(plan.kind === 'post' && plan.schedules?.[0]).toMatchObject({
+      reissueOfScheduleId: 'voided-80',
+      deferral: { key: issued.id, lineNo: 3 },
+      months: [expect.objectContaining({ month: '2026-12', transactionMinor: 42_000n })],
+    });
+    // A re-issue for 15 to 30 November does not cover December, which the void took back.
+    const shorter = issuedOn('2027-01-07', [charge(48_000, 'monthly', '2026-11-15', '2026-11-30')]);
+    const both = {
+      ...NO_REFERENCES,
+      reissues: new Map([
+        [
+          reissueKey(R1_NOV, 'monthly'),
+          [{ scheduleId: 'voided-80', takenBack: ['2026-11', '2026-12'] }],
+        ],
+      ]),
+    };
+    expect(planEvent(shorter, both, contextOf(sypUsd))).toEqual({
+      kind: 'post',
+      entries: [],
+      decision: 'reissue_period_differs',
+    });
+  });
+
+  it('re-issues a voided cycle the next month: November at issue, December elapsed and cleared', () => {
+    const issued = issuedOn('2027-01-05', [charge(90_000, 'monthly', '2026-11-15', '2026-12-14')]);
+    const references = {
+      ...NO_REFERENCES,
+      reissues: new Map([
+        [reissueKey(R1_NOV, 'monthly'), [{ scheduleId: 'voided-80', takenBack: ['2026-11'] }]],
+      ]),
+    };
+    const plan = planEvent(issued, references, contextOf(sypUsd));
+    const rates = [bulletin('124.0000', '2026-12-31'), bulletin('125.0000', '2027-01-05')];
+    const december = measure(plan, sypUsd, '2026-12-31', rates);
+    expect(rows(december)).toEqual([
+      ['113001', 'USD', 42_000n, 5_208_000n, 42_000n],
+      ['411001', 'USD', -42_000n, -5_208_000n, -42_000n],
+    ]);
+    const item: ItemState = {
+      id: 'INV-2026-1/1',
+      kind: 'document',
+      direction: 1,
+      balance: usd(42_000n, 5_208_000n, 42_000n),
+    };
+    const lines = measure(plan, sypUsd, '2027-01-05', rates, new Map([['INV-2026-1/1', item]]), 1);
+    expect(rows(lines)).toEqual([
+      ['112001', 'USD', 90_000n, 11_250_000n, 90_000n],
+      ['411001', 'USD', -48_000n, -6_000_000n, -48_000n],
+      ['113001', 'USD', -42_000n, -5_208_000n, -42_000n],
+      ['421001', 'SYP', -42_000n, -42_000n, 0n],
+    ]);
+  });
+
+  describe('milestones re-issued', () => {
+    const MS5 = { id: ids(505), number: 'MS-5' };
+    const reissue = invoice(
+      'USD',
+      '124.0000',
+      [{ amount: 30_000, source: 'deposit', milestone_id: MS5.id }],
+      { contract: P1, issued_on: '2026-12-03', due_on: '2026-12-18' },
+    );
+    const facts = (overrides: Partial<MilestoneReferences>): HubReferences => ({
+      ...NO_REFERENCES,
+      milestones: new Map([
+        [
+          MS5.id,
+          {
+            doneStanding: false,
+            item: null,
+            doneRelease: null,
+            schedule: null,
+            items: 0,
+            projectCancelled: false,
+            voidedScheduleId: 'voided-98',
+            ...overrides,
+          },
+        ],
+      ]),
+    });
+
+    it('is revenue at issue when the void took back its completion’s or its done’s release', () => {
+      for (const taken of [
+        { completionTakenBackByVoid: true },
+        { doneTakenBackByVoid: true },
+      ] as const) {
+        const plan = planEvent(reissue, facts(taken), contextOf(sypUsd));
+        expect(
+          rows(measure(plan, sypUsd, '2026-12-03', [bulletin('123.0000', '2026-12-03')])),
+        ).toEqual([
+          ['112001', 'USD', 30_000n, 3_690_000n, 30_000n],
+          ['411001', 'USD', -30_000n, -3_690_000n, -30_000n],
+        ]);
+        // Its schedule defers nothing, so a later done is a second one.
+        expect(plan.kind === 'post' && plan.schedules?.[0]).toMatchObject({
+          pattern: 'point_in_time',
+          deferral: null,
+          reissueOfScheduleId: 'voided-98',
+        });
+      }
+    });
+
+    it('is deferred when the milestone was never done, and clears the item when a done stands', () => {
+      const deferred = planEvent(reissue, facts({}), contextOf(sypUsd));
+      expect(
+        rows(measure(deferred, sypUsd, '2026-12-03', [bulletin('121.0000', '2026-12-03')])),
+      ).toEqual([
+        ['112001', 'USD', 30_000n, 3_630_000n, 30_000n],
+        ['212001', 'USD', -30_000n, -3_630_000n, -30_000n],
+      ]);
+      const item = {
+        id: 'item-MS-5',
+        accountId: '113001',
+        currency: 'USD' as const,
+        openMinor: 30_000n,
+        carried: usd(30_000n, 3_630_000n, 30_000n),
+      };
+      const cleared = planEvent(reissue, facts({ doneStanding: true, item }), contextOf(sypUsd));
+      expect(cleared).toMatchObject({ kind: 'post', decision: null });
+      expect(cleared.kind === 'post' && cleared.schedules).toBeUndefined();
+    });
+
+    it('holds a done after a re-issue recognised at issue, and records a reopen after the void', () => {
+      const done = event(
+        'milestone.done',
+        {
+          milestone: MS5,
+          client: C1,
+          project: P1,
+          currency: 'USD',
+          amount: 30_000,
+          done_on: '2026-12-15',
+          service: S1,
+        },
+        '2026-12-15',
+      );
+      expect(planEvent(done, facts({ recognisedAtIssue: true }), contextOf(sypUsd))).toEqual({
+        kind: 'post',
+        entries: [],
+        decision: 'milestone_already_done',
+      });
+      const reopened = event(
+        'milestone.reopened',
+        { milestone: MS5, client: C1, project: P1, reopened_on: '2026-12-02' },
+        '2026-12-02',
+      );
+      expect(planEvent(reopened, facts({ doneTakenBackByVoid: true }), contextOf(sypUsd))).toEqual({
+        kind: 'post',
+        entries: [],
+        decision: null,
+      });
+      expect(planEvent(reopened, facts({}), contextOf(sypUsd))).toMatchObject({
+        reason: 'UNKNOWN_REFERENCE',
+      });
+    });
+  });
+
+  it('holds a credit, or a credit’s void, after a later change of its cycle (owner, 2026-11-11)', () => {
+    const issued = issuedOn('2026-11-19', [{ amount: 10_000 }, credit(-5_000, '2026-11-15')]);
+    const cycle = cycleOf('schedule-40', 87_000n, usd(40_600n, 4_912_600n, 40_600n));
+    expect(
+      planEvent(
+        issued,
+        {
+          ...NO_REFERENCES,
+          cycles: new Map([[R1_NOV, { standing: [cycle], voided: false, changedLater: true }]]),
+        },
+        contextOf(sypUsd),
+      ),
+    ).toEqual({ kind: 'post', entries: [], decision: 'credit_after_later_change' });
+    const voided = event('invoice.voided', {
+      invoice: INVOICE,
+      voided_on: '2026-12-03',
+      reason: 'x',
+    });
+    expect(
+      planEvent(
+        voided,
+        { ...NO_REFERENCES, standing: [ids(900)], creditChangedLater: true },
+        contextOf(sypUsd),
+      ),
+    ).toEqual({
+      kind: 'post',
+      entries: [{ kind: 'reversal', key: `${voided.id}:reversal:1`, entryId: ids(900) }],
+      decision: 'credit_after_later_change',
+    });
+  });
+
+  it('holds the void of a cycle another invoice’s credit reduces, with its reversals planned', () => {
+    const voided = event('invoice.voided', {
+      invoice: INVOICE,
+      voided_on: '2026-11-25',
+      reason: 'x',
+    });
+    expect(
+      planEvent(
+        voided,
+        { ...NO_REFERENCES, standing: [ids(900)], scheduleCredited: true },
+        contextOf(sypUsd),
+      ),
+    ).toEqual({
+      kind: 'post',
+      entries: [{ kind: 'reversal', key: `${voided.id}:reversal:1`, entryId: ids(900) }],
+      decision: 'schedule_credited',
+    });
+  });
+
+  it('reverses a release by its invoice’s void', () => {
+    const release = carriedLine({
+      account: '212001',
+      dimensions: {},
+      amounts: usd(48_000n, 5_808_000n, 48_000n),
+    });
+    const revenue = carriedLine({
+      account: '411001',
+      dimensions: {},
+      amounts: usd(-48_000n, -5_808_000n, -48_000n),
+    });
+    const entry = {
+      source: 'revenue_release',
+      date: '2026-11-30',
+      isReversal: false,
+      reversed: false,
+      lines: [release, revenue],
+    };
+    expect(rows(hubReversalLines(entry, '2026-12-03'))).toEqual([
+      ['212001', 'USD', -48_000n, -5_808_000n, -48_000n],
+      ['411001', 'USD', 48_000n, 5_808_000n, 48_000n],
+    ]);
+  });
+
+  it('balances a credit’s entry in every shape, its residual realised (a property)', () => {
+    fc.assert(
+      fc.property(
+        fc.constantFrom(sypOnly, sypUsd, usdSyp),
+        fc.constantFrom<HubCurrency>('USD', 'SYP'),
+        fc.array(
+          fc.record({
+            net: fc.integer({ min: 1, max: 10_000_000 }),
+            share: fc.integer({ min: 0, max: 1_000 }),
+            rate: fc.integer({ min: 100, max: 150 }),
+          }),
+          { minLength: 1, maxLength: 3 },
+        ),
+        fc.integer({ min: 1, max: 1_000 }),
+        fc.integer({ min: 1, max: 5_000_000 }),
+        (ledgers, currency, cycle, creditShare, extra) => {
+          // Each schedule holds R of its N, carried at its own rate in every ledger.
+          const carriedAt = (minor: bigint, at: number): CarriedAmounts => {
+            const other = (ledger: 'book' | 'parallel') => {
+              const settings = ledgers[ledger];
+              if (settings === null) return null;
+              if (settings.currency === currency) return minor;
+              return currency === 'USD' ? minor * BigInt(at) : minor / BigInt(at);
+            };
+            return {
+              transaction: money(minor, currency),
+              bookMinor: other('book') as bigint,
+              parallelMinor: other('parallel'),
+            };
+          };
+          const schedules = cycle.map((part, k) => {
+            const net = BigInt(part.net);
+            const remaining = (net * BigInt(part.share)) / 1_000n;
+            return cycleOf(`schedule-${k}`, net, carriedAt(remaining, part.rate));
+          });
+          const net = schedules.reduce((total, schedule) => total + schedule.netMinor, 0n);
+          const creditMinor = (net * BigInt(creditShare)) / 1_000n;
+          if (creditMinor === 0n) return;
+          const issued = invoice(
+            currency,
+            '122.0000',
+            // Hub keeps an invoice's total at zero or more (Hub F05B rule C5).
+            [{ amount: extra + Number(creditMinor) }, credit(-Number(creditMinor), '2026-11-15')],
+            { contract: R1, issued_on: '2026-12-15', due_on: '2026-12-30' },
+          );
+          const plan = planEvent(issued, withCycle(R1_NOV, schedules), contextOf(ledgers));
+          const rates = [
+            bulletin('123.0000', '2026-12-15'),
+            rate('USD', 'SYP', '123.5000', 'market', '2026-12-15'),
+          ];
+          const lines = measure(plan, ledgers, '2026-12-15', rates);
+          expect(ledgerTotal(lines, 'book')).toBe(0n);
+          if (ledgers.parallel !== null) expect(ledgerTotal(lines, 'parallel')).toBe(0n);
+          // Each schedule's movement is what its liability line carries, and its part sums to the credit.
+          if (plan.kind !== 'post') throw new Error('Expected a posting');
+          const parts = (plan.movements ?? []).reduce(
+            (total, movement) => total + (movement.creditMinor ?? 0n),
+            0n,
+          );
+          expect(parts).toBe(creditMinor);
+        },
+      ),
+      { numRuns: 300 },
+    );
   });
 });
 
