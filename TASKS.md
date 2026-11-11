@@ -32,7 +32,7 @@ The ledger functions already exist in `packages/ledger/src/recognition.ts` (merg
 - [x] api: `GET /api/revenue/schedules`, `/schedules/:id`, `/months`, `/preview` with `recognition.read`; tests
 - [x] property tests across a project's events in any order of arrival (spec "Acceptance"): the orders the holds detect (a credit before its cycle, a void before its invoice, a reopen before its done)
 - [x] bridge: OpenAPI regenerated, breaking-change check
-- [ ] checks and reviewers, PR with auto-merge and Auto-fix
+- [x] checks and reviewers, PR with auto-merge and Auto-fix
 
 ## PR 4 — Screens (`feat/s06-screens`)
 - [ ] web: sidebar entry, `/revenue` (schedules and months tabs, decisions banner), `/revenue/:id`, the two actions on `/inbox/:id`, the contract asset item on `/open-items/:id`; i18n `ar.revenue`
