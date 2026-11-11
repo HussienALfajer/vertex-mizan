@@ -60,6 +60,7 @@ import { openItemBalances, openItemDueDates, openItems } from '../schema/open-it
 import { ledgersOf } from './companies.js';
 import { recordRate } from './rates.js';
 import {
+  creditChangedLaterOf,
   cyclesOf,
   milestoneFactsOf,
   openSchedules,
@@ -463,6 +464,11 @@ async function referencesOf(tx: Transaction, event: EventEnvelope): Promise<HubR
     ...(event.type === 'invoice.voided' && {
       splitAtCancellation: await splitAtCancellation(tx, event.payload.invoice.id),
       scheduleCredited: voiding?.scheduleCredited ?? false,
+      creditChangedLater: await creditChangedLaterOf(
+        tx,
+        event.payload.invoice.id,
+        event.accounting_date,
+      ),
     }),
     // A credit's cycles and the voided schedules a line re-issues (S06 rules 6, 9).
     ...(event.type === 'invoice.issued' && {
@@ -1072,6 +1078,7 @@ async function decide(
             ...(await voidMovements(savepoint, row, {
               reversals,
               entryDate: options.postOn ?? row.accountingDate,
+              asOf: row.accountingDate,
               description: descriptionOf(event),
               today: options.today,
               actor: options.actor,

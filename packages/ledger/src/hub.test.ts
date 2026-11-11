@@ -1659,6 +1659,37 @@ describe('credits, voids and re-issues (revenue/retainer-credit, revenue/void-an
     });
   });
 
+  it('holds a credit, or a credit’s void, after a later change of its cycle (owner, 2026-11-11)', () => {
+    const issued = issuedOn('2026-11-19', [{ amount: 10_000 }, credit(-5_000, '2026-11-15')]);
+    const cycle = cycleOf('schedule-40', 87_000n, usd(40_600n, 4_912_600n, 40_600n));
+    expect(
+      planEvent(
+        issued,
+        {
+          ...NO_REFERENCES,
+          cycles: new Map([[R1_NOV, { standing: [cycle], voided: false, changedLater: true }]]),
+        },
+        contextOf(sypUsd),
+      ),
+    ).toEqual({ kind: 'post', entries: [], decision: 'credit_after_later_change' });
+    const voided = event('invoice.voided', {
+      invoice: INVOICE,
+      voided_on: '2026-12-03',
+      reason: 'x',
+    });
+    expect(
+      planEvent(
+        voided,
+        { ...NO_REFERENCES, standing: [ids(900)], creditChangedLater: true },
+        contextOf(sypUsd),
+      ),
+    ).toEqual({
+      kind: 'post',
+      entries: [{ kind: 'reversal', key: `${voided.id}:reversal:1`, entryId: ids(900) }],
+      decision: 'credit_after_later_change',
+    });
+  });
+
   it('holds the void of a cycle another invoice’s credit reduces, with its reversals planned', () => {
     const voided = event('invoice.voided', {
       invoice: INVOICE,

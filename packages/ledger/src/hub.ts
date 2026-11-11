@@ -313,6 +313,11 @@ export interface HubReferences {
    * stands (rule 8, `schedule_credited`).
    */
   readonly scheduleCredited?: boolean;
+  /**
+   * For a void of a credit: a schedule it credited has a change dated after the void already
+   * posted (`credit_after_later_change`; owner, 2026-11-11).
+   */
+  readonly creditChangedLater?: boolean;
   /** For an invoice's credit lines: each cycle the credits name, by its `cycle_key` (rule 6). */
   readonly cycles?: ReadonlyMap<string, CycleReferences>;
   /**
@@ -343,6 +348,11 @@ export interface CycleReferences {
   readonly standing: readonly CreditableSchedule[];
   /** Whether the cycle has schedules and every one of them is voided (`credit_cycle_voided`). */
   readonly voided: boolean;
+  /**
+   * Whether a change of the cycle dated after the credit stands: another credit, or a credit's
+   * void, already posted (`credit_after_later_change`; owner, 2026-11-11).
+   */
+  readonly changedLater?: boolean;
 }
 
 /** A voided over-time schedule a line of its cycle and charge kind re-issues (S06 rule 9). */
@@ -842,6 +852,11 @@ export function invoiceIssuedPlan(
   // voided, or a credit larger than what the cycle has net of credits, is the accountant's.
   const creditLines: HubLine[] = [];
   const movements: PlannedMovement[] = [];
+  // A credit measured as of its date would need a later change of its cycle measured again: the
+  // accountant's, whole (owner, 2026-11-11).
+  if (credits.some((credit) => references.cycles?.get(credit.cycleKey)?.changedLater === true)) {
+    return { kind: 'post', entries: [], decision: 'credit_after_later_change' };
+  }
   const cycleState = new Map<string, CreditableSchedule[]>();
   for (const credit of credits) {
     const schedules =
@@ -1866,6 +1881,15 @@ export function planEvent(
           kind: 'post',
           entries: reversalsOf(event.id, references.standing),
           decision: 'schedule_credited',
+        };
+      }
+      // A credit's void after a change dated later on a cycle it credited (owner, 2026-11-11).
+      if (references.creditChangedLater === true) {
+        if (references.standing.length === 0) return hold('UNKNOWN_REFERENCE');
+        return {
+          kind: 'post',
+          entries: reversalsOf(event.id, references.standing),
+          decision: 'credit_after_later_change',
         };
       }
       // An invoice with schedules: `standing` holds its releases, a done's or a completion's

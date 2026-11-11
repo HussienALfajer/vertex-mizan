@@ -1243,6 +1243,76 @@ export async function recutSince(
   return posted;
 }
 
+/**
+ * Whether a change of the schedules dated after `date` stands (owner, 2026-11-11): a credit or a
+ * credit's void (`credited`), or a credit's void releasing on its date (`released` with no month),
+ * leaving out the entries of one invoice, a void's own credit.
+ */
+async function changedAfter(
+  tx: Transaction,
+  scheduleIds: readonly string[],
+  date: string,
+  exceptInvoiceId: string | null = null,
+): Promise<boolean> {
+  if (scheduleIds.length === 0) return false;
+  const [found] = await tx
+    .select({ id: recognitionMovements.id })
+    .from(recognitionMovements)
+    .innerJoin(
+      journalEntries,
+      and(
+        eq(journalEntries.companyId, recognitionMovements.companyId),
+        eq(journalEntries.id, recognitionMovements.entryId),
+      ),
+    )
+    .where(
+      and(
+        inArray(recognitionMovements.scheduleId, [...scheduleIds]),
+        sql`(${recognitionMovements.kind} = 'credited' or (${recognitionMovements.kind} = 'released' and ${recognitionMovements.month} is null))`,
+        sql`${journalEntries.entryDate} > ${date}`,
+        exceptInvoiceId === null
+          ? undefined
+          : sql`coalesce(${journalEntries.hubDocument} ->> 'id', '') <> ${exceptInvoiceId}`,
+      ),
+    )
+    .limit(1);
+  return found !== undefined;
+}
+
+/**
+ * For a void of a credit invoice (`HubReferences.creditChangedLater`; owner, 2026-11-11): whether a
+ * schedule the invoice credited has a change dated after the void's date already posted.
+ */
+export async function creditChangedLaterOf(
+  tx: Transaction,
+  invoiceId: string,
+  voidDate: string,
+): Promise<boolean> {
+  const credited = await tx
+    .select({ scheduleId: recognitionMovements.scheduleId })
+    .from(recognitionMovements)
+    .innerJoin(
+      journalEntries,
+      and(
+        eq(journalEntries.companyId, recognitionMovements.companyId),
+        eq(journalEntries.id, recognitionMovements.entryId),
+      ),
+    )
+    .where(
+      and(
+        eq(recognitionMovements.kind, 'credited'),
+        sql`${journalEntries.hubDocument} ->> 'type' = 'invoice'`,
+        sql`${journalEntries.hubDocument} ->> 'id' = ${invoiceId}`,
+      ),
+    );
+  return changedAfter(
+    tx,
+    credited.map((row) => row.scheduleId),
+    voidDate,
+    invoiceId,
+  );
+}
+
 /** A schedule's client and, when named, contract values. */
 const partiesOf = (schedule: ScheduleRow) =>
   schedule.contractValueId === null
@@ -1312,6 +1382,11 @@ export async function cyclesOf(
         }),
       ),
       voided: ofCycle.length > 0 && standing.length === 0,
+      changedLater: await changedAfter(
+        tx,
+        standing.map((state) => state.schedule.id),
+        event.accounting_date,
+      ),
     });
   }
   return cycles;
@@ -1716,6 +1791,8 @@ export async function voidMovements(
     /** Each planned reversal: the entry it reversed and the reversal's entry. */
     readonly reversals: readonly { readonly reversed: string; readonly reversal: string }[];
     readonly entryDate: string;
+    /** The void's own date, which it is measured as of, even when moved (S05 rule 15). */
+    readonly asOf: string;
     readonly description: string;
     readonly today: string;
     readonly actor: AuditActor;
@@ -1788,7 +1865,7 @@ export async function voidMovements(
     );
     const releasedSince = new Set(
       [...state.released.keys()].filter(
-        (month) => lastDayOf(month) >= creditEntry.date && lastDayOf(month) < input.entryDate,
+        (month) => lastDayOf(month) >= creditEntry.date && lastDayOf(month) < input.asOf,
       ),
     );
     const releasing = state.months.filter((month) => !month.elapsed);
@@ -1853,7 +1930,7 @@ export async function voidMovements(
   posted.push(
     ...(await recutSince(tx, row, {
       scheduleIds: givenBack.map((item) => item.scheduleId),
-      asOf: input.entryDate,
+      asOf: input.asOf,
       description: input.description,
       today: input.today,
       actor: input.actor,

@@ -691,6 +691,8 @@ export const HOLD_DETAILS = [
   'cancelled_project_remainder',
   'schedule_split_at_cancellation',
   'invoiced_after_cancellation',
+  // A credit or a credit's void after a change of its cycle dated later (owner, 2026-11-11).
+  'credit_after_later_change',
 ] as const;
 
 export type HoldDetailCode = (typeof HOLD_DETAILS)[number];
