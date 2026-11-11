@@ -630,10 +630,15 @@ describe('a credit', () => {
             lines.push(carriedLine({ account: '212001', amounts: part.liability }));
           }
         }
-        const differences = realisedDifferenceLines(ledgers, lines, {
-          gain: { account: '421001' },
-          loss: { account: '541001' },
-        });
+        // As `manualEntry()` posts it: a residual is a realised difference only beside a carried
+        // line; new measurements alone in one currency leave conversion rounding (a credit to
+        // cycles fully released).
+        const differences = lines.some((line) => line.kind === 'carried')
+          ? realisedDifferenceLines(ledgers, lines, {
+              gain: { account: '421001' },
+              loss: { account: '541001' },
+            })
+          : [];
         const entry = balanceEntry({
           ...context,
           lines: [...lines, ...differences],

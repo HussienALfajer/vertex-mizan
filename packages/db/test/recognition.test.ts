@@ -36,6 +36,7 @@ import {
   recordRate,
   releaseMonth,
   resolveEvent,
+  retryEvent,
   retryFreed,
   splitEvent,
   type Transaction,
@@ -934,6 +935,87 @@ describe('credits, voids and re-issues (S06 rules 6, 8, 9)', () => {
       reason: 'NEEDS_DECISION',
       detail: 'schedule_credited',
     });
+    expect(await proof(company)).toEqual([]);
+  });
+
+  it('frees a credit held after a later credit once Hub voids that credit (owner, 2026-11-11)', async () => {
+    const company = await newCompany([
+      ['2026-11-15', '121.0000'],
+      ['2026-11-19', '121.0000'],
+      ['2026-12-03', '123.0000'],
+    ]);
+    await receive(
+      company,
+      cycle(40, '2026-11-15', 90_000, '2026-11-15', '2026-12-14'),
+      '2026-11-15',
+    );
+    await runJob(company, '2026-11', '2026-12-01');
+    await receive(
+      company,
+      creditInvoice(47, '2026-12-03', 10_000, -3_000, '2026-11-15'),
+      '2026-12-03',
+    );
+    const early = await receive(
+      company,
+      creditInvoice(46, '2026-11-19', 10_000, -5_000, '2026-11-15'),
+      '2026-12-03',
+    );
+    expect(early.event).toMatchObject({
+      state: 'held',
+      reason: 'NEEDS_DECISION',
+      detail: 'credit_after_later_change',
+    });
+    expect((await receive(company, voidOf(47, '2026-12-05'), '2026-12-05')).event.state).toBe(
+      'posted',
+    );
+    const retried = await inCompany(company, (tx) =>
+      retryEvent(tx, early.event.inboxId, { actor: person(), today: '2026-12-05' }),
+    );
+    expect(retried.event.state).toBe('posted');
+    // As of 19 Nov all of it goes to the liability, and November is recut to 453.33.
+    const entries = await ledger(company);
+    expect(entries.at(-1)).toEqual({
+      source: 'hub_event',
+      date: '2026-11-30',
+      lines: [
+        ['411001', 'USD', 2_667n, 322_667n, 2_667n],
+        ['212001', 'USD', -2_667n, -322_667n, -2_667n],
+      ],
+    });
+    expect(await proof(company)).toEqual([]);
+  });
+
+  it('dates a moved change by its own date: a later credit of a closed month is not held for it', async () => {
+    const company = await newCompany([
+      ['2026-10-29', '120.0000'],
+      ['2026-11-19', '121.0000'],
+      ['2026-11-25', '121.0000'],
+    ]);
+    // The cycle invoiced in advance, in October, so November has no period row before it closes.
+    await receive(
+      company,
+      cycle(40, '2026-10-29', 90_000, '2026-11-15', '2026-12-14'),
+      '2026-10-29',
+    );
+    await closePeriod(company, '2026-11');
+    const moved = async (n: number, on: string) => {
+      const held = await receive(
+        company,
+        creditInvoice(n, on, 10_000, -5_000, '2026-11-15'),
+        '2026-12-02',
+      );
+      expect(held.event).toMatchObject({ state: 'held', reason: 'PERIOD_CLOSED' });
+      const result = await inCompany(company, (tx) =>
+        moveEvent(tx, held.event.inboxId, 'وصل الإشعار بعد إقفال تشرين الثاني', {
+          actor: person(),
+          today: '2026-12-02',
+        }),
+      );
+      expect(result.event).toMatchObject({ state: 'posted', postedOn: '2026-12-01' });
+    };
+    // The credit of 19 Nov posts on 1 Dec; the one of 25 Nov is dated after it, so it posts too.
+    await moved(46, '2026-11-19');
+    await moved(49, '2026-11-25');
     expect(await proof(company)).toEqual([]);
   });
 

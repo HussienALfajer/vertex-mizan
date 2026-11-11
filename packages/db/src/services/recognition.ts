@@ -1244,9 +1244,11 @@ export async function recutSince(
 }
 
 /**
- * Whether a change of the schedules dated after `date` stands (owner, 2026-11-11): a credit or a
- * credit's void (`credited`), or a credit's void releasing on its date (`released` with no month),
- * leaving out the entries of one invoice, a void's own credit.
+ * Whether a change of the schedules dated after `date` stands (owner, 2026-11-11): a credit
+ * (`credited`) or a credit's void releasing on its date (`released` with no month), dated by its
+ * event's own accounting date, so a change moved to a later open period keeps its date; a credit
+ * its void reversed no longer stands, so Hub can void the later change and send it again after
+ * (`retainer-credit.md`); the entries of one invoice, a void's own credit, are left out.
  */
 async function changedAfter(
   tx: Transaction,
@@ -1265,11 +1267,20 @@ async function changedAfter(
         eq(journalEntries.id, recognitionMovements.entryId),
       ),
     )
+    .innerJoin(
+      inboundEvents,
+      and(
+        eq(inboundEvents.companyId, journalEntries.companyId),
+        sql`${inboundEvents.id}::text = ${journalEntries.sourceRef}`,
+      ),
+    )
     .where(
       and(
         inArray(recognitionMovements.scheduleId, [...scheduleIds]),
         sql`(${recognitionMovements.kind} = 'credited' or (${recognitionMovements.kind} = 'released' and ${recognitionMovements.month} is null))`,
-        sql`${journalEntries.entryDate} > ${date}`,
+        isNull(journalEntries.reversesEntryId),
+        sql`not exists (select 1 from ${journalEntries} r where r.company_id = ${journalEntries.companyId} and r.reverses_entry_id = ${journalEntries.id})`,
+        sql`${inboundEvents.accountingDate} > ${date}`,
         exceptInvoiceId === null
           ? undefined
           : sql`coalesce(${journalEntries.hubDocument} ->> 'id', '') <> ${exceptInvoiceId}`,
