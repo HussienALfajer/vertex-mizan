@@ -6,6 +6,7 @@ import {
   auditEntries,
   chartAccounts,
   createCompanyBooks,
+  type Database,
   dimensionTypes,
   dimensionValues,
   journalEntries,
@@ -34,7 +35,7 @@ import { connect, refusal } from './connections.js';
 // account and an archived value revalued, the hand reversal refused, and the guards against
 // revaluation rows written by hand. All values are synthetic.
 
-const { app } = connect();
+const { app, owner, superuser } = connect();
 
 let personId = '';
 
@@ -542,35 +543,135 @@ describe('postRevaluation (S07 rules 13–18)', () => {
   });
 });
 
+describe('a month closed, an item settled on the last day, and a state that recurs', () => {
+  it('refuses the preview and the posting of a closed month (rule 16)', async () => {
+    const books = await newBooks();
+    await scenario(books);
+    const { fingerprint } = await preview(books, 'book');
+    // S07's second PR brings the close; here the superuser closes the period, as ledger.test does.
+    const closer = await superuser.connect();
+    try {
+      await closer.query('begin');
+      await closer.query('alter table periods disable trigger period_rules');
+      await closer.query(
+        `update periods set state = 'closed' where company_id = $1 and period = '2026-11'`,
+        [books.id],
+      );
+      await closer.query('alter table periods enable always trigger period_rules');
+      await closer.query('commit');
+    } finally {
+      closer.release();
+    }
+    expect((await refused(preview(books, 'book'))).code).toBe('PERIOD_CLOSED');
+    expect((await refused(revalue(books, 'book', fingerprint))).code).toBe('PERIOD_CLOSED');
+  });
+
+  it('takes back the revaluation of an item settled in full on the last day, and posts a state that recurs anew (edge case 3, rule 17)', async () => {
+    const books = await newBooks();
+    await scenario(books);
+    const first = await previewAndPost(books, 'book');
+    const m1 = await item(books, 'M-1');
+    // Paid in full on 30 November at the closing bulletin of 125, after the revaluation: the
+    // item's open amount and carrying amount are zero while its revaluation stands (invariant 9).
+    const payment = await manual(books, '2026-11-30', [
+      { code: '111004', currency: 'USD', amount: 100000n },
+      { code: '112001', currency: 'USD', amount: -100000n, item: m1.id },
+    ]);
+    const settled = await item(books, 'M-1');
+    expect([
+      settled.balance.openMinor,
+      settled.balance.bookMinor,
+      settled.balance.revaluationBookMinor,
+    ]).toEqual([0n, 0n, 0n]);
+    const stale = await preview(books, 'book');
+    expect(
+      stale.balances
+        .filter((b) => b.differenceMinor !== '0')
+        .map((b) => [b.accountCode, b.differenceMinor]),
+    ).toEqual([['112001', '-500000']]);
+    const adjusting = await revalue(books, 'book', stale.fingerprint);
+    expect(await rowsOf(books, adjusting.entryId as string)).toEqual([
+      ['112001', 'USD', 0n, -500000n, 0n, 'revaluation'],
+      ['541002', 'SYP', 500000n, 500000n, 0n, null],
+    ]);
+    expect((await preview(books, 'book')).state).toBe('current');
+    // The payment was a mistake: reversed on the same day, the books read as they did before the
+    // first revaluation, and the month is revalued anew rather than answered as that posting.
+    await inCompany(books.id, (tx) =>
+      post(tx, {
+        client: 'manual',
+        idempotencyKey: `reversal:${payment.id}`,
+        entryDate: '2026-11-30',
+        description: 'عكس دفعة خاطئة',
+        reference: null,
+        draftId: null,
+        preparedByUserId: personId,
+        approvedByUserId: null,
+        actor: actor(),
+        content: { kind: 'reversal', entryId: payment.id, today: '2026-12-01' },
+      }),
+    );
+    const recurred = await preview(books, 'book');
+    expect(
+      recurred.balances
+        .filter((b) => b.differenceMinor !== '0')
+        .map((b) => [b.accountCode, b.differenceMinor]),
+    ).toEqual([['112001', '500000']]);
+    expect(recurred.fingerprint).not.toBe(first.revaluation?.fingerprint);
+    const again = await revalue(books, 'book', recurred.fingerprint);
+    expect(again).toMatchObject({ posted: true, revaluation: { adjusting: true } });
+    expect(again.entryId).not.toBe(first.entryId);
+    const after = await preview(books, 'book');
+    expect([after.state, after.posted.length]).toEqual(['current', 3]);
+  });
+});
+
 describe('the guards of revaluations (0039)', () => {
-  it('refuse a change, a row without its revaluation entry and a revaluation entry without its row', async () => {
+  it('refuse a change for every role, a row without its revaluation entry and a revaluation movement on another entry', async () => {
     const books = await newBooks();
     await scenario(books);
     const posted = await previewAndPost(books, 'book');
-    const write = (statement: ReturnType<typeof sql>) =>
-      refusal(inCompany(books.id, (tx) => tx.execute(statement)));
-    expect(await write(sql`update revaluations set adjusting = true`)).not.toBe('none');
-    expect(await write(sql`delete from revaluations`)).not.toBe('none');
-    // A row naming a manual entry and its stand-in reversal.
+    expect(posted.revaluation?.userId).toBe(personId);
+    const write = (statement: ReturnType<typeof sql>, db: Database = app) =>
+      refusal(withCompany(db, books.id, (tx) => tx.execute(statement)));
+    // The app role holds no UPDATE or DELETE; the owner, which does, meets refuse_change().
+    expect(await write(sql`update revaluations set adjusting = true`)).toMatch(/permission denied/);
+    expect(await write(sql`delete from revaluations`)).toMatch(/permission denied/);
+    expect(await write(sql`update revaluations set adjusting = true`, owner)).toMatch(
+      /revaluations is append-only: UPDATE refused/,
+    );
+    expect(await write(sql`delete from revaluations`, owner)).toMatch(
+      /revaluations is append-only: DELETE refused/,
+    );
+    // A row naming a manual entry.
     const manualEntry = await manual(books, '2026-11-04', [
       { code: '111003', currency: 'SYP', amount: 100n },
       { code: '311001', currency: 'SYP', amount: -100n },
     ]);
-    expect(
-      await write(sql`insert into revaluations
-        (id, company_id, period_id, ledger, entry_id, reversal_entry_id, adjusting, fingerprint, rates, user_id)
-        select ${uuidv7()}, company_id, period_id, 'book', ${manualEntry.id}, reversal_entry_id, true,
-               ${'b'.repeat(64)}, '[]'::jsonb, user_id
-        from revaluations`),
-    ).not.toBe('none');
-    // An item movement of kind revaluation on a manual entry's line.
-    expect(
-      await write(sql`insert into open_item_movements
-        (id, company_id, item_id, line_id, entry_id, entry_date, kind, adjusted, amount_minor, book_minor, parallel_minor)
-        select ${uuidv7()}, m.company_id, m.item_id, m.line_id, m.entry_id, m.entry_date, 'revaluation', false,
-               m.amount_minor, m.book_minor, m.parallel_minor
-        from open_item_movements m where m.kind = 'open'`),
-    ).not.toBe('none');
-    expect(posted.revaluation?.userId).toBe(personId);
+    for (const db of [app, owner]) {
+      expect(
+        await write(
+          sql`insert into revaluations
+            (id, company_id, period_id, ledger, entry_id, reversal_entry_id, adjusting, fingerprint, rates, user_id)
+            select ${uuidv7()}, company_id, period_id, 'book', ${manualEntry.id}, reversal_entry_id, true,
+                   ${'b'.repeat(64)}, '[]'::jsonb, user_id
+            from revaluations`,
+          db,
+        ),
+      ).toMatch(/revaluations: a revaluation entry on its period's last day/);
+      // A revaluation movement on a manual entry's line.
+      expect(
+        await write(
+          sql`insert into open_item_movements
+            (id, company_id, item_id, line_id, entry_id, entry_date, kind, adjusted, amount_minor, book_minor, parallel_minor)
+            select ${uuidv7()}, m.company_id, m.item_id, m.line_id, m.entry_id, m.entry_date, 'revaluation', false,
+                   m.amount_minor, m.book_minor, m.parallel_minor
+            from open_item_movements m where m.kind = 'open'`,
+          db,
+        ),
+      ).toMatch(
+        /open_item_movements: a revaluation movement does not fit a document item on a measured line of a manual entry/,
+      );
+    }
   });
 });

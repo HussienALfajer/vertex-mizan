@@ -171,13 +171,18 @@ export interface ClosingRateRows {
 }
 
 /**
- * What the preview's fingerprint hashes (rule 17): the month, the ledger, the rate rows of each
- * closing rate, and each balance with its amounts, in a fixed order. Any change to a balance, to a
- * difference or to a rate row in force changes it, so a posting is exact to the preview it repeats.
+ * What the preview's fingerprint hashes (rule 17): the month, the ledger, the revaluations of the
+ * month and ledger already posted, the rate rows of each closing rate, and each balance with its
+ * amounts, in a fixed order. Any change to a balance, to a difference or to a rate row in force
+ * changes it, so a posting is exact to the preview it repeats; and once a revaluation posts, the
+ * same books read again give another fingerprint, so a state that recurs after an adjustment
+ * (a settlement and its reversal) is posted anew, never answered as an earlier posting.
  */
 export function revaluationFingerprintValue(input: {
   readonly period: string;
   readonly ledger: Ledger;
+  /** The ids of the revaluations of the month and ledger already posted, oldest first. */
+  readonly posted: readonly string[];
   readonly rates: readonly ClosingRateRows[];
   readonly balances: readonly (RevaluationBalance & {
     readonly targetMinor: bigint | null;
@@ -187,6 +192,7 @@ export function revaluationFingerprintValue(input: {
   return {
     period: input.period,
     ledger: input.ledger,
+    posted: [...input.posted],
     rates: input.rates.map((rate) => ({ currency: rate.currency, rows: [...rate.rowIds] })),
     balances: input.balances.map((balance) => ({
       account: balance.account,

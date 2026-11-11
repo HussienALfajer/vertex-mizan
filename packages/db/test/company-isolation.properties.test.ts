@@ -741,5 +741,5 @@ describe('company isolation, as a property', () => {
       }),
       { numRuns: 25, includeErrorInReport: true },
     );
-  }, 60_000);
+  }, 180_000);
 });

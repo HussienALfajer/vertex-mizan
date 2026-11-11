@@ -380,10 +380,11 @@ describe('a revaluation line and the chart (S07 rule 10)', () => {
 });
 
 describe('the fingerprint (S07 rule 17)', () => {
-  it('changes with any amount or rate row, never with the order of dimensions', () => {
+  it('changes with any amount, rate row or posted revaluation, never with the order of dimensions', () => {
     const base = {
       period: '2026-11',
       ledger: 'book' as const,
+      posted: [] as string[],
       rates: [{ currency: 'USD' as const, rowIds: ['r1'] }],
       balances: [
         {
@@ -403,6 +404,8 @@ describe('the fingerprint (S07 rule 17)', () => {
     };
     expect(json(reordered)).toBe(json(base));
     expect(json({ ...base, rates: [{ currency: 'USD', rowIds: ['r2'] }] })).not.toBe(json(base));
+    // The same books after a revaluation posted give another fingerprint (rule 17).
+    expect(json({ ...base, posted: ['v1'] })).not.toBe(json(base));
     expect(
       json({ ...base, balances: base.balances.map((b) => ({ ...b, revaluedMinor: 1n })) }),
     ).not.toBe(json(base));

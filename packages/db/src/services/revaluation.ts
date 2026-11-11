@@ -354,6 +354,7 @@ async function compute(tx: Transaction, period: string, ledger: Ledger): Promise
       revaluationFingerprintValue({
         period,
         ledger,
+        posted: (await postedRevaluations(tx, period, ledger)).map((revaluation) => revaluation.id),
         rates: closingRates.map(
           (rate): ClosingRateRows => ({
             currency: rate.currency,

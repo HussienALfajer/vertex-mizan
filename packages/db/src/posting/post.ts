@@ -1337,6 +1337,8 @@ async function reversalLines(
 /**
  * Whether an entry after `entryId`, other than its reversal `reversalId`, moved one of `itemIds`:
  * then reversing `entryId` exactly does not put those items back where they were before it (Q13).
+ * A month-end revaluation and its reversal are not such a movement: they leave the items' carrying
+ * amounts as they were (S07, ADR 0007).
  */
 async function movedSince(
   tx: Transaction,
@@ -1358,6 +1360,7 @@ async function movedSince(
     .where(
       and(
         inArray(openItemMovements.itemId, [...itemIds]),
+        sql`${openItemMovements.kind} <> 'revaluation'`,
         sql`${journalEntries.id} <> ${reversalId}`,
         sql`${journalEntries.sequence} > (select e.sequence from public.journal_entries e where e.id = ${entryId})`,
       ),
