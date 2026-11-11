@@ -29,6 +29,7 @@ The Arabic text of every front end (ADR 0009): plain catalogs and locale constan
   - `inbox`: the event inbox (S05): each state, hold reason and detail, event type, payment method and action, what fixes each reason, the inbox and event pages, the move, resolution and dismissal, the Hub document on an entry or an item, the palette's "حدث…";
   - `postingRules`: the posting rules' mapping (S05): the name of each slot and the account it takes, the rules that group the slots, the mapping screen;
   - `apiClients`: the API clients (S05): systems, scopes, clients, keys, the client form, the new key shown once, the rotation and the revocation;
+  - `revenue`: revenue recognition (S06): the patterns, schedule states, line sources and movement kinds, the schedules and months of `/revenue`, the month's preview, a schedule's page, the two actions of `/inbox/:id` with their previewed entries, a contract asset item;
   - `email`: the emails the worker sends (S01), with `{name}` placeholders the worker fills from the email's data.
 - `src/locale.ts`: `defaultLanguage` (`ar`), `textDirection` (`rtl`), `formatLocale` (`ar-SY-u-nu-latn`: Syrian month names, Latin digits; pinned by `locale.test.ts`) for dates and counts, `displayTimeZone` (`Asia/Damascus`).
 - `src/catalog.test.ts`: no empty text, no Arabic-Indic digit, a text for every error code and every amount-input reason.
