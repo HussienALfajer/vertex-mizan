@@ -23,7 +23,7 @@ The ledger functions already exist in `packages/ledger/src/recognition.ts` (merg
 - [x] scenario book: `revenue/milestones.md`, `revenue/cancelled-project.md` run `Approved`
 - [x] api: `POST /v1/events` with `milestone.reopened` (idempotent replay), `POST /api/inbox/:id/split-remainder`; tests
 - [x] bridge: OpenAPI regenerated, breaking-change check
-- [ ] checks and reviewers, PR with auto-merge and Auto-fix
+- [x] checks and reviewers, PR with auto-merge and Auto-fix
 
 ## PR 3 — Credits, voids and re-issues; the read API (`feat/s06-credits-voids`)
 - [ ] db: the integrity check's proof that each contract's `contract_liability` lines equal its schedules' movements
