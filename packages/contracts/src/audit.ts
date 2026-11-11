@@ -100,6 +100,9 @@ export const COMPANY_AUDIT_ACTIONS = [
   'event.moved_to_open_period',
   'event.resolved',
   'event.dismissed',
+  // S06: the accountant's recognition actions on a held event.
+  'event.recognised_in_open_period',
+  'event.remainder_split',
 ] as const;
 
 export const companyAuditActionSchema = z

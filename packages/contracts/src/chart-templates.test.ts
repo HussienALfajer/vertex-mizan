@@ -160,7 +160,7 @@ describe('the chart templates (S02 "Templates", drafts under Q3)', () => {
     expect(kinds('general')).toEqual([['112001', 'document']]);
   });
 
-  it('maps every posting slot of S05 to a fitting account of the service-agency chart', () => {
+  it('maps every posting slot of S05 and S06 to a fitting account of the service-agency chart', () => {
     const template = chartTemplate('service-agency');
     const expected = POSTING_SLOTS.flatMap((slot) =>
       slotIsPerCurrency(slot) ? [`${slot}:SYP`, `${slot}:USD`] : [slot],

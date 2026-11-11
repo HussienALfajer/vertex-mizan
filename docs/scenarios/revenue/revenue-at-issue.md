@@ -8,13 +8,13 @@ S05's feature slice brought their executors: the `event` executor through the ev
 
 ## Rule
 
-`invoice.issued` whose every line is recognised at issue (`extra_work`, `manual` not marked deferred, `retainer_charge` of kind `termination_fee`) and whose taxes are zero posts one entry on the invoice's accounting date: a debit to trade receivables for the invoice's total, as one document item under Hub's invoice number with the client and, when named, the contract; and a credit per line to service revenue (`revenue_at_issue`) or to contract termination fees (`termination_fee_revenue`), with the client, the line's service and, when named, the contract. Every line, the item's included, is a new measurement in each ledger: the book ledger at the bulletin of the day, a ledger in the invoice's currency at the amount as is, and a market ledger that accepts the transaction's rate at Hub's `syp_per_usd`. Whatever the conversions leave a ledger out of balance by is conversion rounding, one line per ledger to the `conversion_rounding` role account. An invoice with any line whose revenue is deferred (a retainer cycle charge, a deposit, a milestone, a manual line marked deferred) is held `NO_MAPPING` (`deferred_revenue`) whole, and one with a non-zero tax is held `NO_MAPPING` (`tax_lines`); nothing of it posts. `invoice.line_service_changed` moves the line's revenue from the old service to the new on the change date: a debit with the old service and a credit with the new, on the account the line posted to, at the amounts the line posted at issue in both ledgers, so no rate is read. `invoice.voided` posts, on the void date, the exact reversal of every entry still standing for the invoice, latest first, and closes the item; no rate is read.
+`invoice.issued` whose every line is recognised at issue (`extra_work`, `manual` not marked deferred, `retainer_charge` of kind `termination_fee`) and whose taxes are zero posts one entry on the invoice's accounting date: a debit to trade receivables for the invoice's total, as one document item under Hub's invoice number with the client and, when named, the contract; and a credit per line to service revenue (`revenue_at_issue`) or to contract termination fees (`termination_fee_revenue`), with the client, the line's service and, when named, the contract. Every line, the item's included, is a new measurement in each ledger: the book ledger at the bulletin of the day, a ledger in the invoice's currency at the amount as is, and a market ledger that accepts the transaction's rate at Hub's `syp_per_usd`. Whatever the conversions leave a ledger out of balance by is conversion rounding, one line per ledger to the `conversion_rounding` role account. An invoice that also has a line whose revenue is deferred (a retainer cycle charge, a deposit, a milestone, a manual line marked deferred) still posts as one entry, its deferred lines by S06's rules (`revenue/over-time-release.md`, `revenue/milestones.md`); one with a non-zero tax is held `NO_MAPPING` (`tax_lines`); nothing of it posts. `invoice.line_service_changed` moves the line's revenue from the old service to the new on the change date: a debit with the old service and a credit with the new, on the account the line posted to, at the amounts the line posted at issue in both ledgers, so no rate is read. `invoice.voided` posts, on the void date, the exact reversal of every entry still standing for the invoice, latest first, and closes the item; no rate is read.
 
 ## Basis
 
 - **IFRS 15.31 and 15.38:** extra work and a manual invoice not marked deferred are invoiced once the work is delivered, so the performance obligation is satisfied and the revenue is recognised at issue. A termination fee is consideration for no further service: nothing is left to deliver, so it too is revenue at issue (`phase-1-scope.md` §6, "Termination fee").
 - **IFRS 9.5.1.3 and IFRS 15.108:** the right to consideration is unconditional once invoiced, so the invoice's total is a trade receivable.
-- **IFRS 15.31 applied to the contract once:** an invoice that also carries a deferred line is S06's, held whole until S06's rules exist, so one invoice is never split between two specs (owner, 2026-11-07).
+- **IFRS 15.31 applied to the contract once:** an invoice that also carries a deferred line was held whole until S06's rules existed, so one invoice is never split between two specs (owner, 2026-11-07); since S06 it posts as one entry with its deferred lines (S06 rule 2; owner, 2026-11-11).
 - **IAS 21.21–22:** each line is recorded at the spot rate of its date: the bulletin of the day for the book ledger (S02 rule 16; ADR 0011), and for a market ledger that accepts it, the rate the invoice was dealt at, Hub's `syp_per_usd`. An invoice in one currency exchanges nothing, so its residual is the rounding of the conversions alone (IAS 21.28 does not apply), at most half a minor unit per converted line.
 - **IAS 1.32:** the rounding line has its own account (`541003`, presented with the exchange differences) and is never offset inside a revenue line.
 - **ADR 0005 and ADR 0012:** posted entries are append-only; a void or a service change in Hub is a reversal or a reclassification entry in Mizan, dated on its own date, so a month already reported keeps its figures. A Hub entry is reversed only by its events (S05 rule 14).
@@ -37,7 +37,6 @@ Shapes:
 The cases leave out what other scenarios or later specs own:
 - payments of these invoices, and a void held `OPEN_ITEM_HAS_SETTLEMENTS` while a payment stands (`receivables/hub-payment.md`);
 - the deferred lines' own rules, and the void or service change of an invoice that has them (S06);
-- a manual line marked deferred, held `NO_MAPPING` (`deferred_revenue`) like the retainer line below: its marker is a field of the payload contract S05 fixes with Hub (Q5);
 - an invoice, void or service change dated in a closed period, held `PERIOD_CLOSED` (the scenario setup closes periods with S07; `inbox/holds-and-actions.md` posts one in the next open period);
 - an event received before the invoice it names (a void or a service change), held `UNKNOWN_REFERENCE` like the payments of `receivables/hub-payment.md`;
 - a replayed event (the same idempotency key), which posts nothing new: a property test of S05, since a step carries no event ID;
@@ -314,12 +313,12 @@ expect:
     - { item: INV-2026-1, account: "112001", dims: { client: C1 }, currency: USD, amount: 0, book: 0, parallel: 0 }
 ```
 
-### Vertex Media: an invoice with a retainer line, held whole
+### Vertex Media: an invoice with a retainer line, posted through S06's rules
 
-The invoice mixes an extra-work line with a monthly retainer charge, whose revenue is deferred over its cycle (S06). It is held `NO_MAPPING` (`deferred_revenue`) whole: the extra-work line does not post on its own, and no item opens. S06's deployment retries it.
+The invoice mixes an extra-work line with a monthly retainer charge, whose revenue is deferred over its cycle. S05 held it `NO_MAPPING` (`deferred_revenue`) whole; S06's rules post it as one entry (S06 rule 2): the extra-work line is revenue at issue, the retainer charge is deferred to contract liabilities `212001`, and one item opens for the total. The cycle starts before the issue date but inside the issue month, so no month has elapsed (S06 rule 7); November's release is `revenue/over-time-release.md`'s (the owner approved this outcome on 2026-11-11, replacing the hold).
 
 ```yaml
-case: an invoice of 100.00 USD extra work and a 1,000.00 USD monthly retainer charge is held NO_MAPPING whole; nothing posts
+case: an invoice of 100.00 USD extra work and a 1,000.00 USD monthly retainer charge at bulletin 120; one entry, the charge deferred
 company: { shape: syp-usd, book: SYP, parallel: USD, template: service-agency,
            rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true } }
 rates:
@@ -332,12 +331,23 @@ steps:
                lines: [{ line: L1, amount: 10000, source: extra_work, service: S1 },
                        { line: L2, amount: 100000, source: retainer_charge, kind: monthly,
                          cycle_start: 2026-11-01, cycle_end: 2026-11-30, service: S2 }] }
-    outcome: { status: held, reason: NO_MAPPING, detail: deferred_revenue }
 expect:
-  entries: []
+  entries:
+    - source: invoice.issued
+      date: 2026-11-03
+      lines:
+        # the total: 1,100.00 USD × 120 = 132,000.00 SYP; the USD parallel ledger takes the amounts as is
+        - { account: "112001", dims: { client: C1, contract: R1 }, currency: USD, amount: 110000, book: 13200000, parallel: 110000 }
+        # 100.00 USD × 120 = 12,000.00 SYP, revenue at issue
+        - { account: "411001", dims: { client: C1, contract: R1, service: S1 }, currency: USD, amount: -10000, book: -1200000, parallel: -10000 }
+        # 1,000.00 USD × 120 = 120,000.00 SYP, deferred over 1–30 November
+        - { account: "212001", dims: { client: C1, contract: R1 }, currency: USD, amount: -100000, book: -12000000, parallel: -100000 }
   balances:
-    - { account: "112001", book: 0, parallel: 0 }
-    - { account: "411001", book: 0, parallel: 0 }
+    - { account: "112001", book: 13200000, parallel: 110000 }
+    - { account: "411001", book: -1200000, parallel: -10000 }
+    - { account: "212001", book: -12000000, parallel: -100000 }
+  open_items:
+    - { item: INV-2026-1, account: "112001", dims: { client: C1, contract: R1 }, currency: USD, amount: 110000, book: 13200000, parallel: 110000 }
 ```
 
 ### Vertex Media: an invoice with a tax line

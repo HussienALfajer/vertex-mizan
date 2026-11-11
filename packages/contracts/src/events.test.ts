@@ -71,7 +71,8 @@ const issues = (input: unknown) => {
 
 describe('the event envelope (S05 rules 1–3)', () => {
   it('chooses the payload by type and version, for every type of the catalogue', () => {
-    expect(EVENT_TYPES).toHaveLength(19);
+    expect(EVENT_TYPES).toHaveLength(20);
+    expect(EVENT_TYPES.at(-1)).toBe('milestone.reopened');
     const parsed = parseEventEnvelope(envelope('invoice.issued', invoice));
     expect(parsed.type).toBe('invoice.issued');
     expect(issues(envelope('invoice.issued', invoice, 2))).toEqual(['version']);
@@ -243,19 +244,20 @@ describe('the amounts', () => {
 });
 
 describe('the holds and the slots', () => {
-  it('check every reason but S06’s in the order of rule 8', () => {
+  it('check every reason in the order of rule 8, an elapsed month after the date (S06 rule 18)', () => {
     expect(HOLD_REASONS.slice(-2)).toEqual([
       'OPEN_ITEM_HAS_SETTLEMENTS',
       'WAITING_FOR_EARLIER_EVENT',
     ]);
     expect(HOLD_CHECK_ORDER[0]).toBe('WAITING_FOR_EARLIER_EVENT');
-    expect([...HOLD_CHECK_ORDER].sort()).toEqual(
-      HOLD_REASONS.filter((reason) => reason !== 'SERVICE_PERIOD_CLOSED').sort(),
+    expect([...HOLD_CHECK_ORDER].sort()).toEqual([...HOLD_REASONS].sort());
+    expect(HOLD_CHECK_ORDER.indexOf('SERVICE_PERIOD_CLOSED')).toBe(
+      HOLD_CHECK_ORDER.indexOf('PERIOD_CLOSED') + 1,
     );
   });
 
   it('have a slot per payment method, with an account per currency', () => {
-    expect(POSTING_SLOTS).toHaveLength(10);
+    expect(POSTING_SLOTS).toHaveLength(14);
     expect(paymentMethodSlot('e_wallet')).toBe('payment_method.e_wallet');
     expect(POSTING_SLOTS.filter(slotIsPerCurrency)).toEqual([
       'payment_method.cash',

@@ -116,6 +116,8 @@ export const audit = {
     'event.moved_to_open_period': 'رحّل حدثاً معلّقاً في الفترة المفتوحة التالية',
     'event.resolved': 'حلّ حدثاً معلّقاً بقيد يدوي',
     'event.dismissed': 'أسقط حدثاً معلّقاً',
+    'event.recognised_in_open_period': 'اعترف بجزء منقضٍ في أول فترة مفتوحة',
+    'event.remainder_split': 'قسّم المتبقي في مشروع ملغى',
   } satisfies Record<CompanyAuditAction, string>,
   /** The audited entities (`AUDITED_FIELDS` in `packages/db`). */
   entities: {

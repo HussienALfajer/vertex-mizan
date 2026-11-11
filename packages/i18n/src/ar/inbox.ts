@@ -48,6 +48,19 @@ export const inbox = {
     dimension_value_archived: 'الحدث يذكر قيمة من Hub مؤرشفة في ميزان',
     document_resolved_manually: 'حدث سابق على المستند نفسه حُلّ بقيد يدوي أو أُسقط',
     invoice_currency_mismatch: 'عملة الفاتورة في الدفعة تخالف عملة الفاتورة المرحّلة',
+    recognition_pattern_unclear: 'نمط الاعتراف بسطر في الفاتورة غير واضح: تنقصه تواريخ الخدمة أو العقد',
+    credit_cycle: 'الإشعار الدائن يشير إلى دورة اشتراك لم تُرحَّل فاتورتها بعد',
+    credit_cycle_voided: 'الإشعار الدائن يشير إلى دورة اشتراك أُلغيت فاتورتها',
+    credit_exceeds_cycle: 'الإشعار الدائن أكبر من قيمة الدورة بعد الإشعارات السابقة',
+    schedule_credited: 'على جدول الاعتراف إشعار دائن قائم من فاتورة أخرى',
+    milestone_amount_differs: 'مبلغ المرحلة يخالف المبلغ المفوتر أو المعترف به لها',
+    milestone_already_done: 'المرحلة منجزة من قبل، ولم يصل إعادة فتحها',
+    milestone_service_missing: 'حدث إنجاز المرحلة لا يذكر خدمتها',
+    milestone_released_at_completion: 'حُرّر إيراد المرحلة عند اكتمال المشروع',
+    reissue_period_differs: 'فترة الفاتورة المعاد إصدارها لا تغطي كل الأشهر التي استردّها الإلغاء',
+    cancelled_project_remainder: 'المتبقي في مشروع ملغى',
+    schedule_split_at_cancellation: 'قُسّم جدول الفاتورة عند إلغاء المشروع',
+    invoiced_after_cancellation: 'فوترة مرحلة بعد إلغاء مشروعها',
   } satisfies Record<HoldDetailCode, string>,
   slotUnmapped: 'لا حساب مربوط في قواعد الترحيل',
   accountBlocked: 'الحساب المربوط محظور أو مؤرشف',
@@ -55,7 +68,8 @@ export const inbox = {
   fixes: {
     PERIOD_CLOSED:
       'تاريخه في فترة مغلقة. يُرحَّل وحده إذا أُعيد فتح الفترة، أو رحّله في أول فترة مفتوحة بعدها.',
-    SERVICE_PERIOD_CLOSED: 'فترة الخدمة مغلقة. يُرحَّل مع الاعتراف بالإيراد (S06).',
+    SERVICE_PERIOD_CLOSED:
+      'شهر منقضٍ من فترة الخدمة مغلق. يُرحَّل وحده إذا أُعيد فتح الشهر، أو اعترف بالجزء المنقضي في أول فترة مفتوحة.',
     UNKNOWN_REFERENCE: 'المستند الذي يشير إليه لم يصل من Hub بعد. يُرحَّل وحده حين يُرحَّل ذلك المستند.',
     NO_MAPPING:
       'لا حساب لقاعدة هذا الحدث. يُرحَّل وحده حين يُربط الحساب في قواعد الترحيل أو يُرفع حظره.',
@@ -92,6 +106,7 @@ export const inbox = {
     'ad_spend.changed': 'تعديل صرف إعلاني',
     'ad_spend.archived': 'أرشفة صرف إعلاني',
     'rate.changed': 'تغيّر السعر',
+    'milestone.reopened': 'إعادة فتح مرحلة',
   } satisfies Record<EventType, string>,
   unknownType: 'نوع حدث غير معروف',
   methods: {
@@ -110,6 +125,8 @@ export const inbox = {
     moved_to_open_period: 'رُحّل في الفترة المفتوحة التالية',
     resolved: 'حُلّ بقيد يدوي',
     dismissed: 'أُسقط',
+    recognised_in_open_period: 'اعتُرف به في أول فترة مفتوحة',
+    remainder_split: 'قُسّم المتبقي',
   } satisfies Record<EventAction, string>,
   unknownAction: 'إجراء غير معروف',
   views: {
@@ -229,6 +246,8 @@ export const inbox = {
     period: 'الفترة',
     usdSpend: 'الصرف',
     effectiveOn: 'ساري من',
+    milestone: 'المرحلة',
+    reopenedOn: 'تاريخ إعادة الفتح',
   },
   retryAction: {
     label: 'أعد المحاولة',
