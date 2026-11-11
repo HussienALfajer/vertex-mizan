@@ -36,7 +36,7 @@ The ledger functions already exist in `packages/ledger/src/recognition.ts` (merg
 
 ## PR 4 — Screens (branch `claude/epic-curie-280sqo`, the cloud session's)
 - [x] contracts, db, api: `GET /api/inbox/:id/preview` (S06 "Screens": what the recognition in the first open period, or a split with its revenue part, would post, the action attempted and rolled back; `events.read`), for the closed months' parts and the split's entry on `/inbox/:id`; tests
-- [ ] web: sidebar entry, `/revenue` (schedules and months tabs, decisions banner), `/revenue/:id`, the two actions on `/inbox/:id`, the contract asset item on `/open-items/:id`; i18n `ar.revenue`
-- [ ] e2e: the flows and RTL screenshots, light and dark, at 360, 768 and 1280 px
+- [x] web: sidebar entry, `/revenue` (schedules and months tabs, decisions banner), `/revenue/:id`, the two actions on `/inbox/:id`, the contract asset item on `/open-items/:id`; i18n `ar.revenue`; the journal opened filtered by source and dates (a month's releases)
+- [x] e2e: the flows and RTL screenshots, light and dark, at 360, 768 and 1280 px
 - [ ] docs: ROADMAP, glossary, the commands table
 - [ ] checks and reviewers, PR with auto-merge and Auto-fix; reset this file to its stub

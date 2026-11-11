@@ -40,6 +40,7 @@ import { damascusToday, formatDateTime, formatDay } from '../../lib/format';
 import { can, useCompany } from '../../lib/session';
 import { EntryNumberText, Fact, useFiscalYearStartMonth } from '../entries/entry-parts';
 import { HubDocumentLink } from '../inbox/inbox-parts';
+import { formatMonth } from '../revenue/revenue-parts';
 import { AdjustedBadge, ClientName, ReceivablesBackLink } from './receivables-parts';
 import { openItemQuery } from './receivables-queries';
 
@@ -144,6 +145,7 @@ export function OpenItemPage() {
               </span>
             )}
           </Fact>
+          <ContractAssetFact item={data} />
           <Fact label={t.documentDate}>{formatDay(data.documentDate)}</Fact>
           <Fact label={t.dueOn}>{data.dueOn ? formatDay(data.dueOn) : t.noDueDate}</Fact>
         </dl>
@@ -424,5 +426,41 @@ function DueDateDialog({
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * What a contract asset item stands for (S06 rules 7 and 13): a milestone done before its invoice
+ * (Hub's milestone, its reference the milestone's number, `<number>/<n>` after a reopen), or a late
+ * invoice line's elapsed months (the invoice, `<number>/<position>`, a later month of the line
+ * `<number>/<position>/<YYYY-MM>`). Other items show nothing.
+ */
+function ContractAssetFact({ item }: { item: OpenItem }) {
+  const c = ar.revenue.contractAsset;
+  const document = item.hubDocument;
+  if (document?.type === 'milestone') {
+    return (
+      <Fact label={c.label}>
+        {`${c.milestone} `}
+        <bdi dir="ltr">{document.number}</bdi>
+      </Fact>
+    );
+  }
+  if (document?.type !== 'invoice' || !item.reference.startsWith(`${document.number}/`)) {
+    return null;
+  }
+  const [position, month] = item.reference.slice(document.number.length + 1).split('/');
+  if (!position || !/^\d+$/.test(position)) return null;
+  return (
+    <Fact label={c.label}>
+      {`${c.line} `}
+      <bdi dir="ltr">{position}</bdi>
+      {month && /^\d{4}-\d{2}$/.test(month) && (
+        <span className="block text-xs text-muted-foreground">
+          {`${c.month}: `}
+          {formatMonth(month)}
+        </span>
+      )}
+    </Fact>
   );
 }

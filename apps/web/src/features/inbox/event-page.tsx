@@ -40,12 +40,14 @@ import {
 import {
   BanIcon,
   CalendarArrowUpIcon,
+  CalendarCheckIcon,
   CirclePauseIcon,
   FilePenLineIcon,
   FileQuestionIcon,
   InfoIcon,
   ListIcon,
   RotateCwIcon,
+  SplitIcon,
 } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { FormError, FormErrorSummary } from '../../components/form-error';
@@ -55,6 +57,8 @@ import { formatDateTime, formatDay, formatEntryNumber, parseEntryNumber } from '
 import { can, useCompany } from '../../lib/session';
 import { Fact, useFiscalYearStartMonth } from '../entries/entry-parts';
 import { entriesQuery } from '../entries/entry-queries';
+import { ActionPreviewPanel } from '../revenue/action-preview';
+import { SplitDialog } from '../revenue/split-dialog';
 import {
   actionLabel,
   detailText,
@@ -70,7 +74,7 @@ import { KeyFields } from './key-fields';
 const t = ar.inbox;
 const route = getRouteApi('/_app/_company/inbox/$id');
 
-type Action = 'move' | 'resolve' | 'dismiss';
+type Action = 'move' | 'resolve' | 'dismiss' | 'recognise' | 'split';
 
 /**
  * `/inbox/:id` (S05 "Screens", rules 15–18): the event's envelope, its key fields with `Amount`
@@ -92,6 +96,9 @@ export function EventPage() {
     void queryClient.invalidateQueries({ queryKey: ['inbox', companyId, 'list'] });
     void queryClient.invalidateQueries({ queryKey: ['inbox', companyId, 'counts'] });
     void queryClient.invalidateQueries({ queryKey: ['entries', companyId] });
+    // What an action would have posted no longer holds; the schedules changed with it (S06).
+    queryClient.removeQueries({ queryKey: ['inbox', companyId, 'preview', id] });
+    void queryClient.invalidateQueries({ queryKey: ['revenue', companyId] });
   };
   const retry = useMutation({
     mutationFn: () =>
@@ -121,6 +128,13 @@ export function EventPage() {
   const held = data.state === 'held';
   const active = !membership.company.archived;
   const manage = held && active && can(me, 'events.manage');
+  // The actions of S06 rule 16, each previewed on the page and in its dialog.
+  const recognisable = held && data.reason === 'SERVICE_PERIOD_CLOSED';
+  const splittable =
+    held &&
+    data.reason === 'NEEDS_DECISION' &&
+    (data.detail === 'cancelled_project_remainder' ||
+      data.detail === 'invoiced_after_cancellation');
   const dismiss = held && active && can(me, 'events.dismiss');
   const action = (path: string, body: object) =>
     api('POST', `/inbox/${id}/${path}`, {
@@ -155,6 +169,18 @@ export function EventPage() {
                   {t.move.label}
                 </Button>
               )}
+              {manage && recognisable && (
+                <Button variant="outline" onClick={() => setOpen('recognise')}>
+                  <CalendarCheckIcon aria-hidden="true" />
+                  {ar.revenue.actions.recognise.label}
+                </Button>
+              )}
+              {manage && splittable && (
+                <Button variant="outline" onClick={() => setOpen('split')}>
+                  <SplitIcon aria-hidden="true" />
+                  {ar.revenue.actions.split.label}
+                </Button>
+              )}
               {manage && data.reason === 'NEEDS_DECISION' && (
                 <Button variant="outline" onClick={() => setOpen('resolve')}>
                   <FilePenLineIcon aria-hidden="true" />
@@ -175,6 +201,17 @@ export function EventPage() {
       {held && <Hold event={data} />}
       {held && !can(me, 'events.manage') && (
         <Callout tone="info" icon={<InfoIcon />} title={t.event.readOnly} />
+      )}
+      {recognisable && (
+        <Section id="event-closed-parts" title={ar.revenue.actions.recognise.closedParts}>
+          <ActionPreviewPanel id={id} query={{ action: 'recognise-in-open-period' }} />
+        </Section>
+      )}
+      {splittable && (
+        <Section id="event-remainder" title={ar.inbox.details.cancelled_project_remainder}>
+          <p className="text-muted-foreground">{ar.revenue.actions.split.wholeRefunded}</p>
+          <ActionPreviewPanel id={id} query={{ action: 'split-remainder', revenueAmount: '0' }} />
+        </Section>
       )}
       <Card className="p-6">
         <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -279,6 +316,31 @@ export function EventPage() {
             </p>
           )}
         </ReasonDialog>
+      )}
+      {manage && recognisable && (
+        <ReasonDialog
+          open={open === 'recognise'}
+          onOpenChange={(next) => setOpen(next ? 'recognise' : null)}
+          title={ar.revenue.actions.recognise.title}
+          description={ar.revenue.actions.recognise.description}
+          reasonLabel={t.resolve.reason}
+          submitLabel={ar.revenue.actions.recognise.confirm}
+          onConfirm={(reason) => action('recognise-in-open-period', { reason })}
+        >
+          <ActionPreviewPanel
+            id={id}
+            query={{ action: 'recognise-in-open-period' }}
+            enabled={open === 'recognise'}
+          />
+        </ReasonDialog>
+      )}
+      {manage && splittable && (
+        <SplitDialog
+          id={id}
+          open={open === 'split'}
+          onOpenChange={(next) => setOpen(next ? 'split' : null)}
+          onConfirm={(body) => action('split-remainder', body)}
+        />
       )}
       {manage && data.reason === 'NEEDS_DECISION' && (
         <ResolveDialog

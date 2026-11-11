@@ -55,12 +55,13 @@ const sourceOptions = [
  */
 export function JournalPage() {
   const { companyId, me, membership } = useCompany();
-  const { find } = route.useSearch();
+  const search = route.useSearch();
+  const { find } = search;
   const company = useQuery(companyQuery(companyId)).data;
   const accounts = useQuery(accountsQuery(companyId));
   const startMonth = company?.fiscalYearStartMonth ?? 1;
-  const [range, setRange] = useState<DateRange>({ from: '', to: '' });
-  const [source, setSource] = useState<EntrySource | 'any'>('any');
+  const [range, setRange] = useState<DateRange>({ from: search.from ?? '', to: search.to ?? '' });
+  const [source, setSource] = useState<EntrySource | 'any'>(search.source ?? 'any');
   const [accountId, setAccountId] = useState<string | null>(null);
   const [numberText, setNumberText] = useState('');
   const [text, setText] = useState('');

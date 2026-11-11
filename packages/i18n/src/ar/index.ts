@@ -21,6 +21,7 @@ import { openItems } from './open-items.js';
 import { permissions } from './permissions.js';
 import { postingRules } from './posting-rules.js';
 import { rates } from './rates.js';
+import { revenue } from './revenue.js';
 import { roles } from './roles.js';
 import { shell } from './shell.js';
 import { shortcuts } from './shortcuts.js';
@@ -53,6 +54,7 @@ export const ar = {
   inbox,
   postingRules,
   apiClients,
+  revenue,
 };
 
 export type Catalog = typeof ar;
