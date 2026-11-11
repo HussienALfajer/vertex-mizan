@@ -441,8 +441,13 @@ export function advanceClock(companyId: string, on: string): void {
   if (on > hub.today) hub.today = on;
 }
 
+/** The case's clock: the latest date of its steps so far. */
+export function caseToday(companyId: string): string {
+  return hubOf(companyId).today;
+}
+
 /** The first day of the month after `month` (`YYYY-MM`). */
-function dayAfterMonth(month: string): string {
+export function dayAfterMonth(month: string): string {
   const [year, number] = month.split('-').map(Number) as [number, number];
   return number === 12 ? `${year + 1}-01-01` : `${year}-${String(number + 1).padStart(2, '0')}-01`;
 }

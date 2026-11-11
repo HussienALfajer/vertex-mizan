@@ -1462,7 +1462,8 @@
                 "event.resolved",
                 "event.dismissed",
                 "event.recognised_in_open_period",
-                "event.remainder_split"
+                "event.remainder_split",
+                "revaluation.posted"
               ]
             }
           },
@@ -9410,6 +9411,169 @@
         ]
       }
     },
+    "/api/revaluation/{period}": {
+      "get": {
+        "operationId": "RevaluationController_preview",
+        "parameters": [
+          {
+            "name": "ledger",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": "book",
+              "type": "string",
+              "enum": [
+                "book",
+                "parallel"
+              ]
+            }
+          },
+          {
+            "name": "period",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-(0[1-9]|1[0-2])$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The ledger’s revaluation of the month: closing rates, balances and their differences, the revaluations posted, the state and the fingerprint",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevaluationPreview"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "TWO_FACTOR_REQUIRED, FORBIDDEN",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "COMPANY_NOT_SELECTED, COMPANY_SWITCHED, PERIOD_CLOSED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_FAILED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "periods"
+        ]
+      },
+      "post": {
+        "operationId": "RevaluationController_post",
+        "parameters": [
+          {
+            "name": "period",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-(0[1-9]|1[0-2])$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RevaluationPost"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The revaluation posted with its reversal, the first result of the same preview, or posted: false with nothing to post",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevaluationPostResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "TWO_FACTOR_REQUIRED, FORBIDDEN",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "COMPANY_NOT_SELECTED, COMPANY_SWITCHED, COMPANY_ARCHIVED, PERIOD_CLOSED, PERIOD_NOT_ENDED, REVALUATION_CHANGED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_FAILED, RATE_MISSING, ACCOUNT_ROLE_MISSING",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "periods"
+        ]
+      }
+    },
     "/api/auth/reauthenticate": {
       "post": {
         "operationId": "AccountController_reauthenticate",
@@ -10084,7 +10248,9 @@
           "posting_rules.manage",
           "api_clients.read",
           "api_clients.manage",
-          "recognition.read"
+          "recognition.read",
+          "periods.read",
+          "revaluation.post"
         ]
       },
       "ErrorResponse": {
@@ -10235,7 +10401,9 @@
           "EVENT_NOT_HELD",
           "EVENT_ACTION_NOT_ALLOWED",
           "ENTRY_ALREADY_LINKED",
-          "MAPPING_ACCOUNT_INVALID"
+          "MAPPING_ACCOUNT_INVALID",
+          "PERIOD_NOT_ENDED",
+          "REVALUATION_CHANGED"
         ]
       },
       "PageQuery": {
@@ -10986,7 +11154,8 @@
           "event.resolved",
           "event.dismissed",
           "event.recognised_in_open_period",
-          "event.remainder_split"
+          "event.remainder_split",
+          "revaluation.posted"
         ]
       },
       "AuditPage": {
@@ -13033,7 +13202,8 @@
           "open",
           "add",
           "clear",
-          "difference"
+          "difference",
+          "revaluation"
         ]
       },
       "Attachment": {
@@ -19170,6 +19340,450 @@
           "invoiceNumber",
           "date",
           "lines"
+        ],
+        "additionalProperties": false
+      },
+      "PeriodParam": {
+        "type": "object",
+        "properties": {
+          "period": {
+            "$ref": "#/components/schemas/Period"
+          }
+        },
+        "required": [
+          "period"
+        ]
+      },
+      "Period": {
+        "type": "string",
+        "pattern": "^\\d{4}-(0[1-9]|1[0-2])$"
+      },
+      "RevaluationQuery": {
+        "type": "object",
+        "properties": {
+          "ledger": {
+            "default": "book",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Ledger"
+              }
+            ]
+          }
+        }
+      },
+      "RevaluationPreview": {
+        "type": "object",
+        "properties": {
+          "period": {
+            "$ref": "#/components/schemas/Period"
+          },
+          "ledger": {
+            "$ref": "#/components/schemas/Ledger"
+          },
+          "ledgerCurrency": {
+            "$ref": "#/components/schemas/CurrencyCode"
+          },
+          "lastDay": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          },
+          "ended": {
+            "type": "boolean"
+          },
+          "state": {
+            "$ref": "#/components/schemas/RevaluationState"
+          },
+          "fingerprint": {
+            "type": "string"
+          },
+          "closingRates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ClosingRate"
+            }
+          },
+          "missingRates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MissingClosingRate"
+            }
+          },
+          "balances": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RevaluationBalance"
+            }
+          },
+          "gainMinor": {
+            "$ref": "#/components/schemas/MinorUnits"
+          },
+          "lossMinor": {
+            "$ref": "#/components/schemas/MinorUnits"
+          },
+          "posted": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PostedRevaluation"
+            }
+          }
+        },
+        "required": [
+          "period",
+          "ledger",
+          "ledgerCurrency",
+          "lastDay",
+          "ended",
+          "state",
+          "fingerprint",
+          "closingRates",
+          "missingRates",
+          "balances",
+          "gainMinor",
+          "lossMinor",
+          "posted"
+        ],
+        "additionalProperties": false
+      },
+      "RevaluationState": {
+        "type": "string",
+        "enum": [
+          "current",
+          "to_post",
+          "rate_missing"
+        ]
+      },
+      "ClosingRate": {
+        "type": "object",
+        "properties": {
+          "currency": {
+            "$ref": "#/components/schemas/CurrencyCode"
+          },
+          "rateType": {
+            "$ref": "#/components/schemas/RateType"
+          },
+          "rows": {
+            "minItems": 1,
+            "maxItems": 2,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RevaluationRateRow"
+            }
+          }
+        },
+        "required": [
+          "currency",
+          "rateType",
+          "rows"
+        ],
+        "additionalProperties": false
+      },
+      "RevaluationRateRow": {
+        "type": "object",
+        "properties": {
+          "rateId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "base": {
+            "$ref": "#/components/schemas/CurrencyCode"
+          },
+          "quote": {
+            "$ref": "#/components/schemas/CurrencyCode"
+          },
+          "rate": {
+            "type": "string"
+          },
+          "effectiveOn": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          }
+        },
+        "required": [
+          "rateId",
+          "base",
+          "quote",
+          "rate",
+          "effectiveOn"
+        ],
+        "additionalProperties": false
+      },
+      "MissingClosingRate": {
+        "type": "object",
+        "properties": {
+          "currency": {
+            "$ref": "#/components/schemas/CurrencyCode"
+          },
+          "to": {
+            "$ref": "#/components/schemas/CurrencyCode"
+          },
+          "rateType": {
+            "$ref": "#/components/schemas/RateType"
+          },
+          "on": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          }
+        },
+        "required": [
+          "currency",
+          "to",
+          "rateType",
+          "on"
+        ],
+        "additionalProperties": false
+      },
+      "RevaluationBalance": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "accountCode": {
+            "type": "string"
+          },
+          "accountName": {
+            "type": "string"
+          },
+          "blocked": {
+            "type": "boolean"
+          },
+          "item": {
+            "nullable": true,
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              "reference": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "reference"
+            ],
+            "additionalProperties": false
+          },
+          "values": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RevaluationValue"
+            }
+          },
+          "currency": {
+            "$ref": "#/components/schemas/CurrencyCode"
+          },
+          "transactionMinor": {
+            "$ref": "#/components/schemas/MinorUnits"
+          },
+          "carryingMinor": {
+            "$ref": "#/components/schemas/MinorUnits"
+          },
+          "targetMinor": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MinorUnits"
+              }
+            ]
+          },
+          "revaluedMinor": {
+            "$ref": "#/components/schemas/MinorUnits"
+          },
+          "differenceMinor": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MinorUnits"
+              }
+            ]
+          }
+        },
+        "required": [
+          "accountId",
+          "accountCode",
+          "accountName",
+          "blocked",
+          "item",
+          "values",
+          "currency",
+          "transactionMinor",
+          "carryingMinor",
+          "targetMinor",
+          "revaluedMinor",
+          "differenceMinor"
+        ],
+        "additionalProperties": false
+      },
+      "RevaluationValue": {
+        "type": "object",
+        "properties": {
+          "typeCode": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "code": {
+            "nullable": true,
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "archived": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "typeCode",
+          "id",
+          "code",
+          "name",
+          "archived"
+        ],
+        "additionalProperties": false
+      },
+      "PostedRevaluation": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "period": {
+            "$ref": "#/components/schemas/Period"
+          },
+          "ledger": {
+            "$ref": "#/components/schemas/Ledger"
+          },
+          "adjusting": {
+            "type": "boolean"
+          },
+          "fingerprint": {
+            "type": "string"
+          },
+          "entry": {
+            "$ref": "#/components/schemas/RevaluationEntryRef"
+          },
+          "reversal": {
+            "$ref": "#/components/schemas/RevaluationEntryRef"
+          },
+          "userId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+          }
+        },
+        "required": [
+          "id",
+          "period",
+          "ledger",
+          "adjusting",
+          "fingerprint",
+          "entry",
+          "reversal",
+          "userId",
+          "createdAt"
+        ],
+        "additionalProperties": false
+      },
+      "RevaluationEntryRef": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "date": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          },
+          "fiscalYear": {
+            "type": "integer",
+            "minimum": 2000,
+            "maximum": 9999
+          },
+          "number": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "id",
+          "date",
+          "fiscalYear",
+          "number"
+        ],
+        "additionalProperties": false
+      },
+      "RevaluationPost": {
+        "type": "object",
+        "properties": {
+          "ledger": {
+            "$ref": "#/components/schemas/Ledger"
+          },
+          "fingerprint": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        },
+        "required": [
+          "ledger",
+          "fingerprint"
+        ]
+      },
+      "RevaluationPostResult": {
+        "type": "object",
+        "properties": {
+          "posted": {
+            "type": "boolean"
+          },
+          "revaluation": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PostedRevaluation"
+              }
+            ]
+          },
+          "entryId": {
+            "nullable": true,
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "reversalEntryId": {
+            "nullable": true,
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          }
+        },
+        "required": [
+          "posted",
+          "revaluation",
+          "entryId",
+          "reversalEntryId"
         ],
         "additionalProperties": false
       },

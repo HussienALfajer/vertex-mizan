@@ -21,6 +21,7 @@ import {
   accountRoles,
   addRequiredDimensions,
   auditedAccountOf,
+  blockAccount,
   chartAccounts,
   checkDimensionTypes,
   createAccount,
@@ -205,25 +206,9 @@ export class AccountsService {
    * (`ACCOUNT_IN_ROLE`). Blocking a blocked account changes nothing.
    */
   async block(access: CompanyRouteAccess, id: string, reason: string): Promise<Account> {
-    return this.changeState(access, id, async (tx, row, actor) => {
-      if (row.kind !== 'postable') {
-        throw new CodedException('ACCOUNT_NOT_POSTABLE', 'Only a postable account is blocked');
-      }
-      if (row.blockedAt) return;
-      await this.refuseInRole(tx, id);
-      await tx
-        .update(chartAccounts)
-        .set({ blockedAt: new Date(), blockedReason: reason })
-        .where(eq(chartAccounts.id, id));
-      await writeCompanyAudit(tx, access.company.id, actor, {
-        action: 'account.blocked',
-        entityType: 'account',
-        entityId: id,
-        reason,
-        before: { blockedReason: null },
-        after: { blockedReason: reason },
-      });
-    });
+    return this.changeState(access, id, (tx, row, actor) =>
+      blockAccount(tx, access.company.id, actor, row, reason),
+    );
   }
 
   /** `POST /api/accounts/:id/unblock` (rule 5): no reason needed. */

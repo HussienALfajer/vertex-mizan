@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import {
   bigint,
+  boolean,
   check,
   date,
   foreignKey,
@@ -504,5 +505,55 @@ export const periodBalances = pgTable(
         and ${t.lineCount} >= 1`,
     ),
     check('period_balances_currency', sql`${t.currency} in (${listed(SETTINGS_CURRENCY_CODES)})`),
+  ],
+);
+
+/**
+ * A ledger's month-end revaluation of a period as posted (S07 "Data", ADR 0016; append-only): its
+ * entry, dated on the period's last day, and that entry's reversal, dated on the next month's first
+ * day, posted together; `adjusting` when an earlier revaluation of the same period and ledger
+ * stands; the preview's `fingerprint` it posted, once (rule 17); the rate rows it used (`rates`).
+ * The person is kept by id with no key to `users`, as drafts keep them.
+ */
+export const revaluations = pgTable(
+  'revaluations',
+  {
+    id: id(),
+    companyId: companyId().references(() => companies.id),
+    periodId: uuid().notNull(),
+    ledger: text().notNull(),
+    entryId: uuid().notNull(),
+    reversalEntryId: uuid().notNull(),
+    adjusting: boolean().notNull(),
+    fingerprint: text().notNull(),
+    /** Each closing rate: its currency, rate type and rate rows (`rateId`, as quoted, the date). */
+    rates: jsonb().notNull(),
+    userId: uuid().notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    idIsUuidV7('revaluations', t.id),
+    unique('revaluations_entry_key').on(t.companyId, t.entryId),
+    unique('revaluations_reversal_entry_key').on(t.companyId, t.reversalEntryId),
+    unique('revaluations_fingerprint_key').on(t.companyId, t.periodId, t.ledger, t.fingerprint),
+    foreignKey({
+      name: 'revaluations_period_fk',
+      columns: [t.companyId, t.periodId],
+      foreignColumns: [periods.companyId, periods.id],
+    }),
+    foreignKey({
+      name: 'revaluations_entry_fk',
+      columns: [t.companyId, t.entryId],
+      foreignColumns: [journalEntries.companyId, journalEntries.id],
+    }),
+    foreignKey({
+      name: 'revaluations_reversal_entry_fk',
+      columns: [t.companyId, t.reversalEntryId],
+      foreignColumns: [journalEntries.companyId, journalEntries.id],
+    }),
+    index('revaluations_company_period_idx').on(t.companyId, t.periodId, t.ledger),
+    check('revaluations_ledger', sql`${t.ledger} in ('book', 'parallel')`),
+    check('revaluations_fingerprint', sql`${t.fingerprint} ~ '^[0-9a-f]{64}$'`),
+    check('revaluations_rates', sql`jsonb_typeof(${t.rates}) = 'array'`),
   ],
 );

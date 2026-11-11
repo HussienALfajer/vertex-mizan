@@ -955,6 +955,8 @@ interface ForgedLine {
 
 interface Forgery {
   readonly on?: string;
+  /** The entry's source; `manual` by default. */
+  readonly source?: 'manual' | 'revaluation';
   readonly lines: readonly ForgedLine[];
   readonly lineCount?: number;
   readonly reverses?: string;
@@ -1036,7 +1038,7 @@ async function forge(company: string, forgery: Forgery): Promise<string> {
       number: forgery.number ?? (counter?.lastNumber as number),
       entryDate: on,
       postedAt: forgery.postedAt ?? now,
-      source: 'manual',
+      source: forgery.source ?? 'manual',
       description: 'قيد مزوّر',
       reversesEntryId: forgery.reverses ?? null,
       postedByUserId: personId,
@@ -1085,6 +1087,13 @@ const CREDIT: ForgedLine = {
 };
 
 describe('forged entries, refused by the database (ADR 0005 invariants 1–8)', () => {
+  it('refuses a revaluation entry written without its revaluation row, at commit (S07)', async () => {
+    const company = await newCompany();
+    expect(
+      await refusal(forge(company, { source: 'revaluation', lines: [DEBIT, CREDIT] })),
+    ).toMatch(/is a revaluation without its revaluation row/);
+  });
+
   it('lets a forged entry that follows every rule through, so each refusal below is its own', async () => {
     const company = await newCompany();
     await forge(company, { lines: [DEBIT, CREDIT] });

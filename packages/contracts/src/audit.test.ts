@@ -4,16 +4,16 @@ import { auditQuerySchema, COMPANY_AUDIT_ACTIONS, PLATFORM_AUDIT_ACTIONS } from 
 
 describe('audit actions', () => {
   // Stored values: a later spec appends, never renames (S01, "Audit").
-  it('are the platform and company actions of S01 to S06, as <entity>.<verb>', () => {
+  it('are the platform and company actions of S01 to S07, as <entity>.<verb>', () => {
     expect(PLATFORM_AUDIT_ACTIONS).toHaveLength(11);
-    expect(COMPANY_AUDIT_ACTIONS).toHaveLength(68);
+    expect(COMPANY_AUDIT_ACTIONS).toHaveLength(69);
     expect(COMPANY_AUDIT_ACTIONS.slice(15, 17)).toEqual(['account.created', 'account.updated']);
     expect(COMPANY_AUDIT_ACTIONS.slice(38, 41)).toEqual([
       'export.chart',
       'entry.posted',
       'draft.created',
     ]);
-    expect(COMPANY_AUDIT_ACTIONS.slice(-19)).toEqual([
+    expect(COMPANY_AUDIT_ACTIONS.slice(-20)).toEqual([
       'company.settings_updated',
       'integrity.checked',
       'export.requested',
@@ -33,6 +33,7 @@ describe('audit actions', () => {
       'event.dismissed',
       'event.recognised_in_open_period',
       'event.remainder_split',
+      'revaluation.posted',
     ]);
     for (const action of [...PLATFORM_AUDIT_ACTIONS, ...COMPANY_AUDIT_ACTIONS]) {
       expect(action).toMatch(/^[a-z]+(_[a-z]+)*\.[a-z]+(_[a-z]+)*$/);

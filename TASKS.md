@@ -1,3 +1,34 @@
-# TASKS
+# TASKS — S07 Month-end revaluation, periods and close
 
-No task in progress. `/feature-slice <id>` replaces this file with the spec's checklist and commits it on the branch, so a cloud session or another machine continues from the same list.
+Spec: `docs/specs/S07-revaluation-periods-close.md` (Approved, owner 2026-11-11) · ADRs 0003, 0005, 0006, 0007, 0008, 0011, 0012, 0013, 0014, 0015, 0016 · Scenarios (numbers and outcomes approved by the owner, `Proposed` until their executors arrive): `currency/month-end-revaluation.md` (2026-11-11, PR 1); `currency/stale-revaluation.md` and `periods/close-and-reopen.md` (2026-11-12), and the cases waiting for a close, `inbox/post-in-next-open-period.md` (2026-11-07) and `revenue/recognise-in-open-period.md` (2026-11-10) (PR 2). Three PRs, each merged before the next starts: `feat/s07-revaluation`, `feat/s07-close`, `feat/s07-screens`.
+
+## PR 1 — The month-end revaluation (contracts, ledger, db, api, bridge)
+- [x] contracts: permissions `periods.read` (owner, accountant, auditor) and `revaluation.post` (owner, accountant) appended to the map; error codes `PERIOD_NOT_ENDED` and `REVALUATION_CHANGED` appended with their Arabic text; the audit action `revaluation.posted`; the revaluation preview and posting schemas (`packages/contracts/src/periods.ts`); unit tests
+- [x] ledger: the balances to revalue and their amounts (rules 10–12: per open item on a monetary control account, per account, dimension set and currency otherwise, a zero transaction balance brought to zero), `revaluationLines()` (rule 13: two lines per difference, gains and losses gross, one ledger only), the fingerprint's content; properties (exact balance in its ledger and zero in the other; a revaluation and its reversal leave every balance at its carrying amount; target = carrying + revaluations after any sequence of postings, revaluations and adjustments; the carrying amount never includes a revaluation)
+- [x] db (`/db-migration`): `revaluations` append-only; `open_item_movements.kind` `revaluation`; `open_item_balances.revaluation_book_minor` and `revaluation_parallel_minor` maintained by the posting function, invariant 9 and S04's control-account comparison reading them as the spec says; forced RLS, composite keys, registry, grants, guards pinned in `GUARDS`; the migration generated and reviewed
+- [x] db: the revaluation service — the preview per ledger (closing rates under each policy with their rows and dates, a third currency through the cross, `RATE_MISSING`, blocked accounts and archived values marked, `state`, `fingerprint`), the posting through `post()` (source `revaluation`, the head lock, recomputed and refused `REVALUATION_CHANGED`, idempotency key `revaluation:<period>:<ledger>:<fingerprint>`, `PERIOD_NOT_ENDED` in Asia/Damascus, `PERIOD_CLOSED`, the reversal on the next month's first day in the same transaction, adjusting revaluations, the `revaluation.posted` audit row); manual reversal of a revaluation refused `ENTRY_NOT_REVERSIBLE`
+- [x] db tests: invariants as `mizan_app` (`revaluations` append-only under forced RLS; invariant 9 ignoring revaluation movements), isolation, two postings of the same preview at once
+- [x] scenarios: the `revalue` and `block` executors; `currency/month-end-revaluation` `Approved (owner, 2026-11-11)`, no expected value changed, counted as run
+- [x] api: `GET /api/revaluation/:period?ledger=` (`periods.read`) and `POST /api/revaluation/:period` (`revaluation.post`); tests (success, 401, 403, another company, rules 16 and 17, an idempotent double submit)
+- [x] bridge: OpenAPI regenerated, breaking-change check
+- [x] wiring (Contracts, Ledger, Database, API), docs (`packages/*/CLAUDE.md`, `apps/api/CLAUDE.md`, `docs/glossary.md`, `docs/ROADMAP.md`)
+- [x] checks and reviewers (`reviewer`, `accountant-reviewer`), PR with auto-merge and Auto-fix
+
+## PR 2 — Periods and the close (contracts, db, api, worker, bridge)
+- [ ] contracts: `PERIOD_STATES`, `CHECKLIST_ITEMS`, the period schemas; error codes `PERIOD_ORDER`, `PERIOD_NOT_CLOSED`, `CHECKLIST_FAILED` appended with their Arabic text; audit actions `period.closed` and `period.reopened`; unit tests
+- [ ] db (`/db-migration`): `period_events` append-only; `periods.state` `reopened` and the transition guard (`ENABLE ALWAYS`, deferred, only with its event, pinned in `GUARDS`); a posting before the first period refused `PERIOD_CLOSED` while a month is closed (rule 4); the migration generated and reviewed
+- [ ] db: the period service — the checklist of rule 8 (seven items, computed on read and inside the close), close (rule 2's refusals in order, empty months given their row, the lock order of rule 5, the checklist stored), reopen (rule 3, the held `PERIOD_CLOSED` and `SERVICE_PERIOD_CLOSED` events of the month queued after the commit), staleness of the revaluation (rule 15), `GET /v1/periods/status` answering `closed`; audit rows
+- [ ] db tests: invariants (`period_events` append-only, transitions only with their event, a posting into a closed period refused while a close commits concurrently), isolation
+- [ ] scenarios: the `close`, `reopen`, `draft` and `discard` executors and `closed_periods` through the close service; `currency/stale-revaluation` and `periods/close-and-reopen` `Approved (owner, 2026-11-12)`, `inbox/post-in-next-open-period` `Approved (owner, 2026-11-07)`, `revenue/recognise-in-open-period` `Approved (owner, 2026-11-10)`, no expected value changed, counted as run; the "added with S07" notes pointed to the new scenarios
+- [ ] api: `GET /api/periods`, `GET /api/periods/:period`, `POST /api/periods/:period/close` and `/reopen`; tests (success, 401, 403 by role and the period permission, another company, the refusals of rules 2 and 3)
+- [ ] worker: `events.retry` on the reopen's trigger, `revenue.release-month` for a reopened month missing its release, the daily email's line "أشهر منتهية غير مقفلة"; safe twice, per company
+- [ ] bridge: OpenAPI regenerated, breaking-change check
+- [ ] wiring (Contracts, Database, API and worker), docs (`packages/*/CLAUDE.md`, `apps/*/CLAUDE.md`, `docs/ROADMAP.md`)
+- [ ] checks and reviewers (`reviewer`, `accountant-reviewer`), PR with auto-merge and Auto-fix
+
+## PR 3 — The screens (ui, web, e2e)
+- [ ] ui: `Checklist` (status icon and text, count, link, keyboard reachable, RTL), tested, both densities, on the design-system page
+- [ ] web: the sidebar's "الفترات" and "إعادة التقييم"; `/periods` (states, ended, checklist summary, last event; empty, loading and error states); `/periods/:period` (the checklist with its links, the history, the close and reopen dialogs with reasons, refusals with their items); `/revaluation?period=&ledger=` (closing rates, the balances grid with blocked accounts marked, totals, posted revaluations, post one ledger, the adjustment, both ledgers; current, rate missing, `REVALUATION_CHANGED`); a revaluation entry's links on `/entries/:id`; `ar.periods`, `ar.revaluation`
+- [ ] e2e: the close, reopen and revaluation flows; RTL screenshots light and dark at 360, 768 and 1280 px, looked at
+- [ ] wiring (Web), docs (`apps/web/CLAUDE.md`, `packages/ui/CLAUDE.md`, `docs/ROADMAP.md`: S07 done)
+- [ ] checks and reviewer, PR with auto-merge and Auto-fix; reset this file to its "No task in progress" stub

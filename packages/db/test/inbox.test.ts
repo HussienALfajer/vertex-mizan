@@ -34,6 +34,8 @@ import {
   post,
   postingRuleAccounts,
   postingSlot,
+  postRevaluation,
+  previewRevaluation,
   type RetryTrigger,
   receiveEvent,
   recordRate,
@@ -988,6 +990,63 @@ describe('the ad funds’ changes and archives (ad-funds/running-balance; S04 ru
         .where(eq(chartAccounts.code, '211001')),
     );
     expect(payable?.amount).toBe('0');
+  });
+
+  it('posts no difference entry within a change after a month-end revaluation of the funds (Q13, S07)', async () => {
+    const company = await newCompany('service-agency', [
+      ['2026-11-03', '120.0000'],
+      ['2026-11-19', '123.0000'],
+      ['2026-11-30', '125.0000'],
+    ]);
+    expect((await receive(company, deposited('2026-11-03', 30_000))).event.state).toBe('posted');
+    const recorded = await receive(
+      company,
+      spent('ad_spend.recorded', '2026-11-19', '2026-11-19', 45_000),
+    );
+    expect(recorded.event.state).toBe('posted');
+    // November's book revaluation moves the funds' item on 30 November and back on 1 December.
+    await inCompany(company, async (tx) => {
+      const { fingerprint } = await previewRevaluation(tx, {
+        period: '2026-11',
+        ledger: 'book',
+        today: '2026-12-01',
+      });
+      const result = await postRevaluation(tx, {
+        period: '2026-11',
+        ledger: 'book',
+        fingerprint,
+        today: '2026-12-01',
+        actor: person(),
+      });
+      expect(result.posted).toBe(true);
+    });
+    // Changed in December: the revaluation and its reversal left the carrying amount as it was,
+    // so the change is still one change, with no difference entry (Q13; owner, 2026-11-09).
+    const changed = await receive(
+      company,
+      spent('ad_spend.changed', '2026-12-05', '2026-11-19', 40_000),
+      '2026-12-05',
+    );
+    expect(changed.event).toMatchObject({ state: 'posted' });
+    const entries = await inCompany(company, (tx) =>
+      tx.select().from(journalEntries).orderBy(asc(journalEntries.sequence)),
+    );
+    // The deposit, the spend, the revaluation and its reversal, the change's reversal and the new
+    // state: no difference entry after the reversal.
+    expect(entries.map((entry) => entry.source)).toEqual([
+      'hub_event',
+      'hub_event',
+      'revaluation',
+      'revaluation',
+      'hub_event',
+      'hub_event',
+    ]);
+    const lines = await ledger(company);
+    expect(lines[5]?.lines).toEqual([
+      ['213001', 'USD', 30_000n, 3_600_000n, 30_000n],
+      ['213001', 'USD', 10_000n, 1_230_000n, 10_000n],
+      ['211001', 'USD', -40_000n, -4_830_000n, -40_000n],
+    ]);
   });
 
   it('nets a spend re-sent unchanged to zero while it is the funds’ latest movement, and posts it after another (Q13)', async () => {

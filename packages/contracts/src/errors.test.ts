@@ -115,6 +115,9 @@ describe('error codes', () => {
       ['EVENT_ACTION_NOT_ALLOWED', 409],
       ['ENTRY_ALREADY_LINKED', 409],
       ['MAPPING_ACCOUNT_INVALID', 422],
+      // S07, month-end revaluation, periods and close
+      ['PERIOD_NOT_ENDED', 409],
+      ['REVALUATION_CHANGED', 409],
     ]);
   });
 
