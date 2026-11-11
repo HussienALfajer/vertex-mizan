@@ -592,8 +592,8 @@ interface OverTimeLine {
  * `revenue/void-and-reissue`): its part of the months the void took back (`reissueParts()`), or
  * the whole line when the void took back its done's or its completion's release
  * (`reissuedMilestoneLine()`), is revenue at issue on `released_revenue`, after the lines at
- * issue; a re-issue not covering a month taken back is `reissue_period_differs`, planned as a
- * first issue.
+ * issue; a re-issue not covering a month taken back is `reissue_period_differs`, held whole with
+ * nothing planned.
  *
  * A non-zero tax holds `NO_MAPPING` (`tax_lines`). The accountant's decisions, after the period and rate checks (rule 8),
  * planned with the lines that run those checks: a line whose pattern is unclear
@@ -662,7 +662,6 @@ export function invoiceIssuedPlan(
   const itemClearings: HubLine[] = [];
   const cancelled: InvoiceLine[] = [];
   let milestoneDecision: string | null = null;
-  let reissueDecision: string | null = null;
   const reissued = new Set<string>();
   const releasedAccount = (): MappedAccount | Hold => slotAccount(context, 'released_revenue', null);
   for (const [index, line] of payload.lines.entries()) {
@@ -689,21 +688,19 @@ export function invoiceIssuedPlan(
         );
         if (voided !== undefined) {
           const parts = reissueParts(months, new Set(voided.takenBack));
-          if (parts.kind === 'decision') {
-            reissueDecision ??= parts.detail;
-          } else {
-            reissued.add(voided.scheduleId);
-            reissueOf = voided.scheduleId;
-            months = parts.months;
-            if (parts.catchUpMinor !== 0n) {
-              const account = releasedAccount();
-              if (isHold(account)) return account;
-              catchUps.push({
-                account: account.id,
-                dimensions: { client, ...named, service: line.service },
-                amount: money(-parts.catchUpMinor, currency),
-              });
-            }
+          // Held whole for the accountant, nothing planned (`revenue/void-and-reissue.md`).
+          if (parts.kind === 'decision') return { kind: 'post', entries: [], decision: parts.detail };
+          reissued.add(voided.scheduleId);
+          reissueOf = voided.scheduleId;
+          months = parts.months;
+          if (parts.catchUpMinor !== 0n) {
+            const account = releasedAccount();
+            if (isHold(account)) return account;
+            catchUps.push({
+              account: account.id,
+              dimensions: { client, ...named, service: line.service },
+              amount: money(-parts.catchUpMinor, currency),
+            });
           }
         }
       }
@@ -1103,7 +1100,6 @@ export function invoiceIssuedPlan(
     unclear !== -1
       ? `recognition_pattern_unclear:${unclear + 1}`
       : (milestoneDecision ??
-        reissueDecision ??
         (contractOfAnotherClient(client, contract) ? 'contract_client_mismatch' : null));
   return {
     kind: 'post',

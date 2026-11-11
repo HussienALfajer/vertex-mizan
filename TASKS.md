@@ -25,10 +25,10 @@ The ledger functions already exist in `packages/ledger/src/recognition.ts` (merg
 - [x] bridge: OpenAPI regenerated, breaking-change check
 - [x] checks and reviewers, PR with auto-merge and Auto-fix
 
-## PR 3 — Credits, voids and re-issues; the read API (`feat/s06-credits-voids`)
-- [ ] db: the integrity check's proof that each contract's `contract_liability` lines equal its schedules' movements
-- [ ] ledger/db: credits to a cycle (rule 6), voids of deferred invoices and of credits (rule 8), re-issues (rule 9), their holds and the retry of a credit when its cycle posts
-- [ ] scenario book: `revenue/retainer-credit.md`, `revenue/void-and-reissue.md` run `Approved`
+## PR 3 — Credits, voids and re-issues; the read API (branch `claude/zealous-brahmagupta-fois39`, the cloud session's)
+- [x] db: the integrity check's proof that each contract's `contract_liability` lines equal its schedules' movements
+- [x] ledger/db: credits to a cycle (rule 6), voids of deferred invoices and of credits (rule 8), re-issues (rule 9), their holds and the retry of a credit when its cycle posts (`recognition_movements.credit_minor`, migration 0036)
+- [x] scenario book: `revenue/retainer-credit.md`, `revenue/void-and-reissue.md` run `Approved` (one expected balance of `retainer-credit.md` corrected: needs the owner's approval)
 - [ ] api: `GET /api/revenue/schedules`, `/schedules/:id`, `/months`, `/preview` with `recognition.read`; tests
 - [ ] property tests across a project's events in any order of arrival (spec "Acceptance")
 - [ ] bridge: OpenAPI regenerated, breaking-change check

@@ -642,7 +642,8 @@ export const CONTROL_ACCOUNT_AMOUNTS = ['transaction', 'book', 'parallel'] as co
  * The integrity check's report (S03 rule 19): the chain recomputed from the first entry, the
  * numbers per fiscal year, each entry's balance in both ledgers, the period balances against the
  * lines, the ledger head, every stored anchor and the pasted one; each control account against
- * its items and each item's balance row against its movements (S04). `ok` only when all hold.
+ * its items and each item's balance row against its movements (S04); each contract's
+ * recognition schedules against its contract liability lines (S06). `ok` only when all hold.
  */
 export const integrityReportSchema = z
   .object({
@@ -707,6 +708,17 @@ export const integrityReportSchema = z
     /** An item's balance row that disagrees with its movements, or one missing (S04). */
     openItemBalances: z.array(
       z.object({ itemId: z.uuid(), problem: z.enum(PERIOD_BALANCE_PROBLEMS) }),
+    ),
+    /**
+     * A contract whose recognition schedules' movements disagree with the contract liability
+     * lines of the entries they describe, in a currency (S06 "Data"): which amount differs.
+     */
+    recognition: z.array(
+      z.object({
+        contractValueId: z.uuid().nullable(),
+        currency: currencyCodeSchema,
+        amount: z.enum(CONTROL_ACCOUNT_AMOUNTS),
+      }),
     ),
     anchors: z.array(
       z.object({

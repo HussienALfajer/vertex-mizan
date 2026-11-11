@@ -5,7 +5,7 @@ import {
   money,
   parseEventEnvelope,
 } from '@vertex-mizan/contracts';
-import { negate } from '@vertex-mizan/ledger';
+import { negate, recognitionProblems } from '@vertex-mizan/ledger';
 import { and, asc, eq, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -25,6 +25,7 @@ import {
   type PersonActor,
   post,
   postingRuleAccounts,
+  readRecognitionState,
   receiveEvent,
   recogniseEvent,
   recognitionMovements,
@@ -706,29 +707,6 @@ describe('the holds of over-time recognition (S06 rules 1, 7, 8, 16, 18)', () =>
     ).rejects.toMatchObject({ code: 'EVENT_ACTION_NOT_ALLOWED' });
   });
 
-  it('holds the void of a deferred invoice until S06’s void rule deploys', async () => {
-    const company = await newCompany([['2026-11-15', '121.0000']]);
-    await receive(
-      company,
-      cycle(20, '2026-11-15', 90_000, '2026-11-15', '2026-12-14'),
-      '2026-11-15',
-    );
-    const voided = await receive(
-      company,
-      envelope('invoice.voided', '2026-11-20', {
-        invoice: invoiceRef(20),
-        voided_on: '2026-11-20',
-        reason: 'خطأ',
-      }),
-      '2026-11-20',
-    );
-    expect(voided.event).toMatchObject({
-      state: 'held',
-      reason: 'NO_MAPPING',
-      detail: 'deferred_revenue',
-    });
-  });
-
   it('leaves a month’s release missing, with its reason, while the revenue slot is unmapped', async () => {
     const company = await newCompany([['2026-11-15', '121.0000']]);
     await receive(
@@ -752,6 +730,214 @@ describe('the holds of over-time recognition (S06 rules 1, 7, 8, 16, 18)', () =>
         },
       ],
     });
+  });
+});
+
+/** The integrity check's recognition proof on the company's books (S06 "Data"). */
+const proof = (companyId: string) =>
+  inCompany(companyId, async (tx) => recognitionProblems(await readRecognitionState(tx)));
+
+/** An invoice of the retainer with extra work and a credit to a cycle (`revenue/retainer-credit`). */
+const creditInvoice = (n: number, on: string, extra: number, credit: number, cycleStart: string) =>
+  envelope('invoice.issued', on, {
+    invoice: invoiceRef(n),
+    client: C1,
+    contract: R1,
+    currency: 'USD',
+    syp_per_usd: '122.0000',
+    issued_on: on,
+    due_on: '2026-12-31',
+    lines: [
+      { id: ids(300 + n), amount: extra, service: S2, source: 'extra_work' },
+      {
+        id: ids(400 + n),
+        amount: credit,
+        service: S1,
+        source: 'retainer_charge',
+        charge_kind: 'credit',
+        cycle_start: cycleStart,
+      },
+    ],
+  });
+
+const voidOf = (n: number, on: string) =>
+  envelope('invoice.voided', on, { invoice: invoiceRef(n), voided_on: on, reason: 'أُلغيت في Hub' });
+
+describe('credits, voids and re-issues (S06 rules 6, 8, 9)', () => {
+  it('credits a cycle, then its void gives the part back: 16/30 released on the void date, the rest in December', async () => {
+    const company = await newCompany([
+      ['2026-11-15', '121.0000'],
+      ['2026-11-19', '121.0000'],
+    ]);
+    await receive(company, cycle(40, '2026-11-15', 90_000, '2026-11-15', '2026-12-14'), '2026-11-15');
+    const credit = await receive(
+      company,
+      creditInvoice(46, '2026-11-19', 10_000, -5_000, '2026-11-15'),
+      '2026-11-19',
+    );
+    expect(credit.event).toMatchObject({ state: 'posted' });
+    await runJob(company, '2026-11', '2026-12-01');
+    const voiding = voidOf(46, '2026-12-03');
+    const voided = await receive(company, voiding, '2026-12-03');
+    expect(voided.event).toMatchObject({ state: 'posted' });
+    // A replay of the void posts nothing new.
+    expect((await receive(company, voiding, '2026-12-03')).replayed).toBe(true);
+    await runJob(company, '2026-12', '2027-01-01');
+    const entries = await ledger(company);
+    expect(entries.map((entry) => [entry.source, entry.date])).toEqual([
+      ['hub_event', '2026-11-15'],
+      ['hub_event', '2026-11-19'],
+      ['revenue_release', '2026-11-30'],
+      ['hub_event', '2026-12-03'],
+      ['hub_event', '2026-12-03'],
+      ['revenue_release', '2026-12-31'],
+    ]);
+    expect(entries[4]?.lines).toEqual([
+      ['212001', 'USD', 2_667n, 322_667n, 2_667n],
+      ['411001', 'USD', -2_667n, -322_667n, -2_667n],
+    ]);
+    expect(entries[5]?.lines).toEqual([
+      ['212001', 'USD', 42_000n, 5_082_000n, 42_000n],
+      ['411001', 'USD', -42_000n, -5_082_000n, -42_000n],
+    ]);
+    // The cycle is fully released, and the credit's movements were given back.
+    expect(await remaining(company)).toEqual([[0n, 0n, 0n]]);
+    const credits = await inCompany(company, (tx) =>
+      tx
+        .select({ creditMinor: recognitionMovements.creditMinor })
+        .from(recognitionMovements)
+        .where(eq(recognitionMovements.kind, 'credited'))
+        .orderBy(asc(recognitionMovements.createdAt), asc(recognitionMovements.id)),
+    );
+    expect(credits).toEqual([{ creditMinor: 5_000n }, { creditMinor: -5_000n }]);
+    expect(await proof(company)).toEqual([]);
+  });
+
+  it('holds a credit before its cycle UNKNOWN_REFERENCE, and posts it once the cycle’s invoice posts', async () => {
+    const company = await newCompany([
+      ['2026-11-15', '121.0000'],
+      ['2026-11-19', '121.0000'],
+    ]);
+    const early = await receive(
+      company,
+      creditInvoice(46, '2026-11-19', 10_000, -5_000, '2026-11-15'),
+      '2026-11-19',
+    );
+    expect(early.event).toMatchObject({
+      state: 'held',
+      reason: 'UNKNOWN_REFERENCE',
+      detail: 'credit_cycle',
+    });
+    const issued = await receive(
+      company,
+      cycle(40, '2026-11-15', 90_000, '2026-11-15', '2026-12-14'),
+      '2026-11-19',
+    );
+    expect(issued.triggers).toContainEqual({ kind: 'cycle' });
+    const [state] = await inCompany(company, (tx) =>
+      tx
+        .select({ state: inboundEventStates.state })
+        .from(inboundEventStates)
+        .where(eq(inboundEventStates.eventId, early.event.inboxId)),
+    );
+    expect(state).toEqual({ state: 'posted' });
+    expect(await remaining(company)).toEqual([[85_000n, 10_285_000n, 85_000n]]);
+    expect(await proof(company)).toEqual([]);
+  });
+
+  it('posts the ended month’s release in the credit’s transaction, so the job posts nothing after', async () => {
+    const company = await newCompany([
+      ['2026-11-03', '120.0000'],
+      ['2026-12-01', '123.0000'],
+    ]);
+    await receive(company, cycle(42, '2026-11-03', 60_000, '2026-11-01', '2026-11-30'), '2026-11-03');
+    await receive(
+      company,
+      creditInvoice(43, '2026-12-01', 60_000, -6_000, '2026-11-01'),
+      '2026-12-01',
+    );
+    expect(await runJob(company, '2026-11', '2026-12-01')).toEqual({ posted: 0, refused: [] });
+    const entries = await ledger(company);
+    expect(entries.map((entry) => [entry.source, entry.date])).toEqual([
+      ['hub_event', '2026-11-03'],
+      ['revenue_release', '2026-11-30'],
+      ['hub_event', '2026-12-01'],
+    ]);
+    // All of it reduces revenue at 123: the cycle was fully released first.
+    expect(entries[2]?.lines).toContainEqual(['411001', 'USD', 6_000n, 738_000n, 6_000n]);
+    expect(await proof(company)).toEqual([]);
+  });
+
+  it('reverses a released cycle latest first, re-issues it with November at issue, and holds a credited cycle’s void', async () => {
+    const company = await newCompany([
+      ['2026-11-15', '121.0000'],
+      ['2026-11-19', '121.0000'],
+      ['2026-12-07', '122.0000'],
+    ]);
+    await receive(company, cycle(80, '2026-11-15', 90_000, '2026-11-15', '2026-12-14'), '2026-11-15');
+    await runJob(company, '2026-11', '2026-12-01');
+    await receive(company, voidOf(80, '2026-12-03'), '2026-12-03');
+    await receive(company, cycle(81, '2026-12-07', 90_000, '2026-11-15', '2026-12-14'), '2026-12-07');
+    const entries = await ledger(company);
+    expect(entries.slice(2, 5).map((entry) => entry.lines)).toEqual([
+      [
+        ['212001', 'USD', -48_000n, -5_808_000n, -48_000n],
+        ['411001', 'USD', 48_000n, 5_808_000n, 48_000n],
+      ],
+      [
+        ['112001', 'USD', -90_000n, -10_890_000n, -90_000n],
+        ['212001', 'USD', 90_000n, 10_890_000n, 90_000n],
+      ],
+      [
+        ['112001', 'USD', 90_000n, 10_980_000n, 90_000n],
+        ['411001', 'USD', -48_000n, -5_856_000n, -48_000n],
+        ['212001', 'USD', -42_000n, -5_124_000n, -42_000n],
+      ],
+    ]);
+    const schedules = await inCompany(company, (tx) =>
+      tx.select().from(recognitionSchedules).orderBy(asc(recognitionSchedules.createdAt)),
+    );
+    expect(schedules[1]?.reissueOfScheduleId).toBe(schedules[0]?.id);
+    // The voided schedule holds nothing, the re-issue December's 420.00 USD.
+    expect(await remaining(company)).toEqual([
+      [0n, 0n, 0n],
+      [42_000n, 5_124_000n, 42_000n],
+    ]);
+    // Another invoice credits the re-issued cycle: its void is the accountant's.
+    await receive(
+      company,
+      creditInvoice(46, '2026-12-07', 10_000, -5_000, '2026-11-15'),
+      '2026-12-07',
+    );
+    const held = await receive(company, voidOf(81, '2026-12-07'), '2026-12-07');
+    expect(held.event).toMatchObject({
+      state: 'held',
+      reason: 'NEEDS_DECISION',
+      detail: 'schedule_credited',
+    });
+    expect(await proof(company)).toEqual([]);
+  });
+
+  it('refuses a credited movement without its credit part, and a credit part on another kind', async () => {
+    const company = await newCompany([['2026-11-15', '121.0000']]);
+    await receive(company, cycle(20, '2026-11-15', 90_000, '2026-11-15', '2026-12-14'), '2026-11-15');
+    const forge = (kind: 'credited' | 'released', creditMinor: bigint | null) =>
+      inCompany(company, async (tx) => {
+        const [schedule] = await tx.select().from(recognitionSchedules);
+        await tx.insert(recognitionMovements).values({
+          companyId: company,
+          scheduleId: schedule?.id as string,
+          kind,
+          month: null,
+          entryId: null,
+          transactionMinor: 0n,
+          bookMinor: 0n,
+          parallelMinor: 0n,
+          creditMinor,
+        });
+      });
+    expect(await refusal(forge('credited', null))).toMatch(/recognition_movements/);
+    expect(await refusal(forge('released', 1n))).toMatch(/recognition_movements/);
   });
 });
 

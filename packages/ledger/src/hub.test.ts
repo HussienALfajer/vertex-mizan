@@ -1522,8 +1522,9 @@ describe('credits, voids and re-issues (revenue/retainer-credit, revenue/void-an
         ],
       ]),
     };
-    expect(planEvent(shorter, both, contextOf(sypUsd))).toMatchObject({
+    expect(planEvent(shorter, both, contextOf(sypUsd))).toEqual({
       kind: 'post',
+      entries: [],
       decision: 'reissue_period_differs',
     });
   });

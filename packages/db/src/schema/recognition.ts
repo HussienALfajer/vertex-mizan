@@ -182,6 +182,12 @@ export const recognitionMovements = pgTable(
     bookMinor: bigint({ mode: 'bigint' }).notNull(),
     parallelMinor: bigint({ mode: 'bigint' }),
     serviceValueId: uuid(),
+    /**
+     * A credit's part of the schedule's transaction amount, its revenue and liability parts
+     * together (S06 rule 6): positive on a credit, negative on its void. The schedule's amount net
+     * of credits is its line's amount less their sum; only on a `credited` movement.
+     */
+    creditMinor: bigint({ mode: 'bigint' }),
     createdAt: createdAt(),
   },
   (t) => [
@@ -223,6 +229,11 @@ export const recognitionMovements = pgTable(
     check(
       'recognition_movements_service',
       sql`(${t.kind} = 'reclassified') = (${t.serviceValueId} is not null)`,
+    ),
+    check(
+      'recognition_movements_credit',
+      sql`(${t.kind} = 'credited') = (${t.creditMinor} is not null)
+        and (${t.creditMinor} is null or ${t.creditMinor} <> 0)`,
     ),
   ],
 );

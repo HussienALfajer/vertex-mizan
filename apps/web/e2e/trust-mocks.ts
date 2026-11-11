@@ -29,6 +29,7 @@ export const cleanReport: IntegrityReport = {
   periodBalances: [],
   controlAccounts: [],
   openItemBalances: [],
+  recognition: [],
   anchors: [
     { anchoredOn: '2026-11-08', entryCount: 1, headHash: hash('a'), result: 'verified' },
     { anchoredOn: '2026-11-09', entryCount: 2, headHash, result: 'verified' },

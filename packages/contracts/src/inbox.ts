@@ -224,6 +224,8 @@ export type PostingSlotParam = z.infer<typeof postingSlotParamSchema>;
 export const retryTriggerSchema = z
   .discriminatedUnion('kind', [
     z.object({ kind: z.literal('item'), itemKey: z.string().min(1).max(200) }),
+    // An invoice that opened schedules frees the credits waiting for their cycle (S06 rule 19).
+    z.object({ kind: z.literal('cycle') }),
     z.object({ kind: z.literal('rate'), on: dateSchema }),
     z.object({ kind: z.literal('mapping') }),
     z.object({ kind: z.literal('deploy') }),

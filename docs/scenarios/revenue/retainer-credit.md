@@ -1,8 +1,8 @@
 # Credits on a retainer cycle
 
-Status: Proposed
+Status: Approved (owner, 2026-11-10)
 
-S06 wrote these cases (S06 "Scenarios"); the owner approved their expected entries and outcomes on 2026-11-10, with three readings of S06 rule 6: a credit is shared across the cycle's schedules by each one's amount net of earlier credits; on each, the share already recognised reduces revenue and the rest the liability; and an invoice whose total the credit brings to zero has no receivable line and no item. After the accounting review the owner approved, the same day, three more decisions and their cases: a credit first releases the months of its cycle that ended before its date; a credit's void releases on its date, at the carried amounts, the part it gives back for the months released since the credit (option A, which changes the entries of the case "the void of the credit invoice", not its months' totals); and the case of an SYP cycle at Vertex Media. They stay `Proposed` until S06's feature slice brings their executors: the posting rules of `invoice.issued` with over-time and credit lines, `invoice.voided` of an invoice with schedules or credits, the release job `revenue_release_month` and the holds `UNKNOWN_REFERENCE` (`credit_cycle`) and `NEEDS_DECISION` (`credit_cycle_voided`, `credit_exceeds_cycle`, `schedule_credited`) (S06 rules 1, 2, 4–6, 8, 18, 19).
+S06 wrote these cases (S06 "Scenarios"); the owner approved their expected entries and outcomes on 2026-11-10, with three readings of S06 rule 6: a credit is shared across the cycle's schedules by each one's amount net of earlier credits; on each, the share already recognised reduces revenue and the rest the liability; and an invoice whose total the credit brings to zero has no receivable line and no item. After the accounting review the owner approved, the same day, three more decisions and their cases: a credit first releases the months of its cycle that ended before its date; a credit's void releases on its date, at the carried amounts, the part it gives back for the months released since the credit (option A, which changes the entries of the case "the void of the credit invoice", not its months' totals); and the case of an SYP cycle at Vertex Media. S06's feature slice (PR 3) brought their executors, so they run `Approved` with the date of the last approval: the posting rules of `invoice.issued` with over-time and credit lines, `invoice.voided` of an invoice with schedules or credits, the release job `revenue_release_month` and the holds `UNKNOWN_REFERENCE` (`credit_cycle`) and `NEEDS_DECISION` (`credit_cycle_voided`, `credit_exceeds_cycle`, `schedule_credited`) (S06 rules 1, 2, 4–6, 8, 18, 19).
 
 ## Rule
 
@@ -709,7 +709,8 @@ expect:
         # the whole credit reduces November's revenue at 123
         - { account: "411001", dims: { client: C1, contract: R1, service: S1 }, currency: USD, amount: 60000, book: 7380000, parallel: 60000 }
   balances:
-    - { account: "112001", book: 0, parallel: 0 }
+    # INV-2026-42's 600.00 USD only, still to collect: the zero invoice adds nothing to receivables
+    - { account: "112001", book: 7200000, parallel: 60000 }
     - { account: "212001", book: -7380000, parallel: -60000 }
     # 7,200,000 − 7,380,000: November's revenue is reduced at December's rate (cumulative catch-up)
     - { account: "411001", book: 180000, parallel: 0 }

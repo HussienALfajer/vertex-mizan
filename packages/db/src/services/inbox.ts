@@ -61,12 +61,17 @@ import { ledgersOf } from './companies.js';
 import { recordRate } from './rates.js';
 import {
   milestoneFactsOf,
+  cyclesOf,
   openSchedules,
   projectSchedulesOf,
   reclassifyRecognised,
+  reissuesOf,
+  releaseBeforeChange,
   releaseEndedMonths,
   scheduledLineIdsOf,
   splitAtCancellation,
+  voidMovements,
+  voidStandingOf,
   writeMovements,
 } from './recognition.js';
 
@@ -110,6 +115,8 @@ export interface InboxEventView {
  */
 export type RetryTrigger =
   | { readonly kind: 'item'; readonly itemKey: string }
+  /** An invoice that opened schedules: the credits waiting for a cycle (S06 rule 19). */
+  | { readonly kind: 'cycle' }
   | { readonly kind: 'rate'; readonly on: string }
   | { readonly kind: 'mapping' }
   | { readonly kind: 'deploy' }
@@ -429,9 +436,16 @@ async function referencesOf(tx: Transaction, event: EventEnvelope): Promise<HubR
     const standing = await standingEntriesOf(tx, { type: 'milestone', id });
     milestones.set(id, await milestoneFactsOf(tx, id, named.projectId, standing));
   }
+  const standing = await standingEntriesOf(tx, documentOf(event));
+  // A void reverses its schedules' entries too, and holds while another invoice credits them
+  // (S06 rule 8).
+  const voiding =
+    event.type === 'invoice.voided'
+      ? await voidStandingOf(tx, event.payload.invoice.id, standing)
+      : null;
   return {
     invoiceItem: invoiceId === null ? null : await invoiceItemOf(tx, invoiceId),
-    standing: await standingEntriesOf(tx, documentOf(event)),
+    standing: voiding?.standing ?? standing,
     issueLine:
       event.type === 'invoice.line_service_changed'
         ? await issueLineOf(tx, event.payload.invoice.id, event.payload.line_id)
@@ -443,6 +457,12 @@ async function referencesOf(tx: Transaction, event: EventEnvelope): Promise<HubR
     }),
     ...(event.type === 'invoice.voided' && {
       splitAtCancellation: await splitAtCancellation(tx, event.payload.invoice.id),
+      scheduleCredited: voiding?.scheduleCredited ?? false,
+    }),
+    // A credit's cycles and the voided schedules a line re-issues (S06 rules 6, 9).
+    ...(event.type === 'invoice.issued' && {
+      cycles: await cyclesOf(tx, event),
+      reissues: await reissuesOf(tx, event),
     }),
   };
 }
@@ -888,6 +908,17 @@ function holdOfRefusal(error: DomainError): Hold {
   }
 }
 
+/** The system as the actor of the releases an attempt posts (S06 "Audit"). */
+function systemActor(actor: InboxActor): InboxActor {
+  return {
+    kind: 'system',
+    name: SYSTEM_NAME,
+    requestId: actor.requestId,
+    ipAddress: null,
+    userAgent: null,
+  };
+}
+
 /**
  * One attempt of an event (rules 8–13), in rule 8's order: an earlier held event of its item that
  * it waits behind; its document left to the accountant (rule 16); its rule's own holds (an unknown
@@ -914,6 +945,12 @@ async function decide(
     mapping: await mappingOf(tx),
     tolerance: { SYP: settings.paymentToleranceSypMinor, USD: settings.paymentToleranceUsdMinor },
   };
+  // The releases of the months ended before a credit or a void, of the schedules it changes, post
+  // first, as the month's job would, so its split never depends on when the job ran (S06 rules 6,
+  // 8). The releases are the system's (S06 "Audit").
+  if (event.type === 'invoice.issued' || event.type === 'invoice.voided') {
+    await releaseBeforeChange(tx, event, options.today, systemActor(options.actor));
+  }
   // A split outside zero to the remainder is the action's refusal (`VALIDATION_FAILED`), thrown
   // before anything is written (S06 rule 16).
   const plan: RulePlan = planEvent(event, await referencesOf(tx, event), context, options.split);
@@ -936,13 +973,7 @@ async function decide(
     return planned.on;
   };
   // The releases of an invoice posted late are the system's (S06 "Audit").
-  const system: InboxActor = {
-    kind: 'system',
-    name: SYSTEM_NAME,
-    requestId: options.actor.requestId,
-    ipAddress: null,
-    userAgent: null,
-  };
+  const system = systemActor(options.actor);
   try {
     const outcome = await tx.transaction(async (savepoint): Promise<Outcome> => {
       const values = new HubValues(savepoint, row.companyId, options.actor);
@@ -1008,6 +1039,26 @@ async function decide(
         }
         if (plan.movements !== undefined) {
           await writeMovements(savepoint, row.companyId, plan.movements, byKey);
+        }
+        // A void's reversals carry their entries' movements back, and a reversed credit gives
+        // its schedules their liability part back (S06 rule 8).
+        if (event.type === 'invoice.voided' && plan.decision === null) {
+          const reversals = plan.entries.flatMap((entry) => {
+            const reversal = byKey.get(entry.key);
+            return entry.kind === 'reversal' && reversal !== undefined
+              ? [{ reversed: entry.entryId, reversal }]
+              : [];
+          });
+          posted.push(
+            ...(await voidMovements(savepoint, row, {
+              reversals,
+              entryDate: options.postOn ?? row.accountingDate,
+              description: descriptionOf(event),
+              today: options.today,
+              actor: options.actor,
+              hub,
+            })),
+          );
         }
       } catch (error) {
         // A refusal of the period, the rates or the settlements comes first in rule 8's order;
@@ -1175,6 +1226,8 @@ async function attempt(
 function triggersOf(row: EventRow, outcome: Outcome): RetryTrigger[] {
   if (outcome.kind === 'hold') return [];
   const triggers: RetryTrigger[] = keysOf(row).map((itemKey) => ({ kind: 'item', itemKey }));
+  // An invoice posted may open the cycle a held credit names (S06 rule 19).
+  if (row.type === 'invoice.issued' && outcome.kind === 'posted') triggers.push({ kind: 'cycle' });
   return outcome.kind === 'recorded' ? [...triggers, ...outcome.triggers] : triggers;
 }
 
@@ -1280,6 +1333,7 @@ export async function receiveEvent(
 async function heldFreedBy(tx: Transaction, trigger: RetryTrigger): Promise<EventRow[]> {
   const reasons: Record<RetryTrigger['kind'], readonly HoldReason[]> = {
     item: ['WAITING_FOR_EARLIER_EVENT', 'UNKNOWN_REFERENCE', 'OPEN_ITEM_HAS_SETTLEMENTS'],
+    cycle: ['UNKNOWN_REFERENCE'],
     rate: ['RATE_MISSING'],
     mapping: ['NO_MAPPING'],
     deploy: ['NO_MAPPING'],
@@ -1307,6 +1361,12 @@ async function heldFreedBy(tx: Transaction, trigger: RetryTrigger): Promise<Even
         eq(inboundEventStates.state, 'held'),
         inArray(inboundEventStates.holdReason, [...reasons[trigger.kind]]),
         trigger.kind === 'item' ? onKeys([trigger.itemKey]) : undefined,
+        trigger.kind === 'cycle'
+          ? and(
+              eq(inboundEvents.type, 'invoice.issued'),
+              eq(inboundEventStates.holdDetail, 'credit_cycle'),
+            )
+          : undefined,
         // A bulletin of a date serves the days after it until the next publication (ADR 0011).
         trigger.kind === 'rate' ? sql`${inboundEvents.accountingDate} >= ${trigger.on}` : undefined,
       ),
