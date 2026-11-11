@@ -91,6 +91,11 @@ steps:                              # in order; a Hub event, a manual entry, a r
   - reopen: 2026-11                 # reopen the latest closed month with a reason (S07 rules 3, 6):
     reason: "..."                   #   it posts as open, and the events it frees are retried as
                                     #   after a rate step
+  - draft: <what it records>        # a manual entry saved as a draft, not posted (S03 rule 4);
+    accounting_date: 2026-11-25     #   payload as for manual; S07's no_drafts reads it
+    payload: { ... }
+  - discard: 4                      # discard the draft of step 4 with a reason (S03 rule 11)
+    reason: "..."
   - rate: { date: 2026-11-03, base: USD, quote: SYP, rate: "121.0000", type: bulletin,
             reason: "Mistyped" }    # a row recorded now; a second row of a pair, type and date
                                     # is a correction and needs its reason (S02 rule 15)
@@ -124,7 +129,10 @@ expect:
   outcome:                          # optional: the last step's hold or refusal (held | refused),
     status: held                    #   when the step does not state it itself
     reason: PERIOD_CLOSED
-    detail: payment_gap_beyond_tolerance  # optional: the hold's detail (S05 rule 9); unstated, not compared
+    detail: payment_gap_beyond_tolerance  # optional: the hold's detail (S05 rule 9); unstated, not compared;
+                                    #   a code with an optional value ("period:2026-10", the month a
+                                    #   PERIOD_ORDER names), or several codes comma-separated and quoted
+                                    #   (a failed checklist's items in its order)
 ```
 
 Writing the YAML:
@@ -137,6 +145,7 @@ Writing the YAML:
 - Each expected entry balances in both ledgers, and has at least two lines; a `third` case names a line or a rate in a third currency.
 - **Hub events** (S05): the payload's short form names each dimension by its code and each document by its number; the runner makes it into the full payload Hub sends (`packages/contracts` `eventEnvelopeSchema`): each document and value gets a stable synthetic Hub id, a value keeps the case's code (so the event makes the value, S05 rule 23, and the setup leaves it out), an invoice line's `kind` is its `charge_kind`, and a `payment.voided` finds its receipt and invoice from the payment's `payment.recorded` step. After each event, rate and inbox step the runner runs the retries the step frees, as the worker does after its commit (S05 rule 10), with the case's clock at its latest date.
 - An action (`retry`, `move`, `resolve`, `dismiss`, `recognise`, `split`) names an earlier `event` step, and `resolve` an expected entry. It may state its `outcome` like any step: a retry that leaves the event held, or an action the inbox refuses (`EVENT_NOT_HELD`, `EVENT_ACTION_NOT_ALLOWED`, `ENTRY_ALREADY_LINKED`, and `VALIDATION_FAILED` for a split outside zero to the remainder). The events an action frees are retried as S05 rule 10 says, and their entries are expected where they post.
+- A `discard` names an earlier `draft` step. A `close` refused `PERIOD_ORDER` names the earliest open month as its detail (`period:2026-10`), a `reopen` refused `PERIOD_ORDER` the latest closed month.
 - A `revalue: parallel` step needs a company with a parallel ledger. A `revalue` step for a month already revalued posts the adjusting revaluation: only the differences still to post, with its own reversal (S07 rule 15). A `revalue` step that finds every difference zero is done and posts nothing; a missing closing rate is its `refused` outcome `RATE_MISSING`.
 - An unknown or misspelt key is an error.
 

@@ -284,7 +284,8 @@ const payloadSchema = z.record(z.string(), z.unknown()).superRefine((payload, co
 /**
  * A step's answer when it is not posted: held (ADR 0008 and 0014 hold reasons) or refused, with
  * the reason and, when stated, its detail (S05 rule 9: `payment_gap_beyond_tolerance`). An unstated
- * detail is not compared.
+ * detail is not compared. A detail is one code with an optional value (`period:2026-10`, S07 rule
+ * 2), or several comma-separated: a failed checklist's items in its order (S07 rule 8).
  */
 const outcomeSchema = z
   .strictObject({
@@ -292,7 +293,10 @@ const outcomeSchema = z
     reason: z.string().regex(/^[A-Z][A-Z0-9_]*$/, 'Expected a reason code'),
     detail: z
       .string()
-      .regex(/^[a-z][a-z0-9_]*(:[A-Za-z0-9_.-]+)?$/, 'Expected a detail code')
+      .regex(
+        /^[a-z][a-z0-9_]*(:[A-Za-z0-9_.-]+)?(,[a-z][a-z0-9_]*(:[A-Za-z0-9_.-]+)?)*$/,
+        'Expected a detail code',
+      )
       .optional(),
   })
   .transform((outcome) => ({ ...outcome, detail: outcome.detail ?? null }));
@@ -309,7 +313,8 @@ const stepOutcome = { outcome: outcomeSchema.optional() };
  * A step is told apart by its one key: `event`, `manual`, `reversal`, `job` or `rate`, or one of
  * the accountant's actions on a held event (S05 rules 15–17): `retry`, `move`, `resolve`, `dismiss`;
  * S06's `recognise` and `split` (rule 16); S07's `revalue` (rules 10–18), `block` (S02 rule 5),
- * `close` and `reopen` (rules 2–9).
+ * `close` and `reopen` (rules 2–9), and a manual entry saved as a `draft` and its `discard` (S03
+ * rules 4 and 11), which S07's checklist reads (`no_drafts`).
  */
 export const STEP_KINDS = [
   'event',
@@ -327,6 +332,8 @@ export const STEP_KINDS = [
   'block',
   'close',
   'reopen',
+  'draft',
+  'discard',
 ] as const;
 
 export type StepKind = (typeof STEP_KINDS)[number];
@@ -581,6 +588,41 @@ const reopenStepSchema = z
     outcome: step.outcome ?? null,
   }));
 
+/**
+ * A manual entry saved as a draft and not posted (S03 rule 4): what it records, its date and the
+ * request as the manual-entry form saves it. It posts nothing; S07's checklist reads it.
+ */
+const draftStepSchema = z
+  .strictObject({
+    kind: z.literal('draft'),
+    draft: z.string().trim().min(1),
+    accounting_date: dateSchema,
+    payload: payloadSchema,
+    ...stepOutcome,
+  })
+  .transform((step) => ({
+    kind: step.kind,
+    description: step.draft,
+    accountingDate: step.accounting_date,
+    payload: step.payload,
+    outcome: step.outcome ?? null,
+  }));
+
+/** Discard a draft the case saved, by its step number, with a reason (S03 rule 11). */
+const discardStepSchema = z
+  .strictObject({
+    kind: z.literal('discard'),
+    discard: countSchema(1),
+    reason: actionReasonSchema,
+    ...stepOutcome,
+  })
+  .transform((step) => ({
+    kind: step.kind,
+    step: step.discard,
+    reason: step.reason,
+    outcome: step.outcome ?? null,
+  }));
+
 const stepSchema = z.preprocess(
   (value) => {
     if (typeof value !== 'object' || value === null || Array.isArray(value)) return value;
@@ -605,11 +647,13 @@ const stepSchema = z.preprocess(
       blockStepSchema,
       closeStepSchema,
       reopenStepSchema,
+      draftStepSchema,
+      discardStepSchema,
     ],
     {
       error:
         'Expected a step with one of the keys event, manual, reversal, job, rate, retry, move, ' +
-        'resolve, dismiss, recognise, split, revalue, block, close or reopen',
+        'resolve, dismiss, recognise, split, revalue, block, close, reopen, draft or discard',
     },
   ),
 );
@@ -784,6 +828,9 @@ export const caseSchema = z
     for (const [s, step] of steps.entries()) {
       if (step.kind === 'reversal' && step.entry > entries.length) {
         issue(`Entry ${step.entry} is not an expected entry`, ['steps', s, 'reversal']);
+      }
+      if (step.kind === 'discard' && (step.step > s || steps[step.step - 1]?.kind !== 'draft')) {
+        issue(`Step ${step.step} is not an earlier draft step`, ['steps', s, 'discard']);
       }
       if (step.kind === 'revalue' && step.ledger === 'parallel' && parallel === null) {
         issue('The company keeps no parallel ledger to revalue', ['steps', s, 'revalue']);

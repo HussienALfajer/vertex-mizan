@@ -287,7 +287,7 @@ describe('a case', () => {
     [
       'a step of no kind',
       CASE.replace('  - event: invoice.issued', '  - what: invoice.issued'),
-      'event, manual, reversal, job, rate, retry, move, resolve, dismiss, recognise, split, revalue, block, close or reopen',
+      'event, manual, reversal, job, rate, retry, move, resolve, dismiss, recognise, split, revalue, block, close, reopen, draft or discard',
     ],
     [
       'a step of two kinds',
@@ -587,6 +587,64 @@ describe('a case', () => {
       'YYYY-MM',
     );
     expect(refusal(closeAndReopen.replace('    reason: "دفعة متأخرة"\n', ''))).toContain('reason');
+  });
+
+  it('reads a draft and its discard, and a refusal naming several items or a month (S03, S07)', () => {
+    const withDraft = REVALUE.replace(
+      '  - revalue: parallel\n    period: 2026-11\n',
+      '  - revalue: parallel\n    period: 2026-11\n' +
+        '  - draft: a subscription not yet paid\n    accounting_date: 2026-11-25\n' +
+        '    payload: { lines: [{ account: "5314", currency: USD, amount: 5000 },\n' +
+        '                       { account: "1116", currency: USD, amount: -5000 }] }\n' +
+        '  - close: 2026-11\n    reason: "إقفال تشرين الثاني"\n' +
+        '    outcome: { status: refused, reason: CHECKLIST_FAILED,\n' +
+        '               detail: "no_drafts,revaluation_current" }\n' +
+        '  - discard: 5\n    reason: "أُلغي الاشتراك"\n' +
+        '  - close: 2026-11\n    reason: "إقفال تشرين الثاني"\n' +
+        '    outcome: { status: refused, reason: PERIOD_ORDER, detail: "period:2026-10" }\n',
+    );
+    const { steps } = parseCase(withDraft);
+    expect(steps.slice(4)).toEqual([
+      {
+        kind: 'draft',
+        description: 'a subscription not yet paid',
+        accountingDate: '2026-11-25',
+        payload: {
+          lines: [
+            { account: '5314', currency: 'USD', amount: 5000n },
+            { account: '1116', currency: 'USD', amount: -5000n },
+          ],
+        },
+        outcome: null,
+      },
+      {
+        kind: 'close',
+        period: '2026-11',
+        reason: 'إقفال تشرين الثاني',
+        outcome: {
+          status: 'refused',
+          reason: 'CHECKLIST_FAILED',
+          detail: 'no_drafts,revaluation_current',
+        },
+      },
+      { kind: 'discard', step: 5, reason: 'أُلغي الاشتراك', outcome: null },
+      {
+        kind: 'close',
+        period: '2026-11',
+        reason: 'إقفال تشرين الثاني',
+        outcome: { status: 'refused', reason: 'PERIOD_ORDER', detail: 'period:2026-10' },
+      },
+    ]);
+    expect(refusal(withDraft.replace('discard: 5', 'discard: 4'))).toContain(
+      'Step 4 is not an earlier draft step',
+    );
+    expect(refusal(withDraft.replace('discard: 5', 'discard: 7'))).toContain(
+      'Step 7 is not an earlier draft step',
+    );
+    expect(refusal(withDraft.replace('no_drafts,revaluation_current', 'no_drafts,'))).toContain(
+      'Expected a detail code',
+    );
+    expect(refusal(withDraft.replace('    reason: "أُلغي الاشتراك"\n', ''))).toContain('reason');
   });
 
   it.each([
