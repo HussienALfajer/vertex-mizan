@@ -10,6 +10,7 @@ import {
 } from '@vertex-mizan/contracts';
 import {
   type CarriedAmounts,
+  firstOpenDayAfter,
   type HubDimensions,
   lastDayOfMonth,
   negate,
@@ -26,7 +27,7 @@ import { type CarriedLineSpec, type HubSource, post } from '../posting/post.js';
 import { chartAccounts } from '../schema/chart.js';
 import { companySettings } from '../schema/companies.js';
 import { inboundEvents, postingRuleAccounts } from '../schema/inbox.js';
-import { journalLines } from '../schema/ledger.js';
+import { journalEntries, journalLines, ledgerHeads, periods } from '../schema/ledger.js';
 import { recognitionMovements, recognitionSchedules } from '../schema/recognition.js';
 import { ledgersOf } from './companies.js';
 
@@ -308,8 +309,11 @@ async function scheduleStates(
  * `revenue_release`, under the system's key `release:<invoice event id>:<YYYY-MM>`, Dr each
  * schedule's liability account / Cr `released_revenue` with the client, the contract and the
  * schedule's current service, at its part of the month, carried; then its `released` movements. A
- * month already released, not ended, or with nothing to release posts nothing. Answers the entry,
- * or null.
+ * month already released, not ended, or with nothing to release posts nothing. With
+ * `closedPeriods`, a month that is closed releases on the first day of the first open period after
+ * it, at the same carried amounts, so no rate is read (owner, 2026-11-11: an invoice posted after
+ * its month closed). The company's ledger head is locked first (ADR 0008), so the schedules are
+ * read as the last posting left them. Answers the entry, or null.
  */
 export async function releaseInvoiceMonth(
   tx: Transaction,
@@ -317,9 +321,14 @@ export async function releaseInvoiceMonth(
   month: string,
   today: string,
   actor: AuditActor,
+  closedPeriods: readonly string[] = [],
 ): Promise<string | null> {
   const lastDay = lastDayOfMonth(`${month}-01`);
   if (lastDay >= today) return null;
+  await tx.select({ id: ledgerHeads.id }).from(ledgerHeads).for('update');
+  const entryDate = closedPeriods.includes(month)
+    ? firstOpenDayAfter(lastDay, closedPeriods)
+    : lastDay;
   const ledgers = await companyLedgers(tx);
   const states = (await scheduleStates(tx, issue, ledgers)).filter(
     (state) =>
@@ -365,7 +374,7 @@ export async function releaseInvoiceMonth(
   const entry = await post(tx, {
     client: 'system',
     idempotencyKey: `release:${issue.eventId}:${month}`,
-    entryDate: lastDay,
+    entryDate,
     description: `تحرير إيراد ${event.payload.invoice.number} عن ${month}`,
     reference: event.payload.invoice.number,
     draftId: null,
@@ -393,7 +402,9 @@ export async function releaseInvoiceMonth(
 
 /**
  * The months of an invoice's schedules that ended before `today` and are not released, in order:
- * what an invoice posted after its months' jobs releases in its own transaction (S06 rule 5).
+ * what an invoice posted after its months' jobs releases in its own transaction (S06 rule 5). A
+ * closed month among them releases on the first day of the first open period after it (owner,
+ * 2026-11-11), so an invoice moved out of a closed month (S05 rule 15) posts with its releases.
  */
 export async function releaseEndedMonths(
   tx: Transaction,
@@ -401,6 +412,9 @@ export async function releaseEndedMonths(
   today: string,
   actor: AuditActor,
 ): Promise<string[]> {
+  const closed = (
+    await tx.select({ period: periods.period }).from(periods).where(sql`${periods.state} <> 'open'`)
+  ).map((row) => row.period);
   const ledgers = await companyLedgers(tx);
   const months = new Set<string>();
   for (const state of await scheduleStates(tx, issue, ledgers)) {
@@ -410,7 +424,7 @@ export async function releaseEndedMonths(
   }
   const posted: string[] = [];
   for (const month of [...months].sort()) {
-    const entry = await releaseInvoiceMonth(tx, issue, month, today, actor);
+    const entry = await releaseInvoiceMonth(tx, issue, month, today, actor, closed);
     if (entry !== null) posted.push(entry);
   }
   return posted;
@@ -491,10 +505,13 @@ export async function scheduledLineIdsOf(tx: Transaction, invoiceId: string): Pr
 
 /**
  * A deferred line moved to another service (S06 rule 10), on the event's date: what its schedule
- * recognised so far (its releases and elapsed parts) moves from its current service to the new one
- * on `released_revenue`, at its carried amounts, in one entry under the event's key; a
- * `reclassified` movement records the new service for its later releases. With nothing recognised
- * yet, only the movement is written. Answers the entry, or null.
+ * recognised by that date (its elapsed parts and the releases dated by it) moves from its current
+ * service to the new one on `released_revenue`, at its carried amounts, in one entry under the
+ * event's key; a release dated after the change and already posted on the old service (a change
+ * processed late, held behind an earlier event) moves on that release's own date, under
+ * `<key>:<YYYY-MM>`, so each month shows the service it would have had. A `reclassified` movement
+ * records the new service for the later releases. With nothing recognised yet, only the movement is
+ * written. Answers the entries, in date order.
  */
 export async function reclassifyRecognised(
   tx: Transaction,
@@ -510,7 +527,7 @@ export async function reclassifyRecognised(
     readonly actor: AuditActor;
     readonly hub: HubSource;
   },
-): Promise<string | null> {
+): Promise<string[]> {
   const [schedule] = await tx
     .select()
     .from(recognitionSchedules)
@@ -532,22 +549,52 @@ export async function reclassifyRecognised(
     (candidate) => candidate.schedule.id === schedule.id,
   );
   if (!state) throw new Error('A schedule without its state');
-  // What the line recognised: its releases and elapsed parts, as positive revenue amounts.
   const currency = schedule.currency as CurrencyCode;
-  const recognised = negate(
+  const parallel = ledgers.parallel !== null;
+  // Each release's entry date: a release dated after the change moves on its own date.
+  const releaseEntries = state.movements.flatMap((movement) =>
+    movement.kind === 'released' && movement.entryId !== null ? [movement.entryId] : [],
+  );
+  const dates = new Map<string, string>();
+  if (releaseEntries.length > 0) {
+    const dated = await tx
+      .select({ id: journalEntries.id, date: journalEntries.entryDate })
+      .from(journalEntries)
+      .where(inArray(journalEntries.id, releaseEntries));
+    for (const entry of dated) dates.set(entry.id, entry.date);
+  }
+  const dateOf = (movement: MovementRow) =>
+    movement.entryId === null ? null : (dates.get(movement.entryId) ?? null);
+  const recognised = state.movements.filter(
+    (movement) => movement.kind === 'released' || movement.kind === 'elapsed',
+  );
+  const later = recognised.filter((movement) => {
+    const date = dateOf(movement);
+    return movement.kind === 'released' && date !== null && date > input.entryDate;
+  });
+  const moves: { key: string; date: string; amounts: CarriedAmounts }[] = [];
+  // As positive revenue amounts: what the movements took from what remained to recognise.
+  const byChange = negate(
     sumCarried(
-      state.movements
-        .filter((movement) => movement.kind === 'released' || movement.kind === 'elapsed')
+      recognised
+        .filter((movement) => !later.includes(movement))
         .map((movement) => amountsOf(movement, currency)),
       currency,
-      ledgers.parallel !== null,
+      parallel,
     ),
   );
-  let entryId: string | null = null;
-  if (
-    recognised.transaction.amountMinor !== 0n &&
-    state.serviceValueId !== input.toServiceValueId
-  ) {
+  if (byChange.transaction.amountMinor !== 0n) {
+    moves.push({ key: input.key, date: input.entryDate, amounts: byChange });
+  }
+  for (const movement of later) {
+    moves.push({
+      key: `${input.key}:${(movement.month ?? '').slice(0, 7)}`,
+      date: dateOf(movement) as string,
+      amounts: negate(amountsOf(movement, currency)),
+    });
+  }
+  const entries: string[] = [];
+  if (moves.length > 0 && state.serviceValueId !== input.toServiceValueId) {
     const revenue = await releasedRevenueAccount(tx);
     if ('refusal' in revenue) {
       throw new DomainError('MAPPING_ACCOUNT_INVALID', 'The released revenue slot is not usable', {
@@ -558,49 +605,51 @@ export async function reclassifyRecognised(
       schedule.contractValueId === null
         ? [schedule.clientValueId]
         : [schedule.clientValueId, schedule.contractValueId];
-    const entry = await post(tx, {
-      client: input.hub.clientId,
-      idempotencyKey: input.key,
-      entryDate: input.entryDate,
-      description: input.description,
-      reference: row.documentNumber,
-      draftId: null,
-      preparedByUserId: null,
-      approvedByUserId: null,
-      actor: input.actor,
-      content: {
-        kind: 'carried',
-        source: 'hub_event',
-        lines: [
-          {
-            accountId: revenue.id,
-            dimensionValueIds: [...parties, state.serviceValueId],
-            amounts: recognised,
-          },
-          {
-            accountId: revenue.id,
-            dimensionValueIds: [...parties, input.toServiceValueId],
-            amounts: negate(recognised),
-          },
-        ],
-        today: input.today,
-        hub: input.hub,
-      },
-    });
-    entryId = entry.id;
+    for (const move of moves) {
+      const entry = await post(tx, {
+        client: input.hub.clientId,
+        idempotencyKey: move.key,
+        entryDate: move.date,
+        description: input.description,
+        reference: row.documentNumber,
+        draftId: null,
+        preparedByUserId: null,
+        approvedByUserId: null,
+        actor: input.actor,
+        content: {
+          kind: 'carried',
+          source: 'hub_event',
+          lines: [
+            {
+              accountId: revenue.id,
+              dimensionValueIds: [...parties, state.serviceValueId],
+              amounts: move.amounts,
+            },
+            {
+              accountId: revenue.id,
+              dimensionValueIds: [...parties, input.toServiceValueId],
+              amounts: negate(move.amounts),
+            },
+          ],
+          today: input.today,
+          hub: input.hub,
+        },
+      });
+      entries.push(entry.id);
+    }
   }
   await tx.insert(recognitionMovements).values({
     companyId: row.companyId,
     scheduleId: schedule.id,
     kind: 'reclassified',
     month: null,
-    entryId,
+    entryId: entries[0] ?? null,
     transactionMinor: 0n,
     bookMinor: 0n,
-    parallelMinor: ledgers.parallel === null ? null : 0n,
+    parallelMinor: parallel ? 0n : null,
     serviceValueId: input.toServiceValueId,
   });
-  return entryId;
+  return entries;
 }
 
 /** S06's slots, appended to the template after companies were made (`mapAppendedTemplateSlots()`). */

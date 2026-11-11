@@ -321,8 +321,12 @@ export async function mapAppendedTemplateSlots(
   const inserted = await tx
     .insert(postingRuleAccounts)
     .values(rows.map(({ row }) => row))
+    // Two runs at once (the sweep and the release job at the worker's start): the second maps and
+    // audits nothing.
+    .onConflictDoNothing()
     .returning({ id: postingRuleAccounts.id, slot: postingRuleAccounts.slot });
-  for (const { rule, row } of rows) {
+  const made = rows.filter(({ rule }) => inserted.some((row) => row.slot === rule.slot));
+  for (const { rule, row } of made) {
     await writeCompanyAudit(tx, companyId, actor, {
       action: 'posting_rule.mapped',
       entityType: 'posting_rule',
@@ -336,5 +340,5 @@ export async function mapAppendedTemplateSlots(
       },
     });
   }
-  return rows.length;
+  return made.length;
 }

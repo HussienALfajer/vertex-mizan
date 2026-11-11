@@ -446,7 +446,7 @@ async function seedRecognition(tx: Transaction, companyId: string) {
     kind: 'postable',
     statementLine: 'bs.contract_liabilities',
   });
-  const valueOf = async (type: string) => {
+  const newValue = async (type: string) => {
     const [found] = await tx
       .select({ id: dimensionTypes.id })
       .from(dimensionTypes)
@@ -488,8 +488,8 @@ async function seedRecognition(tx: Transaction, companyId: string) {
       lineSource: 'manual',
       serviceFrom: '2026-11-01',
       serviceTo: '2026-11-30',
-      clientValueId: await valueOf('client'),
-      serviceValueId: await valueOf('service'),
+      clientValueId: await newValue('client'),
+      serviceValueId: await newValue('service'),
       liabilityAccountId: liability,
       currency: 'USD',
     })

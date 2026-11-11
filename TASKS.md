@@ -1,7 +1,7 @@
 # TASKS — S06 Revenue recognition (IFRS 15)
 
 Spec: `docs/specs/S06-revenue-recognition.md` (Approved, owner, 2026-11-10) · ADR 0015 · Branch per PR: `feat/s06-<slice>`.
-Owner approvals: the PR split and the new outcome of `revenue/revenue-at-issue.md` "an invoice with a retainer line" (2026-11-11).
+Owner approvals (2026-11-11): the PR split; the new outcome of `revenue/revenue-at-issue.md` "an invoice with a retainer line"; a closed month's release, in an invoice posted after the close, posts on the first open day at its carried amounts, and the numbers of its case in `revenue/recognise-in-open-period.md`.
 The ledger functions already exist in `packages/ledger/src/recognition.ts` (merged with the scenarios); each PR wires them through the database, the inbox and the worker, and switches its scenarios to `Approved (owner, <date>)`.
 
 ## PR 1 — Foundation and over-time recognition (`feat/s06-over-time`)

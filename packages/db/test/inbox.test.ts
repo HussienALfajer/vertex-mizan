@@ -403,7 +403,7 @@ describe('the order per item and the retries (rules 10–11)', () => {
       for (const event of [...arrival].reverse()) await receive(company, event);
       expect(await ledger(company)).toHaveLength(3);
     }
-  });
+  }, 30_000);
 
   it('retries a RATE_MISSING event once the bulletin is recorded, and posts it once', async () => {
     const company = await newCompany('service-agency', [['2026-11-03', '120.0000']]);

@@ -411,9 +411,7 @@ export function advanceClock(companyId: string, on: string): void {
 /** The first day of the month after `month` (`YYYY-MM`). */
 function dayAfterMonth(month: string): string {
   const [year, number] = month.split('-').map(Number) as [number, number];
-  return number === 12
-    ? `${year + 1}-01-01`
-    : `${year}-${String(number + 1).padStart(2, '0')}-01`;
+  return number === 12 ? `${year + 1}-01-01` : `${year}-${String(number + 1).padStart(2, '0')}-01`;
 }
 
 /**

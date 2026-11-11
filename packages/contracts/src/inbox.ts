@@ -162,7 +162,12 @@ export const SLOT_READERS: Readonly<Record<PostingSlot, readonly EventType[]>> =
   project_cost: ['project_expense.recorded', 'project_expense.changed'],
   project_expense_awaiting_payment: ['project_expense.recorded', 'project_expense.changed'],
   // S06: the deferral at issue and its releases; the milestones, the project's end and its refund.
-  contract_liability: ['invoice.issued', 'milestone.done', 'project.completed', 'project.cancelled'],
+  contract_liability: [
+    'invoice.issued',
+    'milestone.done',
+    'project.completed',
+    'project.cancelled',
+  ],
   contract_asset: ['invoice.issued', 'milestone.done'],
   released_revenue: [
     'invoice.issued',

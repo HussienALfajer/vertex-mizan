@@ -887,7 +887,7 @@ async function decide(
             if (event.type !== 'invoice.line_service_changed') {
               throw new TypeError('A recognised reclassification of another event');
             }
-            const entryId = await reclassifyRecognised(savepoint, row, {
+            const entryIds = await reclassifyRecognised(savepoint, row, {
               key: planned.key,
               lineId: planned.lineId,
               invoiceId: event.payload.invoice.id,
@@ -898,7 +898,7 @@ async function decide(
               actor: options.actor,
               hub,
             });
-            if (entryId !== null) posted.push(entryId);
+            posted.push(...entryIds);
             continue;
           }
           const content = await contentOf(

@@ -16,6 +16,7 @@ import {
   journalEntries,
   journalLines,
   mapAppendedTemplateSlots,
+  moveEvent,
   openItemBalances,
   openItems,
   type PersonActor,
@@ -447,6 +448,166 @@ describe('a retainer cycle released over its days (S06 rules 2–5)', () => {
       ],
     ]);
     // December's release carries S2.
+    const services = await inCompany(company, async (tx) => {
+      const result = await tx.execute<{ code: string }>(
+        sql`select v.code from journal_lines l
+            join journal_entries e on e.id = l.entry_id
+            join dimension_set_values s on s.set_id = l.dimension_set_id
+            join dimension_values v on v.id = s.value_id
+            join dimension_types t on t.id = v.type_id and t.code = 'service'
+            where e.source = 'revenue_release' order by e.sequence`,
+      );
+      return result.rows.map((row) => row.code);
+    });
+    expect(services).toEqual(['S1', 'S2']);
+  });
+});
+
+describe('the review’s fixes (S05 rule 15, S06 rules 5 and 10; owner, 2026-11-11)', () => {
+  it('posts an invoice moved out of a closed month with that month’s release on the first open day', async () => {
+    // 620.00 USD for 20 Oct to 19 Nov (31 days), issued on 20 Oct at 119, received after October
+    // closed: held PERIOD_CLOSED, then moved to 1 November. October's 12 days release on 1 November
+    // at their carried amounts (owner, 2026-11-11); November's 19 with November.
+    const company = await newCompany([['2026-10-20', '119.0000']]);
+    await closePeriod(company, '2026-10');
+    const invoice = await receive(
+      company,
+      cycle(27, '2026-10-20', 62_000, '2026-10-20', '2026-11-19'),
+      '2026-11-05',
+    );
+    expect(invoice.event).toMatchObject({ state: 'held', reason: 'PERIOD_CLOSED' });
+    const moved = await inCompany(company, (tx) =>
+      moveEvent(tx, invoice.event.inboxId, 'وصلت الفاتورة بعد إقفال تشرين الأول', {
+        actor: person(),
+        today: '2026-11-05',
+      }),
+    );
+    expect(moved.event).toMatchObject({ state: 'posted', postedOn: '2026-11-01' });
+    await runJob(company, '2026-11', '2026-12-01');
+    expect(await ledger(company)).toEqual([
+      {
+        source: 'hub_event',
+        date: '2026-11-01',
+        lines: [
+          ['112001', 'USD', 62_000n, 7_378_000n, 62_000n],
+          ['212001', 'USD', -62_000n, -7_378_000n, -62_000n],
+        ],
+      },
+      {
+        source: 'revenue_release',
+        date: '2026-11-01',
+        lines: [
+          ['212001', 'USD', 24_000n, 2_856_000n, 24_000n],
+          ['411001', 'USD', -24_000n, -2_856_000n, -24_000n],
+        ],
+      },
+      {
+        source: 'revenue_release',
+        date: '2026-11-30',
+        lines: [
+          ['212001', 'USD', 38_000n, 4_522_000n, 38_000n],
+          ['411001', 'USD', -38_000n, -4_522_000n, -38_000n],
+        ],
+      },
+    ]);
+    // October's release keeps its month on its movement, so it is never released twice.
+    const months = await inCompany(company, (tx) =>
+      tx
+        .select({ month: recognitionMovements.month })
+        .from(recognitionMovements)
+        .where(eq(recognitionMovements.kind, 'released'))
+        .orderBy(asc(recognitionMovements.month)),
+    );
+    expect(months.map((row) => row.month)).toEqual(['2026-10-01', '2026-11-01']);
+    expect(await remaining(company)).toEqual([[0n, 0n, 0n]]);
+  });
+
+  it('moves a release dated after a late service change on its own date', async () => {
+    // The change is dated 28 November but processed after November's and December's releases on
+    // S1: nothing was recognised by 28 November, and each release moves to S2 on its own date.
+    const company = await newCompany([['2026-11-15', '121.0000']]);
+    await receive(
+      company,
+      cycle(20, '2026-11-15', 90_000, '2026-11-15', '2026-12-14'),
+      '2026-11-15',
+    );
+    await runJob(company, '2026-11', '2026-12-01');
+    await runJob(company, '2026-12', '2027-01-01');
+    await receive(
+      company,
+      envelope('invoice.line_service_changed', '2026-11-28', {
+        invoice: invoiceRef(20),
+        line_id: ids(220),
+        old_service: S1,
+        new_service: S2,
+        changed_on: '2026-11-28',
+      }),
+      '2027-01-02',
+    );
+    const entries = await ledger(company);
+    expect(entries.slice(3).map((entry) => [entry.source, entry.date, entry.lines])).toEqual([
+      [
+        'hub_event',
+        '2026-11-30',
+        [
+          ['411001', 'USD', 48_000n, 5_808_000n, 48_000n],
+          ['411001', 'USD', -48_000n, -5_808_000n, -48_000n],
+        ],
+      ],
+      [
+        'hub_event',
+        '2026-12-31',
+        [
+          ['411001', 'USD', 42_000n, 5_082_000n, 42_000n],
+          ['411001', 'USD', -42_000n, -5_082_000n, -42_000n],
+        ],
+      ],
+    ]);
+  });
+
+  it('releases on the service a change committed while the job waited for the ledger head', async () => {
+    const company = await newCompany([['2026-11-15', '121.0000']]);
+    await receive(
+      company,
+      cycle(20, '2026-11-15', 90_000, '2026-11-15', '2026-12-14'),
+      '2026-11-15',
+    );
+    await runJob(company, '2026-11', '2026-12-01');
+    const change = envelope('invoice.line_service_changed', '2026-12-07', {
+      invoice: invoiceRef(20),
+      line_id: ids(220),
+      old_service: S1,
+      new_service: S2,
+      changed_on: '2026-12-07',
+    });
+    let locked: () => void = () => {};
+    const held = new Promise<void>((resolve) => {
+      locked = resolve;
+    });
+    let release: () => void = () => {};
+    const done = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    // The change holds the ledger head until the job has started; the job then waits for it.
+    const changing = inCompany(company, async (tx) => {
+      await receiveEvent(
+        tx,
+        company,
+        {
+          raw: bodies.get(change.id) as Record<string, unknown>,
+          envelope: change,
+          apiClientId: CLIENT_ID,
+          requestId: 'request-recognition-test',
+        },
+        { actor: hub, today: '2026-12-07' },
+      );
+      locked();
+      await done;
+    });
+    await held;
+    const job = runJob(company, '2026-12', '2027-01-01');
+    release();
+    await Promise.all([changing, job]);
     const services = await inCompany(company, async (tx) => {
       const result = await tx.execute<{ code: string }>(
         sql`select v.code from journal_lines l
