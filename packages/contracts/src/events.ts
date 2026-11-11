@@ -574,10 +574,7 @@ export function itemKeyOf(event: EventEnvelope): string | null {
  * reopen, `project:<id>`; the void of such an invoice, `project:<id>`, read from its issue
  * (`issued`, the invoice's `invoice.issued` as received, or null when it has not arrived).
  */
-export function orderKeysOf(
-  event: EventEnvelope,
-  issued: InvoiceIssuedV1 | null = null,
-): string[] {
+export function orderKeysOf(event: EventEnvelope, issued: InvoiceIssuedV1 | null = null): string[] {
   const ofInvoice = (invoice: InvoiceIssuedV1, milestones: boolean): string[] => {
     const lines = invoice.lines.filter(
       (line) =>

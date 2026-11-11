@@ -28,7 +28,19 @@ import {
   negate,
 } from './lines.js';
 import { periodOf } from './periods.js';
-import { type OverTimeMonth, overTimeMonths } from './recognition.js';
+import {
+  cancelledProjectRemainder,
+  cancelledProjectSplit,
+  completedProjectReleases,
+  invoicedAfterCancellationSplit,
+  milestoneDone,
+  milestoneItemClearing,
+  milestoneItemReference,
+  milestoneLineAtIssue,
+  milestoneReopen,
+  type OverTimeMonth,
+  overTimeMonths,
+} from './recognition.js';
 
 // The posting rules of Hub's events (S05 rules 8–17, "Accounting treatment"; ADR 0006, 0013, 0014),
 // each from its approved scenario: `revenue/revenue-at-issue`, `receivables/hub-payment`,
@@ -95,6 +107,17 @@ export interface HubLine {
    * ad spend's payable takes what the client's funds gave up (`ad-funds/running-balance`).
    */
   readonly carriesItems?: true;
+  /**
+   * The amounts a recognition schedule holds, which the line carries instead of a new measurement
+   * (S06 rules 11, 14, 15; IAS 21.23(b)): a contract liability cleared, its revenue at its carried
+   * share. Its `amount` is the carried transaction amount.
+   */
+  readonly carried?: CarriedAmounts;
+  /**
+   * The line's dimension values as the books hold them (a schedule's client, contract and service),
+   * in place of `dimensions`, which the line then leaves empty.
+   */
+  readonly valueIds?: readonly string[];
 }
 
 /** A rate a ledger that accepts a transaction's rate reads (Hub's `syp_per_usd`, ADR 0007). */
@@ -184,9 +207,24 @@ export type RulePlan =
       readonly kind: 'post';
       readonly entries: readonly PlannedEntry[];
       readonly decision: string | null;
-      /** The over-time schedules the entries open (S06; ADR 0015), written beside them. */
+      /** The schedules the entries open (S06; ADR 0015), written beside them. */
       readonly schedules?: readonly PlannedSchedule[];
+      /** The movements the entries make on schedules that stand (S06; ADR 0015). */
+      readonly movements?: readonly PlannedMovement[];
     };
+
+/**
+ * A movement of a schedule the books hold (ADR 0015), describing an entry of the plan by its key:
+ * signed, positive adds to what is still to recognise. A done's or a completion's release takes
+ * what the schedule holds (`released`, no month), a reopen gives it back; a cancelled project's
+ * split takes it as revenue and refund (`remainder_released`, `remainder_refunded`).
+ */
+export interface PlannedMovement {
+  readonly scheduleId: string;
+  readonly kind: 'released' | 'remainder_released' | 'remainder_refunded';
+  readonly key: string;
+  readonly amounts: CarriedAmounts;
+}
 
 /**
  * An over-time line's schedule (S06 rules 3, 7; ADR 0015) as its invoice's plan opens it: the Hub
@@ -199,10 +237,15 @@ export interface PlannedSchedule {
   readonly lineId: string;
   /** The line's place on the invoice, from 1. */
   readonly position: number;
-  readonly lineSource: 'retainer_charge' | 'manual';
+  /** Over time on its service period, or at a point in time: its milestone's done (S06 rule 1). */
+  readonly pattern: 'over_time' | 'point_in_time';
+  readonly lineSource: 'retainer_charge' | 'manual' | 'deposit' | 'milestone';
   readonly chargeKind: 'monthly' | 'addition' | null;
-  readonly serviceFrom: string;
-  readonly serviceTo: string;
+  /** The service period over time; null at a point in time. */
+  readonly serviceFrom: string | null;
+  readonly serviceTo: string | null;
+  /** The milestone at a point in time; null over time. */
+  readonly milestoneId: string | null;
   /** `<retainer external id>:<cycle_start>` for a retainer cycle's charge (rule 6), else null. */
   readonly cycleKey: string | null;
   /** The release's dimensions: the client, the contract when named, the line's service. */
@@ -245,7 +288,61 @@ export interface HubReferences {
   readonly issueLine: IssueLine | null;
   /** The invoice's Hub lines that have a recognition schedule (S06; ADR 0015). */
   readonly scheduledLineIds?: readonly string[];
+  /**
+   * What the books hold for each milestone the event names (S06 rules 11–13), by Hub's milestone
+   * id: an invoice's deposit and milestone lines, a done, a reopen. A milestone absent has nothing.
+   */
+  readonly milestones?: ReadonlyMap<string, MilestoneReferences>;
+  /** The project's point-in-time schedules that stand, in the order they were made (rules 14–15). */
+  readonly projectSchedules?: readonly PointInTimeSchedule[];
+  /** For a void: a schedule of the invoice was cleared by its project's split (rule 8). */
+  readonly splitAtCancellation?: boolean;
 }
+
+/** A point-in-time schedule that stands (not voided), as the books hold it (ADR 0015). */
+export interface PointInTimeSchedule {
+  readonly id: string;
+  /** The contract liability account it was deferred to, which its releases debit (S06 "Data"). */
+  readonly liabilityAccountId: string;
+  /** Its client's value and, when named, its contract's. */
+  readonly parties: readonly string[];
+  /** The service its revenue takes: its latest reclassification's, else its own (rule 10). */
+  readonly serviceValueId: string;
+  /** What it still holds in contract liabilities, positive amounts, carried. */
+  readonly remaining: CarriedAmounts;
+}
+
+/** What the books hold for a milestone (S06 rules 11–13). */
+export interface MilestoneReferences {
+  /** Whether a done of the milestone stands: its entry posted and not reversed. */
+  readonly doneStanding: boolean;
+  /**
+   * The contract asset item of the standing done, with what it carries open (positive); null when
+   * the done released a schedule invoiced before, or none stands.
+   */
+  readonly item: (HubItem & { readonly carried: CarriedAmounts }) | null;
+  /** The release of a schedule the standing done posted, positive, by its entry: its reopen's. */
+  readonly doneRelease: {
+    readonly entryId: string;
+    readonly scheduleId: string;
+    readonly amounts: CarriedAmounts;
+  } | null;
+  /** The milestone's standing point-in-time schedule, invoiced before its done; null for none. */
+  readonly schedule: PointInTimeSchedule | null;
+  /** How many contract asset items the milestone has opened, for the next one's reference. */
+  readonly items: number;
+  /** Whether its project was cancelled: the event posted, recorded or resolved. */
+  readonly projectCancelled: boolean;
+}
+
+const NO_MILESTONE: MilestoneReferences = {
+  doneStanding: false,
+  item: null,
+  doneRelease: null,
+  schedule: null,
+  items: 0,
+  projectCancelled: false,
+};
 
 /**
  * Hub's rate as a dealt rate when some ledger of the company reads it (S03 rule 13, ADR 0007): a
@@ -386,39 +483,46 @@ interface OverTimeLine {
 }
 
 /**
- * `invoice.issued` (`revenue/revenue-at-issue`; S06 rules 1–3 and 7, `revenue/over-time-release`).
- * One entry on the invoice's accounting date (S06 rule 2): Dr the receivable, one document item
- * under Hub's number with the client and, when named, the contract, due on `due_on`, for the total;
- * Cr each line recognised at issue, in the invoice's order, to `revenue_at_issue` or
- * `termination_fee_revenue`, with the client, the line's service and the contract; Cr each
- * over-time line's months not elapsed to `contract_liability`, with the client and the contract;
- * then each elapsed month's contract asset item cleared at what it carries. Its new lines are
- * measured at the invoice's rates; a residual beside a carried clearing is a realised difference,
- * otherwise conversion rounding (`balanceEntry()`).
+ * `invoice.issued` (`revenue/revenue-at-issue`; S06 rules 1–3 and 7, `revenue/over-time-release`;
+ * rules 1, 2, 12 and 15, `revenue/milestones`, `revenue/cancelled-project`). One entry on the
+ * invoice's accounting date (S06 rule 2): Dr the receivable, one document item under Hub's number
+ * with the client and, when named, the contract, due on `due_on`, for the total; Cr each line
+ * recognised at issue, in the invoice's order, to `revenue_at_issue` or `termination_fee_revenue`,
+ * with the client, the line's service and the contract; Cr each over-time line's months not elapsed
+ * and each deposit or milestone line not done to `contract_liability`, with the client and the
+ * contract; then each elapsed month's contract asset item cleared at what it carries, and each
+ * done milestone's contract asset item cleared at what it carries for its line (rule 12). Its new
+ * lines are measured at the invoice's rates; a residual beside a carried clearing is a realised
+ * difference, otherwise conversion rounding (`balanceEntry()`).
  *
  * Before it, each month of an over-time line that ended before the issue month (elapsed) posts its
  * own entry on its last day: Dr a contract asset item `<number>/<position>` / Cr
  * `released_revenue` with the line's service, measured at each ledger's policy rate of that day
  * (Hub's `syp_per_usd` is of another date and is not read; IAS 21.21–22). The plan's schedules say
- * where each over-time line's deferral and elapsed parts are, for its movements (ADR 0015).
+ * where each deferred line's deferral and elapsed parts are, for its movements (ADR 0015).
  *
- * A non-zero tax holds `NO_MAPPING` (`tax_lines`); a credit, deposit or milestone line
- * `NO_MAPPING` (`deferred_revenue`) until their rules deploy. A line whose pattern is unclear is the
- * accountant's (`recognition_pattern_unclear:<position>`), decided after the period and rate checks
- * (rule 8): its lines are planned as revenue at issue only to run those checks.
+ * A non-zero tax holds `NO_MAPPING` (`tax_lines`); a credit line `NO_MAPPING` (`deferred_revenue`)
+ * until its rule deploys. The accountant's decisions, after the period and rate checks (rule 8),
+ * planned with the lines that run those checks: a line whose pattern is unclear
+ * (`recognition_pattern_unclear:<position>`, as revenue at issue); a milestone line whose amount is
+ * not what its done milestone's item has open (`milestone_amount_differs`, rule 12); a deposit or
+ * milestone line of a cancelled project, its milestone not done (`invoiced_after_cancellation`,
+ * rule 15, as a deferral). With `split`, the accountant's revenue part of those lines (rule 16):
+ * Cr `released_revenue` for it, cut across the lines by amount with cumulative rounding, each with
+ * its service, and Cr `cancelled_project_refund` for the rest with the client and the contract,
+ * every part a new measurement at the invoice's rates (owner, 2026-11-10).
  */
 export function invoiceIssuedPlan(
   event: EventOf<'invoice.issued'>,
   context: HubRuleContext,
+  milestones: ReadonlyMap<string, MilestoneReferences> = new Map(),
+  split?: bigint,
 ): RulePlan {
   const { payload } = event;
   const { currency, client, contract } = payload;
   const patterns = payload.lines.map((line) => recognitionPatternOf(line, contract));
   const unclear = patterns.findIndex((pattern) => pattern.kind === 'unclear');
-  if (
-    unclear === -1 &&
-    patterns.some((pattern) => pattern.kind === 'credit' || pattern.kind === 'point_in_time')
-  ) {
+  if (unclear === -1 && patterns.some((pattern) => pattern.kind === 'credit')) {
     return hold('NO_MAPPING', 'deferred_revenue');
   }
   if (payload.lines.some((line) => (line.taxes ?? []).some((tax) => tax.amount > 0))) {
@@ -429,6 +533,12 @@ export function invoiceIssuedPlan(
   const named = contract === undefined ? {} : { contract };
   const atIssue: HubLine[] = [];
   const overTime: OverTimeLine[] = [];
+  /** Each line deferred to its milestone's done, or planned as one to run a decision's checks. */
+  const pointInTime: { line: InvoiceLine; position: number; milestoneId: string }[] = [];
+  const probes = new Set<number>();
+  const itemClearings: HubLine[] = [];
+  const cancelled: InvoiceLine[] = [];
+  let milestoneDecision: string | null = null;
   for (const [index, line] of payload.lines.entries()) {
     const pattern = patterns[index];
     if (pattern?.kind === 'over_time') {
@@ -439,6 +549,44 @@ export function invoiceIssuedPlan(
         to: pattern.to,
         months: overTimeMonths(hubMinor(line.amount), pattern.from, pattern.to, payload.issued_on),
       });
+      continue;
+    }
+    if (pattern?.kind === 'point_in_time') {
+      const facts = milestones.get(pattern.milestoneId) ?? NO_MILESTONE;
+      const amount = money(hubMinor(line.amount), currency);
+      const answer = milestoneLineAtIssue(facts.doneStanding, facts.projectCancelled);
+      const deferral = { line, position: index + 1, milestoneId: pattern.milestoneId };
+      if (answer === 'defer') {
+        pointInTime.push(deferral);
+        continue;
+      }
+      if (answer === 'clear_item') {
+        // A done that released a schedule invoiced before, or whose item is cleared already, has
+        // nothing open for the line: another amount than its item has open (rule 12).
+        const cleared =
+          facts.item === null || facts.item.carried.transaction.amountMinor <= 0n
+            ? ({ kind: 'decision', detail: 'milestone_amount_differs' } as const)
+            : milestoneItemClearing(amount, facts.item.carried);
+        if (cleared.kind === 'decision' || facts.item === null) {
+          milestoneDecision ??= 'milestone_amount_differs';
+          pointInTime.push(deferral);
+          probes.add(index + 1);
+          continue;
+        }
+        itemClearings.push({
+          account: facts.item.accountId,
+          dimensions: { client, ...named },
+          amount: negateMoney(amount),
+          item: { kind: 'existing', id: facts.item.id },
+        });
+        continue;
+      }
+      cancelled.push(line);
+      if (split === undefined) {
+        milestoneDecision ??= answer.detail;
+        pointInTime.push(deferral);
+        probes.add(index + 1);
+      }
       continue;
     }
     const slot =
@@ -453,26 +601,40 @@ export function invoiceIssuedPlan(
       amount: money(-hubMinor(line.amount), currency),
     });
   }
+  if (split !== undefined && cancelled.length === 0) {
+    throw new DomainError(
+      'EVENT_ACTION_NOT_ALLOWED',
+      'Only a deposit or milestone invoiced after its project’s cancellation is split',
+    );
+  }
   const deferredOf = (item: OverTimeLine) =>
     item.months.filter((m) => !m.elapsed).reduce((sum, m) => sum + m.transactionMinor, 0n);
   const elapsedOf = (item: OverTimeLine) =>
     item.months.filter((m) => m.elapsed && m.transactionMinor !== 0n);
   // Every schedule names the liability it defers to, even one wholly elapsed (S06 "Data").
   let liability: MappedAccount | null = null;
-  if (overTime.length > 0) {
+  if (overTime.length > 0 || pointInTime.length > 0) {
     const account = slotAccount(context, 'contract_liability', null);
     if (isHold(account)) return account;
     liability = account;
   }
   let asset: MappedAccount | null = null;
   let released: MappedAccount | null = null;
+  if (overTime.some((item) => elapsedOf(item).length > 0) || cancelled.length > 0) {
+    const revenueAccount = slotAccount(context, 'released_revenue', null);
+    if (isHold(revenueAccount)) return revenueAccount;
+    released = revenueAccount;
+  }
   if (overTime.some((item) => elapsedOf(item).length > 0)) {
     const assetAccount = slotAccount(context, 'contract_asset', null);
     if (isHold(assetAccount)) return assetAccount;
-    const revenueAccount = slotAccount(context, 'released_revenue', null);
-    if (isHold(revenueAccount)) return revenueAccount;
     asset = assetAccount;
-    released = revenueAccount;
+  }
+  let refund: MappedAccount | null = null;
+  if (cancelled.length > 0) {
+    const refundAccount = slotAccount(context, 'cancelled_project_refund', null);
+    if (isHold(refundAccount)) return refundAccount;
+    refund = refundAccount;
   }
 
   // Each elapsed month's entry, in date order, with every line it holds.
@@ -520,18 +682,47 @@ export function invoiceIssuedPlan(
       });
     }
   }
+  // The deferrals in the invoice's order: over-time lines' months not elapsed, deposits and
+  // milestones not done.
   const deferrals: HubLine[] = [];
   const deferralLineOf = new Map<number, number>();
-  for (const item of overTime) {
-    const rest = deferredOf(item);
-    if (rest === 0n || liability === null) continue;
+  const deferred = [
+    ...overTime.map((item) => ({ position: item.position, minor: deferredOf(item) })),
+    ...pointInTime.map((item) => ({ position: item.position, minor: hubMinor(item.line.amount) })),
+  ].sort((a, b) => a.position - b.position);
+  for (const { position, minor } of deferred) {
+    if (minor === 0n || liability === null) continue;
     deferrals.push({
       account: liability.id,
       dimensions: { client, ...named },
-      amount: money(-rest, currency),
+      amount: money(-minor, currency),
     });
     // After the receivable's line and the lines at issue.
-    deferralLineOf.set(item.position, 1 + atIssue.length + deferrals.length);
+    deferralLineOf.set(position, 1 + atIssue.length + deferrals.length);
+  }
+  // The accountant's split of the lines invoiced after the cancellation (rule 16).
+  const splitLines: HubLine[] = [];
+  if (split !== undefined && released !== null && refund !== null) {
+    const parts = invoicedAfterCancellationSplit(
+      split,
+      cancelled.map((line) => money(hubMinor(line.amount), currency)),
+    );
+    for (const [k, line] of cancelled.entries()) {
+      const part = parts.revenueMinor[k] ?? 0n;
+      if (part === 0n) continue;
+      splitLines.push({
+        account: released.id,
+        dimensions: { client, ...named, service: line.service },
+        amount: money(-part, currency),
+      });
+    }
+    if (parts.refund !== null) {
+      splitLines.push({
+        account: refund.id,
+        dimensions: { client, ...named },
+        amount: negateMoney(parts.refund),
+      });
+    }
   }
   const total = payload.lines.reduce((sum, line) => sum + hubMinor(line.amount), 0n);
   const months = [...monthEntries.keys()].sort();
@@ -562,48 +753,372 @@ export function invoiceIssuedPlan(
         ...atIssue,
         ...deferrals,
         ...clearings,
+        ...itemClearings,
+        ...splitLines,
       ],
       dealtRates: hubDealtRates(context.ledgers, [currency], payload.syp_per_usd),
     },
   ];
-  const schedules = overTime.map(
-    (item): PlannedSchedule => ({
-      lineId: item.line.id,
-      position: item.position,
-      lineSource: item.line.source === 'manual' ? 'manual' : 'retainer_charge',
-      chargeKind:
-        item.line.charge_kind === 'monthly' || item.line.charge_kind === 'addition'
-          ? item.line.charge_kind
+  const schedules: PlannedSchedule[] = [
+    ...overTime.map(
+      (item): PlannedSchedule => ({
+        lineId: item.line.id,
+        position: item.position,
+        pattern: 'over_time',
+        lineSource: item.line.source === 'manual' ? 'manual' : 'retainer_charge',
+        chargeKind:
+          item.line.charge_kind === 'monthly' || item.line.charge_kind === 'addition'
+            ? item.line.charge_kind
+            : null,
+        serviceFrom: item.from,
+        serviceTo: item.to,
+        milestoneId: null,
+        cycleKey:
+          item.line.source === 'retainer_charge' && contract !== undefined
+            ? `${contract.external_id}:${item.from}`
+            : null,
+        dimensions: { client, ...named, service: item.line.service },
+        liabilityAccountId: liability?.id ?? '',
+        months: item.months,
+        deferral: deferralLineOf.has(item.position)
+          ? { key: event.id, lineNo: deferralLineOf.get(item.position) ?? 0 }
           : null,
-      serviceFrom: item.from,
-      serviceTo: item.to,
-      cycleKey:
-        item.line.source === 'retainer_charge' && contract !== undefined
-          ? `${contract.external_id}:${item.from}`
-          : null,
-      dimensions: { client, ...named, service: item.line.service },
-      liabilityAccountId: liability?.id ?? '',
-      months: item.months,
-      deferral: deferralLineOf.has(item.position)
-        ? { key: event.id, lineNo: deferralLineOf.get(item.position) ?? 0 }
-        : null,
-      elapsed: months.flatMap((month) => {
-        const lineNo = monthEntries.get(month)?.revenueLineOf.get(item.position);
-        return lineNo === undefined ? [] : [{ month, key: `${event.id}:elapsed:${month}`, lineNo }];
+        elapsed: months.flatMap((month) => {
+          const lineNo = monthEntries.get(month)?.revenueLineOf.get(item.position);
+          return lineNo === undefined
+            ? []
+            : [{ month, key: `${event.id}:elapsed:${month}`, lineNo }];
+        }),
       }),
-    }),
-  );
+    ),
+    ...pointInTime
+      .filter((item) => !probes.has(item.position))
+      .map(
+        (item): PlannedSchedule => ({
+          lineId: item.line.id,
+          position: item.position,
+          pattern: 'point_in_time',
+          lineSource: item.line.source === 'deposit' ? 'deposit' : 'milestone',
+          chargeKind: null,
+          serviceFrom: null,
+          serviceTo: null,
+          milestoneId: item.milestoneId,
+          cycleKey: null,
+          dimensions: { client, ...named, service: item.line.service },
+          liabilityAccountId: liability?.id ?? '',
+          months: [],
+          deferral: { key: event.id, lineNo: deferralLineOf.get(item.position) ?? 0 },
+          elapsed: [],
+        }),
+      ),
+  ].sort((a, b) => a.position - b.position);
   const decision =
     unclear !== -1
       ? `recognition_pattern_unclear:${unclear + 1}`
-      : contractOfAnotherClient(client, contract)
-        ? 'contract_client_mismatch'
-        : null;
+      : (milestoneDecision ??
+        (contractOfAnotherClient(client, contract) ? 'contract_client_mismatch' : null));
   return {
     kind: 'post',
     entries,
     decision,
     ...(schedules.length > 0 && { schedules }),
+  };
+}
+
+const negateMoney = (amount: Money): Money => money(-amount.amountMinor, amount.currency);
+
+/** A schedule's whole remaining released to revenue at its carried amounts (S06 rules 11, 14). */
+function scheduleReleaseLines(schedule: PointInTimeSchedule, released: MappedAccount): HubLine[] {
+  const { remaining } = schedule;
+  return [
+    {
+      account: schedule.liabilityAccountId,
+      dimensions: {},
+      valueIds: schedule.parties,
+      amount: remaining.transaction,
+      carried: remaining,
+    },
+    {
+      account: released.id,
+      dimensions: {},
+      valueIds: [...schedule.parties, schedule.serviceValueId],
+      amount: negateMoney(remaining.transaction),
+      carried: negate(remaining),
+    },
+  ];
+}
+
+/**
+ * `milestone.done` (S06 rule 11; `revenue/milestones`; IFRS 15.38, 15.B15), on the event's date:
+ * - invoiced before (a standing point-in-time schedule for the milestone): Dr its liability
+ *   account / Cr `released_revenue` with its client, contract and current service, at the amounts
+ *   it carries, so no rate is read; a `released` movement takes the whole remaining;
+ * - not invoiced: Dr a new contract asset item for the milestone (`contract_asset`, Hub's number,
+ *   then `<number>/<n>` after reopens) / Cr `released_revenue` with the client, the project and
+ *   the done's service, the installment measured anew at each ledger's policy rate of the date
+ *   (`milestone.done` carries no rate of Hub's);
+ * - the decisions of `milestoneDone()`: a second done, a done without its service, another amount
+ *   than its schedule's, a schedule the project's completion released; planned with the entry the
+ *   done would post, when it has one, so the period and rate checks come first (rule 18).
+ */
+export function milestoneDonePlan(
+  event: EventOf<'milestone.done'>,
+  references: HubReferences,
+  context: HubRuleContext,
+): RulePlan {
+  const { payload } = event;
+  const facts = references.milestones?.get(payload.milestone.id) ?? NO_MILESTONE;
+  const released = slotAccount(context, 'released_revenue', null);
+  if (isHold(released)) return released;
+  const amount = money(hubMinor(payload.amount), payload.currency);
+  const answer = milestoneDone(amount, payload.service !== undefined, {
+    done: facts.doneStanding,
+    recognisedAtIssue: false,
+    deferred: facts.schedule?.remaining ?? null,
+  });
+  const { schedule } = facts;
+  const release = (decision: string | null): RulePlan => {
+    if (schedule === null) throw new TypeError('A release without its schedule');
+    return {
+      kind: 'post',
+      entries: [
+        {
+          kind: 'lines',
+          key: event.id,
+          lines: scheduleReleaseLines(schedule, released),
+          dealtRates: [],
+        },
+      ],
+      decision,
+      ...(decision === null && {
+        movements: [
+          {
+            scheduleId: schedule.id,
+            kind: 'released',
+            key: event.id,
+            amounts: negate(schedule.remaining),
+          },
+        ],
+      }),
+    };
+  };
+  const contractAsset = (decision: string | null): RulePlan | Hold => {
+    const asset = slotAccount(context, 'contract_asset', null);
+    if (isHold(asset)) return asset;
+    const project = { client: payload.client, contract: payload.project };
+    return {
+      kind: 'post',
+      entries: [
+        {
+          kind: 'lines',
+          key: event.id,
+          lines: [
+            {
+              account: asset.id,
+              dimensions: project,
+              amount,
+              item: {
+                kind: 'open',
+                reference: milestoneItemReference(payload.milestone.number, facts.items),
+                dueOn: event.accounting_date,
+              },
+            },
+            {
+              account: released.id,
+              dimensions: {
+                ...project,
+                ...(payload.service !== undefined && { service: payload.service }),
+              },
+              amount: negateMoney(amount),
+            },
+          ],
+          dealtRates: [],
+        },
+      ],
+      decision,
+    };
+  };
+  switch (answer.kind) {
+    case 'release':
+      return release(null);
+    case 'contract_asset':
+      return contractAsset(null);
+    case 'decision':
+      switch (answer.detail) {
+        case 'milestone_service_missing':
+        case 'milestone_amount_differs':
+          return schedule !== null && schedule.remaining.transaction.amountMinor > 0n
+            ? release(answer.detail)
+            : contractAsset(answer.detail);
+        default:
+          return { kind: 'post', entries: [], decision: answer.detail };
+      }
+  }
+}
+
+/**
+ * `milestone.reopened` (S06 rule 13; `revenue/milestones`): the exact reversal of the milestone's
+ * standing done entry, on the event's date; a done that released a schedule gives the schedule its
+ * remaining back (a `released` movement, positive). A done before its invoice opened a contract
+ * asset item, whose opening the reversal settles at zero; once its invoice cleared it, the reversal
+ * holds `OPEN_ITEM_HAS_SETTLEMENTS` (S04, the posting function). No done standing:
+ * `UNKNOWN_REFERENCE`, retried when a done posts (rule 19), and never blocking (rule 17).
+ */
+export function milestoneReopenedPlan(
+  event: EventOf<'milestone.reopened'>,
+  references: HubReferences,
+): RulePlan {
+  const facts = references.milestones?.get(event.payload.milestone.id) ?? NO_MILESTONE;
+  const answer = milestoneReopen({
+    doneStanding: references.standing.length > 0,
+    doneTakenBackByVoid: false,
+  });
+  if (answer === 'unknown_reference') return hold('UNKNOWN_REFERENCE');
+  if (answer === 'record') return { kind: 'post', entries: [], decision: null };
+  const entries = reversalsOf(event.id, references.standing);
+  const { doneRelease } = facts;
+  const index = doneRelease === null ? -1 : references.standing.indexOf(doneRelease.entryId);
+  return {
+    kind: 'post',
+    entries,
+    decision: null,
+    ...(doneRelease !== null &&
+      index !== -1 && {
+        movements: [
+          {
+            scheduleId: doneRelease.scheduleId,
+            kind: 'released' as const,
+            key: `${event.id}:reversal:${index + 1}`,
+            amounts: doneRelease.amounts,
+          },
+        ],
+      }),
+  };
+}
+
+/**
+ * `project.completed` (S06 rule 14; `revenue/milestones`), on the event's date: what remains of each
+ * of the project's point-in-time schedules (a milestone invoiced and never reported done) released
+ * to `released_revenue` at its carried amounts, one entry per schedule under
+ * `<event id>:schedule:<schedule id>`, so a void of one invoice reverses its schedule's release
+ * alone. Nothing remaining: recorded with no entry. Contract assets stay for their invoices.
+ */
+export function projectCompletedPlan(
+  event: EventOf<'project.completed'>,
+  references: HubReferences,
+  context: HubRuleContext,
+): RulePlan {
+  const schedules = (references.projectSchedules ?? []).filter(
+    (schedule) => schedule.remaining.transaction.amountMinor !== 0n,
+  );
+  const releases = completedProjectReleases(schedules.map((schedule) => schedule.remaining));
+  if (releases.length === 0) return { kind: 'post', entries: [], decision: null };
+  const released = slotAccount(context, 'released_revenue', null);
+  if (isHold(released)) return released;
+  const keyOf = (schedule: PointInTimeSchedule) => `${event.id}:schedule:${schedule.id}`;
+  return {
+    kind: 'post',
+    entries: schedules.map(
+      (schedule): PlannedEntry => ({
+        kind: 'lines',
+        key: keyOf(schedule),
+        lines: scheduleReleaseLines(schedule, released),
+        dealtRates: [],
+      }),
+    ),
+    decision: null,
+    movements: schedules.map((schedule) => ({
+      scheduleId: schedule.id,
+      kind: 'released' as const,
+      key: keyOf(schedule),
+      amounts: negate(schedule.remaining),
+    })),
+  };
+}
+
+/**
+ * `project.cancelled` (S06 rules 15–16; `revenue/cancelled-project`), on the event's date. With
+ * nothing remaining in the project's point-in-time schedules it is recorded with no entry, and
+ * contract assets stay for their invoices. Otherwise it is the accountant's: held `NEEDS_DECISION`
+ * (`cancelled_project_remainder`), planned with the whole remainder to the refund payable so that
+ * the refund's rate is checked first (`RATE_MISSING`, rule 18; owner, 2026-11-10). With `split`,
+ * the accountant's revenue part: one entry, Dr each schedule's liability at what it carries; Cr
+ * `released_revenue` for the revenue part at its carried share (`cancelledProjectSplit()`), with
+ * each schedule's client, contract and service; Cr `cancelled_project_refund` for the rest, one
+ * line with the client and the project measured anew at each ledger's policy rate of the date (a
+ * monetary liability, IAS 21.23(a)); each ledger's residual a realised difference (ADR 0013). Each
+ * schedule takes its `remainder_released` and `remainder_refunded` movements. A revenue part outside
+ * zero to the remainder is `VALIDATION_FAILED`.
+ */
+export function projectCancelledPlan(
+  event: EventOf<'project.cancelled'>,
+  references: HubReferences,
+  context: HubRuleContext,
+  split?: bigint,
+): RulePlan {
+  const schedules = (references.projectSchedules ?? []).filter(
+    (schedule) => schedule.remaining.transaction.amountMinor !== 0n,
+  );
+  const answer = cancelledProjectRemainder(schedules.map((schedule) => schedule.remaining));
+  if (answer.kind === 'record') {
+    if (split !== undefined) {
+      throw new DomainError('EVENT_ACTION_NOT_ALLOWED', 'The cancellation has nothing to split');
+    }
+    return { kind: 'post', entries: [], decision: null };
+  }
+  const released = slotAccount(context, 'released_revenue', null);
+  if (isHold(released)) return released;
+  const refund = slotAccount(context, 'cancelled_project_refund', null);
+  if (isHold(refund)) return refund;
+  const parts = cancelledProjectSplit(split ?? 0n, answer.remaining);
+  const lines: HubLine[] = [];
+  const movements: PlannedMovement[] = [];
+  for (const [k, schedule] of schedules.entries()) {
+    const part = parts.parts[k];
+    if (part === undefined) throw new TypeError('A schedule without its part');
+    lines.push({
+      account: schedule.liabilityAccountId,
+      dimensions: {},
+      valueIds: schedule.parties,
+      amount: schedule.remaining.transaction,
+      carried: schedule.remaining,
+    });
+    if (part.revenue !== null) {
+      lines.push({
+        account: released.id,
+        dimensions: {},
+        valueIds: [...schedule.parties, schedule.serviceValueId],
+        amount: negateMoney(part.revenue.transaction),
+        carried: negate(part.revenue),
+      });
+      movements.push({
+        scheduleId: schedule.id,
+        kind: 'remainder_released',
+        key: event.id,
+        amounts: negate(part.revenue),
+      });
+    }
+    if (part.refunded !== null) {
+      movements.push({
+        scheduleId: schedule.id,
+        kind: 'remainder_refunded',
+        key: event.id,
+        amounts: negate(part.refunded),
+      });
+    }
+  }
+  if (parts.refund !== null) {
+    lines.push({
+      account: refund.id,
+      dimensions: { client: event.payload.client, contract: event.payload.project },
+      amount: negateMoney(parts.refund),
+    });
+  }
+  return {
+    kind: 'post',
+    entries: [{ kind: 'lines', key: event.id, lines, dealtRates: [] }],
+    decision: split === undefined ? answer.detail : null,
+    ...(split !== undefined && { movements }),
   };
 }
 
@@ -988,18 +1503,38 @@ export function expenseChangedPlan(
 }
 
 /**
- * The plan of any event. S06's milestones and projects arrive after its over-time rules: until then
- * their events hold `NO_MAPPING` and are retried when their rules deploy (rule 10).
+ * The plan of any event. `split` is the accountant's revenue part of a cancelled project's
+ * remainder, or of the lines invoiced after its cancellation (S06 rule 16).
  */
 export function planEvent(
   event: EventEnvelope,
   references: HubReferences,
   context: HubRuleContext,
+  split?: bigint,
 ): RulePlan {
+  if (
+    split !== undefined &&
+    event.type !== 'invoice.issued' &&
+    event.type !== 'project.cancelled'
+  ) {
+    throw new DomainError('EVENT_ACTION_NOT_ALLOWED', 'Only a cancelled project is split');
+  }
   switch (event.type) {
     case 'invoice.issued':
-      return invoiceIssuedPlan(event, context);
+      return invoiceIssuedPlan(event, context, references.milestones, split);
     case 'invoice.voided':
+      // A schedule its project's split cleared: the reversal of the issue alone would leave the
+      // liability below zero with the revenue and the refund standing, so the accountant resolves
+      // it by a manual entry (S06 rule 8; owner, 2026-11-10), after the period and settlement
+      // checks of the reversals.
+      if (references.splitAtCancellation === true) {
+        if (references.standing.length === 0) return hold('UNKNOWN_REFERENCE');
+        return {
+          kind: 'post',
+          entries: reversalsOf(event.id, references.standing),
+          decision: 'schedule_split_at_cancellation',
+        };
+      }
       // The void of an invoice with schedules reverses its releases and elapsed parts too (S06
       // rule 8), which deploys with S06's credits: until then it holds.
       if ((references.scheduledLineIds?.length ?? 0) > 0)
@@ -1037,10 +1572,13 @@ export function planEvent(
         },
       };
     case 'milestone.done':
+      return milestoneDonePlan(event, references, context);
     case 'milestone.reopened':
+      return milestoneReopenedPlan(event, references);
     case 'project.completed':
+      return projectCompletedPlan(event, references, context);
     case 'project.cancelled':
-      return hold('NO_MAPPING', 'deferred_revenue');
+      return projectCancelledPlan(event, references, context, split);
     default:
       return hold('NO_MAPPING');
   }
@@ -1107,7 +1645,8 @@ const sameDocument = (a: EventDocument, b: EventDocument) => a.type === b.type &
  * later events themselves (accounting review, 2026-11-07):
  * - an event held `UNKNOWN_REFERENCE` for a document the later event creates, or held
  *   `WAITING_FOR_EARLIER_EVENT` behind such an event, through any chain;
- * - an `invoice.voided` held `OPEN_ITEM_HAS_SETTLEMENTS`, for a later `payment.voided`.
+ * - an `invoice.voided` held `OPEN_ITEM_HAS_SETTLEMENTS`, for a later `payment.voided`;
+ * - a `milestone.reopened` held `UNKNOWN_REFERENCE`, which waits for a done (S06 rules 17, 19).
  */
 export function blockingEvent(
   later: EventEnvelope,
@@ -1130,6 +1669,7 @@ export function blockingEvent(
   for (const event of earlier) {
     if (event.state !== 'held') continue;
     if (waitsForCreated(event, new Set())) continue;
+    if (event.type === 'milestone.reopened' && event.reason === 'UNKNOWN_REFERENCE') continue;
     if (
       event.type === 'invoice.voided' &&
       event.reason === 'OPEN_ITEM_HAS_SETTLEMENTS' &&

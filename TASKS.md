@@ -18,7 +18,7 @@ The ledger functions already exist in `packages/ledger/src/recognition.ts` (merg
 
 ## PR 2 — Milestones and projects (branch `claude/sleepy-brahmagupta-yzu2hv`, the cloud session's)
 - [x] contracts: the optional `service` on `milestone.done` (S06 rule 11), alone among `/v1`'s changes in this PR; `orderKeysOf()` (rule 17); `splitRemainderSchema`
-- [ ] ledger: `invoiceIssuedPlan()` with deposit and milestone lines (rules 1, 2, 12, 15), `milestone.done` (rule 11), `milestone.reopened` (rule 13), `project.completed` (rule 14), `project.cancelled` and its split (rule 15), the void of a split invoice held `schedule_split_at_cancellation` (rule 8; the other voids of scheduled invoices stay held for PR 3); carried lines in a Hub entry; a held reopen never blocks (rule 17)
+- [x] ledger: `invoiceIssuedPlan()` with deposit and milestone lines (rules 1, 2, 12, 15), `milestone.done` (rule 11), `milestone.reopened` (rule 13), `project.completed` (rule 14), `project.cancelled` and its split (rule 15), the void of a split invoice held `schedule_split_at_cancellation` (rule 8; the other voids of scheduled invoices stay held for PR 3); carried lines in a Hub entry; a held reopen never blocks (rule 17)
 - [ ] db (`/db-migration`): `inbound_events.order_keys` with its GIN index (rule 17, `btree_gin`); point-in-time schedules and their movements; the order check and the retries over the order keys (rules 17, 19); the split action; tests
 - [ ] scenario book: `revenue/milestones.md`, `revenue/cancelled-project.md` run `Approved`
 - [ ] api: `POST /v1/events` with `milestone.reopened` (idempotent replay), `POST /api/inbox/:id/split-remainder`; tests

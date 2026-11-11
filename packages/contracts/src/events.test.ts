@@ -265,9 +265,9 @@ describe('an event’s document and item key (rules 11 and 16)', () => {
       voided_on: '2026-12-14',
       reason: 'ملغاة',
     });
-    expect(orderKeysOf(voided, issued.type === 'invoice.issued' ? issued.payload : null)).toEqual(
-      [`project:${project.external_id}`],
-    );
+    expect(orderKeysOf(voided, issued.type === 'invoice.issued' ? issued.payload : null)).toEqual([
+      `project:${project.external_id}`,
+    ]);
     expect(orderKeysOf(voided)).toEqual([]);
   });
 

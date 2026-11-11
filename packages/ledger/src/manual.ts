@@ -39,6 +39,12 @@ export interface ManualLine {
    * that negation. A Hub rule's only; the accountant's lines never carry it.
    */
   readonly carriesItems?: true;
+  /**
+   * A line that carries amounts recognition holds instead of a new measurement: a schedule's
+   * contract liability cleared and its revenue at its carried share (S06 rules 11, 14, 15; ADR
+   * 0007, IAS 21.23(b)). Its transaction amount must be the carried one. A Hub rule's only.
+   */
+  readonly carried?: CarriedAmounts;
 }
 
 /** A manual entry's lines and the rates it was dealt at, one per currency pair (S03 rule 13). */
@@ -142,6 +148,25 @@ export function manualEntry(
     if (line.carriesItems === true) {
       if (line.item !== undefined) throw new TypeError('A carrying line is on no item');
       carrying.push({ at: lines.length, index });
+      continue;
+    }
+    if (line.carried !== undefined) {
+      const { transaction } = line.carried;
+      if (
+        line.item !== undefined ||
+        transaction.currency !== line.amount.currency ||
+        transaction.amountMinor !== line.amount.amountMinor
+      ) {
+        throw new TypeError('A carried line is off any item and carries its own amount');
+      }
+      lines.push(
+        carriedLine({
+          account: line.account,
+          dimensions: line.dimensions ?? {},
+          amounts: line.carried,
+        }),
+      );
+      typed.push(index);
       continue;
     }
     if (line.item === undefined) {
