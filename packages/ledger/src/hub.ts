@@ -32,6 +32,7 @@ import {
   cancelledProjectRemainder,
   cancelledProjectSplit,
   completedProjectReleases,
+  creditParts,
   invoicedAfterCancellationSplit,
   milestoneDone,
   milestoneItemClearing,
@@ -40,6 +41,8 @@ import {
   milestoneReopen,
   type OverTimeMonth,
   overTimeMonths,
+  reissuedMilestoneLine,
+  reissueParts,
 } from './recognition.js';
 
 // The posting rules of Hub's events (S05 rules 8–17, "Accounting treatment"; ADR 0006, 0013, 0014),
@@ -221,9 +224,15 @@ export type RulePlan =
  */
 export interface PlannedMovement {
   readonly scheduleId: string;
-  readonly kind: 'released' | 'remainder_released' | 'remainder_refunded';
+  readonly kind: 'released' | 'remainder_released' | 'remainder_refunded' | 'credited';
   readonly key: string;
   readonly amounts: CarriedAmounts;
+  /**
+   * A credit's part of the schedule's transaction amount (*c*, positive: its revenue and liability
+   * parts together), which reduces the schedule's amount net of credits (S06 rule 6); only on a
+   * `credited` movement.
+   */
+  readonly creditMinor?: bigint;
 }
 
 /**
@@ -261,6 +270,8 @@ export interface PlannedSchedule {
     readonly key: string;
     readonly lineNo: number;
   }[];
+  /** The voided schedule the line re-issues (S06 rule 9); absent for none. */
+  readonly reissueOfScheduleId?: string;
 }
 
 /** A Hub document's item as the posting function read it: its account, currency and open amount. */
@@ -297,6 +308,53 @@ export interface HubReferences {
   readonly projectSchedules?: readonly PointInTimeSchedule[];
   /** For a void: a schedule of the invoice was cleared by its project's split (rule 8). */
   readonly splitAtCancellation?: boolean;
+  /**
+   * For a void: a schedule of the invoice is reduced by a credit of another invoice that still
+   * stands (rule 8, `schedule_credited`).
+   */
+  readonly scheduleCredited?: boolean;
+  /** For an invoice's credit lines: each cycle the credits name, by its `cycle_key` (rule 6). */
+  readonly cycles?: ReadonlyMap<string, CycleReferences>;
+  /**
+   * For an invoice's over-time lines: the voided schedules not yet re-issued, by `reissueKey()` of
+   * their cycle and charge kind, in the order they were made (rule 9).
+   */
+  readonly reissues?: ReadonlyMap<string, readonly VoidedOverTime[]>;
+}
+
+/** A cycle's over-time schedule that stands, as a credit reads it (S06 rule 6). */
+export interface CreditableSchedule {
+  readonly id: string;
+  /** The contract liability account it was deferred to (S06 "Data"). */
+  readonly liabilityAccountId: string;
+  /** Its client's value and, when named, its contract's. */
+  readonly parties: readonly string[];
+  /** The service its revenue takes now (rule 10). */
+  readonly serviceValueId: string;
+  /** Its transaction amount net of earlier credits (*N*). */
+  readonly netMinor: bigint;
+  /** What it still holds in contract liabilities, positive amounts, carried (*R*). */
+  readonly remaining: CarriedAmounts;
+}
+
+/** What the books hold for a retainer cycle a credit names (S06 rule 6). */
+export interface CycleReferences {
+  /** The cycle's `monthly` and `addition` schedules that stand, in the order they were made. */
+  readonly standing: readonly CreditableSchedule[];
+  /** Whether the cycle has schedules and every one of them is voided (`credit_cycle_voided`). */
+  readonly voided: boolean;
+}
+
+/** A voided over-time schedule a line of its cycle and charge kind re-issues (S06 rule 9). */
+export interface VoidedOverTime {
+  readonly scheduleId: string;
+  /** The months the void took back (`YYYY-MM`): released, elapsed, or caught up at its issue. */
+  readonly takenBack: readonly string[];
+}
+
+/** The key of a cycle's charge kind among the voided schedules (`HubReferences.reissues`). */
+export function reissueKey(cycleKey: string, chargeKind: 'monthly' | 'addition'): string {
+  return `${chargeKind}@${cycleKey}`;
 }
 
 /** A point-in-time schedule that stands (not voided), as the books hold it (ADR 0015). */
@@ -338,6 +396,20 @@ export interface MilestoneReferences {
   readonly items: number;
   /** Whether its project was cancelled: the event posted, recorded or resolved. */
   readonly projectCancelled: boolean;
+  /**
+   * Whether its latest done's release was reversed by the void of its invoice, with no reopen
+   * since (S06 rules 9, 13; `milestoneReopen()`).
+   */
+  readonly doneTakenBackByVoid?: boolean;
+  /**
+   * Whether the project's completion released one of its schedules and a void took that release
+   * back, with no done or reopen since (S06 rule 9; `reissuedMilestoneLine()`).
+   */
+  readonly completionTakenBackByVoid?: boolean;
+  /** Whether a re-issue's revenue at issue for it stands (S06 rule 9; `milestoneDone()`). */
+  readonly recognisedAtIssue?: boolean;
+  /** Its latest voided point-in-time schedule that no line re-issued yet, by id (rule 9). */
+  readonly voidedScheduleId?: string | null;
 }
 
 const NO_MILESTONE: MilestoneReferences = {
@@ -485,6 +557,8 @@ interface OverTimeLine {
   readonly from: string;
   readonly to: string;
   readonly months: readonly OverTimeMonth[];
+  /** The voided schedule the line re-issues (rule 9), or null. */
+  readonly reissueOf: string | null;
 }
 
 /**
@@ -506,8 +580,22 @@ interface OverTimeLine {
  * (Hub's `syp_per_usd` is of another date and is not read; IAS 21.21–22). The plan's schedules say
  * where each deferred line's deferral and elapsed parts are, for its movements (ADR 0015).
  *
- * A non-zero tax holds `NO_MAPPING` (`tax_lines`); a credit line `NO_MAPPING` (`deferred_revenue`)
- * until its rule deploys. The accountant's decisions, after the period and rate checks (rule 8),
+ * A retainer credit (rule 6, `revenue/retainer-credit`) is shared over its cycle's standing
+ * schedules (`references.cycles`) by `creditParts()`: per schedule Dr `released_revenue` for the
+ * share recognised, measured anew at the invoice's rates, and Dr the schedule's liability at what
+ * it carries for the rest, after the deferrals; each a `credited` movement with its part. A cycle
+ * with no schedule holds `UNKNOWN_REFERENCE` (`credit_cycle`); with all of them voided, or a credit
+ * larger than its amount net of credits, the invoice is the accountant's whole (`credit_cycle_voided`,
+ * `credit_exceeds_cycle`), nothing planned. A total the credit brings to zero has no receivable
+ * line. A line of a voided schedule's cycle and charge kind (`references.reissues`), or a deposit
+ * or milestone line of a milestone whose schedule was voided, is its re-issue (rule 9,
+ * `revenue/void-and-reissue`): its part of the months the void took back (`reissueParts()`), or
+ * the whole line when the void took back its done's or its completion's release
+ * (`reissuedMilestoneLine()`), is revenue at issue on `released_revenue`, after the lines at
+ * issue; a re-issue not covering a month taken back is `reissue_period_differs`, planned as a
+ * first issue.
+ *
+ * A non-zero tax holds `NO_MAPPING` (`tax_lines`). The accountant's decisions, after the period and rate checks (rule 8),
  * planned with the lines that run those checks: a line whose pattern is unclear
  * (`recognition_pattern_unclear:<position>`, as revenue at issue); a milestone line whose amount is
  * not what its done milestone's item has open (`milestone_amount_differs`, rule 12); a deposit or
@@ -522,13 +610,35 @@ export function invoiceIssuedPlan(
   context: HubRuleContext,
   milestones: ReadonlyMap<string, MilestoneReferences> = new Map(),
   split?: bigint,
+  references: Pick<HubReferences, 'cycles' | 'reissues'> = {},
 ): RulePlan {
   const { payload } = event;
   const { currency, client, contract } = payload;
   const patterns = payload.lines.map((line) => recognitionPatternOf(line, contract));
   const unclear = patterns.findIndex((pattern) => pattern.kind === 'unclear');
-  if (unclear === -1 && patterns.some((pattern) => pattern.kind === 'credit')) {
-    return hold('NO_MAPPING', 'deferred_revenue');
+  // The credits by cycle, in the invoice's order (rule 6): a cycle without a schedule holds the
+  // invoice `UNKNOWN_REFERENCE`, retried when the cycle's invoice posts (rule 19).
+  const credits: { line: InvoiceLine; cycleKey: string; creditMinor: bigint }[] = [];
+  if (unclear === -1) {
+    for (const [index, line] of payload.lines.entries()) {
+      const pattern = patterns[index];
+      if (pattern?.kind !== 'credit' || contract === undefined) continue;
+      credits.push({
+        line,
+        cycleKey: `${contract.external_id}:${pattern.cycleStart}`,
+        // Hub's credit line is negative (contracts refuse another sign).
+        creditMinor: -hubMinor(line.amount),
+      });
+    }
+    for (const credit of credits) {
+      const cycle = references.cycles?.get(credit.cycleKey);
+      const standing = (cycle?.standing ?? []).filter(
+        (schedule) => schedule.remaining.transaction.currency === currency,
+      );
+      if (standing.length === 0 && cycle?.voided !== true) {
+        return hold('UNKNOWN_REFERENCE', 'credit_cycle');
+      }
+    }
   }
   if (payload.lines.some((line) => (line.taxes ?? []).some((tax) => tax.amount > 0))) {
     return hold('NO_MAPPING', 'tax_lines');
@@ -537,30 +647,111 @@ export function invoiceIssuedPlan(
   if (isHold(receivable)) return receivable;
   const named = contract === undefined ? {} : { contract };
   const atIssue: HubLine[] = [];
+  /** A re-issue's revenue at issue (rule 9), after the lines at issue (`issueLineOf()`). */
+  const catchUps: HubLine[] = [];
   const overTime: OverTimeLine[] = [];
   /** Each line deferred to its milestone's done, or planned as one to run a decision's checks. */
-  const pointInTime: { line: InvoiceLine; position: number; milestoneId: string }[] = [];
+  const pointInTime: {
+    line: InvoiceLine;
+    position: number;
+    milestoneId: string;
+    reissueOf: string | null;
+    atIssue: boolean;
+  }[] = [];
   const probes = new Set<number>();
   const itemClearings: HubLine[] = [];
   const cancelled: InvoiceLine[] = [];
   let milestoneDecision: string | null = null;
+  let reissueDecision: string | null = null;
+  const reissued = new Set<string>();
+  const releasedAccount = (): MappedAccount | Hold => slotAccount(context, 'released_revenue', null);
   for (const [index, line] of payload.lines.entries()) {
     const pattern = patterns[index];
+    if (pattern?.kind === 'credit') continue;
     if (pattern?.kind === 'over_time') {
+      let months = overTimeMonths(
+        hubMinor(line.amount),
+        pattern.from,
+        pattern.to,
+        payload.issued_on,
+      );
+      // A line of a voided schedule's cycle and charge kind is its re-issue (rule 9): its part of
+      // the months the void took back is revenue at issue, measured at the invoice's rates.
+      let reissueOf: string | null = null;
+      if (
+        line.source === 'retainer_charge' &&
+        contract !== undefined &&
+        (line.charge_kind === 'monthly' || line.charge_kind === 'addition')
+      ) {
+        const key = reissueKey(`${contract.external_id}:${pattern.from}`, line.charge_kind);
+        const voided = (references.reissues?.get(key) ?? []).find(
+          (candidate) => !reissued.has(candidate.scheduleId),
+        );
+        if (voided !== undefined) {
+          const parts = reissueParts(months, new Set(voided.takenBack));
+          if (parts.kind === 'decision') {
+            reissueDecision ??= parts.detail;
+          } else {
+            reissued.add(voided.scheduleId);
+            reissueOf = voided.scheduleId;
+            months = parts.months;
+            if (parts.catchUpMinor !== 0n) {
+              const account = releasedAccount();
+              if (isHold(account)) return account;
+              catchUps.push({
+                account: account.id,
+                dimensions: { client, ...named, service: line.service },
+                amount: money(-parts.catchUpMinor, currency),
+              });
+            }
+          }
+        }
+      }
       overTime.push({
         line,
         position: index + 1,
         from: pattern.from,
         to: pattern.to,
-        months: overTimeMonths(hubMinor(line.amount), pattern.from, pattern.to, payload.issued_on),
+        months,
+        reissueOf,
       });
       continue;
     }
     if (pattern?.kind === 'point_in_time') {
       const facts = milestones.get(pattern.milestoneId) ?? NO_MILESTONE;
       const amount = money(hubMinor(line.amount), currency);
-      const answer = milestoneLineAtIssue(facts.doneStanding, facts.projectCancelled);
-      const deferral = { line, position: index + 1, milestoneId: pattern.milestoneId };
+      const voidedSchedule = facts.voidedScheduleId ?? null;
+      // A line of a milestone whose schedule was voided is its re-issue (rule 9).
+      const reissue =
+        voidedSchedule === null
+          ? null
+          : reissuedMilestoneLine({
+              doneStanding: facts.doneStanding,
+              doneTakenBackByVoid: facts.doneTakenBackByVoid ?? false,
+              completionTakenBackByVoid: facts.completionTakenBackByVoid ?? false,
+            });
+      const deferral = {
+        line,
+        position: index + 1,
+        milestoneId: pattern.milestoneId,
+        reissueOf: voidedSchedule,
+        atIssue: false,
+      };
+      if (reissue === 'revenue_at_issue') {
+        const account = releasedAccount();
+        if (isHold(account)) return account;
+        catchUps.push({
+          account: account.id,
+          dimensions: { client, ...named, service: line.service },
+          amount: negateMoney(amount),
+        });
+        pointInTime.push({ ...deferral, atIssue: true });
+        continue;
+      }
+      const answer =
+        reissue === 'clear_item'
+          ? 'clear_item'
+          : milestoneLineAtIssue(facts.doneStanding, facts.projectCancelled);
       if (answer === 'defer') {
         pointInTime.push(deferral);
         continue;
@@ -625,8 +816,12 @@ export function invoiceIssuedPlan(
   }
   let asset: MappedAccount | null = null;
   let released: MappedAccount | null = null;
-  if (overTime.some((item) => elapsedOf(item).length > 0) || cancelled.length > 0) {
-    const revenueAccount = slotAccount(context, 'released_revenue', null);
+  if (
+    overTime.some((item) => elapsedOf(item).length > 0) ||
+    cancelled.length > 0 ||
+    credits.length > 0
+  ) {
+    const revenueAccount = releasedAccount();
     if (isHold(revenueAccount)) return revenueAccount;
     released = revenueAccount;
   }
@@ -640,6 +835,72 @@ export function invoiceIssuedPlan(
     const refundAccount = slotAccount(context, 'cancelled_project_refund', null);
     if (isHold(refundAccount)) return refundAccount;
     refund = refundAccount;
+  }
+
+  // The credits (rule 6): each shared across its cycle's standing schedules by their amounts net
+  // of earlier credits; on each, the share recognised reduces revenue, measured anew at the
+  // invoice's rates, and the rest the liability at what it carries. A cycle whose schedules are all
+  // voided, or a credit larger than what the cycle has net of credits, is the accountant's.
+  const creditLines: HubLine[] = [];
+  const movements: PlannedMovement[] = [];
+  const cycleState = new Map<string, CreditableSchedule[]>();
+  for (const credit of credits) {
+    const schedules =
+      cycleState.get(credit.cycleKey) ??
+      (references.cycles?.get(credit.cycleKey)?.standing ?? []).filter(
+        (schedule) => schedule.remaining.transaction.currency === currency,
+      );
+    if (schedules.length === 0) {
+      return { kind: 'post', entries: [], decision: 'credit_cycle_voided' };
+    }
+    const net = schedules.reduce((total, schedule) => total + schedule.netMinor, 0n);
+    if (credit.creditMinor > net) {
+      return { kind: 'post', entries: [], decision: 'credit_exceeds_cycle' };
+    }
+    if (released === null) throw new TypeError('A credit without its revenue slot');
+    const parts = creditParts(credit.creditMinor, schedules);
+    const after: CreditableSchedule[] = [];
+    for (const [k, schedule] of schedules.entries()) {
+      const part = parts[k];
+      if (part === undefined) throw new TypeError('A schedule without its part');
+      const liabilityPart = part.liability;
+      const partMinor = part.revenueMinor + (liabilityPart?.transaction.amountMinor ?? 0n);
+      if (part.revenueMinor !== 0n) {
+        creditLines.push({
+          account: released.id,
+          dimensions: {},
+          valueIds: [...schedule.parties, schedule.serviceValueId],
+          amount: money(part.revenueMinor, currency),
+        });
+      }
+      if (liabilityPart !== null) {
+        creditLines.push({
+          account: schedule.liabilityAccountId,
+          dimensions: {},
+          valueIds: schedule.parties,
+          amount: liabilityPart.transaction,
+          carried: liabilityPart,
+        });
+      }
+      if (partMinor !== 0n) {
+        movements.push({
+          scheduleId: schedule.id,
+          kind: 'credited',
+          key: event.id,
+          amounts: negate(liabilityPart ?? zeroCarried(schedule.remaining)),
+          creditMinor: partMinor,
+        });
+      }
+      after.push({
+        ...schedule,
+        netMinor: schedule.netMinor - partMinor,
+        remaining:
+          liabilityPart === null
+            ? schedule.remaining
+            : addCarried(schedule.remaining, negate(liabilityPart)),
+      });
+    }
+    cycleState.set(credit.cycleKey, after);
   }
 
   // Each elapsed month's entry, in date order, with every line it holds.
@@ -687,13 +948,29 @@ export function invoiceIssuedPlan(
       });
     }
   }
+  const total = payload.lines.reduce((sum, line) => sum + hubMinor(line.amount), 0n);
+  // An invoice whose total a credit brings to zero has nothing to collect: no receivable line and
+  // no item (rule 6; owner, 2026-11-10).
+  const receivableLines: HubLine[] =
+    total === 0n && credits.length > 0
+      ? []
+      : [
+          {
+            account: receivable.id,
+            dimensions: { client, ...named },
+            amount: money(total, currency),
+            item: { kind: 'open', reference: payload.invoice.number, dueOn: payload.due_on },
+          },
+        ];
   // The deferrals in the invoice's order: over-time lines' months not elapsed, deposits and
   // milestones not done.
   const deferrals: HubLine[] = [];
   const deferralLineOf = new Map<number, number>();
   const deferred = [
     ...overTime.map((item) => ({ position: item.position, minor: deferredOf(item) })),
-    ...pointInTime.map((item) => ({ position: item.position, minor: hubMinor(item.line.amount) })),
+    ...pointInTime
+      .filter((item) => !item.atIssue)
+      .map((item) => ({ position: item.position, minor: hubMinor(item.line.amount) })),
   ].sort((a, b) => a.position - b.position);
   for (const { position, minor } of deferred) {
     if (minor === 0n || liability === null) continue;
@@ -702,8 +979,11 @@ export function invoiceIssuedPlan(
       dimensions: { client, ...named },
       amount: money(-minor, currency),
     });
-    // After the receivable's line and the lines at issue.
-    deferralLineOf.set(position, 1 + atIssue.length + deferrals.length);
+    // After the receivable's line, the lines at issue and the re-issues' revenue at issue.
+    deferralLineOf.set(
+      position,
+      receivableLines.length + atIssue.length + catchUps.length + deferrals.length,
+    );
   }
   // The accountant's split of the lines invoiced after the cancellation (rule 16).
   const splitLines: HubLine[] = [];
@@ -729,7 +1009,6 @@ export function invoiceIssuedPlan(
       });
     }
   }
-  const total = payload.lines.reduce((sum, line) => sum + hubMinor(line.amount), 0n);
   const months = [...monthEntries.keys()].sort();
   const entries: PlannedEntry[] = [
     ...months.map((month): PlannedEntry => {
@@ -749,14 +1028,11 @@ export function invoiceIssuedPlan(
       kind: 'lines',
       key: event.id,
       lines: [
-        {
-          account: receivable.id,
-          dimensions: { client, ...named },
-          amount: money(total, currency),
-          item: { kind: 'open', reference: payload.invoice.number, dueOn: payload.due_on },
-        },
+        ...receivableLines,
         ...atIssue,
+        ...catchUps,
         ...deferrals,
+        ...creditLines,
         ...clearings,
         ...itemClearings,
         ...splitLines,
@@ -794,6 +1070,7 @@ export function invoiceIssuedPlan(
             ? []
             : [{ month, key: `${event.id}:elapsed:${month}`, lineNo }];
         }),
+        ...(item.reissueOf !== null && { reissueOfScheduleId: item.reissueOf }),
       }),
     ),
     ...pointInTime
@@ -812,8 +1089,13 @@ export function invoiceIssuedPlan(
           dimensions: { client, ...named, service: item.line.service },
           liabilityAccountId: liability?.id ?? '',
           months: [],
-          deferral: { key: event.id, lineNo: deferralLineOf.get(item.position) ?? 0 },
+          // A re-issue recognised at issue defers nothing: its schedule is complete at issue, so
+          // a later done of the milestone is a second one (rule 9).
+          deferral: item.atIssue
+            ? null
+            : { key: event.id, lineNo: deferralLineOf.get(item.position) ?? 0 },
           elapsed: [],
+          ...(item.reissueOf !== null && { reissueOfScheduleId: item.reissueOf }),
         }),
       ),
   ].sort((a, b) => a.position - b.position);
@@ -821,12 +1103,33 @@ export function invoiceIssuedPlan(
     unclear !== -1
       ? `recognition_pattern_unclear:${unclear + 1}`
       : (milestoneDecision ??
+        reissueDecision ??
         (contractOfAnotherClient(client, contract) ? 'contract_client_mismatch' : null));
   return {
     kind: 'post',
     entries,
     decision,
     ...(schedules.length > 0 && { schedules }),
+    ...(movements.length > 0 && { movements }),
+  };
+}
+
+/** Zero in every ledger the amounts keep, in their currency. */
+function zeroCarried(like: CarriedAmounts): CarriedAmounts {
+  return {
+    transaction: money(0n, like.transaction.currency),
+    bookMinor: 0n,
+    parallelMinor: like.parallelMinor === null ? null : 0n,
+  };
+}
+
+/** Two carried amounts added, ledger by ledger. */
+function addCarried(a: CarriedAmounts, b: CarriedAmounts): CarriedAmounts {
+  return {
+    transaction: money(a.transaction.amountMinor + b.transaction.amountMinor, a.transaction.currency),
+    bookMinor: a.bookMinor + b.bookMinor,
+    parallelMinor:
+      a.parallelMinor === null ? null : a.parallelMinor + (b.parallelMinor ?? 0n),
   };
 }
 
@@ -878,7 +1181,7 @@ export function milestoneDonePlan(
   const amount = money(hubMinor(payload.amount), payload.currency);
   const answer = milestoneDone(amount, payload.service !== undefined, {
     done: facts.doneStanding,
-    recognisedAtIssue: false,
+    recognisedAtIssue: facts.recognisedAtIssue ?? false,
     deferred: facts.schedule?.remaining ?? null,
   });
   const { schedule } = facts;
@@ -974,9 +1277,10 @@ export function milestoneReopenedPlan(
   references: HubReferences,
 ): RulePlan {
   const facts = references.milestones?.get(event.payload.milestone.id) ?? NO_MILESTONE;
+  const doneStanding = references.standing.length > 0;
   const answer = milestoneReopen({
-    doneStanding: references.standing.length > 0,
-    doneTakenBackByVoid: false,
+    doneStanding,
+    doneTakenBackByVoid: !doneStanding && (facts.doneTakenBackByVoid ?? false),
   });
   if (answer === 'unknown_reference') return hold('UNKNOWN_REFERENCE');
   if (answer === 'record') return { kind: 'post', entries: [], decision: null };
@@ -1540,7 +1844,7 @@ export function planEvent(
   }
   switch (event.type) {
     case 'invoice.issued':
-      return invoiceIssuedPlan(event, context, references.milestones, split);
+      return invoiceIssuedPlan(event, context, references.milestones, split, references);
     case 'invoice.voided':
       // A schedule its project's split cleared: the reversal of the issue alone would leave the
       // liability below zero with the revenue and the refund standing, so the accountant resolves
@@ -1554,10 +1858,19 @@ export function planEvent(
           decision: 'schedule_split_at_cancellation',
         };
       }
-      // The void of an invoice with schedules reverses its releases and elapsed parts too (S06
-      // rule 8), which deploys with S06's credits: until then it holds.
-      if ((references.scheduledLineIds?.length ?? 0) > 0)
-        return hold('NO_MAPPING', 'deferred_revenue');
+      // A schedule another invoice's credit reduces: reversing the invoice would leave the credit
+      // reducing nothing, so the accountant decides, or Hub voids the credit first (S06 rule 8).
+      if (references.scheduleCredited === true) {
+        if (references.standing.length === 0) return hold('UNKNOWN_REFERENCE');
+        return {
+          kind: 'post',
+          entries: reversalsOf(event.id, references.standing),
+          decision: 'schedule_credited',
+        };
+      }
+      // An invoice with schedules: `standing` holds its releases, a done's or a completion's
+      // release of its schedules included, its issue and its elapsed parts, latest first; the
+      // posting function writes each reversal's movements (S06 rule 8).
       return voidPlan(event.id, references);
     case 'payment.voided':
     case 'ad_wallet.entry_voided':
@@ -1733,10 +2046,15 @@ export interface PostedHubEntry {
  * The lines of a Hub entry's reversal by its event (a void, a change, an archive; rule 14): every
  * line negated at its posted amounts, never converted again (`reverseLines()`), on or after its
  * date. Only a Hub entry that is not itself a reversal, once; the accountant cannot reverse one by
- * hand (`manualReversalLines()`: `ENTRY_NOT_REVERSIBLE`).
+ * hand (`manualReversalLines()`: `ENTRY_NOT_REVERSIBLE`). A release of recognised revenue
+ * (`revenue_release`) is reversed by its invoice's void (S06 rule 8).
  */
 export function hubReversalLines(original: PostedHubEntry, on: string): Line[] {
-  if (original.source !== 'hub_event' || original.isReversal) {
+  // A void reverses its invoice's releases too (S06 rule 8): their source is `revenue_release`.
+  if (
+    (original.source !== 'hub_event' && original.source !== 'revenue_release') ||
+    original.isReversal
+  ) {
     throw new DomainError('ENTRY_NOT_REVERSIBLE', 'An event reverses only a Hub entry', {
       source: original.source,
     });
