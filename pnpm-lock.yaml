@@ -606,6 +606,9 @@ importers:
       '@vertex-mizan/contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@vertex-mizan/i18n':
+        specifier: workspace:*
+        version: link:../i18n
       '@vertex-mizan/tokens':
         specifier: workspace:*
         version: link:../tokens
@@ -643,9 +646,6 @@ importers:
       '@vertex-mizan/config':
         specifier: workspace:*
         version: link:../config
-      '@vertex-mizan/i18n':
-        specifier: workspace:*
-        version: link:../i18n
       fast-check:
         specifier: 4.10.2
         version: 4.10.2
