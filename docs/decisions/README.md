@@ -9,7 +9,7 @@ Short records of decisions that shape the system. Each has a status: **Accepted*
 | [0003](0003-tenancy-and-access.md) | Tenancy and access: companies isolated by forced row-level security, people with memberships, API clients per company | Accepted (attachments amended by 0008) |
 | [0004](0004-money-and-currencies.md) | Money and currencies: integer minor units, quoted rates, three amounts on every line | Superseded by 0007 |
 | [0005](0005-ledger-invariants.md) | Ledger invariants: guaranteed by the database, written by one posting function, proven by a hash chain and the scenario book | Accepted (amended by 0008 and 0012; currencies in 0007) |
-| [0006](0006-hub-posting-api-contract.md) | The posting API contract with Vertex Hub: versioned events, exactly once, closed periods, daily reconciliation | Accepted (amended by 0008 and 0014) |
+| [0006](0006-hub-posting-api-contract.md) | The posting API contract with Vertex Hub: versioned events, exactly once, closed periods, daily reconciliation | Accepted (amended by 0008, 0014 and 0017) |
 | [0007](0007-book-and-parallel-currency-ledgers.md) | Money and currencies: a book currency and a parallel currency ledger, a rate policy per ledger | Accepted (bulletin lookup amended by 0011; manual entries by 0012; partial settlements by 0013; revaluation by 0016) |
 | [0008](0008-foundation-audit-amendments.md) | Amendments after the foundation audit: journal order, hardened guards, period balances, scenario runner, API holds and tax lines | Accepted (numbering year and derived state amended by 0012; hold reasons by 0014; period states by 0016) |
 | [0009](0009-brand-and-design-system.md) | Brand and design system: the Vertex identity, accounting components, company branding on printed books | Accepted (components refined by 0010) |
@@ -20,3 +20,4 @@ Short records of decisions that shape the system. Each has a status: **Accepted*
 | [0014](0014-event-inbox-holds-and-order.md) | The event inbox: outcomes, order per item, the accountant's actions and the dates of changes | Accepted (amends 0006, 0008) |
 | [0015](0015-revenue-recognition-schedules.md) | Revenue recognition: schedules and movements, releases per invoice and month, deposits with their milestone | Accepted (amends phase 1 scope §6) |
 | [0016](0016-periods-close-and-month-end-revaluation.md) | Periods, the close and the month-end revaluation: close in order, no override, revaluation units, closing rate, staleness | Accepted (amends 0007, 0008) |
+| [0017](0017-daily-reconciliation.md) | Daily reconciliation: a per-event report by accounting date, the latest report counts, no acceptance | Accepted (amends 0006) |
