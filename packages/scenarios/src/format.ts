@@ -933,8 +933,18 @@ export const caseSchema = z
       if (reportLedger(report) === 'parallel' && parallel === null) {
         issue('The company keeps no parallel ledger to report', [...path, 'params', 'ledger']);
       }
-      for (const entry of reportEntries(report)) {
+      const named = reportEntries(report);
+      for (const entry of named) {
         if (entry > entries.length) issue(`Entry ${entry} is not an expected entry`, path);
+      }
+      // The journal book prints in (entry_date, number) order (ADR 0008; S09 rule 26): by date,
+      // then by posting place, so a back-dated entry appears at its date.
+      if (report.report === 'journal_book') {
+        const key = (entry: number) =>
+          `${entries[entry - 1]?.date ?? ''}#${String(entry).padStart(9, '0')}`;
+        if (named.some((entry, index) => index > 0 && key(entry) < key(named[index - 1] ?? 0))) {
+          issue("The journal book's entries are in (entry_date, number) order", [...path, 'pages']);
+        }
       }
     }
 

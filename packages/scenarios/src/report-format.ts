@@ -495,15 +495,21 @@ const balanceSheetSchema = z
 /** Rule 21: contribution over revenue as a percentage with one decimal, half away from zero. */
 export function marginOf(revenue: bigint, contribution: bigint): string | null {
   if (revenue === 0n) return null;
-  const tenths = divideHalfAwayFromZero(contribution * 1000n, revenue);
+  // The money module divides by a positive denominator: a negative revenue moves its sign up.
+  const tenths =
+    revenue > 0n
+      ? divideHalfAwayFromZero(contribution * 1000n, revenue)
+      : divideHalfAwayFromZero(-contribution * 1000n, -revenue);
   const sign = tenths < 0n ? '-' : '';
   const magnitude = tenths < 0n ? -tenths : tenths;
   return `${sign}${magnitude / 10n}.${magnitude % 10n}`;
 }
 
+// Revenue and direct costs are net of reversals, so a month with a void can show either negative
+// (S09 edge case 12): revenue as presented, positive for income; direct costs positive for a cost.
 const profitabilityFiguresSchema = {
-  revenue: magnitudeSchema,
-  direct_costs: magnitudeSchema,
+  revenue: amountSchema,
+  direct_costs: amountSchema,
   contribution: amountSchema,
   margin: z
     .string()
@@ -635,9 +641,18 @@ const journalBookSchema = z
         issueAt(context, message, ['pages', index, 'brought_forward']);
       }
     }
-    const entries = pages.flatMap((page) => page.entries);
-    if (entries.some((entry, index) => index > 0 && entry <= (entries[index - 1] ?? 0))) {
-      issueAt(context, 'The entries are in posting order, each on one page', ['pages']);
+    // Each entry is on one page, except one split across pages ("تابع القيد", rule 27): the last
+    // of a page and the first of the next. The order, (entry_date, number), is checked against the
+    // expected entries' dates in `format.ts`.
+    const seen = new Set<number>();
+    for (const [index, page] of pages.entries()) {
+      for (const [at, entry] of page.entries.entries()) {
+        const continued = at === 0 && pages[index - 1]?.entries.at(-1) === entry;
+        if (seen.has(entry) && !continued) {
+          issueAt(context, `Entry ${entry} is on two pages without continuing`, ['pages', index]);
+        }
+        seen.add(entry);
+      }
     }
   }, WHEN_VALID)
   .transform(({ params: { fiscal_year, ...params }, ...report }) => ({
@@ -665,10 +680,19 @@ export const expectedReportSchema = z.discriminatedUnion(
 
 export type ExpectedReport = z.output<typeof expectedReportSchema>;
 
-/** The entries a report names by their place in posting order. */
+/**
+ * The entries a report names by their place in posting order, in the report's order: an account
+ * statement's lines, or the journal book's entries with a continued entry named once.
+ */
 export function reportEntries(report: ExpectedReport): number[] {
   if (report.report === 'account_statement') return report.lines.map((line) => line.entry);
-  if (report.report === 'journal_book') return report.pages.flatMap((page) => page.entries);
+  if (report.report === 'journal_book') {
+    return report.pages.flatMap((page, index) =>
+      page.entries.filter(
+        (entry, at) => !(at === 0 && report.pages[index - 1]?.entries.at(-1) === entry),
+      ),
+    );
+  }
   return [];
 }
 

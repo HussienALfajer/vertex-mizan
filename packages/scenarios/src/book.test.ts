@@ -851,11 +851,67 @@ describe('a case', () => {
     expect(refusal(REPORTS.replace(from, to))).toContain(problem);
   });
 
+  // A second invoice back-dated before the first (ADR 0008 allows it in an open month).
+  const backDated = (pages: string) =>
+    REPORTS.replace(
+      'expect:\n',
+      '  - manual: a back-dated SYP invoice\n    accounting_date: 2026-11-02\n' +
+        '    payload: { lines: [{ account: "112001", dims: { client: C1 }, currency: SYP, amount: 50000, open_item: { ref: M-2 } },\n' +
+        '                       { account: "411001", dims: { client: C1, service: S1 }, currency: SYP, amount: -50000 }] }\n' +
+        'expect:\n',
+    )
+      .replace(
+        '  reports:\n',
+        '    - source: manual\n      date: 2026-11-02\n      lines:\n' +
+          '        - { account: "112001", dims: { client: C1 }, currency: SYP, amount: 50000, book: 50000 }\n' +
+          '        - { account: "411001", dims: { client: C1, service: S1 }, currency: SYP, amount: -50000, book: -50000 }\n' +
+          '  reports:\n',
+      )
+      .replace(/ {4}- report: account_statement[\s\S]*?(?= {4}- report: journal_book)/, '')
+      .replace(
+        / {4}- report: journal_book[\s\S]*$/,
+        `    - report: journal_book\n      params: { fiscal_year: 2026, from: 2026-11, to: 2026-11 }\n      marks: [period_open]\n      pages:\n${pages}`,
+      );
+  const page = (number: number, entries: string, amount: number, before: number) =>
+    `        - { page: ${number}, entries: [${entries}], debits: ${amount}, credits: ${amount},\n` +
+    `            brought_forward: { debits: ${before}, credits: ${before} }, cumulative: { debits: ${before + amount}, credits: ${before + amount} } }\n`;
+
+  it('reads the journal book in (entry_date, number) order, with an entry split across pages (S09 rules 26, 27)', () => {
+    const inDateOrder = parseCase(backDated(page(1, '2, 1', 100000, 0)));
+    expect(inDateOrder.expect.reports.at(-1)).toMatchObject({ pages: [{ entries: [2, 1] }] });
+    const split = parseCase(backDated(page(1, '2, 1', 80000, 0) + page(2, '1', 20000, 80000)));
+    expect(split.expect.reports.at(-1)).toMatchObject({
+      pages: [{ entries: [2, 1] }, { entries: [1] }],
+    });
+    expect(refusal(backDated(page(1, '1, 2', 100000, 0)))).toContain(
+      "The journal book's entries are in (entry_date, number) order",
+    );
+    expect(
+      refusal(
+        backDated(page(1, '2', 50000, 0) + page(2, '1', 50000, 50000) + page(3, '2', 0, 100000)),
+      ),
+    ).toContain('Entry 2 is on two pages without continuing');
+  });
+
+  it('reads profitability net of a void: negative revenue and costs (S09 edge case 12)', () => {
+    const voided = REPORTS.replace(
+      'rows: [{ value: design, revenue: 50000, direct_costs: 0, contribution: 50000, margin: "100.0" }]\n      totals: { revenue: 50000, direct_costs: 0, contribution: 50000, margin: "100.0" }',
+      'rows: [{ value: design, revenue: -50000, direct_costs: -10000, contribution: -40000, margin: "80.0" }]\n      totals: { revenue: -50000, direct_costs: -10000, contribution: -40000, margin: "80.0" }',
+    );
+    expect(voided).not.toBe(REPORTS);
+    expect(parseCase(voided).expect.reports[3]).toMatchObject({
+      rows: [{ value: 'design', revenue: -50000n, directCosts: -10000n, contribution: -40000n }],
+    });
+  });
+
   it('gives the margin with one decimal, half away from zero, and none without revenue (S09 rule 21)', () => {
     expect(marginOf(80000n, 55000n)).toBe('68.8');
     expect(marginOf(270000n, 215000n)).toBe('79.6');
     expect(marginOf(80000n, -55000n)).toBe('-68.8');
     expect(marginOf(3n, 1n)).toBe('33.3');
+    expect(marginOf(-50000n, -40000n)).toBe('80.0');
+    expect(marginOf(-80000n, -55000n)).toBe('68.8');
+    expect(marginOf(-80000n, 55000n)).toBe('-68.8');
     expect(marginOf(0n, -55000n)).toBeNull();
   });
 

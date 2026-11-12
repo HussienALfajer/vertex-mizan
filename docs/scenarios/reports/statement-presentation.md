@@ -41,7 +41,7 @@ Shapes:
 
 ### Vertex Media: the worked example in both ledgers
 
-On 1 December C1 is invoiced 600,000.00 SYP (M-1), C2 pays an advance of 50,000.00 SYP, C1 deposits 1,000.00 USD of ad funds, the agency pays 20.00 USD of ad spend for C3, who holds no funds, P1 (C1's project) receives a deposit of 1,200,000.00 SYP and has a done milestone of 500,000.00 not yet invoiced, and R1 (C3's retainer) has 300,000.00 released ahead of its invoice. The December revaluations find nothing to remeasure: the bulletin stays at 120 and the market rate at 125.
+On 1 December C1 is invoiced 600,000.00 SYP (M-1), C2 pays an advance of 50,000.00 SYP under no contract (a contract's advance is a contract liability, IFRS 15.106), C1 deposits 1,000.00 USD of ad funds, the agency pays 20.00 USD of ad spend for C3, who holds no funds, P1 (C1's project) receives a deposit of 1,200,000.00 SYP and has a done milestone of 500,000.00 not yet invoiced, and R1 (C3's retainer) has 300,000.00 released ahead of its invoice. The December revaluations find nothing to remeasure: the bulletin stays at 120 and the market rate at 125 (the row of 1 December is still in force at the month end, so no second row is recorded: S02 rule 14 refuses an unchanged rate as `RATE_UNCHANGED`).
 
 The trial balance shows the accounts gross: `112001` debit 600,000.00, `211003` credit 50,000.00, `113001` debit 800,000.00, `212001` credit 1,200,000.00, `213001` credit 117,600.00. The balance sheet presents C3's debit on `213001` in trade receivables (602,400.00), C1's funds as client money (120,000.00), P1 net in contract liabilities (1,200,000.00 − 500,000.00 = 700,000.00) and R1 in contract assets (300,000.00). The parallel ledger presents the same at its own amounts: 1,000.00 USD of funds and 20.00 USD reclassified, P1 9,600.00 − 4,000.00 = 5,600.00 USD.
 
@@ -54,7 +54,6 @@ rates:
   - { date: 2026-12-01, base: USD, quote: SYP, rate: "120.0000", type: bulletin }
   - { date: 2026-12-01, base: USD, quote: SYP, rate: "125.0000", type: market }
   - { date: 2026-12-31, base: USD, quote: SYP, rate: "120.0000", type: bulletin }
-  - { date: 2026-12-31, base: USD, quote: SYP, rate: "125.0000", type: market }
 steps:
   - manual: invoice M-1 to C1
     accounting_date: 2026-12-01
@@ -646,7 +645,6 @@ rates:
   - { date: 2026-12-01, base: USD, quote: SYP, rate: "125.0000", type: market }
   - { date: 2026-12-24, base: USD, quote: SYP, rate: "120.0000", type: bulletin }
   - { date: 2026-12-31, base: USD, quote: SYP, rate: "120.0000", type: bulletin }
-  - { date: 2026-12-31, base: USD, quote: SYP, rate: "125.0000", type: market }
 steps:
   - manual: capital paid in
     accounting_date: 2026-12-01
