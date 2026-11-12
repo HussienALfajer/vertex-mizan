@@ -1170,7 +1170,10 @@ export const caseSchema = z
       }
       // S10 rules 31–33 present a books start: a company without one has none of it.
       if (scenarioCase.company.booksStart === null) {
-        const marks = [...report.marks, ...('compareMarks' in report ? (report.compareMarks ?? []) : [])];
+        const marks = [
+          ...report.marks,
+          ...('compareMarks' in report ? (report.compareMarks ?? []) : []),
+        ];
         if (marks.some((mark) => BOOKS_START_MARKS.includes(mark))) {
           issue("A books start's mark needs the company's books_start", [...path, 'marks']);
         }

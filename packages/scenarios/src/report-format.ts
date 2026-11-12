@@ -45,7 +45,8 @@ const ledgerSchema = z.enum(['book', 'parallel'], {
 
 /**
  * The marks, the exact set: S09 rule 4's "غير نهائية: الفترة مفتوحة" and "قبل إعادة التقييم";
- * S10 rule 32's "الرصيد الافتتاحي من قيد الافتتاح" (a trial balance from the books start) and
+ * S10 rule 32's "الرصيد الافتتاحي من قيد الافتتاح" (a trial balance, general ledger or account
+ * statement from the books start) and
  * rule 33's "تبدأ الدفاتر في <date>" (a range from before it) and "نتيجة ما قبل بدء الدفاتر ضمن
  * حقوق الملكية" (an income statement of the books start's fiscal year).
  */

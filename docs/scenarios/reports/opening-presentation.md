@@ -17,14 +17,14 @@ In the fiscal year of the books start, the balance sheet's year's result adds th
 - **IAS 1.97, 1.85:** the income statement presents only what the ledger holds by nature from the books start; the result earned before it was never posted to income and expenses (S10 "Accounting treatment": no revenue or expense line on the opening), so the statement says it is in equity rather than show a partial year as the year's (S10 rule 33).
 - **IAS 21.23(b):** `312002` is a stated line in the parallel ledger, at the records' historical amount, never remeasured (S10 rule 17).
 - **Company policy:** `phase-1-scope.md` F12 and F13; S10 rules 14, 17, 19, 31–33 and S09 rules 4, 5, 9, 16, 26–27 (owner, 2026-11-12); ADR 0018, ADR 0019.
-- **Syrian rules:** the journal book of the Commercial Code, arts. 16–19, REPORTED (S09 rule 26): the opening entry is entry 1 of the books start's fiscal year and is printed like any entry (S10 rule 32). The calendar fiscal year (Income Tax Law 24/2003, CONFIRMED). No other Syrian rule is relied on.
+- **Syrian rules:** the journal book of the Commercial Code, arts. 16–19, REPORTED (S09 rule 26): the opening entry is entry 1 of the books start's fiscal year and is printed like any entry (S10 rule 32). The calendar fiscal year (Income Tax Law 24/2003, CONFIRMED). The bulletin for the statutory books, UNVERIFIED (Q1), adopted by the owner as the company's policy. No other Syrian rule is relied on.
 
 ## Cases
 
 The account codes are the service-agency template's (S02), with `312002` "نتيجة السنة قبل بدء الدفاتر" (role `pre_opening_result`, statement line `bs.retained_earnings`) that S10 adds to it: the SYP and USD bank accounts `111003` and `111004`, trade receivables `112001`, capital `311001`, retained earnings `312001` (the balancing figure, S10 rule 19), service revenue `411001`, salaries `521001` and rent `531001`. Every rate and amount is synthetic.
 
 How the expectations read: as in `reports/statement-presentation.md` and `docs/scenarios/README.md`, "Reports", with what S10 adds:
-- three marks (S10 rules 32, 33): `opening_entry` ("الرصيد الافتتاحي من قيد الافتتاح") on a trial balance whose range starts on or before the books start; `before_books_start` ("تبدأ الدفاتر في 2026-10-01") on a report whose range starts before it; `pre_opening_result_in_equity` ("نتيجة ما قبل بدء الدفاتر ضمن حقوق الملكية") on an income statement of the books start's fiscal year;
+- three marks (S10 rules 32, 33): `opening_entry` ("الرصيد الافتتاحي من قيد الافتتاح") on a trial balance, general ledger or account statement whose range starts on or before the books start; `before_books_start` ("تبدأ الدفاتر في 2026-10-01") on a report whose range starts before it; `pre_opening_result_in_equity` ("نتيجة ما قبل بدء الدفاتر ضمن حقوق الملكية") on an income statement of the books start's fiscal year;
 - a balance sheet's `year_result_pre_opening`: the balance of `312002` that its year's result includes, with the note "تشمل نتيجة ما قبل بدء الدفاتر" when it is not zero, and zero at a date of a later fiscal year; and `compare_year_result_pre_opening` for the comparative;
 - in a later fiscal year, `312002` is a part of `bs.retained_earnings` by its account, as `312001` is, and `unclosed_years` remains the net of classes 4–5 of the earlier fiscal years (S09 rule 16), so the opening's line is never counted twice.
 

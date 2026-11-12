@@ -1078,20 +1078,23 @@ describe('a case', () => {
 
   // S10 rules 31–33 on the reports fixture, in a company with a books start.
   const presented = (marks: string, preOpening: string) =>
-    REPORTS.replace('rate_policy: { book: bulletin },', 'books_start: 2026-11-01, rate_policy: { book: bulletin },')
+    REPORTS.replace(
+      'rate_policy: { book: bulletin },',
+      'books_start: 2026-11-01, rate_policy: { book: bulletin },',
+    )
       .replace(
         'steps:\n',
         'steps:\n  - opening: the records\n    records:\n      lines:\n        - { account: "312002", currency: SYP, amount: 0 }\n',
       )
-      .replace(
-        'level: 4 }\n      marks: [period_open]',
-        `level: 4 }\n      marks: [${marks}]`,
-      )
+      .replace('level: 4 }\n      marks: [period_open]', `level: 4 }\n      marks: [${marks}]`)
       .replace('      year_result: 50000\n', `      year_result: 50000\n${preOpening}`);
 
   it('reads the marks and the result before the books start of a company with one (S10 rules 31–33)', () => {
     const scenario = parseCase(
-      presented('period_open, opening_entry, before_books_start', '      year_result_pre_opening: 0\n'),
+      presented(
+        'period_open, opening_entry, before_books_start',
+        '      year_result_pre_opening: 0\n',
+      ),
     );
     expect(scenario.expect.reports[0]).toMatchObject({
       marks: ['period_open', 'opening_entry', 'before_books_start'],
