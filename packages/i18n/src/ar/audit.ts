@@ -119,6 +119,8 @@ export const audit = {
     'event.recognised_in_open_period': 'اعترف بجزء منقضٍ في أول فترة مفتوحة',
     'event.remainder_split': 'قسّم المتبقي في مشروع ملغى',
     'revaluation.posted': 'رحّل إعادة تقييم آخر الشهر',
+    'period.closed': 'أقفل الشهر',
+    'period.reopened': 'أعاد فتح الشهر',
   } satisfies Record<CompanyAuditAction, string>,
   /** The audited entities (`AUDITED_FIELDS` in `packages/db`). */
   entities: {

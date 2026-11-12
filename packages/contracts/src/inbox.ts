@@ -289,6 +289,11 @@ export const retryTriggerSchema = z
     z.object({ kind: z.literal('rate'), on: dateSchema }),
     z.object({ kind: z.literal('mapping') }),
     z.object({ kind: z.literal('deploy') }),
+    // A reopened month frees its events held PERIOD_CLOSED and SERVICE_PERIOD_CLOSED (S07 rule 6).
+    z.object({
+      kind: z.literal('period'),
+      period: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'Expected a month as YYYY-MM'),
+    }),
     z.object({ kind: z.literal('sweep') }),
   ])
   .meta({ id: 'RetryTrigger' });

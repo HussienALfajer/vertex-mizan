@@ -2,7 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { MOVEMENT_KINDS } from './open-items.js';
 import {
+  CHECKLIST_ITEMS,
+  failingItems,
+  PERIOD_STATES,
+  periodReasonSchema,
   periodSchema,
+  periodsQuerySchema,
   REVALUATION_STATES,
   revaluationPostSchema,
   revaluationPreviewSchema,
@@ -81,5 +86,55 @@ describe('the revaluation schemas (S07 "API")', () => {
     expect(Object.keys(schema.$defs ?? {})).toEqual(
       expect.arrayContaining(['RevaluationBalance', 'ClosingRate', 'PostedRevaluation']),
     );
+  });
+});
+
+describe('the period schemas (S07 rules 1–9, "API")', () => {
+  it('keep the states and the checklist in their published order', () => {
+    expect(PERIOD_STATES).toEqual(['open', 'closed', 'reopened']);
+    expect(CHECKLIST_ITEMS).toEqual([
+      'bulletins_recorded',
+      'closing_rates_recorded',
+      'no_drafts',
+      'open_items_agree',
+      'no_held_events',
+      'releases_posted',
+      'revaluation_current',
+    ]);
+  });
+
+  it('name the failing items in the checklist order, whatever the order given', () => {
+    const item = (name: (typeof CHECKLIST_ITEMS)[number], result: 'passed' | 'failed') => ({
+      item: name,
+      result,
+      count: result === 'failed' ? 1 : 0,
+      ledgers: [],
+    });
+    expect(
+      failingItems([
+        item('revaluation_current', 'failed'),
+        item('no_drafts', 'passed'),
+        item('bulletins_recorded', 'failed'),
+      ]),
+    ).toEqual(['bulletins_recorded', 'revaluation_current']);
+    expect(failingItems([item('no_drafts', 'passed')])).toEqual([]);
+  });
+
+  it('need a reason of 1 to 500 characters', () => {
+    expect(periodReasonSchema.parse({ reason: '  إقفال تشرين الثاني ' })).toEqual({
+      reason: 'إقفال تشرين الثاني',
+    });
+    for (const reason of ['', '   ', 'x'.repeat(501)]) {
+      expect(periodReasonSchema.safeParse({ reason }).success).toBe(false);
+    }
+  });
+
+  it('read a range from before to', () => {
+    expect(periodsQuerySchema.parse({ from: '2026-10', to: '2026-12' })).toEqual({
+      from: '2026-10',
+      to: '2026-12',
+    });
+    expect(periodsQuerySchema.safeParse({ from: '2026-12', to: '2026-10' }).success).toBe(false);
+    expect(periodsQuerySchema.parse({})).toEqual({});
   });
 });

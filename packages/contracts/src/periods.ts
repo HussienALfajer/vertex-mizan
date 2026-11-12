@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { currencyCodeSchema, ledgerSchema, rateTypeSchema } from './money.js';
-import { entryNumberSchema, minorUnitsSchema } from './wire.js';
+import { entryNumberSchema, minorUnitsSchema, personRefSchema } from './wire.js';
 
 // Periods and the month-end revaluation (S07 "API", ADR 0016): the revaluation's preview per
 // ledger and its posting, read on `/api/revaluation/:period` with `periods.read` and posted with
@@ -181,3 +181,143 @@ export const revaluationPostResultSchema = z
   .meta({ id: 'RevaluationPostResult' });
 
 export type RevaluationPostResult = z.infer<typeof revaluationPostResultSchema>;
+
+// Periods and the close (S07 rules 1–9, "API"): a month's state, its history of closes and reopens
+// and its pre-close checklist, read with `periods.read`; closed and reopened with `periods.close`.
+
+/** A period's state (S07 rule 1); Hub reads `reopened` as `open` (no `/v1` change). */
+export const PERIOD_STATES = ['open', 'closed', 'reopened'] as const;
+
+export const periodStateSchema = z.enum(PERIOD_STATES).meta({ id: 'PeriodState' });
+
+export type PeriodState = z.infer<typeof periodStateSchema>;
+
+/** A row of a period's history (S07 "Data", `period_events`). */
+export const PERIOD_EVENT_KINDS = ['closed', 'reopened'] as const;
+
+export const periodEventKindSchema = z.enum(PERIOD_EVENT_KINDS).meta({ id: 'PeriodEventKind' });
+
+export type PeriodEventKind = z.infer<typeof periodEventKindSchema>;
+
+/**
+ * The pre-close checklist (S07 rule 8), in its order: a failed close names its failing items in
+ * this order. Append-only: S08 appends `reconciliation_clean`.
+ */
+export const CHECKLIST_ITEMS = [
+  'bulletins_recorded',
+  'closing_rates_recorded',
+  'no_drafts',
+  'open_items_agree',
+  'no_held_events',
+  'releases_posted',
+  'revaluation_current',
+] as const;
+
+export const checklistItemNameSchema = z.enum(CHECKLIST_ITEMS).meta({ id: 'ChecklistItemName' });
+
+export type ChecklistItemName = z.infer<typeof checklistItemNameSchema>;
+
+/** What an item answers (S07 rule 8). */
+export const CHECKLIST_RESULTS = ['passed', 'failed', 'not_applicable'] as const;
+
+export const checklistResultSchema = z.enum(CHECKLIST_RESULTS).meta({ id: 'ChecklistResult' });
+
+export type ChecklistResult = z.infer<typeof checklistResultSchema>;
+
+/**
+ * One item of a month's checklist: its result and, when it fails, how many things fail it (missing
+ * publication days, missing closing rates, drafts, control accounts that differ, held events,
+ * missing releases, stale revaluations) and the ledgers it fails in, where the item reads a
+ * ledger. The screen links each item to the page that fixes it (S07 "Screens").
+ */
+export const checklistItemSchema = z
+  .object({
+    item: checklistItemNameSchema,
+    result: checklistResultSchema,
+    count: z.int().min(0),
+    ledgers: z.array(ledgerSchema),
+  })
+  .meta({ id: 'ChecklistItem' });
+
+export type ChecklistItem = z.infer<typeof checklistItemSchema>;
+
+/** The failing items of a checklist, in its order (`CHECKLIST_FAILED`'s detail). */
+export function failingItems(checklist: readonly ChecklistItem[]): ChecklistItemName[] {
+  return CHECKLIST_ITEMS.filter((name) =>
+    checklist.some((item) => item.item === name && item.result === 'failed'),
+  );
+}
+
+/** A close's or a reopen's reason (S07 "Data": text of 1 to 500 characters). */
+export const periodReasonSchema = z
+  .object({ reason: z.string().trim().min(1).max(500) })
+  .meta({ id: 'PeriodReason' });
+
+export type PeriodReason = z.infer<typeof periodReasonSchema>;
+
+/** A close or a reopen as the history shows it. */
+export const periodEventSchema = z
+  .object({
+    id: z.uuid(),
+    kind: periodEventKindSchema,
+    reason: z.string(),
+    user: personRefSchema,
+    createdAt: instantSchema,
+  })
+  .meta({ id: 'PeriodEvent' });
+
+export type PeriodEvent = z.infer<typeof periodEventSchema>;
+
+/** `GET /api/periods?from=&to=`: at most 24 months; the first period to this month by default. */
+export const periodsQuerySchema = z
+  .object({ from: periodSchema.optional(), to: periodSchema.optional() })
+  .refine((query) => query.from === undefined || query.to === undefined || query.from <= query.to, {
+    message: 'from comes before to',
+    path: ['to'],
+  })
+  .meta({ id: 'PeriodsQuery' });
+
+export type PeriodsQuery = z.infer<typeof periodsQuerySchema>;
+
+/** The longest range `GET /api/periods` answers. */
+export const PERIODS_RANGE_LIMIT = 24;
+
+/**
+ * A month of the list: its state (`open` for a month with no row yet), whether it has ended in
+ * Asia/Damascus, its last event, and for an ended month not closed the count of failing checklist
+ * items (zero when every item passes).
+ */
+export const periodSummarySchema = z
+  .object({
+    period: periodSchema,
+    state: periodStateSchema,
+    ended: z.boolean(),
+    lastEvent: periodEventSchema.nullable(),
+    failingItems: z.int().min(0).nullable(),
+  })
+  .meta({ id: 'PeriodSummary' });
+
+export type PeriodSummary = z.infer<typeof periodSummarySchema>;
+
+/** `GET /api/periods/:period`: the month, its history (oldest first) and its checklist. */
+export const periodDetailSchema = z
+  .object({
+    period: periodSchema,
+    state: periodStateSchema,
+    ended: z.boolean(),
+    /** The company's first period: months close in order from it (rule 2); null before any. */
+    firstPeriod: periodSchema.nullable(),
+    history: z.array(periodEventSchema),
+    checklist: z.array(checklistItemSchema),
+  })
+  .meta({ id: 'PeriodDetail' });
+
+export type PeriodDetail = z.infer<typeof periodDetailSchema>;
+
+/** `POST /api/periods/:period/reopen`'s answer: the month and the events queued for retry. */
+export const periodReopenResultSchema = z
+  .object({ period: periodDetailSchema, queuedEvents: z.int().min(0) })
+  .meta({ id: 'PeriodReopenResult' });
+
+export type PeriodReopenResult = z.infer<typeof periodReopenResultSchema>;
+

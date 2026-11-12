@@ -105,6 +105,9 @@ export const COMPANY_AUDIT_ACTIONS = [
   'event.remainder_split',
   // S07: a ledger's month-end revaluation (or its adjustment) posted with its reversal.
   'revaluation.posted',
+  // S07: a month closed with its checklist, or reopened with the events queued for retry.
+  'period.closed',
+  'period.reopened',
 ] as const;
 
 export const companyAuditActionSchema = z

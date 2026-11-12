@@ -15,7 +15,7 @@ Spec: `docs/specs/S07-revaluation-periods-close.md` (Approved, owner 2026-11-11)
 - [x] checks and reviewers (`reviewer`, `accountant-reviewer`), PR with auto-merge and Auto-fix
 
 ## PR 2 — Periods and the close (contracts, db, api, worker, bridge)
-- [ ] contracts: `PERIOD_STATES`, `CHECKLIST_ITEMS`, the period schemas; error codes `PERIOD_ORDER`, `PERIOD_NOT_CLOSED`, `CHECKLIST_FAILED` appended with their Arabic text; audit actions `period.closed` and `period.reopened`; unit tests
+- [x] contracts: `PERIOD_STATES`, `CHECKLIST_ITEMS`, the period schemas; error codes `PERIOD_ORDER`, `PERIOD_NOT_CLOSED`, `CHECKLIST_FAILED` appended with their Arabic text; audit actions `period.closed` and `period.reopened`; unit tests
 - [ ] db (`/db-migration`): `period_events` append-only; `periods.state` `reopened` and the transition guard (`ENABLE ALWAYS`, deferred, only with its event, pinned in `GUARDS`); a posting before the first period refused `PERIOD_CLOSED` while a month is closed (rule 4); the migration generated and reviewed
 - [ ] db: the period service — the checklist of rule 8 (seven items, computed on read and inside the close), close (rule 2's refusals in order, empty months given their row, the lock order of rule 5, the checklist stored), reopen (rule 3, the held `PERIOD_CLOSED` and `SERVICE_PERIOD_CLOSED` events of the month queued after the commit), staleness of the revaluation (rule 15), `GET /v1/periods/status` answering `closed`; audit rows
 - [ ] db tests: invariants (`period_events` append-only, transitions only with their event, a posting into a closed period refused while a close commits concurrently), isolation

@@ -214,6 +214,12 @@ export const errorStatus = {
   PERIOD_NOT_ENDED: 409,
   /** The preview changed since it was read: post the new one (S07 rule 17; details: fingerprint). */
   REVALUATION_CHANGED: 409,
+  /** Months close in order and only the latest closed month reopens (S07 rules 2, 3; details: period). */
+  PERIOD_ORDER: 409,
+  /** The month is not closed, so it cannot be reopened (S07 rule 3). */
+  PERIOD_NOT_CLOSED: 409,
+  /** An item of the pre-close checklist fails (S07 rules 2, 8; details: items). */
+  CHECKLIST_FAILED: 409,
 } as const satisfies Record<string, number>;
 
 export type ErrorCode = keyof typeof errorStatus;
