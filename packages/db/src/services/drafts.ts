@@ -59,7 +59,8 @@ export async function writeLines(
       ? [{ path: ['lines', index, 'accountId'], message: 'Unknown account' }]
       : [],
   );
-  if (unknown.length > 0) throw new DomainError('VALIDATION_FAILED', 'Unknown account', { issues: unknown });
+  if (unknown.length > 0)
+    throw new DomainError('VALIDATION_FAILED', 'Unknown account', { issues: unknown });
   // An item of another company, or none, likewise (S04): the item cell names an item by its id.
   const itemIds = [
     ...new Set(lines.flatMap((line) => (line.openItemId === null ? [] : [line.openItemId]))),

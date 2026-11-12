@@ -98,7 +98,9 @@ export async function linkDimensionValue(
   if (!type) throw new DomainError('NOT_FOUND', 'No such dimension type');
   if (type.parentTypeId !== null && row.parentValueId === null) {
     throw new DomainError('VALIDATION_FAILED', 'A Hub contract names its client', {
-      issues: [{ path: ['parentValueId'], message: 'Name the contract’s client before linking it' }],
+      issues: [
+        { path: ['parentValueId'], message: 'Name the contract’s client before linking it' },
+      ],
     });
   }
   const [holder] = await tx
