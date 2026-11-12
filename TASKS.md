@@ -24,7 +24,7 @@ Spec: `docs/specs/S07-revaluation-periods-close.md` (Approved, owner 2026-11-11)
 - [x] worker: `events.retry` on the reopen's trigger, `revenue.release-month` for a reopened month missing its release, the daily email's line "أشهر منتهية غير مقفلة"; safe twice, per company
 - [x] bridge: OpenAPI regenerated, breaking-change check
 - [x] wiring (Contracts, Database, API and worker), docs (`packages/*/CLAUDE.md`, `apps/*/CLAUDE.md`, `docs/ROADMAP.md`)
-- [ ] checks and reviewers (`reviewer`, `accountant-reviewer`), PR with auto-merge and Auto-fix
+- [x] checks and reviewers (`reviewer`, `accountant-reviewer`), PR with auto-merge and Auto-fix
 
 ## PR 3 — The screens (ui, web, e2e)
 - [ ] ui: `Checklist` (status icon and text, count, link, keyboard reachable, RTL), tested, both densities, on the design-system page
