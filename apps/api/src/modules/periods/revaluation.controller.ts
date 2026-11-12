@@ -68,6 +68,7 @@ export class RevaluationController {
   })
   @ApiErrors(
     ...COMPANY_WRITE_ERRORS,
+    'OPENING_NOT_POSTED',
     'PERIOD_CLOSED',
     'PERIOD_NOT_ENDED',
     'RATE_MISSING',

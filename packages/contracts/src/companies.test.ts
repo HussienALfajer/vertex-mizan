@@ -126,6 +126,20 @@ describe('company changes', () => {
   });
 });
 
+describe('booksStart in updateCompanyLedgersSchema (S10 rule 1)', () => {
+  const body = { ledgers: sypUsd, fiscalYearStartMonth: 1 };
+  it('is optional, nullable, the first day of a month on or after 2026-01-01', () => {
+    expect(updateCompanyLedgersSchema.parse(body).booksStart).toBeUndefined();
+    expect(updateCompanyLedgersSchema.parse({ ...body, booksStart: null }).booksStart).toBeNull();
+    expect(updateCompanyLedgersSchema.parse({ ...body, booksStart: '2026-10-01' }).booksStart).toBe(
+      '2026-10-01',
+    );
+    for (const booksStart of ['2026-10-02', '2025-12-01', '2026-13-01', '1 Oct']) {
+      expect(updateCompanyLedgersSchema.safeParse({ ...body, booksStart }).success).toBe(false);
+    }
+  });
+});
+
 describe('companySchema', () => {
   it('converts to JSON Schema with its id', () => {
     expect(
@@ -137,6 +151,8 @@ describe('companySchema', () => {
         fiscalYearStartMonth: 1,
         policyNote: 'نص',
         booksStarted: false,
+        booksStart: '2026-10-01',
+        openingState: null,
         manualEntryApproval: false,
         paymentToleranceSyp: '100',
         paymentToleranceUsd: '100',

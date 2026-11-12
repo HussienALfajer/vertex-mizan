@@ -70,6 +70,17 @@ export const revenueScheduleSchema = z
 
 export type RevenueSchedule = z.infer<typeof revenueScheduleSchema>;
 
+/**
+ * A schedule the opening entry opened (S10 rule 13): as `/revenue` lists a schedule, with the
+ * opening that carries it in place of an issue event in the inbox.
+ */
+export const openingRevenueScheduleSchema = revenueScheduleSchema
+  .omit({ inboxId: true })
+  .extend({ openingId: z.uuid() })
+  .meta({ id: 'OpeningRevenueSchedule' });
+
+export type OpeningRevenueSchedule = z.infer<typeof openingRevenueScheduleSchema>;
+
 /** `GET /api/revenue/schedules`: by state, client, contract and a month it touches. */
 export const revenueScheduleQuerySchema = z
   .object({
@@ -84,7 +95,16 @@ export const revenueScheduleQuerySchema = z
 export type RevenueScheduleQuery = z.infer<typeof revenueScheduleQuerySchema>;
 
 export const revenueSchedulePageSchema = z
-  .object({ schedules: z.array(revenueScheduleSchema), nextCursor: z.string().nullable() })
+  .object({
+    schedules: z.array(revenueScheduleSchema),
+    nextCursor: z.string().nullable(),
+    /**
+     * The opening's schedules matching the same filters, in the order the opening made them, all
+     * of them on the first page and none on the next (S10, additive: `schedules` keeps its
+     * required `inboxId`).
+     */
+    openingSchedules: z.array(openingRevenueScheduleSchema),
+  })
   .meta({ id: 'RevenueSchedulePage' });
 
 export type RevenueSchedulePage = z.infer<typeof revenueSchedulePageSchema>;
@@ -213,8 +233,19 @@ export const revenuePreviewEntrySchema = z
   })
   .meta({ id: 'RevenuePreviewEntry' });
 
+/** One opening invoice's release the job would post for a month (S10 rule 24). */
+export const revenuePreviewOpeningEntrySchema = revenuePreviewEntrySchema
+  .omit({ inboxId: true })
+  .extend({ openingId: z.uuid() })
+  .meta({ id: 'RevenuePreviewOpeningEntry' });
+
 export const revenuePreviewSchema = z
-  .object({ month: monthSchema, entries: z.array(revenuePreviewEntrySchema) })
+  .object({
+    month: monthSchema,
+    entries: z.array(revenuePreviewEntrySchema),
+    /** The opening's invoices' releases, apart since they have no issue event (S10, additive). */
+    openingEntries: z.array(revenuePreviewOpeningEntrySchema),
+  })
   .meta({ id: 'RevenuePreview' });
 
 export type RevenuePreview = z.infer<typeof revenuePreviewSchema>;

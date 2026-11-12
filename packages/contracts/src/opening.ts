@@ -19,12 +19,9 @@ import { minorUnitsSchema } from './wire.js';
 // the names of its states and checks (rule 21). Hub's names are snake_case and its amounts JSON
 // integers in minor units, as in `events.ts`; the internal `/api` sends amounts as `MinorUnits`.
 
-/** An opening's states (S10 "Data"): one live opening per company, `draft` then `posted`. */
-export const OPENING_STATES = ['draft', 'posted', 'reversed'] as const;
-
-export const openingStateSchema = z.enum(OPENING_STATES).meta({ id: 'OpeningState' });
-
-export type OpeningState = z.infer<typeof openingStateSchema>;
+// The states live in `opening-states.ts`, which `companies.ts` reads without the snapshot's
+// schemas.
+export * from './opening-states.js';
 
 /** The checks that must all pass to post (S10 rule 21), in the order a refusal lists them. */
 export const OPENING_CHECKS = [

@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { parseArgs } from 'node:util';
 import {
+  booksStartSchema,
   type CreateCompany,
   chartTemplateIdSchema,
   createCompanySchema,
@@ -39,13 +40,16 @@ export function commandActor(command: string): AuditActor {
 export interface CreateCompanyCommand {
   company: CreateCompany;
   ownerEmail: string;
+  /** The books start (S10 rule 1), or null for a company without an opening. */
+  booksStart: string | null;
 }
 
 /**
  * `admin:create-company` arguments: the company, its ledgers and the first owner's email. Vertex
  * Media's shape is the default (S01 rule 10): SYP books at bulletin, USD parallel at market
  * accepting the transaction's rate, January, and the service-agency chart (S02 rule 1);
- * `--template none` keeps the five roots alone.
+ * `--template none` keeps the five roots alone; `--books-start YYYY-MM-DD` (the first day of a
+ * month) gives it a books start, so it posts nothing before its opening (S10 rules 1, 3).
  */
 export function parseCreateCompany(argv: string[]): CreateCompanyCommand {
   const { values } = parseArgs({
@@ -64,6 +68,7 @@ export function parseCreateCompany(argv: string[]): CreateCompanyCommand {
       'policy-note': { type: 'string' },
       'owner-email': { type: 'string' },
       template: { type: 'string', default: 'service-agency' },
+      'books-start': { type: 'string' },
     },
     strict: true,
   });
@@ -92,7 +97,12 @@ export function parseCreateCompany(argv: string[]): CreateCompanyCommand {
     policyNote: values['policy-note'],
     template: values.template === 'none' ? null : chartTemplateIdSchema.parse(values.template),
   });
-  return { company, ownerEmail: emailSchema.parse(values['owner-email']) };
+  return {
+    company,
+    ownerEmail: emailSchema.parse(values['owner-email']),
+    booksStart:
+      values['books-start'] === undefined ? null : booksStartSchema.parse(values['books-start']),
+  };
 }
 
 /**
@@ -108,7 +118,12 @@ export async function createCompanyWithOwner(
 ): Promise<{ companyId: string; invitationId: string }> {
   const companyId = uuidv7();
   return withCompany(db, companyId, async (tx) => {
-    await createCompanyBooks(tx, companyId, { ...input.company, createdByUserId: null }, actor);
+    await createCompanyBooks(
+      tx,
+      companyId,
+      { ...input.company, createdByUserId: null, booksStart: input.booksStart },
+      actor,
+    );
     const invitation = await createInvitation(tx, appUrl, actor, {
       companyId,
       companyName: input.company.name,

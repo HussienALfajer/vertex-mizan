@@ -115,6 +115,10 @@ export function renderEmail(kind: EmailKind, data: unknown, to: string): Outgoin
                 .join('\n'),
               link: digest.link,
             })}`;
+      // S10 "Jobs": the opening not posted since Hub's snapshot arrived, first.
+      const opening = digest.openingLink
+        ? `\n\n${fill(email.heldDigest.opening, { link: digest.openingLink })}`
+        : '';
       // S07: the ended months not closed, after the held events, when there are any.
       const unclosed =
         digest.unclosedMonths.length === 0
@@ -150,6 +154,7 @@ export function renderEmail(kind: EmailKind, data: unknown, to: string): Outgoin
           fill(email.heldDigest.body, {
             companyName: digest.companyName,
             day: digest.day,
+            opening,
             held,
             unclosed,
             reconciliation,

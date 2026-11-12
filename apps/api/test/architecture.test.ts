@@ -77,6 +77,6 @@ it('puts exactly the API-client routes under /v1', () => {
     })
     .map(({ name }) => name);
   expect(wrong).toEqual([]);
-  // S05's events and period status, S08's daily report and received events.
-  expect(routes().filter(({ path }) => path === 'v1').length).toBe(4);
+  // S05's events and period status, S08's daily report and received events, S10's snapshot.
+  expect(routes().filter(({ path }) => path === 'v1').length).toBe(5);
 });

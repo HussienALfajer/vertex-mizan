@@ -9,6 +9,11 @@ import {
   openingSnapshotTotals,
   saveOpeningSchema,
 } from './opening.js';
+import {
+  openingEntryResultSchema,
+  openingViewSchema,
+  reverseOpeningSchema,
+} from './opening-view.js';
 
 // Synthetic ids and amounts only (AGENTS.md: public repository).
 const id = (n: number) => `01934b6e-0000-7000-8000-${String(n).padStart(12, '0')}`;
@@ -221,5 +226,17 @@ describe('saveOpeningSchema (S10 rule 16)', () => {
       'schedules',
       'lines',
     ]);
+  });
+});
+
+describe('the view of GET /api/opening (S10 rule 20)', () => {
+  it('converts to JSON Schema with its ids', () => {
+    for (const schema of [openingViewSchema, openingEntryResultSchema, reverseOpeningSchema]) {
+      expect(() =>
+        z.toJSONSchema(schema, { target: 'draft-2020-12', unrepresentable: 'throw' }),
+      ).not.toThrow();
+    }
+    expect(reverseOpeningSchema.safeParse({ reason: '  ' }).success).toBe(false);
+    expect(reverseOpeningSchema.safeParse({ reason: 'x'.repeat(501) }).success).toBe(false);
   });
 });

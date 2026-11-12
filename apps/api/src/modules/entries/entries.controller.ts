@@ -96,6 +96,7 @@ export class EntriesController {
   })
   @ApiErrors(
     ...COMPANY_WRITE_ERRORS,
+    'OPENING_NOT_POSTED',
     'NOT_FOUND',
     'ENTRY_NOT_REVERSIBLE',
     'ENTRY_ALREADY_REVERSED',

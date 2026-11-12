@@ -110,6 +110,7 @@ export class CompanyController {
     'COMPANY_ARCHIVED',
     'REAUTHENTICATION_REQUIRED',
     'VALIDATION_FAILED',
+    'BOOKS_START_LOCKED',
   )
   async updateLedgers(
     @Access() access: RequestAccess,

@@ -2,11 +2,14 @@ import {
   type CompanyLedgers,
   emailDataSchemas,
   eventExamplesV1,
+  openingSnapshotExampleV1,
+  openingSnapshotKeyV1,
   parseEventEnvelope,
 } from '@vertex-mizan/contracts';
 import {
   type AuditActor,
   apiClients,
+  companySettings,
   createCompanyBooks,
   createDatabase,
   type Database,
@@ -15,6 +18,7 @@ import {
   memberships,
   type PersonActor,
   receiveEvent,
+  receiveOpeningSnapshot,
   recordRate,
   reopenPeriod,
   setBulletinDaysOff,
@@ -347,6 +351,49 @@ describe('events.held-digest', () => {
     const rendered = renderEmail('held_digest', data, 'owner@example.test');
     expect(rendered.text).toContain('أشهر منتهية غير مقفلة:');
     expect(rendered.text).toContain(`- ${month}: بنود فاشلة في قائمة التحقق قبل الإقفال:`);
+  });
+
+  it('lists a company waiting for its opening from the day a snapshot arrives (S10 "Jobs")', async () => {
+    const companyId = await company();
+    await withCompany(db, companyId, (tx) =>
+      tx.update(companySettings).set({ booksStart: '2026-10-01' }),
+    );
+    const job = new EventsHeldDigestJob(jobs, db, config);
+    const digestOf = async (day: string) => {
+      await job.run(day);
+      const [queued] = await db
+        .select({ data: emailOutbox.data })
+        .from(emailOutbox)
+        .where(like(emailOutbox.dedupeKey, `held_digest:${companyId}:${day}:%`));
+      return queued === undefined ? null : emailDataSchemas.held_digest.parse(queued.data);
+    };
+    // No snapshot yet, nothing else to say: no email.
+    expect(await digestOf('2098-01-05')).toBeNull();
+    const [client] = await db
+      .insert(apiClients)
+      .values({
+        scopeCompanyId: companyId,
+        name: 'Vertex Hub',
+        system: 'hub',
+        scopes: ['opening:write'],
+        createdByUserId: people.owner,
+      })
+      .returning({ id: apiClients.id });
+    const clientId = client?.id as string;
+    await withCompany(db, companyId, (tx) =>
+      receiveOpeningSnapshot(tx, {
+        companyId,
+        apiClientId: clientId,
+        snapshotKey: openingSnapshotKeyV1('2026-10-01'),
+        snapshot: openingSnapshotExampleV1('2026-10-01'),
+        actor: hub(clientId),
+      }),
+    );
+    const data = await digestOf('2098-01-06');
+    expect(data?.openingLink).toBe('https://mizan.example.test/opening');
+    const rendered = renderEmail('held_digest', data as NonNullable<typeof data>, 'o@example.test');
+    expect(rendered.text).toContain('الأرصدة الافتتاحية لم تُرحَّل بعد');
+    expect(rendered.text).toContain('https://mizan.example.test/opening');
   });
 
   it('lists the reconciliation days not clean, even with nothing held (S08 rule 16)', async () => {

@@ -24,6 +24,10 @@ import {
   type EventOutcome,
   eventEnvelopeSchema,
   eventOutcomeSchema,
+  type OpeningSnapshot,
+  type OpeningSnapshotResult,
+  openingSnapshotResultSchema,
+  openingSnapshotSchema,
   type PeriodStatus,
   type PeriodStatusQuery,
   periodStatusQuerySchema,
@@ -74,7 +78,10 @@ export class HubApiController {
     description: 'Held, with its reason and detail; it posts later from the inbox',
     standardSchema: eventOutcomeSchema,
   })
-  @ApiServiceUnavailableResponse({ description: 'Nothing stored: send the event again' })
+  @ApiServiceUnavailableResponse({
+    description:
+      'Nothing stored: send the event again. OPENING_NOT_POSTED, with Retry-After, before the opening posts (S10)',
+  })
   @ApiErrors(
     ...CLIENT_ERRORS,
     'VALIDATION_FAILED',
@@ -100,6 +107,40 @@ export class HubApiController {
     );
     response.status(status);
     return outcome;
+  }
+
+  @Post('opening/snapshot')
+  @ApiClientRoute('opening:write')
+  @ApiHeader({ name: 'Idempotency-Key', required: true, description: "The snapshot's key" })
+  @SerializeOptions({ schema: openingSnapshotResultSchema })
+  @ApiCreatedResponse({
+    description: 'The snapshot stored, with what Mizan read in it: its counts and totals',
+    standardSchema: openingSnapshotResultSchema,
+  })
+  @ApiOkResponse({
+    description: 'A replay of the same key and body: the first answer, nothing stored',
+    standardSchema: openingSnapshotResultSchema,
+  })
+  @ApiErrors(
+    ...CLIENT_ERRORS,
+    'VALIDATION_FAILED',
+    'IDEMPOTENCY_CONFLICT',
+    'OPENING_POSTED',
+    'NO_BOOKS_START',
+  )
+  async receiveSnapshot(
+    @Access() access: RequestAccess,
+    @Headers('idempotency-key') idempotencyKey: string | undefined,
+    @Body({ schema: openingSnapshotSchema }) snapshot: OpeningSnapshot,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<OpeningSnapshotResult> {
+    const { status, result } = await this.hub.receiveSnapshot(
+      viaApiClient(access),
+      idempotencyKey,
+      snapshot,
+    );
+    response.status(status);
+    return result;
   }
 
   @Get('periods/status')

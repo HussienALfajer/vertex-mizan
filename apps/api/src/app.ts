@@ -3,8 +3,11 @@ import { METHOD_METADATA, PARAMTYPES_METADATA } from '@nestjs/common/constants.j
 import { ModulesContainer } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, type OpenAPIObject, SwaggerModule } from '@nestjs/swagger';
+import { OPENING_SNAPSHOT_MAX_BYTES } from '@vertex-mizan/contracts';
+import bodyParser from 'body-parser';
 import { Logger } from 'nestjs-pino';
 import type { Config } from './core/config/config.js';
+import { OPENING_SNAPSHOT_PATH } from './core/errors/error.filter.js';
 import { sameOriginOnly } from './core/http/same-origin.js';
 
 /** Every route lives under `/api`, but Hub's API under `/v1` (S05, ADR 0006). */
@@ -21,6 +24,8 @@ export function configureApp(app: INestApplication, config: Config): INestApplic
   // nginx on the same host forwards the client address; `request.ip` reads it from loopback only.
   express.set('trust proxy', 'loopback');
   express.use(sameOriginOnly(config.appUrl));
+  // The snapshot's parser runs first on its path; the general one then finds the body read.
+  express.use(OPENING_SNAPSHOT_PATH, bodyParser.json({ limit: OPENING_SNAPSHOT_MAX_BYTES }));
   express.useBodyParser('json', { limit: BODY_LIMIT });
   app.setGlobalPrefix(API_PREFIX, { exclude: [{ path: 'v1/{*path}', method: RequestMethod.ALL }] });
   app.enableShutdownHooks();

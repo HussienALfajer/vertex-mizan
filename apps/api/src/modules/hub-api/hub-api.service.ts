@@ -13,6 +13,8 @@ import {
   type EventEnvelope,
   type EventOutcome,
   monthsOf,
+  type OpeningSnapshot,
+  type OpeningSnapshotResult,
   type PeriodStatus,
   type PeriodStatusQuery,
   type ReceivedEventsPage,
@@ -30,6 +32,7 @@ import {
   readClosedPeriods,
   readReceivedEvents,
   receiveEvent,
+  receiveOpeningSnapshot,
   receiveReconciliationReport,
   withCompany,
 } from '@vertex-mizan/db';
@@ -246,5 +249,37 @@ export class HubApiService {
         cursor: query.cursor,
       }),
     );
+  }
+
+  /**
+   * `POST /v1/opening/snapshot` (S10 rules 5–9): the `Idempotency-Key` is the snapshot's key (1–100
+   * characters), then the snapshot stored in the key's company, the company row locked for the
+   * write: `201` stored, `200` a replay of the same key and body; `IDEMPOTENCY_CONFLICT` for
+   * another body, `NO_BOOKS_START`, `OPENING_POSTED` and an `as_of` other than the eve
+   * (`VALIDATION_FAILED`) from `receiveOpeningSnapshot()`.
+   */
+  async receiveSnapshot(
+    access: ApiClientRouteAccess,
+    idempotencyKey: string | undefined,
+    snapshot: OpeningSnapshot,
+  ): Promise<{ status: 200 | 201; result: OpeningSnapshotResult }> {
+    const key = idempotencyKey?.trim() ?? '';
+    if (key.length < 1 || key.length > 100 || key !== idempotencyKey) {
+      throw new CodedException('VALIDATION_FAILED', 'Idempotency-Key is the snapshot key', [
+        { path: ['Idempotency-Key'], message: '1 to 100 characters, no spaces around' },
+      ]);
+    }
+    const companyId = access.client.companyId;
+    const result = await withCompany(this.db, companyId, async (tx) => {
+      await lockCompanyForWrite(tx, companyId);
+      return receiveOpeningSnapshot(tx, {
+        companyId,
+        apiClientId: access.client.id,
+        snapshotKey: key,
+        snapshot,
+        actor: clientActorOf(access),
+      });
+    });
+    return { status: result.replayed ? 200 : 201, result };
   }
 }

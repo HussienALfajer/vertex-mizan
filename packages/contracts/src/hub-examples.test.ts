@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { EVENT_TYPES, eventEnvelopeSchema } from './events.js';
-import { eventExamplesV1, reconciliationExampleV1 } from './hub-examples.js';
+import {
+  eventExamplesV1,
+  openingSnapshotExampleV1,
+  openingSnapshotKeyV1,
+  reconciliationExampleV1,
+} from './hub-examples.js';
+import { openingSnapshotSchema, openingSnapshotTotals } from './opening.js';
 
 describe('eventExamplesV1', () => {
   it('has every event type of the catalogue once, each valid', () => {
@@ -32,5 +38,28 @@ describe('reconciliationExampleV1 (S08 rule 1)', () => {
     });
     expect(reconciliationExampleV1('2026-11-03')).toEqual(report);
     expect(reconciliationExampleV1('2026-11-04').id).not.toBe(report.id);
+  });
+});
+
+describe('openingSnapshotExampleV1 (S10 rule 5)', () => {
+  it("is S10's worked example as of the eve, valid and the same on every run", () => {
+    const snapshot = openingSnapshotExampleV1('2026-10-01');
+    expect(openingSnapshotSchema.safeParse(snapshot).success).toBe(true);
+    expect(snapshot.as_of).toBe('2026-09-30');
+    const [invoice] = snapshot.invoices;
+    expect(invoice?.issued_on).toBe('2026-09-10');
+    expect(invoice?.lines[0]).toMatchObject({ cycle_start: '2026-09-16', cycle_end: '2026-10-15' });
+    expect(openingSnapshotTotals(snapshot).totals).toEqual(
+      expect.arrayContaining([
+        { list: 'invoices', currency: 'USD', amount: 30_000 },
+        { list: 'wallets', currency: 'USD', amount: 50_000 },
+      ]),
+    );
+    expect(openingSnapshotExampleV1('2026-10-01')).toEqual(snapshot);
+    expect(openingSnapshotKeyV1('2026-10-01')).toBe(openingSnapshotKeyV1('2026-10-01'));
+  });
+
+  it('crosses a year end', () => {
+    expect(openingSnapshotExampleV1('2027-01-01').as_of).toBe('2026-12-31');
   });
 });

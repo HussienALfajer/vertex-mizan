@@ -1,6 +1,10 @@
 import { type CompanyLedgers, parseEventEnvelope } from '@vertex-mizan/contracts';
 import {
   type AuditActor,
+  accountRoles,
+  chartAccounts,
+  companySettings,
+  createAccount,
   createCompanyBooks,
   createDatabase,
   type Database,
@@ -19,7 +23,11 @@ import { asc, eq, sql } from 'drizzle-orm';
 import pg from 'pg';
 import { v7 as uuidv7 } from 'uuid';
 import { afterAll, beforeAll, describe, expect, inject, it } from 'vitest';
-import { RevenueReleaseMonthJob, runMonth } from '../src/jobs/revenue/release-month.job.js';
+import {
+  RevenueReleaseMonthJob,
+  releaseInCompany,
+  runMonth,
+} from '../src/jobs/revenue/release-month.job.js';
 
 // S06's release job on the run's database, run directly with its clock: a retainer cycle released
 // month by month, twice and at once, after a late invoice, and with its month closed; a company
@@ -272,6 +280,81 @@ describe('revenue.release-month', () => {
         'cancelled_project_refund',
       ]),
     );
+  });
+});
+
+describe('S10 at the release job', () => {
+  it('adds 312002 with its role to a company made before the templates’ version 2, once', async () => {
+    const id = uuidv7();
+    await withCompany(db, id, async (tx) => {
+      await createCompanyBooks(
+        tx,
+        id,
+        {
+          name: 'شركة قديمة تجريبية',
+          nameLatin: null,
+          ledgers: SYP_USD,
+          fiscalYearStartMonth: 1,
+          policyNote: 'مذكرة سياسة تجريبية.',
+          template: null,
+          createdByUserId: personId,
+        },
+        actor(),
+      );
+      // A chart of its own holding the header 312, as one made before version 2.
+      const [equity] = await tx
+        .select({ id: chartAccounts.id })
+        .from(chartAccounts)
+        .where(eq(chartAccounts.code, '3'));
+      const header = (parentId: string, code: string) =>
+        createAccount(
+          tx,
+          id,
+          {
+            parentId,
+            code,
+            kind: 'header',
+            name: `حساب ${code}`,
+            nameLatin: null,
+            statementLine: null,
+            currency: null,
+            isControl: false,
+            itemKind: null,
+            isMonetary: false,
+            requiredDimensionTypeIds: [],
+          },
+          actor(),
+        );
+      const level2 = await header(equity?.id as string, '31');
+      await header(level2.id, '312');
+    });
+    await job.run('2026-11-15');
+    await job.run('2026-11-16');
+    const [account, roles] = await withCompany(db, id, async (tx) => [
+      await tx
+        .select({ id: chartAccounts.id, statementLine: chartAccounts.statementLine })
+        .from(chartAccounts)
+        .where(eq(chartAccounts.code, '312002')),
+      await tx
+        .select({ accountId: accountRoles.accountId })
+        .from(accountRoles)
+        .where(eq(accountRoles.role, 'pre_opening_result')),
+    ]);
+    expect(account).toEqual([{ id: expect.any(String), statementLine: 'bs.retained_earnings' }]);
+    expect(roles).toEqual([{ accountId: account[0]?.id }]);
+  });
+
+  it('releases nothing in a company waiting for its opening, without failing (rule 3)', async () => {
+    const companyId = await company();
+    await withCompany(db, companyId, (tx) =>
+      tx.update(companySettings).set({ booksStart: '2026-10-01' }),
+    );
+    expect(await releaseInCompany(db, companyId, '2026-12-01')).toMatchObject({
+      awaitingOpening: true,
+      posted: 0,
+    });
+    expect((await job.run('2026-12-01')).failed).toBe(0);
+    expect(await releases(companyId)).toEqual([]);
   });
 });
 
