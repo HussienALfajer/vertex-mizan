@@ -85,6 +85,20 @@ const scopesSchema = z
 
 const instantSchema = z.iso.datetime({ offset: true });
 
+/** The scopes that put a client in the daily reconciliation (S08 rule 13). */
+export const RECONCILED_SCOPES: readonly ApiClientScope[] = [
+  'events:write',
+  'reconciliation:write',
+];
+
+/** Whether a client with these scopes needs a reconciliation start date (S08 "Data"). */
+export function needsReconcileFrom(scopes: readonly ApiClientScope[]): boolean {
+  return scopes.some((scope) => RECONCILED_SCOPES.includes(scope));
+}
+
+/** The first accounting date a client's daily reports must cover (S08 rule 13). */
+const reconcileFromSchema = z.iso.date();
+
 /** A key as lists show it (S05 "Screens"): never its secret, which only its creation answers. */
 export const apiClientKeySchema = z
   .object({
@@ -109,6 +123,8 @@ export const apiClientSchema = z
     scopes: z.array(apiClientScopeSchema),
     ipAllowList: z.array(z.string()),
     documentTypes: z.array(documentTypeSchema),
+    /** S08: set once the client holds `events:write` or `reconciliation:write`, never cleared. */
+    reconcileFrom: reconcileFromSchema.nullable(),
     createdAt: instantSchema,
     archivedAt: instantSchema.nullable(),
     keys: z.array(apiClientKeySchema),
@@ -117,13 +133,18 @@ export const apiClientSchema = z
 
 export type ApiClient = z.infer<typeof apiClientSchema>;
 
-/** `POST /api/api-clients` (rule 19). */
+/** `POST /api/api-clients` (rule 19), with S08's start date when a scope needs it. */
 export const createApiClientSchema = z
   .object({
     name: clientNameSchema,
     system: apiClientSystemSchema,
     scopes: scopesSchema,
     ipAllowList: ipAllowListSchema,
+    reconcileFrom: reconcileFromSchema.optional(),
+  })
+  .refine((client) => !needsReconcileFrom(client.scopes) || client.reconcileFrom !== undefined, {
+    path: ['reconcileFrom'],
+    message: 'A client with events:write or reconciliation:write needs its start date',
   })
   .meta({ id: 'CreateApiClient' });
 
@@ -132,7 +153,8 @@ export type CreateApiClient = z.infer<typeof createApiClientSchema>;
 /**
  * `PUT /api/api-clients/:id`: the fields given change. `documentTypes` is the whole list the
  * client is the source of: a type given moves to it from another client or from none, a type it
- * held and no longer lists goes to none (rule 21).
+ * held and no longer lists goes to none (rule 21). `reconcileFrom` (S08 rule 13) sets or moves the
+ * start date; it is never cleared, and the API refuses scopes that need it on a client without one.
  */
 export const updateApiClientSchema = z
   .object({
@@ -143,6 +165,7 @@ export const updateApiClientSchema = z
       .array(documentTypeSchema)
       .refine((types) => new Set(types).size === types.length, { message: 'A type twice' })
       .optional(),
+    reconcileFrom: reconcileFromSchema.optional(),
   })
   .meta({ id: 'UpdateApiClient' });
 

@@ -72,13 +72,14 @@ export const emailDataSchemas = {
    * The held events of a company (S05 "Jobs"), to its owners and accountants at 08:00 in Damascus
    * on a day with any: those held since the last digest, and all held, by reason; and (S07 "Jobs")
    * each ended month not closed with its count of failing checklist items (none in a row queued
-   * before S07).
+   * before S07); and (S08 rule 16) the days on or after a client's start date that are `missing` or
+   * `differences`, the latest first, up to 31. Sent when any section has content.
    */
   held_digest: z.object({
     companyName: z.string().min(1),
     day: z.iso.date(),
     newlyHeld: z.int().min(0),
-    held: z.array(z.object({ reason: holdReasonSchema, count: z.int().min(1) })).min(1),
+    held: z.array(z.object({ reason: holdReasonSchema, count: z.int().min(1) })),
     unclosedMonths: z
       .array(
         z.object({
@@ -87,7 +88,20 @@ export const emailDataSchemas = {
         }),
       )
       .default([]),
+    reconciliation: z
+      .array(
+        z.object({
+          date: z.iso.date(),
+          state: z.enum(['missing', 'differences']),
+          gaps: z.int().min(0),
+          afterClose: z.boolean(),
+        }),
+      )
+      .max(31)
+      .default([]),
     link: linkSchema,
+    /** S08: the link to `/reconciliation`, with the reconciliation section. */
+    reconciliationLink: linkSchema.optional(),
   }),
 } as const satisfies Record<EmailKind, z.ZodType>;
 

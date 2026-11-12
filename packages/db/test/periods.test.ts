@@ -221,6 +221,8 @@ describe('closePeriod (S07 rules 2, 5, 7–9)', () => {
       ['no_held_events', 'passed'],
       ['releases_posted', 'passed'],
       ['revaluation_current', 'passed'],
+      // S08: a company without a Hub client reconciles no day.
+      ['reconciliation_clean', 'not_applicable'],
     ]);
     await close(books, '2026-12');
     expect(await refused(close(books, '2026-12'))).toEqual({

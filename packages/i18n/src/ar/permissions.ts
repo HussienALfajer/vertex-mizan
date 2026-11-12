@@ -36,4 +36,5 @@ export const permissions = {
   'recognition.read': 'قراءة جداول الاعتراف بالإيراد وتحريراته',
   'periods.read': 'قراءة الفترات وقائمة التحقق قبل الإقفال ومعاينة إعادة التقييم',
   'revaluation.post': 'ترحيل إعادة التقييم آخر الشهر',
+  'reconciliation.read': 'قراءة المطابقة اليومية مع Hub وتقاريرها',
 } satisfies Record<Permission, string>;

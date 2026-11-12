@@ -3,6 +3,7 @@ import {
   type AnyPgColumn,
   check,
   cidr,
+  date,
   foreignKey,
   index,
   inet,
@@ -67,6 +68,11 @@ export const apiClients = pgTable(
     createdByUserId: uuid()
       .notNull()
       .references(() => users.id),
+    /**
+     * S08 rule 13: the first accounting date the client's daily reports must cover; required with
+     * `events:write` or `reconciliation:write`, never cleared once set (a guard).
+     */
+    reconcileFrom: date(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
     archivedAt: archivedAt(),
@@ -83,6 +89,12 @@ export const apiClients = pgTable(
       sql`cardinality(${t.scopes}) between 1 and ${sql.raw(String(CLIENT_SCOPES.length))}
         and ${t.scopes} <@ array[${listOf(CLIENT_SCOPES)}]::text[]
         and array_position(${t.scopes}, null) is null`,
+    ),
+    // S08 "Data": a client that posts or reports has its reconciliation start date.
+    check(
+      'api_clients_reconcile_from',
+      sql`${t.reconcileFrom} is not null
+        or not (${t.scopes} && array['events:write', 'reconciliation:write']::text[])`,
     ),
     check(
       'api_clients_ip_allow_list',

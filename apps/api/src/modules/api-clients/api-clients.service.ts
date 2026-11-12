@@ -7,11 +7,13 @@ import {
   DOCUMENT_TYPES,
   type DocumentType,
   type NewApiKey,
+  needsReconcileFrom,
   type UpdateApiClient,
 } from '@vertex-mizan/contracts';
 import {
   apiClientKeys,
   apiClients,
+  checkReconcileFromMove,
   type Database,
   documentSources,
   type Transaction,
@@ -83,6 +85,7 @@ export class ApiClientsService {
               system: input.system,
               scopes: input.scopes,
               ipAllowList: input.ipAllowList,
+              reconcileFrom: input.reconcileFrom ?? null,
               createdByUserId: access.person.id,
             })
             .returning(),
@@ -107,7 +110,10 @@ export class ApiClientsService {
   /**
    * `PUT /api/api-clients/:id`: the name, scopes and allow-list given; `documentTypes`, the whole
    * list the client is the source of, moves each type to it and the types it no longer lists to
-   * none (rule 21).
+   * none (rule 21). S08 rule 13: `reconcileFrom` moves earlier always, later only while no closed
+   * month holds a day it would release (`RECONCILIATION_START_LOCKED`; a later move takes the ledger
+   * head the close takes, so the two never pass each other); scopes that need a start date are
+   * refused on a client without one.
    */
   async update(access: CompanyRouteAccess, id: string, input: UpdateApiClient): Promise<ApiClient> {
     const companyId = access.company.id;
@@ -115,10 +121,26 @@ export class ApiClientsService {
     return withCompany(this.db, companyId, async (tx) => {
       await lockCompanyForWrite(tx, companyId);
       const before = await this.lockClient(tx, companyId, id);
+      if (
+        input.reconcileFrom === undefined &&
+        before.reconcileFrom === null &&
+        needsReconcileFrom((input.scopes ?? before.scopes) as ApiClient['scopes'])
+      ) {
+        throw new CodedException('VALIDATION_FAILED', 'These scopes need a start date', [
+          {
+            path: ['reconcileFrom'],
+            message: 'Required with events:write or reconciliation:write',
+          },
+        ]);
+      }
+      if (input.reconcileFrom !== undefined) {
+        await checkReconcileFromMove(tx, { from: before.reconcileFrom, to: input.reconcileFrom });
+      }
       const fields = {
         ...(input.name !== undefined && { name: input.name }),
         ...(input.scopes !== undefined && { scopes: input.scopes }),
         ...(input.ipAllowList !== undefined && { ipAllowList: input.ipAllowList }),
+        ...(input.reconcileFrom !== undefined && { reconcileFrom: input.reconcileFrom }),
       };
       let after = before;
       if (Object.keys(fields).length > 0) {
@@ -337,7 +359,13 @@ export class ApiClientsService {
   }
 
   private audited(row: ClientRow) {
-    return { name: row.name, system: row.system, scopes: row.scopes, ipAllowList: row.ipAllowList };
+    return {
+      name: row.name,
+      system: row.system,
+      scopes: row.scopes,
+      ipAllowList: row.ipAllowList,
+      reconcileFrom: row.reconcileFrom,
+    };
   }
 
   /** Clients as the API answers them, with their keys newest first and their document types. */
@@ -362,6 +390,7 @@ export class ApiClientsService {
         scopes: row.scopes as ApiClient['scopes'],
         ipAllowList: row.ipAllowList,
         documentTypes: DOCUMENT_TYPES.filter((type) => types.has(type)),
+        reconcileFrom: row.reconcileFrom,
         createdAt: row.createdAt.toISOString(),
         archivedAt: row.archivedAt?.toISOString() ?? null,
         keys: keys.filter((key) => key.apiClientId === row.id).map(keyOf),

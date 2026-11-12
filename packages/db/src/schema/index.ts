@@ -12,4 +12,5 @@ export * from './ledger.js';
 export * from './open-items.js';
 export * from './rates.js';
 export * from './recognition.js';
+export * from './reconciliation.js';
 export * from './trust.js';

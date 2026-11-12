@@ -201,7 +201,7 @@ export type PeriodEventKind = z.infer<typeof periodEventKindSchema>;
 
 /**
  * The pre-close checklist (S07 rule 8), in its order: a failed close names its failing items in
- * this order. Append-only: S08 appends `reconciliation_clean`.
+ * this order. Append-only: S08 appended `reconciliation_clean` (S08 rule 12, no override).
  */
 export const CHECKLIST_ITEMS = [
   'bulletins_recorded',
@@ -211,6 +211,7 @@ export const CHECKLIST_ITEMS = [
   'no_held_events',
   'releases_posted',
   'revaluation_current',
+  'reconciliation_clean',
 ] as const;
 
 export const checklistItemNameSchema = z.enum(CHECKLIST_ITEMS).meta({ id: 'ChecklistItemName' });

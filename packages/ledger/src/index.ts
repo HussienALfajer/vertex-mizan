@@ -13,4 +13,5 @@ export * from './measure.js';
 export * from './periods.js';
 export * from './rates.js';
 export * from './recognition.js';
+export * from './reconciliation.js';
 export * from './revaluation.js';

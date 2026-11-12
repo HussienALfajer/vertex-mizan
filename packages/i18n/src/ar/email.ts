@@ -29,12 +29,21 @@ export const email = {
     body: 'أصبح التصدير الكامل لبيانات {companyName} جاهزًا للتنزيل.\n\nنزّله من صفحة التصدير بعد تسجيل دخولك:\n{link}\n\nيبقى الملف متاحًا حتى {expiresAt} (توقيت دمشق)، ثم يُحذف. إن لم تطلب هذا التصدير فتواصل مع Vertex فورًا.',
   },
   heldDigest: {
-    subject: 'أحداث معلّقة من Hub في {companyName}',
-    body: 'في صندوق الوارد لشركة {companyName} أحداث من Hub معلّقة لم تُرحَّل بعد، حتى صباح {day} (توقيت دمشق).\n\nعُلّق منذ الملخص السابق: {newlyHeld}\n\nالمعلّق كله بحسب السبب:\n{held}{unclosed}\n\nراجعها وعالجها من صندوق الوارد:\n{link}\n\nتصلك هذه الرسالة في كل يوم فيه حدث معلّق.',
+    subject: 'ما يحتاج إلى متابعة من Hub في {companyName}',
+    // S08 rule 16: sent when any section has content; each section only when it has.
+    body: 'ملخص صباح {day} (توقيت دمشق) لشركة {companyName}.{held}{unclosed}{reconciliation}\n\nتصلك هذه الرسالة في كل يوم فيه ما يحتاج إلى متابعة.',
+    heldSection:
+      'في صندوق الوارد أحداث من Hub معلّقة لم تُرحَّل بعد.\n\nعُلّق منذ الملخص السابق: {newlyHeld}\n\nالمعلّق كله بحسب السبب:\n{lines}\n\nراجعها وعالجها من صندوق الوارد:\n{link}',
     line: '- {reason}: {count}',
     // S07: the ended months not closed, each with its failing checklist items.
     unclosedTitle: 'أشهر منتهية غير مقفلة:',
     unclosedLine: '- {period}: بنود فاشلة في قائمة التحقق قبل الإقفال: {count}',
+    // S08 rule 16: the days not clean, the latest first, each with its gaps.
+    reconciliationTitle: 'أيام المطابقة غير النظيفة:',
+    reconciliationMissing: '- {date}: لم يصل تقرير Hub',
+    reconciliationDifferences: '- {date}: فيه فروق: {count}',
+    afterClose: ' (بعد الإقفال)',
+    reconciliationLink: 'راجعها من صفحة المطابقة اليومية:\n{link}',
     reasons: {
       PERIOD_CLOSED: 'الفترة مقفلة',
       SERVICE_PERIOD_CLOSED: 'فترة الخدمة مقفلة',

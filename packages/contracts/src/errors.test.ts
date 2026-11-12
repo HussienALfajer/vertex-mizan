@@ -121,6 +121,8 @@ describe('error codes', () => {
       ['PERIOD_ORDER', 409],
       ['PERIOD_NOT_CLOSED', 409],
       ['CHECKLIST_FAILED', 409],
+      // S08, daily reconciliation
+      ['RECONCILIATION_START_LOCKED', 409],
     ]);
   });
 

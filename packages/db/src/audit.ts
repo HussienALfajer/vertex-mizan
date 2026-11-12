@@ -144,7 +144,7 @@ export const AUDITED_FIELDS = {
     'revenueMinor',
   ],
   // S05: an API client, its keys (never a secret: the prefix only) and the document sources.
-  api_client: ['name', 'system', 'scopes', 'ipAllowList', 'documentTypes'],
+  api_client: ['name', 'system', 'scopes', 'ipAllowList', 'documentTypes', 'reconcileFrom'],
   api_client_key: ['apiClientId', 'prefix', 'revokeReason'],
   document_source: ['documentType', 'apiClientId'],
   posting_rule: ['slot', 'currency', 'accountId', 'accountCode'],

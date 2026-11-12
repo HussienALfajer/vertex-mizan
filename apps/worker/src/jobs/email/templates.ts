@@ -100,14 +100,21 @@ export function renderEmail(kind: EmailKind, data: unknown, to: string): Outgoin
     }
     case 'held_digest': {
       const digest = emailDataSchemas.held_digest.parse(data);
-      const held = digest.held
-        .map(({ reason, count }) =>
-          fill(email.heldDigest.line, {
-            reason: email.heldDigest.reasons[reason],
-            count: String(count),
-          }),
-        )
-        .join('\n');
+      const held =
+        digest.held.length === 0
+          ? ''
+          : `\n\n${fill(email.heldDigest.heldSection, {
+              newlyHeld: String(digest.newlyHeld),
+              lines: digest.held
+                .map(({ reason, count }) =>
+                  fill(email.heldDigest.line, {
+                    reason: email.heldDigest.reasons[reason],
+                    count: String(count),
+                  }),
+                )
+                .join('\n'),
+              link: digest.link,
+            })}`;
       // S07: the ended months not closed, after the held events, when there are any.
       const unclosed =
         digest.unclosedMonths.length === 0
@@ -117,6 +124,25 @@ export function renderEmail(kind: EmailKind, data: unknown, to: string): Outgoin
                 fill(email.heldDigest.unclosedLine, { period, count: String(failingItems) }),
               )
               .join('\n')}`;
+      // S08 rule 16: the reconciliation's days not clean, after the months, when there are any.
+      const reconciliation =
+        digest.reconciliation.length === 0
+          ? ''
+          : `\n\n${email.heldDigest.reconciliationTitle}\n${digest.reconciliation
+              .map(
+                ({ date, state, gaps, afterClose }) =>
+                  (state === 'missing'
+                    ? fill(email.heldDigest.reconciliationMissing, { date })
+                    : fill(email.heldDigest.reconciliationDifferences, {
+                        date,
+                        count: String(gaps),
+                      })) + (afterClose ? email.heldDigest.afterClose : ''),
+              )
+              .join('\n')}${
+              digest.reconciliationLink
+                ? `\n\n${fill(email.heldDigest.reconciliationLink, { link: digest.reconciliationLink })}`
+                : ''
+            }`;
       return {
         to,
         subject: fill(email.heldDigest.subject, { companyName: digest.companyName }),
@@ -124,10 +150,9 @@ export function renderEmail(kind: EmailKind, data: unknown, to: string): Outgoin
           fill(email.heldDigest.body, {
             companyName: digest.companyName,
             day: digest.day,
-            newlyHeld: String(digest.newlyHeld),
             held,
             unclosed,
-            link: digest.link,
+            reconciliation,
           }),
         ),
       };

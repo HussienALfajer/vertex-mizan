@@ -30,6 +30,7 @@ import {
 } from '../schema/ledger.js';
 import { ledgersOf } from './companies.js';
 import { countFreedByPeriod, type RetryTrigger } from './inbox.js';
+import { reconciliationCheck } from './reconciliation.js';
 import { missingBulletinDays, revaluationCheck } from './revaluation.js';
 import { readRevenueMonths } from './revenue-reads.js';
 
@@ -187,6 +188,7 @@ export async function periodChecklist(
     });
   }
   const [month] = await readRevenueMonths(tx, [period], today);
+  const reconciliation = await reconciliationCheck(tx, period);
   return [
     item('bulletins_recorded', bulletins, atBulletin.length > 0),
     item(
@@ -203,6 +205,12 @@ export async function periodChecklist(
         ledger,
         count: revaluations.get(ledger)?.state === 'current' ? 0 : 1,
       })),
+    ),
+    // S08 rule 12: every day of the month matched or not required for every client, no override.
+    item(
+      'reconciliation_clean',
+      [{ ledger: null, count: reconciliation.uncleanDays }],
+      reconciliation.applicable,
     ),
   ];
 }

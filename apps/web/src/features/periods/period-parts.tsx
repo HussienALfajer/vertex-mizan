@@ -112,6 +112,9 @@ function itemLink(item: ChecklistItem, period: string, me: Me): ReactNode {
       return can(me, 'recognition.read')
         ? link(<Link to="/revenue" search={{ view: 'months' }} />)
         : null;
+    case 'reconciliation_clean':
+      // S08's screens (`/reconciliation?month=`) bring this item's link.
+      return null;
   }
 }
 

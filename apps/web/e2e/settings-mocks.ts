@@ -81,6 +81,7 @@ export const hubClient: ApiClient = {
   scopes: ['events:write', 'periods:read'],
   ipAllowList: ['203.0.113.10', '198.51.100.0/24'],
   documentTypes: ['invoice', 'payment', 'project_expense', 'ad_wallet_entry', 'ad_spend', 'rate'],
+  reconcileFrom: '2026-10-19',
   createdAt: '2026-10-19T12:00:00.000Z',
   archivedAt: null,
   keys: [activeKey, revokedKey],

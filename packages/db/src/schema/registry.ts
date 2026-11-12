@@ -105,6 +105,9 @@ export const tableRegistry = {
   api_clients: { module: 'api-clients', scope: 'platform', kind: 'business' },
   api_client_keys: { module: 'api-clients', scope: 'platform', kind: 'business' },
   document_sources: { module: 'api-clients', scope: 'company', kind: 'business' },
+  // reconciliation (S08, ADR 0017): Hub's daily reports as received and the events they list.
+  reconciliation_reports: { module: 'reconciliation', scope: 'company', kind: 'append-only' },
+  reconciliation_report_events: { module: 'reconciliation', scope: 'company', kind: 'append-only' },
 } as const satisfies Record<string, TableInfo>;
 
 export type TableScope = 'company' | 'platform';

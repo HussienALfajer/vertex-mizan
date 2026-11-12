@@ -1,6 +1,10 @@
 import { randomInt } from 'node:crypto';
 import type { INestApplication } from '@nestjs/common';
-import type { ApiClientScope, CreatedApiClient } from '@vertex-mizan/contracts';
+import {
+  type ApiClientScope,
+  type CreatedApiClient,
+  needsReconcileFrom,
+} from '@vertex-mizan/contracts';
 import request, { type Response } from 'supertest';
 import { v7 as uuidv7 } from 'uuid';
 import { expect } from 'vitest';
@@ -54,14 +58,22 @@ export function v1(
 export async function hubClient(
   app: INestApplication,
   owner: { browser: Browser; person: TestPerson },
-  options: { name?: string; scopes?: ApiClientScope[]; ipAllowList?: string[] } = {},
+  options: {
+    name?: string;
+    scopes?: ApiClientScope[];
+    ipAllowList?: string[];
+    /** S08: the start date of its daily reports, the first of last month by default. */
+    reconcileFrom?: string;
+  } = {},
 ): Promise<HubClient> {
   await reauthenticate(owner.browser, owner.person);
+  const scopes = options.scopes ?? ['events:write', 'periods:read'];
   const created = await owner.browser.post('/api/api-clients', {
     name: options.name ?? `Vertex Hub ${uuidv7().slice(-6)}`,
     system: 'hub',
-    scopes: options.scopes ?? ['events:write', 'periods:read'],
+    scopes,
     ipAllowList: options.ipAllowList ?? [],
+    ...(needsReconcileFrom(scopes) && { reconcileFrom: options.reconcileFrom ?? '2026-10-19' }),
   });
   expect(created.status, JSON.stringify(created.body)).toBe(201);
   const body = created.body as CreatedApiClient;

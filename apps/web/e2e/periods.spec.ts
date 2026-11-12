@@ -88,7 +88,9 @@ test.describe('the periods', () => {
     await page.goto('/periods/2026-10');
     await expect(page.getByRole('heading', { level: 1 })).toContainText(t.detail.title);
     const items = page.locator('[data-slot="checklist-item"]');
-    await expect(items).toHaveCount(7);
+    await expect(items).toHaveCount(8);
+    // S08's item, last; its link to the reconciliation comes with S08's screens.
+    await expect(items.last()).toContainText(t.checklist.items.reconciliation_clean);
     const drafts = items.filter({ hasText: t.checklist.items.no_drafts });
     await expect(drafts).toContainText(t.checklist.results.failed);
     await expect(drafts).toContainText(`${t.checklist.counts.no_drafts}: 1`);
@@ -110,7 +112,7 @@ test.describe('the periods', () => {
     await expect(items.filter({ hasText: t.checklist.items.releases_posted })).toContainText(
       t.checklist.results.not_applicable,
     );
-    await expect(page.getByText(`${t.detail.summary}: 4/7`)).toBeVisible();
+    await expect(page.getByText(`${t.detail.summary}: 5/8`)).toBeVisible();
     await expect(page.getByRole('button', { name: t.close.action })).toBeDisabled();
   });
 
@@ -351,7 +353,7 @@ test.describe('the auditor', () => {
 
   test('the auditor reads the checklist without the actions', async ({ page }) => {
     await page.goto('/periods/2026-10');
-    await expect(page.locator('[data-slot="checklist-item"]')).toHaveCount(7);
+    await expect(page.locator('[data-slot="checklist-item"]')).toHaveCount(8);
     await expect(page.getByRole('button', { name: t.close.action })).toHaveCount(0);
   });
 });

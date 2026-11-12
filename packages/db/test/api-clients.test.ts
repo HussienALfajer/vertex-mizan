@@ -49,6 +49,7 @@ async function newClient(companyId: string, name = 'Vertex Hub'): Promise<string
       name,
       system: 'hub',
       scopes: ['events:write', 'periods:read'],
+      reconcileFrom: '2026-10-19',
       createdByUserId: personId,
     })
     .returning({ id: apiClients.id });
@@ -104,6 +105,7 @@ describe('api_clients', () => {
       name: 'Vertex Hub',
       system: 'hub',
       scopes: ['events:write'],
+      reconcileFrom: '2026-10-19',
       createdByUserId: personId,
     };
     expect(await refusal(app.insert(apiClients).values({ ...base, system: 'erp' }))).toMatch(
@@ -124,6 +126,55 @@ describe('api_clients', () => {
     ).toMatch(/api_clients_ip_allow_list/);
     await app.insert(apiClients).values({ ...base, ipAllowList: ['10.0.0.0/8', '192.0.2.7/32'] });
     expect(await refusal(app.insert(apiClients).values(base))).toMatch(/api_clients_name_key/);
+  });
+
+  it('requires a start date with events:write or reconciliation:write, and never clears it (S08 rule 13)', async () => {
+    const companyId = await newCompany();
+    const base = {
+      scopeCompanyId: companyId,
+      system: 'hub',
+      createdByUserId: personId,
+    };
+    for (const scopes of [
+      ['events:write'],
+      ['reconciliation:write'],
+      ['periods:read', 'events:write'],
+    ]) {
+      expect(
+        await refusal(app.insert(apiClients).values({ ...base, name: scopes.join(), scopes })),
+      ).toMatch(/api_clients_reconcile_from/);
+    }
+    const [reader] = await app
+      .insert(apiClients)
+      .values({ ...base, name: 'قارئ الفترات', scopes: ['periods:read'] })
+      .returning({ id: apiClients.id });
+    const readerId = reader?.id as string;
+    expect(
+      await refusal(
+        app
+          .update(apiClients)
+          .set({ scopes: ['events:write'] })
+          .where(eq(apiClients.id, readerId)),
+      ),
+    ).toMatch(/api_clients_reconcile_from/);
+    await app
+      .update(apiClients)
+      .set({ scopes: ['events:write'], reconcileFrom: '2026-11-01' })
+      .where(eq(apiClients.id, readerId));
+    // Moved later or earlier by the API's rule; never cleared, even with the scope removed.
+    await app
+      .update(apiClients)
+      .set({ reconcileFrom: '2026-10-19' })
+      .where(eq(apiClients.id, readerId));
+    await app
+      .update(apiClients)
+      .set({ scopes: ['periods:read'] })
+      .where(eq(apiClients.id, readerId));
+    expect(
+      await refusal(
+        app.update(apiClients).set({ reconcileFrom: null }).where(eq(apiClients.id, readerId)),
+      ),
+    ).toMatch(/start date is never cleared/);
   });
 
   it('never moves a client to another company or system', async () => {
