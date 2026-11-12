@@ -44,6 +44,16 @@ import { Route as AppCompanyRatesCalendarRouteImport } from './routes/_app/_comp
 import { Route as AppCompanyReceivablesIndexRouteImport } from './routes/_app/_company/receivables/index'
 import { Route as AppCompanyReconciliationIndexRouteImport } from './routes/_app/_company/reconciliation/index'
 import { Route as AppCompanyReconciliationDateRouteImport } from './routes/_app/_company/reconciliation/$date'
+import { Route as AppCompanyReportsIndexRouteImport } from './routes/_app/_company/reports/index'
+import { Route as AppCompanyReportsBalanceSheetRouteImport } from './routes/_app/_company/reports/balance-sheet'
+import { Route as AppCompanyReportsContractPositionRouteImport } from './routes/_app/_company/reports/contract-position'
+import { Route as AppCompanyReportsGeneralLedgerRouteImport } from './routes/_app/_company/reports/general-ledger'
+import { Route as AppCompanyReportsIncomeStatementRouteImport } from './routes/_app/_company/reports/income-statement'
+import { Route as AppCompanyReportsJournalRouteImport } from './routes/_app/_company/reports/journal'
+import { Route as AppCompanyReportsLinesRouteImport } from './routes/_app/_company/reports/lines'
+import { Route as AppCompanyReportsProfitabilityRouteImport } from './routes/_app/_company/reports/profitability'
+import { Route as AppCompanyReportsRevenueScheduleRouteImport } from './routes/_app/_company/reports/revenue-schedule'
+import { Route as AppCompanyReportsTrialBalanceRouteImport } from './routes/_app/_company/reports/trial-balance'
 import { Route as AppCompanyRevenueIndexRouteImport } from './routes/_app/_company/revenue/index'
 import { Route as AppCompanyRevenueIdRouteImport } from './routes/_app/_company/revenue/$id'
 import { Route as AppCompanySettingsApiClientsRouteImport } from './routes/_app/_company/settings/api-clients'
@@ -54,6 +64,8 @@ import { Route as AppCompanySettingsMembersRouteImport } from './routes/_app/_co
 import { Route as AppCompanySettingsPostingRulesRouteImport } from './routes/_app/_company/settings/posting-rules'
 import { Route as AppCompanyAccountsIdLinesRouteImport } from './routes/_app/_company/accounts/$id/lines'
 import { Route as AppCompanyReceivablesClientsValueIdRouteImport } from './routes/_app/_company/receivables/clients/$valueId'
+import { Route as AppCompanyReportsAccountsIdRouteImport } from './routes/_app/_company/reports/accounts/$id'
+import { Route as AppCompanyReportsJournalBookPrintsRouteImport } from './routes/_app/_company/reports/journal-book/prints'
 
 const AppRoute = AppRouteImport.update({
   id: '/_app',
@@ -230,6 +242,64 @@ const AppCompanyReconciliationDateRoute =
     path: '/reconciliation/$date',
     getParentRoute: () => AppCompanyRoute,
   } as any)
+const AppCompanyReportsIndexRoute = AppCompanyReportsIndexRouteImport.update({
+  id: '/reports/',
+  path: '/reports/',
+  getParentRoute: () => AppCompanyRoute,
+} as any)
+const AppCompanyReportsBalanceSheetRoute =
+  AppCompanyReportsBalanceSheetRouteImport.update({
+    id: '/reports/balance-sheet',
+    path: '/reports/balance-sheet',
+    getParentRoute: () => AppCompanyRoute,
+  } as any)
+const AppCompanyReportsContractPositionRoute =
+  AppCompanyReportsContractPositionRouteImport.update({
+    id: '/reports/contract-position',
+    path: '/reports/contract-position',
+    getParentRoute: () => AppCompanyRoute,
+  } as any)
+const AppCompanyReportsGeneralLedgerRoute =
+  AppCompanyReportsGeneralLedgerRouteImport.update({
+    id: '/reports/general-ledger',
+    path: '/reports/general-ledger',
+    getParentRoute: () => AppCompanyRoute,
+  } as any)
+const AppCompanyReportsIncomeStatementRoute =
+  AppCompanyReportsIncomeStatementRouteImport.update({
+    id: '/reports/income-statement',
+    path: '/reports/income-statement',
+    getParentRoute: () => AppCompanyRoute,
+  } as any)
+const AppCompanyReportsJournalRoute =
+  AppCompanyReportsJournalRouteImport.update({
+    id: '/reports/journal',
+    path: '/reports/journal',
+    getParentRoute: () => AppCompanyRoute,
+  } as any)
+const AppCompanyReportsLinesRoute = AppCompanyReportsLinesRouteImport.update({
+  id: '/reports/lines',
+  path: '/reports/lines',
+  getParentRoute: () => AppCompanyRoute,
+} as any)
+const AppCompanyReportsProfitabilityRoute =
+  AppCompanyReportsProfitabilityRouteImport.update({
+    id: '/reports/profitability',
+    path: '/reports/profitability',
+    getParentRoute: () => AppCompanyRoute,
+  } as any)
+const AppCompanyReportsRevenueScheduleRoute =
+  AppCompanyReportsRevenueScheduleRouteImport.update({
+    id: '/reports/revenue-schedule',
+    path: '/reports/revenue-schedule',
+    getParentRoute: () => AppCompanyRoute,
+  } as any)
+const AppCompanyReportsTrialBalanceRoute =
+  AppCompanyReportsTrialBalanceRouteImport.update({
+    id: '/reports/trial-balance',
+    path: '/reports/trial-balance',
+    getParentRoute: () => AppCompanyRoute,
+  } as any)
 const AppCompanyRevenueIndexRoute = AppCompanyRevenueIndexRouteImport.update({
   id: '/revenue/',
   path: '/revenue/',
@@ -287,6 +357,18 @@ const AppCompanyReceivablesClientsValueIdRoute =
     path: '/receivables/clients/$valueId',
     getParentRoute: () => AppCompanyRoute,
   } as any)
+const AppCompanyReportsAccountsIdRoute =
+  AppCompanyReportsAccountsIdRouteImport.update({
+    id: '/reports/accounts/$id',
+    path: '/reports/accounts/$id',
+    getParentRoute: () => AppCompanyRoute,
+  } as any)
+const AppCompanyReportsJournalBookPrintsRoute =
+  AppCompanyReportsJournalBookPrintsRouteImport.update({
+    id: '/reports/journal-book/prints',
+    path: '/reports/journal-book/prints',
+    getParentRoute: () => AppCompanyRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AppCompanyIndexRoute
@@ -313,6 +395,15 @@ export interface FileRoutesByFullPath {
   '/periods/$period': typeof AppCompanyPeriodsPeriodRoute
   '/rates/calendar': typeof AppCompanyRatesCalendarRoute
   '/reconciliation/$date': typeof AppCompanyReconciliationDateRoute
+  '/reports/balance-sheet': typeof AppCompanyReportsBalanceSheetRoute
+  '/reports/contract-position': typeof AppCompanyReportsContractPositionRoute
+  '/reports/general-ledger': typeof AppCompanyReportsGeneralLedgerRoute
+  '/reports/income-statement': typeof AppCompanyReportsIncomeStatementRoute
+  '/reports/journal': typeof AppCompanyReportsJournalRoute
+  '/reports/lines': typeof AppCompanyReportsLinesRoute
+  '/reports/profitability': typeof AppCompanyReportsProfitabilityRoute
+  '/reports/revenue-schedule': typeof AppCompanyReportsRevenueScheduleRoute
+  '/reports/trial-balance': typeof AppCompanyReportsTrialBalanceRoute
   '/revenue/$id': typeof AppCompanyRevenueIdRoute
   '/settings/api-clients': typeof AppCompanySettingsApiClientsRoute
   '/settings/audit': typeof AppCompanySettingsAuditRoute
@@ -328,9 +419,12 @@ export interface FileRoutesByFullPath {
   '/rates/': typeof AppCompanyRatesIndexRoute
   '/receivables/': typeof AppCompanyReceivablesIndexRoute
   '/reconciliation/': typeof AppCompanyReconciliationIndexRoute
+  '/reports/': typeof AppCompanyReportsIndexRoute
   '/revenue/': typeof AppCompanyRevenueIndexRoute
   '/accounts/$id/lines': typeof AppCompanyAccountsIdLinesRoute
   '/receivables/clients/$valueId': typeof AppCompanyReceivablesClientsValueIdRoute
+  '/reports/accounts/$id': typeof AppCompanyReportsAccountsIdRoute
+  '/reports/journal-book/prints': typeof AppCompanyReportsJournalBookPrintsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof AppCompanyIndexRoute
@@ -357,6 +451,15 @@ export interface FileRoutesByTo {
   '/periods/$period': typeof AppCompanyPeriodsPeriodRoute
   '/rates/calendar': typeof AppCompanyRatesCalendarRoute
   '/reconciliation/$date': typeof AppCompanyReconciliationDateRoute
+  '/reports/balance-sheet': typeof AppCompanyReportsBalanceSheetRoute
+  '/reports/contract-position': typeof AppCompanyReportsContractPositionRoute
+  '/reports/general-ledger': typeof AppCompanyReportsGeneralLedgerRoute
+  '/reports/income-statement': typeof AppCompanyReportsIncomeStatementRoute
+  '/reports/journal': typeof AppCompanyReportsJournalRoute
+  '/reports/lines': typeof AppCompanyReportsLinesRoute
+  '/reports/profitability': typeof AppCompanyReportsProfitabilityRoute
+  '/reports/revenue-schedule': typeof AppCompanyReportsRevenueScheduleRoute
+  '/reports/trial-balance': typeof AppCompanyReportsTrialBalanceRoute
   '/revenue/$id': typeof AppCompanyRevenueIdRoute
   '/settings/api-clients': typeof AppCompanySettingsApiClientsRoute
   '/settings/audit': typeof AppCompanySettingsAuditRoute
@@ -372,9 +475,12 @@ export interface FileRoutesByTo {
   '/rates': typeof AppCompanyRatesIndexRoute
   '/receivables': typeof AppCompanyReceivablesIndexRoute
   '/reconciliation': typeof AppCompanyReconciliationIndexRoute
+  '/reports': typeof AppCompanyReportsIndexRoute
   '/revenue': typeof AppCompanyRevenueIndexRoute
   '/accounts/$id/lines': typeof AppCompanyAccountsIdLinesRoute
   '/receivables/clients/$valueId': typeof AppCompanyReceivablesClientsValueIdRoute
+  '/reports/accounts/$id': typeof AppCompanyReportsAccountsIdRoute
+  '/reports/journal-book/prints': typeof AppCompanyReportsJournalBookPrintsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -405,6 +511,15 @@ export interface FileRoutesById {
   '/_app/_company/periods/$period': typeof AppCompanyPeriodsPeriodRoute
   '/_app/_company/rates/calendar': typeof AppCompanyRatesCalendarRoute
   '/_app/_company/reconciliation/$date': typeof AppCompanyReconciliationDateRoute
+  '/_app/_company/reports/balance-sheet': typeof AppCompanyReportsBalanceSheetRoute
+  '/_app/_company/reports/contract-position': typeof AppCompanyReportsContractPositionRoute
+  '/_app/_company/reports/general-ledger': typeof AppCompanyReportsGeneralLedgerRoute
+  '/_app/_company/reports/income-statement': typeof AppCompanyReportsIncomeStatementRoute
+  '/_app/_company/reports/journal': typeof AppCompanyReportsJournalRoute
+  '/_app/_company/reports/lines': typeof AppCompanyReportsLinesRoute
+  '/_app/_company/reports/profitability': typeof AppCompanyReportsProfitabilityRoute
+  '/_app/_company/reports/revenue-schedule': typeof AppCompanyReportsRevenueScheduleRoute
+  '/_app/_company/reports/trial-balance': typeof AppCompanyReportsTrialBalanceRoute
   '/_app/_company/revenue/$id': typeof AppCompanyRevenueIdRoute
   '/_app/_company/settings/api-clients': typeof AppCompanySettingsApiClientsRoute
   '/_app/_company/settings/audit': typeof AppCompanySettingsAuditRoute
@@ -420,9 +535,12 @@ export interface FileRoutesById {
   '/_app/_company/rates/': typeof AppCompanyRatesIndexRoute
   '/_app/_company/receivables/': typeof AppCompanyReceivablesIndexRoute
   '/_app/_company/reconciliation/': typeof AppCompanyReconciliationIndexRoute
+  '/_app/_company/reports/': typeof AppCompanyReportsIndexRoute
   '/_app/_company/revenue/': typeof AppCompanyRevenueIndexRoute
   '/_app/_company/accounts/$id/lines': typeof AppCompanyAccountsIdLinesRoute
   '/_app/_company/receivables/clients/$valueId': typeof AppCompanyReceivablesClientsValueIdRoute
+  '/_app/_company/reports/accounts/$id': typeof AppCompanyReportsAccountsIdRoute
+  '/_app/_company/reports/journal-book/prints': typeof AppCompanyReportsJournalBookPrintsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -451,6 +569,15 @@ export interface FileRouteTypes {
     | '/periods/$period'
     | '/rates/calendar'
     | '/reconciliation/$date'
+    | '/reports/balance-sheet'
+    | '/reports/contract-position'
+    | '/reports/general-ledger'
+    | '/reports/income-statement'
+    | '/reports/journal'
+    | '/reports/lines'
+    | '/reports/profitability'
+    | '/reports/revenue-schedule'
+    | '/reports/trial-balance'
     | '/revenue/$id'
     | '/settings/api-clients'
     | '/settings/audit'
@@ -466,9 +593,12 @@ export interface FileRouteTypes {
     | '/rates/'
     | '/receivables/'
     | '/reconciliation/'
+    | '/reports/'
     | '/revenue/'
     | '/accounts/$id/lines'
     | '/receivables/clients/$valueId'
+    | '/reports/accounts/$id'
+    | '/reports/journal-book/prints'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -495,6 +625,15 @@ export interface FileRouteTypes {
     | '/periods/$period'
     | '/rates/calendar'
     | '/reconciliation/$date'
+    | '/reports/balance-sheet'
+    | '/reports/contract-position'
+    | '/reports/general-ledger'
+    | '/reports/income-statement'
+    | '/reports/journal'
+    | '/reports/lines'
+    | '/reports/profitability'
+    | '/reports/revenue-schedule'
+    | '/reports/trial-balance'
     | '/revenue/$id'
     | '/settings/api-clients'
     | '/settings/audit'
@@ -510,9 +649,12 @@ export interface FileRouteTypes {
     | '/rates'
     | '/receivables'
     | '/reconciliation'
+    | '/reports'
     | '/revenue'
     | '/accounts/$id/lines'
     | '/receivables/clients/$valueId'
+    | '/reports/accounts/$id'
+    | '/reports/journal-book/prints'
   id:
     | '__root__'
     | '/_app'
@@ -542,6 +684,15 @@ export interface FileRouteTypes {
     | '/_app/_company/periods/$period'
     | '/_app/_company/rates/calendar'
     | '/_app/_company/reconciliation/$date'
+    | '/_app/_company/reports/balance-sheet'
+    | '/_app/_company/reports/contract-position'
+    | '/_app/_company/reports/general-ledger'
+    | '/_app/_company/reports/income-statement'
+    | '/_app/_company/reports/journal'
+    | '/_app/_company/reports/lines'
+    | '/_app/_company/reports/profitability'
+    | '/_app/_company/reports/revenue-schedule'
+    | '/_app/_company/reports/trial-balance'
     | '/_app/_company/revenue/$id'
     | '/_app/_company/settings/api-clients'
     | '/_app/_company/settings/audit'
@@ -557,9 +708,12 @@ export interface FileRouteTypes {
     | '/_app/_company/rates/'
     | '/_app/_company/receivables/'
     | '/_app/_company/reconciliation/'
+    | '/_app/_company/reports/'
     | '/_app/_company/revenue/'
     | '/_app/_company/accounts/$id/lines'
     | '/_app/_company/receivables/clients/$valueId'
+    | '/_app/_company/reports/accounts/$id'
+    | '/_app/_company/reports/journal-book/prints'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -815,6 +969,76 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppCompanyReconciliationDateRouteImport
       parentRoute: typeof AppCompanyRoute
     }
+    '/_app/_company/reports/': {
+      id: '/_app/_company/reports/'
+      path: '/reports'
+      fullPath: '/reports/'
+      preLoaderRoute: typeof AppCompanyReportsIndexRouteImport
+      parentRoute: typeof AppCompanyRoute
+    }
+    '/_app/_company/reports/balance-sheet': {
+      id: '/_app/_company/reports/balance-sheet'
+      path: '/reports/balance-sheet'
+      fullPath: '/reports/balance-sheet'
+      preLoaderRoute: typeof AppCompanyReportsBalanceSheetRouteImport
+      parentRoute: typeof AppCompanyRoute
+    }
+    '/_app/_company/reports/contract-position': {
+      id: '/_app/_company/reports/contract-position'
+      path: '/reports/contract-position'
+      fullPath: '/reports/contract-position'
+      preLoaderRoute: typeof AppCompanyReportsContractPositionRouteImport
+      parentRoute: typeof AppCompanyRoute
+    }
+    '/_app/_company/reports/general-ledger': {
+      id: '/_app/_company/reports/general-ledger'
+      path: '/reports/general-ledger'
+      fullPath: '/reports/general-ledger'
+      preLoaderRoute: typeof AppCompanyReportsGeneralLedgerRouteImport
+      parentRoute: typeof AppCompanyRoute
+    }
+    '/_app/_company/reports/income-statement': {
+      id: '/_app/_company/reports/income-statement'
+      path: '/reports/income-statement'
+      fullPath: '/reports/income-statement'
+      preLoaderRoute: typeof AppCompanyReportsIncomeStatementRouteImport
+      parentRoute: typeof AppCompanyRoute
+    }
+    '/_app/_company/reports/journal': {
+      id: '/_app/_company/reports/journal'
+      path: '/reports/journal'
+      fullPath: '/reports/journal'
+      preLoaderRoute: typeof AppCompanyReportsJournalRouteImport
+      parentRoute: typeof AppCompanyRoute
+    }
+    '/_app/_company/reports/lines': {
+      id: '/_app/_company/reports/lines'
+      path: '/reports/lines'
+      fullPath: '/reports/lines'
+      preLoaderRoute: typeof AppCompanyReportsLinesRouteImport
+      parentRoute: typeof AppCompanyRoute
+    }
+    '/_app/_company/reports/profitability': {
+      id: '/_app/_company/reports/profitability'
+      path: '/reports/profitability'
+      fullPath: '/reports/profitability'
+      preLoaderRoute: typeof AppCompanyReportsProfitabilityRouteImport
+      parentRoute: typeof AppCompanyRoute
+    }
+    '/_app/_company/reports/revenue-schedule': {
+      id: '/_app/_company/reports/revenue-schedule'
+      path: '/reports/revenue-schedule'
+      fullPath: '/reports/revenue-schedule'
+      preLoaderRoute: typeof AppCompanyReportsRevenueScheduleRouteImport
+      parentRoute: typeof AppCompanyRoute
+    }
+    '/_app/_company/reports/trial-balance': {
+      id: '/_app/_company/reports/trial-balance'
+      path: '/reports/trial-balance'
+      fullPath: '/reports/trial-balance'
+      preLoaderRoute: typeof AppCompanyReportsTrialBalanceRouteImport
+      parentRoute: typeof AppCompanyRoute
+    }
     '/_app/_company/revenue/': {
       id: '/_app/_company/revenue/'
       path: '/revenue'
@@ -885,6 +1109,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppCompanyReceivablesClientsValueIdRouteImport
       parentRoute: typeof AppCompanyRoute
     }
+    '/_app/_company/reports/accounts/$id': {
+      id: '/_app/_company/reports/accounts/$id'
+      path: '/reports/accounts/$id'
+      fullPath: '/reports/accounts/$id'
+      preLoaderRoute: typeof AppCompanyReportsAccountsIdRouteImport
+      parentRoute: typeof AppCompanyRoute
+    }
+    '/_app/_company/reports/journal-book/prints': {
+      id: '/_app/_company/reports/journal-book/prints'
+      path: '/reports/journal-book/prints'
+      fullPath: '/reports/journal-book/prints'
+      preLoaderRoute: typeof AppCompanyReportsJournalBookPrintsRouteImport
+      parentRoute: typeof AppCompanyRoute
+    }
   }
 }
 
@@ -903,6 +1141,15 @@ interface AppCompanyRouteChildren {
   AppCompanyPeriodsPeriodRoute: typeof AppCompanyPeriodsPeriodRoute
   AppCompanyRatesCalendarRoute: typeof AppCompanyRatesCalendarRoute
   AppCompanyReconciliationDateRoute: typeof AppCompanyReconciliationDateRoute
+  AppCompanyReportsBalanceSheetRoute: typeof AppCompanyReportsBalanceSheetRoute
+  AppCompanyReportsContractPositionRoute: typeof AppCompanyReportsContractPositionRoute
+  AppCompanyReportsGeneralLedgerRoute: typeof AppCompanyReportsGeneralLedgerRoute
+  AppCompanyReportsIncomeStatementRoute: typeof AppCompanyReportsIncomeStatementRoute
+  AppCompanyReportsJournalRoute: typeof AppCompanyReportsJournalRoute
+  AppCompanyReportsLinesRoute: typeof AppCompanyReportsLinesRoute
+  AppCompanyReportsProfitabilityRoute: typeof AppCompanyReportsProfitabilityRoute
+  AppCompanyReportsRevenueScheduleRoute: typeof AppCompanyReportsRevenueScheduleRoute
+  AppCompanyReportsTrialBalanceRoute: typeof AppCompanyReportsTrialBalanceRoute
   AppCompanyRevenueIdRoute: typeof AppCompanyRevenueIdRoute
   AppCompanySettingsApiClientsRoute: typeof AppCompanySettingsApiClientsRoute
   AppCompanySettingsAuditRoute: typeof AppCompanySettingsAuditRoute
@@ -918,9 +1165,12 @@ interface AppCompanyRouteChildren {
   AppCompanyRatesIndexRoute: typeof AppCompanyRatesIndexRoute
   AppCompanyReceivablesIndexRoute: typeof AppCompanyReceivablesIndexRoute
   AppCompanyReconciliationIndexRoute: typeof AppCompanyReconciliationIndexRoute
+  AppCompanyReportsIndexRoute: typeof AppCompanyReportsIndexRoute
   AppCompanyRevenueIndexRoute: typeof AppCompanyRevenueIndexRoute
   AppCompanyAccountsIdLinesRoute: typeof AppCompanyAccountsIdLinesRoute
   AppCompanyReceivablesClientsValueIdRoute: typeof AppCompanyReceivablesClientsValueIdRoute
+  AppCompanyReportsAccountsIdRoute: typeof AppCompanyReportsAccountsIdRoute
+  AppCompanyReportsJournalBookPrintsRoute: typeof AppCompanyReportsJournalBookPrintsRoute
 }
 
 const AppCompanyRouteChildren: AppCompanyRouteChildren = {
@@ -938,6 +1188,16 @@ const AppCompanyRouteChildren: AppCompanyRouteChildren = {
   AppCompanyPeriodsPeriodRoute: AppCompanyPeriodsPeriodRoute,
   AppCompanyRatesCalendarRoute: AppCompanyRatesCalendarRoute,
   AppCompanyReconciliationDateRoute: AppCompanyReconciliationDateRoute,
+  AppCompanyReportsBalanceSheetRoute: AppCompanyReportsBalanceSheetRoute,
+  AppCompanyReportsContractPositionRoute:
+    AppCompanyReportsContractPositionRoute,
+  AppCompanyReportsGeneralLedgerRoute: AppCompanyReportsGeneralLedgerRoute,
+  AppCompanyReportsIncomeStatementRoute: AppCompanyReportsIncomeStatementRoute,
+  AppCompanyReportsJournalRoute: AppCompanyReportsJournalRoute,
+  AppCompanyReportsLinesRoute: AppCompanyReportsLinesRoute,
+  AppCompanyReportsProfitabilityRoute: AppCompanyReportsProfitabilityRoute,
+  AppCompanyReportsRevenueScheduleRoute: AppCompanyReportsRevenueScheduleRoute,
+  AppCompanyReportsTrialBalanceRoute: AppCompanyReportsTrialBalanceRoute,
   AppCompanyRevenueIdRoute: AppCompanyRevenueIdRoute,
   AppCompanySettingsApiClientsRoute: AppCompanySettingsApiClientsRoute,
   AppCompanySettingsAuditRoute: AppCompanySettingsAuditRoute,
@@ -953,10 +1213,14 @@ const AppCompanyRouteChildren: AppCompanyRouteChildren = {
   AppCompanyRatesIndexRoute: AppCompanyRatesIndexRoute,
   AppCompanyReceivablesIndexRoute: AppCompanyReceivablesIndexRoute,
   AppCompanyReconciliationIndexRoute: AppCompanyReconciliationIndexRoute,
+  AppCompanyReportsIndexRoute: AppCompanyReportsIndexRoute,
   AppCompanyRevenueIndexRoute: AppCompanyRevenueIndexRoute,
   AppCompanyAccountsIdLinesRoute: AppCompanyAccountsIdLinesRoute,
   AppCompanyReceivablesClientsValueIdRoute:
     AppCompanyReceivablesClientsValueIdRoute,
+  AppCompanyReportsAccountsIdRoute: AppCompanyReportsAccountsIdRoute,
+  AppCompanyReportsJournalBookPrintsRoute:
+    AppCompanyReportsJournalBookPrintsRoute,
 }
 
 const AppCompanyRouteWithChildren = AppCompanyRoute._addFileChildren(

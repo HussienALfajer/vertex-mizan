@@ -195,10 +195,14 @@ function Failed({ error, retry }: { error: unknown; retry: () => void }) {
 }
 
 function Schedules() {
+  const { contract } = route.useSearch();
   const { companyId } = useCompany();
   const catalog = useDimensionCatalog(companyId);
   const currencies = useLedgerCurrencies(companyId);
-  const [filters, setFilters] = useState<Filters>(noFilters);
+  // A contract named in the address (the contract position's link, S09) starts filtered to it.
+  const [filters, setFilters] = useState<Filters>(
+    contract ? { ...noFilters, contract } : noFilters,
+  );
   const [ledger, setLedger] = useState<Ledger>('book');
   const list = useInfiniteQuery(revenueSchedulesQuery(companyId, queryOf(filters)));
   const rows = list.data?.pages.flatMap((page) => page.schedules) ?? [];

@@ -35,18 +35,13 @@ import {
   Skeleton,
   SwitchField,
 } from '@vertex-mizan/ui';
-import {
-  DownloadIcon,
-  EllipsisIcon,
-  InfoIcon,
-  KeyRoundIcon,
-  LayoutTemplateIcon,
-} from 'lucide-react';
+import { EllipsisIcon, InfoIcon, KeyRoundIcon, LayoutTemplateIcon } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { FormError } from '../../components/form-error';
 import { ReasonDialog } from '../../components/reason-dialog';
-import { api, download, listOf } from '../../lib/api';
+import { api, listOf } from '../../lib/api';
 import { can, useCompany } from '../../lib/session';
+import { ReportExport } from '../reports/report-parts';
 import { AccountSheet, type AccountSheetMode } from './account-sheet';
 import { accountsQuery, templatesQuery } from './chart-queries';
 
@@ -138,9 +133,6 @@ export function ChartPage() {
       api('POST', `/accounts/${account.id}/unblock`, { company: companyId, schema: accountSchema }),
     onSuccess: refresh,
   });
-  const exportFile = useMutation({
-    mutationFn: () => download('/chart/export?format=xlsx', { company: companyId }),
-  });
 
   const nodes = useMemo(
     () =>
@@ -188,21 +180,17 @@ export function ChartPage() {
               <KeyRoundIcon aria-hidden="true" />
               {t.roleSettings.nav}
             </Button>
-            <Button
-              variant="outline"
-              loading={exportFile.isPending}
-              onClick={() => exportFile.mutate()}
-            >
-              <DownloadIcon aria-hidden="true" />
-              {t.exportExcel}
-            </Button>
+            <ReportExport
+              excelPath="/chart/export?format=xlsx"
+              pdf={{ report: 'chart', params: {} }}
+            />
           </div>
         }
       />
       {!can(me, 'accounts.manage') && (
         <Callout tone="info" icon={<InfoIcon />} title={t.readOnly} />
       )}
-      <FormError error={exportFile.error ?? unblock.error} />
+      <FormError error={unblock.error} />
       {accounts.isPending ? (
         <Loading />
       ) : accounts.isError ? (

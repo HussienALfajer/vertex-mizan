@@ -71,7 +71,6 @@ export const openItems = {
     allAccounts: 'حسابات الذمم التجارية',
     client: 'العميل',
     caption: 'أعمار الذمم حتى',
-    exportExcel: 'تصدير إلى Excel',
     clientFunds: 'أمانات العملاء',
     emptyTitle: 'لا بنود مفتوحة في هذا التاريخ',
     emptyDescription:
@@ -114,7 +113,6 @@ export const openItems = {
     order: 'نهاية الفترة قبل بدايتها.',
     currency: 'عملة البند',
     anyCurrency: 'كل العملات',
-    exportExcel: 'تصدير إلى Excel',
     newReceipt: 'سند قبض جديد',
     label: 'حركات كشف الحساب',
     date: 'التاريخ',

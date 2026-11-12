@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { getRouteApi, Link } from '@tanstack/react-router';
 import {
   type ClientStatement,
@@ -28,13 +28,15 @@ import {
   TableHeader,
   TableRow,
 } from '@vertex-mizan/ui';
-import { DownloadIcon, FileQuestionIcon, PlusIcon } from 'lucide-react';
+import { FileQuestionIcon, PlusIcon } from 'lucide-react';
 import { useState } from 'react';
 import { FormError } from '../../components/form-error';
-import { download, hasCode } from '../../lib/api';
+import { hasCode } from '../../lib/api';
 import { formatDay } from '../../lib/format';
 import { can, useCompany } from '../../lib/session';
 import { EntryNumberText, useFiscalYearStartMonth } from '../entries/entry-parts';
+import { ReportExport } from '../reports/report-parts';
+import { paramsOf } from '../reports/reports-queries';
 import {
   AdjustedBadge,
   ClientName,
@@ -75,10 +77,6 @@ export function ClientStatementPage() {
     ...clientStatementQuery(companyId, valueId, query),
     enabled: isDateRangeOrdered(range),
   });
-  const exportFile = useMutation({
-    mutationFn: () =>
-      download(`/clients/${valueId}/statement/export${searchOf(query)}`, { company: companyId }),
-  });
   const data = statement.data;
 
   if (hasCode(statement.error, 'NOT_FOUND') || hasCode(statement.error, 'VALIDATION_FAILED')) {
@@ -112,19 +110,14 @@ export function ClientStatementPage() {
                 {t.newReceipt}
               </Button>
             )}
-            <Button
-              variant="outline"
-              loading={exportFile.isPending}
+            <ReportExport
               disabled={!data}
-              onClick={() => exportFile.mutate()}
-            >
-              <DownloadIcon aria-hidden="true" />
-              {t.exportExcel}
-            </Button>
+              excelPath={`/clients/${valueId}/statement/export${searchOf(query)}`}
+              pdf={{ report: 'client_statement', params: paramsOf({ ...query, client: valueId }) }}
+            />
           </div>
         }
       />
-      <FormError error={exportFile.error} />
       <Card className="p-4">
         <search aria-label={t.filters} className="grid gap-4 md:grid-cols-3">
           <DateRangeField

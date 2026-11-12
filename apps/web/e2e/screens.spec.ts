@@ -38,6 +38,7 @@ import {
   novemberTwoClients,
   reconciliationReads,
 } from './reconciliation-mocks';
+import { cash, reportsReads } from './reports-mocks';
 import {
   cancelledProject,
   contractAssetItem,
@@ -644,6 +645,102 @@ for (const colorScheme of ['light', 'dark'] as const) {
           await expect(page.getByText(ar.revaluation.states.rate_missing)).toBeVisible();
           await expectNoPageOverflow(page);
           await screenshot(page, testInfo, `revaluation-rate-missing-${colorScheme}-${width}`);
+        });
+      });
+
+      test.describe('report screens', () => {
+        test.use({ me: owner, api: reportsReads });
+        test.beforeEach(async ({ page }) => {
+          await page.clock.setFixedTime(today);
+        });
+
+        test('reports', async ({ page }, testInfo) => {
+          await page.goto('/reports');
+          await expect(page.getByRole('heading', { level: 1 })).toHaveText(ar.reports.index.title);
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `reports-${colorScheme}-${width}`);
+        });
+
+        test('trial balance', async ({ page }, testInfo) => {
+          await page.goto('/reports/trial-balance');
+          await expect(page.getByText(ar.reports.marks.period_open)).toBeVisible();
+          await expect(
+            page.getByText('620,000.00').filter({ visible: true }).first(),
+          ).toBeVisible();
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `trial-balance-${colorScheme}-${width}`);
+        });
+
+        test('the lines behind a figure', async ({ page }, testInfo) => {
+          await page.goto(
+            `/reports/lines?account=${cash.id}&from=2026-11-01&to=2026-11-09&side=debit`,
+          );
+          await expect(page.getByRole('table', { name: ar.reports.lines.caption })).toBeVisible();
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `report-lines-${colorScheme}-${width}`);
+        });
+
+        test('income statement', async ({ page }, testInfo) => {
+          await page.goto('/reports/income-statement');
+          await expect(
+            page.getByText(ar.reports.statements.operatingProfit).filter({ visible: true }).first(),
+          ).toBeVisible();
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `income-statement-${colorScheme}-${width}`);
+        });
+
+        test('balance sheet with a reclassification note', async ({ page }, testInfo) => {
+          await page.goto('/reports/balance-sheet');
+          await expect(
+            page.getByText(ar.reports.statements.yearResult).filter({ visible: true }).first(),
+          ).toBeVisible();
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `balance-sheet-${colorScheme}-${width}`);
+        });
+
+        test('profitability', async ({ page }, testInfo) => {
+          await page.goto('/reports/profitability?by=department');
+          await expect(
+            page.getByText(ar.reports.profitability.unassigned).filter({ visible: true }).first(),
+          ).toBeVisible();
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `profitability-${colorScheme}-${width}`);
+        });
+
+        test('contract position and release schedule', async ({ page }, testInfo) => {
+          await page.goto('/reports/contract-position');
+          await expect(
+            page.getByText(ar.reports.totals.withoutContract).filter({ visible: true }).first(),
+          ).toBeVisible();
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `contract-position-${colorScheme}-${width}`);
+          await page.goto('/reports/revenue-schedule');
+          await expect(
+            page.getByText(ar.reports.columns.atDone).filter({ visible: true }).first(),
+          ).toBeVisible();
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `revenue-schedule-${colorScheme}-${width}`);
+        });
+
+        test('journal and its print', async ({ page }, testInfo) => {
+          await page.goto('/reports/journal');
+          await expect(page.getByText('PAY-0007').first()).toBeVisible();
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `journal-${colorScheme}-${width}`);
+          await page.goto('/reports/journal?print=true');
+          await expect(
+            page.getByRole('dialog', { name: ar.reports.journalScreen.print.title }),
+          ).toBeVisible();
+          await screenshot(page, testInfo, `journal-print-${colorScheme}-${width}`, {
+            fullPage: false,
+          });
+        });
+
+        test('print register', async ({ page }, testInfo) => {
+          await page.goto('/reports/journal-book/prints');
+          await expect(page.getByText(ar.reports.prints.superseded, { exact: true })).toBeVisible();
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `prints-${colorScheme}-${width}`);
         });
       });
 

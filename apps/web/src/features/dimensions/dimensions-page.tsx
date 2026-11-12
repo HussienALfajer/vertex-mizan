@@ -51,13 +51,15 @@ import {
   TabsList,
   TabsTrigger,
 } from '@vertex-mizan/ui';
-import { EllipsisIcon, InfoIcon, LinkIcon, PlusIcon, TagsIcon } from 'lucide-react';
+import { EllipsisIcon, HistoryIcon, InfoIcon, LinkIcon, PlusIcon, TagsIcon } from 'lucide-react';
 import { useDeferredValue, useMemo, useState } from 'react';
 import { ConfirmDialog } from '../../components/confirm-dialog';
 import { FormError, FormErrorSummary } from '../../components/form-error';
 import { api } from '../../lib/api';
 import { can, useCompany } from '../../lib/session';
 import { dimensionTypesQuery, dimensionValuesQuery } from './dimension-queries';
+
+import { ServiceDepartmentsDialog } from './service-departments';
 
 const t = ar.dimensions;
 
@@ -215,9 +217,12 @@ function TypePanel({
   const parentType = types.find((candidate) => candidate.id === type.parentTypeId);
   const [valueDialog, setValueDialog] = useState<ValueDialog | null>(null);
   const [linking, setLinking] = useState<DimensionValue | null>(null);
+  const [departmentsOf, setDepartmentsOf] = useState<DimensionValue | null>(null);
   const [confirm, setConfirm] = useState<Confirm | null>(null);
   const rows = values.data?.pages.flatMap((page) => page.values) ?? [];
   const contract = isContractType(type);
+  // A service's dated department (S09 rule 32): read by every reader, set by `dimensions.manage`.
+  const service = type.builtin && type.code === 'service';
   const live = manage && type.archivedAt === null;
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['dimensions', companyId] });
 
@@ -328,6 +333,16 @@ function TypePanel({
                     )}
                   </TableCell>
                   <TableCell className="text-end">
+                    {service && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label={`${t.departments.open}: ${value.name}`}
+                        onClick={() => setDepartmentsOf(value)}
+                      >
+                        <HistoryIcon />
+                      </Button>
+                    )}
                     {live && (
                       <ValueActions
                         value={value}
@@ -363,6 +378,14 @@ function TypePanel({
         />
       )}
       {linking && <LinkDialog key={linking.id} value={linking} onClose={() => setLinking(null)} />}
+      {departmentsOf && (
+        <ServiceDepartmentsDialog
+          key={departmentsOf.id}
+          service={departmentsOf}
+          manage={live}
+          onClose={() => setDepartmentsOf(null)}
+        />
+      )}
       <ConfirmDialog
         open={confirm !== null}
         onOpenChange={(open) => !open && setConfirm(null)}
