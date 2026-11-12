@@ -436,26 +436,22 @@ export async function reconciliationCheck(
 }
 
 /**
- * The days on or after a start date that are `missing` or `differences`, the latest first, up to
- * `limit`, from `from` to the day before `today` (rule 16, the daily email).
+ * The days on or after a client's start date that are `missing` or `differences` for the company,
+ * the latest first, up to `limit`, until the day before `today` (rule 16, the daily email); each
+ * marked when its month is closed (rule 15).
  */
 export async function uncleanReconciliationDays(
   tx: Transaction,
-  input: {
-    readonly from: string;
-    readonly today: string;
-    readonly now: string;
-    readonly limit: number;
-  },
+  input: { readonly today: string; readonly now: string; readonly limit: number },
 ): Promise<
   { date: string; state: 'missing' | 'differences'; gaps: number; afterClose: boolean }[]
 > {
   const clients = await readReconciledClients(tx);
-  if (clients.length === 0) return [];
+  const from = clients.map((client) => client.reconcileFrom).sort()[0];
   const yesterday = previousDay(input.today);
-  if (yesterday < input.from) return [];
+  if (from === undefined || yesterday < from) return [];
   const closed = await readClosedPeriods(tx);
-  const days = await statesOver(tx, input.from, yesterday, input.now);
+  const days = await statesOver(tx, from, yesterday, input.now);
   return days
     .filter((day) => day.state === 'missing' || day.state === 'differences')
     .reverse()

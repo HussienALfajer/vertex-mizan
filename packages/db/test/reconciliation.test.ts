@@ -473,7 +473,6 @@ describe('the comparison (S08 rules 7–11)', () => {
     expect(month.matchedStreak).toBe(0);
     const unclean = await inCompany(companyId, (tx) =>
       uncleanReconciliationDays(tx, {
-        from: '2026-10-07',
         today: '2026-11-06',
         now: '2026-11-06T08:00',
         limit: 31,

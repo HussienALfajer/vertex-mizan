@@ -100,6 +100,8 @@ export const emailDataSchemas = {
       .max(31)
       .default([]),
     link: linkSchema,
+    /** S08: the link to `/reconciliation`, with the reconciliation section. */
+    reconciliationLink: linkSchema.optional(),
   }),
 } as const satisfies Record<EmailKind, z.ZodType>;
 

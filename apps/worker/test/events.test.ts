@@ -6,6 +6,7 @@ import {
 } from '@vertex-mizan/contracts';
 import {
   type AuditActor,
+  apiClients,
   createCompanyBooks,
   createDatabase,
   type Database,
@@ -344,6 +345,43 @@ describe('events.held-digest', () => {
     const rendered = renderEmail('held_digest', data, 'owner@example.test');
     expect(rendered.text).toContain('أشهر منتهية غير مقفلة:');
     expect(rendered.text).toContain(`- ${month}: بنود فاشلة في قائمة التحقق قبل الإقفال:`);
+  });
+
+  it('lists the reconciliation days not clean, even with nothing held (S08 rule 16)', async () => {
+    const companyId = await company();
+    const day = '2099-03-04';
+    await db.insert(apiClients).values({
+      scopeCompanyId: companyId,
+      name: 'Vertex Hub',
+      system: 'hub',
+      scopes: ['events:write', 'reconciliation:write'],
+      reconcileFrom: '2099-03-01',
+      createdByUserId: people.owner,
+    });
+    const job = new EventsHeldDigestJob(jobs, db, config);
+    // At 07:00 the 3rd's report is still awaited; at 08:00 it is missing too.
+    await job.run(day, `${day}T07:00`);
+    await db.delete(emailOutbox).where(like(emailOutbox.dedupeKey, `held_digest:${companyId}:%`));
+    await job.run(day, `${day}T08:00`);
+    const [queued] = await db
+      .select({ data: emailOutbox.data })
+      .from(emailOutbox)
+      .where(like(emailOutbox.dedupeKey, `held_digest:${companyId}:${day}:%`));
+    const data = emailDataSchemas.held_digest.parse(queued?.data);
+    expect(data).toMatchObject({
+      held: [],
+      reconciliation: [
+        { date: '2099-03-03', state: 'missing', gaps: 0, afterClose: false },
+        { date: '2099-03-02', state: 'missing', gaps: 0, afterClose: false },
+        { date: '2099-03-01', state: 'missing', gaps: 0, afterClose: false },
+      ],
+      reconciliationLink: 'https://mizan.example.test/reconciliation',
+    });
+    const rendered = renderEmail('held_digest', data, 'owner@example.test');
+    expect(rendered.text).toContain('أيام المطابقة غير النظيفة:');
+    expect(rendered.text).toContain('- 2099-03-03: لم يصل تقرير Hub');
+    expect(rendered.text).toContain('https://mizan.example.test/reconciliation');
+    expect(rendered.text).not.toContain('صندوق الوارد');
   });
 });
 
