@@ -15,7 +15,8 @@ Scenarios are written through `/posting-rule`, before the rule's code.
 - `periods`;
 - `opening`;
 - `manual`;
-- `inbox`.
+- `inbox`;
+- `reports` (S09: what the reports present, read after the steps).
 
 ## File format
 
@@ -53,6 +54,9 @@ company:
     - { code: "111007", name: "الصندوق — ليرة تركية", name_latin: "Cash on hand — TRY",
         currency: TRY, monetary: true, statement_line: bs.cash }
   closed_periods: []                # e.g. [2026-10]
+  contracts:                        # contract values the case's manual lines name (optional; S09):
+    - { code: P1, kind: project, client: C1 }  # a contract needs its kind and client; an event's
+                                    #   contract is made by the event
   bulletin_days_off: [5, 6]         # ISO weekdays without a bulletin; default Friday and Saturday
   bulletin_holidays: []             # e.g. [2026-11-08]: dates the accountant marked (S02 rules 16–17)
 rates:                              # company rate table rows; source: manual unless stated (hub, import)
@@ -110,6 +114,10 @@ steps:                              # in order; a Hub event, a manual entry, a r
   - recognise: 1                    # recognise a SERVICE_PERIOD_CLOSED event's closed elapsed
     reason: "..."                   #   months in the first open period after them, each at its
                                     #   own month end's rates (S06 rule 16)
+  - service_department: { service: S3, department: design, effective_from: 2026-12-01 }
+    reason: "..."                   # the accountant's dated department of a manual service (S09
+                                    #   rule 34); refused PERIOD_CLOSED in a closed month and
+                                    #   DIMENSION_FROM_HUB for a service an event made
   - split: { step: 2, revenue: 10000 } # split a cancelled project's remainder held NEEDS_DECISION
     reason: "..."                   #   (cancelled_project_remainder, invoiced_after_cancellation):
                                     #   revenue, the transaction amount to revenue in the project's
@@ -133,6 +141,16 @@ expect:
                                     #   a code with an optional value ("period:2026-10", the month a
                                     #   PERIOD_ORDER names), or several codes comma-separated and quoted
                                     #   (a failed checklist's items in its order)
+  reports:                          # optional (S09): report figures read after the steps; see "Reports"
+    - report: balance_sheet         # an id of S09 rule 37 (REPORTS)
+      params: { as_of: 2026-12-31, ledger: book }
+      marks: [period_open]          # S09 rule 4, the exact set: period_open, before_revaluation
+      lines:
+        - { line: bs.contract_liabilities, amount: 70000000,
+            parts: [{ account: "212001", dims: { client: C1, contract: P1 }, amount: 120000000 },
+                    { account: "113001", dims: { client: C1, contract: P1 }, amount: -50000000 }] }
+      year_result: 140000000
+      totals: { assets: 227000000, liabilities: 87000000, equity: 140000000, liabilities_and_equity: 227000000 }
 ```
 
 Writing the YAML:
@@ -147,7 +165,20 @@ Writing the YAML:
 - An action (`retry`, `move`, `resolve`, `dismiss`, `recognise`, `split`) names an earlier `event` step, and `resolve` an expected entry. It may state its `outcome` like any step: a retry that leaves the event held, or an action the inbox refuses (`EVENT_NOT_HELD`, `EVENT_ACTION_NOT_ALLOWED`, `ENTRY_ALREADY_LINKED`, and `VALIDATION_FAILED` for a split outside zero to the remainder). The events an action frees are retried as S05 rule 10 says, and their entries are expected where they post.
 - A `discard` names an earlier `draft` step. A `close` refused `PERIOD_ORDER` names the earliest open month as its detail (`period:2026-10`), a `reopen` refused `PERIOD_ORDER` the latest closed month.
 - A `revalue: parallel` step needs a company with a parallel ledger. A `revalue` step for a month already revalued posts the adjusting revaluation: only the differences still to post, with its own reversal (S07 rule 15). A `revalue` step that finds every difference zero is done and posts nothing; a missing closing rate is its `refused` outcome `RATE_MISSING`.
+- A **service's department** travels on Hub's service reference as `service: { code: S1, department: design }` (S09 rule 33); `service: S1` sends none. A value an event names (a service, a department, a contract) is made by the event, so the setup leaves it out, and a later step names it by its code.
 - An unknown or misspelt key is an error.
+
+## Reports
+
+A case's `reports` are read after its steps, through the reports' readers in the case's company, with the case's clock as the time of reading (S09). Each names its `report` (S09 rule 37) and its `params`, the report's query in snake case (`from`, `to`, `as_of`, `ledger`, `level`, `non_zero`, `by`, `account`, `fiscal_year`, `official`; months as `YYYY-MM` for the journal book). A comparative is read only when `params` names it (`compare_from` and `compare_to`, or `compare_as_of`), and its figures are then stated with a `compare` prefix (`compare`, `compare_marks`, `compare_subtotals`, `compare_totals`, `compare_year_result`). Amounts are minor units of the report's ledger currency. What each report states:
+- **`trial_balance`:** `rows`, the exact set with `non_zero` on, each `{ account, opening, debits, credits, closing }` with the opening and closing balances signed (positive debit, negative credit) and the period's debits and credits as magnitudes; `totals` `{ opening_debit, opening_credit, debits, credits, closing_debit, closing_credit }`, each pair equal.
+- **`account_statement`:** `opening`, `lines` `{ entry, date, amount, balance, currency, transaction_amount, transaction_balance }` in report order (`entry` is the case's entry in posting order, `balance` and `transaction_balance` running), `closing`, and `currencies` `{ currency, opening, closing }` in transaction amounts.
+- **`income_statement`:** `lines` `{ line, amount }`, income positive and expenses negative; a line not listed is zero or hidden. `subtotals` `{ operating_profit, profit_before_financing_and_income_taxes, profit_before_tax, profit }`: a subtotal not listed is not shown.
+- **`balance_sheet`:** `lines` `{ line, amount, parts, unclosed_years? }`, each amount as presented (positive on its own side); `parts` are the balances the line is made of, per account and, where rules 17 and 18 read them, per contract or client, signed as they add to the line, with `reclassified: true` on a balance rule 18 moved there; `unclosed_years` is the result of earlier unclosed fiscal years in `bs.retained_earnings` (rule 16). A line not listed is zero or hidden. `year_result` and `totals` `{ assets, liabilities, equity, liabilities_and_equity }`, equity including the year's result.
+- **`profitability`:** `rows` `{ value, revenue, direct_costs, contribution, margin }`, the exact set, `value` a dimension value's code or `unassigned` ("غير موزع"), revenue and direct costs as magnitudes, `margin` a string with one decimal or `null` ("—"); `totals` the same without `value`.
+- **`journal_book`:** `pages` `{ page, entries, debits, credits, brought_forward: { debits, credits }, cumulative: { debits, credits } }`, the exact set, `entries` the case's entries on the page in posting order.
+
+The runner compares every stated figure exactly; a report or field the case does not state is not compared.
 
 ## The runner's contract
 
@@ -162,6 +193,7 @@ The runner is `packages/scenarios` (`pnpm test:scenarios`, in CI).
   - the stated account and open-item balances: an open item by its document and account, with its dimensions, currency and remaining amounts;
   - the outcomes: every step completes when received, except a step that states its `outcome` and the last when `expect` states one; such a step must match its status and reason exactly, and its detail when stated. A held step that a later step frees (S05 rules 10, 11) has its entry in the expected entries at the place it posts;
   - each stated correction's answer: exactly the entries it lists as converted at the superseded row.
+  - each stated report's figures (S09; "Reports").
 - It runs on a fresh test database through the real posting function, never through a mock. Each case has a company of its own, made with the company, chart, dimension and rate services the API uses: every dimension value the case names (`client: C1` in a manual line, an expected line, a balance or an open item) is made in the setup, by its type's code and its own code (S04).
 
 ## Examples
