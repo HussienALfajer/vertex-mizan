@@ -752,10 +752,44 @@ END
       source: `
 DECLARE
   start_month smallint;
+  first_period text;
+  earlier integer;
 BEGIN
+  PERFORM 1
+  FROM public.ledger_heads h
+  WHERE h.company_id = NEW.company_id
+  FOR UPDATE;
   IF TG_OP = 'UPDATE' THEN
-    RAISE EXCEPTION 'periods: period % changes only through the close (S07)', OLD.period
-      USING ERRCODE = 'restrict_violation';
+    IF (NEW.id, NEW.company_id, NEW.period, NEW.fiscal_year, NEW.created_at)
+        IS DISTINCT FROM (OLD.id, OLD.company_id, OLD.period, OLD.fiscal_year, OLD.created_at)
+      OR (OLD.state, NEW.state) NOT IN (('open', 'closed'), ('closed', 'reopened'),
+        ('reopened', 'closed')) THEN
+      RAISE EXCEPTION 'periods: period % changes only its state, from % to closed or reopened',
+        OLD.period, OLD.state
+        USING ERRCODE = 'restrict_violation';
+    END IF;
+    IF NEW.state = 'closed' THEN
+      SELECT min(p.period), count(*) INTO first_period, earlier
+      FROM public.periods p
+      WHERE p.company_id = NEW.company_id AND p.period < NEW.period;
+      IF earlier > 0 AND (
+        earlier <> (left(NEW.period, 4)::integer * 12 + right(NEW.period, 2)::integer)
+          - (left(first_period, 4)::integer * 12 + right(first_period, 2)::integer)
+        OR EXISTS (
+          SELECT 1 FROM public.periods p
+          WHERE p.company_id = NEW.company_id AND p.period < NEW.period AND p.state <> 'closed'
+        )) THEN
+        RAISE EXCEPTION 'periods: period % closes after every earlier month', NEW.period
+          USING ERRCODE = 'restrict_violation';
+      END IF;
+    ELSIF EXISTS (
+      SELECT 1 FROM public.periods p
+      WHERE p.company_id = NEW.company_id AND p.period > NEW.period AND p.state = 'closed'
+    ) THEN
+      RAISE EXCEPTION 'periods: period % reopens only as the latest closed month', NEW.period
+        USING ERRCODE = 'restrict_violation';
+    END IF;
+    RETURN NEW;
   END IF;
   SELECT s.fiscal_year_start_month INTO start_month
   FROM public.company_settings s
@@ -764,6 +798,17 @@ BEGIN
     OR NEW.fiscal_year <> left(NEW.period, 4)::integer
       - (CASE WHEN right(NEW.period, 2)::integer >= start_month THEN 0 ELSE 1 END) THEN
     RAISE EXCEPTION 'periods: period % is made open, in the fiscal year of its month', NEW.period
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM public.periods p
+    WHERE p.company_id = NEW.company_id AND p.state = 'closed'
+  ) AND NOT EXISTS (
+    SELECT 1 FROM public.periods p
+    WHERE p.company_id = NEW.company_id AND p.period < NEW.period
+  ) THEN
+    RAISE EXCEPTION 'periods: period % is before the first period while a month is closed',
+      NEW.period
       USING ERRCODE = 'restrict_violation';
   END IF;
   RETURN NEW;
@@ -823,7 +868,7 @@ BEGIN
   FROM public.periods p
   WHERE p.company_id = NEW.company_id AND p.period = to_char(NEW.entry_date, 'YYYY-MM')
   FOR SHARE;
-  IF NOT FOUND OR period_state <> 'open' THEN
+  IF NOT FOUND OR period_state NOT IN ('open', 'reopened') THEN
     RAISE EXCEPTION 'journal_entries: an entry dated % is in an open period', NEW.entry_date
       USING ERRCODE = 'restrict_violation';
   END IF;
@@ -2232,6 +2277,94 @@ BEGIN
 END
 `,
     },
+    {
+      name: 'period_event_rules',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+DECLARE
+  period_state text;
+  head_sequence bigint;
+BEGIN
+  SELECT h.entry_count INTO head_sequence
+  FROM public.ledger_heads h
+  WHERE h.company_id = NEW.company_id
+  FOR UPDATE;
+  SELECT p.state INTO period_state
+  FROM public.periods p
+  WHERE p.company_id = NEW.company_id AND p.id = NEW.period_id;
+  IF period_state IS NULL OR head_sequence IS NULL
+    OR NEW.head_sequence IS DISTINCT FROM head_sequence
+    OR NEW.created_at IS DISTINCT FROM now() THEN
+    RAISE EXCEPTION 'period_events: an event of a period at its transaction time and head'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF (NEW.kind = 'closed' AND period_state NOT IN ('open', 'reopened'))
+    OR (NEW.kind = 'reopened' AND period_state <> 'closed') THEN
+    RAISE EXCEPTION 'period_events: a % event from a period that is %', NEW.kind, period_state
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM public.period_events e
+    WHERE e.company_id = NEW.company_id AND e.period_id = NEW.period_id
+      AND e.created_at = now()
+  ) THEN
+    RAISE EXCEPTION 'period_events: one event of a period per transaction'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  RETURN NEW;
+END
+`,
+    },
+    {
+      name: 'period_history_agrees',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+DECLARE
+  target uuid;
+  period_state text;
+  latest text;
+BEGIN
+  IF TG_TABLE_NAME = 'periods' THEN
+    target := NEW.id;
+  ELSE
+    target := NEW.period_id;
+  END IF;
+  SELECT p.state INTO period_state
+  FROM public.periods p
+  WHERE p.company_id = NEW.company_id AND p.id = target;
+  SELECT e.kind INTO latest
+  FROM public.period_events e
+  WHERE e.company_id = NEW.company_id AND e.period_id = target
+  ORDER BY e.created_at DESC
+  LIMIT 1;
+  IF period_state IS NULL
+    OR (latest IS NULL AND period_state <> 'open')
+    OR (latest IS NOT NULL AND latest IS DISTINCT FROM period_state) THEN
+    RAISE EXCEPTION 'periods: a period''s state is its latest event''s'
+      USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NULL;
+END
+`,
+    },
   ],
   triggers: [
     // The settings lock (S01 rule 11): before every update of a company's ledger settings.
@@ -3103,6 +3236,41 @@ END
       table: 'journal_entries',
       name: 'journal_entries_revaluation_recorded',
       function: 'journal_entry_revaluation_recorded',
+      deferred: true,
+      on: ['INSERT'],
+    },
+    {
+      table: 'period_events',
+      name: 'period_events_refuse_change',
+      function: 'refuse_change',
+      deferred: false,
+      on: ['UPDATE', 'DELETE'],
+    },
+    {
+      table: 'period_events',
+      name: 'period_events_refuse_truncate',
+      function: 'refuse_change',
+      deferred: false,
+      on: ['TRUNCATE'],
+    },
+    {
+      table: 'period_events',
+      name: 'period_event_rules',
+      function: 'period_event_rules',
+      deferred: false,
+      on: ['INSERT'],
+    },
+    {
+      table: 'periods',
+      name: 'periods_history_agrees',
+      function: 'period_history_agrees',
+      deferred: true,
+      on: ['UPDATE'],
+    },
+    {
+      table: 'period_events',
+      name: 'period_events_history_agrees',
+      function: 'period_history_agrees',
       deferred: true,
       on: ['INSERT'],
     },

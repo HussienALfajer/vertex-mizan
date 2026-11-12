@@ -118,6 +118,9 @@ describe('error codes', () => {
       // S07, month-end revaluation, periods and close
       ['PERIOD_NOT_ENDED', 409],
       ['REVALUATION_CHANGED', 409],
+      ['PERIOD_ORDER', 409],
+      ['PERIOD_NOT_CLOSED', 409],
+      ['CHECKLIST_FAILED', 409],
     ]);
   });
 

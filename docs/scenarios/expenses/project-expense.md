@@ -32,8 +32,8 @@ Shapes:
 - **`third`** cannot occur: Hub records expenses only in SYP and USD and its events carry only `syp_per_usd` (ADR 0006), so an expense in another currency is refused by the contract (S05 rule 2) and stores nothing.
 
 The cases leave out what other scenarios or later specs own:
-- the accountant's manual entry that clears `211002` once the source of payment is known (S05 "Accounting treatment"; a manual entry of S03), and the month-end revaluation of a foreign-currency balance left on `211002`, a monetary liability (F08, S07);
-- an expense, change or archive dated in a closed period, held `PERIOD_CLOSED` (the scenario setup closes periods with S07; `inbox/holds-and-actions.md` posts one in the next open period);
+- the accountant's manual entry that clears `211002` once the source of payment is known (S05 "Accounting treatment"; a manual entry of S03), and the month-end revaluation of a foreign-currency balance left on `211002`, a monetary liability (F08, `currency/month-end-revaluation.md`);
+- an expense, change or archive dated in a closed period, held `PERIOD_CLOSED` (`periods/close-and-reopen.md`; `inbox/post-in-next-open-period.md` posts one in the next open period);
 - an expense dated on a publication day whose bulletin is not yet recorded, held `RATE_MISSING`, and an event on the same expense waiting behind it (`ad-funds/running-balance.md` shows both);
 - a change or an archive received before the expense it names, held `UNKNOWN_REFERENCE` like the payments of `receivables/hub-payment.md`;
 - a replayed event (the same idempotency key), which posts nothing new: a property test of S05, since a step carries no event ID;

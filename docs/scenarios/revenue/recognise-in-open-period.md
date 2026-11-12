@@ -1,8 +1,8 @@
 # Recognising a closed month's part in the first open period
 
-Status: Proposed
+Status: Approved (owner, 2026-11-10)
 
-This case is the seventh of `revenue/over-time-release.md`, moved unchanged by S06's feature slice (PR 1). The owner approved its expected entries and outcome on 2026-11-10, with the elapsed part of a closed month measured at the rates of its own month's last day. S06 brought its executors (the posting rule of `invoice.issued` with over-time lines, the hold `SERVICE_PERIOD_CLOSED`, the action `recognise` and the release job `revenue_release_month`; S06 rules 7, 16 and 18); its setup closes October, which the book does with S07's close (`closed_periods`), so it stays `Proposed` until S07, then becomes `Approved (owner, 2026-11-10)`. `packages/db/test/recognition.test.ts` runs the same case with the month closed by hand.
+This case is the seventh of `revenue/over-time-release.md`, moved unchanged by S06's feature slice (PR 1). The owner approved its expected entries and outcome on 2026-11-10, with the elapsed part of a closed month measured at the rates of its own month's last day. S06 brought its executors (the posting rule of `invoice.issued` with over-time lines, the hold `SERVICE_PERIOD_CLOSED`, the action `recognise` and the release job `revenue_release_month`; S06 rules 7, 16 and 18); its setup closes October, which the book does with S07's close (`closed_periods`, through the close service since S07's second PR), so S07's feature slice switched it to `Approved (owner, 2026-11-10)`, with no expected value changed. `packages/db/test/recognition.test.ts` runs the same case with the month closed by hand.
 
 The second case follows the owner's answer of 2026-11-11 to the reviews of S06's feature slice (PR 1): an invoice moved out of a closed month posts its release of that month on the first day of the first open period after it, at its carried amounts. S06's feature slice brought its executors (the release in the invoice's own transaction, S05's `move` and the job); the owner approved its numbers the same day; it waits for S07's close too, and `packages/db/test/recognition.test.ts` runs it with the month closed by hand.
 

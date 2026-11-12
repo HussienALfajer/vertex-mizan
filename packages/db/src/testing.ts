@@ -1,8 +1,15 @@
 import { randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import { monthsOf } from '@vertex-mizan/contracts';
+import { asc } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import pg from 'pg';
+import { v7 as uuidv7 } from 'uuid';
+import type { Database } from './client.js';
+import { withCompany } from './company-context.js';
+import { writePeriodTransition } from './posting/post.js';
+import { ledgerHeads, periods } from './schema/ledger.js';
 
 /** A migrated throwaway database: its name, the URLs of the four roles for it, and how to drop it. */
 export type TestDatabase = {
@@ -111,4 +118,45 @@ export async function createTestDatabase(): Promise<TestDatabase> {
     queueUrl: queue.href,
     drop,
   };
+}
+
+/**
+ * Closes a month by hand for a test's setup (S07): the posting function's transition as the app
+ * role, which the period guards check (in order, with its event), without the close service's
+ * checklist, which the test is not about. `packages/db/test/periods.test.ts` tests the
+ * close itself. For this package's and the apps' tests only.
+ */
+export async function closeMonthByHand(
+  app: Database,
+  companyId: string,
+  period: string,
+  /** Holds the close's transaction open after its writes, until `until` settles. */
+  hold?: { readonly written: () => void; readonly until: Promise<void> },
+) {
+  await withCompany(app, companyId, async (tx) => {
+    // The ledger head first (ADR 0008's lock order), as the close service takes it.
+    await tx.select({ id: ledgerHeads.id }).from(ledgerHeads).for('update');
+    // Months close in order (S07 rule 2): every month from the first period closes first.
+    const rows = await tx
+      .select({ period: periods.period, state: periods.state })
+      .from(periods)
+      .orderBy(asc(periods.period));
+    const first =
+      rows[0]?.period !== undefined && rows[0].period < period ? rows[0].period : period;
+    for (const month of monthsOf({ from: first, to: period })) {
+      if (rows.some((row) => row.period === month && row.state === 'closed')) continue;
+      await writePeriodTransition(tx, {
+        companyId,
+        period: month,
+        kind: 'closed',
+        reason: 'إقفال للاختبار',
+        userId: uuidv7(),
+        checklist: [],
+      });
+    }
+    if (hold !== undefined) {
+      hold.written();
+      await hold.until;
+    }
+  });
 }

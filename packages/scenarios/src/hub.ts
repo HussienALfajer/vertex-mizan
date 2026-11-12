@@ -78,11 +78,15 @@ const asCode = (value: unknown, field: string): string => {
   return value;
 };
 
+/** The Hub ID of a case's value; a department's is its fixed code (Hub `departments.ts`). */
+export function hubValueId(companyId: string, type: string, code: string): string {
+  return type === 'department' ? code : idOf(companyId, type, code);
+}
+
 /** Hub's value of a type, as the short form names it by code (S05 rule 2). */
 function valueRef(companyId: string, type: string, code: string) {
   return {
-    // A department's Hub ID is its fixed code (Hub `departments.ts`).
-    external_id: type === 'department' ? code : idOf(companyId, type, code),
+    external_id: hubValueId(companyId, type, code),
     code,
     name: `${type} ${code}`,
   };

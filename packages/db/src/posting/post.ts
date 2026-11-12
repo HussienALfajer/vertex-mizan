@@ -72,6 +72,7 @@ import {
   journalLines,
   ledgerHeads,
   lineConversions,
+  periodEvents,
   periods,
   postingRequests,
   revaluations,
@@ -85,6 +86,7 @@ import {
 import { exchangeRates, ratePairs } from '../schema/rates.js';
 import { ledgersOf } from '../services/companies.js';
 import { exchangeRateOf, publicationCalendar, rateSuperseded } from '../services/rates.js';
+import { isClosedPeriod, readClosedPeriods } from './periods.js';
 
 // The posting function (ADR 0005, ADR 0008, ADR 0012, S03 rules 1–3): the only writer of the
 // ledger tables. The database guards every rule again for every role; this function checks first,
@@ -1740,11 +1742,7 @@ export async function previewPosting(
   const { content } = request;
   checkDates(on, content, ledgers);
   const period = periodOf(on);
-  const [periodRow] = await tx
-    .select({ state: periods.state })
-    .from(periods)
-    .where(eq(periods.period, period));
-  if (periodRow && periodRow.state !== 'open') {
+  if (isClosedPeriod(await readClosedPeriods(tx), period)) {
     refuse('PERIOD_CLOSED', `The period ${period} is closed`, { period });
   }
   const built = await buildLines(tx, content, on, ledgers, settings.bulletinDaysOff, false);
@@ -2004,7 +2002,9 @@ async function writeEntry(
 
 /**
  * The period of an entry dated `on`, made open when missing and read `FOR SHARE`, after the head
- * (ADR 0008's lock order): its id, or `PERIOD_CLOSED`.
+ * (ADR 0008's lock order): its id, or `PERIOD_CLOSED` for a closed month and, while a month is
+ * closed, for a month before the company's first period (S07 rule 4). A reopened month posts as an
+ * open one (rule 1).
  */
 async function openPeriod(
   tx: Transaction,
@@ -2013,6 +2013,9 @@ async function openPeriod(
   fiscalYear: number,
 ): Promise<string> {
   const period = periodOf(on);
+  if (isClosedPeriod(await readClosedPeriods(tx), period)) {
+    refuse('PERIOD_CLOSED', `The period ${period} is closed`, { period });
+  }
   await tx
     .insert(periods)
     .values({ companyId, period, fiscalYear, state: 'open' })
@@ -2022,7 +2025,7 @@ async function openPeriod(
     .from(periods)
     .where(eq(periods.period, period))
     .for('share');
-  if (periodRow?.state !== 'open') {
+  if (periodRow === undefined || periodRow.state === 'closed') {
     refuse('PERIOD_CLOSED', `The period ${period} is closed`, { period });
   }
   return periodRow.id;
@@ -2288,4 +2291,57 @@ async function replay(
     hash: entry.hash,
     replayed: true,
   };
+}
+
+/**
+ * A period's close or reopen as the period service decided it (S07 rules 2, 3, 9), written by the
+ * ledger's one writer (ADR 0005 invariant 11), which writes every period row: an empty month
+ * closed gets its row first, made open in its fiscal year (rule 2); then the `period_events` row
+ * with the ledger head's sequence and, on a close, the checklist; then the state. The ledger head
+ * is locked first (ADR 0008's lock order; the service has locked it already), and the guards
+ * check the transition again. Returns the period's id.
+ */
+export async function writePeriodTransition(
+  tx: Transaction,
+  input: {
+    readonly companyId: string;
+    readonly period: string;
+    readonly kind: 'closed' | 'reopened';
+    readonly reason: string;
+    readonly userId: string;
+    readonly checklist: readonly unknown[] | null;
+  },
+): Promise<string> {
+  const { companyId, period, kind } = input;
+  const [head] = await tx
+    .select({ entryCount: ledgerHeads.entryCount })
+    .from(ledgerHeads)
+    .for('update');
+  if (!head) throw new Error('A company without its ledger head');
+  let [row] = await tx.select().from(periods).where(eq(periods.period, period)).for('update');
+  if (row === undefined && kind === 'closed') {
+    const [settings] = await tx
+      .select({ startMonth: companySettings.fiscalYearStartMonth })
+      .from(companySettings);
+    if (!settings) throw new Error('A company without its settings');
+    await tx.insert(periods).values({
+      companyId,
+      period,
+      fiscalYear: fiscalYearOf(`${period}-01`, settings.startMonth),
+      state: 'open',
+    });
+    [row] = await tx.select().from(periods).where(eq(periods.period, period)).for('update');
+  }
+  if (row === undefined) throw new Error(`No period ${period} to ${kind}`);
+  await tx.insert(periodEvents).values({
+    companyId,
+    periodId: row.id,
+    kind,
+    reason: input.reason,
+    userId: input.userId,
+    checklist: input.checklist,
+    headSequence: BigInt(head.entryCount),
+  });
+  await tx.update(periods).set({ state: kind }).where(eq(periods.id, row.id));
+  return row.id;
 }

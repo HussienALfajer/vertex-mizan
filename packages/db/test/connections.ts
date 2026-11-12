@@ -38,3 +38,5 @@ export async function refusal(work: Promise<unknown>): Promise<string> {
   }
   throw new Error('expected the database to refuse the statement');
 }
+
+export { closeMonthByHand } from '../src/testing.js';

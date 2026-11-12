@@ -1,8 +1,8 @@
 # Closing and reopening a period
 
-Status: Proposed
+Status: Approved (owner, 2026-11-12)
 
-S07 wrote these cases (S07 "Scenarios"); the owner approved their expected entries and outcomes, and the readings of the checklist items below, on 2026-11-12. The file stays `Proposed` until S07's feature slice brings the `revalue`, `close`, `reopen`, `draft` and `discard` executors, then becomes `Approved (owner, 2026-11-12)`.
+S07 wrote these cases (S07 "Scenarios"); the owner approved their expected entries and outcomes, and the readings of the checklist items below, on 2026-11-12. S07's feature slice brought the `revalue` executor (PR 1) and the `close`, `reopen`, `draft` and `discard` executors (PR 2), with no expected value changed.
 
 ## Rule
 

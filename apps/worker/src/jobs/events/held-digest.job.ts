@@ -7,6 +7,7 @@ import {
   emailOutbox,
   inboundEventStates,
   memberships,
+  readPeriods,
   type Transaction,
   users,
   withCompany,
@@ -21,7 +22,8 @@ import type { ScheduledJob } from '../../core/queue/scheduled-job.js';
 /**
  * `events.held-digest` (S05 "Jobs"; owner, 2026-11-07): daily at 08:00 in Damascus (05:00 UTC),
  * one email per company and day to its owners and accountants, only when an event is held: those
- * held in the last day and all held, by reason, with a link to the inbox. Keyed by company, day
+ * held in the last day and all held, by reason, with a link to the inbox, and (S07 "Jobs") the
+ * ended months not closed with their failing checklist items ("أشهر منتهية غير مقفلة"). Keyed by company, day
  * and person in the outbox, whose row stays once sent (`sent_at`) until the clean-up two days later,
  * so a second run that day, the job's retry included, queues nothing. The jobs role finds the companies with
  * held events; each company's counts and people are read as the app role in its context.
@@ -89,11 +91,16 @@ export class EventsHeldDigestJob implements ScheduledJob {
           isNull(users.archivedAt),
         ),
       );
+    // S07 "Jobs": each ended month not closed, with its count of failing checklist items.
+    const unclosedMonths = (await readPeriods(tx, { today: day }))
+      .filter((month) => month.ended && month.state !== 'closed')
+      .map((month) => ({ period: month.period, failingItems: month.failingItems ?? 0 }));
     const data: EmailData<'held_digest'> = emailDataSchemas.held_digest.parse({
       companyName: company.name,
       day,
       newlyHeld: held.reduce((total, row) => total + row.newly, 0),
       held: held.map((row) => ({ reason: row.reason as HoldReason, count: row.count })),
+      unclosedMonths,
       link: `${this.config.appUrl}/inbox`,
     });
     if (people.length === 0) return 0;

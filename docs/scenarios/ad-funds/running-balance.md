@@ -43,7 +43,7 @@ Shapes:
 The cases leave out what other scenarios or later specs own:
 - a manual movement on the item, such as an offset of an invoice against the funds (`receivables/manual-settlement.md`);
 - the accountant's payment of `211001` to a platform, a manual entry on a plain account (S03);
-- a wallet event dated in a closed period, held `PERIOD_CLOSED`, and the month-end revaluation of the item, added with S07's jobs;
+- a wallet event dated in a closed period, held `PERIOD_CLOSED` and posted into its month by a reopen (`periods/close-and-reopen.md`), and the month-end revaluation of the item (`currency/month-end-revaluation.md`);
 - a replayed event (the same idempotency key), which posts nothing new: a property test of S05, since a step carries no event ID;
 - a wallet entry or a spend of zero or a negative amount, and a USD wallet entry whose `usd_amount` differs from its amount: refused by the contract (422), nothing stored (S05 rule 3);
 - a company tolerance other than the default 1.00 USD: the setting is S05's (rule 9), and its cases here use the default;

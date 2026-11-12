@@ -70,13 +70,23 @@ export const emailDataSchemas = {
   }),
   /**
    * The held events of a company (S05 "Jobs"), to its owners and accountants at 08:00 in Damascus
-   * on a day with any: those held since the last digest, and all held, by reason.
+   * on a day with any: those held since the last digest, and all held, by reason; and (S07 "Jobs")
+   * each ended month not closed with its count of failing checklist items (none in a row queued
+   * before S07).
    */
   held_digest: z.object({
     companyName: z.string().min(1),
     day: z.iso.date(),
     newlyHeld: z.int().min(0),
     held: z.array(z.object({ reason: holdReasonSchema, count: z.int().min(1) })).min(1),
+    unclosedMonths: z
+      .array(
+        z.object({
+          period: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),
+          failingItems: z.int().min(0),
+        }),
+      )
+      .default([]),
     link: linkSchema,
   }),
 } as const satisfies Record<EmailKind, z.ZodType>;

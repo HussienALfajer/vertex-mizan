@@ -21,7 +21,7 @@ The account codes are the service-agency template's (S02): the SYP and USD bank 
 
 A rounding line carries its amount in one ledger only, in that ledger's currency (ADR 0007): in the SYP books a book rounding line is an SYP line with parallel 0, and a parallel rounding line a USD line with book 0. A half minor unit rounds away from zero: 306,787.5 → 306,788 and −306,787.5 → −306,788.
 
-The cases below leave out what other scenarios own: an entry in more than one currency, whose rounding is part of the realised difference (`manual/currency-purchase.md`), the reversal rules in general (`manual/reversal.md`), and posting into a closed period, added with S07.
+The cases below leave out what other scenarios own: an entry in more than one currency, whose rounding is part of the realised difference (`manual/currency-purchase.md`), the reversal rules in general (`manual/reversal.md`), and posting into a closed period (`periods/close-and-reopen.md`).
 
 ### Vertex Media: a USD entry rounded in the book ledger
 

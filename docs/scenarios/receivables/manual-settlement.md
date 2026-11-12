@@ -22,7 +22,7 @@ The account codes are the service-agency template's (S02): the SYP and USD bank 
 
 A manual line opens an item with `open_item: { ref, due? }` and moves one with `item: <ref>`; it then takes the item's dimensions, so it states none. A line on `213001` names the client and the running item is found or made (S04 rules 6–9). A difference line carries its amount in one ledger only, in that ledger's currency (ADR 0007).
 
-The cases leave out what other scenarios or later specs own: a write-off (`receivables/write-off.md`); Hub's payments (`receivables/hub-payment.md`, S05) and ad-fund movements (`ad-funds/running-balance.md`, S05); a settlement dated in a closed period and one after a month-end revaluation, added with S07's jobs.
+The cases leave out what other scenarios or later specs own: a write-off (`receivables/write-off.md`); Hub's payments (`receivables/hub-payment.md`, S05) and ad-fund movements (`ad-funds/running-balance.md`, S05); a settlement dated in a closed period, refused as any posting there (`periods/close-and-reopen.md`), and one after a month-end revaluation (`currency/month-end-revaluation.md`, `currency/stale-revaluation.md`).
 
 ### Vertex Media: a USD invoice settled in two receipts, in USD and in SYP
 

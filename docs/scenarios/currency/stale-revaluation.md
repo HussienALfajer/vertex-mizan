@@ -1,8 +1,8 @@
 # A stale revaluation and its adjusting revaluation
 
-Status: Proposed
+Status: Approved (owner, 2026-11-12)
 
-S07 wrote these cases (S07 "Scenarios"); the owner approved their expected entries and outcomes on 2026-11-12. The file stays `Proposed` until S07's feature slice brings the `revalue`, `close` and `reopen` executors, then becomes `Approved (owner, 2026-11-12)`.
+S07 wrote these cases (S07 "Scenarios"); the owner approved their expected entries and outcomes on 2026-11-12. S07's feature slice brought the `revalue` executor (PR 1) and the `close` and `reopen` executors (PR 2), with no expected value changed.
 
 ## Rule
 

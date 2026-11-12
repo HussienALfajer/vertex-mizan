@@ -79,6 +79,7 @@ export const tableRegistry = {
   period_balances: { module: 'ledger', scope: 'company', kind: 'ledger-state' },
   // S07: a ledger's month-end revaluation with its entry and reversal.
   revaluations: { module: 'ledger', scope: 'company', kind: 'append-only' },
+  period_events: { module: 'ledger', scope: 'company', kind: 'append-only' },
   // drafts (S03, ADR 0005 "drafts are not ledger"): manual entries being prepared, and the files
   // attached to a draft or a posted entry.
   entry_drafts: { module: 'drafts', scope: 'company', kind: 'draft' },

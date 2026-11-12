@@ -39,7 +39,7 @@ Shapes:
 
 The cases leave out what other scenarios or later specs own:
 - the manual movements of a Hub item, which need a line memo (S04 rule 8; `receivables/manual-settlement.md` for the mechanics);
-- a payment dated in a closed period, held `PERIOD_CLOSED`, and one after a month-end revaluation, added with S07's jobs;
+- a payment dated in a closed period, held `PERIOD_CLOSED` (`periods/close-and-reopen.md`, `inbox/post-in-next-open-period.md`), and one after a month-end revaluation (`currency/month-end-revaluation.md`, `currency/stale-revaluation.md`);
 - a replayed event (the same idempotency key), which posts nothing new: a property test of S05, since a step carries no event ID;
 - a payment of zero or a negative amount, and one in the invoice's currency that applies more than its amount: refused by the contract (422), nothing stored (owner, 2026-11-06);
 - a company tolerance other than the default 1.00: the setting is S05's (rule 9), and its cases here use the default;

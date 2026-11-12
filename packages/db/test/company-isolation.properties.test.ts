@@ -38,6 +38,7 @@ import {
   tableRegistry,
   users,
   withCompany,
+  writePeriodTransition,
 } from '../src/index.js';
 import { connect } from './connections.js';
 
@@ -69,6 +70,7 @@ const COVERED = [
   'periods',
   'period_balances',
   'revaluations',
+  'period_events',
   'entry_drafts',
   'entry_draft_lines',
   'entry_attachments',
@@ -408,6 +410,7 @@ const expectedRows = (data: CompanyData): Record<string, number> => ({
   recognition_schedules: 1,
   recognition_movements: 1,
   revaluations: 1,
+  period_events: 1,
 });
 
 /**
@@ -672,6 +675,15 @@ async function seed(userId: string, data: CompanyData): Promise<string> {
     await seedInbox(tx, row.id);
     await seedSources(tx, row.id, userId);
     await seedRecognition(tx, row.id);
+    // S07's period history: November closed, as the posting function writes a close.
+    await writePeriodTransition(tx, {
+      companyId: row.id,
+      period: '2026-11',
+      kind: 'closed',
+      reason: 'إقفال مولّد',
+      userId,
+      checklist: [],
+    });
     return tx
       .select({ id: journalEntries.id, hash: journalEntries.hash })
       .from(journalEntries)

@@ -19,9 +19,10 @@ import {
 } from '@vertex-mizan/ledger';
 import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import type { Transaction } from '../client.js';
+import { isClosedPeriod, readClosedPeriods } from '../posting/periods.js';
 import { dimensionValues } from '../schema/dimensions.js';
 import { inboundEventStates, inboundEvents } from '../schema/inbox.js';
-import { journalEntries, periods } from '../schema/ledger.js';
+import { journalEntries } from '../schema/ledger.js';
 import { recognitionMovements, recognitionSchedules } from '../schema/recognition.js';
 import {
   amountsOf,
@@ -361,14 +362,7 @@ export async function readRevenueMonths(
     )
     .groupBy(sql`to_char(${recognitionMovements.month}, 'YYYY-MM')`);
   const byMonth = new Map(released.map((row) => [row.month, row]));
-  const closed = new Set(
-    (
-      await tx
-        .select({ period: periods.period })
-        .from(periods)
-        .where(sql`${periods.state} <> 'open'`)
-    ).map((row) => row.period),
-  );
+  const closed = await readClosedPeriods(tx);
   const revenue = await releasedRevenueAccount(tx);
   const states = await statesTouching(tx, from, to);
   const decisions = await tx
@@ -413,7 +407,7 @@ export async function readRevenueMonths(
                 {
                   scheduleId: state.schedule.id,
                   invoiceNumber: state.schedule.invoiceNumber,
-                  reason: closed.has(month)
+                  reason: isClosedPeriod(closed, month)
                     ? 'PERIOD_CLOSED'
                     : 'refusal' in revenue
                       ? revenue.refusal
@@ -446,11 +440,7 @@ export async function previewRevenueMonth(
   if (month > periodOf(today)) {
     throw new DomainError('VALIDATION_FAILED', 'A month to come has no preview', { month });
   }
-  const [period] = await tx
-    .select({ state: periods.state })
-    .from(periods)
-    .where(eq(periods.period, month));
-  if (period !== undefined && period.state !== 'open') {
+  if (isClosedPeriod(await readClosedPeriods(tx), month)) {
     throw new DomainError('VALIDATION_FAILED', 'A closed month has no preview', { month });
   }
   const states = await statesTouching(tx, month, month);

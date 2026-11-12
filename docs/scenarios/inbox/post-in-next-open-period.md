@@ -1,8 +1,8 @@
 # Posting a held event of a closed month in the next open period
 
-Status: Proposed
+Status: Approved (owner, 2026-11-07)
 
-These two cases are the first two of `inbox/holds-and-actions.md`, moved unchanged by S05's feature slice. The owner approved their expected entries and outcomes on 2026-11-07, with an event moved out of a closed period measured at the rates of its own accounting date. S05 brought their executors (the `event` executor, the hold `PERIOD_CLOSED`, the `retry` and `move` actions, S05 rules 8, 11 and 15), but their setup closes a month (`closed_periods`), which only S07's close can do: a case's company is made through the runtime roles, never the owner. They stay `Proposed` until S07 brings the close; S07's feature slice switches the file to `Approved (owner, 2026-11-07)`. `packages/db`'s inbox tests run the same move with the period closed as the ledger tests close one.
+These two cases are the first two of `inbox/holds-and-actions.md`, moved unchanged by S05's feature slice. The owner approved their expected entries and outcomes on 2026-11-07, with an event moved out of a closed period measured at the rates of its own accounting date. S05 brought their executors (the `event` executor, the hold `PERIOD_CLOSED`, the `retry` and `move` actions, S05 rules 8, 11 and 15), and their setup closes a month (`closed_periods`), which S07's close does through the close service (its second PR), as a case's company is made through the runtime roles, never the owner; S07's feature slice switched the file to `Approved (owner, 2026-11-07)`, with no expected value changed. `packages/db`'s inbox tests run the same move with the period closed as the ledger tests close one.
 
 ## Rule
 

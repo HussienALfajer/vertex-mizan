@@ -1463,7 +1463,9 @@
                 "event.dismissed",
                 "event.recognised_in_open_period",
                 "event.remainder_split",
-                "revaluation.posted"
+                "revaluation.posted",
+                "period.closed",
+                "period.reopened"
               ]
             }
           },
@@ -9411,6 +9413,322 @@
         ]
       }
     },
+    "/api/periods": {
+      "get": {
+        "operationId": "PeriodsController_list",
+        "parameters": [
+          {
+            "name": "from",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-(0[1-9]|1[0-2])$"
+            }
+          },
+          {
+            "name": "to",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-(0[1-9]|1[0-2])$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Each month of the range (the first period to this month by default, at most 24): its state, whether it has ended, its last event and how many checklist items fail",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PeriodSummary"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "TWO_FACTOR_REQUIRED, FORBIDDEN",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "COMPANY_NOT_SELECTED, COMPANY_SWITCHED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_FAILED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "periods"
+        ]
+      }
+    },
+    "/api/periods/{period}": {
+      "get": {
+        "operationId": "PeriodsController_read",
+        "parameters": [
+          {
+            "name": "period",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-(0[1-9]|1[0-2])$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The month’s state, its history of closes and reopens, and its checklist",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PeriodDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "TWO_FACTOR_REQUIRED, FORBIDDEN",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "COMPANY_NOT_SELECTED, COMPANY_SWITCHED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_FAILED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "periods"
+        ]
+      }
+    },
+    "/api/periods/{period}/close": {
+      "post": {
+        "operationId": "PeriodsController_close",
+        "parameters": [
+          {
+            "name": "period",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-(0[1-9]|1[0-2])$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PeriodReason"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The month closed, with the checklist it passed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PeriodDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "TWO_FACTOR_REQUIRED, FORBIDDEN",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "COMPANY_NOT_SELECTED, COMPANY_SWITCHED, COMPANY_ARCHIVED, PERIOD_CLOSED, PERIOD_NOT_ENDED, PERIOD_ORDER, CHECKLIST_FAILED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_FAILED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "periods"
+        ]
+      }
+    },
+    "/api/periods/{period}/reopen": {
+      "post": {
+        "operationId": "PeriodsController_reopen",
+        "parameters": [
+          {
+            "name": "period",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-(0[1-9]|1[0-2])$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PeriodReason"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The month reopened, and how many held events were queued for retry",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PeriodReopenResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "TWO_FACTOR_REQUIRED, FORBIDDEN",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "COMPANY_NOT_SELECTED, COMPANY_SWITCHED, COMPANY_ARCHIVED, PERIOD_NOT_CLOSED, PERIOD_ORDER",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_FAILED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "periods"
+        ]
+      }
+    },
     "/api/revaluation/{period}": {
       "get": {
         "operationId": "RevaluationController_preview",
@@ -10403,7 +10721,10 @@
           "ENTRY_ALREADY_LINKED",
           "MAPPING_ACCOUNT_INVALID",
           "PERIOD_NOT_ENDED",
-          "REVALUATION_CHANGED"
+          "REVALUATION_CHANGED",
+          "PERIOD_ORDER",
+          "PERIOD_NOT_CLOSED",
+          "CHECKLIST_FAILED"
         ]
       },
       "PageQuery": {
@@ -11155,7 +11476,9 @@
           "event.dismissed",
           "event.recognised_in_open_period",
           "event.remainder_split",
-          "revaluation.posted"
+          "revaluation.posted",
+          "period.closed",
+          "period.reopened"
         ]
       },
       "AuditPage": {
@@ -19343,6 +19666,112 @@
         ],
         "additionalProperties": false
       },
+      "PeriodsQuery": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Period"
+              }
+            ]
+          },
+          "to": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Period"
+              }
+            ]
+          }
+        }
+      },
+      "Period": {
+        "type": "string",
+        "pattern": "^\\d{4}-(0[1-9]|1[0-2])$"
+      },
+      "PeriodSummary": {
+        "type": "object",
+        "properties": {
+          "period": {
+            "$ref": "#/components/schemas/Period"
+          },
+          "state": {
+            "$ref": "#/components/schemas/PeriodState"
+          },
+          "ended": {
+            "type": "boolean"
+          },
+          "lastEvent": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PeriodEvent"
+              }
+            ]
+          },
+          "failingItems": {
+            "nullable": true,
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "period",
+          "state",
+          "ended",
+          "lastEvent",
+          "failingItems"
+        ],
+        "additionalProperties": false
+      },
+      "PeriodState": {
+        "type": "string",
+        "enum": [
+          "open",
+          "closed",
+          "reopened"
+        ]
+      },
+      "PeriodEvent": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/PeriodEventKind"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "user": {
+            "$ref": "#/components/schemas/PersonRef"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "reason",
+          "user",
+          "createdAt"
+        ],
+        "additionalProperties": false
+      },
+      "PeriodEventKind": {
+        "type": "string",
+        "enum": [
+          "closed",
+          "reopened"
+        ]
+      },
       "PeriodParam": {
         "type": "object",
         "properties": {
@@ -19354,9 +19783,128 @@
           "period"
         ]
       },
-      "Period": {
+      "PeriodDetail": {
+        "type": "object",
+        "properties": {
+          "period": {
+            "$ref": "#/components/schemas/Period"
+          },
+          "state": {
+            "$ref": "#/components/schemas/PeriodState"
+          },
+          "ended": {
+            "type": "boolean"
+          },
+          "firstPeriod": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Period"
+              }
+            ]
+          },
+          "history": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PeriodEvent"
+            }
+          },
+          "checklist": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ChecklistItem"
+            }
+          }
+        },
+        "required": [
+          "period",
+          "state",
+          "ended",
+          "firstPeriod",
+          "history",
+          "checklist"
+        ],
+        "additionalProperties": false
+      },
+      "ChecklistItem": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "$ref": "#/components/schemas/ChecklistItemName"
+          },
+          "result": {
+            "$ref": "#/components/schemas/ChecklistResult"
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "ledgers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Ledger"
+            }
+          }
+        },
+        "required": [
+          "item",
+          "result",
+          "count",
+          "ledgers"
+        ],
+        "additionalProperties": false
+      },
+      "ChecklistItemName": {
         "type": "string",
-        "pattern": "^\\d{4}-(0[1-9]|1[0-2])$"
+        "enum": [
+          "bulletins_recorded",
+          "closing_rates_recorded",
+          "no_drafts",
+          "open_items_agree",
+          "no_held_events",
+          "releases_posted",
+          "revaluation_current"
+        ]
+      },
+      "ChecklistResult": {
+        "type": "string",
+        "enum": [
+          "passed",
+          "failed",
+          "not_applicable"
+        ]
+      },
+      "PeriodReason": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          }
+        },
+        "required": [
+          "reason"
+        ]
+      },
+      "PeriodReopenResult": {
+        "type": "object",
+        "properties": {
+          "period": {
+            "$ref": "#/components/schemas/PeriodDetail"
+          },
+          "queuedEvents": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "period",
+          "queuedEvents"
+        ],
+        "additionalProperties": false
       },
       "RevaluationQuery": {
         "type": "object",

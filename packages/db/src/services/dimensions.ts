@@ -1,5 +1,5 @@
 import { type CreateDimensionValue, DomainError } from '@vertex-mizan/contracts';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { type AuditActor, writeCompanyAudit } from '../audit.js';
 import type { Transaction } from '../client.js';
 import { dimensionTypes, dimensionValues } from '../schema/dimensions.js';
@@ -76,4 +76,57 @@ export async function createDimensionValue(
     },
   });
   return row;
+}
+
+/**
+ * Links a manual value to its Hub ID (S02 rule 11), once (`DIMENSION_ALREADY_LINKED`); an ID
+ * another value of the type holds is refused (`DIMENSION_LINK_TAKEN`), also when a Hub event
+ * claims it at the same time (edge case 2). A contract names its client first. With its
+ * `dimension_value.linked` audit row, in the caller's transaction, the value locked by the caller.
+ */
+export async function linkDimensionValue(
+  tx: Transaction,
+  companyId: string,
+  actor: AuditActor,
+  row: DimensionValueRow,
+  externalId: string,
+): Promise<void> {
+  if (row.externalId !== null) {
+    throw new DomainError('DIMENSION_ALREADY_LINKED', 'The value is already linked');
+  }
+  const [type] = await tx.select().from(dimensionTypes).where(eq(dimensionTypes.id, row.typeId));
+  if (!type) throw new DomainError('NOT_FOUND', 'No such dimension type');
+  if (type.parentTypeId !== null && row.parentValueId === null) {
+    throw new DomainError('VALIDATION_FAILED', 'A Hub contract names its client', {
+      issues: [
+        { path: ['parentValueId'], message: 'Name the contract’s client before linking it' },
+      ],
+    });
+  }
+  const [holder] = await tx
+    .select({ id: dimensionValues.id })
+    .from(dimensionValues)
+    .where(
+      and(
+        eq(dimensionValues.typeId, row.typeId),
+        eq(dimensionValues.externalSource, 'hub'),
+        eq(dimensionValues.externalId, externalId),
+      ),
+    );
+  if (holder) throw new DomainError('DIMENSION_LINK_TAKEN', 'Another value holds the ID');
+  await onUniqueViolation(
+    () =>
+      tx
+        .update(dimensionValues)
+        .set({ externalSource: 'hub', externalId })
+        .where(eq(dimensionValues.id, row.id)),
+    { dimension_values_external_key: 'DIMENSION_LINK_TAKEN' },
+  );
+  await writeCompanyAudit(tx, companyId, actor, {
+    action: 'dimension_value.linked',
+    entityType: 'dimension_value',
+    entityId: row.id,
+    before: { externalSource: null, externalId: null },
+    after: { externalSource: 'hub', externalId },
+  });
 }

@@ -20,7 +20,7 @@ The account codes are the service-agency template's (S02): the SYP and USD bank 
 
 Each original entry below is one the scenario book already approved (`manual/conversion-rounding.md`, `manual/currency-purchase.md`), or a plain one-currency entry with no rounding. A reversal's lines are the original's with every amount negated: the transaction, book and parallel amounts, line by line, each rounding and difference line in its own ledger.
 
-The cases below leave out what other scenarios or later specs own: the reversals already shown with their rule (`manual/conversion-rounding.md`, a USD entry with a book rounding line; `manual/currency-purchase.md`, a dealt purchase with a book difference line); a reversal into a closed period, added with S07; a reversal of a Hub entry refused with `ENTRY_NOT_REVERSIBLE`, added with S05's `event` executor; and the approval of a reversal, which changes who posts it, not what it posts.
+The cases below leave out what other scenarios or later specs own: the reversals already shown with their rule (`manual/conversion-rounding.md`, a USD entry with a book rounding line; `manual/currency-purchase.md`, a dealt purchase with a book difference line); a reversal into a closed period, refused as any posting there (`periods/close-and-reopen.md`); a reversal of a Hub entry refused with `ENTRY_NOT_REVERSIBLE`, added with S05's `event` executor; and the approval of a reversal, which changes who posts it, not what it posts.
 
 ### Vertex Media: an entry to the wrong account, reversed the same day and reposted
 

@@ -33,37 +33,51 @@ export class ScenarioFailure extends Error {
 
 type Run = (context: CaseContext) => Promise<StepResult>;
 
-/** A dimension value a case names: its type's code and its own code (`client: C1`). */
-export type NamedValue = { readonly type: string; readonly code: string };
+/**
+ * A dimension value a case names: its type's code and its own code (`client: C1`). `hub` marks a
+ * value a manual step names before a Hub event of the case brings it: the setup makes it and links
+ * it to the Hub ID the case's events use (S02 rule 11), as a client typed in Mizan and linked later.
+ */
+export type NamedValue = { readonly type: string; readonly code: string; readonly hub?: true };
 
 /**
  * Every dimension value a case names, in the order first named: in its manual steps' lines, its
  * expected lines, balances and open items. The setup makes each one, so a case states its values by
- * code and never creates them in a step (S04).
+ * code and never creates them in a step (S04); those Hub's events bring first are theirs (S05).
  */
 export function namedDimensionValues(scenarioCase: ScenarioCase): NamedValue[] {
   const named = new Map<string, NamedValue>();
-  const fromHub = new Set(
-    eventValues(scenarioCase).map((value) => JSON.stringify([value.type, value.code])),
-  );
-  const add = (dims: unknown) => {
+  const keyOf = (type: string, code: string) => JSON.stringify([type, code]);
+  // The step at which a Hub event first brings each value.
+  const fromHub = new Map<string, number>();
+  for (const [index, step] of scenarioCase.steps.entries()) {
+    for (const value of stepEventValues(step)) {
+      const key = keyOf(value.type, value.code);
+      if (!fromHub.has(key)) fromHub.set(key, index);
+    }
+  }
+  const add = (dims: unknown, index: number | null) => {
     if (typeof dims !== 'object' || dims === null) return;
     for (const [type, code] of Object.entries(dims)) {
-      if (typeof code === 'string') named.set(JSON.stringify([type, code]), { type, code });
+      if (typeof code !== 'string') continue;
+      const key = keyOf(type, code);
+      const hubAt = fromHub.get(key);
+      if (named.has(key) || (hubAt !== undefined && (index === null || index > hubAt))) continue;
+      named.set(key, { type, code, ...(hubAt !== undefined && { hub: true as const }) });
     }
   };
-  for (const step of scenarioCase.steps) {
+  for (const [index, step] of scenarioCase.steps.entries()) {
     if (step.kind !== 'manual' && step.kind !== 'draft') continue;
     const lines = (step.payload as { lines?: unknown }).lines;
-    if (Array.isArray(lines)) for (const line of lines) add((line as { dims?: unknown }).dims);
+    if (Array.isArray(lines)) {
+      for (const line of lines) add((line as { dims?: unknown }).dims, index);
+    }
   }
   const { expect } = scenarioCase;
-  for (const entry of expect.entries) for (const line of entry.lines) add(line.dims);
-  for (const balance of expect.balances) add(balance.dims);
-  for (const item of expect.openItems) add(item.dims);
-  return [...named.values()].filter(
-    (value) => !fromHub.has(JSON.stringify([value.type, value.code])),
-  );
+  for (const entry of expect.entries) for (const line of entry.lines) add(line.dims, null);
+  for (const balance of expect.balances) add(balance.dims, null);
+  for (const item of expect.openItems) add(item.dims, null);
+  return [...named.values()];
 }
 
 /**
@@ -71,31 +85,34 @@ export function namedDimensionValues(scenarioCase: ScenarioCase): NamedValue[] {
  * with the code the case names, so the setup leaves them out.
  */
 export function eventValues(scenarioCase: ScenarioCase): NamedValue[] {
+  return scenarioCase.steps.flatMap(stepEventValues);
+}
+
+/** The values one step brings from Hub: an event's references, none for any other step. */
+function stepEventValues(step: Step): NamedValue[] {
   const values: NamedValue[] = [];
   const add = (type: string, code: unknown) => {
     if (typeof code === 'string') values.push({ type, code });
   };
-  for (const step of scenarioCase.steps) {
-    if (step.kind !== 'event') continue;
-    const payload = step.payload as Record<string, unknown>;
-    add('client', payload.client);
-    add('department', payload.department);
-    add('service', payload.old_service);
-    add('service', payload.new_service);
-    // A milestone's done names its service (S06 rule 11).
-    add('service', payload.service);
-    // A project's events name it as `project` (S06), an invoice or an expense as `contract`.
-    const contract = (payload.contract ?? payload.project) as
-      | { code?: unknown; client?: unknown }
-      | undefined;
-    if (contract !== undefined) {
-      add('contract', contract.code);
-      add('client', contract.client);
-    }
-    const lines = payload.lines;
-    if (Array.isArray(lines)) {
-      for (const line of lines) add('service', (line as { service?: unknown }).service);
-    }
+  if (step.kind !== 'event') return values;
+  const payload = step.payload as Record<string, unknown>;
+  add('client', payload.client);
+  add('department', payload.department);
+  add('service', payload.old_service);
+  add('service', payload.new_service);
+  // A milestone's done names its service (S06 rule 11).
+  add('service', payload.service);
+  // A project's events name it as `project` (S06), an invoice or an expense as `contract`.
+  const contract = (payload.contract ?? payload.project) as
+    | { code?: unknown; client?: unknown }
+    | undefined;
+  if (contract !== undefined) {
+    add('contract', contract.code);
+    add('client', contract.client);
+  }
+  const lines = payload.lines;
+  if (Array.isArray(lines)) {
+    for (const line of lines) add('service', (line as { service?: unknown }).service);
   }
   return values;
 }

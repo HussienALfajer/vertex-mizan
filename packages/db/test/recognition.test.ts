@@ -44,7 +44,7 @@ import {
   users,
   withCompany,
 } from '../src/index.js';
-import { connect, refusal } from './connections.js';
+import { closeMonthByHand, connect, refusal } from './connections.js';
 
 // S06's over-time recognition on the migrated database (0031–0033): an invoice with a retainer
 // cycle's charge deferred, its schedule and movements written beside its entries, the monthly
@@ -248,20 +248,7 @@ async function remaining(companyId: string) {
 }
 
 async function closePeriod(companyId: string, period: string) {
-  // S07 brings the close; here the superuser closes the month, as the inbox tests do.
-  const closer = await superuser.connect();
-  try {
-    await closer.query('begin');
-    await closer.query('alter table periods disable trigger period_rules');
-    await closer.query(
-      `insert into periods (id, company_id, period, fiscal_year, state) values ($1, $2, $3, 2026, 'closed')`,
-      [uuidv7(), companyId, period],
-    );
-    await closer.query('alter table periods enable always trigger period_rules');
-    await closer.query('commit');
-  } finally {
-    closer.release();
-  }
+  await closeMonthByHand(app, companyId, period);
 }
 
 /** Waits until a backend of the run's database waits for a lock in a statement on `table`. */

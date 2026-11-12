@@ -119,6 +119,8 @@ export const audit = {
     'event.recognised_in_open_period': 'اعترف بجزء منقضٍ في أول فترة مفتوحة',
     'event.remainder_split': 'قسّم المتبقي في مشروع ملغى',
     'revaluation.posted': 'رحّل إعادة تقييم آخر الشهر',
+    'period.closed': 'أقفل الشهر',
+    'period.reopened': 'أعاد فتح الشهر',
   } satisfies Record<CompanyAuditAction, string>,
   /** The audited entities (`AUDITED_FIELDS` in `packages/db`). */
   entities: {
@@ -144,6 +146,7 @@ export const audit = {
     receivables_export: 'تقرير الذمم',
     inbound_event: 'الحدث الوارد',
     revaluation: 'إعادة التقييم',
+    period: 'الفترة',
   },
   /** The audited fields, by entity field name. */
   fields: {
@@ -241,5 +244,7 @@ export const audit = {
     fingerprint: 'بصمة المعاينة',
     rates: 'أسعار الإقفال',
     reversalEntryId: 'قيد العكس',
+    checklist: 'قائمة التحقق قبل الإقفال',
+    queuedEvents: 'الأحداث المعادة محاولتها',
   },
 };

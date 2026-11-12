@@ -108,6 +108,15 @@ export function renderEmail(kind: EmailKind, data: unknown, to: string): Outgoin
           }),
         )
         .join('\n');
+      // S07: the ended months not closed, after the held events, when there are any.
+      const unclosed =
+        digest.unclosedMonths.length === 0
+          ? ''
+          : `\n\n${email.heldDigest.unclosedTitle}\n${digest.unclosedMonths
+              .map(({ period, failingItems }) =>
+                fill(email.heldDigest.unclosedLine, { period, count: String(failingItems) }),
+              )
+              .join('\n')}`;
       return {
         to,
         subject: fill(email.heldDigest.subject, { companyName: digest.companyName }),
@@ -117,6 +126,7 @@ export function renderEmail(kind: EmailKind, data: unknown, to: string): Outgoin
             day: digest.day,
             newlyHeld: String(digest.newlyHeld),
             held,
+            unclosed,
             link: digest.link,
           }),
         ),

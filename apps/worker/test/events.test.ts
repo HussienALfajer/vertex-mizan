@@ -15,10 +15,12 @@ import {
   type PersonActor,
   receiveEvent,
   recordRate,
+  reopenPeriod,
   setBulletinDaysOff,
   users,
   withCompany,
 } from '@vertex-mizan/db';
+import { closeMonthByHand } from '@vertex-mizan/db/testing';
 import { and, eq, like, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import { afterAll, beforeAll, describe, expect, inject, it } from 'vitest';
@@ -317,5 +319,53 @@ describe('events.held-digest', () => {
       .where(like(emailOutbox.dedupeKey, `held_digest:${companyId}:${day}:%`));
     expect(left).toEqual([]);
     expect(old).toBeDefined();
+  });
+
+  it('lists the ended months not closed with their failing checklist items (S07 "Jobs")', async () => {
+    const companyId = await company();
+    const clientId = uuidv7();
+    // A payment held before its invoice, and the invoice posted this month; the retry the
+    // invoice frees is not run, so the payment stays held.
+    await receive(companyId, 'payment.recorded', clientId);
+    expect((await receive(companyId, 'invoice.issued', clientId)).event.state).toBe('posted');
+    const month = today.slice(0, 7);
+    const [year, number] = month.split('-').map(Number) as [number, number];
+    const next =
+      number === 12 ? `${year + 1}-01` : `${year}-${String(number + 1).padStart(2, '0')}`;
+    const day = `${next}-05`;
+    await new EventsHeldDigestJob(jobs, db, config).run(day);
+    const [queued] = await db
+      .select({ data: emailOutbox.data })
+      .from(emailOutbox)
+      .where(like(emailOutbox.dedupeKey, `held_digest:${companyId}:${day}:%`));
+    const data = emailDataSchemas.held_digest.parse(queued?.data);
+    expect(data.unclosedMonths).toEqual([{ period: month, failingItems: expect.any(Number) }]);
+    expect(data.unclosedMonths[0]?.failingItems).toBeGreaterThan(0);
+    const rendered = renderEmail('held_digest', data, 'owner@example.test');
+    expect(rendered.text).toContain('أشهر منتهية غير مقفلة:');
+    expect(rendered.text).toContain(`- ${month}: بنود فاشلة في قائمة التحقق قبل الإقفال:`);
+  });
+});
+
+describe('events.retry after a reopen (S07 rule 6)', () => {
+  it('posts the events held PERIOD_CLOSED in the reopened month, once', async () => {
+    const companyId = await company();
+    const month = today.slice(0, 7);
+    // The current month closed by hand (the checklist is not this test's), then a Hub event of it.
+    await closeMonthByHand(db, companyId, month);
+    const invoice = await receive(companyId, 'invoice.issued', uuidv7());
+    expect(invoice.event).toMatchObject({ state: 'held', reason: 'PERIOD_CLOSED' });
+    const reopened = await withCompany(db, companyId, (tx) =>
+      reopenPeriod(tx, { period: month, reason: 'إعادة فتح', today, actor: actor() }),
+    );
+    expect(reopened.queuedEvents).toBe(1);
+    const job = new EventsRetryJob(db);
+    const data = { companyId, triggers: reopened.triggers };
+    expect(await job.work(data)).toEqual({ posted: 1 });
+    expect(await stateOf(companyId, invoice.event.inboxId)).toEqual({
+      state: 'posted',
+      reason: null,
+    });
+    expect(await job.work(data)).toEqual({ posted: 0 });
   });
 });
