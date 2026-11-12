@@ -124,6 +124,9 @@ One name per concept. Code, contracts and tables use the English term; the Arabi
 | الترحيل في أول فترة مفتوحة | post in the next open period | Posting an event held for a closed period on the first day of the first open period after it |
 | هامش فرق السداد | payment tolerance | The gap, in the invoice's currency, between Hub's applied amount and the amount at Hub's rate that posts as an exchange difference; beyond it the event is held |
 | المطابقة اليومية | daily reconciliation | Comparing a connected system's daily counts and totals with what Mizan posted |
+| تقرير المطابقة | reconciliation report | A connected system's list of the events of one accounting date, with their counts and totals; the latest one of a date counts |
+| فرق المطابقة | reconciliation gap | An event missing on one side, or differing in date, type or amount, between a connected system's report and Mizan |
+| تاريخ بدء المطابقة | reconciliation start date | The first accounting date a connected system's reports must cover |
 | الأرصدة الافتتاحية | opening balances | Balances on the first day of the books |
 | مصدر المستند | document source | Which system issues a document type for a company |
 | كتاب السيناريوهات | scenario book | Solved examples of every accounting rule, run as tests |
