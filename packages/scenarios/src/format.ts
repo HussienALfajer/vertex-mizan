@@ -732,13 +732,14 @@ const documentId = z.string().trim().min(1).max(100);
 /**
  * The snapshot's register of prior documents (S10 rules 5 and 28): every Hub document dated on or
  * before the eve, by type, with its date, and what a later event about it needs to be found (a
- * payment's invoice, a wallet entry's or spend update's client). An event that voids, changes,
+ * payment's receipt and invoice, a wallet entry's or spend update's client). An event that voids, changes,
  * archives or reopens one of them is held `NEEDS_DECISION` (`before_books_start`).
  */
 const priorDocumentsSchema = z.strictObject({
   invoices: registerList('invoice', { invoice: documentId, issued_on: dateSchema }),
   payments: registerList('payment', {
     payment: documentId,
+    receipt: documentId,
     invoice: documentId,
     paid_on: dateSchema,
   }),

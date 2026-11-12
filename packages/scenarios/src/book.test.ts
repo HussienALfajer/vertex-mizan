@@ -122,7 +122,7 @@ steps:
         - { client: C1, balance: -12000 }
       prior_documents:
         invoices: [{ invoice: INV-1, issued_on: 2026-09-10 }]
-        payments: [{ payment: PAY-1, invoice: INV-1, paid_on: 2026-09-20 }]
+        payments: [{ payment: PAY-1, receipt: R-1, invoice: INV-1, paid_on: 2026-09-20 }]
     records:
       lines:
         - { account: "3110", currency: SYP, amount: -3450000, parallel: -30000 }
@@ -975,7 +975,7 @@ describe('a case', () => {
         wallets: [{ client: 'C1', balance: -12000n }],
         prior_documents: {
           invoices: [{ invoice: 'INV-1', issued_on: '2026-09-10' }],
-          payments: [{ payment: 'PAY-1', invoice: 'INV-1', paid_on: '2026-09-20' }],
+          payments: [{ payment: 'PAY-1', receipt: 'R-1', invoice: 'INV-1', paid_on: '2026-09-20' }],
           wallet_entries: [],
           spend_updates: [],
           project_expenses: [],
@@ -1055,11 +1055,12 @@ describe('a case', () => {
     expect(
       refusal(
         OPENING.replace(
-          'payments: [{ payment: PAY-1, invoice: INV-1, paid_on: 2026-09-20 }]',
-          'payments: [{ payment: PAY-1, invoice: INV-1, paid_on: 2026-09-20 }, { payment: PAY-1, invoice: INV-1, paid_on: 2026-09-21 }]',
+          'payments: [{ payment: PAY-1, receipt: R-1, invoice: INV-1, paid_on: 2026-09-20 }]',
+          'payments: [{ payment: PAY-1, receipt: R-1, invoice: INV-1, paid_on: 2026-09-20 }, { payment: PAY-1, receipt: R-2, invoice: INV-1, paid_on: 2026-09-21 }]',
         ),
       ),
     ).toContain('A document is listed twice by its payment');
+    expect(refusal(OPENING.replace('PAY-1, receipt: R-1,', 'PAY-1,'))).toContain('receipt');
     expect(
       refusal(
         OPENING.replace('{ invoice: INV-1, issued_on:', '{ invoice: INV-1, client: C1, issued_on:'),

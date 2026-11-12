@@ -2,7 +2,7 @@
 
 Status: Proposed
 
-S10 wrote these cases (S10 "Scenarios", `opening/before-books-start.md`); the owner approved their expected entries and outcomes on 2026-11-12, five cases, with the treatment they apply: the revenue or cost of the current period reduced for a change in estimate (IAS 8.36), retained earnings for a material error of an earlier fiscal year (IAS 8.42), and the lines other than an item's or a schedule's measured at the day's rate, each ledger's residual a realised exchange difference. The owner decided the same day how a held void reaches an opening schedule (S10 rule 28): the manual entry that resolves it names the schedule on its contract liability line, as a line names its item, and clears what the schedule still carries; while the void is held, the schedule releases nothing. The cases stay `Proposed` until S10's feature slice brings the executors of the `opening` step, the register of prior documents, the hold `before_books_start` and a manual line naming a schedule, then become `Approved (owner, 2026-11-12)` (`docs/scenarios/README.md`, "Status").
+S10 wrote these cases (S10 "Scenarios", `opening/before-books-start.md`); the owner approved the expected entries and outcomes of the first five on 2026-11-12, with the treatment they apply: the revenue or cost of the current period reduced for a change in estimate (IAS 8.36), retained earnings for a material error of an earlier fiscal year (IAS 8.42), and the lines other than an item's or a schedule's measured at the day's rate, each ledger's residual a realised exchange difference. The owner decided the same day how a held void reaches an opening schedule (S10 rule 28): the manual entry that resolves it names the schedule on its contract liability line, as a line names its item, and clears what the schedule still carries; while the void is held, the schedule releases nothing. The cases stay `Proposed` until S10's feature slice brings the executors of the `opening` step, the register of prior documents, the hold `before_books_start` and a manual line naming a schedule, then become `Approved (owner, 2026-11-12)` (`docs/scenarios/README.md`, "Status").
 
 ## Rule
 
@@ -10,7 +10,8 @@ Hub's snapshot lists every document dated on or before the eve of the books star
 
 The accountant resolves it by a manual entry (S05 rule 15), on the items concerned with a memo (S04 rule 8):
 - a line on a Hub item clears it at its carrying amount, every other line is a new measurement at each ledger's policy rate of the entry's date, and each ledger's residual is a realised exchange difference (S04 rules 4 and 10);
-- a line on the contract liability account that names an opening schedule (`schedule: <invoice>/<line>`) takes its dimensions and clears what it carries, at its carried amounts, reading no rate; the schedule stops (owner, 2026-11-12). While an `invoice.voided` of the schedule's invoice is held, the schedule releases nothing;
+- a line on the contract liability account that names an opening schedule (`schedule: <invoice>/<line>`) takes its dimensions and clears what it carries, at its carried amounts, reading no rate; the schedule stops (owner, 2026-11-12). While an `invoice.voided` of the schedule's invoice is held, the schedule releases nothing, and a credit to its cycle waits behind the void (`WAITING_FOR_EARLIER_EVENT`). Once the void is dismissed, or resolved by an entry that leaves the schedule standing, every ended month it did not release is released at once, each dated on its own month's last day, which a held event kept open; the waiting credit is then retried (owner, 2026-11-12);
+- in an entry with a line on retained earnings `312001`, each ledger's residual posts to `312001`, not to an exchange difference (owner, 2026-11-12), so a correction of an earlier year's error takes exactly what the items it clears carried;
 - what was recognised before the books start is taken back from the current period's revenue or cost when the void is a change in estimate (IAS 8.36), or from retained earnings `312001` when it corrects a material error of an earlier fiscal year (IAS 8.42).
 
 A later event on a document resolved this way is held `NEEDS_DECISION` (`document_resolved_manually`, S05 rule 16); an event on another document of the same invoice posts as usual (S10 rule 30).
@@ -32,11 +33,11 @@ The account codes are the service-agency template's (S02), in the version with `
 
 The books start is Thursday 1 October 2026 except in the second case (Friday 1 January 2027). Publication days used: 1, 10, 15, 21, 28 and 30 September, 5, 6, 12, 13, 14, 15, 20, 27 and 29 October 2026, 31 December 2026 and 12 January 2027.
 
-**The register** (`prior_documents` in the snapshot, `docs/scenarios/README.md`) lists each document with its date and what a later event needs to find it: a payment's invoice, a wallet entry's or spend update's client. A void, change, archive or reopen of a listed document is held `before_books_start`; the runner sends a `payment.voided` with the payment's receipt and invoice from the register, and an `ad_wallet.entry_voided` with the entry's client.
+**The register** (`prior_documents` in the snapshot, `docs/scenarios/README.md`) lists each document with its date and what a later event needs to find it: a payment's receipt and invoice, a wallet entry's or spend update's client. A void, change, archive or reopen of a listed document is held `before_books_start`; the runner sends a `payment.voided` with the payment's receipt and invoice from the register, and an `ad_wallet.entry_voided` with the entry's client.
 
 **The resolution** is a `manual` step, then a `resolve` step naming the event and the entry. A manual line on a Hub item names it with `item:` and carries a memo; a line naming an opening schedule uses `schedule: <invoice>/<line>` and states no dimensions. The residual lines are posted by the posting function and are not in the payload.
 
-The cases leave out what other scenarios and tests own: the opening entry's own measurement, checks and reversal (`opening/opening-entry.md`); the holds and actions of S05 on documents dated from the books start (`inbox/holds-and-actions.md`); every event type of rule 28 in API tests (`project_expense.changed`, `ad_spend.archived` and a second void of the same document there); the void of an opening invoice whose item a replayed payment has moved, held `OPEN_ITEM_HAS_SETTLEMENTS` first (S05 rule 8, an inbox test).
+The cases leave out what other scenarios and tests own: the opening entry's own measurement, checks and reversal (`opening/opening-entry.md`); the holds and actions of S05 on documents dated from the books start (`inbox/holds-and-actions.md`); every event type of rule 28 in API tests (`project_expense.changed`, `ad_spend.archived` and a second void of the same document there); the void of an opening invoice whose item a replayed payment has moved, held `OPEN_ITEM_HAS_SETTLEMENTS` first (S05 rule 8, an inbox test); a manual line naming a schedule for another amount than it carries, refused `VALIDATION_FAILED` (an API test of the manual entry).
 
 ### Vertex Media: six holds of rule 28 and their resolutions
 
@@ -86,7 +87,7 @@ steps:
           - { invoice: INV-2026-5, issued_on: 2026-09-10 }
           - { invoice: INV-2026-7, issued_on: 2026-09-10 }
         payments:
-          - { payment: PAY-0, invoice: INV-2026-5, paid_on: 2026-09-21 }
+          - { payment: PAY-0, receipt: R-2026-0, invoice: INV-2026-5, paid_on: 2026-09-21 }
         wallet_entries:
           - { entry: W-0, client: C1, entered_on: 2026-09-02 }
           - { entry: W-1, client: C1, entered_on: 2026-09-12 }
@@ -303,10 +304,10 @@ expect:
 
 ### A material error of an earlier fiscal year, against retained earnings
 
-S10 rule 28, IAS 8.42. A company whose books start on 1 January 2027 opens with INV-2026-88, 200.00 USD unpaid, issued on 20 November 2026. On 12 January 2027 Hub voids it: it billed C1 a second time for work INV-2026-87 had billed and C1 had paid in 2026. The accountant judges the 2026 revenue overstated by a material error: the correction goes to retained earnings `312001`, not to January's revenue. The books start with the fiscal year, so the year's result before them is nothing and the opening has no line on `312002`.
+S10 rule 28, IAS 8.42. A company whose books start on 1 January 2027 opens with INV-2026-88, 200.00 USD unpaid, issued on 20 November 2026. On 12 January 2027 Hub voids it: it billed C1 a second time for work INV-2026-87 had billed and C1 had paid in 2026. The accountant judges the 2026 revenue overstated by a material error: the correction goes to retained earnings `312001`, not to January's revenue, and so does the entry's residual (owner, 2026-11-12): the receivable never existed, so its remeasurement from 125 to 126 is no exchange difference of 2027, and `312001` takes exactly what the item carried. The books start with the fiscal year, so the year's result before them is nothing and the opening has no line on `312002`.
 
 ```yaml
-case: books from 1 January 2027; INV-2026-88 (200.00 USD at the eve's 125) voided on 12 January as a duplicate of 2026, held before_books_start, resolved against 312001 at 126 with a 200.00 SYP gain
+case: books from 1 January 2027; INV-2026-88 (200.00 USD at the eve's 125) voided on 12 January as a duplicate of 2026, held before_books_start, resolved against 312001, the residual of 126 on 312001 too, nothing in profit or loss
 company: { shape: syp-usd, book: SYP, parallel: USD, template: service-agency, books_start: 2027-01-01,
            rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true } }
 rates:
@@ -361,13 +362,15 @@ expect:
         - { account: "112001", dims: { client: C1 }, currency: USD, amount: -20000, book: -2500000, parallel: -20000 }
         # the correction in equity, a new measurement: 200.00 × 126 = 25,200.00 SYP
         - { account: "312001", currency: USD, amount: 20000, book: 2520000, parallel: 20000 }
-        # book residual −2,500,000 + 2,520,000 = 20,000, so a realised gain of 200.00 SYP
-        - { account: "421001", currency: SYP, amount: -20000, book: -20000, parallel: 0 }
+        # book residual −2,500,000 + 2,520,000 = 20,000: in an entry with a line on retained earnings it posts
+        #   there, not to 421001, so 312001 takes the item's carrying 25,000.00 SYP net (owner, 2026-11-12)
+        - { account: "312001", currency: SYP, amount: -20000, book: -20000, parallel: 0 }
   balances:
     - { account: "112001", book: 0, parallel: 0 }
-    # −10,000,000 + 2,520,000; parallel −70,000 + 20,000
-    - { account: "312001", book: -7480000, parallel: -50000 }
+    # −10,000,000 + 2,520,000 − 20,000; parallel −70,000 + 20,000
+    - { account: "312001", book: -7500000, parallel: -50000 }
     - { account: "411001", book: 0, parallel: 0 }
+    - { account: "421001", book: 0, parallel: 0 }
   open_items:
     - { item: INV-2026-88, account: "112001", dims: { client: C1 }, currency: USD, amount: 0, book: 0, parallel: 0 }
 ```
@@ -398,7 +401,7 @@ steps:
         invoices:
           - { invoice: INV-2026-9, issued_on: 2026-09-01 }
         payments:
-          - { payment: PAY-9, invoice: INV-2026-9, paid_on: 2026-09-05 }
+          - { payment: PAY-9, receipt: R-2026-9, invoice: INV-2026-9, paid_on: 2026-09-05 }
     records:
       lines:
         - { account: "111001", currency: SYP, amount: 60000000 }
@@ -566,7 +569,7 @@ steps:
         invoices:
           - { invoice: INV-2026-6, issued_on: 2026-09-15 }
         payments:
-          - { payment: PAY-3, invoice: INV-2026-6, paid_on: 2026-09-25 }
+          - { payment: PAY-3, receipt: R-2026-3, invoice: INV-2026-6, paid_on: 2026-09-25 }
     records:
       lines:
         - { account: "111004", currency: USD, amount: 50000 }
@@ -627,4 +630,178 @@ expect:
   open_items:
     - { item: INV-2026-6, account: "112001", dims: { client: C1 }, currency: USD, amount: 0, book: 0 }
     - { item: INV-2026-6/PAY-3, account: "112001", dims: { client: C1 }, currency: USD, amount: 30000, book: 3540000 }
+```
+
+### Vertex Media: a credit waiting behind a held void, the void dismissed
+
+The owner's decisions of 2026-11-12 on a frozen schedule. INV-2026-7 to C1 (retainer R1), 300.00 USD at the bulletin of 114 and paid on 20 September, carries 15 of its cycle's 30 days into the opening. Hub voids it on 8 October: held `before_books_start`, its schedule frozen. On 13 October Hub issues INV-2026-31, the next cycle's charge with a 60.00 USD credit to INV-2026-7's cycle: it waits behind the void. On 13 October the owner dismisses the void (Hub voided the wrong invoice and the client keeps its retainer); no month has ended, so nothing is released at once, and INV-2026-31 posts. The credit finds 15 of the cycle's 30 days recognised, before the books start: half of it reduces revenue at the credit invoice's bulletin, half the liability at what the schedule carries (S06 rule 6; S10 edge case 7). October's release then takes what each schedule carries for October.
+
+```yaml
+case: INV-2026-7's void held, the schedule frozen and INV-2026-31's 60.00 USD credit to its cycle waiting behind it; the void dismissed, the credit posts at 117 (30.00 to revenue, 30.00 to the liability at carried amounts, a 90.00 SYP loss); October releases both schedules
+company: { shape: syp-usd, book: SYP, parallel: USD, template: service-agency, books_start: 2026-10-01,
+           rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true } }
+rates:
+  - { date: 2026-09-10, base: USD, quote: SYP, rate: "114.0000", type: bulletin }
+  - { date: 2026-09-30, base: USD, quote: SYP, rate: "115.0000", type: bulletin }
+  - { date: 2026-09-30, base: USD, quote: SYP, rate: "118.0000", type: market }
+  - { date: 2026-10-13, base: USD, quote: SYP, rate: "117.0000", type: bulletin }
+steps:
+  - opening: Vertex Media's opening with a paid retainer invoice
+    snapshot:
+      invoices:
+        - { invoice: INV-2026-7, client: C1, contract: { code: R1, kind: retainer, client: C1 },
+            currency: USD, syp_per_usd: "117.0000", issued_on: 2026-09-10, due_on: 2026-09-25,
+            total: 30000, outstanding: 0,
+            lines: [{ line: L1, amount: 30000, source: retainer_charge, kind: monthly,
+                      cycle_start: 2026-09-16, cycle_end: 2026-10-15, service: S1 }] }
+      prior_documents:
+        invoices:
+          - { invoice: INV-2026-7, issued_on: 2026-09-10 }
+        payments:
+          - { payment: PAY-7, receipt: R-2026-7, invoice: INV-2026-7, paid_on: 2026-09-20 }
+    records:
+      lines:
+        - { account: "111004", currency: USD, amount: 100000 }
+        - { account: "311001", currency: SYP, amount: -4000000, parallel: -35000 }
+        - { account: "312002", currency: SYP, amount: -1000000, parallel: -8500 }
+  - event: invoice.voided
+    accounting_date: 2026-10-08
+    payload: { invoice: INV-2026-7, voided_on: 2026-10-08, reason: "أُلغيت في Hub" }
+    outcome: { status: held, reason: NEEDS_DECISION, detail: before_books_start }
+  - event: invoice.issued
+    accounting_date: 2026-10-13
+    payload: { invoice: INV-2026-31, client: C1, contract: { code: R1, kind: retainer, client: C1 },
+               currency: USD, syp_per_usd: "118.0000", issued_on: 2026-10-13, due_on: 2026-10-28,
+               lines: [{ line: L1, amount: 30000, source: retainer_charge, kind: monthly,
+                         cycle_start: 2026-10-16, cycle_end: 2026-11-15, service: S1 },
+                       { line: L2, amount: -6000, source: retainer_charge, kind: credit,
+                         cycle_start: 2026-09-16, service: S1 }] }
+    outcome: { status: held, reason: WAITING_FOR_EARLIER_EVENT }
+  - dismiss: 2
+    reason: "ألغى Hub الفاتورة الخطأ؛ عقد العميل C1 قائم"
+  - job: revenue_release_month
+    period: 2026-10
+expect:
+  entries:
+    - source: opening
+      date: 2026-10-01
+      lines:
+        # 300.00 × 114 (bulletin of issue) = 34,200.00 SYP, less 15 of 30 days: 15,000 and 1,710,000 left
+        - { account: "212001", dims: { client: C1, contract: R1 }, currency: USD, amount: -15000, book: -1710000, parallel: -15000 }
+        # 1,000.00 USD × 115 = 115,000.00 SYP
+        - { account: "111004", currency: USD, amount: 100000, book: 11500000, parallel: 100000 }
+        - { account: "311001", currency: SYP, amount: -4000000, book: -4000000, parallel: -35000 }
+        - { account: "312002", currency: SYP, amount: -1000000, book: -1000000, parallel: -8500 }
+        # balancing: book −(−1,710,000 + 11,500,000 − 4,000,000 − 1,000,000) = −4,790,000;
+        #   parallel −(−15,000 + 100,000 − 35,000 − 8,500) = −41,500
+        - { account: "312001", currency: SYP, amount: -4790000, book: -4790000, parallel: -41500 }
+    # the dismissal on 13 Oct releases nothing: no month of the frozen schedule has ended
+    - source: invoice.issued
+      date: 2026-10-13
+      lines:
+        # 300.00 − 60.00 = 240.00 USD × 117 = 28,080.00 SYP
+        - { account: "112001", dims: { client: C1, contract: R1 }, currency: USD, amount: 24000, book: 2808000, parallel: 24000 }
+        # the next cycle deferred: 300.00 × 117 = 35,100.00 SYP
+        - { account: "212001", dims: { client: C1, contract: R1 }, currency: USD, amount: -30000, book: -3510000, parallel: -30000 }
+        # the credit on INV-2026-7's cycle, 15 of 30 days recognised before the books start (N 30,000, 15,000 still
+        #   to recognise): revenue 6,000 × 15,000 / 30,000 = 3,000, × 117 = 351,000
+        - { account: "411001", dims: { client: C1, contract: R1, service: S1 }, currency: USD, amount: 3000, book: 351000, parallel: 3000 }
+        # the rest, 3,000, off the schedule at its carried amounts: 1,710,000 × 3,000 / 15,000 = 342,000
+        - { account: "212001", dims: { client: C1, contract: R1 }, currency: USD, amount: 3000, book: 342000, parallel: 3000 }
+        # book residual 2,808,000 − 3,510,000 + 351,000 + 342,000 = −9,000, so a realised loss of 90.00 SYP
+        - { account: "541001", currency: SYP, amount: 9000, book: 9000, parallel: 0 }
+    - source: revenue_release
+      date: 2026-10-31
+      lines:
+        # INV-2026-7's schedule, an opening line, first: its last 15 days are all in October, all it carries,
+        #   15,000 − 3,000 = 12,000 and 1,710,000 − 342,000 = 1,368,000
+        - { account: "212001", dims: { client: C1, contract: R1 }, currency: USD, amount: 12000, book: 1368000, parallel: 12000 }
+        - { account: "411001", dims: { client: C1, contract: R1, service: S1 }, currency: USD, amount: -12000, book: -1368000, parallel: -12000 }
+    - source: revenue_release
+      date: 2026-10-31
+      lines:
+        # INV-2026-31/L1, 16 Oct to 15 Nov (31 days), 16 in October: 30,000 × 16 / 31 = 15,483.87… → 15,484;
+        #   3,510,000 × 16 / 31 = 1,811,612.90… → 1,811,613
+        - { account: "212001", dims: { client: C1, contract: R1 }, currency: USD, amount: 15484, book: 1811613, parallel: 15484 }
+        - { account: "411001", dims: { client: C1, contract: R1, service: S1 }, currency: USD, amount: -15484, book: -1811613, parallel: -15484 }
+  balances:
+    # what INV-2026-31/L1 still carries for November: 30,000 − 15,484 and 3,510,000 − 1,811,613
+    - { account: "212001", book: -1698387, parallel: -14516 }
+    # −351,000 recognised back from the credit, 1,368,000 + 1,811,613 released: 351,000 − 3,179,613
+    - { account: "411001", book: -2828613, parallel: -24484 }
+    - { account: "541001", book: 9000, parallel: 0 }
+  open_items:
+    - { item: INV-2026-31, account: "112001", dims: { client: C1, contract: R1 }, currency: USD, amount: 24000, book: 2808000, parallel: 24000 }
+```
+
+### Vertex Media: a void held over two month ends, then dismissed
+
+The owner's decision of 2026-11-12. INV-2026-9, the deferred line of the third case (910.00 USD over 1 September to 30 November, 61 of its 91 days in the opening), is voided in Hub on 20 October: held `before_books_start`, its schedule frozen. October's and November's jobs release nothing of it, and neither month can close while the event is held (S07's `no_held_events`). On 1 December the owner dismisses the void: the schedule releases at once each ended month it missed, dated on that month's last day, so October and November show their own revenue as if nothing had been frozen.
+
+```yaml
+case: INV-2026-9's void held from 20 Oct, October's and November's jobs release nothing of it; dismissed on 1 Dec, it releases October on 31 Oct and November on 30 Nov at the amounts the schedule carries
+company: { shape: syp-usd, book: SYP, parallel: USD, template: service-agency, books_start: 2026-10-01,
+           rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true } }
+rates:
+  - { date: 2026-09-01, base: USD, quote: SYP, rate: "114.0000", type: bulletin }
+  - { date: 2026-09-30, base: USD, quote: SYP, rate: "115.0000", type: bulletin }
+  - { date: 2026-09-30, base: USD, quote: SYP, rate: "118.0000", type: market }
+steps:
+  - opening: Vertex Media's opening with a deferred line
+    snapshot:
+      invoices:
+        - { invoice: INV-2026-9, client: C1, contract: { code: P1, kind: project, client: C1 },
+            currency: USD, syp_per_usd: "117.0000", issued_on: 2026-09-01, due_on: 2026-09-15,
+            total: 91000, outstanding: 0,
+            lines: [{ line: L1, amount: 91000, source: manual, deferred: true,
+                      cycle_start: 2026-09-01, cycle_end: 2026-11-30, service: S1 }] }
+      prior_documents:
+        invoices:
+          - { invoice: INV-2026-9, issued_on: 2026-09-01 }
+        payments:
+          - { payment: PAY-9, receipt: R-2026-9, invoice: INV-2026-9, paid_on: 2026-09-05 }
+    records:
+      lines:
+        - { account: "111001", currency: SYP, amount: 60000000 }
+        - { account: "111004", currency: USD, amount: 50000 }
+        - { account: "311001", currency: SYP, amount: -50000000, parallel: -450000 }
+        - { account: "312002", currency: SYP, amount: -5000000, parallel: -42000 }
+  - event: invoice.voided
+    accounting_date: 2026-10-20
+    payload: { invoice: INV-2026-9, voided_on: 2026-10-20, reason: "أُلغيت في Hub" }
+    outcome: { status: held, reason: NEEDS_DECISION, detail: before_books_start }
+  - job: revenue_release_month
+    period: 2026-10
+  - job: revenue_release_month
+    period: 2026-11
+  - dismiss: 2
+    reason: "أُلغيت الفاتورة في Hub خطأً؛ الخدمة قُدّمت كاملة"
+expect:
+  entries:
+    - source: opening
+      date: 2026-10-01
+      lines:
+        # as in the third case: 61 of 91 days left, 61,000 and 6,954,000
+        - { account: "212001", dims: { client: C1, contract: P1 }, currency: USD, amount: -61000, book: -6954000, parallel: -61000 }
+        - { account: "111001", currency: SYP, amount: 60000000, book: 60000000, parallel: 508475 }
+        - { account: "111004", currency: USD, amount: 50000, book: 5750000, parallel: 50000 }
+        - { account: "311001", currency: SYP, amount: -50000000, book: -50000000, parallel: -450000 }
+        - { account: "312002", currency: SYP, amount: -5000000, book: -5000000, parallel: -42000 }
+        - { account: "312001", currency: SYP, amount: -3796000, book: -3796000, parallel: -5475 }
+    # October's and November's jobs post nothing: the schedule is frozen and the company has no other
+    - source: revenue_release
+      date: 2026-10-31
+      lines:
+        # posted on 1 Dec by the dismissal, dated on October's last day: 31 days, 31,000 and 3,534,000
+        - { account: "212001", dims: { client: C1, contract: P1 }, currency: USD, amount: 31000, book: 3534000, parallel: 31000 }
+        - { account: "411001", dims: { client: C1, contract: P1, service: S1 }, currency: USD, amount: -31000, book: -3534000, parallel: -31000 }
+    - source: revenue_release
+      date: 2026-11-30
+      lines:
+        # November's last 30 days: 30,000 and 3,420,000
+        - { account: "212001", dims: { client: C1, contract: P1 }, currency: USD, amount: 30000, book: 3420000, parallel: 30000 }
+        - { account: "411001", dims: { client: C1, contract: P1, service: S1 }, currency: USD, amount: -30000, book: -3420000, parallel: -30000 }
+  balances:
+    - { account: "212001", book: 0, parallel: 0 }
+    - { account: "411001", book: -6954000, parallel: -61000 }
 ```
