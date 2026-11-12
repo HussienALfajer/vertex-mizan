@@ -367,6 +367,11 @@ export async function reports(
               diff.note(`no line ${line.line}`);
           }
           diff.equal('the year result', BigInt(read.yearResult), stated.yearResult);
+          // S10 rule 31: the reader does not answer the result before the books start until S10's
+          // feature slice, so a stated one fails rather than pass unread.
+          if (stated.yearResultPreOpening !== null || stated.compareYearResultPreOpening !== null) {
+            diff.note('the result before the books start is not read until S10');
+          }
           if (stated.compareYearResult !== null) {
             diff.equal(
               'the comparative year result',

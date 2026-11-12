@@ -1076,6 +1076,50 @@ describe('a case', () => {
     ).toContain('receipts');
   });
 
+  // S10 rules 31–33 on the reports fixture, in a company with a books start.
+  const presented = (marks: string, preOpening: string) =>
+    REPORTS.replace(
+      'rate_policy: { book: bulletin },',
+      'books_start: 2026-11-01, rate_policy: { book: bulletin },',
+    )
+      .replace(
+        'steps:\n',
+        'steps:\n  - opening: the records\n    records:\n      lines:\n        - { account: "312002", currency: SYP, amount: 0 }\n',
+      )
+      .replace('level: 4 }\n      marks: [period_open]', `level: 4 }\n      marks: [${marks}]`)
+      .replace('      year_result: 50000\n', `      year_result: 50000\n${preOpening}`);
+
+  it('reads the marks and the result before the books start of a company with one (S10 rules 31–33)', () => {
+    const scenario = parseCase(
+      presented(
+        'period_open, opening_entry, before_books_start',
+        '      year_result_pre_opening: 0\n',
+      ),
+    );
+    expect(scenario.expect.reports[0]).toMatchObject({
+      marks: ['period_open', 'opening_entry', 'before_books_start'],
+    });
+    expect(scenario.expect.reports[2]).toMatchObject({
+      yearResult: 50000n,
+      yearResultPreOpening: 0n,
+      compareYearResultPreOpening: null,
+    });
+    expect(parseCase(REPORTS).expect.reports[2]).toMatchObject({ yearResultPreOpening: null });
+    expect(
+      refusal(presented('period_open', '      compare_year_result_pre_opening: 0\n')),
+    ).toContain('compare_year_result_pre_opening needs a comparative');
+    const withoutBooksStart = (source: string) =>
+      source
+        .replace('books_start: 2026-11-01, ', '')
+        .replace(/ {2}- opening: the records\n[\s\S]*?amount: 0 \}\n/, '');
+    expect(refusal(withoutBooksStart(presented('period_open, opening_entry', '')))).toContain(
+      "A books start's mark needs the company's books_start",
+    );
+    expect(
+      refusal(withoutBooksStart(presented('period_open', '      year_result_pre_opening: 0\n'))),
+    ).toContain("The result before the books start needs the company's books_start");
+  });
+
   it('accepts a third-currency case with a line in TRY', () => {
     const third = CASE.replace('shape: syp-usd', 'shape: third')
       .replaceAll('currency: USD, amount: 10000', 'currency: TRY, amount: 43000')

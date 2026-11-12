@@ -43,8 +43,29 @@ const ledgerSchema = z.enum(['book', 'parallel'], {
   error: 'Expected the ledger: book or parallel',
 });
 
-/** S09 rule 4's marks, the exact set: "غير نهائية: الفترة مفتوحة" and "قبل إعادة التقييم". */
-export const REPORT_MARKS = ['period_open', 'before_revaluation'] as const;
+/**
+ * The marks, the exact set: S09 rule 4's "غير نهائية: الفترة مفتوحة" and "قبل إعادة التقييم";
+ * S10 rule 32's "الرصيد الافتتاحي من قيد الافتتاح" (a trial balance, general ledger or account
+ * statement from the books start) and
+ * rule 33's "تبدأ الدفاتر في <date>" (a range from before it) and "نتيجة ما قبل بدء الدفاتر ضمن
+ * حقوق الملكية" (an income statement of the books start's fiscal year).
+ */
+export const REPORT_MARKS = [
+  'period_open',
+  'before_revaluation',
+  'opening_entry',
+  'before_books_start',
+  'pre_opening_result_in_equity',
+] as const;
+
+/** S10's marks: only in a company with a books start. */
+export const BOOKS_START_MARKS: readonly ReportMarkName[] = [
+  'opening_entry',
+  'before_books_start',
+  'pre_opening_result_in_equity',
+];
+
+export type ReportMarkName = (typeof REPORT_MARKS)[number];
 
 const marksSchema = z
   .array(z.enum(REPORT_MARKS))
@@ -430,6 +451,10 @@ const balanceSheetSchema = z
     lines: z.array(balanceSheetLineSchema),
     year_result: amountSchema,
     compare_year_result: amountSchema.optional(),
+    // S10 rule 31: the balance of `pre_opening_result` the year's result includes (its note when
+    // not zero), zero at a date of a later fiscal year.
+    year_result_pre_opening: amountSchema.optional(),
+    compare_year_result_pre_opening: amountSchema.optional(),
     totals: balanceSheetTotalsSchema,
     compare_totals: balanceSheetTotalsSchema.optional(),
   })
@@ -437,7 +462,7 @@ const balanceSheetSchema = z
     checkComparative(
       report,
       ['compare_as_of'],
-      ['compare_marks', 'compare_year_result', 'compare_totals'],
+      ['compare_marks', 'compare_year_result', 'compare_year_result_pre_opening', 'compare_totals'],
       context,
     );
     const codes = report.lines.map((line) => line.line);
@@ -482,13 +507,25 @@ const balanceSheetSchema = z
       check(report.compare_totals, report.compare_year_result, compared, 'compare_totals');
     }
   }, WHEN_VALID)
-  .transform(({ compare_marks, year_result, compare_year_result, compare_totals, ...report }) => ({
-    ...report,
-    compareMarks: compare_marks ?? null,
-    yearResult: year_result,
-    compareYearResult: compare_year_result ?? null,
-    compareTotals: compare_totals ?? null,
-  }));
+  .transform(
+    ({
+      compare_marks,
+      year_result,
+      compare_year_result,
+      year_result_pre_opening,
+      compare_year_result_pre_opening,
+      compare_totals,
+      ...report
+    }) => ({
+      ...report,
+      compareMarks: compare_marks ?? null,
+      yearResult: year_result,
+      compareYearResult: compare_year_result ?? null,
+      yearResultPreOpening: year_result_pre_opening ?? null,
+      compareYearResultPreOpening: compare_year_result_pre_opening ?? null,
+      compareTotals: compare_totals ?? null,
+    }),
+  );
 
 // --- Profitability (S09 rules 20–23) ---
 
