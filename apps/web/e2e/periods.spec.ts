@@ -6,6 +6,7 @@ import {
   bookPreview,
   closedOctober,
   currentBookPreview,
+  november,
   octoberClosedList,
   parallelPreview,
   passingOctober,
@@ -203,6 +204,16 @@ test.describe('the periods', () => {
     await expect(
       page.getByRole('status').filter({ hasText: `${t.reopen.queued}: 2` }),
     ).toBeVisible();
+  });
+
+  test('keeps the close off while an earlier month is open (rule 2)', async ({ page }) => {
+    await answer(page, 'GET', '/periods/2026-11', {
+      status: 200,
+      json: { ...november, ended: true },
+    });
+    await page.goto('/periods/2026-11');
+    await expect(page.getByText(t.close.outOfOrder)).toBeVisible();
+    await expect(page.getByRole('button', { name: t.close.action })).toBeDisabled();
   });
 
   test('offers no reopen on a closed month that is not the latest', async ({ page }) => {

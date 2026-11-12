@@ -203,16 +203,15 @@ function PreviewView({
         });
       }
     },
-    onSuccess: async () => {
-      setNotice({ tone: 'info', text: t.actions.done });
+    onSuccess: () => setNotice({ tone: 'info', text: t.actions.done }),
+    onError: (error) => {
+      // The preview changed since it was read (rule 17): the new one shows under a notice.
+      if (hasCode(error, 'REVALUATION_CHANGED')) setNotice({ tone: 'warning', text: t.changed });
+    },
+    // Read again whatever happened: "both" may have posted one ledger before the other was refused.
+    onSettled: async () => {
       await queryClient.invalidateQueries({ queryKey: ['periods', companyId] });
       await queryClient.invalidateQueries({ queryKey: ['entries', companyId] });
-    },
-    onError: async (error) => {
-      // The preview changed since it was read (rule 17): show the new one with a notice.
-      if (!hasCode(error, 'REVALUATION_CHANGED')) return;
-      setNotice({ tone: 'warning', text: t.changed });
-      await queryClient.invalidateQueries({ queryKey: ['periods', companyId] });
     },
   });
 
