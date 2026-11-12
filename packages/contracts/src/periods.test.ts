@@ -100,6 +100,7 @@ describe('the period schemas (S07 rules 1–9, "API")', () => {
       'no_held_events',
       'releases_posted',
       'revaluation_current',
+      'reconciliation_clean',
     ]);
   });
 

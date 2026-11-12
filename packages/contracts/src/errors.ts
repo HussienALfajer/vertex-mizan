@@ -220,6 +220,10 @@ export const errorStatus = {
   PERIOD_NOT_CLOSED: 409,
   /** An item of the pre-close checklist fails (S07 rules 2, 8; details: items). */
   CHECKLIST_FAILED: 409,
+
+  // Daily reconciliation (S08, ADR 0017).
+  /** The start date moves later only while no month it would release is closed (S08 rule 13). */
+  RECONCILIATION_START_LOCKED: 409,
 } as const satisfies Record<string, number>;
 
 export type ErrorCode = keyof typeof errorStatus;

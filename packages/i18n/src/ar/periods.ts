@@ -64,6 +64,7 @@ export const periods = {
       no_held_events: 'لا أحداث معلقة',
       releases_posted: 'الإيرادات المؤجلة محررة',
       revaluation_current: 'إعادة التقييم حالية',
+      reconciliation_clean: 'المطابقة اليومية نظيفة',
     } satisfies Record<ChecklistItemName, string>,
     unknownItem: 'بند غير معروف',
     results: {
@@ -79,6 +80,7 @@ export const periods = {
       no_held_events: 'أحداث معلقة',
       releases_posted: 'تحريرات ناقصة',
       revaluation_current: 'دفاتر إعادة تقييمها غير حالية',
+      reconciliation_clean: 'أيام مطابقة غير نظيفة',
     } satisfies Record<ChecklistItemName, string>,
     links: {
       bulletins_recorded: 'تقويم النشرة',
@@ -88,6 +90,7 @@ export const periods = {
       no_held_events: 'الأحداث المعلقة',
       releases_posted: 'أشهر الإيراد',
       revaluation_current: 'إعادة التقييم',
+      reconciliation_clean: 'المطابقة اليومية',
     } satisfies Record<ChecklistItemName, string>,
     ledgers: 'في',
   },

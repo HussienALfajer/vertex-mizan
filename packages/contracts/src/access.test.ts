@@ -46,6 +46,7 @@ describe('the permission map', () => {
         'recognition.read',
         'periods.read',
         'revaluation.post',
+        'reconciliation.read',
       ],
       accountant: [
         'company.read',
@@ -69,6 +70,7 @@ describe('the permission map', () => {
         'recognition.read',
         'periods.read',
         'revaluation.post',
+        'reconciliation.read',
       ],
       approver: [
         'company.read',
@@ -104,6 +106,7 @@ describe('the permission map', () => {
         'api_clients.read',
         'recognition.read',
         'periods.read',
+        'reconciliation.read',
       ],
     });
   });
@@ -151,6 +154,12 @@ describe('the permission map', () => {
       ROLES.filter((role) => rolePermissions[role].includes(key));
     expect(holders('periods.read')).toEqual(['owner', 'accountant', 'auditor']);
     expect(holders('revaluation.post')).toEqual(['owner', 'accountant']);
+  });
+
+  it('gives the reconciliation to the roles of S08 "Access"', () => {
+    const holders = (key: (typeof PERMISSIONS)[number]) =>
+      ROLES.filter((role) => rolePermissions[role].includes(key));
+    expect(holders('reconciliation.read')).toEqual(['owner', 'accountant', 'auditor']);
   });
 
   it('lets every role read the company profile, the chart, dimensions and rates', () => {
