@@ -28,6 +28,9 @@ import {
 
 // A synthetic chart in the service-agency template's codes (S02): headers at levels 1–3 and the
 // postable accounts at level 4 the scenario `reports/statement-presentation` uses.
+/** Assets and expenses are debit accounts, the rest credit ones (S02). */
+const normalOf = (code: string) => (/^[15]/.test(code) ? 'debit' : 'credit');
+
 const header = (code: string, parent: string | null, level: number): ReportChartAccount => ({
   id: `a${code}`,
   code,
@@ -36,6 +39,7 @@ const header = (code: string, parent: string | null, level: number): ReportChart
   postable: false,
   statementLine: null,
   control: false,
+  normalBalance: normalOf(code),
   archived: false,
 });
 const postable = (
@@ -43,6 +47,7 @@ const postable = (
   parent: string,
   statementLine: string,
   control = false,
+  normalBalance: 'debit' | 'credit' = normalOf(code),
 ): ReportChartAccount => ({
   id: `a${code}`,
   code,
@@ -51,6 +56,7 @@ const postable = (
   postable: true,
   statementLine,
   control,
+  normalBalance,
   archived: false,
 });
 
@@ -64,6 +70,11 @@ const CHART: ReportChartAccount[] = [
   postable('112001', '112', 'bs.trade_receivables', true),
   header('113', '11', 3),
   postable('113001', '113', 'bs.contract_assets', true),
+  header('12', '1', 2),
+  header('121', '12', 3),
+  postable('121001', '121', 'bs.ppe'),
+  // Accumulated depreciation: a contra account, credit in its normal position on an asset line.
+  postable('121003', '121', 'bs.ppe', false, 'credit'),
   header('2', null, 1),
   header('21', '2', 2),
   header('211', '21', 3),
@@ -335,6 +346,9 @@ describe('the balance sheet (rules 15–19)', () => {
         balances: [
           { accountId: id('111003'), clientId: null, contractId: null, amount: -1_000n },
           { accountId: id('112001'), clientId: 'C1', contractId: null, amount: 44_000n },
+          { accountId: id('121001'), clientId: null, contractId: null, amount: 10_000n },
+          { accountId: id('121003'), clientId: null, contractId: null, amount: -4_000n },
+          { accountId: id('311001'), clientId: null, contractId: null, amount: -6_000n },
         ],
         yearNet: -18_000n,
         unclosedNet: -25_000n,
@@ -346,6 +360,9 @@ describe('the balance sheet (rules 15–19)', () => {
     expect(line('bs.cash')?.parts).toEqual([
       expect.objectContaining({ amount: -1_000n, oppositeSide: true }),
     ]);
+    // A contra account in its normal position is not flagged; the line is net.
+    expect(line('bs.ppe')).toMatchObject({ amount: 6_000n });
+    expect(line('bs.ppe')?.parts.map((part) => part.oppositeSide)).toEqual([false, false]);
     expect(sheet.totals.assets).toBe(sheet.totals.liabilitiesAndEquity);
     expect(sheet.compareTotals).toEqual({
       assets: 0n,
@@ -389,14 +406,49 @@ describe('profitability (rules 20–23)', () => {
 
   it("takes a service's department in force on a date, the latest row among equals", () => {
     const rows = [
-      { serviceId: 'S1', departmentId: 'design', effectiveFrom: '2026-12-03', createdAt: '1' },
-      { serviceId: 'S1', departmentId: 'photography', effectiveFrom: '2026-12-15', createdAt: '2' },
-      { serviceId: 'S1', departmentId: 'video', effectiveFrom: '2026-12-15', createdAt: '3' },
+      {
+        serviceId: 'S1',
+        departmentId: 'design',
+        effectiveFrom: '2026-12-03',
+        createdAt: '1',
+        id: 'a',
+      },
+      {
+        serviceId: 'S1',
+        departmentId: 'photography',
+        effectiveFrom: '2026-12-15',
+        createdAt: '2',
+        id: 'b',
+      },
+      {
+        serviceId: 'S1',
+        departmentId: 'video',
+        effectiveFrom: '2026-12-15',
+        createdAt: '3',
+        id: 'c',
+      },
+      // Two rows of one transaction (one `created_at`): the later id wins, in any order read.
+      {
+        serviceId: 'S2',
+        departmentId: 'video',
+        effectiveFrom: '2026-12-15',
+        createdAt: '4',
+        id: 'e',
+      },
+      {
+        serviceId: 'S2',
+        departmentId: 'design',
+        effectiveFrom: '2026-12-15',
+        createdAt: '4',
+        id: 'd',
+      },
     ];
     expect(departmentInForce(rows, 'S1', '2026-12-02')).toBeNull();
     expect(departmentInForce(rows, 'S1', '2026-12-14')).toBe('design');
     expect(departmentInForce(rows, 'S1', '2026-12-20')).toBe('video');
-    expect(departmentInForce(rows, 'S2', '2026-12-20')).toBeNull();
+    expect(departmentInForce(rows, 'S2', '2026-12-20')).toBe('video');
+    expect(departmentInForce([...rows].reverse(), 'S2', '2026-12-20')).toBe('video');
+    expect(departmentInForce(rows, 'S3', '2026-12-20')).toBeNull();
   });
 });
 

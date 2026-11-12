@@ -1,8 +1,10 @@
 import {
   type CompanyLedgers,
+  createAccountSchema,
   DomainError,
   SERVICE_DEPARTMENT_SOURCES,
 } from '@vertex-mizan/contracts';
+import { departmentInForce } from '@vertex-mizan/ledger';
 import { and, eq } from 'drizzle-orm';
 import fc from 'fast-check';
 import { v7 as uuidv7 } from 'uuid';
@@ -10,6 +12,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import {
   auditEntries,
   chartAccounts,
+  createAccount,
   createCompanyBooks,
   DEPARTMENT_SOURCES,
   dimensionTypes,
@@ -23,7 +26,9 @@ import {
   readIncomeStatement,
   readJournal,
   readJournalBook,
+  readProfitability,
   readReportLines,
+  readServiceDepartmentRows,
   readServiceDepartments,
   readTrialBalance,
   recordHubDepartments,
@@ -121,8 +126,12 @@ async function newBooks(): Promise<Books> {
   return { id, accounts: new Map(accounts.map((row) => [row.code, row.id])), values };
 }
 
-/** A manual SYP entry of `(code, amount)` lines, posted through the posting function. */
-function manual(books: Books, on: string, lines: readonly (readonly [string, bigint])[]) {
+/** A manual SYP entry of `(code, amount, values)` lines, posted through the posting function. */
+function manual(
+  books: Books,
+  on: string,
+  lines: readonly (readonly [string, bigint] | readonly [string, bigint, readonly string[]])[],
+) {
   return inCompany(books.id, (tx) =>
     post(tx, {
       client: 'manual',
@@ -138,9 +147,9 @@ function manual(books: Books, on: string, lines: readonly (readonly [string, big
         kind: 'manual',
         today: '2026-12-31',
         dealtRates: [],
-        lines: lines.map(([code, amount]) => ({
+        lines: lines.map(([code, amount, values]) => ({
           accountId: books.accounts.get(code) as string,
-          dimensionValueIds: [],
+          dimensionValueIds: (values ?? []).map((value) => books.values.get(value) as string),
           currency: 'SYP',
           amountMinor: amount,
           memo: null,
@@ -350,6 +359,30 @@ describe('the dated department of a service (rules 32–34)', () => {
           actor: actor(),
         }),
       );
+    // Two rows of one service and date in one transaction (a retry posting two held invoices):
+    // the later row wins, read in any order (rule 32).
+    await inCompany(books.id, async (tx) => {
+      for (const department of ['video', 'design']) {
+        await recordHubDepartments(tx, {
+          companyId: books.id,
+          inboundEventId: event?.id as string,
+          accountingDate: '2026-12-20',
+          services: [
+            {
+              serviceId: books.values.get('S1') as string,
+              departmentId: books.values.get(department) as string,
+            },
+          ],
+          actor: actor(),
+        });
+      }
+    });
+    const rows = await inCompany(books.id, (tx) => readServiceDepartmentRows(tx));
+    const s1 = books.values.get('S1') as string;
+    expect(departmentInForce(rows, s1, '2026-12-20')).toBe(books.values.get('design'));
+    expect(departmentInForce([...rows].reverse(), s1, '2026-12-20')).toBe(
+      books.values.get('design'),
+    );
     await record('design', '2026-11-20');
     await record('design', '2026-12-03');
     await record('video', '2026-12-15');
@@ -363,6 +396,75 @@ describe('the dated department of a service (rules 32–34)', () => {
         ['video', '2026-12-15', 'hub'],
       ],
     );
+  });
+});
+
+describe('profitability by department (rules 20–23)', () => {
+  it("gives a revenue line its service's department, and a cost line only its own", async () => {
+    const books = await newBooks();
+    const actorNow = actor();
+    // A direct-cost account that requires no department, so a cost line can name a service only.
+    await inCompany(books.id, async (tx) => {
+      const [parent] = await tx
+        .select({ id: chartAccounts.id })
+        .from(chartAccounts)
+        .where(eq(chartAccounts.code, '511'));
+      const made = await createAccount(
+        tx,
+        books.id,
+        createAccountSchema.parse({
+          parentId: parent?.id,
+          code: '511009',
+          kind: 'postable',
+          name: 'تكاليف مباشرة أخرى',
+          statementLine: 'is.direct_costs',
+        }),
+        actorNow,
+      );
+      books.accounts.set('511009', made.id);
+      await setServiceDepartment(tx, {
+        serviceValueId: books.values.get('S1') as string,
+        departmentValueId: books.values.get('design') as string,
+        effectiveFrom: '2026-12-01',
+        reason: 'خدمة يقدمها قسم التصميم',
+        actor: actorNow,
+      });
+    });
+    await manual(books, '2026-12-10', [
+      ['111003', 100_000n],
+      ['411001', -100_000n, ['C1', 'S1']],
+    ]);
+    await manual(books, '2026-12-11', [
+      ['511009', 30_000n, ['S1']],
+      ['111003', -30_000n],
+    ]);
+    const report = await inCompany(books.id, (tx) =>
+      readProfitability(
+        tx,
+        { by: 'department', from: '2026-12-01', to: '2026-12-31', compare: false },
+        NOW,
+      ),
+    );
+    expect(report.header.ledger).toBe('book');
+    expect(report.rows.map((row) => [row.value?.code ?? null, row.current])).toEqual([
+      ['design', { revenue: '100000', directCosts: '0', contribution: '100000', margin: '100.0' }],
+      [null, { revenue: '0', directCosts: '30000', contribution: '-30000', margin: null }],
+    ]);
+    const costs = await inCompany(books.id, (tx) =>
+      readReportLines(
+        tx,
+        {
+          ledger: 'book',
+          from: '2026-12-01',
+          to: '2026-12-31',
+          statementLine: 'is.direct_costs',
+          profitabilityBy: 'department',
+          dims: [],
+        },
+        NOW,
+      ),
+    );
+    expect(costs).toMatchObject({ sum: '30000', count: 1 });
   });
 });
 

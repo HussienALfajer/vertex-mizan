@@ -242,9 +242,23 @@ describe('/api/dimension-values/:id/departments (S09 rules 32–34)', () => {
     });
     await closeMonthByHand(db, book.companyId, today().slice(0, 7));
     expect((await set(service, today())).body.code).toBe('PERIOD_CLOSED');
+    // Another company's ids: its service is none of the caller's, and its department neither.
     const other = await books(app, db);
+    const theirs = await values(other);
     expect(
       (await other.owner.browser.get(`/api/dimension-values/${service}/departments`)).body.code,
     ).toBe('NOT_FOUND');
+    const write = (browser: typeof other.owner.browser, id: string, departmentValueId: string) =>
+      browser.post(`/api/dimension-values/${id}/departments`, {
+        departmentValueId,
+        effectiveFrom: today(),
+        reason: 'سبب تجريبي',
+      });
+    expect((await write(other.owner.browser, service, theirs.department)).body.code).toBe(
+      'NOT_FOUND',
+    );
+    expect((await write(other.owner.browser, theirs.service, department)).body.code).toBe(
+      'VALIDATION_FAILED',
+    );
   });
 });

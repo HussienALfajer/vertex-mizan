@@ -1137,16 +1137,18 @@ async function decide(
         }
         throw error;
       }
-      // A service's department sent with it starts a dated row (S09 rule 33).
+      const decision = plan.decision ?? values.decision;
+      if (decision !== null) throw new HeldAttempt(hold('NEEDS_DECISION', decision));
+      // A service's department sent with it starts a dated row (S09 rule 33). It posts nothing,
+      // so it never holds the event: its values are found or made apart from the decision.
+      const departmentValues = new HubValues(savepoint, row.companyId, options.actor);
       const departments: { serviceId: string; departmentId: string }[] = [];
       for (const service of servicesWithDepartment(event)) {
         departments.push({
-          serviceId: await values.valueOf('service', service, null),
-          departmentId: await values.valueOf('department', service.department, null),
+          serviceId: await departmentValues.valueOf('service', service, null),
+          departmentId: await departmentValues.valueOf('department', service.department, null),
         });
       }
-      const decision = plan.decision ?? values.decision;
-      if (decision !== null) throw new HeldAttempt(hold('NEEDS_DECISION', decision));
       if (departments.length > 0) {
         await recordHubDepartments(savepoint, {
           companyId: row.companyId,

@@ -136,6 +136,7 @@ async function readChart(tx: Transaction): Promise<ChartRow[]> {
     postable: row.kind === 'postable',
     statementLine: row.statementLine,
     control: row.isControl,
+    normalBalance: row.normalBalance as 'debit' | 'credit',
     archived: row.archivedAt !== null,
     name: row.name,
     report: {
@@ -1172,14 +1173,16 @@ async function profitabilityAmounts(
       : [];
   const account = chartIndex(chart);
   return rows.rows.map((row) => {
+    const statementLine = account(row.account_id).statementLine ?? '';
+    // Rule 22: a revenue line without a department takes its service's; a cost line does not.
     const valueId =
       row.value_id ??
-      (by === 'department' && row.service_id !== null
+      (by === 'department' && statementLine === 'is.revenue' && row.service_id !== null
         ? departmentInForce(history, row.service_id, row.entry_date)
         : null);
     const net = BigInt(row.net);
     return {
-      statementLine: account(row.account_id).statementLine ?? '',
+      statementLine,
       valueId,
       current: side === 'current' ? net : 0n,
       compare: side === 'compare' ? net : 0n,
@@ -1470,11 +1473,12 @@ export async function readReportLines(
       const serviceType = await builtinTypeId(tx, 'service');
       const candidates = await tx.execute<{
         id: string;
+        account_id: string;
         own: string | null;
         service: string | null;
         entry_date: string;
       }>(sql`
-        select l.id, ${byType} as own,
+        select l.id, l.account_id, ${byType} as own,
           (select v.value_id from dimension_set_values v where v.company_id = l.company_id
             and v.set_id = l.dimension_set_id and v.type_id = ${serviceType}::uuid) as service,
           to_char(e.entry_date, 'YYYY-MM-DD') as entry_date
@@ -1485,9 +1489,10 @@ export async function readReportLines(
       departmentLines = new Set(
         candidates.rows
           .filter((row) => {
+            const revenue = chartIndex(chart)(row.account_id).statementLine === 'is.revenue';
             const department =
               row.own ??
-              (row.service === null
+              (row.service === null || !revenue
                 ? null
                 : departmentInForce(history, row.service, row.entry_date));
             return department === (query.profitabilityValue ?? null);
@@ -1506,10 +1511,8 @@ export async function readReportLines(
     conditions.push(
       departmentLines.size === 0
         ? sql`false`
-        : sql`l.id in (${sql.join(
-            [...departmentLines].map((id) => sql`${id}::uuid`),
-            sql`, `,
-          )})`,
+        : // One array parameter, whatever the number of lines.
+          sql`l.id = any(${`{${[...departmentLines].join(',')}}`}::uuid[])`,
     );
   }
   const where = sql.join(conditions, sql` and `);

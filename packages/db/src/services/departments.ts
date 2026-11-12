@@ -35,12 +35,18 @@ export async function readServiceDepartmentRows(
       departmentId: serviceDepartments.departmentValueId,
       effectiveFrom: serviceDepartments.effectiveFrom,
       createdAt: serviceDepartments.createdAt,
+      id: serviceDepartments.id,
     })
     .from(serviceDepartments)
     .where(
       serviceIds === undefined
         ? undefined
         : inArray(serviceDepartments.serviceValueId, [...serviceIds]),
+    )
+    .orderBy(
+      asc(serviceDepartments.effectiveFrom),
+      asc(serviceDepartments.createdAt),
+      asc(serviceDepartments.id),
     );
   return rows.map((row) => ({ ...row, createdAt: row.createdAt.toISOString() }));
 }
@@ -91,7 +97,11 @@ export async function readServiceDepartments(
     .innerJoin(dimensionValues, eq(dimensionValues.id, serviceDepartments.departmentValueId))
     .leftJoin(users, eq(users.id, serviceDepartments.recordedByUserId))
     .where(eq(serviceDepartments.serviceValueId, serviceValueId))
-    .orderBy(asc(serviceDepartments.effectiveFrom), asc(serviceDepartments.createdAt));
+    .orderBy(
+      asc(serviceDepartments.effectiveFrom),
+      asc(serviceDepartments.createdAt),
+      asc(serviceDepartments.id),
+    );
   return {
     service: valueRef(service),
     fromHub: service.externalSource !== null,

@@ -29,6 +29,8 @@ export interface ReportChartAccount {
   readonly statementLine: string | null;
   /** A control account (S04): its balance is read per client (rule 18). */
   readonly control: boolean;
+  /** The account's normal balance: a balance on the other side is flagged (Q17). */
+  readonly normalBalance: 'debit' | 'credit';
   readonly archived: boolean;
 }
 
@@ -492,7 +494,7 @@ function presentBalances(
     (row) => row.accountId,
   );
   for (const { first, amount } of otherRows) {
-    const { line } = accountOf(first.accountId);
+    const { account, line } = accountOf(first.accountId);
     const presented = onLine(line, amount);
     add(line, {
       accountId: first.accountId,
@@ -500,7 +502,9 @@ function presentBalances(
       contractId: null,
       amount: presented,
       reclassified: false,
-      oppositeSide: presented < 0n,
+      // Against the account's normal balance, not its line's: a contra account such as
+      // accumulated depreciation is in its normal position on an asset line.
+      oppositeSide: account.normalBalance === 'debit' ? amount < 0n : amount > 0n,
     });
   }
   for (const list of parts.values()) {
@@ -671,8 +675,9 @@ export interface ServiceDepartmentRow {
   readonly serviceId: string;
   readonly departmentId: string;
   readonly effectiveFrom: string;
-  /** For the order among rows of one date: the latest wins. */
+  /** For the order among rows of one date: the latest wins, then the latest id (UUIDv7). */
   readonly createdAt: string;
+  readonly id: string;
 }
 
 /**
@@ -691,7 +696,9 @@ export function departmentInForce(
     if (
       found === null ||
       row.effectiveFrom > found.effectiveFrom ||
-      (row.effectiveFrom === found.effectiveFrom && row.createdAt > found.createdAt)
+      (row.effectiveFrom === found.effectiveFrom &&
+        (row.createdAt > found.createdAt ||
+          (row.createdAt === found.createdAt && row.id > found.id)))
     ) {
       found = row;
     }

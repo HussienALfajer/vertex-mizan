@@ -476,7 +476,8 @@ export type BalanceSheetQuery = z.infer<typeof balanceSheetQuerySchema>;
  * A balance a line is made of: an account's, per contract where rule 17 nets it, per client
  * where rule 18 reads it, signed as it adds to the line. `reclassified` marks a counterparty's
  * balance rule 18 moved to the opposite side; `oppositeSide` a non-control account's balance
- * against its line's side, presented negative and flagged (Q17).
+ * against its normal balance, such as a bank account in credit, flagged (Q17); a contra account
+ * in its normal position (accumulated depreciation) is not.
  */
 export const balanceSheetPartSchema = z
   .object({
