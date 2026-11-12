@@ -148,6 +148,7 @@ export const audit = {
     inbound_event: 'الحدث الوارد',
     revaluation: 'إعادة التقييم',
     period: 'الفترة',
+    service_department: 'قسم الخدمة',
   },
   /** The audited fields, by entity field name. */
   fields: {
@@ -203,6 +204,10 @@ export const audit = {
     source: 'المصدر',
     supersedesRateId: 'السعر المصحَّح',
     effectiveOn: 'تاريخ السريان',
+    serviceValueId: 'الخدمة',
+    departmentValueId: 'القسم',
+    effectiveFrom: 'يسري من',
+    inboundEventId: 'الحدث الوارد',
     on: 'التاريخ',
     note: 'الملاحظة',
     removed: 'أُزيل',

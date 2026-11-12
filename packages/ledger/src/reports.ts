@@ -841,6 +841,11 @@ export function sidesOf(balance: bigint): DebitsCredits {
   return { debits: debitPart(balance), credits: creditPart(balance) };
 }
 
+/** The exact sum of amounts, for a reader that sums what SQL already split. */
+export function sumAmounts(amounts: Iterable<bigint>): bigint {
+  return sum(amounts);
+}
+
 /** `opening + debits − credits`. */
 export function closingOf(opening: bigint, movement: DebitsCredits): bigint {
   return opening + movement.debits - movement.credits;

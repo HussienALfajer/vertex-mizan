@@ -153,7 +153,7 @@ export type Guards = {
  * period balances, the dimension sets; the drafts, their lines and attachments; S04's open items,
  * their movements, due dates and balances; S05's inbox and API clients; S06's recognition schedules
  * and movements; S07's revaluations, and its item movements and balances with revaluations).
- * S07's second PR adds the period close.
+ * S07's second PR adds the period close; S08 the reconciliation; S09 the service departments.
  */
 export const GUARDS: Guards = {
   functions: [
@@ -2426,6 +2426,70 @@ BEGIN
 END
 `,
     },
+    // S09: a service's department is a service value's, of a department, from Hub for a Hub
+    // service, in an open month.
+    {
+      name: 'service_department_rules',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+DECLARE
+  service record;
+  department_type text;
+  period_state text;
+BEGIN
+  SELECT t.code AS type_code, t.builtin, v.external_source INTO service
+  FROM public.dimension_values v
+  JOIN public.dimension_types t ON t.company_id = v.company_id AND t.id = v.type_id
+  WHERE v.company_id = NEW.company_id AND v.id = NEW.service_value_id;
+  IF NOT FOUND OR service.type_code <> 'service' OR NOT service.builtin THEN
+    RAISE EXCEPTION 'service_departments: a department is a service value''s'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  SELECT t.code INTO department_type
+  FROM public.dimension_values v
+  JOIN public.dimension_types t ON t.company_id = v.company_id AND t.id = v.type_id
+  WHERE v.company_id = NEW.company_id AND v.id = NEW.department_value_id AND t.builtin;
+  IF NOT FOUND OR department_type <> 'department' THEN
+    RAISE EXCEPTION 'service_departments: a service''s department is a department value'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF NEW.source = 'manual' AND service.external_source IS NOT NULL THEN
+    RAISE EXCEPTION 'service_departments: DIMENSION_FROM_HUB: a Hub service''s department comes from Hub'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  SELECT p.state INTO period_state
+  FROM public.periods p
+  WHERE p.company_id = NEW.company_id AND p.period = to_char(NEW.effective_from, 'YYYY-MM')
+  FOR SHARE;
+  IF period_state = 'closed' OR (
+    -- No row for the month and none before it: a month before the first period.
+    NOT FOUND
+    AND NOT EXISTS (
+      SELECT 1 FROM public.periods p
+      WHERE p.company_id = NEW.company_id AND p.period < to_char(NEW.effective_from, 'YYYY-MM')
+    )
+    AND EXISTS (
+      SELECT 1 FROM public.periods p
+      WHERE p.company_id = NEW.company_id AND p.state = 'closed'
+    )
+  ) THEN
+    RAISE EXCEPTION 'service_departments: PERIOD_CLOSED: a department takes effect in an open month, not %',
+      NEW.effective_from
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  RETURN NEW;
+END
+`,
+    },
   ],
   triggers: [
     // The settings lock (S01 rule 11): before every update of a company's ledger settings.
@@ -3384,6 +3448,27 @@ END
       function: 'api_client_reconcile_from_rules',
       deferred: false,
       on: ['UPDATE'],
+    },
+    {
+      table: 'service_departments',
+      name: 'service_departments_refuse_change',
+      function: 'refuse_change',
+      deferred: false,
+      on: ['UPDATE', 'DELETE'],
+    },
+    {
+      table: 'service_departments',
+      name: 'service_departments_refuse_truncate',
+      function: 'refuse_change',
+      deferred: false,
+      on: ['TRUNCATE'],
+    },
+    {
+      table: 'service_departments',
+      name: 'service_department_rules',
+      function: 'service_department_rules',
+      deferred: false,
+      on: ['INSERT'],
     },
   ],
   jobs: {

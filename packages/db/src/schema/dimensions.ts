@@ -2,8 +2,10 @@ import { sql } from 'drizzle-orm';
 import {
   boolean,
   check,
+  date,
   foreignKey,
   index,
+  type PgTableExtraConfigValue,
   pgTable,
   smallint,
   text,
@@ -13,6 +15,7 @@ import {
 } from 'drizzle-orm/pg-core';
 import { archivedAt, companyId, createdAt, id, idIsUuidV7, updatedAt } from './columns.js';
 import { companies } from './companies.js';
+import { inboundEvents } from './inbox.js';
 
 // The dimensions module (S02, ADR 0011): dimension types and their values, company tables under
 // forced RLS. The built-in types (client, contract under client, department, service) are made
@@ -133,6 +136,71 @@ export const dimensionValues = pgTable(
       sql`(${t.externalSource} is null) = (${t.externalId} is null)
         and (${t.externalSource} is null or ${t.externalSource} in (${listed(VALUE_EXTERNAL_SOURCES)}))
         and (${t.externalId} is null or char_length(${t.externalId}) between 1 and 100)`,
+    ),
+  ],
+);
+
+/** `SERVICE_DEPARTMENT_SOURCES` of `@vertex-mizan/contracts`; a test keeps them equal. */
+export const DEPARTMENT_SOURCES = ['hub', 'manual'] as const;
+
+/**
+ * A service's department from a date (S09 rules 32–34), append-only: the department in force on a
+ * date is the row with the latest `effective_from` on or before it, the latest `created_at` among
+ * equals. From Hub with the event that sent it, or by hand for a service not from Hub, by the
+ * accountant with a reason. The guards of 0047 check the values' types, the source and that
+ * `effective_from` is not in a closed month.
+ */
+export const serviceDepartments = pgTable(
+  'service_departments',
+  {
+    id: id(),
+    companyId: companyId().references(() => companies.id),
+    serviceValueId: uuid().notNull(),
+    departmentValueId: uuid().notNull(),
+    effectiveFrom: date().notNull(),
+    source: text().notNull(),
+    inboundEventId: uuid(),
+    // A person is a platform id, kept without a foreign key as the audit log does.
+    recordedByUserId: uuid(),
+    reason: text(),
+    createdAt: createdAt(),
+  },
+  // Typed, so the cycle with inbox.ts does not make the table's type infer itself.
+  (t): PgTableExtraConfigValue[] => [
+    idIsUuidV7('service_departments', t.id),
+    foreignKey({
+      name: 'service_departments_service_fk',
+      columns: [t.companyId, t.serviceValueId],
+      foreignColumns: [dimensionValues.companyId, dimensionValues.id],
+    }),
+    foreignKey({
+      name: 'service_departments_department_fk',
+      columns: [t.companyId, t.departmentValueId],
+      foreignColumns: [dimensionValues.companyId, dimensionValues.id],
+    }),
+    foreignKey({
+      name: 'service_departments_inbound_event_fk',
+      columns: [t.companyId, t.inboundEventId],
+      foreignColumns: [inboundEvents.companyId, inboundEvents.id],
+    }),
+    index('service_departments_company_service_idx').on(
+      t.companyId,
+      t.serviceValueId,
+      t.effectiveFrom,
+      t.createdAt,
+    ),
+    index('service_departments_company_department_idx').on(t.companyId, t.departmentValueId),
+    index('service_departments_company_inbound_event_idx').on(t.companyId, t.inboundEventId),
+    check('service_departments_source', sql`${t.source} in (${listed(DEPARTMENT_SOURCES)})`),
+    check(
+      'service_departments_source_actor',
+      sql`(${t.source} = 'hub' and ${t.inboundEventId} is not null and ${t.recordedByUserId} is null)
+        or (${t.source} = 'manual' and ${t.recordedByUserId} is not null
+          and ${t.inboundEventId} is null and ${t.reason} is not null)`,
+    ),
+    check(
+      'service_departments_reason_length',
+      sql`${t.reason} is null or char_length(${t.reason}) between 1 and 500`,
     ),
   ],
 );

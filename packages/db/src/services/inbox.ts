@@ -9,6 +9,7 @@ import {
   type HoldReason,
   type HubContractRef,
   type HubCurrency,
+  type HubServiceRef,
   type HubValueRef,
   itemKeyOf,
   orderKeysOf,
@@ -59,6 +60,7 @@ import {
 } from '../schema/ledger.js';
 import { openItemBalances, openItemDueDates, openItems } from '../schema/open-items.js';
 import { ledgersOf } from './companies.js';
+import { recordHubDepartments } from './departments.js';
 import { recordRate } from './rates.js';
 import {
   creditChangedLaterOf,
@@ -774,6 +776,24 @@ class HubValues {
   }
 }
 
+/** The services of an event's revenue lines that carry their department (S09 rule 33). */
+function servicesWithDepartment(
+  event: EventEnvelope,
+): (HubServiceRef & { department: HubValueRef })[] {
+  const services: HubServiceRef[] =
+    event.type === 'invoice.issued'
+      ? event.payload.lines.map((line) => line.service)
+      : event.type === 'invoice.line_service_changed'
+        ? [event.payload.new_service]
+        : event.type === 'milestone.done' && event.payload.service !== undefined
+          ? [event.payload.service]
+          : [];
+  return services.filter(
+    (service): service is HubServiceRef & { department: HubValueRef } =>
+      service.department !== undefined,
+  );
+}
+
 /** A planned entry as a posting request's content. */
 async function contentOf(
   tx: Transaction,
@@ -1122,8 +1142,25 @@ async function decide(
         }
         throw error;
       }
+      // A service's department sent with it starts a dated row (S09 rule 33).
+      const departments: { serviceId: string; departmentId: string }[] = [];
+      for (const service of servicesWithDepartment(event)) {
+        departments.push({
+          serviceId: await values.valueOf('service', service, null),
+          departmentId: await values.valueOf('department', service.department, null),
+        });
+      }
       const decision = plan.decision ?? values.decision;
       if (decision !== null) throw new HeldAttempt(hold('NEEDS_DECISION', decision));
+      if (departments.length > 0) {
+        await recordHubDepartments(savepoint, {
+          companyId: row.companyId,
+          inboundEventId: row.id,
+          accountingDate: row.accountingDate,
+          services: departments,
+          actor: options.actor,
+        });
+      }
       // A service change before anything was recognised moves no revenue: it is recorded.
       if (posted.length === 0) return { kind: 'recorded', triggers: [] };
       return { kind: 'posted', entryIds: posted };
