@@ -8,4 +8,5 @@ Branch `claude/ecstatic-archimedes-a2k8rk` · `/posting-rule opening/before-book
 - [x] The owner's approval of the five cases' numbers (2026-11-12), then of the changed second case and the sixth and seventh after the review (2026-11-12, with the decisions on the IAS 8.42 residual, a dismissed void's missed months and a credit to a frozen cycle).
 - [x] `docs/ROADMAP.md`: the approval and its date under S10; `packages/scenarios/CLAUDE.md`.
 - [x] `pnpm verify --e2e-all` (pass, 7m 43s), the `accountant-reviewer` and the `reviewer` in parallel; their findings fixed.
-- [ ] The re-review of the fix commits and `pnpm verify --e2e-all` on the final tree; the PR with auto-merge.
+- [x] The re-review of the fix commits: the IAS 8.42 fix and the two cases confirmed; its new findings fixed (the retained-earnings residual limited to a correction on its own, the owner's decision of 2026-11-12, with S04 rule 10's exception; the resolution leaving a schedule standing assigned to a test).
+- [ ] `pnpm verify --e2e-all` on the final tree; the PR with auto-merge.
