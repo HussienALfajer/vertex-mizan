@@ -19,6 +19,7 @@ import {
 import {
   chartAccounts,
   type Database,
+  discardDraft,
   entryAttachments,
   entryDraftLines,
   entryDrafts,
@@ -341,23 +342,7 @@ export class DraftsService {
   async discard(access: CompanyRouteAccess, id: string, reason: string | null): Promise<Draft> {
     return this.change(access, id, async (tx, row, actor) => {
       this.editable(row);
-      const now = new Date();
-      await tx
-        .update(entryAttachments)
-        .set({ archivedAt: now })
-        .where(and(eq(entryAttachments.draftId, id), isNull(entryAttachments.archivedAt)));
-      await tx
-        .update(entryDrafts)
-        .set({ archivedAt: now, archivedReason: reason })
-        .where(eq(entryDrafts.id, id));
-      await writeCompanyAudit(tx, row.companyId, actor, {
-        action: 'draft.discarded',
-        entityType: 'entry_draft',
-        entityId: id,
-        reason,
-        before: { archivedReason: null },
-        after: { archivedReason: reason },
-      });
+      await discardDraft(tx, row.companyId, actor, id, reason);
     });
   }
 

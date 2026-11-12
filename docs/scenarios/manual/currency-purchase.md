@@ -21,7 +21,7 @@ The account codes are the service-agency template's (S02): the SYP and USD bank 
 
 A difference line carries its amount in one ledger only, in that ledger's currency (ADR 0007): in the SYP books a book difference is an SYP line with parallel 0, and a parallel difference a USD line with book 0. A manual entry's `dealt_rates` give, per currency pair, the rate dealt at, quoted in the company's orientation of the pair (S03 rule 13).
 
-The cases below leave out what other scenarios own: rounding in one currency (`manual/conversion-rounding.md`), a rate corrected after use (`currency/rate-correction-after-use.md`), and posting into a closed period, added with S07.
+The cases below leave out what other scenarios own: rounding in one currency (`manual/conversion-rounding.md`), a rate corrected after use (`currency/rate-correction-after-use.md`), and posting into a closed period (`periods/close-and-reopen.md`).
 
 ### Vertex Media: USD bought at a dealt rate
 

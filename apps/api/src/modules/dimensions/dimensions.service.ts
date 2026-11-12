@@ -17,6 +17,7 @@ import {
   type Database,
   dimensionTypes,
   dimensionValues,
+  linkDimensionValue,
   type Transaction,
   withCompany,
 } from '@vertex-mizan/db';
@@ -328,43 +329,9 @@ export class DimensionsService {
    * (`DIMENSION_LINK_TAKEN`), also when a Hub event claims it at the same time (edge case 2).
    */
   async link(access: CompanyRouteAccess, id: string, externalId: string): Promise<DimensionValue> {
-    return this.changeValue(access, id, async (tx, row, actor) => {
-      if (row.externalId !== null) {
-        throw new CodedException('DIMENSION_ALREADY_LINKED', 'The value is already linked');
-      }
-      const type = await this.typeRow(tx, row.typeId);
-      if (type.parentTypeId !== null && row.parentValueId === null) {
-        throw new CodedException('VALIDATION_FAILED', 'A Hub contract names its client', [
-          { path: ['parentValueId'], message: 'Name the contract’s client before linking it' },
-        ]);
-      }
-      const [holder] = await tx
-        .select({ id: dimensionValues.id })
-        .from(dimensionValues)
-        .where(
-          and(
-            eq(dimensionValues.typeId, row.typeId),
-            eq(dimensionValues.externalSource, 'hub'),
-            eq(dimensionValues.externalId, externalId),
-          ),
-        );
-      if (holder) throw new CodedException('DIMENSION_LINK_TAKEN', 'Another value holds the ID');
-      await onUniqueViolation(
-        () =>
-          tx
-            .update(dimensionValues)
-            .set({ externalSource: 'hub', externalId })
-            .where(eq(dimensionValues.id, id)),
-        { dimension_values_external_key: 'DIMENSION_LINK_TAKEN' },
-      );
-      await writeCompanyAudit(tx, access.company.id, actor, {
-        action: 'dimension_value.linked',
-        entityType: 'dimension_value',
-        entityId: id,
-        before: { externalSource: null, externalId: null },
-        after: { externalSource: 'hub', externalId },
-      });
-    });
+    return this.changeValue(access, id, (tx, row, actor) =>
+      linkDimensionValue(tx, access.company.id, actor, row, externalId),
+    );
   }
 
   /** `POST /api/dimension-values/:id/archive` (rule 13): hidden from pickers, refused on manual lines. */

@@ -5,6 +5,7 @@ import {
   createDimensionValueSchema,
   currencyCodeSchema,
   DomainError,
+  draftInputSchema,
   type ExchangeRate,
 } from '@vertex-mizan/contracts';
 import {
@@ -12,17 +13,21 @@ import {
   auditEntries,
   blockAccount,
   chartAccounts,
+  closePeriod,
   createAccount,
   createCompanyBooks,
   createDimensionValue,
   dimensionSetValues,
   dimensionTypes,
   dimensionValues,
+  discardDraft,
   entriesUsingRate,
   inboundEvents,
+  insertDraft,
   journalEntries,
   journalLines,
   ledgerHeads,
+  linkDimensionValue,
   lockedAccount,
   openItemBalances,
   openItems,
@@ -31,6 +36,7 @@ import {
   postRevaluation,
   previewRevaluation,
   recordRate,
+  reopenPeriod,
   setBulletinDaysOff,
   type Transaction,
   users,
@@ -51,7 +57,14 @@ import type {
   ScenarioDatabase,
   StepResult,
 } from './harness.js';
-import { advanceClock, caseToday, dayAfterMonth, inboxActions, runRetries } from './hub.js';
+import {
+  advanceClock,
+  caseToday,
+  dayAfterMonth,
+  hubValueId,
+  inboxActions,
+  runRetries,
+} from './hub.js';
 import type { NamedValue } from './run.js';
 
 // The parts of the book that run through the system itself (S03): the case's company made by the
@@ -102,9 +115,6 @@ export async function setUp(
   rates: readonly ExchangeRate[],
   values: readonly NamedValue[] = [],
 ): Promise<string> {
-  if (company.closedPeriods.length > 0) {
-    throw new Error('A case with closed periods runs once S07 brings the close');
-  }
   const companyId = uuidv7();
   const [person] = await database.app
     .insert(users)
@@ -158,7 +168,7 @@ export async function setUp(
       const type = types.find((candidate) => candidate.code === value.type);
       if (type === undefined) throw new Error(`The company has no dimension type ${value.type}`);
       if (type.code === 'contract') throw new Error('A contract value needs its kind and client');
-      await createDimensionValue(
+      const made = await createDimensionValue(
         tx,
         companyId,
         createDimensionValueSchema.parse({
@@ -168,6 +178,16 @@ export async function setUp(
         }),
         actor,
       );
+      // A value a manual step names before Hub's event brings it: linked to its Hub ID (S02 rule 11).
+      if (value.hub === true) {
+        await linkDimensionValue(
+          tx,
+          companyId,
+          actor,
+          made,
+          hubValueId(companyId, value.type, value.code),
+        );
+      }
     }
     await setBulletinDaysOff(tx, companyId, actor, company.calendar.daysOff);
     for (const on of company.calendar.holidays) {
@@ -179,6 +199,20 @@ export async function setUp(
     }
   });
   bookkeepers.set(companyId, actor);
+  // The case's closed months, closed in order through the close service (S07 rules 2, 8), each
+  // once it has ended: a fresh company's checklist has nothing to fail. The case's clock starts
+  // after the last of them, since a month closes only once it has ended.
+  for (const period of [...company.closedPeriods].sort()) {
+    advanceClock(companyId, dayAfterMonth(period));
+    await withCompany(database.app, companyId, (tx) =>
+      closePeriod(tx, {
+        period,
+        reason: 'شهر مقفل في السيناريو',
+        today: dayAfterMonth(period),
+        actor,
+      }),
+    );
+  }
   return companyId;
 }
 
@@ -256,6 +290,31 @@ async function dimensionValueIds(
   return ids;
 }
 
+/** A manual payload's lines as the manual-entry form sends them, accounts and items by id. */
+async function manualLines(tx: Transaction, payload: z.infer<typeof manualPayloadSchema>) {
+  const accounts = await accountIdsByCode(tx);
+  const lines = [];
+  for (const line of payload.lines) {
+    const accountId = accounts.get(line.account);
+    lines.push({
+      // An unknown code is the posting function's to refuse (`NOT_FOUND`).
+      accountId: accountId ?? uuidv7(),
+      dimensionValueIds: await dimensionValueIds(tx, line.dims),
+      currency: line.currency,
+      amountMinor: line.amount,
+      memo: line.memo ?? null,
+      ...(line.open_item !== undefined && {
+        newItem: { reference: line.open_item.ref, dueOn: line.open_item.due ?? null },
+      }),
+      // An unknown reference is the posting function's to refuse (`NOT_FOUND`).
+      ...(line.item !== undefined && {
+        openItemId: (await itemIdOf(tx, accountId, line.item)) ?? uuidv7(),
+      }),
+    });
+  }
+  return lines;
+}
+
 /**
  * A manual entry, posted through the posting function with the clock at the step's date (S03
  * rule 6: the cases are dated after the month they were written in).
@@ -269,26 +328,7 @@ export function manual(
   advanceClock(context.companyId, step.accountingDate);
   return outcomeOf(
     withCompany(context.database.app, context.companyId, async (tx) => {
-      const accounts = await accountIdsByCode(tx);
-      const lines = [];
-      for (const line of payload.lines) {
-        const accountId = accounts.get(line.account);
-        lines.push({
-          // An unknown code is the posting function's to refuse (`NOT_FOUND`).
-          accountId: accountId ?? uuidv7(),
-          dimensionValueIds: await dimensionValueIds(tx, line.dims),
-          currency: line.currency,
-          amountMinor: line.amount,
-          memo: line.memo ?? null,
-          ...(line.open_item !== undefined && {
-            newItem: { reference: line.open_item.ref, dueOn: line.open_item.due ?? null },
-          }),
-          // An unknown reference is the posting function's to refuse (`NOT_FOUND`).
-          ...(line.item !== undefined && {
-            openItemId: (await itemIdOf(tx, accountId, line.item)) ?? uuidv7(),
-          }),
-        });
-      }
+      const lines = await manualLines(tx, payload);
       await post(tx, {
         client: 'manual',
         idempotencyKey: uuidv7(),
@@ -375,6 +415,123 @@ export function revalue(
       });
     }),
   );
+}
+
+/** Each case company's drafts by the number of the step that saved them. */
+const draftsByStep = new Map<string, Map<number, string>>();
+
+/**
+ * A manual entry saved as a draft, as the manual-entry form saves it (S03 rule 4), through the
+ * drafts service the API uses; it posts nothing. Its clock is the step's date.
+ */
+export function draft(
+  context: CaseContext,
+  step: Extract<Step, { kind: 'draft' }>,
+): Promise<StepResult> {
+  const payload = manualPayloadSchema.parse(step.payload);
+  const actor = bookkeeperOf(context.companyId);
+  advanceClock(context.companyId, step.accountingDate);
+  return outcomeOf(
+    withCompany(context.database.app, context.companyId, async (tx) => {
+      const lines = await manualLines(tx, payload);
+      const id = await insertDraft(
+        tx,
+        context.companyId,
+        actor,
+        draftInputSchema.parse({
+          entryDate: step.accountingDate,
+          description: payload.description ?? step.description,
+          reference: payload.reference ?? null,
+          dealtRates: payload.dealt_rates,
+          lines: lines.map((line) => ({
+            accountId: line.accountId,
+            dimensionValueIds: line.dimensionValueIds,
+            currency: line.currency,
+            amountMinor: line.amountMinor.toString(),
+            memo: line.memo,
+            openItemId: line.openItemId ?? null,
+            newItem: line.newItem ?? null,
+          })),
+        }),
+      );
+      const drafts = draftsByStep.get(context.companyId) ?? new Map<number, string>();
+      drafts.set(context.step ?? 0, id);
+      draftsByStep.set(context.companyId, drafts);
+    }),
+  );
+}
+
+/** The discard of the draft a case's step saved, with a reason (S03 rule 11). */
+export function discard(
+  context: CaseContext,
+  step: Extract<Step, { kind: 'discard' }>,
+): Promise<StepResult> {
+  const actor = bookkeeperOf(context.companyId);
+  const id = draftsByStep.get(context.companyId)?.get(step.step);
+  if (id === undefined) throw new Error(`Step ${step.step} saved no draft`);
+  return outcomeOf(
+    withCompany(context.database.app, context.companyId, (tx) =>
+      discardDraft(tx, context.companyId, actor, id, step.reason),
+    ),
+  );
+}
+
+/** A close's or a reopen's refusal with the detail the book names (`periods/close-and-reopen`). */
+function periodOutcome(error: unknown): StepResult {
+  if (!(error instanceof DomainError)) throw error;
+  const detail =
+    error.code === 'PERIOD_ORDER'
+      ? `period:${String(error.details?.period)}`
+      : error.code === 'CHECKLIST_FAILED'
+        ? String(error.details?.items)
+        : undefined;
+  return { status: 'refused', reason: error.code, ...(detail !== undefined && { detail }) };
+}
+
+/** A month closed with a reason on the case's clock, as `/periods/:period` closes it (S07). */
+export async function close(
+  context: CaseContext,
+  step: Extract<Step, { kind: 'close' }>,
+): Promise<StepResult> {
+  const actor = bookkeeperOf(context.companyId);
+  try {
+    await withCompany(context.database.app, context.companyId, (tx) =>
+      closePeriod(tx, {
+        period: step.period,
+        reason: step.reason,
+        today: caseToday(context.companyId),
+        actor,
+      }),
+    );
+    return { status: 'done' };
+  } catch (error) {
+    return periodOutcome(error);
+  }
+}
+
+/**
+ * The latest closed month reopened with a reason (S07 rules 3, 6); the events it frees are retried
+ * after the commit, as the worker's `events.retry` does.
+ */
+export async function reopen(
+  context: CaseContext,
+  step: Extract<Step, { kind: 'reopen' }>,
+): Promise<StepResult> {
+  const actor = bookkeeperOf(context.companyId);
+  try {
+    const { triggers } = await withCompany(context.database.app, context.companyId, (tx) =>
+      reopenPeriod(tx, {
+        period: step.period,
+        reason: step.reason,
+        today: caseToday(context.companyId),
+        actor,
+      }),
+    );
+    await runRetries(context.database, context.companyId, triggers);
+    return { status: 'done' };
+  } catch (error) {
+    return periodOutcome(error);
+  }
 }
 
 /** An account blocked with a reason, as the chart's screen blocks it (S02 rule 5). */

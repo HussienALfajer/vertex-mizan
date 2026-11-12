@@ -77,6 +77,7 @@ export {
 export * from './services/chart.js';
 export * from './services/companies.js';
 export * from './services/dimensions.js';
+export * from './services/drafts.js';
 export * from './services/inbox.js';
 export * from './services/periods.js';
 export * from './services/rates.js';

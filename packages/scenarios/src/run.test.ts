@@ -457,4 +457,37 @@ expect:
     ]);
     expect(namedDimensionValues(named)).toEqual([{ type: 'service', code: 'S2' }]);
   });
+
+  it('makes and links a value a manual step names before a Hub event brings it (S02 rule 11)', () => {
+    const named = parseCase(`
+case: a manual invoice, then a deposit from Hub for the same client
+company: { shape: syp, book: SYP, template: service-agency, rate_policy: { book: bulletin } }
+steps:
+  - manual: an invoice
+    accounting_date: 2026-11-03
+    payload: { lines: [{ account: "112001", dims: { client: C1 }, currency: SYP, amount: 100,
+                         open_item: { ref: M-1 } },
+                       { account: "411001", dims: { client: C1, service: S1 }, currency: SYP, amount: -100 }] }
+  - event: ad_wallet.deposited
+    accounting_date: 2026-11-04
+    payload: { entry: W-1, client: C1, entered_on: 2026-11-04, method: bank_transfer,
+               currency: SYP, amount: 50, syp_per_usd: "124.0000", usd_amount: 1 }
+expect:
+  entries:
+    - source: manual
+      date: 2026-11-03
+      lines:
+        - { account: "112001", dims: { client: C1 }, currency: SYP, amount: 100, book: 100 }
+        - { account: "411001", dims: { client: C1, service: S1 }, currency: SYP, amount: -100, book: -100 }
+    - source: ad_wallet.deposited
+      date: 2026-11-04
+      lines:
+        - { account: "111003", currency: SYP, amount: 50, book: 50 }
+        - { account: "213001", dims: { client: C1 }, currency: SYP, amount: -50, book: -50 }
+`);
+    expect(namedDimensionValues(named)).toEqual([
+      { type: 'client', code: 'C1', hub: true },
+      { type: 'service', code: 'S1' },
+    ]);
+  });
 });
