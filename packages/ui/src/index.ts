@@ -14,6 +14,7 @@ export * from './accounting/ledger-switch';
 export * from './accounting/open-item-picker';
 export * from './accounting/period-badge';
 export * from './accounting/rate-input';
+export * from './accounting/reconciliation-day-badge';
 export { AscentLines } from './brand/ascent-lines';
 export { VertexMizanLogo, VertexMizanMark } from './brand/logo';
 export * from './brand/powered-by';
