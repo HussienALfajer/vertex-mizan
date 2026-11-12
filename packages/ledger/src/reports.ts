@@ -106,13 +106,82 @@ export function reportMarks(input: {
   readonly anyMonthOpen: boolean;
   readonly to: string;
   readonly revaluationCurrent: boolean;
-}): ('period_open' | 'before_revaluation')[] {
-  const marks: ('period_open' | 'before_revaluation')[] = [];
+  /** S10's marks of the column, from `booksStartMarks()`. */
+  readonly booksStart?: readonly BooksStartMark[] | undefined;
+}): ReportMarkValue[] {
+  const marks: ReportMarkValue[] = [];
   if (input.anyMonthOpen) marks.push('period_open');
   if (input.to !== lastDayOfMonth(input.to) || !input.revaluationCurrent) {
     marks.push('before_revaluation');
   }
+  marks.push(...(input.booksStart ?? []));
   return marks;
+}
+
+export type BooksStartMark = 'opening_entry' | 'before_books_start' | 'pre_opening_result_in_equity';
+
+export type ReportMarkValue = 'period_open' | 'before_revaluation' | BooksStartMark;
+
+/** The first day of the fiscal year after the one a date falls in. */
+function nextFiscalYearStart(date: string, startMonth: number): string {
+  const start = fiscalYearStart(date, startMonth);
+  return `${String(Number(start.slice(0, 4)) + 1).padStart(4, '0')}${start.slice(4)}`;
+}
+
+/**
+ * S10 rules 32–33's marks of a column in a company with a books start: `before_books_start` when
+ * the range starts before it (the report reads from it); `opening_entry` when the report reads
+ * the opening entry as its opening balance (`readsOpeningEntry`, a trial balance, general ledger
+ * or account statement whose range holds the entry); `pre_opening_result_in_equity` on an income
+ * statement whose range touches the books start's fiscal year. None without a books start.
+ */
+export function booksStartMarks(input: {
+  readonly booksStart: string | null;
+  readonly from: string | null;
+  readonly to: string;
+  readonly fiscalYearStartMonth: number;
+  readonly readsOpeningEntry: boolean;
+  readonly incomeStatement: boolean;
+}): BooksStartMark[] {
+  const marks: BooksStartMark[] = [];
+  const { booksStart } = input;
+  if (booksStart === null) return marks;
+  if (input.readsOpeningEntry) marks.push('opening_entry');
+  if (input.from !== null && input.from < booksStart) marks.push('before_books_start');
+  if (input.incomeStatement) {
+    const yearStart = fiscalYearStart(booksStart, input.fiscalYearStartMonth);
+    const nextYear = nextFiscalYearStart(booksStart, input.fiscalYearStartMonth);
+    if ((input.from === null || input.from < nextYear) && input.to >= yearStart) {
+      marks.push('pre_opening_result_in_equity');
+    }
+  }
+  return marks;
+}
+
+/**
+ * S10 rule 32's opening column: the opening entry's lines (and those of its reversal and a new
+ * opening, all on the books start), read in the range's movements, moved to the opening balance,
+ * so the period's debits and credits start after it, an entry of the same date included.
+ */
+export function withOpeningEntry(
+  opening: ReadonlyMap<string, bigint>,
+  movements: ReadonlyMap<string, DebitsCredits>,
+  openingEntry: ReadonlyMap<string, DebitsCredits>,
+): { opening: Map<string, bigint>; movements: Map<string, DebitsCredits> } {
+  const nextOpening = new Map(opening);
+  const nextMovements = new Map(movements);
+  for (const [accountId, lines] of openingEntry) {
+    const movement = nextMovements.get(accountId) ?? { debits: 0n, credits: 0n };
+    if (movement.debits < lines.debits || movement.credits < lines.credits) {
+      throw new RangeError(`The opening entry's lines on ${accountId} are not in the movements`);
+    }
+    nextOpening.set(accountId, (nextOpening.get(accountId) ?? 0n) + lines.debits - lines.credits);
+    nextMovements.set(accountId, {
+      debits: movement.debits - lines.debits,
+      credits: movement.credits - lines.credits,
+    });
+  }
+  return { opening: nextOpening, movements: nextMovements };
 }
 
 // --- Trial balance (rule 9) ---
@@ -367,6 +436,12 @@ export interface BalanceSheetColumn {
   readonly yearNet: bigint;
   /** Classes 4–5's net debit before the fiscal year's start, not yet closed (phase 1). */
   readonly unclosedNet: bigint;
+  /**
+   * S10 rule 31: in the books start's fiscal year, the accounts of the result before the books
+   * start (`pre_opening_result`), whose balance the year's result includes instead of retained
+   * earnings; empty in any other year, where it stays in retained earnings by its account.
+   */
+  readonly yearResultAccountIds?: readonly string[] | undefined;
 }
 
 export interface BalanceSheetPartValue {
@@ -537,6 +612,22 @@ function balanceSheetTotals(
 }
 
 /**
+ * A column's balances as the lines present them, the result before the books start taken out
+ * for the year's result in the books start's fiscal year (S10 rule 31), credit positive.
+ */
+function presentedColumn(column: BalanceSheetColumn): {
+  balances: readonly PresentationBalance[];
+  preOpening: bigint;
+} {
+  const ids = new Set(column.yearResultAccountIds ?? []);
+  if (ids.size === 0) return { balances: column.balances, preOpening: 0n };
+  return {
+    balances: column.balances.filter((row) => !ids.has(row.accountId)),
+    preOpening: -sum(column.balances.filter((row) => ids.has(row.accountId)).map((r) => r.amount)),
+  };
+}
+
+/**
  * The balance sheet at a date and its comparative: the lines of the catalogue in order, each the
  * sum of its parts, the year's result computed in equity and earlier unclosed years in retained
  * earnings (rule 16), a line with no account and no amount in either column hidden.
@@ -549,12 +640,16 @@ export function balanceSheet(input: {
   lines: BalanceSheetLineValue[];
   yearResult: bigint;
   compareYearResult: bigint | null;
+  yearResultPreOpening: bigint;
+  compareYearResultPreOpening: bigint | null;
   totals: BalanceSheetTotalsValue;
   compareTotals: BalanceSheetTotalsValue | null;
 } {
   const byId = new Map(input.accounts.map((account) => [account.id, account]));
-  const parts = presentBalances(byId, input.current.balances);
-  const compareParts = input.compare ? presentBalances(byId, input.compare.balances) : null;
+  const current = presentedColumn(input.current);
+  const compareColumn = input.compare ? presentedColumn(input.compare) : null;
+  const parts = presentBalances(byId, current.balances);
+  const compareParts = compareColumn ? presentBalances(byId, compareColumn.balances) : null;
   const unclosed = -input.current.unclosedNet;
   const compareUnclosed = input.compare ? -input.compare.unclosedNet : null;
   const balanceOf = (id: string) => [
@@ -584,12 +679,15 @@ export function balanceSheet(input: {
       parts: own,
     });
   }
-  const yearResult = -input.current.yearNet;
-  const compareYearResult = input.compare ? -input.compare.yearNet : null;
+  const yearResult = -input.current.yearNet + current.preOpening;
+  const compareYearResult =
+    input.compare && compareColumn ? -input.compare.yearNet + compareColumn.preOpening : null;
   return {
     lines,
     yearResult,
     compareYearResult,
+    yearResultPreOpening: current.preOpening,
+    compareYearResultPreOpening: compareColumn ? compareColumn.preOpening : null,
     totals: balanceSheetTotals(new Map(lines.map((line) => [line.line, line.amount])), yearResult),
     compareTotals:
       input.compare && compareYearResult !== null
