@@ -356,6 +356,34 @@ describe('/api/opening (S10 rules 10–26)', () => {
     expect(after.state).toBe('posted');
     expect(after.posted?.entry.number).toBe(1);
     expect((await book.owner.browser.get('/api/company')).body.openingState).toBe('posted');
+    // The reports from the books start read the opening entry as their opening (S10 rules 32–33).
+    const trial = await book.owner.browser.get('/api/reports/trial-balance', {
+      from: '2026-09-01',
+      to: '2026-10-31',
+      compare: 'false',
+    });
+    expect(trial.status, JSON.stringify(trial.body)).toBe(200);
+    expect(trial.body.header.booksStart).toBe(BOOKS_START);
+    expect(trial.body.header.current.marks).toEqual(
+      expect.arrayContaining(['opening_entry', 'before_books_start']),
+    );
+    expect(trial.body.totals).toMatchObject({ debits: '0', credits: '0' });
+    expect(trial.body.totals.openingDebit).toBe(trial.body.totals.openingCredit);
+    const cashRow = trial.body.rows.find(
+      (row: { opening: string }) => row.opening !== '0' && BigInt(row.opening) > 0n,
+    );
+    const opened = await book.owner.browser.get('/api/reports/lines', {
+      to: '2026-10-31',
+      account: cashRow.account.id,
+      openingEntry: 'true',
+    });
+    expect(opened.status, JSON.stringify(opened.body)).toBe(200);
+    expect(opened.body.sum).toBe(cashRow.opening);
+    const income = await book.owner.browser.get('/api/reports/income-statement', {
+      from: '2026-10-01',
+      to: '2026-10-31',
+    });
+    expect(income.body.header.current.marks).toContain('pre_opening_result_in_equity');
     const late = await snapshotOf(hub, openingSnapshotExampleV1(BOOKS_START), 'late');
     expect(late.status).toBe(409);
     expect(late.body.code).toBe('OPENING_POSTED');

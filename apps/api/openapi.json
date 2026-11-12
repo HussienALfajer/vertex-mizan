@@ -12155,6 +12155,19 @@
             }
           },
           {
+            "name": "openingEntry",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": "false",
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ]
+            }
+          },
+          {
             "name": "cursor",
             "required": false,
             "in": "query",
@@ -26373,6 +26386,12 @@
               }
             ]
           },
+          "booksStart": {
+            "nullable": true,
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          },
           "current": {
             "$ref": "#/components/schemas/ReportColumn"
           },
@@ -26390,6 +26409,7 @@
           "currency",
           "producedAt",
           "latestEntry",
+          "booksStart",
           "current",
           "compare"
         ],
@@ -26431,7 +26451,10 @@
         "type": "string",
         "enum": [
           "period_open",
-          "before_revaluation"
+          "before_revaluation",
+          "opening_entry",
+          "before_books_start",
+          "pre_opening_result_in_equity"
         ]
       },
       "TrialBalanceRow": {
@@ -27313,6 +27336,17 @@
               }
             ]
           },
+          "yearResultPreOpening": {
+            "$ref": "#/components/schemas/MinorUnits"
+          },
+          "compareYearResultPreOpening": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MinorUnits"
+              }
+            ]
+          },
           "totals": {
             "$ref": "#/components/schemas/BalanceSheetTotals"
           },
@@ -27330,6 +27364,8 @@
           "lines",
           "yearResult",
           "compareYearResult",
+          "yearResultPreOpening",
+          "compareYearResultPreOpening",
           "totals",
           "compareTotals"
         ],
@@ -27933,6 +27969,14 @@
             "type": "string",
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "openingEntry": {
+            "default": "false",
+            "type": "string",
+            "enum": [
+              "true",
+              "false"
+            ]
           },
           "cursor": {
             "allOf": [
