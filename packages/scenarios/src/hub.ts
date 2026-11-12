@@ -116,7 +116,17 @@ function payloadOf(
 ): Short {
   const invoice = () => documentRef(companyId, 'invoice', asCode(short.invoice, 'invoice'));
   const client = () => valueRef(companyId, 'client', asCode(short.client, 'client'));
-  const service = (code: unknown) => valueRef(companyId, 'service', asCode(code, 'service'));
+  // A service as `S1`, or with its department as `{ code: S1, department: design }` (S09 rule 33).
+  const service = (named: unknown) => {
+    if (typeof named === 'object' && named !== null) {
+      const { code, department } = named as { code?: unknown; department?: unknown };
+      return {
+        ...valueRef(companyId, 'service', asCode(code, 'service')),
+        department: valueRef(companyId, 'department', asCode(department, 'department')),
+      };
+    }
+    return valueRef(companyId, 'service', asCode(named, 'service'));
+  };
   switch (type) {
     case 'invoice.issued': {
       const { lines, contract, ...rest } = short as Short & { lines: Short[] };

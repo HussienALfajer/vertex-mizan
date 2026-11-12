@@ -28,6 +28,10 @@ import {
   idParamSchema,
   type LinkDimensionValue,
   linkDimensionValueSchema,
+  type ServiceDepartmentHistory,
+  type SetServiceDepartment,
+  serviceDepartmentHistorySchema,
+  setServiceDepartmentSchema,
   type UpdateDimensionType,
   type UpdateDimensionValue,
   updateDimensionTypeSchema,
@@ -192,6 +196,40 @@ export class DimensionValuesController {
     @Body({ schema: linkDimensionValueSchema }) body: LinkDimensionValue,
   ): Promise<DimensionValue> {
     return this.dimensions.link(inCompany(access), params.id, body.externalId);
+  }
+
+  @Get(':id/departments')
+  @ApiParamsFrom(idParamSchema)
+  @CompanyRoute('dimensions.read')
+  @SerializeOptions({ schema: serviceDepartmentHistorySchema })
+  @ApiOkResponse({
+    description: 'A service’s dated departments, oldest first (S09 rule 32)',
+    standardSchema: serviceDepartmentHistorySchema,
+  })
+  @ApiErrors(...COMPANY_READ_ERRORS, 'NOT_FOUND')
+  async departments(
+    @Access() access: RequestAccess,
+    @Param({ schema: idParamSchema }) params: IdParam,
+  ): Promise<ServiceDepartmentHistory> {
+    return this.dimensions.departments(inCompany(access), params.id);
+  }
+
+  @Post(':id/departments')
+  @ApiParamsFrom(idParamSchema)
+  @HttpCode(200)
+  @CompanyRoute('dimensions.manage')
+  @SerializeOptions({ schema: serviceDepartmentHistorySchema })
+  @ApiOkResponse({
+    description: 'The service’s history with its new dated department (S09 rule 34)',
+    standardSchema: serviceDepartmentHistorySchema,
+  })
+  @ApiErrors(...COMPANY_WRITE_ERRORS, 'NOT_FOUND', 'DIMENSION_FROM_HUB', 'PERIOD_CLOSED')
+  async setDepartment(
+    @Access() access: RequestAccess,
+    @Param({ schema: idParamSchema }) params: IdParam,
+    @Body({ schema: setServiceDepartmentSchema }) body: SetServiceDepartment,
+  ): Promise<ServiceDepartmentHistory> {
+    return this.dimensions.setDepartment(inCompany(access), params.id, body);
   }
 
   @Post(':id/archive')

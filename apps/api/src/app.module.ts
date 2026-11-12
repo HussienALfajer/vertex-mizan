@@ -35,6 +35,7 @@ import { OpenItemsModule } from './modules/open-items/open-items.module.js';
 import { PeriodsModule } from './modules/periods/periods.module.js';
 import { RatesModule } from './modules/rates/rates.module.js';
 import { ReconciliationModule } from './modules/reconciliation/reconciliation.module.js';
+import { ReportsModule } from './modules/reports/reports.module.js';
 import { RevenueModule } from './modules/revenue/revenue.module.js';
 
 /**
@@ -90,6 +91,7 @@ export class AppModule {
         RevenueModule,
         PeriodsModule,
         ReconciliationModule,
+        ReportsModule,
         AuthModule,
       ],
       providers: [

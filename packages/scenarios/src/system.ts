@@ -78,14 +78,14 @@ export const actions = inboxActions((companyId) => bookkeeperOf(companyId));
 /** Each case company's bookkeeper: the person who records its rates and posts its entries. */
 const bookkeepers = new Map<string, PersonActor>();
 
-function bookkeeperOf(companyId: string): PersonActor {
+export function bookkeeperOf(companyId: string): PersonActor {
   const actor = bookkeepers.get(companyId);
   if (actor === undefined) throw new Error(`No setup ran for company ${companyId}`);
   return actor;
 }
 
 /** A refusal by a business rule is the step's outcome; anything else is the case's failure. */
-async function outcomeOf(work: Promise<unknown>): Promise<StepResult> {
+export async function outcomeOf(work: Promise<unknown>): Promise<StepResult> {
   try {
     await work;
     return { status: 'done' };
@@ -164,28 +164,45 @@ export async function setUp(
       );
     }
     const types = await tx.select().from(dimensionTypes);
-    for (const value of values) {
+    const made = new Map<string, string>();
+    // A contract's client first: a contract value names it (S02 rule 9, `company.contracts`, S09).
+    const ordered = [
+      ...values.filter((value) => value.type !== 'contract'),
+      ...values.filter((value) => value.type === 'contract'),
+    ];
+    for (const value of ordered) {
       const type = types.find((candidate) => candidate.code === value.type);
       if (type === undefined) throw new Error(`The company has no dimension type ${value.type}`);
-      if (type.code === 'contract')
-        throw new Error('A contract value needs its kind and client (company.contracts, S09)');
-      const made = await createDimensionValue(
+      let contract: { kind: 'project' | 'retainer'; parentValueId: string } | null = null;
+      if (type.code === 'contract') {
+        const stated = company.contracts.find((candidate) => candidate.code === value.code);
+        const parentValueId =
+          stated === undefined ? undefined : made.get(`client:${stated.client}`);
+        if (stated === undefined || parentValueId === undefined) {
+          throw new Error('A contract value needs its kind and client (company.contracts, S09)');
+        }
+        contract = { kind: stated.kind, parentValueId };
+      }
+      const value_ = await createDimensionValue(
         tx,
         companyId,
         createDimensionValueSchema.parse({
           typeId: type.id,
           code: value.code,
           name: `${type.name} ${value.code}`,
+          contractKind: contract?.kind ?? null,
+          parentValueId: contract?.parentValueId ?? null,
         }),
         actor,
       );
+      made.set(`${value.type}:${value.code}`, value_.id);
       // A value a manual step names before Hub's event brings it: linked to its Hub ID (S02 rule 11).
       if (value.hub === true) {
         await linkDimensionValue(
           tx,
           companyId,
           actor,
-          made,
+          value_,
           hubValueId(companyId, value.type, value.code),
         );
       }

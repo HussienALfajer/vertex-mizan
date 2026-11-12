@@ -37,4 +37,5 @@ export const permissions = {
   'periods.read': 'قراءة الفترات وقائمة التحقق قبل الإقفال ومعاينة إعادة التقييم',
   'revaluation.post': 'ترحيل إعادة التقييم آخر الشهر',
   'reconciliation.read': 'قراءة المطابقة اليومية مع Hub وتقاريرها',
+  'reports.read': 'قراءة التقارير والقوائم المالية وتصديرها وسجل طبعات دفتر اليومية',
 } satisfies Record<Permission, string>;

@@ -1,10 +1,33 @@
-# TASKS
+# TASKS — S09 Reports
 
-`/posting-rule reports/statement-presentation` (S09), branch `docs/s09-statement-presentation-scenario`.
+Spec: `docs/specs/S09-reports.md` (Approved, owner 2026-11-12) · ADRs 0003, 0005, 0006, 0007, 0008, 0009, 0010, 0011, 0015, 0016, 0018 · Scenario: `reports/statement-presentation.md` (numbers approved by the owner 2026-11-12, `Proposed` until PR 1 brings its readers). Three PRs, each merged before the next starts: `feat/s09-report-readers`, `feat/s09-exports`, `feat/s09-screens`.
 
-- [x] Owner decisions 2026-11-12: C2's advance on `211003`, not a credit on `112001` (ADR 0013 invariant 9); the journal book holds 30 rows a page, each month on a new page
-- [x] Scenario `docs/scenarios/reports/statement-presentation.md` (six cases, `Proposed`), the book's format (`reports`, `contracts`, a service's department, `service_department`) in `docs/scenarios/README.md`, S09's worked example corrected
-- [x] Owner approval of the six cases' numbers (2026-11-12, in the session)
-- [x] `packages/scenarios` reads the new format and the area `reports` (the cases stay `Proposed`, skipped)
-- [x] `docs/ROADMAP.md` records the approval
-- [x] `pnpm verify --e2e-all` (pass on a5c8460), the reviewers and their re-review (no blocking issue), the PR with auto-merge
+Plan approved by the owner (2026-11-12, in the session), with this note: the scenario book runs through `packages/db` and `packages/contracts`, never `apps/*`, so the journal book's pagination and canonical rows (rules 27, 31) are one pure function in `packages/ledger`, called by the scenario runner in PR 1 and by the worker's render in PR 2 — one function, as rule 31 asks, outside `apps/worker`.
+
+## PR 1 — The report readers (contracts, ledger, db, scenarios, api, bridge)
+- [x] contracts: `reports.ts` (every report's query and answer, the marks, `REPORTS`, `JOURNAL_BOOK_ROWS_PER_PAGE` and the column widths, the canonical row shape, the lines drill-down), the service-department schemas in `dimensions.ts`; `reports.read` appended to `PERMISSIONS` for every role; the error code `DIMENSION_FROM_HUB` (409) appended with its Arabic text; the audit action `service_department.set`; the optional `department` on Hub's service reference (`HubServiceRef`, `/v1`, additive) and the example invoice carrying it; unit tests (`REPORT_TOO_LARGE` and the `export.*` actions arrive with the exports, PR 2)
+- [x] ledger: `reports.ts` — trial-balance levels, code range and totals (rule 9), the income statement's lines and IFRS 18 subtotals (rules 13–14), the balance sheet with the year's result and unclosed years (rule 16), netting per contract (rule 17), counterparties on their own side (rule 18), the contract position (rule 24), profitability, the margin and `departmentInForce()` (rules 20–23, 32), the release schedule (rule 25), the comparative defaults (rule 5) and the marks (rule 4); `journal-book.ts` — `wrapText()`, the entry rows and `journalBookPages()` (rules 26, 27, 31); `periods.ts` gains `addDays()` and `dayBefore()`; the scenario's numbers and properties (balanced totals at every level, the balance sheet balancing after rules 17–18, profit equal to classes 4–5, profitability's and the contract position's totals, a month paginated alone as within its year with totals carried forward)
+- [x] db (`/db-migration`): `service_departments` append-only (0046 generated, 0047 the guards: forced RLS, composite keys, `service_department_rules()` for the types, a Hub service's department from Hub only and no row in a closed month, pinned in `GUARDS`; registry; the audited entity `service_department`); `services/departments.ts`: `readServiceDepartments()`, `setServiceDepartment()` (rule 34) and `recordHubDepartments()` (rule 33), called in the inbox's attempt after its entries post; drift and the migration guard clean
+- [x] db: `services/reports.ts` — the readers from `period_balances` for whole months and the lines of partial months: trial balance, general ledger, account statement, journal, income statement, balance sheet, profitability, contract position, revenue schedule, the lines behind a figure and the journal book, each with its header and marks; `test/reports.test.ts` (the department guards as the app role and the owner, the services' refusals, rule 8's agreements over generated books, paging, another company) and S09's rows in the isolation property
+- [x] scenarios: `src/reports.ts` (the `reports` reader and the `service_department` executor, registered in `bookHarness`), the department on Hub's service reference (`hub.ts`), contract values with their kind and client in the setup; `reports/statement-presentation` `Approved (owner, 2026-11-12)`, no expected value changed, its six cases run (the book: 235 of 235)
+- [x] api: `src/modules/reports/` (`GET /api/reports/trial-balance`, `general-ledger`, `accounts/:id/statement`, `journal`, `income-statement`, `balance-sheet`, `profitability`, `contract-position`, `revenue-schedule`, `lines`, `reports.read`, one repeatable-read snapshot each), `GET`/`POST /api/dimension-values/:id/departments` (`dimensions.read` · `dimensions.manage`, the company row locked for the write); `test/reports.test.ts` (every role, the figures agreeing, the parallel default of profitability, `VALIDATION_FAILED`, another company `NOT_FOUND`, the guard on every route, `DIMENSION_FROM_HUB`, `PERIOD_CLOSED`)
+- [x] bridge: OpenAPI regenerated; `pnpm check:openapi` passes (the department on the invoice line's service only: oasdiff reads a component shared by two of `/v1/events`' inline `oneOf` members as removed members)
+- [x] wiring (Contracts, Ledger, Database, API), docs (`packages/contracts`, `ledger`, `db`, `i18n`, `scenarios` `CLAUDE.md`, `apps/api/CLAUDE.md`, `docs/glossary.md`, `docs/open-questions.md` Q5, `docs/scenarios/README.md`, `docs/ROADMAP.md`)
+- [x] checks and reviewers (`reviewer`, `accountant-reviewer`; their findings fixed in c030e0d and re-reviewed clean; `pnpm verify --e2e-all` passes on c030e0d), PR with auto-merge and Auto-fix
+
+## PR 2 — Exports and the journal book (contracts, db, ui print, api, worker, bridge)
+- [ ] db (`/db-migration`): `report_files` (queue, state updates only by the jobs role in the company context) and `journal_book_prints` append-only; registry, grants, guards
+- [ ] contracts: `REPORT_TOO_LARGE` (422) with its Arabic text; the audit actions `export.*` of S09, `report_file.downloaded`, `journal_book.printed`; the file and register schemas
+- [ ] api: Excel export of every report (rule 35, `REPORT_TOO_LARGE`, audited); `POST`/`GET /api/reports/files`, download (`report_file.downloaded`), `GET /api/reports/journal-book/prints` with `superseded`; the official print's `PERIOD_NOT_CLOSED`; three queued files per user (`RATE_LIMITED`); PDF for the ageing, the client statement and the chart; tests
+- [ ] ui: `print/` layout (A4, company header, "صفحة n من m", the journal book's footer), rendered to static HTML; tested
+- [ ] worker: `reports.render` (one snapshot, Chromium, the official print's refusal and register row with `journal_book.printed` in one transaction, safe twice), `reports.files-expire`; tests
+- [ ] bridge: OpenAPI regenerated, breaking-change check
+- [ ] wiring, docs (`AGENTS.md` commands if any, `apps/worker/CLAUDE.md`, `docs/ROADMAP.md`)
+- [ ] checks and reviewers (`reviewer`, `accountant-reviewer`), PR with auto-merge and Auto-fix
+
+## PR 3 — The screens (ui, web, e2e)
+- [ ] ui: `ReportTable`, `ReportMarks`, `ExportMenu`, tested, both densities, on the design-system page
+- [ ] web: "التقارير" in the sidebar and the command palette; `/reports` and every report route of the spec's screens table; `/reports/lines`; the print register; the service's department history on `/dimensions`; PDF in `/receivables` and `/chart`; `ar.reports`
+- [ ] e2e: the trial balance with drill-down, the balance sheet with a reclassification note, profitability, the official print and the register, an export; RTL screenshots light and dark at 360, 768 and 1280 px, looked at
+- [ ] wiring (Web), docs (`apps/web/CLAUDE.md`, `packages/ui/CLAUDE.md`, `docs/ROADMAP.md`: S09 done)
+- [ ] checks and reviewer, PR with auto-merge and Auto-fix; reset this file to its "No task in progress" stub

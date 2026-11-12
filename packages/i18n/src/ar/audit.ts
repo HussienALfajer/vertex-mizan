@@ -121,6 +121,7 @@ export const audit = {
     'revaluation.posted': 'رحّل إعادة تقييم آخر الشهر',
     'period.closed': 'أقفل الشهر',
     'period.reopened': 'أعاد فتح الشهر',
+    'service_department.set': 'حدّد قسم الخدمة من تاريخ',
   } satisfies Record<CompanyAuditAction, string>,
   /** The audited entities (`AUDITED_FIELDS` in `packages/db`). */
   entities: {
@@ -147,6 +148,7 @@ export const audit = {
     inbound_event: 'الحدث الوارد',
     revaluation: 'إعادة التقييم',
     period: 'الفترة',
+    service_department: 'قسم الخدمة',
   },
   /** The audited fields, by entity field name. */
   fields: {
@@ -202,6 +204,10 @@ export const audit = {
     source: 'المصدر',
     supersedesRateId: 'السعر المصحَّح',
     effectiveOn: 'تاريخ السريان',
+    serviceValueId: 'الخدمة',
+    departmentValueId: 'القسم',
+    effectiveFrom: 'يسري من',
+    inboundEventId: 'الحدث الوارد',
     on: 'التاريخ',
     note: 'الملاحظة',
     removed: 'أُزيل',

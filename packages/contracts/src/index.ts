@@ -23,4 +23,5 @@ export * from './people.js';
 export * from './periods.js';
 export * from './rates.js';
 export * from './reconciliation.js';
+export * from './reports.js';
 export * from './revenue.js';

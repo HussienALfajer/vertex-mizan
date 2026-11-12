@@ -1,8 +1,8 @@
 # Presenting the ledger in the reports
 
-Status: Proposed
+Status: Approved (owner, 2026-11-12)
 
-S09 wrote these cases (S09 "Scenarios"). They post with the executors the book already has, and add what the reports read: a `reports` expectation, a company's `contracts`, a service's department on Hub's service reference and a `service_department` step (`docs/scenarios/README.md`). The cases stay `Proposed` until S09's feature slice brings the report readers and the department step.
+S09 wrote these cases (S09 "Scenarios"). They post with the executors the book already has, and add what the reports read: a `reports` expectation, a company's `contracts`, a service's department on Hub's service reference and a `service_department` step (`docs/scenarios/README.md`). S09's feature slice brought the report readers and the department step.
 
 ## Rule
 

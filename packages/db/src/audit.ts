@@ -162,6 +162,14 @@ export const AUDITED_FIELDS = {
   period: ['period', 'checklist', 'queuedEvents'],
   // S04: a manual item's due date, and the filters of the receivables exports.
   open_item: ['reference', 'dueOn', 'effectiveOn'],
+  // S09: a service's department from a date, from Hub or by hand.
+  service_department: [
+    'serviceValueId',
+    'departmentValueId',
+    'effectiveFrom',
+    'source',
+    'inboundEventId',
+  ],
   receivables_export: [
     'format',
     'asOf',

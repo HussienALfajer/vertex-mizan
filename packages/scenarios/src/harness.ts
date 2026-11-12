@@ -10,6 +10,7 @@ import type {
 } from './format.js';
 import { event, job } from './hub.js';
 import type { ExpectedReport } from './report-format.js';
+import { reports, serviceDepartment } from './reports.js';
 import type { NamedValue } from './run.js';
 import {
   actions,
@@ -127,7 +128,8 @@ export type ScenarioHarness = {
  * `rate` executors (`system.ts`), with S04's dimension values, item lines and open-item reader;
  * `event` and the inbox actions join with S05; `job` with S06's release job; S07's `revalue` and
  * `block` (its first PR), then `close`, `reopen`, `draft` and `discard` and the setup's closed
- * periods through the close service (its second).
+ * periods through the close service (its second); S09's `service_department` and the `reports`
+ * reader (`reports.ts`).
  */
 export const bookHarness: ScenarioHarness = {
   setUp,
@@ -143,7 +145,9 @@ export const bookHarness: ScenarioHarness = {
     reopen,
     draft,
     discard,
+    service_department: serviceDepartment,
     ...actions,
   },
   ledger,
+  reports,
 };

@@ -101,4 +101,5 @@ export const errors = {
   CHECKLIST_FAILED: 'لم تكتمل قائمة التحقق قبل الإقفال: عالج البنود الفاشلة ثم أقفل الشهر.',
   RECONCILIATION_START_LOCKED:
     'لا يُؤخَّر تاريخ بدء المطابقة إلى ما بعد أيام في شهر مقفل: أعد فتح الشهر أولاً، أو اختر تاريخاً أبكر.',
+  DIMENSION_FROM_HUB: 'قسم هذه الخدمة يأتي من Hub وحده، فلا يُعدَّل يدوياً.',
 } satisfies Record<ErrorCode, string>;

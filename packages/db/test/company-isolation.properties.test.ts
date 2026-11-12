@@ -36,6 +36,7 @@ import {
   recognitionSchedules,
   reconciliationReportEvents,
   reconciliationReports,
+  serviceDepartments,
   type Transaction,
   tableRegistry,
   users,
@@ -91,6 +92,7 @@ const COVERED = [
   'recognition_movements',
   'reconciliation_reports',
   'reconciliation_report_events',
+  'service_departments',
 ];
 
 const auditRow = fc.record({
@@ -371,7 +373,8 @@ const expectedRows = (data: CompanyData): Record<string, number> => ({
   account_roles: 3,
   dimension_types: 4,
   // S06 adds a client and a service for its schedule.
-  dimension_values: data.clients.length + 1 + 2,
+  // The clients, S04's value, S06's client and service, and S09's service and department.
+  dimension_values: data.clients.length + 1 + 2 + 2,
   rate_pairs: data.bookCurrency === 'SYP' ? 1 : 2,
   exchange_rates: data.rates.length + 2,
   bulletin_holidays: data.holidays.length,
@@ -417,6 +420,7 @@ const expectedRows = (data: CompanyData): Record<string, number> => ({
   period_events: 1,
   reconciliation_reports: 1,
   reconciliation_report_events: 1,
+  service_departments: 1,
 });
 
 /**
@@ -678,6 +682,30 @@ async function seedReconciliation(tx: Transaction, companyId: string) {
   });
 }
 
+/** S09's row: a manual service's department from a date, set by the accountant. */
+async function seedServiceDepartment(tx: Transaction, companyId: string, userId: string) {
+  const newValue = async (type: string) => {
+    const [found] = await tx
+      .select({ id: dimensionTypes.id })
+      .from(dimensionTypes)
+      .where(and(eq(dimensionTypes.companyId, companyId), eq(dimensionTypes.code, type)));
+    const [made] = await tx
+      .insert(dimensionValues)
+      .values({ companyId, typeId: found?.id as string, name: `قيمة ${type}` })
+      .returning({ id: dimensionValues.id });
+    return made?.id as string;
+  };
+  await tx.insert(serviceDepartments).values({
+    companyId,
+    serviceValueId: await newValue('service'),
+    departmentValueId: await newValue('department'),
+    effectiveFrom: '2026-12-01',
+    source: 'manual',
+    recordedByUserId: userId,
+    reason: 'قسم مولّد',
+  });
+}
+
 async function seed(userId: string, data: CompanyData): Promise<string> {
   const [row] = await app
     .insert(companies)
@@ -712,6 +740,7 @@ async function seed(userId: string, data: CompanyData): Promise<string> {
     await seedSources(tx, row.id, userId);
     await seedRecognition(tx, row.id);
     await seedReconciliation(tx, row.id);
+    await seedServiceDepartment(tx, row.id, userId);
     // S07's period history: November closed, as the posting function writes a close.
     await writePeriodTransition(tx, {
       companyId: row.id,

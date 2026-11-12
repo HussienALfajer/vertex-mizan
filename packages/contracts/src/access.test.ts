@@ -47,6 +47,7 @@ describe('the permission map', () => {
         'periods.read',
         'revaluation.post',
         'reconciliation.read',
+        'reports.read',
       ],
       accountant: [
         'company.read',
@@ -71,6 +72,7 @@ describe('the permission map', () => {
         'periods.read',
         'revaluation.post',
         'reconciliation.read',
+        'reports.read',
       ],
       approver: [
         'company.read',
@@ -81,6 +83,7 @@ describe('the permission map', () => {
         'drafts.read',
         'entries.approve',
         'open_items.read',
+        'reports.read',
       ],
       viewer: [
         'company.read',
@@ -89,6 +92,7 @@ describe('the permission map', () => {
         'rates.read',
         'entries.read',
         'open_items.read',
+        'reports.read',
       ],
       auditor: [
         'company.read',
@@ -107,6 +111,7 @@ describe('the permission map', () => {
         'recognition.read',
         'periods.read',
         'reconciliation.read',
+        'reports.read',
       ],
     });
   });
@@ -160,6 +165,12 @@ describe('the permission map', () => {
     const holders = (key: (typeof PERMISSIONS)[number]) =>
       ROLES.filter((role) => rolePermissions[role].includes(key));
     expect(holders('reconciliation.read')).toEqual(['owner', 'accountant', 'auditor']);
+  });
+
+  it('lets every role read the reports (S09 "Access")', () => {
+    const holders = (key: (typeof PERMISSIONS)[number]) =>
+      ROLES.filter((role) => rolePermissions[role].includes(key));
+    expect(holders('reports.read')).toEqual([...ROLES]);
   });
 
   it('lets every role read the company profile, the chart, dimensions and rates', () => {

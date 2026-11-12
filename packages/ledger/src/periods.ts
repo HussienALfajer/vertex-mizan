@@ -84,3 +84,36 @@ function dayNumber(date: string): number {
 export function daysBetween(from: string, to: string): number {
   return dayNumber(to) - dayNumber(from);
 }
+
+/** The date of a day number from 1970-01-01, the inverse of `dayNumber()`. */
+function dateOfDayNumber(days: number): string {
+  // Civil from days (Howard Hinnant's algorithm), in whole numbers only.
+  const z = days + 719_468;
+  const era = Math.floor(z / 146_097);
+  const dayOfEra = z - era * 146_097;
+  const yearOfEra = Math.floor(
+    (dayOfEra -
+      Math.floor(dayOfEra / 1460) +
+      Math.floor(dayOfEra / 36_524) -
+      Math.floor(dayOfEra / 146_096)) /
+      365,
+  );
+  const dayOfYear =
+    dayOfEra - (365 * yearOfEra + Math.floor(yearOfEra / 4) - Math.floor(yearOfEra / 100));
+  const shifted = Math.floor((5 * dayOfYear + 2) / 153);
+  const day = dayOfYear - Math.floor((153 * shifted + 2) / 5) + 1;
+  const month = shifted < 10 ? shifted + 3 : shifted - 9;
+  const year = yearOfEra + era * 400 + (month <= 2 ? 1 : 0);
+  return `${pad(year, 4)}-${pad(month, 2)}-${pad(day, 2)}`;
+}
+
+/** The date `days` calendar days after a date (before it when negative). */
+export function addDays(date: string, days: number): string {
+  if (!Number.isInteger(days)) throw new RangeError(`Whole days only, not ${days}`);
+  return dateOfDayNumber(dayNumber(date) + days);
+}
+
+/** The calendar day before a date (`2027-01-01` → `2026-12-31`). */
+export function dayBefore(date: string): string {
+  return addDays(date, -1);
+}

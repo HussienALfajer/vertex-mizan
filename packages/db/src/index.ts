@@ -76,6 +76,7 @@ export {
 } from './schema/registry.js';
 export * from './services/chart.js';
 export * from './services/companies.js';
+export * from './services/departments.js';
 export * from './services/dimensions.js';
 export * from './services/drafts.js';
 export * from './services/inbox.js';
@@ -83,6 +84,7 @@ export * from './services/periods.js';
 export * from './services/rates.js';
 export * from './services/recognition.js';
 export * from './services/reconciliation.js';
+export * from './services/reports.js';
 export * from './services/revaluation.js';
 export * from './services/revenue-reads.js';
 export { onUniqueViolation } from './unique-violation.js';

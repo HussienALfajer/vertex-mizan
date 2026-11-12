@@ -108,6 +108,8 @@ export const COMPANY_AUDIT_ACTIONS = [
   // S07: a month closed with its checklist, or reopened with the events queued for retry.
   'period.closed',
   'period.reopened',
+  // S09: a service's dated department, set by the accountant or by a Hub event.
+  'service_department.set',
 ] as const;
 
 export const companyAuditActionSchema = z

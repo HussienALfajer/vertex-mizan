@@ -61,6 +61,8 @@ export const tableRegistry = {
   // dimensions (S02).
   dimension_types: { module: 'dimensions', scope: 'company', kind: 'business' },
   dimension_values: { module: 'dimensions', scope: 'company', kind: 'business' },
+  // S09: a service's department from a date, from Hub or by hand.
+  service_departments: { module: 'dimensions', scope: 'company', kind: 'append-only' },
   // rates (S02, ADR 0007): the rate table is append-only; a correction is a newer row.
   rate_pairs: { module: 'rates', scope: 'company', kind: 'business' },
   exchange_rates: { module: 'rates', scope: 'company', kind: 'append-only' },
