@@ -107,6 +107,39 @@ expect:
         - { account: "4212", currency: SYP, amount: -50000, book: -50000, parallel: 0 }
 `;
 
+/** S10: Hub's snapshot and the records posted as the opening, then its whole reversal. */
+const OPENING = `
+case: an opening refused, posted and reversed
+company: { shape: syp-usd, book: SYP, parallel: USD, books_start: 2026-10-01,
+           rate_policy: { book: bulletin, parallel: market } }
+steps:
+  - opening: the opening
+    snapshot:
+      invoices:
+        - { invoice: INV-1, client: C1, currency: USD, syp_per_usd: "117.0000", issued_on: 2026-09-10,
+            total: 30000, outstanding: 30000, lines: [{ amount: 30000, source: extra_work, service: S1 }] }
+      wallets:
+        - { client: C1, balance: -12000 }
+    records:
+      lines:
+        - { account: "3110", currency: SYP, amount: -3450000, parallel: -30000 }
+      figures:
+        - { slot: receivable, client: C1, currency: USD, amount: 30000 }
+    outcome: { status: refused, reason: OPENING_CHECKS_FAILED, detail: "records_agree,rates" }
+  - opening: the opening without Hub
+    records:
+      lines:
+        - { account: "1111", currency: SYP, amount: 100, open_item: { ref: M-1 }, memo: a note }
+  - reverse_opening: "Mistyped"
+expect:
+  entries:
+    - source: opening
+      date: 2026-10-01
+      lines:
+        - { account: "1121", dims: { client: C1 }, currency: USD, amount: 30000, book: 3450000, parallel: 30000 }
+        - { account: "3110", currency: SYP, amount: -3450000, book: -3450000, parallel: -30000 }
+`;
+
 function refusal(source: string): string {
   return problems(file('Status: Proposed', source)).join('\n');
 }
@@ -288,7 +321,7 @@ describe('a case', () => {
     [
       'a step of no kind',
       CASE.replace('  - event: invoice.issued', '  - what: invoice.issued'),
-      'event, manual, reversal, job, rate, retry, move, resolve, dismiss, recognise, split, revalue, block, close, reopen, draft, discard or service_department',
+      'event, manual, reversal, job, rate, retry, move, resolve, dismiss, recognise, split, revalue, block, close, reopen, draft, discard, service_department, opening or reverse_opening',
     ],
     [
       'a step of two kinds',
@@ -913,6 +946,95 @@ describe('a case', () => {
     expect(marginOf(-80000n, -55000n)).toBe('68.8');
     expect(marginOf(-80000n, 55000n)).toBe('-68.8');
     expect(marginOf(0n, -55000n)).toBeNull();
+  });
+
+  it("reads the books start, the opening's snapshot, lines and figures, and its reversal (S10)", () => {
+    const { company, steps } = parseCase(OPENING);
+    expect(company.booksStart).toBe('2026-10-01');
+    expect(steps[0]).toEqual({
+      kind: 'opening',
+      description: 'the opening',
+      snapshot: {
+        invoices: [
+          {
+            invoice: 'INV-1',
+            client: 'C1',
+            currency: 'USD',
+            syp_per_usd: '117.0000',
+            issued_on: '2026-09-10',
+            total: 30000n,
+            outstanding: 30000n,
+            lines: [{ amount: 30000n, source: 'extra_work', service: 'S1' }],
+          },
+        ],
+        credits: [],
+        milestones: [],
+        wallets: [{ client: 'C1', balance: -12000n }],
+      },
+      lines: [
+        {
+          account: '3110',
+          dims: {},
+          currency: 'SYP',
+          amount: -3450000n,
+          book: null,
+          parallel: -30000n,
+          openItem: null,
+          memo: null,
+        },
+      ],
+      figures: [{ slot: 'receivable', client: 'C1', currency: 'USD', amount: 30000n }],
+      outcome: {
+        status: 'refused',
+        reason: 'OPENING_CHECKS_FAILED',
+        detail: 'records_agree,rates',
+      },
+    });
+    expect(steps[1]).toMatchObject({
+      kind: 'opening',
+      snapshot: null,
+      lines: [{ account: '1111', openItem: { ref: 'M-1', due: null }, memo: 'a note' }],
+      figures: [],
+    });
+    expect(steps[2]).toEqual({ kind: 'reverse_opening', reason: 'Mistyped', outcome: null });
+
+    expect(
+      refusal(OPENING.replace('books_start: 2026-10-01', 'books_start: 2026-10-02')),
+    ).toContain('first day of a month');
+    expect(refusal(OPENING.replace(' books_start: 2026-10-01,', ''))).toContain(
+      "needs the company's books_start",
+    );
+    const withoutOpening = OPENING.replace(
+      / {2}- opening: the opening\n[\s\S]*?(?= {2}- reverse_opening)/,
+      '',
+    );
+    expect(refusal(withoutOpening)).toContain('posts nothing without an opening step');
+    expect(
+      refusal(
+        OPENING.replace(
+          'amount: -3450000, parallel: -30000 }',
+          'amount: -3450000, book: -3450000, parallel: -30000 }',
+        ),
+      ),
+    ).toContain("the book amount is the line's amount");
+    expect(refusal(OPENING.replace('slot: receivable', 'slot: contract_asset'))).toContain(
+      'ad_funds',
+    );
+    expect(
+      refusal(
+        OPENING.replace(
+          '        - { slot: receivable, client: C1, currency: USD, amount: 30000 }\n',
+          '        - { slot: receivable, client: C1, currency: USD, amount: 30000 }\n'.repeat(2),
+        ),
+      ),
+    ).toContain('A figure is stated twice');
+    expect(refusal(OPENING.replace('balance: -12000 }', 'balance: -120.5 }'))).toContain(
+      'whole minor units',
+    );
+    expect(refusal(OPENING.replace('total: 30000', 'total: 300.5'))).toContain('A decimal number');
+    expect(
+      refusal(OPENING.replace('reverse_opening: "Mistyped"', 'reverse_opening: ""')),
+    ).toContain('reverse_opening');
   });
 
   it('accepts a third-currency case with a line in TRY', () => {

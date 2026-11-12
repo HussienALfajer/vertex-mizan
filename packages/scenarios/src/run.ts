@@ -22,6 +22,8 @@ export const STEPS_ARRIVE_WITH = {
   draft: "saving a draft in the book arrives with S07's checklist",
   discard: "discarding a draft in the book arrives with S07's checklist",
   service_department: "a manual service's department arrives with S09",
+  opening: 'the opening arrives with S10',
+  reverse_opening: "the opening's whole reversal arrives with S10",
 } as const satisfies Record<StepKind, string>;
 
 /** A case that did not do what its scenario states: every difference, one per line. */
@@ -203,6 +205,14 @@ function executorFor(harness: ScenarioHarness, step: Step): Run | undefined {
       const execute = harness.executors.service_department;
       return execute && ((context) => execute(context, step));
     }
+    case 'opening': {
+      const execute = harness.executors.opening;
+      return execute && ((context) => execute(context, step));
+    }
+    case 'reverse_opening': {
+      const execute = harness.executors.reverse_opening;
+      return execute && ((context) => execute(context, step));
+    }
   }
 }
 
@@ -247,6 +257,10 @@ function describeStep(step: Step): string {
       return `discard of the draft of step ${step.step}`;
     case 'service_department':
       return `department ${step.department} of service ${step.service} from ${step.effectiveFrom}`;
+    case 'opening':
+      return `opening: ${step.description}`;
+    case 'reverse_opening':
+      return 'whole reversal of the opening';
   }
 }
 

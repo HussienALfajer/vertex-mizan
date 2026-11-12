@@ -149,6 +149,11 @@ const rawCompanySchema = z.strictObject({
     .array(dateSchema)
     .refine((days) => new Set(days).size === days.length, 'A holiday is stated twice')
     .default([]),
+  // The books start (S10 rule 1): the first day of a month. Nothing posts until an `opening` step
+  // posts (rule 3), and the months before it are closed (rule 4).
+  books_start: dateSchema
+    .refine((date) => date.endsWith('-01'), 'Expected the first day of a month')
+    .optional(),
 });
 
 type RawCompany = z.output<typeof rawCompanySchema>;
@@ -260,6 +265,7 @@ const companySchema = rawCompanySchema
     closedPeriods: company.closed_periods,
     contracts: company.contracts,
     calendar: { daysOff: company.bulletin_days_off, holidays: company.bulletin_holidays },
+    booksStart: company.books_start ?? null,
   }));
 
 export type CaseCompany = z.output<typeof companySchema>;
@@ -332,7 +338,8 @@ const stepOutcome = { outcome: outcomeSchema.optional() };
  * S06's `recognise` and `split` (rule 16); S07's `revalue` (rules 10–18), `block` (S02 rule 5),
  * `close` and `reopen` (rules 2–9), and a manual entry saved as a `draft` and its `discard` (S03
  * rules 4 and 11), which S07's checklist reads (`no_drafts`); and S09's `service_department`, a
- * manual service's dated department (rule 34).
+ * manual service's dated department (rule 34); and S10's `opening` (rules 10–23) and its
+ * `reverse_opening` (rule 25).
  */
 export const STEP_KINDS = [
   'event',
@@ -353,6 +360,8 @@ export const STEP_KINDS = [
   'draft',
   'discard',
   'service_department',
+  'opening',
+  'reverse_opening',
 ] as const;
 
 export type StepKind = (typeof STEP_KINDS)[number];
@@ -666,6 +675,114 @@ const serviceDepartmentStepSchema = z
     outcome: step.outcome ?? null,
   }));
 
+/**
+ * One of the accountant's opening lines (S10 rule 14), as a manual line with, on a stated line
+ * (non-monetary or equity, rule 17), its book and parallel amounts from the records; the amount in
+ * a ledger's own currency is the line's own and is not stated.
+ */
+const openingLineSchema = z
+  .strictObject({
+    account: accountSchema,
+    dims: dimensionsSchema.default({}),
+    currency: currencyCodeSchema,
+    amount: amountSchema,
+    book: amountSchema.optional(),
+    parallel: amountSchema.optional(),
+    open_item: z
+      .strictObject({ ref: z.string().trim().min(1).max(100), due: dateSchema.optional() })
+      .optional(),
+    memo: z.string().trim().min(1).max(300).optional(),
+  })
+  .transform((line) => ({
+    account: line.account,
+    dims: line.dims,
+    currency: line.currency,
+    amount: line.amount,
+    book: line.book ?? null,
+    parallel: line.parallel ?? null,
+    openItem: line.open_item ? { ref: line.open_item.ref, due: line.open_item.due ?? null } : null,
+    memo: line.memo ?? null,
+  }));
+
+/**
+ * The records' figure of a client and currency on one of Hub's slots (S10 rule 15), signed as the
+ * account's natural balance: a receivable debit positive, client funds credit positive.
+ */
+const recordFigureSchema = z.strictObject({
+  slot: z.enum(['receivable', 'ad_funds']),
+  client: z.string().min(1),
+  currency: currencyCodeSchema,
+  amount: amountSchema,
+});
+
+/**
+ * Hub's snapshot as of the eve of the books start (S10 rule 5), in the short form of the event
+ * payloads: invoices with their total and outstanding, credit lines of invoices not in `invoices`,
+ * milestones, and each client's USD wallet balance (funds held positive). Its executor checks it
+ * against the snapshot's contract; here a decimal number is refused, as in any payload.
+ */
+const snapshotSchema = z.strictObject({
+  invoices: z.array(payloadSchema).default([]),
+  credits: z.array(payloadSchema).default([]),
+  milestones: z.array(payloadSchema).default([]),
+  wallets: z
+    .array(z.strictObject({ client: z.string().min(1), balance: amountSchema }))
+    .refine(
+      (wallets) => new Set(wallets.map((wallet) => wallet.client)).size === wallets.length,
+      'A wallet is stated twice',
+    )
+    .default([]),
+});
+
+/**
+ * The owner's posting of the opening from its preview (S10 rules 10–23): the draft saved with the
+ * step's snapshot (none: no Hub client holds `opening:write`), lines and figures, then posted with
+ * the preview's fingerprint on the books start. A refused post (`OPENING_CHECKS_FAILED`, the failing
+ * checks in rule 21's order) leaves the draft saved.
+ */
+const openingStepSchema = z
+  .strictObject({
+    kind: z.literal('opening'),
+    opening: z.string().trim().min(1),
+    snapshot: snapshotSchema.optional(),
+    records: z
+      .strictObject({
+        lines: z.array(openingLineSchema).default([]),
+        figures: z
+          .array(recordFigureSchema)
+          .refine(
+            (figures) =>
+              new Set(figures.map((f) => JSON.stringify([f.slot, f.client, f.currency]))).size ===
+              figures.length,
+            'A figure is stated twice for a slot, client and currency',
+          )
+          .default([]),
+      })
+      .default({ lines: [], figures: [] }),
+    ...stepOutcome,
+  })
+  .transform((step) => ({
+    kind: step.kind,
+    description: step.opening,
+    snapshot: step.snapshot ?? null,
+    lines: step.records.lines,
+    figures: step.records.figures,
+    outcome: step.outcome ?? null,
+  }));
+
+/** The owner's whole reversal of the opening, with a reason (S10 rule 25). */
+const reverseOpeningStepSchema = z
+  .strictObject({
+    kind: z.literal('reverse_opening'),
+    reverse_opening: actionReasonSchema,
+    ...stepOutcome,
+  })
+  .transform((step) => ({
+    kind: step.kind,
+    reason: step.reverse_opening,
+    outcome: step.outcome ?? null,
+  }));
+
 const stepSchema = z.preprocess(
   (value) => {
     if (typeof value !== 'object' || value === null || Array.isArray(value)) return value;
@@ -693,12 +810,14 @@ const stepSchema = z.preprocess(
       draftStepSchema,
       discardStepSchema,
       serviceDepartmentStepSchema,
+      openingStepSchema,
+      reverseOpeningStepSchema,
     ],
     {
       error:
         'Expected a step with one of the keys event, manual, reversal, job, rate, retry, move, ' +
-        'resolve, dismiss, recognise, split, revalue, block, close, reopen, draft, discard or ' +
-        'service_department',
+        'resolve, dismiss, recognise, split, revalue, block, close, reopen, draft, discard, ' +
+        'service_department, opening or reverse_opening',
     },
   ),
 );
@@ -900,6 +1019,41 @@ export const caseSchema = z
         }
         if (step.kind === 'resolve' && step.entry > entries.length) {
           issue(`Entry ${step.entry} is not an expected entry`, ['steps', s, 'resolve', 'entry']);
+        }
+      }
+    }
+    // S10 rules 1 and 3: an opening needs a books start, and a company with a books start posts
+    // nothing until its opening posts.
+    const { booksStart } = scenarioCase.company;
+    if (booksStart !== null && !steps.some((step) => step.kind === 'opening')) {
+      issue('A company with a books start posts nothing without an opening step', [
+        'company',
+        'books_start',
+      ]);
+    }
+    for (const [s, step] of steps.entries()) {
+      if (step.kind !== 'opening' && step.kind !== 'reverse_opening') continue;
+      if (booksStart === null) {
+        issue(`An ${step.kind} step needs the company's books_start`, ['steps', s, step.kind]);
+      }
+      if (step.kind !== 'opening') continue;
+      for (const [l, line] of step.lines.entries()) {
+        const path = ['steps', s, 'records', 'lines', l];
+        if (line.parallel !== null && parallel === null) {
+          issue('The company keeps no parallel ledger: state no parallel amount', [
+            ...path,
+            'parallel',
+          ]);
+        }
+        if (line.book !== null && line.currency === book.currency) {
+          issue(`In ${book.currency}, the book amount is the line's amount: state none`, [
+            ...path,
+            'book',
+          ]);
+        }
+        if (line.parallel !== null && line.currency === parallel?.currency) {
+          const message = `In ${parallel.currency}, the parallel amount is the line's amount: state none`;
+          issue(message, [...path, 'parallel']);
         }
       }
     }
