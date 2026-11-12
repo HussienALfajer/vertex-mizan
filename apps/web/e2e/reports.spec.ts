@@ -195,7 +195,7 @@ test.describe('the trial balance', () => {
     let reads = 0;
     await answer(page, 'GET', `/reports/files/${file.id}`, () => {
       reads += 1;
-      return { status: 200, json: reads < 1 ? file : reportFile('ready') };
+      return { status: 200, json: reads < 2 ? file : reportFile('ready') };
     });
     await page.route(`**/api/reports/files/${file.id}/download`, (route) =>
       route.fulfill({
