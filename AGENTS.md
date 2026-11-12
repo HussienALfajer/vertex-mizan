@@ -55,7 +55,7 @@ The PR that adds a command adds it here and keeps it true. Run from the reposito
 | `pnpm --filter @vertex-mizan/contracts export:hub-schema` · `MIZAN_API_KEY=<key> pnpm --filter @vertex-mizan/contracts post:hub-examples [--date YYYY-MM-DD] [--no-report]` | After `pnpm build`: `/v1`'s JSON Schema, one example of every event type and the daily report listing them in `packages/contracts/dist/hub-schema/`, for Hub · the examples posted to the API at `MIZAN_API_URL` (default the local one) with an API client's key, dated today or `--date`, then that date's report (S08; it needs `reconciliation:write`, `--no-report` skips it) (S05) |
 | `pnpm --filter @vertex-mizan/web dev` | The web app on `127.0.0.1:5173` (Vite), `/api` proxied to the API; the design-system page at `/design-system`. Stop it before `pnpm verify` |
 | `pnpm test:e2e [--shard=<n>/<total>]` | CI only: every app's whole Playwright suite after its build, through Turborepo (arguments go to Playwright); the test guard refuses it in a session |
-| `pnpm verify apps/web/e2e/<file>.spec.ts` · `pnpm verify --e2e-all` | Playwright specs on the web app's production build (`apps/web/CLAUDE.md`) · every check with the whole suite, the check before a PR. Needs Chromium once: `pnpm --filter @vertex-mizan/web exec playwright install chromium` |
+| `pnpm verify apps/web/e2e/<file>.spec.ts` · `pnpm verify apps/worker/e2e/<file>.spec.ts` · `pnpm verify --e2e-all` | Playwright specs on the web app's production build (`apps/web/CLAUDE.md`) · the worker's PDF printing in Chromium (S09) · every check with the whole suite, the check before a PR. Needs Chromium once: `pnpm --filter @vertex-mizan/web exec playwright install chromium`, which the worker's PDFs use too |
 
 ## Non-negotiable conventions
 

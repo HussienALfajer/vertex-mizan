@@ -125,6 +125,7 @@ describe('error codes', () => {
       ['RECONCILIATION_START_LOCKED', 409],
       // S09, reports
       ['DIMENSION_FROM_HUB', 409],
+      ['REPORT_TOO_LARGE', 422],
     ]);
   });
 

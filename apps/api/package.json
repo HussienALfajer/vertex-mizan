@@ -21,6 +21,7 @@
     "@vertex-mizan/db": "workspace:*",
     "@vertex-mizan/i18n": "workspace:*",
     "@vertex-mizan/ledger": "workspace:*",
+    "@vertex-mizan/ui": "workspace:*",
     "better-auth": "1.7.13",
     "drizzle-orm": "0.45.4",
     "exceljs": "4.4.0",

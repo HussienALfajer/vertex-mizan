@@ -28,13 +28,22 @@ export class RetryQueue implements OnApplicationShutdown {
 
   /** Queues the retries of `triggers` in `companyId`, once its change has committed. */
   async afterCommit(companyId: string, triggers: readonly RetryTrigger[]): Promise<void> {
-    if (triggers.length === 0 || !this.config.queueDatabaseUrl) return;
+    if (triggers.length === 0) return;
+    const job: EventsRetryJob = { companyId, triggers: [...triggers] };
+    await this.send(EVENTS_RETRY_QUEUE, job);
+  }
+
+  /**
+   * Queues one job for the worker after its change committed (S09: `reports.render` for a file);
+   * a failure is logged, never thrown, and without `DATABASE_QUEUE_URL` (the tests) nothing goes.
+   */
+  async send(queue: string, data: object): Promise<void> {
+    if (!this.config.queueDatabaseUrl) return;
     try {
       const boss = await this.start(this.config.queueDatabaseUrl);
-      const job: EventsRetryJob = { companyId, triggers: [...triggers] };
-      await boss.send(EVENTS_RETRY_QUEUE, job);
+      await boss.send(queue, data);
     } catch (error) {
-      this.logger.error(`Could not queue ${EVENTS_RETRY_QUEUE}: ${describeForLog(error)}`);
+      this.logger.error(`Could not queue ${queue}: ${describeForLog(error)}`);
     }
   }
 

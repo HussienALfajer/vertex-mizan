@@ -38,6 +38,8 @@ describe('worker boot', () => {
       'events.retry-sweep',
       'events.held-digest',
       'revenue.release-month',
+      'reports.render',
+      'reports.files-expire',
     ]);
     for (const job of all) {
       expect(await boss.getSchedules(job.queue), job.queue).toHaveLength(isScheduled(job) ? 1 : 0);

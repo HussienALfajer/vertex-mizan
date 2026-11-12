@@ -23,6 +23,7 @@ import { permissions } from './permissions.js';
 import { postingRules } from './posting-rules.js';
 import { rates } from './rates.js';
 import { reconciliation } from './reconciliation.js';
+import { reports } from './reports.js';
 import { revaluation } from './revaluation.js';
 import { revenue } from './revenue.js';
 import { roles } from './roles.js';
@@ -61,6 +62,7 @@ export const ar = {
   periods,
   revaluation,
   reconciliation,
+  reports,
 };
 
 export type Catalog = typeof ar;

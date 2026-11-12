@@ -110,6 +110,9 @@ export const tableRegistry = {
   // reconciliation (S08, ADR 0017): Hub's daily reports as received and the events they list.
   reconciliation_reports: { module: 'reconciliation', scope: 'company', kind: 'append-only' },
   reconciliation_report_events: { module: 'reconciliation', scope: 'company', kind: 'append-only' },
+  // reports (S09 rules 28–31, 36): the PDF files the worker renders and the journal book's register.
+  report_files: { module: 'reports', scope: 'company', kind: 'queue' },
+  journal_book_prints: { module: 'reports', scope: 'company', kind: 'append-only' },
 } as const satisfies Record<string, TableInfo>;
 
 export type TableScope = 'company' | 'platform';

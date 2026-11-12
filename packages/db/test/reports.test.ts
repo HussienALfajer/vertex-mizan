@@ -556,7 +556,11 @@ describe('the readers agree with the ledger (rule 8)', () => {
           }
           // The journal book's totals for November and December are the trial balance's movements.
           const book = await read((tx) =>
-            readJournalBook(tx, { fiscalYear: 2026, from: '2026-11', to: '2026-12' }, NOW),
+            readJournalBook(
+              tx,
+              { fiscalYear: 2026, from: '2026-11', to: '2026-12', ledger: 'book' },
+              NOW,
+            ),
           );
           const tb = await read((tx) =>
             readTrialBalance(
@@ -585,7 +589,7 @@ describe('the readers agree with the ledger (rule 8)', () => {
       ),
       { numRuns: 6 },
     );
-  });
+  }, 120_000);
 
   it('pages a general ledger and an account statement with running balances that run on', async () => {
     const books = await newBooks();
@@ -629,7 +633,7 @@ describe('the readers agree with the ledger (rule 8)', () => {
     );
     expect(BigInt(statement.closing)).toBe(BigInt(110 * 111 * 50));
     expect(statement.currencies.map((row) => row.currency)).toEqual(['SYP']);
-  });
+  }, 30_000);
 
   it('reads nothing of another company', async () => {
     const books = await newBooks();

@@ -4,7 +4,8 @@ import { STATEMENT_LINES } from './chart.js';
 import { contractKindSchema } from './dimensions.js';
 import { entryHubDocumentSchema } from './entries.js';
 import { currencyCodeSchema, ledgerSchema } from './money.js';
-import { entryNumberSchema, minorUnitsSchema } from './wire.js';
+import { ageingQuerySchema, clientStatementQuerySchema } from './open-items.js';
+import { entryNumberSchema, minorUnitsSchema, personRefSchema } from './wire.js';
 
 /**
  * The reports of S09 (F13): the queries of `/api/reports/*` and their answers. Every amount is a
@@ -32,6 +33,16 @@ export const REPORTS = [
 export const reportSchema = z.enum(REPORTS).meta({ id: 'Report' });
 
 export type Report = z.infer<typeof reportSchema>;
+
+/**
+ * A PDF file's states (S09 rule 36): `queued` when asked, then `ready` with its file or `failed`
+ * with an error code; a ready file that is not an official print `expired` after 24 hours.
+ */
+export const REPORT_FILE_STATES = ['queued', 'ready', 'failed', 'expired'] as const;
+
+export const reportFileStateSchema = z.enum(REPORT_FILE_STATES).meta({ id: 'ReportFileState' });
+
+export type ReportFileState = z.infer<typeof reportFileStateSchema>;
 
 /**
  * Rule 4's marks: `period_open` ("غير نهائية: الفترة مفتوحة") when a month the report reads is
@@ -841,6 +852,8 @@ export const journalBookQuerySchema = z
     fiscalYear: z.coerce.number().int().min(2000).max(9999),
     from: monthSchema,
     to: monthSchema,
+    /** The book ledger's journal is the legal book; the parallel ledger's prints as a draft (rule 30). */
+    ledger: ledgerSchema.default('book'),
   })
   .refine((query) => query.from <= query.to, { message: 'from is after to', path: ['from'] })
   .meta({ id: 'JournalBookQuery' });
@@ -860,3 +873,201 @@ export const journalBookSchema = z
   .meta({ id: 'JournalBook' });
 
 export type JournalBook = z.infer<typeof journalBookSchema>;
+
+// --- Exports and files (rules 28–30, 35–37) ---
+
+/** An Excel export holds at most this many rows (rule 35): `REPORT_TOO_LARGE` beyond. */
+export const REPORT_EXCEL_ROW_LIMIT = 100_000;
+
+/** A person has at most this many PDF files queued at once (rule 36): `RATE_LIMITED` beyond. */
+export const REPORT_FILE_QUEUE_LIMIT = 3;
+
+/** A ready PDF is downloadable for this long, unless it is an official print (rule 36). */
+export const REPORT_FILE_TTL_HOURS = 24;
+
+/** A file left queued this long was lost by the queue: the hourly job fails it (`RENDER_LOST`). */
+export const REPORT_FILE_LOST_AFTER_HOURS = 1;
+
+/**
+ * The reports `GET /api/reports/:report/export` writes to Excel (rule 35); the ageing, the client
+ * statement and the chart keep their own Excel routes (S04, S02). The journal book's Excel is the
+ * journal of `/reports/journal` (rule 12); its PDF is the printed book (rules 26–31).
+ */
+export const EXCEL_REPORTS = [
+  'trial_balance',
+  'general_ledger',
+  'account_statement',
+  'journal_book',
+  'income_statement',
+  'balance_sheet',
+  'profitability',
+  'contract_position',
+  'revenue_schedule',
+] as const satisfies readonly Report[];
+
+export type ExcelReport = (typeof EXCEL_REPORTS)[number];
+
+export const excelReportSchema = z.enum(EXCEL_REPORTS).meta({ id: 'ExcelReport' });
+
+/** An account statement's file names its account, as its route does. */
+export const accountStatementFileQuerySchema = z
+  .intersection(z.object({ account: z.uuid() }), accountStatementQuerySchema)
+  .meta({ id: 'AccountStatementFileQuery' });
+
+export type AccountStatementFileQuery = z.infer<typeof accountStatementFileQuerySchema>;
+
+/** A client statement's file names its client, as its route does (S04). */
+export const clientStatementFileQuerySchema = z
+  .intersection(z.object({ client: z.uuid() }), clientStatementQuerySchema)
+  .meta({ id: 'ClientStatementFileQuery' });
+
+export type ClientStatementFileQuery = z.infer<typeof clientStatementFileQuerySchema>;
+
+/** The chart's PDF takes no parameter: every account, archived ones included, as its Excel. */
+export const chartFileQuerySchema = z.object({}).meta({ id: 'ChartFileQuery' });
+
+/** The query of each report's Excel export, `format=xlsx` aside. */
+export const EXCEL_REPORT_QUERIES = {
+  trial_balance: trialBalanceQuerySchema,
+  general_ledger: generalLedgerQuerySchema,
+  account_statement: accountStatementFileQuerySchema,
+  journal_book: journalQuerySchema,
+  income_statement: incomeStatementQuerySchema,
+  balance_sheet: balanceSheetQuerySchema,
+  profitability: profitabilityQuerySchema,
+  contract_position: contractPositionQuerySchema,
+  revenue_schedule: revenueReleaseScheduleQuerySchema,
+} as const satisfies Record<ExcelReport, z.ZodType>;
+
+/** The parameters of each report's PDF, as stored with its file and read again by the worker. */
+export const REPORT_FILE_QUERIES = {
+  trial_balance: trialBalanceQuerySchema,
+  general_ledger: generalLedgerQuerySchema,
+  account_statement: accountStatementFileQuerySchema,
+  journal_book: journalBookQuerySchema,
+  income_statement: incomeStatementQuerySchema,
+  balance_sheet: balanceSheetQuerySchema,
+  profitability: profitabilityQuerySchema,
+  contract_position: contractPositionQuerySchema,
+  revenue_schedule: revenueReleaseScheduleQuerySchema,
+  ageing: ageingQuerySchema,
+  client_statement: clientStatementFileQuerySchema,
+  chart: chartFileQuerySchema,
+} as const satisfies Record<Report, z.ZodType>;
+
+export type ReportFileQuery<R extends Report> = z.output<(typeof REPORT_FILE_QUERIES)[R]>;
+
+/**
+ * `GET /api/reports/:report/export`: the format, beside the report's own query
+ * (`EXCEL_REPORT_QUERIES`), which the API reads from the same query string.
+ */
+export const reportExportQuerySchema = z
+  .looseObject({ format: z.enum(['xlsx']) })
+  .meta({ id: 'ReportExportQuery' });
+
+export type ReportExportQuery = z.infer<typeof reportExportQuerySchema>;
+
+export const reportExportParamsSchema = z
+  .object({ report: excelReportSchema })
+  .meta({ id: 'ReportExportParams' });
+
+export type ReportExportParams = z.infer<typeof reportExportParamsSchema>;
+
+/**
+ * `POST /api/reports/files` (rule 36): a report's PDF with its parameters, validated by the
+ * report's query (`REPORT_FILE_QUERIES`; a cursor is ignored, the file carries every page). An
+ * official print is of the book ledger's journal book (rule 28).
+ */
+export const reportFileRequestSchema = z
+  .object({
+    report: reportSchema,
+    params: z.record(z.string(), z.unknown()).default({}),
+    official: z.boolean().default(false),
+  })
+  .refine((request) => !request.official || request.report === 'journal_book', {
+    message: 'Only the journal book has an official print',
+    path: ['official'],
+  })
+  .meta({ id: 'ReportFileRequest' });
+
+export type ReportFileRequest = z.infer<typeof reportFileRequestSchema>;
+
+/** A PDF file as its requester sees it; `error` is an error code. */
+export const reportFileSchema = z
+  .object({
+    id: z.uuid(),
+    report: reportSchema,
+    params: z.record(z.string(), z.unknown()),
+    format: z.literal('pdf'),
+    official: z.boolean(),
+    state: reportFileStateSchema,
+    sizeBytes: z.int().positive().nullable(),
+    error: z.string().nullable(),
+    createdAt: z.iso.datetime({ offset: true }),
+    readyAt: z.iso.datetime({ offset: true }).nullable(),
+    /** Null for an official print, which is kept (rule 28). */
+    expiresAt: z.iso.datetime({ offset: true }).nullable(),
+  })
+  .meta({ id: 'ReportFile' });
+
+export type ReportFile = z.infer<typeof reportFileSchema>;
+
+export const reportFilesSchema = z
+  .object({ files: z.array(reportFileSchema) })
+  .meta({ id: 'ReportFiles' });
+
+export type ReportFiles = z.infer<typeof reportFilesSchema>;
+
+/** `GET /api/reports/journal-book/prints`: one fiscal year's register. */
+export const journalBookPrintsQuerySchema = z
+  .object({ fiscalYear: z.coerce.number().int().min(2000).max(9999) })
+  .meta({ id: 'JournalBookPrintsQuery' });
+
+export type JournalBookPrintsQuery = z.infer<typeof journalBookPrintsQuerySchema>;
+
+/**
+ * An official print in the register (rule 29): its range, pages in the year's numbering (none for
+ * a range with no entries), counts and book totals, its hashes, who and when; `superseded` once a
+ * month of its range was reopened after it.
+ */
+export const journalBookPrintSchema = z
+  .object({
+    id: z.uuid(),
+    reportFileId: z.uuid(),
+    fiscalYear: z.int(),
+    from: monthSchema,
+    to: monthSchema,
+    firstPage: z.int().min(1).nullable(),
+    lastPage: z.int().min(1).nullable(),
+    entryCount: z.int().min(0),
+    lineCount: z.int().min(0),
+    debitTotal: minorUnitsSchema,
+    creditTotal: minorUnitsSchema,
+    currency: currencyCodeSchema,
+    contentSha256: z.string().regex(/^[0-9a-f]{64}$/),
+    fileSha256: z.string().regex(/^[0-9a-f]{64}$/),
+    printedBy: personRefSchema,
+    createdAt: z.iso.datetime({ offset: true }),
+    superseded: z.boolean(),
+    /** The first reopen of a month of the range after the print. */
+    supersededAt: z.iso.datetime({ offset: true }).nullable(),
+  })
+  .meta({ id: 'JournalBookPrint' });
+
+export type JournalBookPrint = z.infer<typeof journalBookPrintSchema>;
+
+export const journalBookPrintsSchema = z
+  .object({ prints: z.array(journalBookPrintSchema) })
+  .meta({ id: 'JournalBookPrints' });
+
+export type JournalBookPrints = z.infer<typeof journalBookPrintsSchema>;
+
+/** The queue of `reportsRenderJobSchema`, worked by the worker (S09 "Jobs and events"). */
+export const REPORTS_RENDER_QUEUE = 'reports.render';
+
+/** The job the API sends once a file's row commits (S09 "Jobs and events"). */
+export const reportsRenderJobSchema = z
+  .object({ companyId: z.uuid(), fileId: z.uuid() })
+  .meta({ id: 'ReportsRenderJob' });
+
+export type ReportsRenderJob = z.infer<typeof reportsRenderJobSchema>;

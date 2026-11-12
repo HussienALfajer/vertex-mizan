@@ -1,0 +1,13 @@
+{
+  "extends": "@vertex-mizan/config/tsconfig/node.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "types": ["node"],
+    "rootDir": "src",
+    "outDir": "dist",
+    "declaration": true,
+    "declarationMap": true
+  },
+  "include": ["src/print"],
+  "exclude": ["src/print/**/*.test.ts", "src/print/**/*.test.tsx"]
+}

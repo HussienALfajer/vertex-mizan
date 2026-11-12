@@ -14,6 +14,13 @@ describe('CI pins', () => {
     expect(image?.[1]).toBe(devDependencies['@playwright/test']);
   });
 
+  it('prints PDFs with the Chromium of that image (S09: the worker)', () => {
+    const web = JSON.parse(read('apps/web/package.json')).devDependencies['@playwright/test'];
+    const worker = JSON.parse(read('apps/worker/package.json'));
+    expect(worker.dependencies['playwright-core']).toBe(web);
+    expect(worker.devDependencies['@playwright/test']).toBe(web);
+  });
+
   it('scans for secrets with the gitleaks release pnpm verify runs', () => {
     const pinned = read('scripts/tools.mjs').match(/gitleaks: \{\s*version: '([\d.]+)'/);
     expect(workflow).toContain(`GITLEAKS_VERSION: ${pinned?.[1]}`);

@@ -1,0 +1,2 @@
+ALTER TABLE "journal_book_prints" ADD COLUMN "reopens_seen" integer NOT NULL;--> statement-breakpoint
+ALTER TABLE "journal_book_prints" ADD CONSTRAINT "journal_book_prints_reopens_seen" CHECK ("journal_book_prints"."reopens_seen" >= 0);
