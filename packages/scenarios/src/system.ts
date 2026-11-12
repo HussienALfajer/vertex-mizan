@@ -142,6 +142,7 @@ export async function setUp(
         policyNote: 'سياسة الشركة في كتاب السيناريوهات.',
         template: company.template === null ? null : chartTemplateIdSchema.parse(company.template),
         createdByUserId: person.id,
+        booksStart: company.booksStart,
       },
       actor,
     );

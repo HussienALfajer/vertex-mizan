@@ -73,6 +73,13 @@ export function namedDimensionValues(scenarioCase: ScenarioCase): NamedValue[] {
     if (step.kind === 'service_department') {
       add({ service: step.service, department: step.department }, index);
     }
+    // The accountant's opening lines and figures (S10 rules 14–15), named after the snapshot of the
+    // same step, which brings Hub's values first.
+    if (step.kind === 'opening') {
+      for (const line of step.lines) add(line.dims, index + 0.5);
+      for (const figure of step.figures) add({ client: figure.client }, index + 0.5);
+      continue;
+    }
     if (step.kind !== 'manual' && step.kind !== 'draft') continue;
     const lines = (step.payload as { lines?: unknown }).lines;
     if (Array.isArray(lines)) {
@@ -100,8 +107,25 @@ function stepEventValues(step: Step): NamedValue[] {
   const add = (type: string, code: unknown) => {
     if (typeof code === 'string') values.push({ type, code });
   };
+  // Hub's snapshot brings the values its documents name, as their events would (S10 rule 7).
+  if (step.kind === 'opening' && step.snapshot !== null) {
+    const { invoices, credits, milestones, wallets } = step.snapshot;
+    for (const payload of [...invoices, ...credits, ...milestones]) {
+      values.push(...payloadValues(payload as Record<string, unknown>));
+    }
+    for (const wallet of wallets) add('client', wallet.client);
+    return values;
+  }
   if (step.kind !== 'event') return values;
-  const payload = step.payload as Record<string, unknown>;
+  return payloadValues(step.payload as Record<string, unknown>);
+}
+
+/** The values a short-form payload names (S05 rule 2). */
+function payloadValues(payload: Record<string, unknown>): NamedValue[] {
+  const values: NamedValue[] = [];
+  const add = (type: string, code: unknown) => {
+    if (typeof code === 'string') values.push({ type, code });
+  };
   add('client', payload.client);
   add('department', payload.department);
   add('service', payload.old_service);
@@ -115,6 +139,10 @@ function stepEventValues(step: Step): NamedValue[] {
   if (contract !== undefined) {
     add('contract', contract.code);
     add('client', contract.client);
+  }
+  // A snapshot's credit is its line, with its service (S10 rule 5).
+  if (payload.lines === undefined && payload.line !== undefined && payload.invoice !== undefined) {
+    add('service', payload.service);
   }
   const lines = payload.lines;
   if (Array.isArray(lines)) {

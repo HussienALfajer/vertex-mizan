@@ -1,6 +1,6 @@
 # The opening entry
 
-Status: Proposed
+Status: Approved (owner, 2026-11-12)
 
 S10 wrote these cases (S10 "Scenarios"); the owner approved their expected entries and outcomes on 2026-11-12: seven cases, then, after the accounting review, the eighth, a company without Hub opening its receivables on `112001`, with the owner's decision on S10 rule 12 of the same day (Hub's slots refuse the accountant's lines only in a company with a Hub client, an API client holding `events:write` or `opening:write`). They stay `Proposed` until S10's feature slice brings the executors of the `opening` and `reverse_opening` steps and of the company's `books_start`, then become `Approved (owner, 2026-11-12)` (`docs/scenarios/README.md`, "Status").
 
