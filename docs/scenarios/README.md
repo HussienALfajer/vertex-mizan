@@ -59,6 +59,8 @@ company:
                                     #   contract is made by the event
   bulletin_days_off: [5, 6]         # ISO weekdays without a bulletin; default Friday and Saturday
   bulletin_holidays: []             # e.g. [2026-11-08]: dates the accountant marked (S02 rules 16–17)
+  books_start: 2026-10-01           # optional (S10 rule 1): the months before it are closed, and nothing
+                                    #   posts until an `opening` step posts (OPENING_NOT_POSTED, rule 3)
 rates:                              # company rate table rows; source: manual unless stated (hub, import)
   - { date: 2026-11-03, base: USD, quote: SYP, rate: "120.0000", type: bulletin }
 steps:                              # in order; a Hub event, a manual entry, a reversal, a job or a rate
@@ -122,9 +124,36 @@ steps:                              # in order; a Hub event, a manual entry, a r
     reason: "..."                   #   (cancelled_project_remainder, invoiced_after_cancellation):
                                     #   revenue, the transaction amount to revenue in the project's
                                     #   currency; the rest to the refund payable (S06 rules 15–16)
+  - opening: <what it records>      # the opening saved and posted by the owner from its preview
+    snapshot:                       #   (S10 rules 10–23), dated on the books start; Hub's snapshot
+      invoices:                     #   as of the eve, short form (omitted: no snapshot, and no Hub
+        - { invoice: INV-2026-7, client: C1, contract: { code: R1, kind: retainer, client: C1 },
+            currency: USD, syp_per_usd: "117.0000", issued_on: 2026-09-10, due_on: 2026-09-25,
+            total: 30000, outstanding: 30000, lines: [{ ... }] }
+                                    #   client holds opening:write); an invoice as invoice.issued's
+                                    #   payload with its total and outstanding at the eve
+      credits:                      # a credit line of an invoice not in invoices, with that invoice
+        - { invoice: INV-2026-12, client: C1, contract: { ... }, currency: USD, syp_per_usd: "117.5000",
+            issued_on: 2026-09-24, line: L2, amount: -6000, source: retainer_charge, kind: credit,
+            cycle_start: 2026-09-11, service: S1 }
+      milestones:                   # done_on only when done on or before the eve
+        - { milestone: MS-2, project: { ... }, client: C2, currency: USD, amount: 40000, service: S2,
+            done_on: 2026-09-25 }
+      wallets:                      # a client's USD balance as Hub shows it: funds held positive
+        - { client: C1, balance: 50000 }
+    records:
+      lines:                        # the accountant's lines: account, dims?, currency, amount (debit
+        - { account: "311001", currency: SYP, amount: -100000000, parallel: -1000000 }
+                                    #   positive), open_item? and memo? as a manual line; a stated
+                                    #   line (non-monetary or equity) also gives book and parallel,
+                                    #   except the one in its ledger's own currency (S10 rule 17)
+      figures:                      # the records' figure per slot, client and currency (S10 rule 15),
+        - { slot: receivable, client: C1, currency: USD, amount: 30000 }
+                                    #   signed as the account's natural balance
+  - reverse_opening: "<reason>"     # the owner's whole reversal of the opening (S10 rule 25)
 expect:
   entries:                          # the exact set posted, in posting order; every line of every entry
-    - source: <event type | job | manual | revaluation | reversal>
+    - source: <event type | job | manual | opening | revaluation | reversal>
       date: 2026-11-03
       lines:                        # minor units; positive debit, negative credit
         - { account: "112001", dims: { client: C1 }, currency: USD, amount: 10000, book: 1200000, parallel: 10000 }
@@ -163,6 +192,7 @@ Writing the YAML:
 - Each expected entry balances in both ledgers, and has at least two lines; a `third` case names a line or a rate in a third currency.
 - **Hub events** (S05): the payload's short form names each dimension by its code and each document by its number; the runner makes it into the full payload Hub sends (`packages/contracts` `eventEnvelopeSchema`): each document and value gets a stable synthetic Hub id, a value keeps the case's code (so the event makes the value, S05 rule 23, and the setup leaves it out), an invoice line's `kind` is its `charge_kind`, and a `payment.voided` finds its receipt and invoice from the payment's `payment.recorded` step. After each event, rate and inbox step the runner runs the retries the step frees, as the worker does after its commit (S05 rule 10), with the case's clock at its latest date.
 - An action (`retry`, `move`, `resolve`, `dismiss`, `recognise`, `split`) names an earlier `event` step, and `resolve` an expected entry. It may state its `outcome` like any step: a retry that leaves the event held, or an action the inbox refuses (`EVENT_NOT_HELD`, `EVENT_ACTION_NOT_ALLOWED`, `ENTRY_ALREADY_LINKED`, and `VALIDATION_FAILED` for a split outside zero to the remainder). The events an action frees are retried as S05 rule 10 says, and their entries are expected where they post.
+- An **`opening`** step (S10) needs a company with a `books_start`; it saves the draft with the step's snapshot, lines and figures, reads its preview and posts it with the preview's fingerprint, the case's clock on the books start or its latest date if later. A refused post states its `outcome` (`OPENING_CHECKS_FAILED`, the failing checks as its detail, comma-separated in S10 rule 21's order) and leaves the draft saved, so a later `opening` step replaces its lines and figures. Its entry has the source `opening`; Hub's items are named by Hub's invoice number (receivables), milestone number (contract assets) or the client's code (ad funds). A `reverse_opening` posts the reversal, read as `reversal` on the books start, or states its refusal (`OPENING_NOT_REVERSIBLE`). The snapshot's register of prior documents arrives with `opening/before-books-start.md`.
 - A `discard` names an earlier `draft` step. A `close` refused `PERIOD_ORDER` names the earliest open month as its detail (`period:2026-10`), a `reopen` refused `PERIOD_ORDER` the latest closed month.
 - A `revalue: parallel` step needs a company with a parallel ledger. A `revalue` step for a month already revalued posts the adjusting revaluation: only the differences still to post, with its own reversal (S07 rule 15). A `revalue` step that finds every difference zero is done and posts nothing; a missing closing rate is its `refused` outcome `RATE_MISSING`.
 - A **service's department** travels on an invoice line's service reference as `service: { code: S1, department: design }` (S09 rule 33); `service: S1` sends none, and no other event's service carries one. A value an event names (a service, a department, a contract) is made by the event, so the setup leaves it out, and a later step names it by its code.
