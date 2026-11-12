@@ -34,6 +34,8 @@ import {
   ratePairs,
   recognitionMovements,
   recognitionSchedules,
+  reconciliationReportEvents,
+  reconciliationReports,
   type Transaction,
   tableRegistry,
   users,
@@ -87,6 +89,8 @@ const COVERED = [
   'document_sources',
   'recognition_schedules',
   'recognition_movements',
+  'reconciliation_reports',
+  'reconciliation_report_events',
 ];
 
 const auditRow = fc.record({
@@ -411,6 +415,8 @@ const expectedRows = (data: CompanyData): Record<string, number> => ({
   recognition_movements: 1,
   revaluations: 1,
   period_events: 1,
+  reconciliation_reports: 1,
+  reconciliation_report_events: 1,
 });
 
 /**
@@ -634,12 +640,42 @@ async function seedSources(tx: Transaction, companyId: string, userId: string) {
       name: 'Vertex Hub',
       system: 'hub',
       scopes: ['events:write'],
+      reconcileFrom: '2026-10-19',
       createdByUserId: userId,
     })
     .returning({ id: apiClients.id });
   await tx
     .insert(documentSources)
     .values({ companyId, documentType: 'invoice', apiClientId: client?.id as string });
+}
+
+/** S08's rows: a daily report of the Hub client listing one event, as the service stores one. */
+async function seedReconciliation(tx: Transaction, companyId: string) {
+  const [report] = await tx
+    .insert(reconciliationReports)
+    .values({
+      companyId,
+      apiClientId: uuidv7(),
+      reportId: uuidv7(),
+      reportDate: '2026-11-03',
+      generatedAt: new Date('2026-11-03T21:05:00Z'),
+      payload: { events: 1 },
+      payloadHash: 'a'.repeat(64),
+      eventCount: 1,
+      requestId: 'request-generated',
+      statusAtReceipt: 'differences',
+      gapsAtReceipt: 1,
+    })
+    .returning({ id: reconciliationReports.id });
+  await tx.insert(reconciliationReportEvents).values({
+    companyId,
+    reportId: report?.id as string,
+    eventId: uuidv7(),
+    type: 'invoice.issued',
+    currency: 'USD',
+    amountMinor: 50_000n,
+    delivery: 'delivered',
+  });
 }
 
 async function seed(userId: string, data: CompanyData): Promise<string> {
@@ -675,6 +711,7 @@ async function seed(userId: string, data: CompanyData): Promise<string> {
     await seedInbox(tx, row.id);
     await seedSources(tx, row.id, userId);
     await seedRecognition(tx, row.id);
+    await seedReconciliation(tx, row.id);
     // S07's period history: November closed, as the posting function writes a close.
     await writePeriodTransition(tx, {
       companyId: row.id,

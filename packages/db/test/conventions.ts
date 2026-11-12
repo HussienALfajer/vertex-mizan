@@ -2365,6 +2365,67 @@ BEGIN
 END
 `,
     },
+    // S08: a report holds exactly the events it counts; a start date is never cleared.
+    {
+      name: 'reconciliation_report_complete',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+DECLARE
+  report_row_id uuid;
+  expected integer;
+  listed integer;
+BEGIN
+  IF TG_TABLE_NAME = 'reconciliation_reports' THEN
+    report_row_id := NEW.id;
+  ELSE
+    report_row_id := NEW.report_id;
+  END IF;
+  SELECT r.event_count INTO expected
+  FROM public.reconciliation_reports r
+  WHERE r.company_id = NEW.company_id AND r.id = report_row_id;
+  SELECT count(*) INTO listed
+  FROM public.reconciliation_report_events e
+  WHERE e.company_id = NEW.company_id AND e.report_id = report_row_id;
+  IF expected IS NULL OR listed <> expected THEN
+    RAISE EXCEPTION 'reconciliation report % lists % events, not the % it counts',
+      report_row_id, listed, coalesce(expected::text, 'unknown')
+      USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NULL;
+END
+`,
+    },
+    {
+      name: 'api_client_reconcile_from_rules',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+BEGIN
+  IF OLD.reconcile_from IS NOT NULL AND NEW.reconcile_from IS NULL THEN
+    RAISE EXCEPTION 'api_clients: a reconciliation start date is never cleared'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  RETURN NEW;
+END
+`,
+    },
   ],
   triggers: [
     // The settings lock (S01 rule 11): before every update of a company's ledger settings.
@@ -3273,6 +3334,56 @@ END
       function: 'period_history_agrees',
       deferred: true,
       on: ['INSERT'],
+    },
+    // S08's reconciliation reports and the start date.
+    {
+      table: 'reconciliation_reports',
+      name: 'reconciliation_reports_refuse_change',
+      function: 'refuse_change',
+      deferred: false,
+      on: ['UPDATE', 'DELETE'],
+    },
+    {
+      table: 'reconciliation_reports',
+      name: 'reconciliation_reports_refuse_truncate',
+      function: 'refuse_change',
+      deferred: false,
+      on: ['TRUNCATE'],
+    },
+    {
+      table: 'reconciliation_reports',
+      name: 'reconciliation_reports_complete',
+      function: 'reconciliation_report_complete',
+      deferred: true,
+      on: ['INSERT'],
+    },
+    {
+      table: 'reconciliation_report_events',
+      name: 'reconciliation_report_events_refuse_change',
+      function: 'refuse_change',
+      deferred: false,
+      on: ['UPDATE', 'DELETE'],
+    },
+    {
+      table: 'reconciliation_report_events',
+      name: 'reconciliation_report_events_refuse_truncate',
+      function: 'refuse_change',
+      deferred: false,
+      on: ['TRUNCATE'],
+    },
+    {
+      table: 'reconciliation_report_events',
+      name: 'reconciliation_report_events_complete',
+      function: 'reconciliation_report_complete',
+      deferred: true,
+      on: ['INSERT'],
+    },
+    {
+      table: 'api_clients',
+      name: 'api_client_reconcile_from_rules',
+      function: 'api_client_reconcile_from_rules',
+      deferred: false,
+      on: ['UPDATE'],
     },
   ],
   jobs: {

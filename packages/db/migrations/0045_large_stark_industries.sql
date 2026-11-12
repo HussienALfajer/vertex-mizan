@@ -1,0 +1,2 @@
+ALTER TABLE "api_clients" ADD CONSTRAINT "api_clients_reconcile_from" CHECK ("api_clients"."reconcile_from" is not null
+        or not ("api_clients"."scopes" && array['events:write', 'reconciliation:write']::text[]));
