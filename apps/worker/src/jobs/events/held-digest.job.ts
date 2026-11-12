@@ -1,12 +1,14 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { type EmailData, emailDataSchemas, type HoldReason } from '@vertex-mizan/contracts';
 import {
+  awaitsOpening,
   companies,
   type Database,
   describeForLog,
   emailOutbox,
   inboundEventStates,
   memberships,
+  openingSnapshots,
   readPeriods,
   type Transaction,
   uncleanReconciliationDays,
@@ -26,7 +28,8 @@ import type { ScheduledJob } from '../../core/queue/scheduled-job.js';
  * (S08 rule 16): the events held in the last day and all held, by reason, with a link to the inbox;
  * (S07 "Jobs") the ended months not closed with their failing checklist items ("أشهر منتهية غير
  * مقفلة"); (S08) the days on or after a client's start date that are `missing` or `differences`, the
- * 31 latest, with a link to `/reconciliation`. Keyed by company, day and person in the outbox, whose
+ * 31 latest, with a link to `/reconciliation`; (S10 "Jobs") a company with a books start whose
+ * opening is not posted, from the day Hub's snapshot arrives, with a link to `/opening`. Keyed by company, day and person in the outbox, whose
  * row stays once sent (`sent_at`) until the clean-up two days later, so a second run that day, the
  * job's retry included, queues nothing. The jobs role lists the companies; each company's sections
  * and people are read as the app role in its context.
@@ -94,7 +97,17 @@ export class EventsHeldDigestJob implements ScheduledJob {
       .map((month) => ({ period: month.period, failingItems: month.failingItems ?? 0 }));
     // S08 rule 16: the reconciliation's days not clean, the 31 latest.
     const reconciliation = await uncleanReconciliationDays(tx, { today: day, now, limit: 31 });
-    if (held.length === 0 && unclosedMonths.length === 0 && reconciliation.length === 0) return 0;
+    // S10 "Jobs": waiting for its opening since a snapshot arrived.
+    const [snapshot] = await tx.select({ id: openingSnapshots.id }).from(openingSnapshots).limit(1);
+    const openingPending = snapshot !== undefined && (await awaitsOpening(tx));
+    if (
+      held.length === 0 &&
+      unclosedMonths.length === 0 &&
+      reconciliation.length === 0 &&
+      !openingPending
+    ) {
+      return 0;
+    }
     const people = await tx
       .select({ id: users.id, email: users.email })
       .from(memberships)
@@ -118,6 +131,7 @@ export class EventsHeldDigestJob implements ScheduledJob {
       ...(reconciliation.length > 0 && {
         reconciliationLink: `${this.config.appUrl}/reconciliation`,
       }),
+      ...(openingPending && { openingLink: `${this.config.appUrl}/opening` }),
     });
     if (people.length === 0) return 0;
     const inserted = await tx

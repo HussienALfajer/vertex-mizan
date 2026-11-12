@@ -102,6 +102,11 @@ export const emailDataSchemas = {
     link: linkSchema,
     /** S08: the link to `/reconciliation`, with the reconciliation section. */
     reconciliationLink: linkSchema.optional(),
+    /**
+     * S10 "Jobs": the company waits for its opening since Hub's snapshot arrived, with the link to
+     * `/opening`; absent otherwise.
+     */
+    openingLink: linkSchema.optional(),
   }),
 } as const satisfies Record<EmailKind, z.ZodType>;
 

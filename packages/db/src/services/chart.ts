@@ -379,3 +379,70 @@ export async function mapAppendedTemplateSlots(
   }
   return made.length;
 }
+
+/**
+ * S10 ("Data"): the template's `312002` "نتيجة السنة قبل بدء الدفاتر" with the role
+ * `pre_opening_result`, added to a company made before the templates' version 2 whose chart holds
+ * the header `312` and no `312002`, when no account holds the role yet. Runs at the worker's start
+ * after the deploy, as `mapAppendedTemplateSlots()` does, since a value appended to the role enum
+ * cannot be used in the migration's transaction. Safe to run twice; answers whether it added it.
+ */
+export async function appendPreOpeningResultAccount(
+  tx: Transaction,
+  companyId: string,
+  actor: AuditActor,
+): Promise<boolean> {
+  // The header first, `FOR UPDATE`: two runs at once serialise here, and the second, reading after
+  // the first's commit, finds the role held.
+  const [parent] = await tx
+    .select({ id: chartAccounts.id, kind: chartAccounts.kind })
+    .from(chartAccounts)
+    .where(and(eq(chartAccounts.code, '312'), isNull(chartAccounts.archivedAt)))
+    .for('update');
+  if (parent === undefined || parent.kind !== 'header') return false;
+  const [held] = await tx
+    .select({ id: accountRoles.id })
+    .from(accountRoles)
+    .where(and(eq(accountRoles.role, 'pre_opening_result'), isNull(accountRoles.archivedAt)));
+  if (held !== undefined) return false;
+  const [taken] = await tx
+    .select({ id: chartAccounts.id })
+    .from(chartAccounts)
+    .where(eq(chartAccounts.code, '312002'));
+  if (taken !== undefined) return false;
+  const template = chartTemplate('service-agency').accounts.find(
+    (account) => account.code === '312002',
+  );
+  if (template === undefined) throw new Error('The template has no 312002');
+  const account = await createAccount(
+    tx,
+    companyId,
+    {
+      parentId: parent.id,
+      code: template.code,
+      kind: template.kind,
+      name: template.name,
+      nameLatin: template.nameLatin,
+      normalBalance: template.normalBalance,
+      statementLine: template.statementLine,
+      currency: template.currency,
+      isControl: template.isControl,
+      itemKind: template.itemKind,
+      isMonetary: template.isMonetary,
+      requiredDimensionTypeIds: [],
+    },
+    actor,
+  );
+  const [role] = await tx
+    .insert(accountRoles)
+    .values({ companyId, role: 'pre_opening_result', accountId: account.id })
+    .returning({ id: accountRoles.id });
+  await writeCompanyAudit(tx, companyId, actor, {
+    action: 'account_role.set',
+    entityType: 'account_role',
+    entityId: role?.id ?? null,
+    before: { role: 'pre_opening_result', accountId: null },
+    after: { role: 'pre_opening_result', accountId: account.id },
+  });
+  return true;
+}

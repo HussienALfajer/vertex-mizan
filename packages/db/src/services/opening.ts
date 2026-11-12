@@ -121,6 +121,21 @@ export async function booksStartLocked(tx: Transaction): Promise<boolean> {
   return opening !== undefined;
 }
 
+/**
+ * Whether the company in context waits for its opening (S10 rule 3): it has a books start and no
+ * posted opening, so nothing posts yet. The jobs skip it (the release, the digest's line).
+ */
+export async function awaitsOpening(tx: Transaction): Promise<boolean> {
+  const [settings] = await tx.select({ booksStart: companySettings.booksStart }).from(companySettings);
+  if (settings === undefined || settings.booksStart === null) return false;
+  const [posted] = await tx
+    .select({ id: openings.id })
+    .from(openings)
+    .where(eq(openings.state, 'posted'))
+    .limit(1);
+  return posted === undefined;
+}
+
 /** The company's live opening (a draft or posted), or null (S10 rule 10). */
 async function liveOpening(tx: Transaction, lock: boolean): Promise<OpeningRow | null> {
   const query = tx.select().from(openings).where(ne(openings.state, 'reversed'));

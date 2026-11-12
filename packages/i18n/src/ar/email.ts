@@ -31,7 +31,7 @@ export const email = {
   heldDigest: {
     subject: 'ما يحتاج إلى متابعة من Hub في {companyName}',
     // S08 rule 16: sent when any section has content; each section only when it has.
-    body: 'ملخص صباح {day} (توقيت دمشق) لشركة {companyName}.{held}{unclosed}{reconciliation}\n\nتصلك هذه الرسالة في كل يوم فيه ما يحتاج إلى متابعة.',
+    body: 'ملخص صباح {day} (توقيت دمشق) لشركة {companyName}.{opening}{held}{unclosed}{reconciliation}\n\nتصلك هذه الرسالة في كل يوم فيه ما يحتاج إلى متابعة.',
     heldSection:
       'في صندوق الوارد أحداث من Hub معلّقة لم تُرحَّل بعد.\n\nعُلّق منذ الملخص السابق: {newlyHeld}\n\nالمعلّق كله بحسب السبب:\n{lines}\n\nراجعها وعالجها من صندوق الوارد:\n{link}',
     line: '- {reason}: {count}',
@@ -43,6 +43,9 @@ export const email = {
     reconciliationMissing: '- {date}: لم يصل تقرير Hub',
     reconciliationDifferences: '- {date}: فيه فروق: {count}',
     afterClose: ' (بعد الإقفال)',
+    // S10 "Jobs": from the day Hub's snapshot arrives until the opening posts.
+    opening:
+      'الأرصدة الافتتاحية لم تُرحَّل بعد: أحداث Hub تنتظر ترحيلها قبل أن تُقبل.\n\nأكملها من صفحة الأرصدة الافتتاحية:\n{link}',
     reconciliationLink: 'راجعها من صفحة المطابقة اليومية:\n{link}',
     reasons: {
       PERIOD_CLOSED: 'الفترة مقفلة',

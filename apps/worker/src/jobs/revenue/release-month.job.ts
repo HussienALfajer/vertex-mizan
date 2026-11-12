@@ -1,6 +1,8 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
+  appendPreOpeningResultAccount,
   type AuditActor,
+  awaitsOpening,
   companies,
   type Database,
   describeForLog,
@@ -28,6 +30,10 @@ const releaseActor: AuditActor = {
 /** What one company's run did. */
 export interface CompanyRelease {
   readonly mapped: number;
+  /** Whether it got S10's `312002` with its role (a company made before the templates' version 2). */
+  readonly appended: boolean;
+  /** Whether it waits for its opening, so nothing was released (S10 rule 3). */
+  readonly awaitingOpening: boolean;
   readonly posted: number;
   readonly refused: number;
 }
@@ -35,7 +41,9 @@ export interface CompanyRelease {
 /**
  * One company's releases, in its context as the app role, in one transaction: the template's
  * recognition slots mapped when the company predates them (S06 "Data"), then every month that has
- * ended and still misses a release (S06 rules 4–5). An archived company is read-only (S01 rule 12):
+ * ended and still misses a release (S06 rules 4–5). S10: a company made before the templates'
+ * version 2 gets `312002` with its role first, and one with a books start waits for its opening:
+ * nothing releases before it posts (rule 3). An archived company is read-only (S01 rule 12):
  * nothing posts.
  */
 export async function releaseInCompany(
@@ -49,10 +57,19 @@ export async function releaseInCompany(
       .from(companies)
       .where(eq(companies.id, companyId))
       .for('share');
-    if (!company || company.archivedAt) return { mapped: 0, posted: 0, refused: 0 };
+    const none = { mapped: 0, appended: false, awaitingOpening: false, posted: 0, refused: 0 };
+    if (!company || company.archivedAt) return none;
     const mapped = await mapAppendedTemplateSlots(tx, companyId, RECOGNITION_SLOTS, releaseActor);
+    const appended = await appendPreOpeningResultAccount(tx, companyId, releaseActor);
+    if (await awaitsOpening(tx)) return { ...none, mapped, appended, awaitingOpening: true };
     const result = await releaseMissingMonths(tx, today, releaseActor);
-    return { mapped, posted: result.posted, refused: result.refused.length };
+    return {
+      mapped,
+      appended,
+      awaitingOpening: false,
+      posted: result.posted,
+      refused: result.refused.length,
+    };
   });
 }
 
@@ -139,6 +156,9 @@ export async function runMonth(
         .for('share');
       if (!company || company.archivedAt) return { posted: 0, refused: [] };
       await mapAppendedTemplateSlots(tx, id, RECOGNITION_SLOTS, releaseActor);
+      await appendPreOpeningResultAccount(tx, id, releaseActor);
+      // A company waiting for its opening releases nothing (S10 rule 3).
+      if (await awaitsOpening(tx)) return { posted: 0, refused: [] };
       return releaseMonth(tx, month, today, releaseActor);
     });
     posted += result.posted;
