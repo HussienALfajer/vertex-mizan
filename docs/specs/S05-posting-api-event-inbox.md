@@ -319,7 +319,7 @@ In `audit_entries`, in the same transaction: `api_client.created`, `api_client.u
 16. A void after a service change: both entries are reversed, latest first.
 17. An event dated 31 December posted in January: numbered in the old fiscal year (ADR 0012), if that period is open.
 18. An event dated before 2026-01-01 in SYP: `SYP_BEFORE_REDENOMINATION` refused (422).
-19. A payment of an invoice issued before the replay (before 2026-10-19): `UNKNOWN_REFERENCE` until S10's opening item for it exists with its Hub document.
+19. A payment of an invoice issued before the replay (before the books start, 2026-10-01, since S10): `UNKNOWN_REFERENCE` until S10's opening item for it exists with its Hub document; S10 refuses every event until the opening posts, so in practice the item exists.
 20. A key used from two servers during a rotation: both active; the old one is revoked once Hub uses the new.
 
 ## Scenarios

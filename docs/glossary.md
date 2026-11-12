@@ -136,6 +136,13 @@ One name per concept. Code, contracts and tables use the English term; the Arabi
 | فرق المطابقة | reconciliation gap | An event missing on one side, or differing in date, type or amount, between a connected system's report and Mizan |
 | تاريخ بدء المطابقة | reconciliation start date | The first accounting date a connected system's reports must cover |
 | الأرصدة الافتتاحية | opening balances | Balances on the first day of the books |
+| تاريخ بدء الدفاتر | books start | The first day of a company's books in Mizan, the first day of a month; earlier months are closed (S10) |
+| قيد الأرصدة الافتتاحية | opening entry | The one entry, source `opening`, dated on the books start, that posts the opening balances (S10) |
+| لقطة Hub الافتتاحية | opening snapshot | Hub's open invoices, wallet balances, unfinished milestones and register of earlier documents as of the eve of the books start (S10) |
+| الرقم الموازن | balancing figure | The retained-earnings line that balances the opening entry in each ledger (S10) |
+| مبلغ منقول | stated amount | A book or parallel amount taken from the old records, with no conversion; only on the opening entry (`stated` line, ADR 0019) |
+| وثائق سابقة لبدء الدفاتر | prior documents | Hub documents dated before the books start, carried only by the opening; an event about one is held `before_books_start` (S10) |
+| نتيجة السنة قبل بدء الدفاتر | result of the year before the books start | The fiscal year's profit or loss before the books start, one figure on `312002`, added to the year's result (S10) |
 | مصدر المستند | document source | Which system issues a document type for a company |
 | كتاب السيناريوهات | scenario book | Solved examples of every accounting rule, run as tests |
 | شكل العملات | currency shape | A scenario's book and parallel currencies (`syp`, `syp-usd`, `usd-syp`, `third`) |

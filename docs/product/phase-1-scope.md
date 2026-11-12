@@ -10,7 +10,7 @@ Vertex Media's books are kept in Mizan, fed by Vertex Hub, on a core that serves
 
 ## 2. Done when
 
-1. Hub posts its financial events to Mizan in production, including the replay of its history since 2026-10-19.
+1. Hub posts its financial events to Mizan in production, including the replay of its history from the books start, 2026-10-01 (S10).
 2. The daily reconciliation between Hub and Mizan shows no gap for seven consecutive days.
 3. Vertex Media's opening balances on 2026-10-01 are posted and agree with Hub's open invoices and ad wallet balances.
 4. A real month is closed in Mizan:
@@ -42,7 +42,7 @@ Vertex Media's books are kept in Mizan, fed by Vertex Hub, on a core that serves
 | Parallel currency | **USD**: a full parallel ledger for management and profitability, with its own exchange differences and revaluation (ADR 0007). |
 | Rate policy | Book ledger at the **Central Bank bulletin** rate of the accounting date; parallel ledger at the **market rate the company deals at**, Hub's own rate accepted (IAS 21.26). The reasoning is recorded as the company's policy note. |
 | Fiscal year and periods | The calendar year (Income Tax Law 24/2003, CONFIRMED), with monthly periods. |
-| Start of the books | Opening balances on **2026-10-01**; summarised manual entries for 1–18 October from existing records; then every Hub event since 2026-10-19 replayed through the API. |
+| Start of the books | Opening balances on **2026-10-01**, Hub's open documents taken from its snapshot; manual entries for 1–18 October for what Hub does not hold; every Hub event dated from 2026-10-01 replayed through the API (owner, 2026-11-12, S10 and ADR 0019, replacing the replay from 2026-10-19). |
 | Revenue | **IFRS 15**: revenue is recognised as the service is delivered and dated when it is delivered (§6). Work done and not yet invoiced is a contract asset (IFRS 15.107). |
 | Ad budget | **Client money held**, a liability; never revenue. |
 | Month-end revaluation | In each ledger, monetary balances in other currencies are revalued at month end (IAS 21.23) at that ledger's policy rate: USD items in the SYP books at the bulletin, SYP items in the USD ledger at the market rate. Each entry reverses on the first day of the next month. |
@@ -140,7 +140,7 @@ Details in the Hub API contract ADR (step 4).
 - **Event inbox** with the states received, posted and held, and the reason for each hold (ADR 0008: `PERIOD_CLOSED`, `SERVICE_PERIOD_CLOSED`, `UNKNOWN_REFERENCE`, `NO_MAPPING`, `RATE_MISSING`, `NEEDS_DECISION`). A held event is retried once its reason is fixed.
 - **Closed period:** an event dated inside a closed period is held (`202`, `PERIOD_CLOSED`). The accountant posts it on the first day of the next open period or reopens the period.
 - **Optional tax lines** on invoice lines (ADR 0008); no tax posting rule until the law applies.
-- **History replay:** Hub's events since 2026-10-19 go through the same endpoints.
+- **History replay:** Hub's events dated from the books start (2026-10-01) go through the same endpoints (S10, ADR 0019).
 - **API clients** per company with scoped keys, rotation and the date each key was last used.
 
 ### F11 Daily reconciliation
@@ -150,8 +150,8 @@ Details in the Hub API contract ADR (step 4).
 
 ### F12 Opening balances
 - A wizard for 2026-10-01: account balances, open receivables per Hub invoice, client ad funds per client, and equity as the balancing figure, each with its SYP book amount and its USD parallel amount.
-- Summarised manual entries for 1–18 October 2026 from the existing records.
-- Checked against Hub's open invoices and wallet balances.
+- Summarised manual entries for 1–18 October 2026 from the existing records, for what Hub does not hold (S10).
+- Checked against Hub's open invoices and wallet balances, per client and currency, from Hub's snapshot (S10).
 
 ### F13 Reports
 Every report can be exported to Excel and PDF, and every figure drills down to its entries and to the Hub document.
@@ -236,7 +236,7 @@ Hub's side is built in Hub's own sessions (Hub ADR 0035, F18). Phase 1 needs:
 5. A rate event when Hub's SYP/USD rate changes.
 6. The daily reconciliation call (counts and totals per event type and day).
 7. Before any change dated in the past, a period-status check, and handling of `202 held` responses.
-8. The replay of all history since 2026-10-19.
+8. The opening snapshot as of 2026-09-30, then the replay of every event dated from 2026-10-01 (S10, ADR 0019).
 
 ## 8. Not in phase 1
 
