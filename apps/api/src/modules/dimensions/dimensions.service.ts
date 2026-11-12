@@ -7,6 +7,8 @@ import {
   type DimensionValue,
   type DimensionValuePage,
   type DimensionValueQuery,
+  type ServiceDepartmentHistory,
+  type SetServiceDepartment,
   type UpdateDimensionType,
   type UpdateDimensionValue,
 } from '@vertex-mizan/contracts';
@@ -18,6 +20,8 @@ import {
   dimensionTypes,
   dimensionValues,
   linkDimensionValue,
+  readServiceDepartments,
+  setServiceDepartment,
   type Transaction,
   withCompany,
 } from '@vertex-mizan/db';
@@ -332,6 +336,26 @@ export class DimensionsService {
     return this.changeValue(access, id, (tx, row, actor) =>
       linkDimensionValue(tx, access.company.id, actor, row, externalId),
     );
+  }
+
+  /** `GET /api/dimension-values/:id/departments` (S09 rule 32): a service's history. */
+  departments(access: CompanyRouteAccess, id: string): Promise<ServiceDepartmentHistory> {
+    return withCompany(this.db, access.company.id, (tx) => readServiceDepartments(tx, id));
+  }
+
+  /**
+   * `POST /api/dimension-values/:id/departments` (S09 rule 34): a manual service's department
+   * from a date in an open month, with its reason, audited in the transaction.
+   */
+  setDepartment(
+    access: CompanyRouteAccess,
+    id: string,
+    body: SetServiceDepartment,
+  ): Promise<ServiceDepartmentHistory> {
+    return withCompany(this.db, access.company.id, async (tx) => {
+      await lockCompanyForWrite(tx, access.company.id);
+      return setServiceDepartment(tx, { ...body, serviceValueId: id, actor: actorOf(access) });
+    });
   }
 
   /** `POST /api/dimension-values/:id/archive` (rule 13): hidden from pickers, refused on manual lines. */

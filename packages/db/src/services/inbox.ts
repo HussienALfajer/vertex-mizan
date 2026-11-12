@@ -776,22 +776,17 @@ class HubValues {
   }
 }
 
-/** The services of an event's revenue lines that carry their department (S09 rule 33). */
+/** The services of an invoice's revenue lines that carry their department (S09 rule 33). */
 function servicesWithDepartment(
   event: EventEnvelope,
 ): (HubServiceRef & { department: HubValueRef })[] {
-  const services: HubServiceRef[] =
-    event.type === 'invoice.issued'
-      ? event.payload.lines.map((line) => line.service)
-      : event.type === 'invoice.line_service_changed'
-        ? [event.payload.new_service]
-        : event.type === 'milestone.done' && event.payload.service !== undefined
-          ? [event.payload.service]
-          : [];
-  return services.filter(
-    (service): service is HubServiceRef & { department: HubValueRef } =>
-      service.department !== undefined,
-  );
+  if (event.type !== 'invoice.issued') return [];
+  return event.payload.lines
+    .map((line) => line.service)
+    .filter(
+      (service): service is HubServiceRef & { department: HubValueRef } =>
+        service.department !== undefined,
+    );
 }
 
 /** A planned entry as a posting request's content. */
