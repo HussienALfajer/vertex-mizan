@@ -167,7 +167,8 @@ export async function setUp(
     for (const value of values) {
       const type = types.find((candidate) => candidate.code === value.type);
       if (type === undefined) throw new Error(`The company has no dimension type ${value.type}`);
-      if (type.code === 'contract') throw new Error('A contract value needs its kind and client');
+      if (type.code === 'contract')
+        throw new Error('A contract value needs its kind and client (company.contracts, S09)');
       const made = await createDimensionValue(
         tx,
         companyId,

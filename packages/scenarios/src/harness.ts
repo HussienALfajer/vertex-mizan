@@ -9,6 +9,7 @@ import type {
   StepKind,
 } from './format.js';
 import { event, job } from './hub.js';
+import type { ExpectedReport } from './report-format.js';
 import type { NamedValue } from './run.js';
 import {
   actions,
@@ -114,6 +115,11 @@ export type ScenarioHarness = {
   ) => Promise<string>;
   executors: StepExecutors;
   ledger?: LedgerReader;
+  /**
+   * Reads one stated report in the case's company and lists how it differs from the stated
+   * figures (S09); a case that states a report needs it.
+   */
+  reports?: (context: CaseContext, report: ExpectedReport) => Promise<readonly string[]>;
 };
 
 /**

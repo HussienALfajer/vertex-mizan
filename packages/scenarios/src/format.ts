@@ -15,6 +15,7 @@ import {
   statementLineFits,
 } from '@vertex-mizan/contracts';
 import { z } from 'zod';
+import { expectedReportSchema, reportEntries, reportLedger } from './report-format.js';
 
 /**
  * The YAML of one scenario case, as `docs/scenarios/README.md` documents it (ADR 0005, ADR 0008).
@@ -123,6 +124,21 @@ const rawCompanySchema = z.strictObject({
   template: z.string().min(1).optional(),
   accounts: z.array(addedAccountSchema).default([]),
   closed_periods: z.array(periodSchema).default([]),
+  // The contract values the case's manual lines name, with the kind and client a contract needs
+  // (S02); a contract an event names is made by the event (S09).
+  contracts: z
+    .array(
+      z.strictObject({
+        code: z.string().min(1),
+        kind: z.enum(['project', 'retainer']),
+        client: z.string().min(1),
+      }),
+    )
+    .refine(
+      (contracts) => new Set(contracts.map((contract) => contract.code)).size === contracts.length,
+      'A contract is stated twice',
+    )
+    .default([]),
   // The bulletin publication calendar (S02 rules 16–17): ISO weekdays off (Friday and Saturday by
   // default) and the holidays the accountant has marked.
   bulletin_days_off: z
@@ -242,6 +258,7 @@ const companySchema = rawCompanySchema
     template: company.template ?? null,
     accounts: company.accounts,
     closedPeriods: company.closed_periods,
+    contracts: company.contracts,
     calendar: { daysOff: company.bulletin_days_off, holidays: company.bulletin_holidays },
   }));
 
@@ -314,7 +331,8 @@ const stepOutcome = { outcome: outcomeSchema.optional() };
  * the accountant's actions on a held event (S05 rules 15–17): `retry`, `move`, `resolve`, `dismiss`;
  * S06's `recognise` and `split` (rule 16); S07's `revalue` (rules 10–18), `block` (S02 rule 5),
  * `close` and `reopen` (rules 2–9), and a manual entry saved as a `draft` and its `discard` (S03
- * rules 4 and 11), which S07's checklist reads (`no_drafts`).
+ * rules 4 and 11), which S07's checklist reads (`no_drafts`); and S09's `service_department`, a
+ * manual service's dated department (rule 34).
  */
 export const STEP_KINDS = [
   'event',
@@ -334,6 +352,7 @@ export const STEP_KINDS = [
   'reopen',
   'draft',
   'discard',
+  'service_department',
 ] as const;
 
 export type StepKind = (typeof STEP_KINDS)[number];
@@ -623,6 +642,30 @@ const discardStepSchema = z
     outcome: step.outcome ?? null,
   }));
 
+/**
+ * The accountant's dated department of a manual service, with a reason (S09 rule 34): from
+ * `effective_from`, the service's revenue is that department's.
+ */
+const serviceDepartmentStepSchema = z
+  .strictObject({
+    kind: z.literal('service_department'),
+    service_department: z.strictObject({
+      service: z.string().min(1),
+      department: z.string().min(1),
+      effective_from: dateSchema,
+    }),
+    reason: actionReasonSchema,
+    ...stepOutcome,
+  })
+  .transform((step) => ({
+    kind: step.kind,
+    service: step.service_department.service,
+    department: step.service_department.department,
+    effectiveFrom: step.service_department.effective_from,
+    reason: step.reason,
+    outcome: step.outcome ?? null,
+  }));
+
 const stepSchema = z.preprocess(
   (value) => {
     if (typeof value !== 'object' || value === null || Array.isArray(value)) return value;
@@ -649,11 +692,13 @@ const stepSchema = z.preprocess(
       reopenStepSchema,
       draftStepSchema,
       discardStepSchema,
+      serviceDepartmentStepSchema,
     ],
     {
       error:
         'Expected a step with one of the keys event, manual, reversal, job, rate, retry, move, ' +
-        'resolve, dismiss, recognise, split, revalue, block, close, reopen, draft or discard',
+        'resolve, dismiss, recognise, split, revalue, block, close, reopen, draft, discard or ' +
+        'service_department',
     },
   ),
 );
@@ -745,6 +790,7 @@ const expectSchema = z
     balances: z.array(balanceSchema).default([]),
     open_items: z.array(openItemSchema).default([]),
     corrections: z.array(correctionSchema).default([]),
+    reports: z.array(expectedReportSchema).default([]),
     outcome: outcomeSchema.optional(),
   })
   .transform(({ open_items, ...expect }) => ({
@@ -879,6 +925,16 @@ export const caseSchema = z
         if (entry > entries.length) {
           issue(`Entry ${entry} is not an expected entry`, [...path, 'used_by', u]);
         }
+      }
+    }
+
+    for (const [r, report] of scenarioCase.expect.reports.entries()) {
+      const path = ['expect', 'reports', r];
+      if (reportLedger(report) === 'parallel' && parallel === null) {
+        issue('The company keeps no parallel ledger to report', [...path, 'params', 'ledger']);
+      }
+      for (const entry of reportEntries(report)) {
+        if (entry > entries.length) issue(`Entry ${entry} is not an expected entry`, path);
       }
     }
 

@@ -10,7 +10,7 @@ import type {
   StepResult,
 } from './harness.js';
 import { eventValues, namedDimensionValues, runCase, ScenarioFailure } from './run.js';
-import { CASE, CORRECTION, INBOX } from './test-fixtures.js';
+import { CASE, CORRECTION, INBOX, REPORTS } from './test-fixtures.js';
 
 // The runner against a fake harness: what the S03, S05 and S07 parts will hand it, built here from
 // the case itself so each test can break one thing. The book runs on a real database
@@ -112,6 +112,19 @@ describe('runCase', () => {
       'step 6 (resolution of step 4 by entry 2): no executor for resolve steps; ' +
         'inbox actions arrive with S05',
       'step 8 (dismissal of step 7): no executor for dismiss steps; inbox actions arrive with S05',
+    ]);
+  });
+
+  it('fails a case stating reports without a report reader, and a department step without its executor (S09)', async () => {
+    const { fake } = harness([]);
+    const done = async () => ({ status: 'done' as const });
+    const found = await differences(
+      runCase(parseCase(REPORTS), { ...fake, executors: { manual: done } }, database),
+    );
+    expect(found).toEqual([
+      'step 1 (department design of service S1 from 2026-11-01): no executor for ' +
+        "service_department steps; a manual service's department arrives with S09",
+      'No report reader is registered (packages/scenarios/src/harness.ts); reports arrive with S09',
     ]);
   });
 
@@ -488,6 +501,36 @@ expect:
     expect(namedDimensionValues(named)).toEqual([
       { type: 'client', code: 'C1', hub: true },
       { type: 'service', code: 'S1' },
+    ]);
+  });
+
+  it("takes a service's department from Hub's service reference and a department step's values (S09)", () => {
+    const withDepartment = parseCase(`
+case: a Hub service with its department, and a manual service's department
+company: { shape: syp, book: SYP, template: service-agency, rate_policy: { book: bulletin } }
+steps:
+  - event: invoice.issued
+    accounting_date: 2026-12-03
+    payload: { invoice: INV-1, client: C1, currency: SYP, syp_per_usd: "121.0000",
+               lines: [{ line: L1, amount: 100, source: extra_work, service: { code: S1, department: design } }] }
+  - service_department: { service: S3, department: video, effective_from: 2026-12-01 }
+    reason: "خدمة يدوية"
+expect:
+  entries:
+    - source: invoice.issued
+      date: 2026-12-03
+      lines:
+        - { account: "112001", dims: { client: C1 }, currency: SYP, amount: 100, book: 100 }
+        - { account: "411001", dims: { client: C1, service: S1 }, currency: SYP, amount: -100, book: -100 }
+`);
+    expect(eventValues(withDepartment)).toEqual([
+      { type: 'client', code: 'C1' },
+      { type: 'service', code: 'S1' },
+      { type: 'department', code: 'design' },
+    ]);
+    expect(namedDimensionValues(withDepartment)).toEqual([
+      { type: 'service', code: 'S3' },
+      { type: 'department', code: 'video' },
     ]);
   });
 });
