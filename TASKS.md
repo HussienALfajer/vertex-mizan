@@ -17,12 +17,12 @@ Spec: `docs/specs/S07-revaluation-periods-close.md` (Approved, owner 2026-11-11)
 ## PR 2 — Periods and the close (contracts, db, api, worker, bridge)
 - [x] contracts: `PERIOD_STATES`, `CHECKLIST_ITEMS`, the period schemas; error codes `PERIOD_ORDER`, `PERIOD_NOT_CLOSED`, `CHECKLIST_FAILED` appended with their Arabic text; audit actions `period.closed` and `period.reopened`; unit tests
 - [x] db (`/db-migration`): `period_events` append-only; `periods.state` `reopened` and the transition guard (`ENABLE ALWAYS`, deferred, only with its event, pinned in `GUARDS`); a posting before the first period refused `PERIOD_CLOSED` while a month is closed (rule 4); the migration generated and reviewed
-- [ ] db: the period service — the checklist of rule 8 (seven items, computed on read and inside the close), close (rule 2's refusals in order, empty months given their row, the lock order of rule 5, the checklist stored), reopen (rule 3, the held `PERIOD_CLOSED` and `SERVICE_PERIOD_CLOSED` events of the month queued after the commit), staleness of the revaluation (rule 15), `GET /v1/periods/status` answering `closed`; audit rows
+- [x] db: the period service — the checklist of rule 8 (seven items, computed on read and inside the close), close (rule 2's refusals in order, empty months given their row, the lock order of rule 5, the checklist stored), reopen (rule 3, the held `PERIOD_CLOSED` and `SERVICE_PERIOD_CLOSED` events of the month queued after the commit), staleness of the revaluation (rule 15), `GET /v1/periods/status` answering `closed`; audit rows
 - [x] db tests: invariants (`period_events` append-only, transitions only with their event, a posting into a closed period refused while a close commits concurrently), isolation
 - [x] scenarios: the `close`, `reopen`, `draft` and `discard` executors and `closed_periods` through the close service; `currency/stale-revaluation` and `periods/close-and-reopen` `Approved (owner, 2026-11-12)`, `inbox/post-in-next-open-period` `Approved (owner, 2026-11-07)`, `revenue/recognise-in-open-period` `Approved (owner, 2026-11-10)`, no expected value changed, counted as run; the "added with S07" notes pointed to the new scenarios
-- [ ] api: `GET /api/periods`, `GET /api/periods/:period`, `POST /api/periods/:period/close` and `/reopen`; tests (success, 401, 403 by role and the period permission, another company, the refusals of rules 2 and 3)
+- [x] api: `GET /api/periods`, `GET /api/periods/:period`, `POST /api/periods/:period/close` and `/reopen`; tests (success, 401, 403 by role and the period permission, another company, the refusals of rules 2 and 3)
 - [ ] worker: `events.retry` on the reopen's trigger, `revenue.release-month` for a reopened month missing its release, the daily email's line "أشهر منتهية غير مقفلة"; safe twice, per company
-- [ ] bridge: OpenAPI regenerated, breaking-change check
+- [x] bridge: OpenAPI regenerated, breaking-change check
 - [ ] wiring (Contracts, Database, API and worker), docs (`packages/*/CLAUDE.md`, `apps/*/CLAUDE.md`, `docs/ROADMAP.md`)
 - [ ] checks and reviewers (`reviewer`, `accountant-reviewer`), PR with auto-merge and Auto-fix
 

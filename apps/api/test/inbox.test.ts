@@ -9,9 +9,9 @@ import type {
   PostingRule,
 } from '@vertex-mizan/contracts';
 import { auditEntries, type Database, withCompany } from '@vertex-mizan/db';
-import pg from 'pg';
+import { closeMonthByHand } from '@vertex-mizan/db/testing';
 import { v7 as uuidv7 } from 'uuid';
-import { afterAll, beforeAll, describe, expect, inject, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createTestApp } from './app.js';
 import { books, posted, purchase, today } from './books.js';
 import { expectGuarded } from './guards.js';
@@ -35,24 +35,8 @@ afterAll(async () => {
   await db.$client.end();
 });
 
-/** Closes a month as S07 will; here the owner role closes it, as the ledger tests close months. */
-async function closeMonth(companyId: string, period: string) {
-  const owner = new pg.Client({ connectionString: inject('ownerUrl') });
-  await owner.connect();
-  try {
-    await owner.query('begin');
-    await owner.query(`select set_config('app.company_id', $1, true)`, [companyId]);
-    await owner.query('alter table periods disable trigger period_rules');
-    await owner.query(
-      `insert into periods (id, company_id, period, fiscal_year, state) values ($1, $2, $3, $4, 'closed')`,
-      [uuidv7(), companyId, period, Number(period.slice(0, 4))],
-    );
-    await owner.query('alter table periods enable always trigger period_rules');
-    await owner.query('commit');
-  } finally {
-    await owner.end();
-  }
-}
+/** Closes a month for a test's setup through the period guards, the checklist left out (S07). */
+const closeMonth = (companyId: string, period: string) => closeMonthByHand(db, companyId, period);
 
 /** The month before today's, `YYYY-MM`, and its last day. */
 function lastMonth(): { period: string; lastDay: string } {

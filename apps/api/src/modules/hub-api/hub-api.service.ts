@@ -22,11 +22,12 @@ import {
   describeForLog,
   documentSources,
   type InboxEventView,
-  periods,
+  isClosedPeriod,
+  readClosedPeriods,
   receiveEvent,
   withCompany,
 } from '@vertex-mizan/db';
-import { eq, inArray } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { type ApiClientRouteAccess, clientActorOf } from '../../core/access/access.js';
 import { lockCompanyForWrite } from '../../core/access/company-lock.js';
 import { todayInDamascus } from '../../core/clock/today.js';
@@ -178,21 +179,19 @@ export class HubApiService {
   }
 
   /**
-   * `GET /v1/periods/status` (S05 "Periods"): each month of the range, `open` when it has no period
-   * row yet; Hub calls it before a past-dated change.
+   * `GET /v1/periods/status` (S05 "Periods", S07 rules 1 and 4): each month of the range, `closed`
+   * when it is closed or before the company's first period while a month is closed, `open`
+   * otherwise (a reopened month, or one with no period row yet); Hub calls it before a past-dated
+   * change.
    */
   async periodStatus(
     access: ApiClientRouteAccess,
     query: PeriodStatusQuery,
   ): Promise<PeriodStatus[]> {
-    const months = monthsOf(query);
-    const rows = await withCompany(this.db, access.client.companyId, (tx) =>
-      tx
-        .select({ period: periods.period, state: periods.state })
-        .from(periods)
-        .where(inArray(periods.period, months)),
-    );
-    const closed = new Set(rows.filter((row) => row.state === 'closed').map((row) => row.period));
-    return months.map((period) => ({ period, state: closed.has(period) ? 'closed' : 'open' }));
+    const view = await withCompany(this.db, access.client.companyId, (tx) => readClosedPeriods(tx));
+    return monthsOf(query).map((period) => ({
+      period,
+      state: isClosedPeriod(view, period) ? 'closed' : 'open',
+    }));
   }
 }

@@ -6,12 +6,7 @@ import type {
   DraftState,
   DraftSummary,
 } from '@vertex-mizan/contracts';
-import {
-  entryAttachments,
-  entryDraftLines,
-  entryDrafts,
-  type Transaction,
-} from '@vertex-mizan/db';
+import { entryAttachments, entryDraftLines, entryDrafts, type Transaction } from '@vertex-mizan/db';
 import { and, asc, eq, isNull } from 'drizzle-orm';
 import { CodedException } from '../../core/errors/coded-exception.js';
 import { attachmentOf, peopleOf, personOf } from '../entries/entry-shape.js';

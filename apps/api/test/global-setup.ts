@@ -6,8 +6,6 @@ declare module 'vitest' {
     databaseUrl: string;
     /** The jobs role, for what only the worker writes: the daily anchors (S03). */
     jobsUrl: string;
-    /** The owner role, only to close a month as S07 will (S05: the move's day). */
-    ownerUrl: string;
   }
 }
 
@@ -16,6 +14,5 @@ export default async function setup(project: TestProject) {
   const database = await createTestDatabase();
   project.provide('databaseUrl', database.appUrl);
   project.provide('jobsUrl', database.jobsUrl);
-  project.provide('ownerUrl', database.ownerUrl);
   return database.drop;
 }
