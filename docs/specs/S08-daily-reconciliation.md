@@ -1,6 +1,6 @@
 # S08 — Daily reconciliation
 
-Status: Draft · Date: 2026-11-12 · Features: `docs/product/phase-1-scope.md` F11 (and F09's checklist item "the reconciliation is clean") · ADRs: 0003, 0005, 0006, 0008, 0013, 0014, 0016, 0017
+Status: Approved (owner, 2026-11-12) · Date: 2026-11-12 · Features: `docs/product/phase-1-scope.md` F11 (and F09's checklist item "the reconciliation is clean") · ADRs: 0003, 0005, 0006, 0008, 0013, 0014, 0016, 0017
 
 ## Summary
 Hub posts every financial event to Mizan through its outbox (S05). An event can still go missing: Hub's outbox stalls, an event is refused at receipt and never corrected, or a bug in either system sends the wrong date or amount. Until S08 nothing shows it, and S07's close cannot prove that a month holds every Hub event dated in it, so no real month is closed (S07 "Out").

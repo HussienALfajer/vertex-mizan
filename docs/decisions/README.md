@@ -20,4 +20,4 @@ Short records of decisions that shape the system. Each has a status: **Accepted*
 | [0014](0014-event-inbox-holds-and-order.md) | The event inbox: outcomes, order per item, the accountant's actions and the dates of changes | Accepted (amends 0006, 0008) |
 | [0015](0015-revenue-recognition-schedules.md) | Revenue recognition: schedules and movements, releases per invoice and month, deposits with their milestone | Accepted (amends phase 1 scope §6) |
 | [0016](0016-periods-close-and-month-end-revaluation.md) | Periods, the close and the month-end revaluation: close in order, no override, revaluation units, closing rate, staleness | Accepted (amends 0007, 0008) |
-| [0017](0017-daily-reconciliation.md) | Daily reconciliation: a per-event report by accounting date, the latest report counts, no acceptance | Proposed (amends 0006) |
+| [0017](0017-daily-reconciliation.md) | Daily reconciliation: a per-event report by accounting date, the latest report counts, no acceptance | Accepted (amends 0006) |
