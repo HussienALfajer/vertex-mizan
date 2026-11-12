@@ -3,7 +3,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { parseCase, parseScenario, readBook, ScenarioFormatError, yamlBlocks } from './book.js';
-import { CASE, CORRECTION, INBOX, SYP_ONLY } from './test-fixtures.js';
+import { marginOf } from './report-format.js';
+import { CASE, CORRECTION, INBOX, REPORTS, SYP_ONLY } from './test-fixtures.js';
 
 function file(status: string, ...cases: string[]) {
   return [
@@ -287,7 +288,7 @@ describe('a case', () => {
     [
       'a step of no kind',
       CASE.replace('  - event: invoice.issued', '  - what: invoice.issued'),
-      'event, manual, reversal, job, rate, retry, move, resolve, dismiss, recognise, split, revalue, block, close, reopen, draft or discard',
+      'event, manual, reversal, job, rate, retry, move, resolve, dismiss, recognise, split, revalue, block, close, reopen, draft, discard or service_department',
     ],
     [
       'a step of two kinds',
@@ -712,6 +713,206 @@ describe('a case', () => {
     ['an account with an unknown key', withAccounts(TRY_CASH.replace('monetary', 'cash')), 'cash'],
   ])('refuses %s', (_, source, problem) => {
     expect(refusal(source)).toContain(problem);
+  });
+
+  it("reads a company's contracts, a manual service's department and every report (S09)", () => {
+    const reports = parseCase(REPORTS);
+    expect(reports.company.contracts).toEqual([{ code: 'P1', kind: 'project', client: 'C1' }]);
+    expect(reports.steps[0]).toEqual({
+      kind: 'service_department',
+      service: 'S1',
+      department: 'design',
+      effectiveFrom: '2026-11-01',
+      reason: 'خدمة يدوية يقدمها قسم التصميم',
+      outcome: null,
+    });
+    expect(reports.expect.reports.map((report) => report.report)).toEqual([
+      'trial_balance',
+      'income_statement',
+      'balance_sheet',
+      'profitability',
+      'account_statement',
+      'journal_book',
+    ]);
+    expect(reports.expect.reports[0]).toMatchObject({
+      params: { from: '2026-11-01', to: '2026-11-30', ledger: 'book', level: 4 },
+      marks: ['period_open'],
+      compareMarks: null,
+      totals: { debits: 50000n, closingCredit: 50000n },
+    });
+    expect(reports.expect.reports[3]).toMatchObject({
+      rows: [{ value: 'design', revenue: 50000n, directCosts: 0n, margin: '100.0' }],
+    });
+    expect(reports.expect.reports[5]).toMatchObject({
+      params: { fiscalYear: 2026, from: '2026-11', to: '2026-11', official: false },
+      pages: [{ page: 1, entries: [1], broughtForward: { debits: 0n, credits: 0n } }],
+    });
+    expect(parseCase(SYP_ONLY).expect.reports).toEqual([]);
+  });
+
+  it.each([
+    ['a contract with no client', ['kind: project, client: C1', 'kind: project'], 'client'],
+    ['a department with no date', [', effective_from: 2026-11-01', ''], 'effective_from'],
+    ['an unknown report', ['report: journal_book', 'report: cash_flow'], 'Expected a report'],
+    [
+      'an unknown mark',
+      ['marks: [period_open]\n      rows', 'marks: [draft]\n      rows'],
+      'period_open',
+    ],
+    [
+      'a parallel ledger the company lacks',
+      ['ledger: book, level: 4', 'ledger: parallel, level: 4'],
+      'no parallel ledger to report',
+    ],
+    [
+      'a trial balance whose pairs differ',
+      ['debits: 50000, credits: 50000,\n', 'debits: 50000, credits: 50001,\n'],
+      'debits and credits differ',
+    ],
+    [
+      'a row whose closing balance is not its movements',
+      ['debits: 0, credits: 50000, closing: -50000', 'debits: 0, credits: 50000, closing: -5000'],
+      'opening balance plus debits less credits',
+    ],
+    [
+      'totals the rows do not add up to',
+      [
+        'closing_debit: 50000, closing_credit: 50000',
+        'closing_debit: 60000, closing_credit: 60000',
+      ],
+      'The rows add up to 50000 for closingDebit',
+    ],
+    [
+      'a subtotal its lines do not give',
+      ['profit_before_tax: 50000, profit: 50000', 'profit_before_tax: 50000, profit: 40000'],
+      'The lines give 50000 for profit',
+    ],
+    [
+      'a line outside the catalogue',
+      ['line: is.revenue', 'line: is.sales'],
+      'statement-line catalogue',
+    ],
+    [
+      'a comparative figure with no comparative',
+      [
+        'marks: [period_open]\n      lines: [{ line: is.revenue',
+        'marks: [period_open]\n      compare_marks: []\n      lines: [{ line: is.revenue',
+      ],
+      'compare_marks needs a comparative',
+    ],
+    [
+      'a balance-sheet line that is not its parts',
+      ['amount: 50000,\n                parts', 'amount: 40000,\n                parts'],
+      'The parts add up to 50000',
+    ],
+    [
+      'a balance sheet that does not balance',
+      ['assets: 50000, liabilities: 0', 'assets: 60000, liabilities: 0'],
+      'Assets equal liabilities and equity',
+    ],
+    [
+      'a margin not rounded half away from zero',
+      ['contribution: 50000, margin: "100.0" }]', 'contribution: 50000, margin: "99.9" }]'],
+      'The margin is 100.0',
+    ],
+    [
+      'a contribution that is not revenue less costs',
+      [
+        'rows: [{ value: design, revenue: 50000, direct_costs: 0, contribution: 50000',
+        'rows: [{ value: design, revenue: 50000, direct_costs: 0, contribution: 40000',
+      ],
+      'The contribution is 50000',
+    ],
+    [
+      'a running balance that does not run',
+      ['amount: 50000, balance: 50000,', 'amount: 50000, balance: 5000,'],
+      'The running balance is 50000',
+    ],
+    [
+      'a page whose cumulative totals do not carry',
+      [
+        'cumulative: { debits: 50000, credits: 50000 }',
+        'cumulative: { debits: 5000, credits: 5000 }',
+      ],
+      'brought forward plus the page',
+    ],
+    [
+      'a page naming an entry not expected',
+      ['entries: [1]', 'entries: [2]'],
+      'Entry 2 is not an expected entry',
+    ],
+    [
+      'a month outside the fiscal year',
+      ['fiscal_year: 2026', 'fiscal_year: 2027'],
+      'not in the fiscal year 2027',
+    ],
+  ] as const)('refuses %s', (_, [from, to], problem) => {
+    expect(REPORTS).toContain(from);
+    expect(refusal(REPORTS.replace(from, to))).toContain(problem);
+  });
+
+  // A second invoice back-dated before the first (ADR 0008 allows it in an open month).
+  const backDated = (pages: string) =>
+    REPORTS.replace(
+      'expect:\n',
+      '  - manual: a back-dated SYP invoice\n    accounting_date: 2026-11-02\n' +
+        '    payload: { lines: [{ account: "112001", dims: { client: C1 }, currency: SYP, amount: 50000, open_item: { ref: M-2 } },\n' +
+        '                       { account: "411001", dims: { client: C1, service: S1 }, currency: SYP, amount: -50000 }] }\n' +
+        'expect:\n',
+    )
+      .replace(
+        '  reports:\n',
+        '    - source: manual\n      date: 2026-11-02\n      lines:\n' +
+          '        - { account: "112001", dims: { client: C1 }, currency: SYP, amount: 50000, book: 50000 }\n' +
+          '        - { account: "411001", dims: { client: C1, service: S1 }, currency: SYP, amount: -50000, book: -50000 }\n' +
+          '  reports:\n',
+      )
+      .replace(/ {4}- report: account_statement[\s\S]*?(?= {4}- report: journal_book)/, '')
+      .replace(
+        / {4}- report: journal_book[\s\S]*$/,
+        `    - report: journal_book\n      params: { fiscal_year: 2026, from: 2026-11, to: 2026-11 }\n      marks: [period_open]\n      pages:\n${pages}`,
+      );
+  const page = (number: number, entries: string, amount: number, before: number) =>
+    `        - { page: ${number}, entries: [${entries}], debits: ${amount}, credits: ${amount},\n` +
+    `            brought_forward: { debits: ${before}, credits: ${before} }, cumulative: { debits: ${before + amount}, credits: ${before + amount} } }\n`;
+
+  it('reads the journal book in (entry_date, number) order, with an entry split across pages (S09 rules 26, 27)', () => {
+    const inDateOrder = parseCase(backDated(page(1, '2, 1', 100000, 0)));
+    expect(inDateOrder.expect.reports.at(-1)).toMatchObject({ pages: [{ entries: [2, 1] }] });
+    const split = parseCase(backDated(page(1, '2, 1', 80000, 0) + page(2, '1', 20000, 80000)));
+    expect(split.expect.reports.at(-1)).toMatchObject({
+      pages: [{ entries: [2, 1] }, { entries: [1] }],
+    });
+    expect(refusal(backDated(page(1, '1, 2', 100000, 0)))).toContain(
+      "The journal book's entries are in (entry_date, number) order",
+    );
+    expect(
+      refusal(
+        backDated(page(1, '2', 50000, 0) + page(2, '1', 50000, 50000) + page(3, '2', 0, 100000)),
+      ),
+    ).toContain('Entry 2 is on two pages without continuing');
+  });
+
+  it('reads profitability net of a void: negative revenue and costs (S09 edge case 12)', () => {
+    const voided = REPORTS.replace(
+      'rows: [{ value: design, revenue: 50000, direct_costs: 0, contribution: 50000, margin: "100.0" }]\n      totals: { revenue: 50000, direct_costs: 0, contribution: 50000, margin: "100.0" }',
+      'rows: [{ value: design, revenue: -50000, direct_costs: -10000, contribution: -40000, margin: "80.0" }]\n      totals: { revenue: -50000, direct_costs: -10000, contribution: -40000, margin: "80.0" }',
+    );
+    expect(voided).not.toBe(REPORTS);
+    expect(parseCase(voided).expect.reports[3]).toMatchObject({
+      rows: [{ value: 'design', revenue: -50000n, directCosts: -10000n, contribution: -40000n }],
+    });
+  });
+
+  it('gives the margin with one decimal, half away from zero, and none without revenue (S09 rule 21)', () => {
+    expect(marginOf(80000n, 55000n)).toBe('68.8');
+    expect(marginOf(270000n, 215000n)).toBe('79.6');
+    expect(marginOf(80000n, -55000n)).toBe('-68.8');
+    expect(marginOf(3n, 1n)).toBe('33.3');
+    expect(marginOf(-50000n, -40000n)).toBe('80.0');
+    expect(marginOf(-80000n, -55000n)).toBe('68.8');
+    expect(marginOf(-80000n, 55000n)).toBe('-68.8');
+    expect(marginOf(0n, -55000n)).toBeNull();
   });
 
   it('accepts a third-currency case with a line in TRY', () => {

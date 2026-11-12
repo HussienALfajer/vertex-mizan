@@ -21,6 +21,7 @@ export const STEPS_ARRIVE_WITH = {
   reopen: 'reopening a period arrives with S07',
   draft: "saving a draft in the book arrives with S07's checklist",
   discard: "discarding a draft in the book arrives with S07's checklist",
+  service_department: "a manual service's department arrives with S09",
 } as const satisfies Record<StepKind, string>;
 
 /** A case that did not do what its scenario states: every difference, one per line. */
@@ -67,6 +68,9 @@ export function namedDimensionValues(scenarioCase: ScenarioCase): NamedValue[] {
     }
   };
   for (const [index, step] of scenarioCase.steps.entries()) {
+    if (step.kind === 'service_department') {
+      add({ service: step.service, department: step.department }, index);
+    }
     if (step.kind !== 'manual' && step.kind !== 'draft') continue;
     const lines = (step.payload as { lines?: unknown }).lines;
     if (Array.isArray(lines)) {
@@ -112,7 +116,15 @@ function stepEventValues(step: Step): NamedValue[] {
   }
   const lines = payload.lines;
   if (Array.isArray(lines)) {
-    for (const line of lines) add('service', (line as { service?: unknown }).service);
+    for (const line of lines) {
+      // A service as `S1`, or with its department as `{ code: S1, department: design }` (S09).
+      const service = (line as { service?: unknown }).service;
+      if (typeof service === 'object' && service !== null) {
+        const { code, department } = service as { code?: unknown; department?: unknown };
+        add('service', code);
+        add('department', department);
+      } else add('service', service);
+    }
   }
   return values;
 }
@@ -187,6 +199,10 @@ function executorFor(harness: ScenarioHarness, step: Step): Run | undefined {
       const execute = harness.executors.discard;
       return execute && ((context) => execute(context, step));
     }
+    case 'service_department': {
+      const execute = harness.executors.service_department;
+      return execute && ((context) => execute(context, step));
+    }
   }
 }
 
@@ -229,6 +245,8 @@ function describeStep(step: Step): string {
       return `draft: ${step.description}`;
     case 'discard':
       return `discard of the draft of step ${step.step}`;
+    case 'service_department':
+      return `department ${step.department} of service ${step.service} from ${step.effectiveFrom}`;
   }
 }
 
@@ -254,7 +272,8 @@ function sameResult(result: StepResult, expected: StepResult | Outcome): boolean
  * must be held or refused with that reason, and that detail when stated. A held step a later step
  * frees posts then, so its entry is expected where it posts. Then
  * the ledger must hold exactly the expected entries (`compareEntries`), the stated balances and
- * the stated open items, and each stated correction's answer must list exactly its entries.
+ * the stated open items, each stated correction's answer must list exactly its entries, and each
+ * stated report must present its figures (S09).
  */
 export async function runCase(
   scenarioCase: ScenarioCase,
@@ -276,6 +295,11 @@ export async function runCase(
           STEPS_ARRIVE_WITH[step.kind],
       );
     }
+  }
+  if (scenarioCase.expect.reports.length > 0 && !harness.reports) {
+    missing.push(
+      'No report reader is registered (packages/scenarios/src/harness.ts); reports arrive with S09',
+    );
   }
   if (!harness.setUp || !harness.ledger || missing.length > 0) throw new ScenarioFailure(missing);
 
@@ -323,6 +347,9 @@ export async function runCase(
   for (const openItem of expect.openItems) {
     const query = { item: openItem.item, account: openItem.account };
     differences.push(...compareOpenItem(openItem, await harness.ledger.openItem(context, query)));
+  }
+  for (const report of expect.reports) {
+    differences.push(...((await harness.reports?.(context, report)) ?? []));
   }
   if (differences.length > 0) throw new ScenarioFailure(differences);
 }
