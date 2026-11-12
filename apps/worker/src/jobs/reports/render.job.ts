@@ -4,6 +4,7 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
   type CurrencyCode,
   canonicalPayload,
+  errorStatus,
   journalBookQuerySchema,
   REPORT_FILE_QUERIES,
   REPORT_FILE_TTL_HOURS,
@@ -15,6 +16,7 @@ import {
   type AuditActor,
   companies,
   companySettings,
+  countRangeReopens,
   type Database,
   describeForLog,
   journalBookPrints,
@@ -50,10 +52,17 @@ export const RENDER_ATTEMPTS = 3;
 /** How long a render may read in its snapshot and stay open while Chromium prints. */
 const RENDER_TIMEOUT = '15min';
 
-/** The code a failed render keeps: the error's own short code, never its message. */
-export function renderFailureCode(error: unknown): string {
-  const code = (error as { code?: unknown } | null)?.code;
-  return typeof code === 'string' && /^[A-Z0-9_]{1,100}$/.test(code) ? code : 'RENDER_FAILED';
+/**
+ * The code a failed render keeps, never its message: an error code of the registry, or
+ * `RENDER_FAILED` for anything else (a crash of Chromium, a database error).
+ */
+export function renderFailureCode(error: unknown, official: boolean): string {
+  const failure = error as { code?: unknown; cause?: { code?: unknown } } | null;
+  const code = failure?.code ?? failure?.cause?.code;
+  // An official print whose month was reopened after its snapshot: the register's guard refuses it
+  // (restrict_violation), or its lock on the period row meets the reopen (serialization failure).
+  if (official && (code === '40001' || code === '23001')) return 'PERIOD_NOT_CLOSED';
+  return typeof code === 'string' && Object.hasOwn(errorStatus, code) ? code : 'RENDER_FAILED';
 }
 
 const renderActor: AuditActor = {
@@ -110,7 +119,7 @@ export class ReportsRenderJob implements QueueWorker {
       this.logger.error(`File ${fileId} failed: ${describeForLog(error)}`);
       await this.files.remove(companyId, fileId);
       await this.files.removePartials(companyId, fileId);
-      await this.fail(companyId, fileId, renderFailureCode(error));
+      await this.fail(companyId, fileId, error);
       return { state: 'failed' };
     }
   }
@@ -140,13 +149,17 @@ export class ReportsRenderJob implements QueueWorker {
     });
   }
 
-  private fail(companyId: string, fileId: string, code: string): Promise<unknown> {
-    return withCompany(this.db, companyId, (tx) =>
-      tx
+  private fail(companyId: string, fileId: string, error: unknown): Promise<unknown> {
+    return withCompany(this.db, companyId, async (tx) => {
+      const [row] = await tx
+        .select({ official: reportFiles.official })
+        .from(reportFiles)
+        .where(eq(reportFiles.id, fileId));
+      await tx
         .update(reportFiles)
-        .set({ state: 'failed', error: code })
-        .where(and(eq(reportFiles.id, fileId), eq(reportFiles.state, 'queued'))),
-    );
+        .set({ state: 'failed', error: renderFailureCode(error, row?.official ?? false) })
+        .where(and(eq(reportFiles.id, fileId), eq(reportFiles.state, 'queued')));
+    });
   }
 
   private render(companyId: string, fileId: string): Promise<string> {
@@ -282,6 +295,7 @@ export class ReportsRenderJob implements QueueWorker {
         creditTotalMinor: totals.creditMinor,
         contentSha256: print.content,
         fileSha256,
+        reopensSeen: await countRangeReopens(tx, range),
         printedByUserId: row.requestedByUserId,
       })
       .returning({ id: journalBookPrints.id });

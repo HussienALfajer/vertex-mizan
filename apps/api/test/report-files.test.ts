@@ -161,15 +161,19 @@ describe('/api/reports/files (rule 36)', () => {
   it('queues a PDF with its validated parameters, three at most per person, audited', async () => {
     const book = await booksWithEntries();
     const { from, to } = month();
-    const first = await request(book, { report: 'trial_balance', params: { from, to } });
+    const first = await request(book, {
+      report: 'trial_balance',
+      params: { from, to, nonZero: 'false', cursor: 'ignored', unknown: 'dropped' },
+    });
     expect(first.status, JSON.stringify(first.body)).toBe(201);
+    // Stored as the query reads it, the worker parsing it again; a cursor and unknown keys go.
     expect(first.body).toMatchObject({
       report: 'trial_balance',
       format: 'pdf',
       official: false,
       state: 'queued',
-      params: { from, to, ledger: 'book', level: 4, nonZero: true, compare: true },
     });
+    expect(first.body.params).toEqual({ from, to, nonZero: 'false' });
     for (const report of ['chart', 'ageing'] as const) {
       expect((await request(book, { report, params: {} })).status).toBe(201);
     }
@@ -327,6 +331,7 @@ describe('the journal book’s register (rules 28, 29)', () => {
         creditTotalMinor: 115_000_000n,
         contentSha256: 'c'.repeat(64),
         fileSha256: 'd'.repeat(64),
+        reopensSeen: 0,
         printedByUserId: book.owner.person.id,
       });
       await tx

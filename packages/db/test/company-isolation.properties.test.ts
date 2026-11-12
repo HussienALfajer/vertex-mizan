@@ -767,6 +767,7 @@ async function seedReportFiles(tx: Transaction, companyId: string, userId: strin
     creditTotalMinor: BigInt(row?.credits ?? '0'),
     contentSha256: 'b'.repeat(64),
     fileSha256: sha256,
+    reopensSeen: 0,
     printedByUserId: userId,
   });
   await tx

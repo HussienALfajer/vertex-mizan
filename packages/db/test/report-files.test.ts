@@ -201,6 +201,7 @@ const print = (
       ...OCTOBER,
       contentSha256: 'f'.repeat(64),
       fileSha256: 'e'.repeat(64),
+      reopensSeen: 0,
       printedByUserId: person,
       ...values,
     });
@@ -368,6 +369,24 @@ describe('journal_book_prints', () => {
     expect(await refusal(print(await officialFile(), {}, { to: '2026-11' }))).toMatch(
       /PERIOD_NOT_CLOSED/,
     );
+    // Closed again, a print of November records the reopen its snapshot saw, so the register
+    // reads the earlier print as superseded whichever transaction committed first (rule 29).
+    await closeMonthByHand(app, companyA, '2026-11');
+    const november = {
+      entryCount: 3,
+      lineCount: 6,
+      debitTotalMinor: 85_000n,
+      creditTotalMinor: 85_000n,
+    };
+    expect(
+      await refusal(
+        print(await officialFile(), { ...november, reopensSeen: 0 }, { to: '2026-11' }),
+      ),
+    ).toMatch(/reopens of its months/);
+    await print(await officialFile(), { ...november, reopensSeen: 1 }, { to: '2026-11' });
+    expect(await refusal(print(await officialFile(), { reopensSeen: 1 }))).toMatch(
+      /reopens of its months/,
+    );
   });
 
   it('refuses counts or totals other than the months’ entries, and another person’s print', async () => {
@@ -376,9 +395,10 @@ describe('journal_book_prints', () => {
       { lineCount: 5 },
       { debitTotalMinor: 75_001n, creditTotalMinor: 75_001n },
     ]) {
-      expect(await refusal(print(await officialFile(), values)), Object.keys(values).join()).toMatch(
-        /counts and totals/,
-      );
+      expect(
+        await refusal(print(await officialFile(), values)),
+        Object.keys(values).join(),
+      ).toMatch(/counts and totals/);
     }
     expect(await refusal(print(await officialFile(), { debitTotalMinor: 75_001n }))).toMatch(
       /journal_book_prints_totals|counts and totals/,

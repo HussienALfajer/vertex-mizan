@@ -203,7 +203,11 @@ function headerParts(
 const ledgerName = (ledger: Ledger, text: SheetText) => text.accounting.ledger[ledger];
 
 /** A comparative cell: "—" when the comparative period has no posted line (rule 5). */
-const compareCell = (header: ReportHeader, value: string | null): SheetCell =>
+/**
+ * A comparative cell: none without a comparative; "—" when the comparative period has no posted
+ * line (rule 5); otherwise its value, a blank side staying blank.
+ */
+const compareCell = (header: ReportHeader, value: SheetCell): SheetCell =>
   header.compare === null ? undefined : header.compare.hasLines ? value : null;
 
 const amount = (key: string, label: string, width = 16, group?: string): SheetColumn =>
@@ -265,8 +269,8 @@ function trialBalanceSheet(data: TrialBalance, context: SheetContext): ReportShe
         credits: row.credits === '0' ? undefined : row.credits,
         closingDebit: closing.debit,
         closingCredit: closing.credit,
-        compareDebit: compareCell(data.header, compare?.debit ?? null),
-        compareCredit: compareCell(data.header, compare?.credit ?? null),
+        compareDebit: compareCell(data.header, compare?.debit),
+        compareCredit: compareCell(data.header, compare?.credit),
       },
     };
   });
@@ -506,10 +510,24 @@ function incomeStatementSheet(data: IncomeStatement, context: SheetContext): Rep
     subtotal(s.operatingProfit, 'operatingProfit'),
     ...of(['investing']),
   ];
-  if (data.subtotals.profitBeforeFinancingAndIncomeTaxes !== null) {
-    rows.push(
-      subtotal(s.profitBeforeFinancingAndIncomeTaxes, 'profitBeforeFinancingAndIncomeTaxes'),
-    );
+  // Shown when either column has an investing amount (rule 14), with its comparative (IAS 1.38): in
+  // a column without one, profit before financing and income taxes is its operating profit.
+  const beforeFinancing = (subtotals: IncomeStatement['subtotals'] | null) =>
+    subtotals === null
+      ? null
+      : (subtotals.profitBeforeFinancingAndIncomeTaxes ?? subtotals.operatingProfit);
+  if (
+    data.subtotals.profitBeforeFinancingAndIncomeTaxes !== null ||
+    (data.compareSubtotals?.profitBeforeFinancingAndIncomeTaxes ?? null) !== null
+  ) {
+    rows.push({
+      emphasis: 'subtotal',
+      cells: {
+        line: s.profitBeforeFinancingAndIncomeTaxes,
+        current: beforeFinancing(data.subtotals),
+        compare: compareCell(data.header, beforeFinancing(data.compareSubtotals)),
+      },
+    });
   }
   rows.push(
     ...of(['financing']),

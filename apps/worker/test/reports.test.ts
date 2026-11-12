@@ -3,15 +3,18 @@ import { mkdtemp, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
-import type { CompanyLedgers } from '@vertex-mizan/contracts';
+import type { CompanyLedgers, Report } from '@vertex-mizan/contracts';
 import {
   auditEntries,
   chartAccounts,
   createCompanyBooks,
   createDatabase,
   type Database,
+  dimensionTypes,
+  dimensionValues,
   journalBookPrints,
   type PersonActor,
+  parseReportFileParams,
   post,
   recordRate,
   reportFiles,
@@ -41,12 +44,21 @@ let config: Config;
 let files: FileStore;
 let person = '';
 
-/** Keeps every document it is given and answers a small PDF; `failNext` throws once. */
+/**
+ * Keeps every document it is given and answers a small PDF; `failNext` throws once; `whilePrinting`
+ * runs while the render waits for it, as Chromium takes its time (a reopen committed meanwhile).
+ */
 class KeepingPrinter implements PdfPrinter {
   readonly printed: { html: string; options: PrintOptions }[] = [];
   failNext = false;
+  whilePrinting: (() => Promise<unknown>) | null = null;
 
   async print(html: string, options: PrintOptions): Promise<Buffer> {
+    if (this.whilePrinting) {
+      const work = this.whilePrinting;
+      this.whilePrinting = null;
+      await work();
+    }
     if (this.failNext) {
       this.failNext = false;
       throw Object.assign(new Error('Chromium crashed for a synthetic test'), {
@@ -308,7 +320,8 @@ describe('reports.render', () => {
     const file = await ask(id, {});
     printer.failNext = true;
     expect(await job.work({ companyId: id, fileId: file.id })).toEqual({ state: 'failed' });
-    expect(await fileOf(id, file.id)).toMatchObject({ state: 'failed', error: 'BROWSER_CLOSED' });
+    // A failure that is not an error code of the registry keeps `RENDER_FAILED`, never its own.
+    expect(await fileOf(id, file.id)).toMatchObject({ state: 'failed', error: 'RENDER_FAILED' });
     expect(await files.size(id, file.id)).toBeNull();
 
     const dying = await ask(id, {});
@@ -319,34 +332,71 @@ describe('reports.render', () => {
     expect(await fileOf(id, dying.id)).toMatchObject({ state: 'failed', error: 'RENDER_FAILED' });
   });
 
-  it('renders every other report and the receivables and the chart', async () => {
+  it('fails an official print with PERIOD_NOT_CLOSED when its month is reopened while it prints', async () => {
     const id = await company();
     const printer = new KeepingPrinter();
     const job = new ReportsRenderJob(db, files, printer);
-    const cash = await withCompany(db, id, (tx) =>
-      tx
+    const file = await official(id);
+    printer.whilePrinting = () =>
+      withCompany(db, id, (tx) =>
+        writePeriodTransition(tx, {
+          companyId: id,
+          period: '2026-10',
+          kind: 'reopened',
+          reason: 'إعادة فتح أثناء الطباعة',
+          userId: person,
+          checklist: null,
+        }),
+      );
+    expect(await job.work({ companyId: id, fileId: file.id })).toEqual({ state: 'failed' });
+    expect(await fileOf(id, file.id)).toMatchObject({
+      state: 'failed',
+      error: 'PERIOD_NOT_CLOSED',
+    });
+    expect(await files.size(id, file.id)).toBeNull();
+    expect(await withCompany(db, id, (tx) => tx.select().from(journalBookPrints))).toEqual([]);
+  });
+
+  it('renders every report from the parameters the API stores, as the query string carries them', async () => {
+    const id = await company();
+    const printer = new KeepingPrinter();
+    const job = new ReportsRenderJob(db, files, printer);
+    const [cash, client] = await withCompany(db, id, async (tx) => {
+      const [account] = await tx
         .select({ id: chartAccounts.id })
         .from(chartAccounts)
-        .where(eq(chartAccounts.code, '111003'))
-        .then(([row]) => row?.id as string),
-    );
-    for (const [report, params] of [
-      ['general_ledger', { from: '2026-10-01', to: '2026-10-31' }],
-      ['account_statement', { account: cash, from: '2026-10-01', to: '2026-10-31' }],
-      ['income_statement', { from: '2026-10-01', to: '2026-10-31' }],
-      ['balance_sheet', { asOf: '2026-10-31' }],
-      ['profitability', { by: 'client', from: '2026-10-01', to: '2026-10-31' }],
-      ['contract_position', { asOf: '2026-10-31' }],
-      ['revenue_schedule', { from: '2026-10' }],
-      ['ageing', { asOf: '2026-10-31' }],
-      ['chart', {}],
-    ] as const) {
-      const file = await ask(id, { report, params });
+        .where(eq(chartAccounts.code, '111003'));
+      const [type] = await tx
+        .select({ id: dimensionTypes.id })
+        .from(dimensionTypes)
+        .where(eq(dimensionTypes.code, 'client'));
+      const [value] = await tx
+        .insert(dimensionValues)
+        .values({ companyId: id, typeId: type?.id as string, name: 'عميل تجريبي' })
+        .returning({ id: dimensionValues.id });
+      return [account?.id as string, value?.id as string];
+    });
+    const asked = {
+      trial_balance: { from: '2026-10-01', to: '2026-10-31', nonZero: 'false', level: '2' },
+      general_ledger: { from: '2026-10-01', to: '2026-10-31', cursor: 'dropped' },
+      account_statement: { account: cash, from: '2026-10-01', to: '2026-10-31', dims: '' },
+      journal_book: { fiscalYear: '2026', from: '2026-10', to: '2026-11' },
+      income_statement: { from: '2026-10-01', to: '2026-10-31', compare: 'false' },
+      balance_sheet: { asOf: '2026-10-31' },
+      profitability: { by: 'client', from: '2026-10-01', to: '2026-10-31' },
+      contract_position: { asOf: '2026-10-31' },
+      revenue_schedule: { from: '2026-10' },
+      ageing: { asOf: '2026-10-31' },
+      client_statement: { client, from: '2026-10-01', to: '2026-10-31' },
+      chart: {},
+    } satisfies Record<Report, Record<string, string>>;
+    for (const [report, input] of Object.entries(asked) as [Report, Record<string, string>][]) {
+      const file = await ask(id, { report, params: parseReportFileParams(report, input).stored });
       expect(await job.work({ companyId: id, fileId: file.id }), report).toEqual({
         state: 'ready',
       });
     }
-    expect(printer.printed).toHaveLength(9);
+    expect(printer.printed).toHaveLength(12);
   });
 });
 

@@ -134,6 +134,11 @@ export const journalBookPrints = pgTable(
     creditTotalMinor: bigint({ mode: 'bigint' }).notNull(),
     contentSha256: text().notNull(),
     fileSha256: text().notNull(),
+    /**
+     * The reopens of the range's months the print's snapshot saw, under its locks: a later reopen
+     * supersedes it (rule 29), whichever transaction committed first, which timestamps cannot tell.
+     */
+    reopensSeen: integer().notNull(),
     /** The person who asked for the print, the file's requester. */
     printedByUserId: uuid().notNull(),
     createdAt: createdAt(),
@@ -175,6 +180,7 @@ export const journalBookPrints = pgTable(
       'journal_book_prints_totals',
       sql`${t.debitTotalMinor} = ${t.creditTotalMinor} and ${t.debitTotalMinor} >= 0`,
     ),
+    check('journal_book_prints_reopens_seen', sql`${t.reopensSeen} >= 0`),
     check('journal_book_prints_content_sha256', sql`${t.contentSha256} ~ ${HASH}`),
     check('journal_book_prints_file_sha256', sql`${t.fileSha256} ~ ${HASH}`),
   ],

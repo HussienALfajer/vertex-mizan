@@ -12,6 +12,8 @@ export default defineConfig({
     // One file at a time: the boot test's worker runs the scheduled jobs on the same database the
     // jobs test fills, and must be stopped before it starts.
     fileParallelism: false,
+    // `e2e/` is Playwright's (`playwright.config.ts`): Chromium's checks of the PDFs.
+    include: ['test/**/*.test.ts'],
     testTimeout: 30_000,
   },
 });

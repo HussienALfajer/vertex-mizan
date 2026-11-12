@@ -289,3 +289,58 @@ describe('the statements’ sheets', () => {
     });
   });
 });
+
+describe('the comparatives (rule 5; IAS 1.38)', () => {
+  const compared = {
+    ...trialBalance.header,
+    compare: { from: '2026-09-01', to: '2026-09-30', marks: [], hasLines: true },
+  };
+
+  it('leaves a balance’s other side blank in the comparative, "—" only for a period with no line', () => {
+    const sheet = reportSheet(
+      {
+        report: 'trial_balance',
+        data: {
+          ...trialBalance,
+          header: compared,
+          rows: [{ ...(trialBalance.rows[1] as TrialBalance['rows'][number]), compare: '-40000' }],
+        },
+      },
+      context,
+    );
+    expect(sheet.rows[0]?.cells).toMatchObject({ compareDebit: undefined, compareCredit: '40000' });
+  });
+
+  it('shows profit before financing and income taxes when only the comparative has an investing line', () => {
+    const sheet = reportSheet(
+      {
+        report: 'income_statement',
+        data: {
+          header: compared,
+          lines: [{ line: 'is.revenue', amount: '2000000', compare: '1800000', accounts: [] }],
+          subtotals: {
+            operatingProfit: '2000000',
+            profitBeforeFinancingAndIncomeTaxes: null,
+            profitBeforeTax: '1950000',
+            profit: '1950000',
+          },
+          compareSubtotals: {
+            operatingProfit: '1800000',
+            profitBeforeFinancingAndIncomeTaxes: '1900000',
+            profitBeforeTax: '1900000',
+            profit: '1900000',
+          },
+        },
+      },
+      context,
+    );
+    expect(sheet.rows.find((row) => row.cells.line === 'الربح قبل التمويل وضرائب الدخل')).toEqual({
+      emphasis: 'subtotal',
+      cells: {
+        line: 'الربح قبل التمويل وضرائب الدخل',
+        current: '2000000',
+        compare: '1900000',
+      },
+    });
+  });
+});

@@ -2563,6 +2563,7 @@ DECLARE
   range_start date;
   range_end date;
   totals record;
+  reopens integer;
 BEGIN
   SELECT f.report, f.official, f.state, f.requested_by_user_id INTO file
   FROM public.report_files f
@@ -2601,6 +2602,15 @@ BEGIN
   IF closed_count <> month_count THEN
     RAISE EXCEPTION 'journal_book_prints: PERIOD_NOT_CLOSED: every month of a print is closed'
       USING ERRCODE = 'restrict_violation';
+  END IF;
+  SELECT count(*)::integer INTO reopens
+  FROM public.period_events e
+  JOIN public.periods p ON p.company_id = e.company_id AND p.id = e.period_id
+  WHERE e.company_id = NEW.company_id AND e.kind = 'reopened'
+    AND p.period BETWEEN first_month.period AND last_month.period;
+  IF NEW.reopens_seen IS DISTINCT FROM reopens THEN
+    RAISE EXCEPTION 'journal_book_prints: a print records the reopens of its months it saw'
+      USING ERRCODE = 'check_violation';
   END IF;
   SELECT count(DISTINCT e.id)::integer AS entries, count(l.id)::integer AS lines,
          coalesce(sum(greatest(l.book_minor, 0)), 0)::bigint AS debits,

@@ -197,19 +197,27 @@ async function wholeJournal(tx: Transaction, first: JournalQuery, now: Date): Pr
 }
 
 /** A report's PDF parameters, validated by its schema (`VALIDATION_FAILED` with the issues). */
-export function parseReportFileParams(report: Report, params: unknown): Record<string, unknown> {
-  const parsed = REPORT_FILE_QUERIES[report].safeParse(params);
-  if (!parsed.success) {
+export function parseReportFileParams(
+  report: Report,
+  params: Record<string, unknown>,
+): { readonly stored: Record<string, unknown>; readonly parsed: Record<string, unknown> } {
+  // A cursor is dropped: the file carries every page.
+  const { cursor: _cursor, ...input } = params;
+  const result = REPORT_FILE_QUERIES[report].safeParse(input);
+  if (!result.success) {
     throw new DomainError('VALIDATION_FAILED', 'The report’s parameters are not valid', {
-      issues: parsed.error.issues.map((issue) => ({
+      issues: result.error.issues.map((issue) => ({
         path: ['params', ...issue.path.map(String)],
         message: issue.message,
       })),
     });
   }
-  // Stored as JSON: a cursor is dropped, the file carries every page.
-  const { cursor: _cursor, ...rest } = parsed.data as Record<string, unknown>;
-  return JSON.parse(JSON.stringify(rest)) as Record<string, unknown>;
+  // The input is stored, as the query string carries it, so the worker reads it through the same
+  // schema; its output (flags as booleans, value lists as arrays) would not parse again. Only the
+  // keys the schema reads are kept.
+  const parsed = result.data as Record<string, unknown>;
+  const stored = Object.fromEntries(Object.entries(input).filter(([key]) => key in parsed));
+  return { stored, parsed };
 }
 
 /** The months of a fiscal year, `YYYY-MM`, from its first month. */
@@ -298,12 +306,15 @@ export async function readJournalBookPrints(
       print: journalBookPrints,
       from: fromPeriod,
       to: toPeriod,
+      // Superseded once its months have more reopens than its snapshot saw (0051): the first of
+      // them, in their order, is the reopen that superseded it.
       supersededAt: sql<string | null>`(
-        select to_json(min(e.created_at))#>>'{}' from period_events e
+        select to_json(e.created_at)#>>'{}' from period_events e
         join periods p on p.company_id = e.company_id and p.id = e.period_id
         where e.company_id = journal_book_prints.company_id and e.kind = 'reopened'
-          and e.created_at > journal_book_prints.created_at
-          and p.period between ${fromPeriod} and ${toPeriod})`,
+          and p.period between ${fromPeriod} and ${toPeriod}
+        order by e.created_at, e.id
+        offset journal_book_prints.reopens_seen limit 1)`,
     })
     .from(journalBookPrints)
     .where(eq(journalBookPrints.fiscalYear, fiscalYear))
@@ -357,7 +368,6 @@ export function readRangePeriods(tx: Transaction, from: string, to: string) {
     .orderBy(asc(periods.period));
 }
 
-
 /**
  * The counts and book totals of the entries dated in a range of months of a fiscal year, as the
  * journal book prints them (every line, debit when positive) and as the register's guard checks
@@ -387,4 +397,19 @@ export async function readJournalBookTotals(
     debitMinor: BigInt(row?.debits ?? '0'),
     creditMinor: BigInt(row?.credits ?? '0'),
   };
+}
+
+/**
+ * The reopens of a range's months so far, as the register's guard counts them (rule 29): an
+ * official print records them, and a later reopen supersedes it.
+ */
+export async function countRangeReopens(
+  tx: Transaction,
+  range: { readonly from: string; readonly to: string },
+): Promise<number> {
+  const result = await tx.execute<{ reopens: number }>(sql`select count(*)::int as reopens
+    from period_events e
+    join periods p on p.company_id = e.company_id and p.id = e.period_id
+    where e.kind = 'reopened' and p.period between ${range.from} and ${range.to}`);
+  return result.rows[0]?.reopens ?? 0;
 }

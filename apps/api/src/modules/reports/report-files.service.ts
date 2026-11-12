@@ -160,7 +160,7 @@ export class ReportFilesService {
       throw new CodedException('FORBIDDEN', 'Not allowed to export this report');
     }
     const companyId = access.company.id;
-    const params = parseReportFileParams(request.report, request.params);
+    const { stored, parsed: params } = parseReportFileParams(request.report, request.params);
     const row = await withCompany(this.db, companyId, async (tx) => {
       await tx.execute(
         sql`select pg_advisory_xact_lock(hashtextextended(${`report_files:${access.person.id}`}, 0))`,
@@ -189,7 +189,7 @@ export class ReportFilesService {
         .values({
           companyId,
           report: request.report,
-          params,
+          params: stored,
           official: request.official,
           requestedByUserId: access.person.id,
         })
@@ -202,7 +202,7 @@ export class ReportFilesService {
         after: {
           report: request.report,
           format: 'pdf',
-          params: auditedParams(params),
+          params: stored,
           fileId: inserted.id,
           official: request.official,
         },

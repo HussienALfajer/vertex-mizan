@@ -1680,8 +1680,7 @@ export async function readJournalBook(
     fiscalYear: query.fiscalYear,
     from: query.from,
     to: query.to,
-    official:
-      context.ledger === 'book' && range.every((month) => isClosedPeriod(closed, month)),
+    official: context.ledger === 'book' && range.every((month) => isClosedPeriod(closed, month)),
     pages: pages.map((page) => ({
       page: page.page,
       month: page.month,
