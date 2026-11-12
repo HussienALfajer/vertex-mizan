@@ -62,7 +62,9 @@ interface LineFields extends CarriedAmounts {
  * - `carried`: releases, clears or settles an existing balance at that balance's own amounts,
  *   never converted again (IAS 21.23(b), IFRIC 22);
  * - `difference`: an exchange difference, with an amount in `ledger` only;
- * - `rounding`: the conversion rounding of its entry, with an amount in `ledger` only.
+ * - `rounding`: the conversion rounding of its entry, with an amount in `ledger` only;
+ * - `stated`: book and parallel amounts given, from the old records or the opening's computation,
+ *   with no conversion; only on an entry whose source is `opening` (S10 rule 17, ADR 0019).
  */
 export type Line =
   | (LineFields & {
@@ -72,7 +74,7 @@ export type Line =
         readonly parallel: Conversion | null;
       };
     })
-  | (LineFields & { readonly kind: 'carried' })
+  | (LineFields & { readonly kind: 'carried' | 'stated' })
   | (LineFields & { readonly kind: 'difference' | 'rounding'; readonly ledger: Ledger });
 
 /** The company's ledgers that are kept: the book ledger, then the parallel ledger when set. */

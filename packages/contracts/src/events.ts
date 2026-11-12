@@ -194,7 +194,11 @@ export const invoiceIssuedFieldsV1 = {
 
 /** The checks of `invoice.issued` beyond its fields, shared with the opening snapshot's invoices. */
 export function checkIssuedInvoice(
-  invoice: { readonly issued_on: string; readonly due_on: string; readonly lines: readonly { readonly id: string }[] },
+  invoice: {
+    readonly issued_on: string;
+    readonly due_on: string;
+    readonly lines: readonly { readonly id: string }[];
+  },
   context: z.core.$RefinementCtx,
 ): void {
   if (invoice.due_on < invoice.issued_on) {

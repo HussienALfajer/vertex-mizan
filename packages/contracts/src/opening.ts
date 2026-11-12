@@ -305,12 +305,10 @@ function checkSnapshot(snapshot: OpeningSnapshot, context: z.core.$RefinementCtx
 }
 
 /** The body of `POST /v1/opening/snapshot` (S10 rules 5–6); its key is the `Idempotency-Key`. */
-export const openingSnapshotSchema = snapshotFieldsSchema
-  .superRefine(checkSnapshot)
-  .meta({
-    id: 'OpeningSnapshot',
-    description: "Hub's open documents as of the eve of the books start",
-  });
+export const openingSnapshotSchema = snapshotFieldsSchema.superRefine(checkSnapshot).meta({
+  id: 'OpeningSnapshot',
+  description: "Hub's open documents as of the eve of the books start",
+});
 
 /** A milestone done on or before the eve and not invoiced by then: a contract asset (rule 11). */
 export function isContractAsset(milestone: OpeningMilestone): boolean {
