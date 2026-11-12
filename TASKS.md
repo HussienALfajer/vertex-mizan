@@ -12,7 +12,7 @@ Spec: `docs/specs/S08-daily-reconciliation.md` (Approved, owner 2026-11-12) · A
 - [x] worker: `events.held-digest`'s reconciliation section (rule 16), safe twice, per company
 - [x] bridge: the report's JSON Schema and example in `export:hub-schema` and `post:hub-examples`; OpenAPI regenerated, breaking-change check
 - [x] wiring (Contracts, Ledger, Database, API and worker), docs (`packages/*/CLAUDE.md`, `apps/*/CLAUDE.md`, `docs/glossary.md`, `docs/open-questions.md` Q5, `docs/ROADMAP.md`)
-- [ ] checks and reviewers (`reviewer`, `accountant-reviewer`), PR with auto-merge and Auto-fix
+- [x] checks and reviewers (`reviewer`, `accountant-reviewer`), PR with auto-merge and Auto-fix
 
 ## PR 2 — The screens (ui, web, e2e)
 - [ ] ui: `ReconciliationDayBadge` if `EventStateBadge`'s pattern does not fit (tested, both densities, on the design-system page)
