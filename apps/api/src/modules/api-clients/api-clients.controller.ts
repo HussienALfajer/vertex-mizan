@@ -90,7 +90,12 @@ export class ApiClientsController {
   @Reauthenticated()
   @SerializeOptions({ schema: apiClientSchema })
   @ApiOkResponse({ description: 'The client', standardSchema: apiClientSchema })
-  @ApiErrors(...COMPANY_WRITE_ERRORS, 'REAUTHENTICATION_REQUIRED', 'NOT_FOUND')
+  @ApiErrors(
+    ...COMPANY_WRITE_ERRORS,
+    'REAUTHENTICATION_REQUIRED',
+    'NOT_FOUND',
+    'RECONCILIATION_START_LOCKED',
+  )
   async update(
     @Access() access: RequestAccess,
     @Param({ schema: idParamSchema }) params: IdParam,

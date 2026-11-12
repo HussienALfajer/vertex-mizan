@@ -45,6 +45,7 @@ const hubInput = {
   system: 'hub',
   scopes: ['events:write', 'periods:read'],
   ipAllowList: ['192.0.2.0/24', '2001:db8::/32'],
+  reconcileFrom: '2026-10-19',
 };
 
 describe('POST /api/api-clients', () => {

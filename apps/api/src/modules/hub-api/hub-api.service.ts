@@ -15,6 +15,10 @@ import {
   monthsOf,
   type PeriodStatus,
   type PeriodStatusQuery,
+  type ReceivedEventsPage,
+  type ReceivedEventsQuery,
+  type ReconciliationReport,
+  type ReconciliationResult,
 } from '@vertex-mizan/contracts';
 import {
   companySettings,
@@ -24,7 +28,9 @@ import {
   type InboxEventView,
   isClosedPeriod,
   readClosedPeriods,
+  readReceivedEvents,
   receiveEvent,
+  receiveReconciliationReport,
   withCompany,
 } from '@vertex-mizan/db';
 import { eq } from 'drizzle-orm';
@@ -193,5 +199,50 @@ export class HubApiService {
       period,
       state: isClosedPeriod(view, period) ? 'closed' : 'open',
     }));
+  }
+
+  /**
+   * `POST /v1/reconciliation/daily` (S08 rules 1, 4, 5): the `Idempotency-Key` equal to the
+   * report's id, then the report kept and compared in the key's company, under the company row's
+   * lock, which the close takes too: a report commits wholly before or after a close's checklist.
+   * `201` stored, `200` a replay that stores nothing.
+   */
+  async reconcile(
+    access: ApiClientRouteAccess,
+    idempotencyKey: string | undefined,
+    raw: Record<string, unknown>,
+    report: ReconciliationReport,
+  ): Promise<{ status: 200 | 201; result: ReconciliationResult }> {
+    if (idempotencyKey !== report.id) {
+      throw new CodedException('VALIDATION_FAILED', 'Idempotency-Key must equal the report id', [
+        { path: ['Idempotency-Key'], message: 'Must equal the report id' },
+      ]);
+    }
+    const companyId = access.client.companyId;
+    const { result, replayed } = await withCompany(this.db, companyId, async (tx) => {
+      await lockCompanyForWrite(tx, companyId);
+      return receiveReconciliationReport(tx, companyId, {
+        raw,
+        report,
+        apiClientId: access.client.id,
+        requestId: access.requestId,
+        today: todayInDamascus(),
+      });
+    });
+    return { status: replayed ? 200 : 201, result };
+  }
+
+  /** `GET /v1/events?date=` (S08 rule 14): the calling client's events only. */
+  receivedEvents(
+    access: ApiClientRouteAccess,
+    query: ReceivedEventsQuery,
+  ): Promise<ReceivedEventsPage> {
+    return withCompany(this.db, access.client.companyId, (tx) =>
+      readReceivedEvents(tx, {
+        apiClientId: access.client.id,
+        date: query.date,
+        cursor: query.cursor,
+      }),
+    );
   }
 }
