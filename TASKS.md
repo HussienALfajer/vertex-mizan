@@ -7,4 +7,4 @@ Branch `claude/gallant-allen-oldms7` · `/posting-rule opening/opening-entry` (S
 - [x] The owner's approval of the seven cases' numbers, then of the eighth after the review (2026-11-12), and the decisions on S10 rule 12 (Hub's slots closed to the accountant only in a company with a Hub client, `events:write` or `opening:write`; a company without one opens its receivables on `112001`), written into the spec (rules 10, 12, 21, 24 and the treatment of `212001`).
 - [x] `packages/scenarios/src/format.ts`: read `books_start`, the `opening` and `reverse_opening` steps (no executor until S10's feature slice), with a test in `src/book.test.ts`; `packages/scenarios/CLAUDE.md`.
 - [x] `docs/ROADMAP.md`: the approval and its date under S10.
-- [ ] `pnpm verify --e2e-all`, the `accountant-reviewer` and the `reviewer` in parallel; fixes; the PR with auto-merge.
+- [x] `pnpm verify --e2e-all` (pass, 6m 26s), the `accountant-reviewer` and the `reviewer` in parallel; their findings fixed and re-reviewed with none left; the PR with auto-merge.
