@@ -7,5 +7,6 @@ Branch `claude/great-dirac-8isru1` · `/posting-rule reports/statement-presentat
 - [x] The owner's approval (2026-11-12) of the numbers and of four presentation decisions (a file of its own; a report from before the books start carries both marks; the income statement's note on every statement of the books start's year; `312002` a part of retained earnings in later years, `unclosed_years` classes 4–5 only).
 - [x] The format: the marks `opening_entry`, `before_books_start`, `pre_opening_result_in_equity` and the balance sheet's `year_result_pre_opening` in `docs/scenarios/README.md` and `packages/scenarios/src/report-format.ts`, with a test in `src/book.test.ts`.
 - [x] S10 "Scenarios" names the new file; `docs/ROADMAP.md` records the approval and its date; `packages/scenarios/CLAUDE.md`.
-- [ ] `pnpm verify --e2e-all`, the `accountant-reviewer` and the `reviewer` in parallel; their findings fixed.
-- [ ] The PR with auto-merge.
+- [x] `pnpm verify --e2e-all` (lint failed on formatting only), the `accountant-reviewer` and the `reviewer` in parallel; their findings fixed (the runner notes an unread `year_result_pre_opening`; `opening_entry` covers the general ledger and account statement, S10 rule 32; the bulletin's UNVERIFIED label, Q1), and the re-review of the fix commit found nothing new.
+- [x] `pnpm verify --e2e-all` on the final tree (pass, 6m 52s).
+- [x] The PR with auto-merge.
