@@ -49,7 +49,7 @@ export const reconciliation = {
   afterClose: 'بعد الإقفال',
   afterCloseDescription:
     'هذا الشهر مقفل: تصحيح فرق فيه يحتاج إلى إعادة فتح الشهر، فالأحداث المؤرخة فيه تُعلَّق حتى ذلك.',
-  gaps: 'فروق',
+  gaps: 'الفروق',
   month: {
     label: 'الشهر',
     previous: 'الشهر السابق',

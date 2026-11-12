@@ -32,7 +32,7 @@ type ReconciliationDayBadgeProps = Omit<ComponentProps<'span'>, 'children'> & {
   state: ReconciliationDayState;
   /** The state's name ("فيه فروق"), from the app's i18n. */
   label: string;
-  /** What the day holds in words ("3 فروق", "بعد الإقفال"), shown beside the state. */
+  /** What the day holds in words ("الفروق: 3", "بعد الإقفال"), shown beside the state. */
   detail?: string | null | undefined;
 };
 

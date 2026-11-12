@@ -34,6 +34,11 @@ import {
 import { rateReads, today } from './rate-mocks';
 import { client, m1, receivablesReads } from './receivables-mocks';
 import {
+  noClients as noReconciliationClients,
+  novemberTwoClients,
+  reconciliationReads,
+} from './reconciliation-mocks';
+import {
   cancelledProject,
   contractAssetItem,
   cycle,
@@ -642,6 +647,80 @@ for (const colorScheme of ['light', 'dark'] as const) {
         });
       });
 
+      test.describe('reconciliation screens', () => {
+        test.use({ me: owner, api: reconciliationReads });
+        test.beforeEach(async ({ page }) => {
+          await page.clock.setFixedTime(today);
+        });
+
+        test('reconciliation: the month', async ({ page }, testInfo) => {
+          await page.goto('/reconciliation?month=2026-11');
+          await expect(
+            page.getByRole('table', { name: ar.reconciliation.month.table.label }),
+          ).toBeVisible();
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `reconciliation-month-${colorScheme}-${width}`);
+        });
+
+        test('reconciliation: a closed month with two clients', async ({ page }, testInfo) => {
+          await page.route('**/api/reconciliation/days?*', (route) =>
+            route.fulfill({ status: 200, json: { ...novemberTwoClients, closed: true } }),
+          );
+          await page.goto('/reconciliation?month=2026-11');
+          await expect(page.getByText(ar.reconciliation.afterCloseDescription)).toBeVisible();
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `reconciliation-closed-${colorScheme}-${width}`);
+        });
+
+        test('reconciliation: no client', async ({ page }, testInfo) => {
+          await page.route('**/api/reconciliation/days?*', (route) =>
+            route.fulfill({ status: 200, json: noReconciliationClients }),
+          );
+          await page.goto('/reconciliation');
+          await expect(page.getByText(ar.reconciliation.month.empty.title)).toBeVisible();
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `reconciliation-empty-${colorScheme}-${width}`);
+        });
+
+        test('reconciliation: a day with differences', async ({ page }, testInfo) => {
+          await page.goto('/reconciliation/2026-11-04');
+          await expect(
+            page.getByRole('table', { name: ar.reconciliation.day.differences.label }),
+          ).toBeVisible();
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `reconciliation-differences-${colorScheme}-${width}`);
+        });
+
+        test('reconciliation: an amount difference', async ({ page }, testInfo) => {
+          await page.goto('/reconciliation/2026-11-07');
+          await expect(page.getByText(ar.reconciliation.kinds.amount_differs)).toBeVisible();
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `reconciliation-amount-${colorScheme}-${width}`);
+        });
+
+        test('reconciliation: a day with annotations', async ({ page }, testInfo) => {
+          await page.goto('/reconciliation/2026-11-06');
+          await expect(
+            page.getByRole('list', { name: ar.reconciliation.day.annotations.title }),
+          ).toBeVisible();
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `reconciliation-annotations-${colorScheme}-${width}`);
+        });
+
+        test('reconciliation: a matched day and a missed report', async ({ page }, testInfo) => {
+          await page.goto('/reconciliation/2026-11-03');
+          await expect(
+            page.getByText(ar.reconciliation.day.matched, { exact: true }),
+          ).toBeVisible();
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `reconciliation-matched-${colorScheme}-${width}`);
+          await page.goto('/reconciliation/2026-11-05');
+          await expect(page.getByText(ar.reconciliation.day.noReport)).toBeVisible();
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `reconciliation-missing-${colorScheme}-${width}`);
+        });
+      });
+
       test.describe('settings screens', () => {
         test.use({ me: owner, api: settingsReads });
 
@@ -680,6 +759,32 @@ for (const colorScheme of ['light', 'dark'] as const) {
             page.getByRole('dialog', { name: ar.apiClients.form.newTitle }),
           ).toBeVisible();
           await screenshot(page, testInfo, `api-clients-new-${colorScheme}-${width}`, {
+            fullPage: false,
+          });
+        });
+
+        test('API clients: the start date refused', async ({ page }, testInfo) => {
+          let calls = 0;
+          await page.route('**/api/api-clients/*', (route) => {
+            if (route.request().method() !== 'PUT') return route.fallback();
+            calls += 1;
+            const code = calls === 1 ? 'REAUTHENTICATION_REQUIRED' : 'RECONCILIATION_START_LOCKED';
+            const status = calls === 1 ? 403 : 409;
+            return route.fulfill({ status, json: { statusCode: status, code, message: code } });
+          });
+          await page.route('**/api/auth/reauthenticate', (route) => route.fulfill({ status: 204 }));
+          await page.goto('/settings/api-clients');
+          await page.getByRole('button', { name: ar.apiClients.client.edit }).click();
+          const form = page.getByRole('dialog', { name: ar.apiClients.form.editTitle });
+          await form.getByLabel(ar.apiClients.form.reconcileFrom).fill('2026-11-10');
+          await form.getByRole('button', { name: ar.apiClients.form.save }).click();
+          const reauth = page.getByRole('dialog', { name: ar.auth.reauth.title });
+          await expect(reauth).toBeVisible();
+          await reauth.getByRole('textbox').first().click();
+          await page.keyboard.type('654321');
+          await expect.poll(() => calls).toBe(2);
+          await expect(form.getByText(ar.errors.RECONCILIATION_START_LOCKED)).toBeVisible();
+          await screenshot(page, testInfo, `api-clients-start-locked-${colorScheme}-${width}`, {
             fullPage: false,
           });
         });

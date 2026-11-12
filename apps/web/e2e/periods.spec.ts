@@ -89,7 +89,7 @@ test.describe('the periods', () => {
     await expect(page.getByRole('heading', { level: 1 })).toContainText(t.detail.title);
     const items = page.locator('[data-slot="checklist-item"]');
     await expect(items).toHaveCount(8);
-    // S08's item, last; its link to the reconciliation comes with S08's screens.
+    // S08's item, last (its link: reconciliation.spec.ts).
     await expect(items.last()).toContainText(t.checklist.items.reconciliation_clean);
     const drafts = items.filter({ hasText: t.checklist.items.no_drafts });
     await expect(drafts).toContainText(t.checklist.results.failed);

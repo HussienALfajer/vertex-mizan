@@ -160,6 +160,30 @@ test.describe('the posting rules', () => {
     });
   });
 
+  test('moves the start date later, and keeps the refusal when a closed month holds it (rule 13)', async ({
+    page,
+  }) => {
+    const updated = await answer(
+      page,
+      'PUT',
+      `/api-clients/${hubClient.id}`,
+      afterFreshCode(refusal(409, 'RECONCILIATION_START_LOCKED')),
+    );
+    await page.goto('/settings/api-clients');
+    await expect(page.getByText(c.client.reconcileFrom)).toBeVisible();
+    await page.getByRole('button', { name: c.client.edit }).click();
+    const form = page.getByRole('dialog', { name: c.form.editTitle });
+    await expect(form.getByLabel(c.form.reconcileFrom)).toHaveValue('2026-10-19');
+    await form.getByLabel(c.form.reconcileFrom).fill('2026-11-10');
+    await form.getByRole('button', { name: c.form.save }).click();
+    await enterFreshCode(page);
+    await expect.poll(() => updated.length).toBe(2);
+    // Only the changed start date is sent beside the client's fields.
+    expect(updated[1]?.postDataJSON()).toMatchObject({ reconcileFrom: '2026-11-10' });
+    await expect(form.getByText(ar.errors.RECONCILIATION_START_LOCKED)).toBeVisible();
+    await expect(form).toBeVisible();
+  });
+
   test.describe('for the auditor', () => {
     test.use({ me: withRole('auditor') });
 

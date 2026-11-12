@@ -41,6 +41,7 @@ import {
   ChevronDownIcon,
   FilePenLineIcon,
   FolderTreeIcon,
+  GitCompareArrowsIcon,
   HashIcon,
   HourglassIcon,
   HouseIcon,
@@ -68,6 +69,7 @@ import {
 import { type ReactNode, useState } from 'react';
 import { useSwitchCompany } from '../features/company/company-queries';
 import { inboxCountsQuery } from '../features/inbox/inbox-queries';
+import { reconciliationCountsQuery } from '../features/reconciliation/reconciliation-queries';
 import { activeMembership, can, meQuery } from '../lib/session';
 
 const t = ar.shell;
@@ -83,8 +85,11 @@ interface NavItem {
   show?: () => boolean;
   /** Lists the item only for a person holding this permission in the active company (cosmetic). */
   permission?: Permission;
-  /** Shows a count beside the label: the inbox's held events (S05), hidden at zero. */
-  count?: 'inbox';
+  /**
+   * Shows a count beside the label, hidden at zero: the inbox's held events (S05), the
+   * reconciliation's ended days not clean in open months (S08).
+   */
+  count?: 'inbox' | 'reconciliation';
 }
 
 const navItems: NavItem[] = [
@@ -106,6 +111,13 @@ const navItems: NavItem[] = [
     icon: InboxIcon,
     permission: 'events.read',
     count: 'inbox',
+  },
+  {
+    to: '/reconciliation',
+    label: ar.reconciliation.nav,
+    icon: GitCompareArrowsIcon,
+    permission: 'reconciliation.read',
+    count: 'reconciliation',
   },
   {
     to: '/receivables',
@@ -270,6 +282,7 @@ function Sidebar({ me, onNavigate }: { me: Me | null | undefined; onNavigate?: (
             <Icon aria-hidden="true" className="size-icon" />
             {label}
             {count === 'inbox' && me && <HeldCount me={me} />}
+            {count === 'reconciliation' && me && <UncleanDaysCount me={me} />}
           </Link>
         ))}
       </nav>
@@ -297,6 +310,23 @@ function HeldCount({ me }: { me: Me }) {
     <Badge tone="gold" className="ms-auto" data-slot="held-count">
       <bdi dir="ltr">{held}</bdi>
       <span className="sr-only">{ar.inbox.heldCount}</span>
+    </Badge>
+  );
+}
+
+/** The reconciliation's ended days not clean in open months (S08), hidden at zero. */
+function UncleanDaysCount({ me }: { me: Me }) {
+  const companyId = activeMembership(me)?.company.id;
+  const counts = useQuery({
+    ...reconciliationCountsQuery(companyId ?? ''),
+    enabled: companyId !== undefined,
+  });
+  const days = counts.data?.uncleanDays ?? 0;
+  if (days === 0) return null;
+  return (
+    <Badge tone="gold" className="ms-auto" data-slot="unclean-days-count">
+      <bdi dir="ltr">{days}</bdi>
+      <span className="sr-only">{ar.reconciliation.uncleanCount}</span>
     </Badge>
   );
 }
