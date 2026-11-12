@@ -1,6 +1,6 @@
 # TASKS — S08 Daily reconciliation
 
-Spec: `docs/specs/S08-daily-reconciliation.md` (Approved, owner 2026-11-12) · ADRs 0003, 0005, 0006, 0008, 0013, 0014, 0016, 0017 · Scenarios: none (S08 posts nothing; the scenario book's companies have no API client, so `reconciliation_clean` is `not_applicable` there). Two PRs, each merged before the next starts, on the cloud session's branch `claude/sweet-hamilton-8sd0ju` (restarted from `main` for PR 2).
+Spec: `docs/specs/S08-daily-reconciliation.md` (Approved, owner 2026-11-12) · ADRs 0003, 0005, 0006, 0008, 0013, 0014, 0016, 0017 · Scenarios: none (S08 posts nothing; the scenario book's companies have no API client, so `reconciliation_clean` is `not_applicable` there). Two PRs, each merged before the next starts, PR 1 on `claude/sweet-hamilton-8sd0ju` (merged, #88), PR 2 on `feat/s08-reconciliation-screens`.
 
 ## PR 1 — Reports, the comparison and the checklist item (contracts, ledger, db, api, worker, bridge)
 - [x] contracts: `reconciliation.ts` — the report (`reconciliationReportSchema`: rule 1, at most 5 000 events, `totals` equal to the list, ids unique, amounts present by type), `RECONCILIATION_KINDS`, `RECONCILIATION_DAY_STATES`, `HUB_DELIVERY_STATES` (append-only), `reconciliationAmountOf()` (rule 2, one definition for both sides), the result, received events page, month and day schemas; `reconciliation.read` (owner, accountant, auditor) appended to the map; `RECONCILIATION_START_LOCKED` appended with its Arabic text; `CHECKLIST_ITEMS` appends `reconciliation_clean`; the API client's `reconcileFrom`; `held_digest` gains `reconciliation`; unit tests
@@ -15,6 +15,7 @@ Spec: `docs/specs/S08-daily-reconciliation.md` (Approved, owner 2026-11-12) · A
 - [x] checks and reviewers (`reviewer`, `accountant-reviewer`), PR with auto-merge and Auto-fix
 
 ## PR 2 — The screens (ui, web, e2e)
+- [x] db, api: the sidebar's count, which PR 1 left out: `countUncleanReconciliationDays()` (ended days `missing` or `differences` in open months) and `GET /api/reconciliation/counts` (`reconciliation.read`, `reconciliationCountsSchema`); tests, OpenAPI regenerated (additive)
 - [ ] ui: `ReconciliationDayBadge` if `EventStateBadge`'s pattern does not fit (tested, both densities, on the design-system page)
 - [ ] web: the sidebar's "المطابقة اليومية" with its count; `/reconciliation?month=&client=` (days, counts, gaps, annotations, "بعد الإقفال", the matched days in a row, client filter, month navigation; empty, before-start, loading and error states); `/reconciliation/:date?client=` (state, totals Hub beside Mizan through `Amount`, differences with links to `/inbox/:id`, annotations with their entries and items, the reports); the checklist's link on `/periods/:period`; `ar.reconciliation` (the client form's "تاريخ بدء المطابقة" came with PR 1, which the API's requirement needed)
 - [ ] e2e: the reconciliation and start-date flows; RTL screenshots light and dark at 360, 768 and 1280 px, looked at

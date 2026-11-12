@@ -649,3 +649,13 @@ export const reconciliationDaySchema = z
   .meta({ id: 'ReconciliationDay' });
 
 export type ReconciliationDay = z.infer<typeof reconciliationDaySchema>;
+
+/**
+ * `GET /api/reconciliation/counts`: the sidebar's count (S08 "Screens"), the ended days that are
+ * `missing` or `differences` in months still open.
+ */
+export const reconciliationCountsSchema = z
+  .object({ uncleanDays: z.int().min(0) })
+  .meta({ id: 'ReconciliationCounts' });
+
+export type ReconciliationCounts = z.infer<typeof reconciliationCountsSchema>;

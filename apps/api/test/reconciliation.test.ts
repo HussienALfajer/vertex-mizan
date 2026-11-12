@@ -231,7 +231,12 @@ describe('/api/reconciliation', () => {
       const member = await book.join(role);
       const answer = await member.browser.get('/api/reconciliation/days', { month });
       expect([answer.status, answer.body.code], role).toEqual([403, 'FORBIDDEN']);
+      const counts = await member.browser.get('/api/reconciliation/counts');
+      expect([counts.status, counts.body.code], role).toEqual([403, 'FORBIDDEN']);
     }
+    const counts = await book.owner.browser.get('/api/reconciliation/counts');
+    expect(counts.status).toBe(200);
+    expect(counts.body).toEqual({ uncleanDays: expect.any(Number) });
     const days = await book.owner.browser.get('/api/reconciliation/days', { month });
     const body = days.body as ReconciliationMonth;
     expect(body.clients).toHaveLength(1);
@@ -247,6 +252,7 @@ describe('/api/reconciliation', () => {
     await expectGuarded(app, db, [
       { method: 'get', path: '/api/reconciliation/days', query: { month } },
       { method: 'get', path: `/api/reconciliation/days/${today()}` },
+      { method: 'get', path: '/api/reconciliation/counts' },
     ]);
   });
 });
