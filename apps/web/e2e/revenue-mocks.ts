@@ -211,6 +211,7 @@ export function revenueMonths(from: string, to: string): RevenueMonth[] {
 /** November's release of the cycle, posted on its last day. */
 export const novemberPreview: RevenuePreview = {
   month: '2026-11',
+  openingEntries: [],
   entries: [
     {
       inboxId: cycle.inboxId,
@@ -371,7 +372,7 @@ export const revenueReads = {
         (!params.get('client') || candidate.client.id === params.get('client')) &&
         (!params.get('contract') || candidate.contract?.id === params.get('contract')),
     );
-    return { status: 200, json: { schedules: found, nextCursor: null } };
+    return { status: 200, json: { schedules: found, nextCursor: null, openingSchedules: [] } };
   },
   [`GET /api/revenue/schedules/${cycle.id}`]: { status: 200, json: cycleDetail },
   [`GET /api/revenue/schedules/${releasedCycle.id}`]: { status: 200, json: releasedDetail },

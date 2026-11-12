@@ -4,7 +4,7 @@ import type {
   CurrencyCode,
   RateType,
 } from '@vertex-mizan/contracts';
-import { type AuditActor, writePlatformAudit } from '../audit.js';
+import { type AuditActor, writeCompanyAudit, writePlatformAudit } from '../audit.js';
 import type { Transaction } from '../client.js';
 import { companies, companySettings } from '../schema/companies.js';
 import { applyChartTemplate } from './chart.js';
@@ -95,6 +95,15 @@ export async function createCompanyBooks(
     .returning();
   if (!company || !settings) throw new Error('The company was not created');
   await writePlatformAudit(tx, { action: 'company.created', actor, subjectCompanyId: companyId });
+  if (settings.booksStart !== null) {
+    await writeCompanyAudit(tx, companyId, actor, {
+      action: 'company.books_start_set',
+      entityType: 'company_settings',
+      entityId: settings.id,
+      before: { booksStart: null },
+      after: { booksStart: settings.booksStart },
+    });
+  }
   if (input.template !== null) await applyChartTemplate(tx, companyId, input.template, actor);
   return { company, settings };
 }

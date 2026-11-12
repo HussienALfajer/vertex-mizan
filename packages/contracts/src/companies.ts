@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { chartTemplateIdSchema } from './chart.js';
 import { companyLedgersSchema } from './money.js';
+import { openingStateSchema } from './opening-states.js';
 import { minorUnitsSchema } from './wire.js';
 
 /** A company's Arabic name, or its optional Latin name: 1–200 characters after trimming. */
@@ -75,11 +76,27 @@ export const updateCompanyProfileSchema = z
 
 export type UpdateCompanyProfile = z.infer<typeof updateCompanyProfileSchema>;
 
-/** `PUT /api/company/ledgers`: refused once the books started (`COMPANY_SETTINGS_LOCKED`). */
+/**
+ * A company's books start (S10 rule 1): the first day of a month, on or after 2026-01-01, the
+ * first day its ledger keeps; the opening entry is dated on it.
+ */
+export const booksStartSchema = z.iso
+  .date()
+  .refine((date) => date.endsWith('-01') && date >= '2026-01-01', {
+    message: 'The first day of a month, on or after 2026-01-01',
+  })
+  .meta({ id: 'BooksStart' });
+
+/**
+ * `PUT /api/company/ledgers`: refused once the books started (`COMPANY_SETTINGS_LOCKED`). S10:
+ * `booksStart`, left as it is when omitted, changes only while the company has no posted entry, no
+ * snapshot and no opening, and is never cleared once set (`BOOKS_START_LOCKED`, rule 2).
+ */
 export const updateCompanyLedgersSchema = z
   .object({
     ledgers: companyLedgersSchema,
     fiscalYearStartMonth: fiscalYearStartMonthSchema,
+    booksStart: booksStartSchema.nullable().optional(),
   })
   .meta({ id: 'UpdateCompanyLedgers' });
 
@@ -96,6 +113,10 @@ export const companySchema = z
     policyNote: z.string(),
     /** Whether the first entry posted: the ledger settings are then locked. */
     booksStarted: z.boolean(),
+    /** The books start (S10 rule 1), or null for a company that starts without an opening. */
+    booksStart: booksStartSchema.nullable(),
+    /** Its latest opening's state (S10), or null before the first save of one. */
+    openingState: openingStateSchema.nullable(),
     /** Manual entries and reversals are submitted and approved before they post (S03 rule 8). */
     manualEntryApproval: z.boolean(),
     /** The payments' tolerance per invoice currency, in minor units (S05 rule 9). */

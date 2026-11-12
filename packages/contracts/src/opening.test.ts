@@ -4,9 +4,12 @@ import {
   isContractAsset,
   OPENING_CHECKS,
   type OpeningSnapshot,
+  openingEntryResultSchema,
   openingSnapshotResultSchema,
   openingSnapshotSchema,
   openingSnapshotTotals,
+  openingViewSchema,
+  reverseOpeningSchema,
   saveOpeningSchema,
 } from './opening.js';
 
@@ -221,5 +224,17 @@ describe('saveOpeningSchema (S10 rule 16)', () => {
       'schedules',
       'lines',
     ]);
+  });
+});
+
+describe('the view of GET /api/opening (S10 rule 20)', () => {
+  it('converts to JSON Schema with its ids', () => {
+    for (const schema of [openingViewSchema, openingEntryResultSchema, reverseOpeningSchema]) {
+      expect(() =>
+        z.toJSONSchema(schema, { target: 'draft-2020-12', unrepresentable: 'throw' }),
+      ).not.toThrow();
+    }
+    expect(reverseOpeningSchema.safeParse({ reason: '  ' }).success).toBe(false);
+    expect(reverseOpeningSchema.safeParse({ reason: 'x'.repeat(501) }).success).toBe(false);
   });
 });

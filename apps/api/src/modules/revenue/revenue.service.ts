@@ -52,6 +52,7 @@ export class RevenueService {
           page.more && last
             ? encodeCursor({ id: last.id, createdAt: new Date(last.createdAt) })
             : null,
+        openingSchedules: page.openingSchedules,
       };
     });
   }

@@ -11,6 +11,7 @@ import {
   type OpeningCheck,
   type OpeningSnapshot,
   type OpeningSnapshotResult,
+  type OpeningState,
   openingSnapshotSchema,
   openingSnapshotTotals,
   type PostingSlot,
@@ -109,11 +110,32 @@ export async function hasHubClient(tx: Transaction, companyId: string): Promise<
   return rows.length > 0;
 }
 
+/**
+ * Whether the books start is locked by a snapshot or an opening (S10 rule 2; a posted entry locks
+ * it too, through the settings' own lock). `company_settings_books_start()` holds the same.
+ */
+export async function booksStartLocked(tx: Transaction): Promise<boolean> {
+  const [snapshot] = await tx.select({ id: openingSnapshots.id }).from(openingSnapshots).limit(1);
+  if (snapshot !== undefined) return true;
+  const [opening] = await tx.select({ id: openings.id }).from(openings).limit(1);
+  return opening !== undefined;
+}
+
 /** The company's live opening (a draft or posted), or null (S10 rule 10). */
 async function liveOpening(tx: Transaction, lock: boolean): Promise<OpeningRow | null> {
   const query = tx.select().from(openings).where(ne(openings.state, 'reversed'));
   const [row] = lock ? await query.for('update') : await query;
   return row ?? null;
+}
+
+/**
+ * The state of the company's latest opening: the live one's, else the latest reversed one's, or
+ * null before the first save (the company's `openingState`, S10).
+ */
+export async function openingStateOf(tx: Transaction): Promise<OpeningState | null> {
+  const live = await liveOpening(tx, false);
+  if (live !== null) return live.state as OpeningState;
+  return (await lastReversed(tx)) === null ? null : 'reversed';
 }
 
 /** The latest reversed opening, whose lines a new draft starts from (S10 rule 25). */

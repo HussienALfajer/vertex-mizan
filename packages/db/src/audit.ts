@@ -50,6 +50,8 @@ export const AUDITED_FIELDS = {
     'manualEntryApproval',
     'paymentToleranceSypMinor',
     'paymentToleranceUsdMinor',
+    // S10 rule 1.
+    'booksStart',
   ],
   membership: ['userId', 'role', 'canClosePeriods', 'archivedReason'],
   invitation: ['email', 'role', 'canClosePeriods', 'expiresAt'],

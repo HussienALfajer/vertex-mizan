@@ -6,12 +6,14 @@ import type {
   UpdateCompanyProfile,
 } from '@vertex-mizan/contracts';
 import {
+  booksStartLocked,
   companies,
   companySettings,
   createCompanyBooks,
   type Database,
   invitations,
   memberships,
+  openingStateOf,
   type Transaction,
   verifications,
   withCompany,
@@ -58,7 +60,7 @@ export class CompaniesService {
         entityId: membership.id,
         after: { userId: access.person.id, role: 'owner', canClosePeriods: false },
       });
-      return companyOf(company, settings);
+      return companyOf(company, settings, null);
     });
   }
 
@@ -194,6 +196,25 @@ export class CompaniesService {
           ...change,
         });
       }
+      // S10 rules 1–2: the books start, omitted to leave it; the database's lock refuses a change
+      // once a snapshot or an opening exists, or a clearing, as `BOOKS_START_LOCKED`.
+      const booksStart = input.booksStart;
+      if (booksStart !== undefined && booksStart !== settings.booksStart) {
+        if (booksStart === null || (await booksStartLocked(tx))) {
+          throw new CodedException('BOOKS_START_LOCKED', 'The books start can no longer change');
+        }
+        await tx
+          .update(companySettings)
+          .set({ booksStart })
+          .where(eq(companySettings.id, settings.id));
+        await writeCompanyAudit(tx, companyId, actorOf(access), {
+          action: 'company.books_start_set',
+          entityType: 'company_settings',
+          entityId: settings.id,
+          before: { booksStart: settings.booksStart },
+          after: { booksStart },
+        });
+      }
       return this.read(tx, companyId);
     });
   }
@@ -301,6 +322,6 @@ export class CompaniesService {
     const [company] = await tx.select().from(companies).where(eq(companies.id, companyId));
     const [settings] = await this.settings(tx, companyId);
     if (!company || !settings) throw new CodedException('NOT_FOUND', 'No such company');
-    return companyOf(company, settings);
+    return companyOf(company, settings, await openingStateOf(tx));
   }
 }

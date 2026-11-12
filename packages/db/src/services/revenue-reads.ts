@@ -2,6 +2,7 @@ import {
   type CurrencyCode,
   DomainError,
   hubMinor,
+  type OpeningRevenueSchedule,
   type RecognitionAmounts,
   type RecognitionState,
   type RevenueMonth,
@@ -17,7 +18,7 @@ import {
   periodOf,
   sumCarried,
 } from '@vertex-mizan/ledger';
-import { and, asc, desc, eq, inArray, isNotNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, isNull, type SQL, sql } from 'drizzle-orm';
 import type { Transaction } from '../client.js';
 import { isClosedPeriod, readClosedPeriods } from '../posting/periods.js';
 import { dimensionValues } from '../schema/dimensions.js';
@@ -86,11 +87,37 @@ async function valuesOf(tx: Transaction, ids: readonly string[]) {
   return new Map(rows.map((row) => [row.id, row]));
 }
 
-/** Schedules as `/revenue` lists them, from their rows. */
+/** A schedule as `/revenue` lists it, without the issue it names (an event or the opening). */
+type ShapedSchedule = Omit<RevenueSchedule, 'inboxId'>;
+
+/** Schedules from an event as `/revenue` lists them, from their rows. */
 async function shape(
   tx: Transaction,
   schedules: readonly ScheduleRow[],
 ): Promise<RevenueSchedule[]> {
+  const shaped = await shapeRows(tx, schedules);
+  return shaped.map((schedule, index) => ({
+    ...schedule,
+    inboxId: schedules[index]?.eventId as string,
+  }));
+}
+
+/** The opening's schedules as `/revenue` lists them (S10), from their rows. */
+async function shapeOpening(
+  tx: Transaction,
+  schedules: readonly ScheduleRow[],
+): Promise<OpeningRevenueSchedule[]> {
+  const shaped = await shapeRows(tx, schedules);
+  return shaped.map((schedule, index) => ({
+    ...schedule,
+    openingId: schedules[index]?.openingId as string,
+  }));
+}
+
+async function shapeRows(
+  tx: Transaction,
+  schedules: readonly ScheduleRow[],
+): Promise<ShapedSchedule[]> {
   if (schedules.length === 0) return [];
   const ledgers = await companyLedgers(tx);
   const parallel = ledgers.parallel !== null;
@@ -133,7 +160,6 @@ async function shape(
     if (!line) throw new Error('A schedule without its line');
     return {
       id: schedule.id,
-      inboxId: schedule.eventId as string,
       invoiceDocumentId: schedule.invoiceDocumentId,
       invoiceNumber: schedule.invoiceNumber,
       lineId: schedule.lineId,
@@ -185,31 +211,35 @@ export async function readRevenueSchedules(
     readonly month?: string;
   },
   after: string | null,
-): Promise<{ schedules: RevenueSchedule[]; more: boolean }> {
+): Promise<{
+  schedules: RevenueSchedule[];
+  more: boolean;
+  openingSchedules: OpeningRevenueSchedule[];
+}> {
   const first = filter.month === undefined ? null : `${filter.month}-01`;
   const last = first === null ? null : lastDayOfMonth(first);
+  const filters: (SQL | undefined)[] = [
+    filter.state === undefined ? undefined : stateFilter(filter.state),
+    filter.client === undefined ? undefined : eq(recognitionSchedules.clientValueId, filter.client),
+    filter.contract === undefined
+      ? undefined
+      : eq(recognitionSchedules.contractValueId, filter.contract),
+    first === null || last === null
+      ? undefined
+      : sql`((${recognitionSchedules.serviceFrom} <= ${last} and ${recognitionSchedules.serviceTo} >= ${first})
+          or exists (select 1 from ${recognitionMovements} m join ${journalEntries} e on e.company_id = m.company_id and e.id = m.entry_id
+            where m.company_id = ${recognitionSchedules.companyId} and m.schedule_id = ${recognitionSchedules.id}
+              and e.entry_date between ${first} and ${last}))`,
+  ];
   const rows = await tx
     .select()
     .from(recognitionSchedules)
     .where(
       and(
-        // `/api/revenue` names each schedule's issue event (`inboxId`, required in the published
-        // API); the opening's schedules (S10) are read on `/api/opening` until an additive field
-        // shows them here.
+        // `schedules` names each schedule's issue event (`inboxId`, required in the published API);
+        // the opening's schedules (S10) come apart, in `openingSchedules`.
         isNotNull(recognitionSchedules.eventId),
-        filter.state === undefined ? undefined : stateFilter(filter.state),
-        filter.client === undefined
-          ? undefined
-          : eq(recognitionSchedules.clientValueId, filter.client),
-        filter.contract === undefined
-          ? undefined
-          : eq(recognitionSchedules.contractValueId, filter.contract),
-        first === null || last === null
-          ? undefined
-          : sql`((${recognitionSchedules.serviceFrom} <= ${last} and ${recognitionSchedules.serviceTo} >= ${first})
-              or exists (select 1 from ${recognitionMovements} m join ${journalEntries} e on e.company_id = m.company_id and e.id = m.entry_id
-                where m.company_id = ${recognitionSchedules.companyId} and m.schedule_id = ${recognitionSchedules.id}
-                  and e.entry_date between ${first} and ${last}))`,
+        ...filters,
         after === null
           ? undefined
           : sql`(${recognitionSchedules.createdAt}, ${recognitionSchedules.id}) < (select s.created_at, s.id from ${recognitionSchedules} s where s.id = ${after})`,
@@ -217,9 +247,18 @@ export async function readRevenueSchedules(
     )
     .orderBy(desc(recognitionSchedules.createdAt), desc(recognitionSchedules.id))
     .limit(REVENUE_PAGE_SIZE + 1);
+  const openingRows =
+    after === null
+      ? await tx
+          .select()
+          .from(recognitionSchedules)
+          .where(and(isNull(recognitionSchedules.eventId), ...filters))
+          .orderBy(asc(recognitionSchedules.createdAt), asc(recognitionSchedules.id))
+      : [];
   return {
     schedules: await shape(tx, rows.slice(0, REVENUE_PAGE_SIZE)),
     more: rows.length > REVENUE_PAGE_SIZE,
+    openingSchedules: await shapeOpening(tx, openingRows),
   };
 }
 
@@ -462,19 +501,29 @@ export async function previewRevenueMonth(
   );
   const valueById = (id: string) => values.get(id) as NonNullable<ReturnType<typeof values.get>>;
   const byInvoice = new Map<string, RevenuePreview['entries'][number]>();
+  // The opening's invoices are released by the job too, one entry per invoice (S10 rule 24); they
+  // have no issue event, so they are listed apart.
+  const byOpeningInvoice = new Map<string, RevenuePreview['openingEntries'][number]>();
   for (const state of states) {
     const part = unreleased(state, month);
-    // The opening's invoices are released by the job too; this preview names each entry's issue
-    // event, so it lists the events' only (see the schedules above).
-    if (part === null || state.schedule.eventId === null) continue;
+    if (part === null) continue;
     const { schedule } = state;
-    const key = schedule.eventId as string;
-    const entry = byInvoice.get(key) ?? {
-      inboxId: key,
+    const fields = {
       invoiceNumber: schedule.invoiceNumber,
       date: lastDayOfMonth(`${month}-01`),
-      lines: [],
+      lines: [] as RevenuePreview['entries'][number]['lines'],
     };
+    let entry: { lines: RevenuePreview['entries'][number]['lines'] };
+    if (schedule.eventId !== null) {
+      const key = schedule.eventId;
+      entry = byInvoice.get(key) ?? { inboxId: key, ...fields };
+      byInvoice.set(key, entry as RevenuePreview['entries'][number]);
+    } else {
+      const openingId = schedule.openingId as string;
+      const key = `${openingId}:${schedule.invoiceDocumentId}`;
+      entry = byOpeningInvoice.get(key) ?? { openingId, ...fields };
+      byOpeningInvoice.set(key, entry as RevenuePreview['openingEntries'][number]);
+    }
     entry.lines.push({
       scheduleId: schedule.id,
       client: valueById(schedule.clientValueId),
@@ -482,7 +531,10 @@ export async function previewRevenueMonth(
       service: valueById(state.serviceValueId),
       amounts: wire(part),
     });
-    byInvoice.set(key, entry);
   }
-  return { month, entries: [...byInvoice.values()] };
+  return {
+    month,
+    entries: [...byInvoice.values()],
+    openingEntries: [...byOpeningInvoice.values()],
+  };
 }

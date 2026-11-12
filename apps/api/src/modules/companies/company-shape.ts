@@ -1,4 +1,4 @@
-import type { Company } from '@vertex-mizan/contracts';
+import type { Company, OpeningState } from '@vertex-mizan/contracts';
 import { type companies, type companySettings, ledgersOf } from '@vertex-mizan/db';
 
 export { ledgerColumns, ledgersOf } from '@vertex-mizan/db';
@@ -7,7 +7,11 @@ type CompanyRow = typeof companies.$inferSelect;
 type SettingsRow = typeof companySettings.$inferSelect;
 
 /** A company as the API answers it (`companySchema`). */
-export function companyOf(company: CompanyRow, settings: SettingsRow): Company {
+export function companyOf(
+  company: CompanyRow,
+  settings: SettingsRow,
+  openingState: OpeningState | null,
+): Company {
   return {
     id: company.id,
     name: company.name,
@@ -16,6 +20,8 @@ export function companyOf(company: CompanyRow, settings: SettingsRow): Company {
     fiscalYearStartMonth: settings.fiscalYearStartMonth,
     policyNote: settings.policyNote,
     booksStarted: settings.booksStartedAt !== null,
+    booksStart: settings.booksStart,
+    openingState,
     manualEntryApproval: settings.manualEntryApproval,
     paymentToleranceSyp: settings.paymentToleranceSypMinor.toString(),
     paymentToleranceUsd: settings.paymentToleranceUsdMinor.toString(),

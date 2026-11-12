@@ -1,4 +1,5 @@
 import { type EventType, parseEventEnvelope } from './events.js';
+import { type OpeningSnapshot, openingSnapshotSchema } from './opening.js';
 import {
   type ReconciliationReport,
   reconciliationAmountOf,
@@ -199,4 +200,69 @@ export function reconciliationExampleV1(on: string): ReconciliationReport {
       events.map((event) => ({ type: event.type, amount: reconciliationAmountOf(event) })),
     ).map((total) => ({ ...total, amount: total.amount === null ? null : Number(total.amount) })),
   });
+}
+
+/** A date `days` after `date` (`YYYY-MM-DD`, negative before), in UTC. */
+function shift(date: string, days: number): string {
+  const at = new Date(`${date}T00:00:00Z`);
+  at.setUTCDate(at.getUTCDate() + days);
+  return at.toISOString().slice(0, 10);
+}
+
+const retainer = {
+  external_id: id(9005),
+  code: 'R-EX',
+  name: 'عقد شهري مثال',
+  kind: 'retainer',
+  client_external_id: client.external_id,
+};
+const openingInvoice = { id: id(701), number: 'INV-EX-0007' };
+
+/**
+ * Hub's opening snapshot for a company whose books start on `booksStart` (S10 rule 5), as of its
+ * eve: S10's worked example with the example client. One unpaid invoice issued 20 days before the
+ * eve at Hub's rate 117.0000, one monthly retainer line of 300.00 USD for the cycle from 14 days
+ * before the eve to 14 days after the books start, and the client's wallet of 500.00 USD; the
+ * register holds the invoice. Its key (`Idempotency-Key`) is `openingSnapshotKeyV1(booksStart)`.
+ */
+export function openingSnapshotExampleV1(booksStart: string): OpeningSnapshot {
+  const asOf = shift(booksStart, -1);
+  const issuedOn = shift(asOf, -20);
+  return openingSnapshotSchema.parse({
+    as_of: asOf,
+    generated_at: `${booksStart}T06:00:00+03:00`,
+    invoices: [
+      {
+        invoice: openingInvoice,
+        client,
+        contract: retainer,
+        currency: 'USD',
+        syp_per_usd: '117.0000',
+        issued_on: issuedOn,
+        due_on: shift(issuedOn, 15),
+        total: 30_000,
+        outstanding: 30_000,
+        lines: [
+          {
+            id: id(702),
+            amount: 30_000,
+            service: { ...service, department },
+            source: 'retainer_charge',
+            charge_kind: 'monthly',
+            cycle_start: shift(asOf, -14),
+            cycle_end: shift(booksStart, 14),
+          },
+        ],
+      },
+    ],
+    wallets: [{ client, balance: 50_000 }],
+    prior_documents: {
+      invoices: [{ invoice: openingInvoice, issued_on: issuedOn }],
+    },
+  });
+}
+
+/** The example snapshot's key, fixed per books start, so a second post is a replay. */
+export function openingSnapshotKeyV1(booksStart: string): string {
+  return `opening-example-${booksStart}`;
 }

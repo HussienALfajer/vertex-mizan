@@ -82,6 +82,7 @@ test.describe('the schedules', () => {
         json: {
           schedules: state === 'completed' ? [releasedCycle] : [cycle, releasedCycle],
           nextCursor: null,
+          openingSchedules: [],
         },
       };
     });
@@ -113,7 +114,7 @@ test.describe('the schedules', () => {
   test('says when there is no schedule yet, and when none matches', async ({ page }) => {
     await answer(page, 'GET', '/revenue/schedules', {
       status: 200,
-      json: { schedules: [], nextCursor: null },
+      json: { schedules: [], nextCursor: null, openingSchedules: [] },
     });
     await page.goto('/revenue');
     await expect(page.getByText(t.empty.title)).toBeVisible();
