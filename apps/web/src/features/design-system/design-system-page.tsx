@@ -28,6 +28,8 @@ import {
   CardTitle,
   type CellEdit,
   ChangeList,
+  Checklist,
+  type ChecklistItemData,
   type DateRange,
   DateRangeField,
   Digest,
@@ -856,6 +858,44 @@ function InboxSample() {
   );
 }
 
+/** A pre-close checklist (S07), in both densities: passed, failed with its link, not applicable. */
+function ChecklistSample() {
+  const c = t.checklist;
+  const r = ar.periods.checklist.results;
+  const items: ChecklistItemData[] = [
+    { id: 'a', status: 'passed', label: c.items[0], statusLabel: r.passed },
+    {
+      id: 'b',
+      status: 'failed',
+      label: c.items[1],
+      statusLabel: r.failed,
+      count: c.count,
+      action: (
+        <Button variant="link" size="sm" render={<a href="#checklist" />}>
+          {c.link}
+        </Button>
+      ),
+    },
+    {
+      id: 'c',
+      status: 'not_applicable',
+      label: c.items[2],
+      statusLabel: r.not_applicable,
+      description: c.ledger,
+    },
+  ];
+  return (
+    <div className="grid min-w-0 gap-4 lg:grid-cols-2">
+      {(['compact', 'comfortable'] as const).map((density) => (
+        <Card key={density} data-density={density} className="min-w-0 gap-3 p-4 text-control">
+          <p className="text-muted-foreground text-sm">{c[density]}</p>
+          <Checklist items={items} summary={c.summary} aria-label={c.label} />
+        </Card>
+      ))}
+    </div>
+  );
+}
+
 /** A synthetic key, made at run time: the secret scan refuses literals that look like keys. */
 const sampleSecret = ['mzn', 'Example'.repeat(6).slice(0, 40)].join('_');
 
@@ -1134,6 +1174,11 @@ export function DesignSystemPage() {
       <Section id="inbox" title={t.inbox.title}>
         <p className="text-muted-foreground">{t.inbox.hint}</p>
         <InboxSample />
+      </Section>
+
+      <Section id="checklist" title={t.checklist.title}>
+        <p className="text-muted-foreground">{t.checklist.hint}</p>
+        <ChecklistSample />
       </Section>
 
       <Section id="secret-reveal" title={t.secretReveal.title}>

@@ -103,9 +103,11 @@ export function InboxPage() {
   const search = route.useSearch();
   const view: InboxView = search.document ? 'all' : (search.view ?? 'held');
   const navigate = useNavigate();
-  const [filters, setFilters] = useState<Filters>(() =>
-    search.reason ? { ...noFilters, reason: search.reason } : noFilters,
-  );
+  const [filters, setFilters] = useState<Filters>(() => ({
+    ...noFilters,
+    ...(search.reason ? { reason: search.reason } : {}),
+    range: { from: search.from ?? '', to: search.to ?? '' },
+  }));
   return (
     <>
       <PageHeader title={t.title} description={t.description} />
