@@ -700,7 +700,9 @@ for (const colorScheme of ['light', 'dark'] as const) {
 
         test('profitability', async ({ page }, testInfo) => {
           await page.goto('/reports/profitability?by=department');
-          await expect(page.getByText(ar.reports.profitability.unassigned)).toBeVisible();
+          await expect(
+            page.getByText(ar.reports.profitability.unassigned).filter({ visible: true }).first(),
+          ).toBeVisible();
           await expectNoPageOverflow(page);
           await screenshot(page, testInfo, `profitability-${colorScheme}-${width}`);
         });
