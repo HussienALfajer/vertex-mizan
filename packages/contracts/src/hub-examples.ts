@@ -60,7 +60,10 @@ export function eventExamplesV1(on: string): EventExample[] {
         syp_per_usd: '122.0000',
         issued_on: on,
         due_on: on,
-        lines: [{ id: line, amount: 50_000, service, source: 'extra_work' }],
+        // the service with its performing department (S09 rule 33)
+        lines: [
+          { id: line, amount: 50_000, service: { ...service, department }, source: 'extra_work' },
+        ],
       },
     ],
     ['invoice.due_date_changed', { invoice, due_on: on }],

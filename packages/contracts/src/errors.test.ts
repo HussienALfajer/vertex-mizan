@@ -123,6 +123,8 @@ describe('error codes', () => {
       ['CHECKLIST_FAILED', 409],
       // S08, daily reconciliation
       ['RECONCILIATION_START_LOCKED', 409],
+      // S09, reports
+      ['DIMENSION_FROM_HUB', 409],
     ]);
   });
 

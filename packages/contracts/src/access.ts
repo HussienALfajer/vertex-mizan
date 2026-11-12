@@ -57,6 +57,8 @@ export const PERMISSIONS = [
   'revaluation.post',
   // S08: the daily reconciliation with Hub.
   'reconciliation.read',
+  // S09: every report, its drill-down, exports and the journal book's print register.
+  'reports.read',
 ] as const;
 
 export const permissionSchema = z.enum(PERMISSIONS).meta({ id: 'Permission' });
@@ -92,6 +94,7 @@ export const rolePermissions: Readonly<Record<Role, readonly Permission[]>> = {
     'periods.read',
     'revaluation.post',
     'reconciliation.read',
+    'reports.read',
   ],
   approver: [
     'company.read',
@@ -102,6 +105,7 @@ export const rolePermissions: Readonly<Record<Role, readonly Permission[]>> = {
     'drafts.read',
     'entries.approve',
     'open_items.read',
+    'reports.read',
   ],
   viewer: [
     'company.read',
@@ -110,6 +114,7 @@ export const rolePermissions: Readonly<Record<Role, readonly Permission[]>> = {
     'rates.read',
     'entries.read',
     'open_items.read',
+    'reports.read',
   ],
   auditor: [
     'company.read',
@@ -128,6 +133,7 @@ export const rolePermissions: Readonly<Record<Role, readonly Permission[]>> = {
     'recognition.read',
     'periods.read',
     'reconciliation.read',
+    'reports.read',
   ],
 };
 

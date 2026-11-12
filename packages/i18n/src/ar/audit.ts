@@ -121,6 +121,7 @@ export const audit = {
     'revaluation.posted': 'رحّل إعادة تقييم آخر الشهر',
     'period.closed': 'أقفل الشهر',
     'period.reopened': 'أعاد فتح الشهر',
+    'service_department.set': 'حدّد قسم الخدمة من تاريخ',
   } satisfies Record<CompanyAuditAction, string>,
   /** The audited entities (`AUDITED_FIELDS` in `packages/db`). */
   entities: {

@@ -125,6 +125,24 @@ describe('the event envelope (S05 rules 1–3)', () => {
     ).toEqual([]);
   });
 
+  it("takes a service's department on a revenue line, optional in /v1 (S09 rule 33)", () => {
+    const department = { external_id: 'design', name: 'التصميم' };
+    const withDepartment = { ...invoice.lines[0], service: { ...service, department } };
+    const parsed = parseEventEnvelope(
+      envelope('invoice.issued', { ...invoice, lines: [withDepartment] }),
+    );
+    expect(parsed.type === 'invoice.issued' && parsed.payload.lines[0]?.service.department).toEqual(
+      department,
+    );
+    const noName = {
+      ...withDepartment,
+      service: { ...service, department: { external_id: 'design' } },
+    };
+    expect(issues(envelope('invoice.issued', { ...invoice, lines: [noName] }))).toEqual([
+      'payload.lines.0.service.department.name',
+    ]);
+  });
+
   it('takes a negative amount on a retainer credit only, and a kind on a retainer charge only', () => {
     const charge = (fields: Record<string, unknown>) =>
       envelope('invoice.issued', {

@@ -62,6 +62,18 @@ export const hubValueRefSchema = z
 
 export type HubValueRef = z.infer<typeof hubValueRefSchema>;
 
+/**
+ * A service on a revenue line, with its performing department when Hub sends it (S09 rule 33;
+ * additive in `/v1`, ADR 0006): a department as on a project expense, its Hub ID the fixed code.
+ * A department other than the one in force on the accounting date starts a dated row
+ * (`service_departments`); none leaves the service's history as it is.
+ */
+export const hubServiceRefSchema = hubValueRefSchema
+  .extend({ department: hubValueRefSchema.optional() })
+  .meta({ id: 'HubServiceRef' });
+
+export type HubServiceRef = z.infer<typeof hubServiceRefSchema>;
+
 /** A contract (a project or a retainer) with its kind and its client's Hub ID (rule 2, rule 23). */
 export const hubContractRefSchema = z
   .object({
@@ -124,7 +136,7 @@ export const invoiceLineSchema = z
     id: z.uuid(),
     amount: z.int().min(-Number.MAX_SAFE_INTEGER).max(Number.MAX_SAFE_INTEGER),
     description: z.string().trim().min(1).max(500).optional(),
-    service: hubValueRefSchema,
+    service: hubServiceRefSchema,
     source: invoiceLineSourceSchema,
     charge_kind: retainerChargeKindSchema.optional(),
     cycle_start: hubDateSchema.optional(),
@@ -206,7 +218,7 @@ export const invoiceLineServiceChangedV1Schema = z
     invoice: hubDocumentIdSchema,
     line_id: z.uuid(),
     old_service: hubValueRefSchema,
-    new_service: hubValueRefSchema,
+    new_service: hubServiceRefSchema,
     changed_on: hubDateSchema,
   })
   .meta({ id: 'InvoiceLineServiceChangedV1' });
@@ -273,7 +285,7 @@ export const milestoneDoneV1Schema = z
     currency: hubCurrencySchema,
     amount: positiveMinorSchema,
     done_on: hubDateSchema,
-    service: hubValueRefSchema.optional(),
+    service: hubServiceRefSchema.optional(),
   })
   .meta({ id: 'MilestoneDoneV1' });
 
