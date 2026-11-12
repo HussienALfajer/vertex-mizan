@@ -67,6 +67,14 @@ One name per concept. Code, contracts and tables use the English term; the Arabi
 | كشف حساب | account statement | One account's lines and running balance |
 | قائمة الدخل | income statement | Revenue and expenses for a period |
 | الميزانية العمومية / قائمة المركز المالي | balance sheet | Assets, liabilities and equity at a date |
+| فترة المقارنة | comparative period | The second column of a report: by default the previous period of the same length, or for the balance sheet the end of the previous fiscal year (S09 rule 5) |
+| ربح (خسارة) السنة الحالية | year's result | Computed in the balance sheet's equity: revenue less expenses from the fiscal year's start to the date, until the year-end close (ADR 0018) |
+| أعيد تبويب للعرض | reclassified for presentation | An amount a statement shows on another line than its account's, such as a client's credit on receivables shown in payables; the account is unchanged (IAS 1.32) |
+| هامش المساهمة | contribution margin | Revenue less direct costs of a client, contract, department or service, with no overhead allocated |
+| غير موزع | unassigned | The part of a profitability total whose lines carry no value of the chosen dimension |
+| قسم الخدمة | service department | The department a service belongs to, dated, from Hub or set for a manual service (S09 rule 32) |
+| ما قبله | brought forward | The journal book's totals of the year's earlier pages, at the foot of each page |
+| الطبعة الرسمية / سجل الطبعات | official print / print register | A journal book printed for closed months, registered with its pages and hashes; superseded when one of its months is reopened |
 | السنة المالية | fiscal year | The calendar year by default |
 | الفترة | period | A month of the fiscal year: open, closed or reopened (ADR 0016) |
 | إقفال الفترة / إعادة فتحها | close / reopen a period | Stop / allow postings dated inside it |
