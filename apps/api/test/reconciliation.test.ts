@@ -234,9 +234,7 @@ describe('/api/reconciliation', () => {
       const counts = await member.browser.get('/api/reconciliation/counts');
       expect([counts.status, counts.body.code], role).toEqual([403, 'FORBIDDEN']);
     }
-    const counts = await book.owner.browser.get('/api/reconciliation/counts');
-    expect(counts.status).toBe(200);
-    expect(counts.body).toEqual({ uncleanDays: expect.any(Number) });
+    expect((await book.owner.browser.get('/api/reconciliation/counts')).status).toBe(200);
     const days = await book.owner.browser.get('/api/reconciliation/days', { month });
     const body = days.body as ReconciliationMonth;
     expect(body.clients).toHaveLength(1);
@@ -254,6 +252,30 @@ describe('/api/reconciliation', () => {
       { method: 'get', path: `/api/reconciliation/days/${today()}` },
       { method: 'get', path: '/api/reconciliation/counts' },
     ]);
+  });
+});
+
+describe('GET /api/reconciliation/counts (the sidebar)', () => {
+  it('counts the company’s own ended days not clean, for every role that reads them', async () => {
+    const unreported = monthsAgo(2);
+    const { book, hub } = await reconcilingBooks(`${unreported}-01`);
+    // Last month and this one are reported in full, so only the days of the month before,
+    // all missing at any time of day, count.
+    for (const date of [...daysOf(monthsAgo(1)), ...daysOf(today().slice(0, 7))]) {
+      expect((await report(hub, reportOf(date, []))).status, date).toBe(201);
+    }
+    const expected = { uncleanDays: daysOf(unreported).length };
+    expect((await book.owner.browser.get('/api/reconciliation/counts')).body).toEqual(expected);
+    for (const role of ['accountant', 'auditor'] as const) {
+      const member = await book.join(role);
+      const counts = await member.browser.get('/api/reconciliation/counts');
+      expect([counts.status, counts.body], role).toEqual([200, expected]);
+    }
+    // Another company's owner sees none of these days.
+    const other = await books(app, db);
+    expect((await other.owner.browser.get('/api/reconciliation/counts')).body).toEqual({
+      uncleanDays: 0,
+    });
   });
 });
 
