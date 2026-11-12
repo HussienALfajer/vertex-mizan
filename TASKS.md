@@ -13,7 +13,7 @@ Plan approved by the owner (2026-11-12, in the session), with this note: the sce
 - [x] api: `src/modules/reports/` (`GET /api/reports/trial-balance`, `general-ledger`, `accounts/:id/statement`, `journal`, `income-statement`, `balance-sheet`, `profitability`, `contract-position`, `revenue-schedule`, `lines`, `reports.read`, one repeatable-read snapshot each), `GET`/`POST /api/dimension-values/:id/departments` (`dimensions.read` · `dimensions.manage`, the company row locked for the write); `test/reports.test.ts` (every role, the figures agreeing, the parallel default of profitability, `VALIDATION_FAILED`, another company `NOT_FOUND`, the guard on every route, `DIMENSION_FROM_HUB`, `PERIOD_CLOSED`)
 - [x] bridge: OpenAPI regenerated; `pnpm check:openapi` passes (the department on the invoice line's service only: oasdiff reads a component shared by two of `/v1/events`' inline `oneOf` members as removed members)
 - [x] wiring (Contracts, Ledger, Database, API), docs (`packages/contracts`, `ledger`, `db`, `i18n`, `scenarios` `CLAUDE.md`, `apps/api/CLAUDE.md`, `docs/glossary.md`, `docs/open-questions.md` Q5, `docs/scenarios/README.md`, `docs/ROADMAP.md`)
-- [ ] checks and reviewers (`reviewer`, `accountant-reviewer`), PR with auto-merge and Auto-fix
+- [x] checks and reviewers (`reviewer`, `accountant-reviewer`; their findings fixed in c030e0d and re-reviewed clean; `pnpm verify --e2e-all` passes on c030e0d), PR with auto-merge and Auto-fix
 
 ## PR 2 — Exports and the journal book (contracts, db, ui print, api, worker, bridge)
 - [ ] db (`/db-migration`): `report_files` (queue, state updates only by the jobs role in the company context) and `journal_book_prints` append-only; registry, grants, guards
