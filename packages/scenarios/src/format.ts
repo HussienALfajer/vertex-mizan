@@ -715,11 +715,65 @@ const recordFigureSchema = z.strictObject({
   amount: amountSchema,
 });
 
+/** A list of the register whose documents are unique by their `key`. */
+const registerList = <Shape extends z.ZodRawShape>(key: keyof Shape & string, shape: Shape) =>
+  z
+    .array(z.strictObject(shape))
+    .refine(
+      (documents) =>
+        new Set(documents.map((document) => document[key as keyof typeof document])).size ===
+        documents.length,
+      `A document is listed twice by its ${key}`,
+    )
+    .default([]);
+
+const documentId = z.string().trim().min(1).max(100);
+
+/**
+ * The snapshot's register of prior documents (S10 rules 5 and 28): every Hub document dated on or
+ * before the eve, by type, with its date, and what a later event about it needs to be found (a
+ * payment's invoice, a wallet entry's or spend update's client). An event that voids, changes,
+ * archives or reopens one of them is held `NEEDS_DECISION` (`before_books_start`).
+ */
+const priorDocumentsSchema = z.strictObject({
+  invoices: registerList('invoice', { invoice: documentId, issued_on: dateSchema }),
+  payments: registerList('payment', {
+    payment: documentId,
+    invoice: documentId,
+    paid_on: dateSchema,
+  }),
+  wallet_entries: registerList('entry', {
+    entry: documentId,
+    client: z.string().min(1),
+    entered_on: dateSchema,
+  }),
+  spend_updates: registerList('update', {
+    update: documentId,
+    campaign: documentId,
+    client: z.string().min(1),
+    period_to: dateSchema,
+  }),
+  project_expenses: registerList('expense', { expense: documentId, spent_on: dateSchema }),
+  milestone_dones: registerList('milestone', { milestone: documentId, done_on: dateSchema }),
+});
+
+/** Each prior document's list and date, for the check that it is on or before the eve. */
+const priorDocumentDates = (register: z.infer<typeof priorDocumentsSchema>) =>
+  [
+    ...register.invoices.map((d) => ['invoices', d.issued_on] as const),
+    ...register.payments.map((d) => ['payments', d.paid_on] as const),
+    ...register.wallet_entries.map((d) => ['wallet_entries', d.entered_on] as const),
+    ...register.spend_updates.map((d) => ['spend_updates', d.period_to] as const),
+    ...register.project_expenses.map((d) => ['project_expenses', d.spent_on] as const),
+    ...register.milestone_dones.map((d) => ['milestone_dones', d.done_on] as const),
+  ] as const;
+
 /**
  * Hub's snapshot as of the eve of the books start (S10 rule 5), in the short form of the event
  * payloads: invoices with their total and outstanding, credit lines of invoices not in `invoices`,
- * milestones, and each client's USD wallet balance (funds held positive). Its executor checks it
- * against the snapshot's contract; here a decimal number is refused, as in any payload.
+ * milestones, each client's USD wallet balance (funds held positive) and the register of prior
+ * documents. Its executor checks it against the snapshot's contract; here a decimal number is
+ * refused, as in any payload.
  */
 const snapshotSchema = z.strictObject({
   invoices: z.array(payloadSchema).default([]),
@@ -732,6 +786,14 @@ const snapshotSchema = z.strictObject({
       'A wallet is stated twice',
     )
     .default([]),
+  prior_documents: priorDocumentsSchema.default({
+    invoices: [],
+    payments: [],
+    wallet_entries: [],
+    spend_updates: [],
+    project_expenses: [],
+    milestone_dones: [],
+  }),
 });
 
 /**
@@ -1037,6 +1099,19 @@ export const caseSchema = z
         issue(`An ${step.kind} step needs the company's books_start`, ['steps', s, step.kind]);
       }
       if (step.kind !== 'opening') continue;
+      // S10 rule 5: the register lists the documents dated on or before the eve.
+      if (booksStart !== null && step.snapshot !== null) {
+        const register = step.snapshot.prior_documents;
+        const listed = new Map<string, number>();
+        for (const [list, date] of priorDocumentDates(register)) {
+          const d = listed.get(list) ?? 0;
+          listed.set(list, d + 1);
+          if (date >= booksStart) {
+            const path = ['steps', s, 'snapshot', 'prior_documents', list, d];
+            issue(`A prior document is dated on or after the books start ${booksStart}`, path);
+          }
+        }
+      }
       for (const [l, line] of step.lines.entries()) {
         const path = ['steps', s, 'records', 'lines', l];
         if (line.parallel !== null && parallel === null) {

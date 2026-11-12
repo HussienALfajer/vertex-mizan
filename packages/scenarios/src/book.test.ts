@@ -120,6 +120,9 @@ steps:
             total: 30000, outstanding: 30000, lines: [{ amount: 30000, source: extra_work, service: S1 }] }
       wallets:
         - { client: C1, balance: -12000 }
+      prior_documents:
+        invoices: [{ invoice: INV-1, issued_on: 2026-09-10 }]
+        payments: [{ payment: PAY-1, invoice: INV-1, paid_on: 2026-09-20 }]
     records:
       lines:
         - { account: "3110", currency: SYP, amount: -3450000, parallel: -30000 }
@@ -970,6 +973,14 @@ describe('a case', () => {
         credits: [],
         milestones: [],
         wallets: [{ client: 'C1', balance: -12000n }],
+        prior_documents: {
+          invoices: [{ invoice: 'INV-1', issued_on: '2026-09-10' }],
+          payments: [{ payment: 'PAY-1', invoice: 'INV-1', paid_on: '2026-09-20' }],
+          wallet_entries: [],
+          spend_updates: [],
+          project_expenses: [],
+          milestone_dones: [],
+        },
       },
       lines: [
         {
@@ -1035,6 +1046,33 @@ describe('a case', () => {
     expect(
       refusal(OPENING.replace('reverse_opening: "Mistyped"', 'reverse_opening: ""')),
     ).toContain('reverse_opening');
+  });
+
+  it("reads the snapshot's register of prior documents, each dated on or before the eve (S10)", () => {
+    expect(refusal(OPENING.replace('paid_on: 2026-09-20', 'paid_on: 2026-10-01'))).toContain(
+      'A prior document is dated on or after the books start 2026-10-01',
+    );
+    expect(
+      refusal(
+        OPENING.replace(
+          'payments: [{ payment: PAY-1, invoice: INV-1, paid_on: 2026-09-20 }]',
+          'payments: [{ payment: PAY-1, invoice: INV-1, paid_on: 2026-09-20 }, { payment: PAY-1, invoice: INV-1, paid_on: 2026-09-21 }]',
+        ),
+      ),
+    ).toContain('A document is listed twice by its payment');
+    expect(
+      refusal(
+        OPENING.replace('{ invoice: INV-1, issued_on:', '{ invoice: INV-1, client: C1, issued_on:'),
+      ),
+    ).toContain('client');
+    expect(
+      refusal(
+        OPENING.replace(
+          '        invoices: [{ invoice: INV-1, issued_on',
+          '        receipts: [{ invoice: INV-1, issued_on',
+        ),
+      ),
+    ).toContain('receipts');
   });
 
   it('accepts a third-currency case with a line in TRY', () => {
