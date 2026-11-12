@@ -59,7 +59,7 @@ Every company table has `company_id`, forced RLS with `company_isolation`, compo
    - the permission `periods.close` and a reason;
    - *m* is not `closed` (`PERIOD_CLOSED`);
    - *m* has ended in Asia/Damascus (`PERIOD_NOT_ENDED`);
-   - every month from the company's first period to *m* − 1 is `closed` (`PERIOD_ORDER`, naming the earliest open month) (owner, 2026-11-11);
+   - every month from the company's first period to *m* − 1 is `closed` (`PERIOD_ORDER`, naming the earliest open month) (owner, 2026-11-11), and *m* is not before the first period (`PERIOD_ORDER`, naming the first period): such a month would become the first period for good, and rule 4 closes it already once any month is closed (owner, 2026-11-12);
    - every checklist item passes (`CHECKLIST_FAILED`, with the failing items) (owner, 2026-11-11: no override).
 
    A month between the first period and *m* that has no row yet gets one at its own close (an empty month still holds balances to revalue). The **first period** is the company's earliest period row (S10's opening entry makes it 2026-10 for Vertex Media).
