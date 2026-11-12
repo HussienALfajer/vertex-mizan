@@ -2,7 +2,7 @@
 
 Status: Proposed
 
-S10 wrote these cases (S10 "Scenarios"); the owner approved their expected entries and outcomes on 2026-11-12, with S10 rule 12 read for a company without Hub (its receivables may be opened on `112001`, owner, the same day; the SYP-only cases have none). They stay `Proposed` until S10's feature slice brings the executors of the `opening` and `reverse_opening` steps and of the company's `books_start`, then become `Approved (owner, 2026-11-12)` (`docs/scenarios/README.md`, "Status").
+S10 wrote these cases (S10 "Scenarios"); the owner approved their expected entries and outcomes on 2026-11-12: seven cases, then, after the accounting review, the eighth, a company without Hub opening its receivables on `112001`, with the owner's decision on S10 rule 12 of the same day (Hub's slots refuse the accountant's lines only in a company with a Hub client, an API client holding `events:write` or `opening:write`). They stay `Proposed` until S10's feature slice brings the executors of the `opening` and `reverse_opening` steps and of the company's `books_start`, then become `Approved (owner, 2026-11-12)` (`docs/scenarios/README.md`, "Status").
 
 ## Rule
 
@@ -28,7 +28,7 @@ The account codes are the service-agency template's (S02), in the new version wi
 
 Every case's books start is Thursday 1 October 2026, so its eve (`as_of`) is Wednesday 30 September, a publication day; 10, 15, 21 and 30 September and 20 and 29 October 2026 are publication days, and Saturday 31 October takes Thursday 29 October's bulletin.
 
-**The `opening` step** (`docs/scenarios/README.md`) is the owner's posting of the opening from its preview, with its fingerprint (S10 rules 20–23): Hub's snapshot as the API stores it (short form: an invoice as `invoice.issued`'s payload with its `total` and `outstanding`; a credit line of an invoice not in `invoices`, with that invoice's number, date and rate; a milestone with its project, installment and `done_on` if done by the eve; a wallet's USD balance as Hub shows it, funds held positive), then the accountant's lines and the records' figures, saved, then the post. A refused post (`OPENING_CHECKS_FAILED`) leaves the draft as saved. A step without `snapshot` is a company with no Hub client holding `opening:write`.
+**The `opening` step** (`docs/scenarios/README.md`) is the owner's posting of the opening from its preview, with its fingerprint (S10 rules 20–23): Hub's snapshot as the API stores it (short form: an invoice as `invoice.issued`'s payload with its `total` and `outstanding`; a credit line of an invoice not in `invoices`, with that invoice's number, date and rate; a milestone with its project, installment and `done_on` if done by the eve; a wallet's USD balance as Hub shows it, funds held positive), then the accountant's lines and the records' figures, saved, then the post. A refused post (`OPENING_CHECKS_FAILED`) leaves the draft as saved. A step without `snapshot` is a company with no Hub client (no API client holding `events:write` or `opening:write`, S10 rules 10 and 12).
 
 **Items and schedules:** a receivable item is named by Hub's invoice number, a contract asset item by Hub's milestone number, both with the client and the contract an `invoice.issued` or `milestone.done` gives them, and a running ad funds item by the client's code. A schedule's opening line carries the client and the contract, as S06's deferral does. A schedule from the opening gets two movements on the opening entry (S10 rule 13): `deferred`, the line's amount at its rates of issue, and `before_opening`, minus what S06 would have taken off it through the eve: its releases and, after a credit (case 2), the credit's liability part; the opening line is their sum. The movements are not in the expected entries; the integrity check holds them equal to the line.
 
@@ -488,7 +488,7 @@ expect:
 
 ### SYP books only, without Hub
 
-S10 edge case 21. A company with a books start and no Hub client: no snapshot and no records' figures, only the accountant's lines and the balancing figure. A USD cash balance is monetary and is measured at the bulletin of the eve; every other line is in SYP, so its amount is its book amount, and no parallel amount is stated.
+S10 edge case 21. A company with a books start and no Hub client: no snapshot and no records' figures, only the accountant's lines and the balancing figure; its receivables are the next case's. A USD cash balance is monetary and is measured at the bulletin of the eve; every other line is in SYP, so its amount is its book amount, and no parallel amount is stated.
 
 ```yaml
 case: SYP books only and no Hub; the records' lines, a USD cash balance at the bulletin of the eve and a 30,000.00 SYP balancing figure
@@ -562,6 +562,63 @@ expect:
         - { account: "312002", currency: SYP, amount: -5150000, book: -5150000 }
   balances:
     - { account: "312001", book: 0 }
+```
+
+### SYP books only, without Hub: receivables opened on `112001`, one paid
+
+S10 rule 12 and edge case 21 (owner, 2026-11-12). With no Hub client, the receivable slot takes the accountant's lines: each opens a document item with its reference and due date (source `opening`, no Hub document), monetary, so a USD receivable is measured at the bulletin of the eve, never stated. On 20 October the USD receivable is received in USD cash at 118: the item clears at its carrying amount and the book residual is a realised gain (S04 rules 4 and 10).
+
+```yaml
+case: SYP books only and no Hub; OLD-1 (100.00 USD at 115) and OLD-2 (250,000.00 SYP) opened on 112001; OLD-1 received at 118 with a 300.00 SYP gain
+company: { shape: syp, book: SYP, template: service-agency, books_start: 2026-10-01,
+           rate_policy: { book: bulletin } }
+rates:
+  - { date: 2026-09-30, base: USD, quote: SYP, rate: "115.0000", type: bulletin }
+  - { date: 2026-10-20, base: USD, quote: SYP, rate: "118.0000", type: bulletin }
+steps:
+  - opening: the records' balances with two receivables
+    records:
+      lines:
+        - { account: "112001", dims: { client: C1 }, currency: USD, amount: 10000,
+            open_item: { ref: OLD-1, due: 2026-10-15 } }
+        - { account: "112001", dims: { client: C2 }, currency: SYP, amount: 25000000,
+            open_item: { ref: OLD-2 } }
+        - { account: "111001", currency: SYP, amount: 10000000 }
+        - { account: "311001", currency: SYP, amount: -30000000 }
+        - { account: "312002", currency: SYP, amount: -5000000 }
+  - manual: OLD-1 received in full in USD cash
+    accounting_date: 2026-10-20
+    payload: { lines: [{ account: "111002", currency: USD, amount: 10000 },
+                       { account: "112001", currency: USD, amount: -10000, item: OLD-1 }] }
+expect:
+  entries:
+    - source: opening
+      date: 2026-10-01
+      lines:
+        # monetary: 100.00 USD × 115 (bulletin of the eve) = 11,500.00 SYP
+        - { account: "112001", dims: { client: C1 }, currency: USD, amount: 10000, book: 1150000 }
+        - { account: "112001", dims: { client: C2 }, currency: SYP, amount: 25000000, book: 25000000 }
+        - { account: "111001", currency: SYP, amount: 10000000, book: 10000000 }
+        - { account: "311001", currency: SYP, amount: -30000000, book: -30000000 }
+        - { account: "312002", currency: SYP, amount: -5000000, book: -5000000 }
+        # balancing: −(1,150,000 + 25,000,000 + 10,000,000 − 30,000,000 − 5,000,000) = −1,150,000
+        - { account: "312001", currency: SYP, amount: -1150000, book: -1150000 }
+    - source: manual
+      date: 2026-10-20
+      lines:
+        # 100.00 USD × 118 = 11,800.00 SYP received
+        - { account: "111002", currency: USD, amount: 10000, book: 1180000 }
+        # OLD-1 cleared at its carrying 11,500.00 SYP
+        - { account: "112001", dims: { client: C1 }, currency: USD, amount: -10000, book: -1150000 }
+        # book residual 1,180,000 − 1,150,000 = 30,000 → a realised gain of 300.00 SYP
+        - { account: "421001", currency: SYP, amount: -30000, book: -30000 }
+  balances:
+    - { account: "112001", book: 25000000 }
+    - { account: "421001", book: -30000 }
+    - { account: "312001", book: -1150000 }
+  open_items:
+    - { item: OLD-1, account: "112001", dims: { client: C1 }, currency: USD, amount: 0, book: 0 }
+    - { item: OLD-2, account: "112001", dims: { client: C2 }, currency: SYP, amount: 25000000, book: 25000000 }
 ```
 
 ### USD books with an SYP parallel ledger

@@ -81,13 +81,13 @@ Every company table has `company_id`, forced RLS with `company_isolation`, compo
 9. The answer (`201`): `{ snapshot_id, as_of, received_at, replayed, counts, totals }`, totals per list and currency, so Hub can log what Mizan read.
 
 ### The draft
-10. One live opening per company (`openings`), created by the first save in `/opening`. A company with a books start and no Hub client prepares it without a snapshot; one with a client holding `opening:write` needs one (check `snapshot`, rule 21).
+10. One live opening per company (`openings`), created by the first save in `/opening`. A company with a books start and no Hub client prepares it without a snapshot; one with a Hub client (an API client holding `events:write` or `opening:write`) needs one (check `snapshot`, rule 21; owner, 2026-11-12).
 11. **Hub's part** is computed on read from the latest snapshot, never typed or stored before posting:
     - **Receivables:** one `document` item per invoice with an outstanding amount, on the `receivable` slot, with the client and contract dimensions an `invoice.issued` would give it, its Hub document, its number as reference and its `due_on` (setter `opening`).
     - **Contract liabilities:** one schedule per line whose recognition is unfinished at `as_of` (rule 13), on the `contract_liability` slot with its dimensions.
     - **Contract assets:** one `document` item per milestone done and not invoiced, on the `contract_asset` slot, its installment in the project's currency, with the milestone as Hub document and its number as reference.
     - **Client ad funds:** one `running` item per wallet on the `ad_funds` slot, in USD, its balance credit (a negative wallet a debit, ADR 0007).
-12. **Hub's slots** (`receivable`, `ad_funds`, `contract_asset`) take no line from the accountant (`VALIDATION_FAILED`) in a company with an API client holding `opening:write`: Hub's snapshot is their only source. In a company without one, they take the accountant's lines as any control account does (owner, 2026-11-12). The accountant may open items on other control accounts, and on Hub's slots in a company without such a client, with a reference and an optional due date (source `opening`, no Hub document), as S04 rule 6.
+12. **Hub's slots** (`receivable`, `ad_funds`, `contract_asset`) take no line from the accountant (`VALIDATION_FAILED`) in a company with a Hub client (an API client holding `events:write` or `opening:write`): Hub's snapshot is their only source, so a replayed payment finds its item by Hub's document and no document is counted twice. In a company without one, they take the accountant's lines as any control account does, monetary and measured as rule 17 says (owner, 2026-11-12). The accountant may open items on other control accounts, and on Hub's slots in a company without a Hub client, with a reference and an optional due date (source `opening`, no Hub document), as S04 rule 6.
 13. **A schedule's opening** is what S06's rules would leave at the end of `as_of` had each snapshot invoice posted on its `issued_on` at its rates, each credit on its date and each milestone done on its `done_on`, computed by S06's pure functions in `packages/ledger` (owner, 2026-11-12):
     - `over_time`: the line's amount less its cumulative share of the cycle's days through `as_of`, cumulative rounding in each ledger, credits applied as S06 rule 6;
     - `point_in_time`: the whole line while its milestone is not done on or before `as_of`; nothing once done;
@@ -109,7 +109,7 @@ Every company table has `company_id`, forced RLS with `company_isolation`, compo
 ### Checks and posting
 20. **The preview** (`GET /api/opening`) shows the entry the draft would post now: every line with its amounts, rates and source (Hub or the records), the balancing figure, the records' comparison and the checks, with a `fingerprint` of the snapshot id, the draft version and the rates used.
 21. **Checks**, all of which must pass to post (`OPENING_CHECKS_FAILED`, listing the failing ones):
-    - `snapshot`: a snapshot exists when the company has a client with `opening:write`;
+    - `snapshot`: a snapshot exists when the company has a Hub client (rule 10);
     - `records_agree`: for each client and currency, the records' figure equals Hub's items on that slot in the transaction currency (owner, 2026-11-12: no acceptance of a difference); every difference is listed with both figures;
     - `rates`: each ledger's policy rate for every currency on `as_of`, and the bulletin of every `issued_on` of a schedule, are recorded (S02 rule 16), each missing pair and date named;
     - `mappings`: the slots `receivable`, `ad_funds`, `contract_asset`, `contract_liability` and the roles `retained_earnings` and `pre_opening_result` point to usable accounts, and every Hub value is linked and not archived;
@@ -123,7 +123,7 @@ Every company table has `company_id`, forced RLS with `company_isolation`, compo
     - the opening `posted` with the snapshot id, and `opening.posted` in the audit log with the entry, the snapshot and the totals per ledger.
 
     A second post answers `OPENING_POSTED`. From the commit, rule 3's refusals stop and Hub's retries post.
-24. **Revaluation and recognition carry on:** S07 revalues the opening's monetary items at the end of the books start's month from their opening carrying amounts; S06's release of that month releases each opening schedule's share of the month, cumulative from the cycle's start.
+24. **Revaluation and recognition carry on:** S07 revalues the opening's monetary items at the end of the books start's month from their opening carrying amounts; S06's release of that month releases each opening schedule's share of the month, cumulative from the cycle's start, the opening's schedules in the order of their lines on the opening entry.
 
 ### Correction
 25. **The whole reversal** (owner, 2026-11-12): while the opening entry is the company's only posted entry, the owner may reverse it with a reason and a fresh two-factor code (`POST /api/opening/reverse`). Its reversal entry negates every line on the books start (S03 invariant 3); every item it opened moves back to zero, every schedule gets a `reversed` movement; the opening becomes `reversed` and rule 3 applies again. A new draft starts from a copy of the reversed one's lines and figures. After any other entry, the reversal is refused `OPENING_NOT_REVERSIBLE`.
@@ -151,7 +151,7 @@ Every company table has `company_id`, forced RLS with `company_isolation`, compo
 - **The opening entry** (source `opening`, dated on the books start; basis: the old records, Hub's snapshot and S06's rules; IAS 1.54 for the balance sheet):
   - Dr each receivable item (`112001`, client and contract) / Cr nothing paired: each item's outstanding, measured at the eve's rates;
   - Dr each contract asset item (`113001`, client and contract);
-  - Cr each opening schedule's remaining (`212001`, client, contract, service);
+  - Cr each opening schedule's remaining (`212001`, client and contract, as S06's deferral);
   - Cr each client's ad funds (`213001`, client; Dr for a negative wallet);
   - Dr or Cr each balance of the records: cash and bank (`111001`–`111006`), other assets and liabilities, capital (`311001`), the owner's current account (`313001`), the year's result before the books start (`312002`);
   - Cr or Dr retained earnings (`312001`), the balancing figure in each ledger.
@@ -295,7 +295,7 @@ The grid and the agreement table use `packages/ui`'s components (`DataTable`, `A
 18. `as_of` is a day without a bulletin: S02 rule 16's rate in force on that date (the last publication), as for any date.
 19. A zero balancing figure in one ledger only: the line posts with zero in that ledger.
 20. The year's result before the books start is a loss: a debit on `312002`.
-21. A `syp` company with a books start and no Hub client: no snapshot, no records' figures; the lines (its receivables as items on `112001` with their references, rule 12) and the balancing figure only.
+21. A `syp` company with a books start and no Hub client: no snapshot, no records' figures; the lines (its receivables as items on `112001` with their references and due dates, monetary, rule 12) and the balancing figure only.
 22. A `usd-syp` company: monetary SYP items measured at the bulletin into the USD book, Hub's rate in the SYP parallel ledger.
 23. A `third` balance (TRY cash) in the records: measured through the cross on `as_of`; Hub's part has none.
 24. The opening reversed and posted again: entries 1 (opening), 2 (its reversal), 3 (the new opening) in the journal book; items and schedules of the first are closed and new ones opened.

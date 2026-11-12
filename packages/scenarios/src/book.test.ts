@@ -984,7 +984,11 @@ describe('a case', () => {
         },
       ],
       figures: [{ slot: 'receivable', client: 'C1', currency: 'USD', amount: 30000n }],
-      outcome: { status: 'refused', reason: 'OPENING_CHECKS_FAILED', detail: 'records_agree,rates' },
+      outcome: {
+        status: 'refused',
+        reason: 'OPENING_CHECKS_FAILED',
+        detail: 'records_agree,rates',
+      },
     });
     expect(steps[1]).toMatchObject({
       kind: 'opening',
@@ -994,18 +998,28 @@ describe('a case', () => {
     });
     expect(steps[2]).toEqual({ kind: 'reverse_opening', reason: 'Mistyped', outcome: null });
 
-    expect(refusal(OPENING.replace('books_start: 2026-10-01', 'books_start: 2026-10-02'))).toContain(
-      'first day of a month',
-    );
+    expect(
+      refusal(OPENING.replace('books_start: 2026-10-01', 'books_start: 2026-10-02')),
+    ).toContain('first day of a month');
     expect(refusal(OPENING.replace(' books_start: 2026-10-01,', ''))).toContain(
       "needs the company's books_start",
     );
-    const withoutOpening = OPENING.replace(/ {2}- opening: the opening\n[\s\S]*?(?= {2}- reverse_opening)/, '');
-    expect(refusal(withoutOpening)).toContain('posts nothing without an opening step');
-    expect(refusal(OPENING.replace('amount: -3450000, parallel: -30000 }', 'amount: -3450000, book: -3450000, parallel: -30000 }'))).toContain(
-      "the book amount is the line's amount",
+    const withoutOpening = OPENING.replace(
+      / {2}- opening: the opening\n[\s\S]*?(?= {2}- reverse_opening)/,
+      '',
     );
-    expect(refusal(OPENING.replace('slot: receivable', 'slot: contract_asset'))).toContain('ad_funds');
+    expect(refusal(withoutOpening)).toContain('posts nothing without an opening step');
+    expect(
+      refusal(
+        OPENING.replace(
+          'amount: -3450000, parallel: -30000 }',
+          'amount: -3450000, book: -3450000, parallel: -30000 }',
+        ),
+      ),
+    ).toContain("the book amount is the line's amount");
+    expect(refusal(OPENING.replace('slot: receivable', 'slot: contract_asset'))).toContain(
+      'ad_funds',
+    );
     expect(
       refusal(
         OPENING.replace(
@@ -1018,9 +1032,9 @@ describe('a case', () => {
       'whole minor units',
     );
     expect(refusal(OPENING.replace('total: 30000', 'total: 300.5'))).toContain('A decimal number');
-    expect(refusal(OPENING.replace('reverse_opening: "Mistyped"', 'reverse_opening: ""'))).toContain(
-      'reverse_opening',
-    );
+    expect(
+      refusal(OPENING.replace('reverse_opening: "Mistyped"', 'reverse_opening: ""')),
+    ).toContain('reverse_opening');
   });
 
   it('accepts a third-currency case with a line in TRY', () => {

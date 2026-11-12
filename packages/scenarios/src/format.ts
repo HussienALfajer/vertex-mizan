@@ -721,20 +721,18 @@ const recordFigureSchema = z.strictObject({
  * milestones, and each client's USD wallet balance (funds held positive). Its executor checks it
  * against the snapshot's contract; here a decimal number is refused, as in any payload.
  */
-const snapshotSchema = z
-  .strictObject({
-    invoices: z.array(payloadSchema).default([]),
-    credits: z.array(payloadSchema).default([]),
-    milestones: z.array(payloadSchema).default([]),
-    wallets: z
-      .array(z.strictObject({ client: z.string().min(1), balance: amountSchema }))
-      .refine(
-        (wallets) => new Set(wallets.map((wallet) => wallet.client)).size === wallets.length,
-        'A wallet is stated twice',
-      )
-      .default([]),
-  })
-;
+const snapshotSchema = z.strictObject({
+  invoices: z.array(payloadSchema).default([]),
+  credits: z.array(payloadSchema).default([]),
+  milestones: z.array(payloadSchema).default([]),
+  wallets: z
+    .array(z.strictObject({ client: z.string().min(1), balance: amountSchema }))
+    .refine(
+      (wallets) => new Set(wallets.map((wallet) => wallet.client)).size === wallets.length,
+      'A wallet is stated twice',
+    )
+    .default([]),
+});
 
 /**
  * The owner's posting of the opening from its preview (S10 rules 10–23): the draft saved with the

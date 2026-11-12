@@ -127,11 +127,11 @@ steps:                              # in order; a Hub event, a manual entry, a r
                                     #   currency; the rest to the refund payable (S06 rules 15–16)
   - opening: <what it records>      # the opening saved and posted by the owner from its preview
     snapshot:                       #   (S10 rules 10–23), dated on the books start; Hub's snapshot
-      invoices:                     #   as of the eve, short form (omitted: no snapshot, and no Hub
+      invoices:                     #   as of the eve, short form (omitted: no snapshot and no Hub
         - { invoice: INV-2026-7, client: C1, contract: { code: R1, kind: retainer, client: C1 },
             currency: USD, syp_per_usd: "117.0000", issued_on: 2026-09-10, due_on: 2026-09-25,
             total: 30000, outstanding: 30000, lines: [{ ... }] }
-                                    #   client holds opening:write); an invoice as invoice.issued's
+                                    #   client, S10 rule 10); an invoice as invoice.issued's
                                     #   payload with its total and outstanding at the eve
       credits:                      # a credit line of an invoice not in invoices, with that invoice
         - { invoice: INV-2026-12, client: C1, contract: { ... }, currency: USD, syp_per_usd: "117.5000",
