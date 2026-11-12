@@ -9,7 +9,8 @@ import {
   openingSnapshotKeyV1,
   type RevenueSchedulePage,
 } from '@vertex-mizan/contracts';
-import type { Database } from '@vertex-mizan/db';
+import { type Database, sessions } from '@vertex-mizan/db';
+import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { OPENING_RETRY_AFTER_SECONDS } from '../src/core/errors/error.filter.js';
 import { createTestApp } from './app.js';
@@ -39,6 +40,13 @@ afterAll(async () => {
 });
 
 const BOOKS_START = '2026-10-01';
+
+/** A person's last fresh code six minutes ago, past the re-authentication window. */
+const ageCode = (userId: string) =>
+  db
+    .update(sessions)
+    .set({ reauthenticatedAt: new Date(Date.now() - 6 * 60 * 1000) })
+    .where(eq(sessions.userId, userId));
 const ledgers = {
   book: { currency: 'SYP', ratePolicy: { rateType: 'bulletin', acceptsTransactionRate: false } },
   parallel: { currency: 'USD', ratePolicy: { rateType: 'market', acceptsTransactionRate: true } },
@@ -208,6 +216,11 @@ describe('POST /v1/opening/snapshot (S10 rules 5–9)', () => {
     const stored = await snapshotOf(hub, large, 'large');
     expect(stored.status, JSON.stringify(stored.body)).toBe(201);
     expect(stored.body.counts.prior_documents).toBe(3001);
+    // Over 5 MB: refused as S10 rule 6 says, nothing stored.
+    const oversized = { ...snapshot, padding: 'x'.repeat(5 * 1024 * 1024) };
+    const refused = await snapshotOf(hub, oversized, 'oversized');
+    expect(refused.status).toBe(422);
+    expect(refused.body.code).toBe('VALIDATION_FAILED');
   });
 });
 
@@ -448,6 +461,43 @@ describe('/api/opening (S10 rules 10–26)', () => {
     const read = (await other.owner.browser.get('/api/opening')).body as OpeningViewAnswer;
     expect(read.state).toBeNull();
     expect(read.version).toBe(0);
+  });
+
+  it('needs opening.read, opening.prepare and opening.post, and a fresh code to post or reverse', async () => {
+    const book = await startedBooks();
+    for (const role of ['viewer', 'approver'] as const) {
+      const member = await book.join(role);
+      expect((await member.browser.get('/api/opening')).body.code, role).toBe('FORBIDDEN');
+    }
+    const accountant = await book.join('accountant');
+    expect((await accountant.browser.get('/api/opening')).status).toBe(200);
+    expect(
+      (await accountant.browser.post('/api/opening/reverse', { reason: 'سبب' })).body.code,
+    ).toBe('FORBIDDEN');
+    // The owner's code from the books start is six minutes old.
+    await ageCode(book.owner.person.id);
+    const view = (await book.owner.browser.get('/api/opening')).body as OpeningViewAnswer;
+    for (const [path, body] of [
+      ['/api/opening/post', { fingerprint: view.fingerprint }],
+      ['/api/opening/reverse', { reason: 'سبب' }],
+    ] as const) {
+      const refused = await book.owner.browser.post(path, body);
+      expect(refused.body.code, path).toBe('REAUTHENTICATION_REQUIRED');
+    }
+  });
+
+  it("never shows a company another company's snapshot", async () => {
+    const mine = await startedBooks();
+    const hub = await hubClient(app, mine.owner, { scopes: ['opening:write'] });
+    expect((await snapshotOf(hub, openingSnapshotExampleV1(BOOKS_START))).status).toBe(201);
+    expect(
+      ((await mine.owner.browser.get('/api/opening')).body as OpeningViewAnswer).snapshot,
+    ).not.toBeNull();
+    const theirs = await startedBooks();
+    const read = (await theirs.owner.browser.get('/api/opening')).body as OpeningViewAnswer;
+    expect(read.snapshot).toBeNull();
+    expect(read.hubItems).toEqual([]);
+    expect(read.schedules).toEqual([]);
   });
 
   it('is guarded', async () => {

@@ -4,14 +4,16 @@ import {
   isContractAsset,
   OPENING_CHECKS,
   type OpeningSnapshot,
-  openingEntryResultSchema,
   openingSnapshotResultSchema,
   openingSnapshotSchema,
   openingSnapshotTotals,
-  openingViewSchema,
-  reverseOpeningSchema,
   saveOpeningSchema,
 } from './opening.js';
+import {
+  openingEntryResultSchema,
+  openingViewSchema,
+  reverseOpeningSchema,
+} from './opening-view.js';
 
 // Synthetic ids and amounts only (AGENTS.md: public repository).
 const id = (n: number) => `01934b6e-0000-7000-8000-${String(n).padStart(12, '0')}`;

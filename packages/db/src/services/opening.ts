@@ -126,7 +126,9 @@ export async function booksStartLocked(tx: Transaction): Promise<boolean> {
  * posted opening, so nothing posts yet. The jobs skip it (the release, the digest's line).
  */
 export async function awaitsOpening(tx: Transaction): Promise<boolean> {
-  const [settings] = await tx.select({ booksStart: companySettings.booksStart }).from(companySettings);
+  const [settings] = await tx
+    .select({ booksStart: companySettings.booksStart })
+    .from(companySettings);
   if (settings === undefined || settings.booksStart === null) return false;
   const [posted] = await tx
     .select({ id: openings.id })

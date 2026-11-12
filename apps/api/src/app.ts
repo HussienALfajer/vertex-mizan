@@ -7,6 +7,7 @@ import { OPENING_SNAPSHOT_MAX_BYTES } from '@vertex-mizan/contracts';
 import bodyParser from 'body-parser';
 import { Logger } from 'nestjs-pino';
 import type { Config } from './core/config/config.js';
+import { OPENING_SNAPSHOT_PATH } from './core/errors/error.filter.js';
 import { sameOriginOnly } from './core/http/same-origin.js';
 
 /** Every route lives under `/api`, but Hub's API under `/v1` (S05, ADR 0006). */
@@ -14,9 +15,6 @@ export const API_PREFIX = 'api';
 
 /** The largest body any route reads: an event of 200 invoice lines fits (S05 rule 22). */
 export const BODY_LIMIT = '256kb';
-
-/** Hub's opening snapshot, the one route with a larger body (S10 rule 6: at most 5 MB). */
-export const OPENING_SNAPSHOT_PATH = '/v1/opening/snapshot';
 
 /** Settings applied to the application after it is created, in production and in tests alike. */
 export function configureApp(app: INestApplication, config: Config): INestApplication {

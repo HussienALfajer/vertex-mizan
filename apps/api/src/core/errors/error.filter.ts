@@ -13,7 +13,10 @@ import {
   errorStatus,
 } from '@vertex-mizan/contracts';
 import { describeForLog } from '@vertex-mizan/db';
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
+
+/** Hub's opening snapshot, the one route with a larger body (S10 rule 6: at most 5 MB). */
+export const OPENING_SNAPSHOT_PATH = '/v1/opening/snapshot';
 
 /** `Retry-After` of `OPENING_NOT_POSTED` (S10 rule 3). */
 export const OPENING_RETRY_AFTER_SECONDS = 3600;
@@ -54,7 +57,8 @@ export class ErrorFilter implements ExceptionFilter {
 
   catch(exception: unknown, host: ArgumentsHost): void {
     const response = host.switchToHttp().getResponse<Response>();
-    const [status, body] = this.answer(exception);
+    const request = host.switchToHttp().getRequest<Request>();
+    const [status, body] = this.answer(exception, request.path);
     // Before the opening posts, an event is sent again in an hour (S10 rule 3).
     if (exception instanceof DomainError && exception.code === 'OPENING_NOT_POSTED') {
       response.setHeader('Retry-After', String(OPENING_RETRY_AFTER_SECONDS));
@@ -62,7 +66,7 @@ export class ErrorFilter implements ExceptionFilter {
     response.status(status).json(body);
   }
 
-  private answer(exception: unknown): [number, unknown] {
+  private answer(exception: unknown, path: string): [number, unknown] {
     if (exception instanceof DomainError) {
       const { issues, ...facts } = exception.details ?? {};
       // The facts a refusal names (the ledger, pair and date of `RATE_MISSING`), as text.
@@ -94,6 +98,16 @@ export class ErrorFilter implements ExceptionFilter {
       return [coded.statusCode, coded];
     }
     const parser = bodyParserStatus(exception);
+    if (parser === HttpStatus.PAYLOAD_TOO_LARGE && path === OPENING_SNAPSHOT_PATH) {
+      // Hub's snapshot over 5 MB is one of S10 rule 6's refusals.
+      const body: ErrorResponse = {
+        statusCode: errorStatus.VALIDATION_FAILED,
+        code: 'VALIDATION_FAILED',
+        message: 'The snapshot is larger than 5 MB',
+        issues: [{ path: ['body'], message: 'At most 5 MB' }],
+      };
+      return [body.statusCode, body];
+    }
     if (parser === HttpStatus.PAYLOAD_TOO_LARGE) {
       // The body limit (S05 rule 22): no code, as Hub's contract names the status alone.
       const body: ErrorResponse = { statusCode: parser, message: 'The body is too large' };

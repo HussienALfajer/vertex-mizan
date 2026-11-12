@@ -42,8 +42,7 @@ let failed = false;
 if (options.opening) {
   const booksStart = options['books-start'];
   if (!/^\d{4}-\d{2}-01$/.test(booksStart)) {
-    process.stderr.write('--books-start takes the first day of a month as YYYY-MM-DD.
-');
+    process.stderr.write('--books-start takes the first day of a month as YYYY-MM-DD.\n');
     process.exit(1);
   }
   const response = await fetch(`${url}/v1/opening/snapshot`, {
@@ -59,8 +58,7 @@ if (options.opening) {
   const summary = body.snapshot_id
     ? `${body.replayed ? 'replayed' : 'stored'} as of ${body.as_of}`
     : body.code;
-  process.stdout.write(`${response.status} opening snapshot: ${summary}
-`);
+  process.stdout.write(`${response.status} opening snapshot: ${summary}\n`);
   if (response.status >= 400) failed = true;
 }
 for (const event of eventExamplesV1(today)) {

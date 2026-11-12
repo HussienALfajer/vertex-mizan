@@ -1,7 +1,7 @@
 import { type CompanyLedgers, parseEventEnvelope } from '@vertex-mizan/contracts';
 import {
-  accountRoles,
   type AuditActor,
+  accountRoles,
   chartAccounts,
   companySettings,
   createAccount,

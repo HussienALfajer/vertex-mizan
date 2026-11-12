@@ -1,7 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
-  appendPreOpeningResultAccount,
   type AuditActor,
+  appendPreOpeningResultAccount,
   awaitsOpening,
   companies,
   type Database,
