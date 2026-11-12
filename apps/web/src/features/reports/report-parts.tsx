@@ -123,13 +123,16 @@ export function linesLink(search: LinesSearch) {
   return <Link to="/reports/lines" search={search} />;
 }
 
-/** Where a mark leads: the month's period page, or its revaluation in the report's ledger. */
+/**
+ * Where a mark leads: the month's period page, or its revaluation in the report's ledger; S10's
+ * marks only explain how the report was read, and lead nowhere.
+ */
 function markLink(mark: ReportHeader['current']['marks'][number], month: string, ledger: Ledger) {
-  return mark === 'period_open' ? (
-    <Link to="/periods/$period" params={{ period: month }} />
-  ) : (
-    <Link to="/revaluation" search={{ period: month, ledger }} />
-  );
+  if (mark === 'period_open') return <Link to="/periods/$period" params={{ period: month }} />;
+  if (mark === 'before_revaluation') {
+    return <Link to="/revaluation" search={{ period: month, ledger }} />;
+  }
+  return undefined;
 }
 
 /** The marks of every column of a report's header (rule 4), with their links. */
@@ -142,7 +145,7 @@ export function HeaderMarks({ header }: { header: ReportHeader }) {
       const month = column.to.slice(0, 7);
       return {
         mark,
-        label: t.marks[mark],
+        label: t.marks[mark].replace('{date}', header.booksStart ?? ''),
         link: readsPeriods ? markLink(mark, month, header.ledger) : undefined,
         linkLabel: mark === 'period_open' ? t.markLinks.period : t.markLinks.revaluation,
       };

@@ -31,6 +31,10 @@ export const reports = {
   marks: {
     period_open: 'غير نهائية: الفترة مفتوحة',
     before_revaluation: 'قبل إعادة التقييم',
+    /** S10 rules 32–33; `{date}` is the header's `booksStart`. */
+    opening_entry: 'الرصيد الافتتاحي من قيد الافتتاح',
+    before_books_start: 'تبدأ الدفاتر في {date}',
+    pre_opening_result_in_equity: 'نتيجة ما قبل بدء الدفاتر ضمن حقوق الملكية',
   } satisfies Record<ReportMark, string>,
   draft: 'مسودة — غير رسمية',
   /** The header every export prints (rule 4). */
@@ -115,6 +119,8 @@ export const reports = {
     profit: 'ربح (خسارة) الفترة',
     yearResult: 'ربح (خسارة) السنة الحالية',
     unclosedYears: 'تشمل نتائج سنوات غير مقفلة',
+    /** S10 rule 31: the part of the year's result from before the books start. */
+    yearResultPreOpening: 'تشمل نتيجة ما قبل بدء الدفاتر',
     reclassified: 'أعيد تبويب للعرض',
     oppositeSide: 'رصيد على غير طبيعته',
     sections: {

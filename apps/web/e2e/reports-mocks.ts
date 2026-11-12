@@ -85,6 +85,7 @@ export const novemberHeader: ReportHeader = {
   currency: 'SYP',
   producedAt: '2026-11-09T06:00:00.000Z',
   latestEntry: { fiscalYear: 2026, number: 45 },
+  booksStart: null,
   current: {
     from: '2026-11-01',
     to: '2026-11-09',
@@ -359,6 +360,8 @@ export const balanceSheet: BalanceSheet = {
   ],
   yearResult: '58240000',
   compareYearResult: null,
+  yearResultPreOpening: '0',
+  compareYearResultPreOpening: null,
   totals: {
     assets: '140240000',
     liabilities: '82000000',
