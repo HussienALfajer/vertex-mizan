@@ -88,6 +88,7 @@ export class PeriodsController {
     'PERIOD_NOT_ENDED',
     'PERIOD_ORDER',
     'CHECKLIST_FAILED',
+    'OPENING_NOT_POSTED',
   )
   close(
     @Access() access: RequestAccess,

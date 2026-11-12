@@ -15,6 +15,9 @@ import {
 import { describeForLog } from '@vertex-mizan/db';
 import type { Response } from 'express';
 
+/** `Retry-After` of `OPENING_NOT_POSTED` (S10 rule 3). */
+export const OPENING_RETRY_AFTER_SECONDS = 3600;
+
 /** The code of a framework refusal that carries none (an unknown route, a malformed body). */
 const CODE_BY_STATUS: Partial<Record<number, ErrorCode>> = {
   [HttpStatus.BAD_REQUEST]: 'VALIDATION_FAILED',
@@ -52,6 +55,10 @@ export class ErrorFilter implements ExceptionFilter {
   catch(exception: unknown, host: ArgumentsHost): void {
     const response = host.switchToHttp().getResponse<Response>();
     const [status, body] = this.answer(exception);
+    // Before the opening posts, an event is sent again in an hour (S10 rule 3).
+    if (exception instanceof DomainError && exception.code === 'OPENING_NOT_POSTED') {
+      response.setHeader('Retry-After', String(OPENING_RETRY_AFTER_SECONDS));
+    }
     response.status(status).json(body);
   }
 

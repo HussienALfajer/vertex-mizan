@@ -167,6 +167,7 @@ export class DraftsController {
   })
   @ApiErrors(
     ...COMPANY_WRITE_ERRORS,
+    'OPENING_NOT_POSTED',
     'NOT_FOUND',
     'DRAFT_NOT_EDITABLE',
     'APPROVAL_REQUIRED',
@@ -236,6 +237,7 @@ export class DraftsController {
   @ApiOkResponse({ description: 'The posted entry and draft', standardSchema: postedDraftSchema })
   @ApiErrors(
     ...COMPANY_WRITE_ERRORS,
+    'OPENING_NOT_POSTED',
     'NOT_FOUND',
     'DRAFT_NOT_EDITABLE',
     'APPROVER_IS_PREPARER',

@@ -3,6 +3,8 @@ import { METHOD_METADATA, PARAMTYPES_METADATA } from '@nestjs/common/constants.j
 import { ModulesContainer } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, type OpenAPIObject, SwaggerModule } from '@nestjs/swagger';
+import { OPENING_SNAPSHOT_MAX_BYTES } from '@vertex-mizan/contracts';
+import bodyParser from 'body-parser';
 import { Logger } from 'nestjs-pino';
 import type { Config } from './core/config/config.js';
 import { sameOriginOnly } from './core/http/same-origin.js';
@@ -13,6 +15,9 @@ export const API_PREFIX = 'api';
 /** The largest body any route reads: an event of 200 invoice lines fits (S05 rule 22). */
 export const BODY_LIMIT = '256kb';
 
+/** Hub's opening snapshot, the one route with a larger body (S10 rule 6: at most 5 MB). */
+export const OPENING_SNAPSHOT_PATH = '/v1/opening/snapshot';
+
 /** Settings applied to the application after it is created, in production and in tests alike. */
 export function configureApp(app: INestApplication, config: Config): INestApplication {
   app.useLogger(app.get(Logger));
@@ -21,6 +26,8 @@ export function configureApp(app: INestApplication, config: Config): INestApplic
   // nginx on the same host forwards the client address; `request.ip` reads it from loopback only.
   express.set('trust proxy', 'loopback');
   express.use(sameOriginOnly(config.appUrl));
+  // The snapshot's parser runs first on its path; the general one then finds the body read.
+  express.use(OPENING_SNAPSHOT_PATH, bodyParser.json({ limit: OPENING_SNAPSHOT_MAX_BYTES }));
   express.useBodyParser('json', { limit: BODY_LIMIT });
   app.setGlobalPrefix(API_PREFIX, { exclude: [{ path: 'v1/{*path}', method: RequestMethod.ALL }] });
   app.enableShutdownHooks();

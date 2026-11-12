@@ -4,6 +4,7 @@ import {
   auditEntries,
   chartAccounts,
   companies,
+  companySettings,
   type Database,
   emailOutbox,
   invitations,
@@ -66,8 +67,14 @@ describe('admin:create-company', () => {
         template: 'service-agency',
       },
       ownerEmail: 'first.owner@example.test',
+      booksStart: null,
     });
     const base = ['--name', 'x', '--policy-note', 'y', '--owner-email', 'a@example.test'];
+    // S10 rule 1: the books start, the first day of a month.
+    expect(parseCreateCompany([...base, '--books-start', '2026-10-01']).booksStart).toBe(
+      '2026-10-01',
+    );
+    expect(() => parseCreateCompany([...base, '--books-start', '2026-10-15'])).toThrow();
     expect(parseCreateCompany([...base, '--template', 'general']).company.template).toBe('general');
     expect(parseCreateCompany([...base, '--template', 'none']).company.template).toBeNull();
     expect(() => parseCreateCompany([...base, '--template', 'retail'])).toThrow();
@@ -100,10 +107,16 @@ describe('admin:create-company', () => {
         'مذكرة.',
         '--owner-email',
         email,
+        '--books-start',
+        '2026-10-01',
       ]),
     );
     const [company] = await db.select().from(companies).where(eq(companies.id, created.companyId));
     expect(company?.createdByUserId).toBeNull();
+    const [settings] = await withCompany(db, created.companyId, (tx) =>
+      tx.select({ booksStart: companySettings.booksStart }).from(companySettings),
+    );
+    expect(settings?.booksStart).toBe('2026-10-01');
     // The service-agency chart in the creation transaction (S02 rule 1), audited as the system.
     const chart = await withCompany(db, created.companyId, async (tx) => ({
       accounts: await tx.select({ code: chartAccounts.code }).from(chartAccounts),

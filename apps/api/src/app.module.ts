@@ -32,6 +32,7 @@ import { InvitationsModule } from './modules/invitations/invitations.module.js';
 import { MeModule } from './modules/me/me.module.js';
 import { MembersModule } from './modules/members/members.module.js';
 import { OpenItemsModule } from './modules/open-items/open-items.module.js';
+import { OpeningModule } from './modules/opening/opening.module.js';
 import { PeriodsModule } from './modules/periods/periods.module.js';
 import { RatesModule } from './modules/rates/rates.module.js';
 import { ReconciliationModule } from './modules/reconciliation/reconciliation.module.js';
@@ -90,6 +91,7 @@ export class AppModule {
         InboxModule,
         RevenueModule,
         PeriodsModule,
+        OpeningModule,
         ReconciliationModule,
         ReportsModule,
         AuthModule,
