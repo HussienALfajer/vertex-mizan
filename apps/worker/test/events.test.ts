@@ -320,7 +320,9 @@ describe('events.held-digest', () => {
       .where(like(emailOutbox.dedupeKey, `held_digest:${companyId}:${day}:%`));
     expect(left).toEqual([]);
     expect(old).toBeDefined();
-  });
+    // The digest reads every company of the run's shared database (S08 rule 16), which the other
+    // files fill: its time grows with them, as the property tests' does.
+  }, 120_000);
 
   it('lists the ended months not closed with their failing checklist items (S07 "Jobs")', async () => {
     const companyId = await company();
@@ -382,7 +384,7 @@ describe('events.held-digest', () => {
     expect(rendered.text).toContain('- 2099-03-03: لم يصل تقرير Hub');
     expect(rendered.text).toContain('https://mizan.example.test/reconciliation');
     expect(rendered.text).not.toContain('صندوق الوارد');
-  });
+  }, 120_000);
 });
 
 describe('events.retry after a reopen (S07 rule 6)', () => {
