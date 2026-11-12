@@ -134,10 +134,8 @@ export async function closeMonthByHand(
   hold?: { readonly written: () => void; readonly until: Promise<void> },
 ) {
   await withCompany(app, companyId, async (tx) => {
-    const [head] = await tx
-      .select({ entryCount: ledgerHeads.entryCount })
-      .from(ledgerHeads)
-      .for('update');
+    // The ledger head first (ADR 0008's lock order), as the close service takes it.
+    await tx.select({ id: ledgerHeads.id }).from(ledgerHeads).for('update');
     // Months close in order (S07 rule 2): every month from the first period closes first.
     const rows = await tx
       .select({ period: periods.period, state: periods.state })
@@ -154,7 +152,6 @@ export async function closeMonthByHand(
         reason: 'إقفال للاختبار',
         userId: uuidv7(),
         checklist: [],
-        headSequence: BigInt(head?.entryCount ?? 0),
       });
     }
     if (hold !== undefined) {

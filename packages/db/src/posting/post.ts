@@ -2297,9 +2297,9 @@ async function replay(
  * A period's close or reopen as the period service decided it (S07 rules 2, 3, 9), written by the
  * ledger's one writer (ADR 0005 invariant 11), which writes every period row: an empty month
  * closed gets its row first, made open in its fiscal year (rule 2); then the `period_events` row
- * with the ledger head's sequence and, on a close, the checklist; then the state. The service has
- * locked the head and the period and checked the rules; the guards check the transition again.
- * Returns the period's id.
+ * with the ledger head's sequence and, on a close, the checklist; then the state. The ledger head
+ * is locked first (ADR 0008's lock order; the service has locked it already), and the guards
+ * check the transition again. Returns the period's id.
  */
 export async function writePeriodTransition(
   tx: Transaction,
@@ -2310,10 +2310,14 @@ export async function writePeriodTransition(
     readonly reason: string;
     readonly userId: string;
     readonly checklist: readonly unknown[] | null;
-    readonly headSequence: bigint;
   },
 ): Promise<string> {
   const { companyId, period, kind } = input;
+  const [head] = await tx
+    .select({ entryCount: ledgerHeads.entryCount })
+    .from(ledgerHeads)
+    .for('update');
+  if (!head) throw new Error('A company without its ledger head');
   let [row] = await tx.select().from(periods).where(eq(periods.period, period)).for('update');
   if (row === undefined && kind === 'closed') {
     const [settings] = await tx
@@ -2336,7 +2340,7 @@ export async function writePeriodTransition(
     reason: input.reason,
     userId: input.userId,
     checklist: input.checklist,
-    headSequence: input.headSequence,
+    headSequence: BigInt(head.entryCount),
   });
   await tx.update(periods).set({ state: kind }).where(eq(periods.id, row.id));
   return row.id;

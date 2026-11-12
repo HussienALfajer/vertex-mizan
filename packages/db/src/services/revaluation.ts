@@ -30,6 +30,7 @@ import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { type AuditActor, writeCompanyAudit } from '../audit.js';
 import type { Transaction } from '../client.js';
+import { isClosedPeriod, readClosedPeriods } from '../posting/periods.js';
 import { post, ratesOn } from '../posting/post.js';
 import { chartAccounts } from '../schema/chart.js';
 import { companySettings } from '../schema/companies.js';
@@ -439,16 +440,9 @@ async function postedRevaluations(
   }));
 }
 
-async function periodState(tx: Transaction, period: string): Promise<string | null> {
-  const [row] = await tx
-    .select({ state: periods.state })
-    .from(periods)
-    .where(eq(periods.period, period));
-  return row?.state ?? null;
-}
-
-function refuseClosed(state: string | null, period: string): void {
-  if (state === 'closed') {
+/** `PERIOD_CLOSED` for a closed month, or one before the first period while a month is closed. */
+async function refuseClosed(tx: Transaction, period: string): Promise<void> {
+  if (isClosedPeriod(await readClosedPeriods(tx), period)) {
     throw new DomainError('PERIOD_CLOSED', `The period ${period} is closed`, { period });
   }
 }
@@ -466,7 +460,7 @@ export async function previewRevaluation(
   input: { readonly period: string; readonly ledger: Ledger; readonly today: string },
 ): Promise<RevaluationPreview> {
   const { period, ledger } = input;
-  refuseClosed(await periodState(tx, period), period);
+  await refuseClosed(tx, period);
   const computed = await compute(tx, period, ledger);
   const totals = revaluationTotals(
     computed.balances.flatMap((balance) =>
@@ -545,7 +539,7 @@ export async function postRevaluation(
       reversalEntryId: done.reversal.id,
     };
   }
-  refuseClosed(await periodState(tx, period), period);
+  await refuseClosed(tx, period);
   const lastDay = lastDayOfMonth(`${period}-01`);
   if (today <= lastDay) {
     throw new DomainError('PERIOD_NOT_ENDED', `The month ${period} has not ended`, { period });

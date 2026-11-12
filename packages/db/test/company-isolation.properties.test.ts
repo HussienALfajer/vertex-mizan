@@ -27,7 +27,6 @@ import {
   inboundEventStates,
   inboundEvents,
   journalEntries,
-  ledgerHeads,
   post,
   postingRuleAccounts,
   postRevaluation,
@@ -677,10 +676,6 @@ async function seed(userId: string, data: CompanyData): Promise<string> {
     await seedSources(tx, row.id, userId);
     await seedRecognition(tx, row.id);
     // S07's period history: November closed, as the posting function writes a close.
-    const [ledgerHead] = await tx
-      .select({ entryCount: ledgerHeads.entryCount })
-      .from(ledgerHeads)
-      .for('update');
     await writePeriodTransition(tx, {
       companyId: row.id,
       period: '2026-11',
@@ -688,7 +683,6 @@ async function seed(userId: string, data: CompanyData): Promise<string> {
       reason: 'إقفال مولّد',
       userId,
       checklist: [],
-      headSequence: BigInt(ledgerHead?.entryCount ?? 0),
     });
     return tx
       .select({ id: journalEntries.id, hash: journalEntries.hash })

@@ -21,7 +21,7 @@ import {
   users,
   withCompany,
 } from '@vertex-mizan/db';
-import { asc, eq, inArray } from 'drizzle-orm';
+import { and, asc, eq, inArray, like } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import { afterAll, beforeAll, describe, expect, inject, it, vi } from 'vitest';
 import yauzl from 'yauzl';
@@ -182,7 +182,11 @@ describe('ledger.daily-anchor', () => {
 
     const today = todayInDamascus();
     const run = await job.anchor(today);
-    expect(run).toEqual({ anchoredOn: today, anchors: 2, emails: 2 });
+    // The run's database is shared by the worker's test files: other files' companies with entries
+    // today are anchored too, so this file reads its own companies and people only.
+    expect(run.anchoredOn).toBe(today);
+    expect(run.anchors).toBeGreaterThanOrEqual(2);
+    expect(run.emails).toBeGreaterThanOrEqual(2);
     const anchors = await Promise.all(
       [both, single, empty].map((id) =>
         withCompany(db, id, (tx) => tx.select().from(chainAnchors)),
@@ -200,7 +204,9 @@ describe('ledger.daily-anchor', () => {
     const emails = await db
       .select()
       .from(emailOutbox)
-      .where(eq(emailOutbox.kind, 'daily_anchor'))
+      .where(
+        and(eq(emailOutbox.kind, 'daily_anchor'), like(emailOutbox.recipient, 'worker.trust.%')),
+      )
       .orderBy(asc(emailOutbox.recipient));
     expect(emails.map((email) => email.recipient)).toEqual([
       'worker.trust.first@example.test',

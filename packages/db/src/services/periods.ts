@@ -207,14 +207,14 @@ export async function periodChecklist(
   ];
 }
 
-/** The ledger head locked first (ADR 0008's lock order), with its sequence. */
-async function lockHead(tx: Transaction): Promise<{ companyId: string; sequence: bigint }> {
+/** The ledger head locked first (ADR 0008's lock order), with its company. */
+async function lockHead(tx: Transaction): Promise<{ companyId: string }> {
   const [head] = await tx
-    .select({ companyId: ledgerHeads.companyId, entryCount: ledgerHeads.entryCount })
+    .select({ companyId: ledgerHeads.companyId })
     .from(ledgerHeads)
     .for('update');
   if (!head) throw new Error('A company without its ledger head');
-  return { companyId: head.companyId, sequence: BigInt(head.entryCount) };
+  return { companyId: head.companyId };
 }
 
 async function lockPeriod(tx: Transaction, period: string) {
@@ -357,7 +357,8 @@ export async function readPeriods(
  * `FOR UPDATE`, then the period row `FOR UPDATE`, then the checklist inside the same transaction,
  * so a posting, a release, a revaluation or a retry committed first is read. Refused in rule 2's
  * order: `PERIOD_CLOSED` (closed, or before the first period while a month is closed),
- * `PERIOD_NOT_ENDED`, `PERIOD_ORDER` (the earliest month from the first period not closed) and
+ * `PERIOD_NOT_ENDED`, `PERIOD_ORDER` (the earliest month from the first period not closed, or the
+ * first period for a month before it, which a close would make the first for good) and
  * `CHECKLIST_FAILED` (the failing items, in the checklist's order). An empty month gets its row.
  * Writes the `period_events` row with the checklist, the state and the `period.closed` audit row.
  */
@@ -384,6 +385,13 @@ export async function closePeriod(
     .from(periods)
     .orderBy(asc(periods.period));
   const first = rows[0]?.period;
+  // A month before the company's first period is never closed on its own: it would become the
+  // first period for good, and rule 4 closes every such month once a month is closed.
+  if (first !== undefined && period < first) {
+    throw new DomainError('PERIOD_ORDER', `${period} is before the first period ${first}`, {
+      period: first,
+    });
+  }
   if (first !== undefined && first < period) {
     const open = monthsOf({ from: first, to: monthBefore(period) }).find(
       (month) => rows.find((candidate) => candidate.period === month)?.state !== 'closed',
@@ -406,7 +414,6 @@ export async function closePeriod(
     reason,
     userId: actor.userId,
     checklist,
-    headSequence: head.sequence,
   });
   await writeCompanyAudit(tx, head.companyId, actor, {
     action: 'period.closed',
@@ -463,7 +470,6 @@ export async function reopenPeriod(
     reason,
     userId: actor.userId,
     checklist: null,
-    headSequence: head.sequence,
   });
   await writeCompanyAudit(tx, row.companyId, actor, {
     action: 'period.reopened',

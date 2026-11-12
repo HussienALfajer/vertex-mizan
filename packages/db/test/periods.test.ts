@@ -227,6 +227,8 @@ describe('closePeriod (S07 rules 2, 5, 7–9)', () => {
       code: 'PERIOD_CLOSED',
       details: { period: '2026-12' },
     });
+    // A month before the first period is closed already (rule 4).
+    expect(await refused(close(books, '2026-09'))).toMatchObject({ code: 'PERIOD_CLOSED' });
     const rows = await inCompany(books.id, (tx) =>
       tx
         .select({ period: periods.period, state: periods.state })
@@ -389,6 +391,19 @@ describe('reopenPeriod and postings (S07 rules 1, 3, 4, 6)', () => {
     ]);
   });
 
+  it('refuses to close a month before the first period, which would move the first for good', async () => {
+    const books = await newBooks(SYP);
+    await expense(books, '2026-10-15');
+    expect(await refused(close(books, '2016-10'))).toEqual({
+      code: 'PERIOD_ORDER',
+      details: { period: '2026-10' },
+    });
+    const rows = await inCompany(books.id, (tx) =>
+      tx.select({ period: periods.period }).from(periods),
+    );
+    expect(rows).toEqual([{ period: '2026-10' }]);
+  });
+
   it("answers another company's month as an empty month of the caller's", async () => {
     const [first, second] = [await newBooks(SYP), await newBooks(SYP)];
     await expense(first, '2026-10-15');
@@ -485,7 +500,6 @@ describe('the period guards (0041)', () => {
     await expense(books, '2026-12-10');
     const transition = (period: string, kind: 'closed' | 'reopened') =>
       inCompany(books.id, async (tx) => {
-        const [head] = await headOf(tx);
         await writePeriodTransition(tx, {
           companyId: books.id,
           period,
@@ -493,7 +507,6 @@ describe('the period guards (0041)', () => {
           reason: 'انتقال يدوي',
           userId: personId,
           checklist: kind === 'closed' ? [] : null,
-          headSequence: BigInt(head?.entryCount ?? 0),
         });
       });
     expect(await refusal(transition('2026-12', 'closed'))).toContain(
@@ -528,6 +541,62 @@ describe('the period guards (0041)', () => {
         ),
       ),
     ).toContain('before the first period while a month is closed');
+  });
+
+  it('serialises raw writes on the ledger head: a reopen and a later close never both pass', async () => {
+    const books = await newBooks(SYP);
+    await expense(books, '2026-10-15');
+    await expense(books, '2026-11-10');
+    await expense(books, '2026-12-10');
+    await close(books, '2026-10');
+    await close(books, '2026-11');
+    // A reopen of November written by hand, without the service's lock, held open.
+    let release = () => {};
+    const until = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let written = () => {};
+    const reopenWritten = new Promise<void>((resolve) => {
+      written = resolve;
+    });
+    const reopening = inCompany(books.id, async (tx) => {
+      const [november] = await tx.select().from(periods).where(eq(periods.period, '2026-11'));
+      const [head] = await headOf(tx);
+      await tx.insert(periodEvents).values({
+        companyId: books.id,
+        periodId: november?.id as string,
+        kind: 'reopened',
+        reason: 'إعادة فتح يدوية',
+        userId: personId,
+        checklist: null,
+        headSequence: BigInt(head?.entryCount ?? 0),
+      });
+      await tx
+        .update(periods)
+        .set({ state: 'reopened' })
+        .where(eq(periods.id, november?.id as string));
+      written();
+      await until;
+    });
+    await reopenWritten;
+    // A close of December written by hand at the same time waits for the head, then sees it.
+    let settled = false;
+    const closing = refusal(
+      inCompany(books.id, async (tx) => {
+        const [december] = await tx.select().from(periods).where(eq(periods.period, '2026-12'));
+        await tx
+          .update(periods)
+          .set({ state: 'closed' })
+          .where(eq(periods.id, december?.id as string));
+      }),
+    ).finally(() => {
+      settled = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(settled).toBe(false);
+    release();
+    await reopening;
+    expect(await closing).toContain('closes after every earlier month');
   });
 
   it('keeps the history append-only for the app role and the owner', async () => {

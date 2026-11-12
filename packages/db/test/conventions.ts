@@ -755,6 +755,10 @@ DECLARE
   first_period text;
   earlier integer;
 BEGIN
+  PERFORM 1
+  FROM public.ledger_heads h
+  WHERE h.company_id = NEW.company_id
+  FOR UPDATE;
   IF TG_OP = 'UPDATE' THEN
     IF (NEW.id, NEW.company_id, NEW.period, NEW.fiscal_year, NEW.created_at)
         IS DISTINCT FROM (OLD.id, OLD.company_id, OLD.period, OLD.fiscal_year, OLD.created_at)
@@ -2290,12 +2294,13 @@ DECLARE
   period_state text;
   head_sequence bigint;
 BEGIN
+  SELECT h.entry_count INTO head_sequence
+  FROM public.ledger_heads h
+  WHERE h.company_id = NEW.company_id
+  FOR UPDATE;
   SELECT p.state INTO period_state
   FROM public.periods p
   WHERE p.company_id = NEW.company_id AND p.id = NEW.period_id;
-  SELECT h.entry_count INTO head_sequence
-  FROM public.ledger_heads h
-  WHERE h.company_id = NEW.company_id;
   IF period_state IS NULL OR head_sequence IS NULL
     OR NEW.head_sequence IS DISTINCT FROM head_sequence
     OR NEW.created_at IS DISTINCT FROM now() THEN
