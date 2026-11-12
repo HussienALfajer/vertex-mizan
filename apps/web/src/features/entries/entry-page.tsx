@@ -37,6 +37,7 @@ import { formatDateTime, formatDay, formatEntryNumber } from '../../lib/format';
 import { can, useCompany } from '../../lib/session';
 import { companyQuery } from '../company/company-queries';
 import { HubDocumentLink } from '../inbox/inbox-parts';
+import { previousMonth } from '../periods/period-parts';
 import {
   AttachmentsCard,
   BackLink,
@@ -160,6 +161,11 @@ function EntryView({ entry }: { entry: Entry }) {
               >
                 <EntryNumberText number={entry.reverses} startMonth={startMonth} />
               </Link>
+            </Fact>
+          )}
+          {entry.source === 'revaluation' && can(me, 'periods.read') && (
+            <Fact label={ar.revaluation.entry.month}>
+              <RevaluationMonthLink entry={entry} />
             </Fact>
           )}
           {entry.reversedBy && (
@@ -345,5 +351,28 @@ function ReverseDialog({
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * A revaluation entry's month on `/revaluation` (S07 "Screens"): the entry is dated on the month's
+ * last day, its reversal on the next month's first day; its ledger is its difference lines'.
+ */
+function RevaluationMonthLink({ entry }: { entry: Entry }) {
+  const period = entry.reverses
+    ? previousMonth(entry.entryDate.slice(0, 7))
+    : entry.entryDate.slice(0, 7);
+  const ledger = entry.lines.find((line) => line.ledger !== null)?.ledger ?? 'book';
+  return (
+    <Link
+      to="/revaluation"
+      search={{ period, ledger }}
+      className="text-primary underline-offset-4 hover:underline"
+    >
+      <bdi dir="ltr" className="tabular-nums">
+        {period}
+      </bdi>
+      {` · ${ar.revaluation.ledgers[ledger]}`}
+    </Link>
   );
 }

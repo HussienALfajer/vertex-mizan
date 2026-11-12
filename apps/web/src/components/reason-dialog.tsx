@@ -37,6 +37,8 @@ interface ReasonDialogProps {
   /** The schema's longest reason, and the message beside a longer one. */
   maxLength?: number;
   lengthError?: string;
+  /** What a refusal names beyond its text (a close's failing checklist items), under it. */
+  errorDetail?: (error: unknown) => ReactNode;
 }
 
 /** A contract's `{ reason }` body schema. */
@@ -64,6 +66,7 @@ export function ReasonDialog({
   schema = reasonSchema,
   maxLength = 1000,
   lengthError = ar.company.validation.reasonLength,
+  errorDetail,
 }: ReasonDialogProps) {
   const { run, dialog } = useSensitiveAction();
   const [reason, setReason] = useState('');
@@ -127,6 +130,7 @@ export function ReasonDialog({
               <FieldError match={invalid !== undefined}>{invalid}</FieldError>
             </Field>
             <FormError error={confirm.error} />
+            {confirm.error && errorDetail?.(confirm.error)}
             <DialogFooter>
               <Button
                 type="submit"

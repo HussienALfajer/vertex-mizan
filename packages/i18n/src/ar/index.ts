@@ -18,9 +18,11 @@ import { inbox } from './inbox.js';
 import { integrity } from './integrity.js';
 import { members } from './members.js';
 import { openItems } from './open-items.js';
+import { periods } from './periods.js';
 import { permissions } from './permissions.js';
 import { postingRules } from './posting-rules.js';
 import { rates } from './rates.js';
+import { revaluation } from './revaluation.js';
 import { revenue } from './revenue.js';
 import { roles } from './roles.js';
 import { shell } from './shell.js';
@@ -55,6 +57,8 @@ export const ar = {
   postingRules,
   apiClients,
   revenue,
+  periods,
+  revaluation,
 };
 
 export type Catalog = typeof ar;

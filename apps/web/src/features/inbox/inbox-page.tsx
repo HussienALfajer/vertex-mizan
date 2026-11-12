@@ -72,6 +72,16 @@ interface Filters {
 
 const noFilters: Filters = { reason: 'any', type: 'any', range: { from: '', to: '' } };
 
+/** Whether any filter is set, by value: the address can set them (`?reason=`, `?from=&to=`). */
+function isFiltered(filters: Filters): boolean {
+  return (
+    filters.reason !== 'any' ||
+    filters.type !== 'any' ||
+    filters.range.from !== '' ||
+    filters.range.to !== ''
+  );
+}
+
 const reasonOptions = [
   { value: 'any' as const, label: t.filters.anyReason },
   ...HOLD_REASONS.map((reason) => ({ value: reason, label: t.reasons[reason] })),
@@ -103,9 +113,11 @@ export function InboxPage() {
   const search = route.useSearch();
   const view: InboxView = search.document ? 'all' : (search.view ?? 'held');
   const navigate = useNavigate();
-  const [filters, setFilters] = useState<Filters>(() =>
-    search.reason ? { ...noFilters, reason: search.reason } : noFilters,
-  );
+  const [filters, setFilters] = useState<Filters>(() => ({
+    ...noFilters,
+    ...(search.reason ? { reason: search.reason } : {}),
+    range: { from: search.from ?? '', to: search.to ?? '' },
+  }));
   return (
     <>
       <PageHeader title={t.title} description={t.description} />
@@ -214,7 +226,7 @@ function FilterBar({
   filters: Filters;
   onChange: (filters: Filters) => void;
 }) {
-  const filtered = filters !== noFilters;
+  const filtered = isFiltered(filters);
   return (
     <Card className="p-4">
       <search aria-label={t.filters.label}>
@@ -290,7 +302,7 @@ function EventList({
   });
   const canRetry = can(me, 'events.manage') && !membership.company.archived;
   const rows = list.data?.pages.flatMap((page) => page.events) ?? [];
-  const filtered = filters !== noFilters || document !== undefined;
+  const filtered = isFiltered(filters) || document !== undefined;
 
   if (!ordered) return null;
   if (list.isPending) {

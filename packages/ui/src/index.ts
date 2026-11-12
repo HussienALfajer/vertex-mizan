@@ -24,6 +24,7 @@ export * from './components/callout';
 export * from './components/card';
 export * from './components/change-list';
 export * from './components/checkbox';
+export * from './components/checklist';
 export * from './components/command-palette';
 export * from './components/date-range-field';
 export * from './components/dialog';

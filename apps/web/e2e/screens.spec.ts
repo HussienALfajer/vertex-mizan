@@ -24,6 +24,13 @@ import {
   resolved,
   retainerInvoice,
 } from './inbox-mocks';
+import {
+  closedOctober,
+  currentBookPreview,
+  octoberClosedList,
+  passingOctober,
+  periodsReads,
+} from './periods-mocks';
 import { rateReads, today } from './rate-mocks';
 import { client, m1, receivablesReads } from './receivables-mocks';
 import {
@@ -553,6 +560,85 @@ for (const colorScheme of ['light', 'dark'] as const) {
           await expect(page.getByText(ar.revenue.contractAsset.label)).toBeVisible();
           await expectNoPageOverflow(page);
           await screenshot(page, testInfo, `contract-asset-item-${colorScheme}-${width}`);
+        });
+      });
+
+      test.describe('period screens', () => {
+        test.use({ me: owner, api: periodsReads });
+        test.beforeEach(async ({ page }) => {
+          await page.clock.setFixedTime(today);
+        });
+
+        test('periods', async ({ page }, testInfo) => {
+          await page.goto('/periods');
+          await expect(page.getByRole('table', { name: ar.periods.table.label })).toBeVisible();
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `periods-${colorScheme}-${width}`);
+        });
+
+        test('period: failing checklist', async ({ page }, testInfo) => {
+          await page.goto('/periods/2026-10');
+          await expect(page.locator('[data-slot="checklist-item"]')).toHaveCount(7);
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `period-failing-${colorScheme}-${width}`);
+        });
+
+        test('period: close dialog', async ({ page }, testInfo) => {
+          await page.route('**/api/periods/2026-10', (route) =>
+            route.fulfill({ status: 200, json: passingOctober }),
+          );
+          await page.goto('/periods/2026-10');
+          await expect(page.getByText(`${ar.periods.detail.summary}: 7/7`)).toBeVisible();
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `period-passing-${colorScheme}-${width}`);
+          await page.getByRole('button', { name: ar.periods.close.action }).click();
+          await expect(page.getByRole('dialog')).toContainText(ar.periods.close.description);
+          await screenshot(page, testInfo, `period-close-${colorScheme}-${width}`, {
+            fullPage: false,
+          });
+        });
+
+        test('period: reopen dialog', async ({ page }, testInfo) => {
+          await page.route('**/api/periods/2026-10', (route) =>
+            route.fulfill({ status: 200, json: closedOctober }),
+          );
+          await page.route('**/api/periods', (route) =>
+            route.fulfill({ status: 200, json: octoberClosedList }),
+          );
+          await page.goto('/periods/2026-10');
+          await page.getByRole('button', { name: ar.periods.reopen.action }).click();
+          await expect(page.getByRole('dialog')).toContainText(ar.periods.reopen.description);
+          await screenshot(page, testInfo, `period-reopen-${colorScheme}-${width}`, {
+            fullPage: false,
+          });
+        });
+
+        test('revaluation: to post', async ({ page }, testInfo) => {
+          await page.goto('/revaluation?period=2026-10&ledger=book');
+          await expect(
+            page.getByRole('table', { name: ar.revaluation.balances.label }),
+          ).toBeVisible();
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `revaluation-to-post-${colorScheme}-${width}`);
+        });
+
+        test('revaluation: current', async ({ page }, testInfo) => {
+          await page.route('**/api/revaluation/2026-10*', (route) =>
+            route.fulfill({ status: 200, json: currentBookPreview }),
+          );
+          await page.goto('/revaluation?period=2026-10&ledger=book');
+          await expect(
+            page.getByRole('table', { name: ar.revaluation.posted.label }),
+          ).toBeVisible();
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `revaluation-current-${colorScheme}-${width}`);
+        });
+
+        test('revaluation: parallel, rate missing', async ({ page }, testInfo) => {
+          await page.goto('/revaluation?period=2026-10&ledger=parallel');
+          await expect(page.getByText(ar.revaluation.states.rate_missing)).toBeVisible();
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `revaluation-rate-missing-${colorScheme}-${width}`);
         });
       });
 

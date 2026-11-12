@@ -20,6 +20,7 @@ import { Route as AppCompanyIndexRouteImport } from './routes/_app/_company/inde
 import { Route as AppCompanyClientFundsRouteImport } from './routes/_app/_company/client-funds'
 import { Route as AppCompanyDimensionsRouteImport } from './routes/_app/_company/dimensions'
 import { Route as AppCompanyIntegrityRouteImport } from './routes/_app/_company/integrity'
+import { Route as AppCompanyRevaluationRouteImport } from './routes/_app/_company/revaluation'
 import { Route as AppAccountSecurityRouteImport } from './routes/_app/account/security'
 import { Route as AppCompaniesIndexRouteImport } from './routes/_app/companies/index'
 import { Route as AppCompaniesNewRouteImport } from './routes/_app/companies/new'
@@ -36,6 +37,8 @@ import { Route as AppCompanyEntriesNewRouteImport } from './routes/_app/_company
 import { Route as AppCompanyInboxIndexRouteImport } from './routes/_app/_company/inbox/index'
 import { Route as AppCompanyInboxIdRouteImport } from './routes/_app/_company/inbox/$id'
 import { Route as AppCompanyOpenItemsIdRouteImport } from './routes/_app/_company/open-items/$id'
+import { Route as AppCompanyPeriodsIndexRouteImport } from './routes/_app/_company/periods/index'
+import { Route as AppCompanyPeriodsPeriodRouteImport } from './routes/_app/_company/periods/$period'
 import { Route as AppCompanyRatesIndexRouteImport } from './routes/_app/_company/rates/index'
 import { Route as AppCompanyRatesCalendarRouteImport } from './routes/_app/_company/rates/calendar'
 import { Route as AppCompanyReceivablesIndexRouteImport } from './routes/_app/_company/receivables/index'
@@ -100,6 +103,11 @@ const AppCompanyDimensionsRoute = AppCompanyDimensionsRouteImport.update({
 const AppCompanyIntegrityRoute = AppCompanyIntegrityRouteImport.update({
   id: '/integrity',
   path: '/integrity',
+  getParentRoute: () => AppCompanyRoute,
+} as any)
+const AppCompanyRevaluationRoute = AppCompanyRevaluationRouteImport.update({
+  id: '/revaluation',
+  path: '/revaluation',
   getParentRoute: () => AppCompanyRoute,
 } as any)
 const AppAccountSecurityRoute = AppAccountSecurityRouteImport.update({
@@ -180,6 +188,16 @@ const AppCompanyInboxIdRoute = AppCompanyInboxIdRouteImport.update({
 const AppCompanyOpenItemsIdRoute = AppCompanyOpenItemsIdRouteImport.update({
   id: '/open-items/$id',
   path: '/open-items/$id',
+  getParentRoute: () => AppCompanyRoute,
+} as any)
+const AppCompanyPeriodsIndexRoute = AppCompanyPeriodsIndexRouteImport.update({
+  id: '/periods/',
+  path: '/periods/',
+  getParentRoute: () => AppCompanyRoute,
+} as any)
+const AppCompanyPeriodsPeriodRoute = AppCompanyPeriodsPeriodRouteImport.update({
+  id: '/periods/$period',
+  path: '/periods/$period',
   getParentRoute: () => AppCompanyRoute,
 } as any)
 const AppCompanyRatesIndexRoute = AppCompanyRatesIndexRouteImport.update({
@@ -265,6 +283,7 @@ export interface FileRoutesByFullPath {
   '/client-funds': typeof AppCompanyClientFundsRoute
   '/dimensions': typeof AppCompanyDimensionsRoute
   '/integrity': typeof AppCompanyIntegrityRoute
+  '/revaluation': typeof AppCompanyRevaluationRoute
   '/account/security': typeof AppAccountSecurityRoute
   '/companies/new': typeof AppCompaniesNewRoute
   '/sign-in/two-factor': typeof AuthSignInTwoFactorRoute
@@ -277,6 +296,7 @@ export interface FileRoutesByFullPath {
   '/entries/new': typeof AppCompanyEntriesNewRoute
   '/inbox/$id': typeof AppCompanyInboxIdRoute
   '/open-items/$id': typeof AppCompanyOpenItemsIdRoute
+  '/periods/$period': typeof AppCompanyPeriodsPeriodRoute
   '/rates/calendar': typeof AppCompanyRatesCalendarRoute
   '/revenue/$id': typeof AppCompanyRevenueIdRoute
   '/settings/api-clients': typeof AppCompanySettingsApiClientsRoute
@@ -289,6 +309,7 @@ export interface FileRoutesByFullPath {
   '/drafts/': typeof AppCompanyDraftsIndexRoute
   '/entries/': typeof AppCompanyEntriesIndexRoute
   '/inbox/': typeof AppCompanyInboxIndexRoute
+  '/periods/': typeof AppCompanyPeriodsIndexRoute
   '/rates/': typeof AppCompanyRatesIndexRoute
   '/receivables/': typeof AppCompanyReceivablesIndexRoute
   '/revenue/': typeof AppCompanyRevenueIndexRoute
@@ -304,6 +325,7 @@ export interface FileRoutesByTo {
   '/client-funds': typeof AppCompanyClientFundsRoute
   '/dimensions': typeof AppCompanyDimensionsRoute
   '/integrity': typeof AppCompanyIntegrityRoute
+  '/revaluation': typeof AppCompanyRevaluationRoute
   '/account/security': typeof AppAccountSecurityRoute
   '/companies/new': typeof AppCompaniesNewRoute
   '/sign-in/two-factor': typeof AuthSignInTwoFactorRoute
@@ -316,6 +338,7 @@ export interface FileRoutesByTo {
   '/entries/new': typeof AppCompanyEntriesNewRoute
   '/inbox/$id': typeof AppCompanyInboxIdRoute
   '/open-items/$id': typeof AppCompanyOpenItemsIdRoute
+  '/periods/$period': typeof AppCompanyPeriodsPeriodRoute
   '/rates/calendar': typeof AppCompanyRatesCalendarRoute
   '/revenue/$id': typeof AppCompanyRevenueIdRoute
   '/settings/api-clients': typeof AppCompanySettingsApiClientsRoute
@@ -328,6 +351,7 @@ export interface FileRoutesByTo {
   '/drafts': typeof AppCompanyDraftsIndexRoute
   '/entries': typeof AppCompanyEntriesIndexRoute
   '/inbox': typeof AppCompanyInboxIndexRoute
+  '/periods': typeof AppCompanyPeriodsIndexRoute
   '/rates': typeof AppCompanyRatesIndexRoute
   '/receivables': typeof AppCompanyReceivablesIndexRoute
   '/revenue': typeof AppCompanyRevenueIndexRoute
@@ -346,6 +370,7 @@ export interface FileRoutesById {
   '/_app/_company/client-funds': typeof AppCompanyClientFundsRoute
   '/_app/_company/dimensions': typeof AppCompanyDimensionsRoute
   '/_app/_company/integrity': typeof AppCompanyIntegrityRoute
+  '/_app/_company/revaluation': typeof AppCompanyRevaluationRoute
   '/_app/account/security': typeof AppAccountSecurityRoute
   '/_app/companies/new': typeof AppCompaniesNewRoute
   '/_auth/sign-in/two-factor': typeof AuthSignInTwoFactorRoute
@@ -359,6 +384,7 @@ export interface FileRoutesById {
   '/_app/_company/entries/new': typeof AppCompanyEntriesNewRoute
   '/_app/_company/inbox/$id': typeof AppCompanyInboxIdRoute
   '/_app/_company/open-items/$id': typeof AppCompanyOpenItemsIdRoute
+  '/_app/_company/periods/$period': typeof AppCompanyPeriodsPeriodRoute
   '/_app/_company/rates/calendar': typeof AppCompanyRatesCalendarRoute
   '/_app/_company/revenue/$id': typeof AppCompanyRevenueIdRoute
   '/_app/_company/settings/api-clients': typeof AppCompanySettingsApiClientsRoute
@@ -371,6 +397,7 @@ export interface FileRoutesById {
   '/_app/_company/drafts/': typeof AppCompanyDraftsIndexRoute
   '/_app/_company/entries/': typeof AppCompanyEntriesIndexRoute
   '/_app/_company/inbox/': typeof AppCompanyInboxIndexRoute
+  '/_app/_company/periods/': typeof AppCompanyPeriodsIndexRoute
   '/_app/_company/rates/': typeof AppCompanyRatesIndexRoute
   '/_app/_company/receivables/': typeof AppCompanyReceivablesIndexRoute
   '/_app/_company/revenue/': typeof AppCompanyRevenueIndexRoute
@@ -388,6 +415,7 @@ export interface FileRouteTypes {
     | '/client-funds'
     | '/dimensions'
     | '/integrity'
+    | '/revaluation'
     | '/account/security'
     | '/companies/new'
     | '/sign-in/two-factor'
@@ -400,6 +428,7 @@ export interface FileRouteTypes {
     | '/entries/new'
     | '/inbox/$id'
     | '/open-items/$id'
+    | '/periods/$period'
     | '/rates/calendar'
     | '/revenue/$id'
     | '/settings/api-clients'
@@ -412,6 +441,7 @@ export interface FileRouteTypes {
     | '/drafts/'
     | '/entries/'
     | '/inbox/'
+    | '/periods/'
     | '/rates/'
     | '/receivables/'
     | '/revenue/'
@@ -427,6 +457,7 @@ export interface FileRouteTypes {
     | '/client-funds'
     | '/dimensions'
     | '/integrity'
+    | '/revaluation'
     | '/account/security'
     | '/companies/new'
     | '/sign-in/two-factor'
@@ -439,6 +470,7 @@ export interface FileRouteTypes {
     | '/entries/new'
     | '/inbox/$id'
     | '/open-items/$id'
+    | '/periods/$period'
     | '/rates/calendar'
     | '/revenue/$id'
     | '/settings/api-clients'
@@ -451,6 +483,7 @@ export interface FileRouteTypes {
     | '/drafts'
     | '/entries'
     | '/inbox'
+    | '/periods'
     | '/rates'
     | '/receivables'
     | '/revenue'
@@ -468,6 +501,7 @@ export interface FileRouteTypes {
     | '/_app/_company/client-funds'
     | '/_app/_company/dimensions'
     | '/_app/_company/integrity'
+    | '/_app/_company/revaluation'
     | '/_app/account/security'
     | '/_app/companies/new'
     | '/_auth/sign-in/two-factor'
@@ -481,6 +515,7 @@ export interface FileRouteTypes {
     | '/_app/_company/entries/new'
     | '/_app/_company/inbox/$id'
     | '/_app/_company/open-items/$id'
+    | '/_app/_company/periods/$period'
     | '/_app/_company/rates/calendar'
     | '/_app/_company/revenue/$id'
     | '/_app/_company/settings/api-clients'
@@ -493,6 +528,7 @@ export interface FileRouteTypes {
     | '/_app/_company/drafts/'
     | '/_app/_company/entries/'
     | '/_app/_company/inbox/'
+    | '/_app/_company/periods/'
     | '/_app/_company/rates/'
     | '/_app/_company/receivables/'
     | '/_app/_company/revenue/'
@@ -583,6 +619,13 @@ declare module '@tanstack/react-router' {
       path: '/integrity'
       fullPath: '/integrity'
       preLoaderRoute: typeof AppCompanyIntegrityRouteImport
+      parentRoute: typeof AppCompanyRoute
+    }
+    '/_app/_company/revaluation': {
+      id: '/_app/_company/revaluation'
+      path: '/revaluation'
+      fullPath: '/revaluation'
+      preLoaderRoute: typeof AppCompanyRevaluationRouteImport
       parentRoute: typeof AppCompanyRoute
     }
     '/_app/account/security': {
@@ -697,6 +740,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppCompanyOpenItemsIdRouteImport
       parentRoute: typeof AppCompanyRoute
     }
+    '/_app/_company/periods/': {
+      id: '/_app/_company/periods/'
+      path: '/periods'
+      fullPath: '/periods/'
+      preLoaderRoute: typeof AppCompanyPeriodsIndexRouteImport
+      parentRoute: typeof AppCompanyRoute
+    }
+    '/_app/_company/periods/$period': {
+      id: '/_app/_company/periods/$period'
+      path: '/periods/$period'
+      fullPath: '/periods/$period'
+      preLoaderRoute: typeof AppCompanyPeriodsPeriodRouteImport
+      parentRoute: typeof AppCompanyRoute
+    }
     '/_app/_company/rates/': {
       id: '/_app/_company/rates/'
       path: '/rates'
@@ -795,6 +852,7 @@ interface AppCompanyRouteChildren {
   AppCompanyClientFundsRoute: typeof AppCompanyClientFundsRoute
   AppCompanyDimensionsRoute: typeof AppCompanyDimensionsRoute
   AppCompanyIntegrityRoute: typeof AppCompanyIntegrityRoute
+  AppCompanyRevaluationRoute: typeof AppCompanyRevaluationRoute
   AppCompanyIndexRoute: typeof AppCompanyIndexRoute
   AppCompanyChartRolesRoute: typeof AppCompanyChartRolesRoute
   AppCompanyDraftsIdRoute: typeof AppCompanyDraftsIdRoute
@@ -802,6 +860,7 @@ interface AppCompanyRouteChildren {
   AppCompanyEntriesNewRoute: typeof AppCompanyEntriesNewRoute
   AppCompanyInboxIdRoute: typeof AppCompanyInboxIdRoute
   AppCompanyOpenItemsIdRoute: typeof AppCompanyOpenItemsIdRoute
+  AppCompanyPeriodsPeriodRoute: typeof AppCompanyPeriodsPeriodRoute
   AppCompanyRatesCalendarRoute: typeof AppCompanyRatesCalendarRoute
   AppCompanyRevenueIdRoute: typeof AppCompanyRevenueIdRoute
   AppCompanySettingsApiClientsRoute: typeof AppCompanySettingsApiClientsRoute
@@ -814,6 +873,7 @@ interface AppCompanyRouteChildren {
   AppCompanyDraftsIndexRoute: typeof AppCompanyDraftsIndexRoute
   AppCompanyEntriesIndexRoute: typeof AppCompanyEntriesIndexRoute
   AppCompanyInboxIndexRoute: typeof AppCompanyInboxIndexRoute
+  AppCompanyPeriodsIndexRoute: typeof AppCompanyPeriodsIndexRoute
   AppCompanyRatesIndexRoute: typeof AppCompanyRatesIndexRoute
   AppCompanyReceivablesIndexRoute: typeof AppCompanyReceivablesIndexRoute
   AppCompanyRevenueIndexRoute: typeof AppCompanyRevenueIndexRoute
@@ -825,6 +885,7 @@ const AppCompanyRouteChildren: AppCompanyRouteChildren = {
   AppCompanyClientFundsRoute: AppCompanyClientFundsRoute,
   AppCompanyDimensionsRoute: AppCompanyDimensionsRoute,
   AppCompanyIntegrityRoute: AppCompanyIntegrityRoute,
+  AppCompanyRevaluationRoute: AppCompanyRevaluationRoute,
   AppCompanyIndexRoute: AppCompanyIndexRoute,
   AppCompanyChartRolesRoute: AppCompanyChartRolesRoute,
   AppCompanyDraftsIdRoute: AppCompanyDraftsIdRoute,
@@ -832,6 +893,7 @@ const AppCompanyRouteChildren: AppCompanyRouteChildren = {
   AppCompanyEntriesNewRoute: AppCompanyEntriesNewRoute,
   AppCompanyInboxIdRoute: AppCompanyInboxIdRoute,
   AppCompanyOpenItemsIdRoute: AppCompanyOpenItemsIdRoute,
+  AppCompanyPeriodsPeriodRoute: AppCompanyPeriodsPeriodRoute,
   AppCompanyRatesCalendarRoute: AppCompanyRatesCalendarRoute,
   AppCompanyRevenueIdRoute: AppCompanyRevenueIdRoute,
   AppCompanySettingsApiClientsRoute: AppCompanySettingsApiClientsRoute,
@@ -844,6 +906,7 @@ const AppCompanyRouteChildren: AppCompanyRouteChildren = {
   AppCompanyDraftsIndexRoute: AppCompanyDraftsIndexRoute,
   AppCompanyEntriesIndexRoute: AppCompanyEntriesIndexRoute,
   AppCompanyInboxIndexRoute: AppCompanyInboxIndexRoute,
+  AppCompanyPeriodsIndexRoute: AppCompanyPeriodsIndexRoute,
   AppCompanyRatesIndexRoute: AppCompanyRatesIndexRoute,
   AppCompanyReceivablesIndexRoute: AppCompanyReceivablesIndexRoute,
   AppCompanyRevenueIndexRoute: AppCompanyRevenueIndexRoute,
