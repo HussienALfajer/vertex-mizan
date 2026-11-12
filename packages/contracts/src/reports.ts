@@ -957,10 +957,21 @@ export const REPORT_FILE_QUERIES = {
 
 export type ReportFileQuery<R extends Report> = z.output<(typeof REPORT_FILE_QUERIES)[R]>;
 
-/** `GET /api/reports/:report/export`: the format; the report's query comes beside it. */
-export const reportExportFormatSchema = z
-  .object({ format: z.enum(['xlsx']) })
-  .meta({ id: 'ReportExportFormat' });
+/**
+ * `GET /api/reports/:report/export`: the format, beside the report's own query
+ * (`EXCEL_REPORT_QUERIES`), which the API reads from the same query string.
+ */
+export const reportExportQuerySchema = z
+  .looseObject({ format: z.enum(['xlsx']) })
+  .meta({ id: 'ReportExportQuery' });
+
+export type ReportExportQuery = z.infer<typeof reportExportQuerySchema>;
+
+export const reportExportParamsSchema = z
+  .object({ report: excelReportSchema })
+  .meta({ id: 'ReportExportParams' });
+
+export type ReportExportParams = z.infer<typeof reportExportParamsSchema>;
 
 /**
  * `POST /api/reports/files` (rule 36): a report's PDF with its parameters, validated by the
@@ -1050,6 +1061,9 @@ export const journalBookPrintsSchema = z
   .meta({ id: 'JournalBookPrints' });
 
 export type JournalBookPrints = z.infer<typeof journalBookPrintsSchema>;
+
+/** The queue of `reportsRenderJobSchema`, worked by the worker (S09 "Jobs and events"). */
+export const REPORTS_RENDER_QUEUE = 'reports.render';
 
 /** The job the API sends once a file's row commits (S09 "Jobs and events"). */
 export const reportsRenderJobSchema = z

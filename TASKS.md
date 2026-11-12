@@ -18,10 +18,10 @@ Plan approved by the owner (2026-11-12, in the session), with this note: the sce
 ## PR 2 — Exports and the journal book (contracts, db, ui print, api, worker, bridge)
 - [x] db (`/db-migration`): `report_files` (queue, 0048–0049: the app role updates the state columns only, in the company context, as `company_exports`; an official file ready only with its print, deferred) and `journal_book_prints` append-only (closed months of one fiscal year, counts and totals the ledger's); registry, grants, guards pinned, the jobs role's columns; `test/report-files.test.ts`, the isolation property; drift and the migration guard clean
 - [x] contracts: `REPORT_TOO_LARGE` (422) with its Arabic text; the audit actions `export.*` of S09, `report_file.downloaded`, `journal_book.printed` (entities and fields in `AUDITED_FIELDS` and `ar.audit`); the file and register schemas, `EXCEL_REPORT_QUERIES`, `REPORT_FILE_QUERIES`, the render job; the journal book's `ledger` (rule 30)
-- [ ] api: Excel export of every report (rule 35, `REPORT_TOO_LARGE`, audited); `POST`/`GET /api/reports/files`, download (`report_file.downloaded`), `GET /api/reports/journal-book/prints` with `superseded`; the official print's `PERIOD_NOT_CLOSED`; three queued files per user (`RATE_LIMITED`); PDF for the ageing, the client statement and the chart; tests
+- [x] api: Excel export of every report (rule 35, `REPORT_TOO_LARGE`, audited); `POST`/`GET /api/reports/files`, download (`report_file.downloaded`), `GET /api/reports/journal-book/prints` with `superseded`; the official print's `PERIOD_NOT_CLOSED`; three queued files per user (`RATE_LIMITED`); PDF for the ageing, the client statement and the chart (their readers moved to `packages/db`); tests
 - [x] ui: `print/` layout (A4, company header, "صفحة n من m", the journal book's footer), rendered to static HTML; tested; with the sheet model one for Excel and PDF (`reportSheet()`), built to `dist` for the worker; `ar.reports` (the exports' text)
 - [ ] worker: `reports.render` (one snapshot, Chromium, the official print's refusal and register row with `journal_book.printed` in one transaction, safe twice), `reports.files-expire`; tests
-- [ ] bridge: OpenAPI regenerated, breaking-change check
+- [x] bridge: OpenAPI regenerated, `pnpm check:openapi` passes
 - [ ] wiring, docs (`AGENTS.md` commands if any, `apps/worker/CLAUDE.md`, `docs/ROADMAP.md`)
 - [ ] checks and reviewers (`reviewer`, `accountant-reviewer`), PR with auto-merge and Auto-fix
 

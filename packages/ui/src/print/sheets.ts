@@ -22,6 +22,16 @@ import {
 import { type Catalog, displayTimeZone, formatLocale } from '@vertex-mizan/i18n';
 import type { ReportSheet, SheetCell, SheetColumn, SheetParameter, SheetRow } from './sheet.js';
 
+export type {
+  ReportSheet,
+  SheetCell,
+  SheetCellKind,
+  SheetColumn,
+  SheetEmphasis,
+  SheetParameter,
+  SheetRow,
+} from './sheet.js';
+
 /** The catalogs a sheet reads its text from. */
 export type SheetText = Pick<Catalog, 'reports' | 'accounting' | 'openItems' | 'chart'>;
 
