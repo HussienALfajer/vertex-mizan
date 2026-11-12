@@ -19,7 +19,7 @@ Plan approved by the owner (2026-11-13, in the session).
 - [x] worker: `312002` with its role for existing companies holding `312` at the worker's start (as `mapAppendedTemplateSlots()`); the release and revaluation jobs skip a company whose opening is not posted (no revaluation job exists: the revaluation posts through the API, which `post()` refuses before the opening); the daily digest's line "الأرصدة الافتتاحية لم تُرحَّل بعد"; tests
 - [x] contracts tooling: the snapshot's JSON Schema and example in `export:hub-schema`; `post:hub-examples --opening`
 - [x] bridge: OpenAPI regenerated, `pnpm check:openapi` passes
-- [ ] wiring (API and worker), docs (`AGENTS.md` commands, `apps/api/CLAUDE.md`, `apps/worker/CLAUDE.md`, `docs/ROADMAP.md`)
+- [x] wiring (API and worker), docs (`AGENTS.md` commands, `apps/api/CLAUDE.md`, `apps/worker/CLAUDE.md`, `docs/ROADMAP.md`)
 - [ ] checks and reviewers (`reviewer`, `accountant-reviewer`), PR with auto-merge and Auto-fix
 
 ## PR 3 — The opening in the reports (ledger, db, scenarios, api) · `feat/s10-opening-reports`
