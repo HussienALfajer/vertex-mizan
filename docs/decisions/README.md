@@ -22,3 +22,4 @@ Short records of decisions that shape the system. Each has a status: **Accepted*
 | [0016](0016-periods-close-and-month-end-revaluation.md) | Periods, the close and the month-end revaluation: close in order, no override, revaluation units, closing rate, staleness | Accepted (amends 0007, 0008) |
 | [0017](0017-daily-reconciliation.md) | Daily reconciliation: a per-event report by accounting date, the latest report counts, no acceptance | Accepted (amends 0006) |
 | [0018](0018-reports-presentation-and-journal-book.md) | Reports: presentation from the ledger, the journal book's pages, the service's dated department | Accepted (refines 0007, 0008) |
+| [0019](0019-opening-balances-and-history-replay.md) | Opening balances and the history replay: a books start, Hub's snapshot, one opening entry, the replay by accounting date | Accepted (amends 0006, 0007, 0017, phase 1 scope §4) |

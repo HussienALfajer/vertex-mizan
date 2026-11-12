@@ -269,7 +269,7 @@ Each posted entry has its audit row from `post()` (releases with the jobs role a
 16. A service change on a fully released line: the whole released revenue moves to the new service.
 17. Shapes: `syp` (one ledger, no parallel, no residual from a parallel), `syp-usd` (Vertex Media), `usd-syp` (the book ledger in USD: an SYP invoice's lines convert at the book policy; elapsed months at each ledger's policy of the month end).
 18. A missing bulletin on an elapsed month's last day that is a day off: the last published one applies (ADR 0011); on a publication day without one: `RATE_MISSING`.
-19. A cycle that straddles the replay's start (2026-10-19): its invoice predates the replay and has no event; S10's opening schedule carries it.
+19. A cycle that straddles the replay's start (the books start, 2026-10-01, since S10): its invoice predates the replay and has no event; S10's opening schedule carries it.
 20. An invoice dated 31 December whose cycle runs into January: the January release is numbered in the new fiscal year (ADR 0012).
 
 ## Scenarios

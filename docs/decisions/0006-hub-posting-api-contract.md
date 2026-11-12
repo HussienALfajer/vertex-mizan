@@ -84,7 +84,7 @@ A `.changed` event carries the full new state. Mizan reverses what it posted for
 - **Stable error codes** are listed in `packages/contracts` and never reused.
 
 ### History replay
-- Hub's history since 2026-10-19 is replayed through the same endpoint with the original event dates, after the 2026-10-01 opening balances are posted.
+- Hub's history since 2026-10-19 is replayed through the same endpoint with the original event dates, after the 2026-10-01 opening balances are posted. *Amended by ADR 0019: every event dated from the books start (2026-10-01) is replayed; earlier documents come through Hub's opening snapshot.*
 - Replayed events are ordinary events, idempotent like any other.
 
 ## Consequences
