@@ -23,7 +23,7 @@ Plan approved by the owner (2026-11-12, in the session), with this note: the sce
 - [x] worker: `reports.render` (one snapshot, Chromium, the official print's refusal and register row with `journal_book.printed` in one transaction, safe twice), `reports.files-expire`; tests (`test/reports.test.ts` with a stand-in printer; Chromium's check in `e2e/pdf.spec.ts`, run in CI's Playwright image)
 - [x] bridge: OpenAPI regenerated, `pnpm check:openapi` passes
 - [x] wiring, docs (`AGENTS.md` commands, `apps/worker/CLAUDE.md`, `docs/testing.md`, `docs/ROADMAP.md`, the folder notes)
-- [ ] checks and reviewers (`reviewer`, `accountant-reviewer`; their findings fixed: a file's parameters stored as input so the worker parses them, a reopen during an official print `PERIOD_NOT_CLOSED`, `reopens_seen` for `superseded` (0050–0051), the comparatives' blank sides and the comparative profit before financing; the PR 1 report tests' timeouts), PR with auto-merge and Auto-fix
+- [x] checks and reviewers (`reviewer`, `accountant-reviewer`; re-reviewed clean on 8da87e5; `pnpm verify --e2e-all` passes on 8da87e5; their findings fixed: a file's parameters stored as input so the worker parses them, a reopen during an official print `PERIOD_NOT_CLOSED`, `reopens_seen` for `superseded` (0050–0051), the comparatives' blank sides and the comparative profit before financing; the PR 1 report tests' timeouts), PR with auto-merge and Auto-fix
 
 ## PR 3 — The screens (ui, web, e2e)
 - [ ] ui: `ReportTable`, `ReportMarks`, `ExportMenu`, tested, both densities, on the design-system page
