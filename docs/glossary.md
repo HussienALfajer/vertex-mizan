@@ -69,7 +69,7 @@ One name per concept. Code, contracts and tables use the English term; the Arabi
 | الميزانية العمومية / قائمة المركز المالي | balance sheet | Assets, liabilities and equity at a date |
 | فترة المقارنة | comparative period | The second column of a report: by default the previous period of the same length, or for the balance sheet the end of the previous fiscal year (S09 rule 5) |
 | ربح (خسارة) السنة الحالية | year's result | Computed in the balance sheet's equity: revenue less expenses from the fiscal year's start to the date, until the year-end close (ADR 0018) |
-| أعيد تبويب للعرض | reclassified for presentation | An amount a statement shows on another line than its account's, such as a client's credit on receivables shown in payables; the account is unchanged (IAS 1.32) |
+| أعيد تبويب للعرض | reclassified for presentation | An amount a statement shows on another line than its account's, such as a client's debit on client ad funds shown in receivables; the account is unchanged (IAS 1.32) |
 | هامش المساهمة | contribution margin | Revenue less direct costs of a client, contract, department or service, with no overhead allocated |
 | غير موزع | unassigned | The part of a profitability total whose lines carry no value of the chosen dimension |
 | قسم الخدمة | service department | The department a service belongs to, dated, from Hub or set for a manual service (S09 rule 32) |
