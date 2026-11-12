@@ -146,6 +146,7 @@ export const audit = {
     receivables_export: 'تقرير الذمم',
     inbound_event: 'الحدث الوارد',
     revaluation: 'إعادة التقييم',
+    period: 'الفترة',
   },
   /** The audited fields, by entity field name. */
   fields: {
@@ -243,5 +244,7 @@ export const audit = {
     fingerprint: 'بصمة المعاينة',
     rates: 'أسعار الإقفال',
     reversalEntryId: 'قيد العكس',
+    checklist: 'قائمة التحقق قبل الإقفال',
+    queuedEvents: 'الأحداث المعادة محاولتها',
   },
 };

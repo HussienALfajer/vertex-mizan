@@ -23,7 +23,7 @@ Spec: `docs/specs/S07-revaluation-periods-close.md` (Approved, owner 2026-11-11)
 - [x] api: `GET /api/periods`, `GET /api/periods/:period`, `POST /api/periods/:period/close` and `/reopen`; tests (success, 401, 403 by role and the period permission, another company, the refusals of rules 2 and 3)
 - [x] worker: `events.retry` on the reopen's trigger, `revenue.release-month` for a reopened month missing its release, the daily email's line "أشهر منتهية غير مقفلة"; safe twice, per company
 - [x] bridge: OpenAPI regenerated, breaking-change check
-- [ ] wiring (Contracts, Database, API and worker), docs (`packages/*/CLAUDE.md`, `apps/*/CLAUDE.md`, `docs/ROADMAP.md`)
+- [x] wiring (Contracts, Database, API and worker), docs (`packages/*/CLAUDE.md`, `apps/*/CLAUDE.md`, `docs/ROADMAP.md`)
 - [ ] checks and reviewers (`reviewer`, `accountant-reviewer`), PR with auto-merge and Auto-fix
 
 ## PR 3 — The screens (ui, web, e2e)
