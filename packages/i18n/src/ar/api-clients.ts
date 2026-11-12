@@ -15,6 +15,7 @@ export const apiClients = {
     'events:write': 'إرسال الأحداث',
     'periods:read': 'قراءة حالة الفترات',
     'reconciliation:write': 'إرسال المطابقة اليومية',
+    'opening:write': 'إرسال لقطة الأرصدة الافتتاحية',
   } satisfies Record<ApiClientScope, string>,
   unknownScope: 'صلاحية غير معروفة',
   empty: 'لا عميل بعد',

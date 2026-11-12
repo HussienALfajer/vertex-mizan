@@ -54,7 +54,15 @@ export const entrySourceSchema = z.enum(ENTRY_SOURCES).meta({ id: 'EntrySource' 
 export type EntrySource = z.infer<typeof entrySourceSchema>;
 
 /** The kinds of a posted line (`Line['kind']` of `packages/ledger`). */
-export const LINE_KINDS = ['measured', 'carried', 'difference', 'rounding'] as const;
+export const LINE_KINDS = [
+  'measured',
+  'carried',
+  'difference',
+  'rounding',
+  // S10 (ADR 0019): book and parallel amounts from the old records or the opening's computation,
+  // no conversion; only on an entry whose source is `opening`.
+  'stated',
+] as const;
 
 export const lineKindSchema = z.enum(LINE_KINDS).meta({ id: 'LineKind' });
 

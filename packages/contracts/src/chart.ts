@@ -42,6 +42,8 @@ export const ACCOUNT_ROLES = [
   'fx_unrealised_gain',
   'fx_unrealised_loss',
   'retained_earnings',
+  // S10: the result of the books start's fiscal year before the books start (`312002`).
+  'pre_opening_result',
 ] as const;
 
 export const accountRoleSchema = z.enum(ACCOUNT_ROLES).meta({ id: 'AccountRole' });
@@ -467,6 +469,7 @@ export function accountRoleFits(
     case 'fx_unrealised_loss':
       return account.class === 'expense';
     case 'retained_earnings':
+    case 'pre_opening_result':
       return account.class === 'equity';
   }
 }

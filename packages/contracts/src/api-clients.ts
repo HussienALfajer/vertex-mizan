@@ -16,7 +16,13 @@ export type ApiClientSystem = z.infer<typeof apiClientSystemSchema>;
  * `periods:read` for `GET /v1/periods/status`; `reconciliation:write` exists for S08. A scope is
  * never renamed: stored clients carry it.
  */
-export const API_CLIENT_SCOPES = ['events:write', 'periods:read', 'reconciliation:write'] as const;
+export const API_CLIENT_SCOPES = [
+  'events:write',
+  'periods:read',
+  'reconciliation:write',
+  // S10: Hub's opening snapshot.
+  'opening:write',
+] as const;
 
 export const apiClientScopeSchema = z.enum(API_CLIENT_SCOPES).meta({ id: 'ApiClientScope' });
 

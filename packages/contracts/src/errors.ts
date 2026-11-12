@@ -230,6 +230,22 @@ export const errorStatus = {
   DIMENSION_FROM_HUB: 409,
   /** An Excel export over `REPORT_EXCEL_ROW_LIMIT` rows: a narrower range, or the PDF (S09 rule 35; details: rows, limit). */
   REPORT_TOO_LARGE: 422,
+
+  // Opening balances (S10, ADR 0019).
+  /** The company's opening is not posted yet: nothing posts or closes before it (S10 rule 3). */
+  OPENING_NOT_POSTED: 503,
+  /** The opening is posted: no snapshot, save or second post (S10 rules 8, 16, 23). */
+  OPENING_POSTED: 409,
+  /** The draft or its preview changed since it was read (S10 rules 16, 23; details: fingerprint or version). */
+  OPENING_CHANGED: 409,
+  /** A check of the opening fails (S10 rule 21; details: checks). */
+  OPENING_CHECKS_FAILED: 409,
+  /** The opening is reversed whole only while it is the company's only entry (S10 rule 25). */
+  OPENING_NOT_REVERSIBLE: 409,
+  /** The company has no books start (S10 rules 1, 8). */
+  NO_BOOKS_START: 409,
+  /** The books start changes only before any entry, snapshot or opening draft (S10 rule 2). */
+  BOOKS_START_LOCKED: 409,
 } as const satisfies Record<string, number>;
 
 export type ErrorCode = keyof typeof errorStatus;

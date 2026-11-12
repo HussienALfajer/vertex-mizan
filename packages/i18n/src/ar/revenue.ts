@@ -45,6 +45,7 @@ export const revenue = {
     remainder_released: 'المتبقي إلى الإيراد',
     remainder_refunded: 'مستحق الرد للعميل',
     adjusted: 'تعديل تحرير الشهر',
+    before_opening: 'المعترف به قبل بدء الدفاتر',
   } satisfies Record<RevenueMovement['kind'], string>,
   unknownMovement: 'حركة غير معروفة',
   decisions: {

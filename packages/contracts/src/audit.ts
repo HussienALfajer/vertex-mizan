@@ -123,6 +123,12 @@ export const COMPANY_AUDIT_ACTIONS = [
   'export.revenue_schedule',
   'report_file.downloaded',
   'journal_book.printed',
+  // S10: the books start, Hub's opening snapshot, the opening's saves, its posting and its reversal.
+  'company.books_start_set',
+  'opening.snapshot_received',
+  'opening.saved',
+  'opening.posted',
+  'opening.reversed',
 ] as const;
 
 export const companyAuditActionSchema = z

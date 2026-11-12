@@ -126,6 +126,14 @@ describe('error codes', () => {
       // S09, reports
       ['DIMENSION_FROM_HUB', 409],
       ['REPORT_TOO_LARGE', 422],
+      // S10, opening balances
+      ['OPENING_NOT_POSTED', 503],
+      ['OPENING_POSTED', 409],
+      ['OPENING_CHANGED', 409],
+      ['OPENING_CHECKS_FAILED', 409],
+      ['OPENING_NOT_REVERSIBLE', 409],
+      ['NO_BOOKS_START', 409],
+      ['BOOKS_START_LOCKED', 409],
     ]);
   });
 

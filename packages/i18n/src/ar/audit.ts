@@ -133,6 +133,11 @@ export const audit = {
     'export.revenue_schedule': 'صدّر جدول تحقق الإيراد',
     'report_file.downloaded': 'نزّل ملف تقرير PDF',
     'journal_book.printed': 'طبع دفتر اليومية طبعة رسمية',
+    'company.books_start_set': 'حدّد تاريخ بدء الدفاتر',
+    'opening.snapshot_received': 'استلم لقطة الأرصدة الافتتاحية من Hub',
+    'opening.saved': 'حفظ مسودة الأرصدة الافتتاحية',
+    'opening.posted': 'رحّل قيد الأرصدة الافتتاحية',
+    'opening.reversed': 'عكس قيد الأرصدة الافتتاحية كاملاً',
   } satisfies Record<CompanyAuditAction, string>,
   /** The audited entities (`AUDITED_FIELDS` in `packages/db`). */
   entities: {
