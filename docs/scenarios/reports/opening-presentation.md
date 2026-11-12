@@ -4,6 +4,8 @@ Status: Proposed
 
 S10 wrote these cases (S10 "Scenarios", rules 31–33). They extend `reports/statement-presentation.md` to a company with a books start, in a file of their own because the status is the file's (`docs/scenarios/README.md`, "File format"): the presentation file's cases run, and these need the `opening` step, which has no executor until S10's feature slice. They post with the `opening`, `manual` and `revalue` steps and read the reports as `reports/statement-presentation.md` does.
 
+The owner approved both cases' figures on 2026-11-12, with four decisions: a file of its own; a report from before the books start carries both marks; the income statement's note on every statement of the books start's year; and `312002` a part of retained earnings in later years, with `unclosed_years` the net of classes 4–5 only (S10 rules 31–33).
+
 ## Rule
 
 In the fiscal year of the books start, the balance sheet's year's result adds the balance of the year's result before the books start (`312002`, role `pre_opening_result`) and says so; in later fiscal years, until a year-end close, that balance is presented in retained earnings, beside the unclosed years' result. A trial balance whose range starts on the books start shows the opening entry's lines as its opening balance, with the period's columns starting after it, and is marked so; a report whose range starts before the books start is read from the books start and marked so, and an income statement of the books start's fiscal year says that the result before the books start is in equity. Nothing is posted, converted or rounded by a report.

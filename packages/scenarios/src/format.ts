@@ -15,7 +15,12 @@ import {
   statementLineFits,
 } from '@vertex-mizan/contracts';
 import { z } from 'zod';
-import { expectedReportSchema, reportEntries, reportLedger } from './report-format.js';
+import {
+  BOOKS_START_MARKS,
+  expectedReportSchema,
+  reportEntries,
+  reportLedger,
+} from './report-format.js';
 
 /**
  * The YAML of one scenario case, as `docs/scenarios/README.md` documents it (ADR 0005, ADR 0008).
@@ -1162,6 +1167,19 @@ export const caseSchema = z
       const path = ['expect', 'reports', r];
       if (reportLedger(report) === 'parallel' && parallel === null) {
         issue('The company keeps no parallel ledger to report', [...path, 'params', 'ledger']);
+      }
+      // S10 rules 31–33 present a books start: a company without one has none of it.
+      if (scenarioCase.company.booksStart === null) {
+        const marks = [...report.marks, ...('compareMarks' in report ? (report.compareMarks ?? []) : [])];
+        if (marks.some((mark) => BOOKS_START_MARKS.includes(mark))) {
+          issue("A books start's mark needs the company's books_start", [...path, 'marks']);
+        }
+        if (
+          report.report === 'balance_sheet' &&
+          (report.yearResultPreOpening !== null || report.compareYearResultPreOpening !== null)
+        ) {
+          issue("The result before the books start needs the company's books_start", path);
+        }
       }
       const named = reportEntries(report);
       for (const entry of named) {
