@@ -41,7 +41,8 @@ const looks = {
  * A list of checks, each passed, failed or not applicable (S07 "Screens", ADR 0010 §7): the status
  * as an icon and words, never color alone, a failing item's count, and a link to what fixes it,
  * reachable from the keyboard in reading order. Labels and links come from the app; a summary
- * above the list counts what passed. Rows wrap on a phone, so nothing scrolls sideways.
+ * above the list counts what passed. The count and the description sit under the label, and the
+ * link wraps below on a phone, so nothing scrolls sideways.
  */
 function Checklist({ items, summary, className, ...props }: ChecklistProps) {
   return (
@@ -52,7 +53,10 @@ function Checklist({ items, summary, className, ...props }: ChecklistProps) {
         </p>
       )}
       <ul
-        className={cn('flex flex-col divide-y divide-border rounded-lg border', className)}
+        className={cn(
+          'flex flex-col divide-y divide-border rounded-lg border border-border bg-surface',
+          className,
+        )}
         {...props}
       >
         {items.map((item) => {
@@ -68,17 +72,17 @@ function Checklist({ items, summary, className, ...props }: ChecklistProps) {
                 <Icon aria-hidden="true" />
                 {item.statusLabel}
               </Badge>
-              <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <div className="flex min-w-40 flex-1 flex-col gap-0.5">
                 <span className="text-control font-medium">{item.label}</span>
+                {item.status === 'failed' && item.count !== undefined && (
+                  <span data-slot="checklist-count" className="text-sm tabular-nums">
+                    {item.count}
+                  </span>
+                )}
                 {item.description && (
                   <span className="text-muted-foreground text-xs">{item.description}</span>
                 )}
               </div>
-              {item.status === 'failed' && item.count !== undefined && (
-                <span data-slot="checklist-count" className="text-control tabular-nums">
-                  {item.count}
-                </span>
-              )}
               {item.action && <span className="flex shrink-0 items-center">{item.action}</span>}
             </li>
           );

@@ -29,6 +29,6 @@ Spec: `docs/specs/S07-revaluation-periods-close.md` (Approved, owner 2026-11-11)
 ## PR 3 — The screens (ui, web, e2e)
 - [x] ui: `Checklist` (status icon and text, count, link, keyboard reachable, RTL), tested, both densities, on the design-system page
 - [x] web: the sidebar's "الفترات" and "إعادة التقييم"; `/periods` (states, ended, checklist summary, last event; empty, loading and error states); `/periods/:period` (the checklist with its links, the history, the close and reopen dialogs with reasons, refusals with their items); `/revaluation?period=&ledger=` (closing rates, the balances grid with blocked accounts marked, totals, posted revaluations, post one ledger, the adjustment, both ledgers; current, rate missing, `REVALUATION_CHANGED`); a revaluation entry's links on `/entries/:id`; `ar.periods`, `ar.revaluation`
-- [ ] e2e: the close, reopen and revaluation flows; RTL screenshots light and dark at 360, 768 and 1280 px, looked at
-- [ ] wiring (Web), docs (`apps/web/CLAUDE.md`, `packages/ui/CLAUDE.md`, `docs/ROADMAP.md`: S07 done)
+- [x] e2e: the close, reopen and revaluation flows; RTL screenshots light and dark at 360, 768 and 1280 px, looked at
+- [x] wiring (Web), docs (`apps/web/CLAUDE.md`, `packages/ui/CLAUDE.md`, `docs/ROADMAP.md`: S07 done)
 - [ ] checks and reviewer, PR with auto-merge and Auto-fix; reset this file to its "No task in progress" stub

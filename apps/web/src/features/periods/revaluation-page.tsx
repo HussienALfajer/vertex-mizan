@@ -502,7 +502,7 @@ function Balances({ data }: { data: RevaluationPreview }) {
           })}
         </TableBody>
       </Table>
-      <dl className="flex flex-wrap justify-end gap-x-8 gap-y-2 border-t px-cell py-3">
+      <dl className="flex flex-wrap justify-end gap-x-8 gap-y-2 border-t border-border px-cell py-3">
         <div className="flex items-baseline gap-2">
           <dt className="text-muted-foreground text-sm">{t.gain}</dt>
           <dd>
