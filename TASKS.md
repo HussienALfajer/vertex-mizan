@@ -11,7 +11,7 @@ Spec: `docs/specs/S08-daily-reconciliation.md` (Approved, owner 2026-11-12) · A
 - [x] api: `POST /v1/reconciliation/daily`, `GET /v1/events?date=` (`reconciliation:write`, rate-limited per client), `GET /api/reconciliation/days` and `/days/:date` (`reconciliation.read`), `reconcileFrom` on `POST`/`PUT /api/api-clients` with its audit; tests (success, 401, 403 for a key without the scope and a session on `/v1`, another company's client, a replay and a `409`, per role)
 - [x] worker: `events.held-digest`'s reconciliation section (rule 16), safe twice, per company
 - [x] bridge: the report's JSON Schema and example in `export:hub-schema` and `post:hub-examples`; OpenAPI regenerated, breaking-change check
-- [ ] wiring (Contracts, Ledger, Database, API and worker), docs (`packages/*/CLAUDE.md`, `apps/*/CLAUDE.md`, `docs/glossary.md`, `docs/open-questions.md` Q5, `docs/ROADMAP.md`)
+- [x] wiring (Contracts, Ledger, Database, API and worker), docs (`packages/*/CLAUDE.md`, `apps/*/CLAUDE.md`, `docs/glossary.md`, `docs/open-questions.md` Q5, `docs/ROADMAP.md`)
 - [ ] checks and reviewers (`reviewer`, `accountant-reviewer`), PR with auto-merge and Auto-fix
 
 ## PR 2 — The screens (ui, web, e2e)
