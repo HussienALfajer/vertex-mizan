@@ -26,7 +26,9 @@ import {
   inboundEventActions,
   inboundEventStates,
   inboundEvents,
+  journalBookPrints,
   journalEntries,
+  periods,
   post,
   postingRuleAccounts,
   postRevaluation,
@@ -36,6 +38,7 @@ import {
   recognitionSchedules,
   reconciliationReportEvents,
   reconciliationReports,
+  reportFiles,
   serviceDepartments,
   type Transaction,
   tableRegistry,
@@ -93,6 +96,8 @@ const COVERED = [
   'reconciliation_reports',
   'reconciliation_report_events',
   'service_departments',
+  'report_files',
+  'journal_book_prints',
 ];
 
 const auditRow = fc.record({
@@ -421,6 +426,9 @@ const expectedRows = (data: CompanyData): Record<string, number> => ({
   reconciliation_reports: 1,
   reconciliation_report_events: 1,
   service_departments: 1,
+  // A draft PDF queued and November's official print, ready with its register row.
+  report_files: 2,
+  journal_book_prints: 1,
 });
 
 /**
@@ -706,6 +714,73 @@ async function seedServiceDepartment(tx: Transaction, companyId: string, userId:
   });
 }
 
+/**
+ * S09's rows: a trial balance's PDF queued, and November's official journal book, closed, ready
+ * with its register row in one transaction, its counts and totals the month's, as the worker
+ * writes them.
+ */
+async function seedReportFiles(tx: Transaction, companyId: string, userId: string) {
+  await tx.insert(reportFiles).values({
+    companyId,
+    report: 'trial_balance',
+    params: { from: '2026-11-01', to: '2026-11-30' },
+    requestedByUserId: userId,
+  });
+  const [november] = await tx
+    .select({ id: periods.id, fiscalYear: periods.fiscalYear })
+    .from(periods)
+    .where(eq(periods.period, '2026-11'));
+  const [file] = await tx
+    .insert(reportFiles)
+    .values({
+      companyId,
+      report: 'journal_book',
+      params: { fiscalYear: november?.fiscalYear, from: '2026-11', to: '2026-11' },
+      official: true,
+      requestedByUserId: userId,
+    })
+    .returning({ id: reportFiles.id });
+  const totals = await tx.execute<{
+    entries: number;
+    lines: number;
+    debits: string;
+    credits: string;
+  }>(sql`select count(distinct e.id)::int as entries, count(l.id)::int as lines,
+      coalesce(sum(greatest(l.book_minor, 0)), 0)::text as debits,
+      coalesce(sum(greatest(-l.book_minor, 0)), 0)::text as credits
+    from journal_entries e join journal_lines l on l.entry_id = e.id
+    where e.fiscal_year = ${november?.fiscalYear}
+      and e.entry_date between '2026-11-01' and '2026-11-30'`);
+  const row = totals.rows[0];
+  const sha256 = 'a'.repeat(64);
+  await tx.insert(journalBookPrints).values({
+    companyId,
+    reportFileId: file?.id as string,
+    fiscalYear: november?.fiscalYear as number,
+    fromPeriodId: november?.id as string,
+    toPeriodId: november?.id as string,
+    firstPage: row?.entries ? 1 : null,
+    lastPage: row?.entries ? 1 : null,
+    entryCount: row?.entries ?? 0,
+    lineCount: row?.lines ?? 0,
+    debitTotalMinor: BigInt(row?.debits ?? '0'),
+    creditTotalMinor: BigInt(row?.credits ?? '0'),
+    contentSha256: 'b'.repeat(64),
+    fileSha256: sha256,
+    printedByUserId: userId,
+  });
+  await tx
+    .update(reportFiles)
+    .set({
+      state: 'ready',
+      storageKey: `${companyId}/${file?.id}`,
+      sizeBytes: 1,
+      sha256,
+      readyAt: new Date(),
+    })
+    .where(eq(reportFiles.id, file?.id as string));
+}
+
 async function seed(userId: string, data: CompanyData): Promise<string> {
   const [row] = await app
     .insert(companies)
@@ -750,6 +825,7 @@ async function seed(userId: string, data: CompanyData): Promise<string> {
       userId,
       checklist: [],
     });
+    await seedReportFiles(tx, row.id, userId);
     return tx
       .select({ id: journalEntries.id, hash: journalEntries.hash })
       .from(journalEntries)

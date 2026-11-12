@@ -16,7 +16,7 @@ Plan approved by the owner (2026-11-12, in the session), with this note: the sce
 - [x] checks and reviewers (`reviewer`, `accountant-reviewer`; their findings fixed in c030e0d and re-reviewed clean; `pnpm verify --e2e-all` passes on c030e0d), PR with auto-merge and Auto-fix
 
 ## PR 2 — Exports and the journal book (contracts, db, ui print, api, worker, bridge)
-- [ ] db (`/db-migration`): `report_files` (queue, state updates only by the jobs role in the company context) and `journal_book_prints` append-only; registry, grants, guards
+- [x] db (`/db-migration`): `report_files` (queue, 0048–0049: the app role updates the state columns only, in the company context, as `company_exports`; an official file ready only with its print, deferred) and `journal_book_prints` append-only (closed months of one fiscal year, counts and totals the ledger's); registry, grants, guards pinned, the jobs role's columns; `test/report-files.test.ts`, the isolation property; drift and the migration guard clean
 - [ ] contracts: `REPORT_TOO_LARGE` (422) with its Arabic text; the audit actions `export.*` of S09, `report_file.downloaded`, `journal_book.printed`; the file and register schemas
 - [ ] api: Excel export of every report (rule 35, `REPORT_TOO_LARGE`, audited); `POST`/`GET /api/reports/files`, download (`report_file.downloaded`), `GET /api/reports/journal-book/prints` with `superseded`; the official print's `PERIOD_NOT_CLOSED`; three queued files per user (`RATE_LIMITED`); PDF for the ageing, the client statement and the chart; tests
 - [ ] ui: `print/` layout (A4, company header, "صفحة n من m", the journal book's footer), rendered to static HTML; tested

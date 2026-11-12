@@ -34,6 +34,16 @@ export const reportSchema = z.enum(REPORTS).meta({ id: 'Report' });
 export type Report = z.infer<typeof reportSchema>;
 
 /**
+ * A PDF file's states (S09 rule 36): `queued` when asked, then `ready` with its file or `failed`
+ * with an error code; a ready file that is not an official print `expired` after 24 hours.
+ */
+export const REPORT_FILE_STATES = ['queued', 'ready', 'failed', 'expired'] as const;
+
+export const reportFileStateSchema = z.enum(REPORT_FILE_STATES).meta({ id: 'ReportFileState' });
+
+export type ReportFileState = z.infer<typeof reportFileStateSchema>;
+
+/**
  * Rule 4's marks: `period_open` ("غير نهائية: الفترة مفتوحة") when a month the report reads is
  * open or reopened; `before_revaluation` ("قبل إعادة التقييم") when its end is not a month's last
  * day, or that month's revaluation in the report's ledger is not `current`.
