@@ -312,7 +312,10 @@ export function snapshotOf(
     };
   });
   const billedOn = new Map<string, string>();
-  for (const invoice of invoices as unknown as { issued_on: string; lines: { milestone_id?: string }[] }[]) {
+  for (const invoice of invoices as unknown as {
+    issued_on: string;
+    lines: { milestone_id?: string }[];
+  }[]) {
     for (const line of invoice.lines) {
       if (line.milestone_id !== undefined) billedOn.set(line.milestone_id, invoice.issued_on);
     }
@@ -323,7 +326,16 @@ export function snapshotOf(
       companyId,
       hub,
       'invoice.issued',
-      { invoice, client, contract, currency, syp_per_usd, issued_on, due_on: issued_on, lines: [line] },
+      {
+        invoice,
+        client,
+        contract,
+        currency,
+        syp_per_usd,
+        issued_on,
+        due_on: issued_on,
+        lines: [line],
+      },
       asOf,
     ) as Short & { lines: Short[] };
     return {
@@ -342,7 +354,10 @@ export function snapshotOf(
       done_on?: string;
     };
     const invoiced = billedOn.get(done.milestone.id);
-    return { ...done, ...(invoiced !== undefined && done.done_on !== undefined && { invoiced_on: invoiced }) };
+    return {
+      ...done,
+      ...(invoiced !== undefined && done.done_on !== undefined && { invoiced_on: invoiced }),
+    };
   });
   const register = short.prior_documents;
   for (const payment of register.payments) {

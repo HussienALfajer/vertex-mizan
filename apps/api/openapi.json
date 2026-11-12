@@ -1477,7 +1477,12 @@
                 "export.contract_position",
                 "export.revenue_schedule",
                 "report_file.downloaded",
-                "journal_book.printed"
+                "journal_book.printed",
+                "company.books_start_set",
+                "opening.snapshot_received",
+                "opening.saved",
+                "opening.posted",
+                "opening.reversed"
               ]
             }
           },
@@ -12983,7 +12988,10 @@
           "periods.read",
           "revaluation.post",
           "reconciliation.read",
-          "reports.read"
+          "reports.read",
+          "opening.read",
+          "opening.prepare",
+          "opening.post"
         ]
       },
       "ErrorResponse": {
@@ -13142,7 +13150,14 @@
           "CHECKLIST_FAILED",
           "RECONCILIATION_START_LOCKED",
           "DIMENSION_FROM_HUB",
-          "REPORT_TOO_LARGE"
+          "REPORT_TOO_LARGE",
+          "OPENING_NOT_POSTED",
+          "OPENING_POSTED",
+          "OPENING_CHANGED",
+          "OPENING_CHECKS_FAILED",
+          "OPENING_NOT_REVERSIBLE",
+          "NO_BOOKS_START",
+          "BOOKS_START_LOCKED"
         ]
       },
       "PageQuery": {
@@ -13908,7 +13923,12 @@
           "export.contract_position",
           "export.revenue_schedule",
           "report_file.downloaded",
-          "journal_book.printed"
+          "journal_book.printed",
+          "company.books_start_set",
+          "opening.snapshot_received",
+          "opening.saved",
+          "opening.posted",
+          "opening.reversed"
         ]
       },
       "AuditPage": {
@@ -14227,7 +14247,8 @@
           "fx_realised_loss",
           "fx_unrealised_gain",
           "fx_unrealised_loss",
-          "retained_earnings"
+          "retained_earnings",
+          "pre_opening_result"
         ]
       },
       "CreateAccount": {
@@ -16011,7 +16032,8 @@
           "measured",
           "carried",
           "difference",
-          "rounding"
+          "rounding",
+          "stated"
         ]
       },
       "Ledger": {
@@ -18797,7 +18819,8 @@
         "enum": [
           "events:write",
           "periods:read",
-          "reconciliation:write"
+          "reconciliation:write",
+          "opening:write"
         ]
       },
       "DocumentType": {
@@ -22458,7 +22481,8 @@
               "reversed",
               "remainder_released",
               "remainder_refunded",
-              "adjusted"
+              "adjusted",
+              "before_opening"
             ]
           },
           "month": {

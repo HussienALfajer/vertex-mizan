@@ -17,7 +17,7 @@ import {
   periodOf,
   sumCarried,
 } from '@vertex-mizan/ledger';
-import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 import type { Transaction } from '../client.js';
 import { isClosedPeriod, readClosedPeriods } from '../posting/periods.js';
 import { dimensionValues } from '../schema/dimensions.js';
@@ -133,8 +133,7 @@ async function shape(
     if (!line) throw new Error('A schedule without its line');
     return {
       id: schedule.id,
-      inboxId: schedule.eventId,
-      openingId: schedule.openingId,
+      inboxId: schedule.eventId as string,
       invoiceDocumentId: schedule.invoiceDocumentId,
       invoiceNumber: schedule.invoiceNumber,
       lineId: schedule.lineId,
@@ -194,6 +193,10 @@ export async function readRevenueSchedules(
     .from(recognitionSchedules)
     .where(
       and(
+        // `/api/revenue` names each schedule's issue event (`inboxId`, required in the published
+        // API); the opening's schedules (S10) are read on `/api/opening` until an additive field
+        // shows them here.
+        isNotNull(recognitionSchedules.eventId),
         filter.state === undefined ? undefined : stateFilter(filter.state),
         filter.client === undefined
           ? undefined
@@ -230,7 +233,7 @@ export async function readRevenueSchedule(
   id: string,
 ): Promise<RevenueScheduleDetail | null> {
   const [row] = await tx.select().from(recognitionSchedules).where(eq(recognitionSchedules.id, id));
-  if (!row) return null;
+  if (!row || row.eventId === null) return null;
   const [summary] = await shape(tx, [row]);
   if (!summary) return null;
   const ledgers = await companyLedgers(tx);
@@ -461,11 +464,13 @@ export async function previewRevenueMonth(
   const byInvoice = new Map<string, RevenuePreview['entries'][number]>();
   for (const state of states) {
     const part = unreleased(state, month);
-    if (part === null) continue;
+    // The opening's invoices are released by the job too; this preview names each entry's issue
+    // event, so it lists the events' only (see the schedules above).
+    if (part === null || state.schedule.eventId === null) continue;
     const { schedule } = state;
-    const key = schedule.eventId ?? `${schedule.openingId}:${schedule.invoiceDocumentId}`;
+    const key = schedule.eventId as string;
     const entry = byInvoice.get(key) ?? {
-      inboxId: schedule.eventId,
+      inboxId: key,
       invoiceNumber: schedule.invoiceNumber,
       date: lastDayOfMonth(`${month}-01`),
       lines: [],

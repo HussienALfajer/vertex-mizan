@@ -22,7 +22,9 @@ export async function readClosedPeriods(tx: Transaction): Promise<ClosedPeriods>
     .orderBy(periods.period);
   const closed = new Set(rows.filter((row) => row.state === 'closed').map((row) => row.period));
   const firstPeriod = closed.size > 0 ? (rows[0]?.period ?? null) : null;
-  const [settings] = await tx.select({ booksStart: companySettings.booksStart }).from(companySettings);
+  const [settings] = await tx
+    .select({ booksStart: companySettings.booksStart })
+    .from(companySettings);
   const booksStart = settings?.booksStart?.slice(0, 7) ?? null;
   const closedBefore =
     booksStart === null

@@ -500,8 +500,24 @@ async function seedOpening(tx: Transaction, companyId: string, userId: string) {
   const settings = await tx.select().from(companySettings);
   const currency = settings[0]?.bookCurrency as 'SYP';
   await tx.insert(openingLines).values([
-    { companyId, openingId: opening.id, version: 1, lineNo: 1, accountId: asset, currency, amountMinor: 1000n },
-    { companyId, openingId: opening.id, version: 1, lineNo: 2, accountId: capital, currency, amountMinor: -1000n },
+    {
+      companyId,
+      openingId: opening.id,
+      version: 1,
+      lineNo: 1,
+      accountId: asset,
+      currency,
+      amountMinor: 1000n,
+    },
+    {
+      companyId,
+      openingId: opening.id,
+      version: 1,
+      lineNo: 2,
+      accountId: capital,
+      currency,
+      amountMinor: -1000n,
+    },
   ]);
   await tx.insert(openingRecordFigures).values({
     companyId,
@@ -537,8 +553,24 @@ async function seedOpening(tx: Transaction, companyId: string, userId: string) {
       measuredOn: '2026-10-31',
       today: '2026-11-01',
       lines: [
-        { accountId: asset, dimensionValueIds: [], currency, amountMinor: 1000n, memo: null, fromHub: false, stated: { bookMinor: 1000n, parallelMinor: null } },
-        { accountId: capital, dimensionValueIds: [], currency, amountMinor: -1000n, memo: null, fromHub: false, stated: { bookMinor: -1000n, parallelMinor: null } },
+        {
+          accountId: asset,
+          dimensionValueIds: [],
+          currency,
+          amountMinor: 1000n,
+          memo: null,
+          fromHub: false,
+          stated: { bookMinor: 1000n, parallelMinor: null },
+        },
+        {
+          accountId: capital,
+          dimensionValueIds: [],
+          currency,
+          amountMinor: -1000n,
+          memo: null,
+          fromHub: false,
+          stated: { bookMinor: -1000n, parallelMinor: null },
+        },
       ],
     },
   });

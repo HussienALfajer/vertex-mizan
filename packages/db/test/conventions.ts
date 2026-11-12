@@ -1004,7 +1004,7 @@ DECLARE
   entry record;
   settings record;
 BEGIN
-  SELECT a.kind, a.currency, a.first_posted_at INTO account
+  SELECT a.kind, a.class, a.currency, a.first_posted_at INTO account
   FROM public.chart_accounts a
   WHERE a.company_id = NEW.company_id AND a.id = NEW.account_id
   FOR SHARE;
@@ -1026,6 +1026,11 @@ BEGIN
   END IF;
   IF NEW.kind = 'stated' AND entry.source <> 'opening' THEN
     RAISE EXCEPTION 'journal_lines: a stated line is only on an opening entry'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF entry.source = 'opening' AND account.class IN ('revenue', 'expense') THEN
+    RAISE EXCEPTION 'journal_lines: an opening entry holds the balance sheet only, not account %',
+      NEW.account_id
       USING ERRCODE = 'restrict_violation';
   END IF;
   SELECT s.book_currency, s.parallel_currency INTO settings

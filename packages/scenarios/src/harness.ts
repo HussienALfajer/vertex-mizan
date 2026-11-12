@@ -8,8 +8,8 @@ import type {
   Step,
   StepKind,
 } from './format.js';
-import { opening, reverse as reverseOpening } from './opening.js';
 import { event, job } from './hub.js';
+import { opening, reverse as reverseOpening } from './opening.js';
 import type { ExpectedReport } from './report-format.js';
 import { reports, serviceDepartment } from './reports.js';
 import type { NamedValue } from './run.js';

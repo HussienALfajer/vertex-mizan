@@ -341,14 +341,15 @@ export function openingSchedules(
       if (pattern.kind === 'point_in_time') {
         const milestone = milestones.get(pattern.milestoneId);
         const doneOn = milestone?.done_on;
+        // Done by the eve: S06 released the line's deferral at the done, or the line cleared the
+        // done's contract asset at its issue, either only at the milestone's amount in its currency;
+        // another amount is held `milestone_amount_differs` (S06 rules 11–12), so the check fails.
         if (
-          line.source === 'milestone' &&
           milestone !== undefined &&
           doneOn !== undefined &&
-          doneOn <= invoice.issued_on &&
-          BigInt(milestone.amount) !== hubMinor(line.amount)
+          (BigInt(milestone.amount) !== hubMinor(line.amount) ||
+            milestone.currency !== invoice.currency)
         ) {
-          // Its invoice would have cleared the done's contract asset item: another amount (rule 12).
           fail('milestone_amount_differs');
           continue;
         }
@@ -609,8 +610,14 @@ export function openingHubItems(
       amount: money(hubMinor(invoice.outstanding), invoice.currency),
     });
   }
+  // A milestone a line of the snapshot's invoices names is billed (S06 rule 12): no contract asset.
+  const billed = new Set(
+    snapshot.invoices.flatMap((invoice) =>
+      invoice.lines.flatMap((line) => (line.milestone_id === undefined ? [] : [line.milestone_id])),
+    ),
+  );
   for (const milestone of snapshot.milestones) {
-    if (!isContractAsset(milestone)) continue;
+    if (!isContractAsset(milestone) || billed.has(milestone.milestone.id)) continue;
     add({
       slot: 'contract_asset',
       reference: milestone.milestone.number,

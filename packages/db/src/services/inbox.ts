@@ -71,6 +71,7 @@ import { recordRate } from './rates.js';
 import {
   creditChangedLaterOf,
   cyclesOf,
+  eventIssue,
   milestoneFactsOf,
   openSchedules,
   projectSchedulesOf,
@@ -78,7 +79,6 @@ import {
   recutSince,
   reissuesOf,
   releaseBeforeChange,
-  eventIssue,
   releaseEndedMonths,
   scheduledLineIdsOf,
   splitAtCancellation,

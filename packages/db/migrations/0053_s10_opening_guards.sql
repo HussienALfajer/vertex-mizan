@@ -363,8 +363,8 @@ CREATE CONSTRAINT TRIGGER journal_entries_opening_recorded AFTER INSERT ON journ
 --> statement-breakpoint
 ALTER TABLE journal_entries ENABLE ALWAYS TRIGGER journal_entries_opening_recorded;
 --> statement-breakpoint
--- A line as posted (S02 rule 8, S03), and a stated line only on an entry whose source is opening
--- (ADR 0019).
+-- A line as posted (S02 rule 8, S03), a stated line only on an entry whose source is opening
+-- (ADR 0019), and an opening entry with no revenue or expense line (S10 "Accounting treatment").
 CREATE OR REPLACE FUNCTION journal_line_rules() RETURNS trigger
   LANGUAGE plpgsql
   AS $$
@@ -373,7 +373,7 @@ DECLARE
   entry record;
   settings record;
 BEGIN
-  SELECT a.kind, a.currency, a.first_posted_at INTO account
+  SELECT a.kind, a.class, a.currency, a.first_posted_at INTO account
   FROM public.chart_accounts a
   WHERE a.company_id = NEW.company_id AND a.id = NEW.account_id
   FOR SHARE;
@@ -395,6 +395,11 @@ BEGIN
   END IF;
   IF NEW.kind = 'stated' AND entry.source <> 'opening' THEN
     RAISE EXCEPTION 'journal_lines: a stated line is only on an opening entry'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF entry.source = 'opening' AND account.class IN ('revenue', 'expense') THEN
+    RAISE EXCEPTION 'journal_lines: an opening entry holds the balance sheet only, not account %',
+      NEW.account_id
       USING ERRCODE = 'restrict_violation';
   END IF;
   SELECT s.book_currency, s.parallel_currency INTO settings

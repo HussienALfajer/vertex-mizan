@@ -63,6 +63,7 @@ import {
 } from '../schema/opening.js';
 import { exchangeRates } from '../schema/rates.js';
 import { recognitionMovements, recognitionSchedules } from '../schema/recognition.js';
+import { onUniqueViolation } from '../unique-violation.js';
 import { ledgersOf } from './companies.js';
 import { HubValues } from './inbox.js';
 import { exchangeRateOf, publicationCalendar, rateSuperseded } from './rates.js';
@@ -205,6 +206,9 @@ export async function receiveOpeningSnapshot(
     readonly actor: AuditActor;
   },
 ): Promise<OpeningSnapshotResult> {
+  // Two snapshots at once serialise on the company's settings row, the books start's (rules 2, 7):
+  // the second finds the first's key, and Hub's values are made once.
+  await tx.select({ id: companySettings.id }).from(companySettings).for('update');
   const settings = await settingsOf(tx);
   const payload = JSON.parse(canonicalPayload(input.snapshot)) as Record<string, unknown>;
   const payloadHash = sha256(canonicalPayload(input.snapshot));
@@ -254,8 +258,34 @@ export async function receiveOpeningSnapshot(
       milestoneCount: counts.milestones,
       priorDocumentCount: counts.prior_documents,
     })
+    // Two requests under one key at once (Hub's retry): the second waits for the first and stores
+    // nothing, then answers it as a replay, or a conflict for another body (rule 7).
+    .onConflictDoNothing({
+      target: [
+        openingSnapshots.companyId,
+        openingSnapshots.apiClientId,
+        openingSnapshots.snapshotKey,
+      ],
+    })
     .returning();
-  if (!row) throw new Error('The snapshot was not stored');
+  if (!row) {
+    const [first] = await tx
+      .select()
+      .from(openingSnapshots)
+      .where(
+        and(
+          eq(openingSnapshots.apiClientId, input.apiClientId),
+          eq(openingSnapshots.snapshotKey, input.snapshotKey),
+        ),
+      );
+    if (!first) throw new Error('A snapshot neither stored nor found');
+    if (first.payloadHash !== payloadHash) {
+      refuse('IDEMPOTENCY_CONFLICT', 'The key was used with another snapshot', {
+        idempotencyKey: input.snapshotKey,
+      });
+    }
+    return snapshotResult(first, openingSnapshotSchema.parse(first.payload), true);
+  }
   await writeCompanyAudit(tx, input.companyId, input.actor, {
     action: 'opening.snapshot_received',
     entityType: 'opening_snapshot',
@@ -576,6 +606,29 @@ export async function readOpening(tx: Transaction): Promise<OpeningView> {
       complete = false;
       continue;
     }
+    // Checked on read as at save (rule 22): no revenue or expense line, and in a company with a
+    // Hub client no line on Hub's slots, so no document is counted twice (rule 12).
+    if (account.class === 'revenue' || account.class === 'expense') {
+      lineFailures.push({
+        lineNo: line.lineNo,
+        code: 'VALIDATION_FAILED',
+        reason: 'income_statement_account',
+      });
+      complete = false;
+      continue;
+    }
+    if (
+      hubClient &&
+      slotRows.some(
+        (row) =>
+          row.account.id === account.id &&
+          ['receivable', 'ad_funds', 'contract_asset'].includes(row.slot),
+      )
+    ) {
+      lineFailures.push({ lineNo: line.lineNo, code: 'VALIDATION_FAILED', reason: 'hub_slot' });
+      complete = false;
+      continue;
+    }
     const measured = openingRecordLine(
       {
         account: account.id,
@@ -794,13 +847,20 @@ export async function saveOpening(
     if (retained.some((row) => row.accountId === line.accountId)) {
       refuse('VALIDATION_FAILED', 'Retained earnings take the balancing figure', { lineNo });
     }
+    const account = accounts.find((candidate) => candidate.id === line.accountId);
+    if (account?.class === 'revenue' || account?.class === 'expense') {
+      // The opening holds the balance sheet only; the result before the books start is one figure
+      // on `pre_opening_result` (S10 "Accounting treatment"; owner, 2026-11-12).
+      refuse('VALIDATION_FAILED', 'The opening holds no revenue or expense line', { lineNo });
+    }
   });
   let row: OpeningRow;
   if (opening === null) {
-    const [made] = await tx
-      .insert(openings)
-      .values({ companyId, preparedByUserId: actor.userId })
-      .returning();
+    // Two first saves at once: the one live opening per company decides (rule 16).
+    const [made] = await onUniqueViolation(
+      () => tx.insert(openings).values({ companyId, preparedByUserId: actor.userId }).returning(),
+      { openings_live_key: 'OPENING_CHANGED' },
+    );
     if (!made) throw new Error('The opening was not made');
     row = made;
   } else {

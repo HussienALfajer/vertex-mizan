@@ -402,6 +402,56 @@ describe('the opening entry (S10 rules 11â€“19)', () => {
     ]);
   });
 
+  it('holds a deposit whose milestone was done for another amount, and opens no asset a line bills', () => {
+    const deposit = (amount: number) =>
+      snapshotOf({
+        invoices: [
+          {
+            invoice: doc('INV-2026-8'),
+            client: ref('C2'),
+            contract: contract('P2', 'project', 'C2'),
+            currency: 'USD',
+            syp_per_usd: '117.5000',
+            issued_on: '2026-09-15',
+            due_on: '2026-09-30',
+            total: amount,
+            outstanding: 0,
+            lines: [
+              { id: id(60), amount, service: ref('S2'), source: 'deposit', milestone_id: id(61) },
+            ],
+          },
+        ],
+        milestones: [
+          {
+            milestone: { id: id(61), number: 'MS-1' },
+            client: ref('C2'),
+            project: contract('P2', 'project', 'C2'),
+            currency: 'USD',
+            amount: 40_000,
+            service: ref('S2'),
+            done_on: '2026-09-25',
+          },
+        ],
+      });
+    const context = contextOf(sypUsd, [
+      rate('USD', 'SYP', '114.5000', 'bulletin', '2026-09-15'),
+      rate('USD', 'SYP', '115.0000', 'bulletin', '2026-09-30'),
+      rate('USD', 'SYP', '118.0000', 'market', '2026-09-30'),
+    ]);
+    // 150.00 USD against a 400.00 USD milestone: S06 holds the done.
+    expect(openingSchedules(deposit(15_000), context)).toMatchObject({
+      schedules: [],
+      failures: [{ invoice: 'INV-2026-8', position: 1, detail: 'milestone_amount_differs' }],
+    });
+    expect(openingHubItems(deposit(15_000), context).items).toEqual([]);
+    // At the milestone's amount, released at its done: nothing deferred, and no contract asset.
+    expect(openingSchedules(deposit(40_000), context)).toMatchObject({
+      schedules: [],
+      failures: [],
+    });
+    expect(openingHubItems(deposit(40_000), context).items).toEqual([]);
+  });
+
   it('names the rates the measurements miss and the lines S06 would hold', () => {
     const snapshot = snapshotOf({
       invoices: [

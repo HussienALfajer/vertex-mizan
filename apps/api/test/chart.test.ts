@@ -85,7 +85,7 @@ describe('the guard on every chart route', () => {
 });
 
 describe('templates (rule 1)', () => {
-  it('applies the service-agency template at creation, with all six roles', async () => {
+  it('applies the service-agency template at creation, with all seven roles', async () => {
     const owner = await ownerWith('service-agency');
     const accounts = await tree(owner.browser);
     const template = chartTemplate('service-agency');
@@ -98,7 +98,7 @@ describe('templates (rule 1)', () => {
       clientFunds.requiredDimensions.length,
     );
     const roles = await owner.browser.get('/api/account-roles');
-    expect(roles.body).toHaveLength(6);
+    expect(roles.body).toHaveLength(7);
     for (const { role, accountId } of roles.body) {
       const expected = template.accounts.find((account) => account.role === role);
       expect(accounts.find((account) => account.id === accountId)?.code, role).toBe(expected?.code);
@@ -117,8 +117,8 @@ describe('templates (rule 1)', () => {
     ]);
     const listed = await owner.browser.get('/api/chart/templates');
     expect(listed.body).toEqual([
-      expect.objectContaining({ id: 'service-agency', version: 1 }),
-      expect.objectContaining({ id: 'general', version: 1 }),
+      expect.objectContaining({ id: 'service-agency', version: 2 }),
+      expect.objectContaining({ id: 'general', version: 2 }),
     ]);
     const [first, second] = await Promise.all([
       owner.browser.post('/api/chart/apply-template', { templateId: 'general' }),
@@ -586,7 +586,7 @@ describe('account roles (rule 7)', () => {
   it('shows a missing role as null on a chart without a template', async () => {
     const owner = await ownerWith(null);
     const roles = await owner.browser.get('/api/account-roles');
-    expect(roles.body).toHaveLength(6);
+    expect(roles.body).toHaveLength(7);
     expect(roles.body.every((role: { accountId: unknown }) => role.accountId === null)).toBe(true);
   });
 });

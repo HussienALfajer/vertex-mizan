@@ -21,10 +21,12 @@ import {
   journalEntries,
   journalLines,
   OPENING_ROW_STATES,
+  openItems,
   openingLines,
   openingSnapshots,
   openings,
   type PersonActor,
+  periods,
   post,
   postOpening,
   RECOGNITION_MOVEMENT_KINDS,
@@ -655,5 +657,269 @@ describe('the opening (S10)', () => {
     expect(view.opening).toBeNull();
     expect(view.snapshot).toBeNull();
     void companyId;
+  });
+});
+
+/** A forged journal entry header, as no posting function writes it. */
+const forgedEntry = (companyId: string, source: string, entryDate: string) => ({
+  companyId,
+  requestId: uuidv7(),
+  sequence: 99n,
+  fiscalYear: 2026,
+  number: 99,
+  entryDate,
+  postedAt: new Date(),
+  source,
+  description: 'قيد مزوّر',
+  lineCount: 2,
+  hash: 'f'.repeat(64),
+});
+
+const postAlone = (tx: Transaction, view: Awaited<ReturnType<typeof readOpening>>) =>
+  post(tx, {
+    client: 'manual',
+    idempotencyKey: `opening:${view.opening?.id}`,
+    entryDate: view.booksStart,
+    description: 'قيد الأرصدة الافتتاحية',
+    reference: null,
+    draftId: null,
+    preparedByUserId: personId,
+    approvedByUserId: null,
+    actor: person(),
+    content: { ...(view.content as NonNullable<typeof view.content>) },
+  });
+
+describe('the opening guards against forged writes (S10)', () => {
+  it('refuses an entry before the opening and before the books start, for every role', async () => {
+    const companyId = await newCompany();
+    for (const database of [app, owner]) {
+      expect(
+        await refusal(
+          withCompany(database, companyId, (tx) =>
+            tx.insert(journalEntries).values(forgedEntry(companyId, 'manual', '2026-10-05')),
+          ),
+        ),
+      ).toContain('OPENING_NOT_POSTED');
+      expect(
+        await refusal(
+          withCompany(database, companyId, (tx) =>
+            tx.insert(journalEntries).values(forgedEntry(companyId, 'opening', '2026-10-05')),
+          ),
+        ),
+      ).toContain('dated on the books start');
+    }
+    const { companyId: posted } = await readyCompany();
+    const view = await inCompany(posted, readOpening);
+    await inCompany(posted, (tx) =>
+      postOpening(tx, { fingerprint: view.fingerprint, actor: person() }),
+    );
+    expect(
+      await refusal(
+        withCompany(owner, posted, (tx) =>
+          tx.insert(journalEntries).values(forgedEntry(posted, 'manual', '2026-09-30')),
+        ),
+      ),
+    ).toContain('before the books start');
+  });
+
+  it('refuses an opening entry without its opening, a stale snapshot, and a close or a period before it', async () => {
+    const { companyId } = await readyCompany();
+    const view = await inCompany(companyId, readOpening);
+    // The posting function's entry alone: the opening is not posted with it.
+    expect(await refusal(inCompany(companyId, (tx) => postAlone(tx, view)))).toContain(
+      'without its opening',
+    );
+    // Posted with another snapshot than the latest.
+    expect(
+      await refusal(
+        inCompany(companyId, async (tx) => {
+          const entry = await postAlone(tx, view);
+          await tx.update(openings).set({
+            state: 'posted',
+            entryId: entry.id,
+            snapshotId: null,
+            postedByUserId: personId,
+            postedAt: new Date(),
+            fingerprint: 'a'.repeat(64),
+          });
+        }),
+      ),
+    ).toContain('with the latest snapshot');
+    for (const database of [app, owner]) {
+      expect(
+        await refusal(
+          withCompany(database, companyId, (tx) =>
+            tx
+              .insert(periods)
+              .values({ companyId, period: '2026-09', fiscalYear: 2026, state: 'open' }),
+          ),
+        ),
+      ).toContain('before the books start');
+      expect(
+        await refusal(
+          withCompany(database, companyId, async (tx) => {
+            await tx
+              .insert(periods)
+              .values({ companyId, period: '2026-10', fiscalYear: 2026, state: 'open' })
+              .onConflictDoNothing();
+            await tx.update(periods).set({ state: 'closed' }).where(eq(periods.period, '2026-10'));
+          }),
+        ),
+      ).toContain('OPENING_NOT_POSTED');
+    }
+  });
+
+  it('refuses a reversal by hand once another entry stands, and a posted opening changed', async () => {
+    const { companyId } = await readyCompany();
+    const view = await inCompany(companyId, readOpening);
+    await inCompany(companyId, (tx) =>
+      postOpening(tx, { fingerprint: view.fingerprint, actor: person() }),
+    );
+    const manual = await inCompany(companyId, (tx) => manualEntry(tx));
+    expect(
+      await refusal(
+        inCompany(companyId, (tx) => tx.update(openings).set({ fingerprint: 'b'.repeat(64) })),
+      ),
+    ).toContain('does not go from posted to posted');
+    expect(
+      await refusal(
+        inCompany(companyId, (tx) =>
+          tx.update(openings).set({
+            state: 'reversed',
+            reversalEntryId: manual.id,
+            reversedByUserId: personId,
+            reversedAt: new Date(),
+            reverseReason: 'عكس مزوّر',
+          }),
+        ),
+      ),
+    ).toContain('OPENING_NOT_REVERSIBLE');
+  });
+
+  it("refuses a reference the opening's standing item holds, and forged schedules and movements", async () => {
+    const { companyId } = await readyCompany();
+    const view = await inCompany(companyId, readOpening);
+    await inCompany(companyId, (tx) =>
+      postOpening(tx, { fingerprint: view.fingerprint, actor: person() }),
+    );
+    for (const database of [app, owner]) {
+      expect(
+        await refusal(
+          withCompany(database, companyId, async (tx) => {
+            const [item] = await tx.select().from(openItems).where(eq(openItems.kind, 'document'));
+            await tx.insert(openItems).values({
+              ...(item as typeof openItems.$inferInsert),
+              id: uuidv7(),
+              source: 'manual',
+              hubDocument: null,
+            });
+          }),
+        ),
+      ).toContain('stands on account');
+    }
+    // A schedule on an opening that is no longer a draft.
+    expect(
+      await refusal(
+        inCompany(companyId, async (tx) => {
+          const [schedule] = await tx.select().from(recognitionSchedules);
+          await tx.insert(recognitionSchedules).values({
+            ...(schedule as typeof recognitionSchedules.$inferInsert),
+            id: uuidv7(),
+            lineId: uuidv7(),
+          });
+        }),
+      ),
+    ).toContain('opened by its opening being posted');
+    // A before_opening movement describing another entry than the opening's.
+    expect(
+      await refusal(
+        inCompany(companyId, async (tx) => {
+          const entry = await manualEntry(tx);
+          const [schedule] = await tx.select().from(recognitionSchedules);
+          await tx.insert(recognitionMovements).values({
+            companyId,
+            scheduleId: schedule?.id as string,
+            kind: 'before_opening',
+            month: '2026-08-01',
+            entryId: entry.id,
+            transactionMinor: -1n,
+            bookMinor: -1n,
+            parallelMinor: -1n,
+          });
+        }),
+      ),
+    ).toContain('on its opening entry');
+  });
+});
+
+describe('the opening at once (S10 rules 7, 16)', () => {
+  it('answers two identical snapshots at once with one stored, and two first saves with one', async () => {
+    const companyId = await newCompany();
+    const clientId = await newHubClient(companyId);
+    const send = () =>
+      inCompany(companyId, (tx) =>
+        receiveOpeningSnapshot(tx, {
+          companyId,
+          apiClientId: clientId,
+          snapshotKey: 'same-key',
+          snapshot: snapshot(),
+          actor: hubActor(clientId),
+        }),
+      );
+    const answers = await Promise.all([send(), send()]);
+    expect(answers.map((answer) => answer.replayed).sort()).toEqual([false, true]);
+    expect(answers[0]?.snapshot_id).toBe(answers[1]?.snapshot_id);
+    const saves = await Promise.all(
+      [0, 1].map(() =>
+        codeOf(inCompany(companyId, (tx) => save(tx, 0, false))).then((code) => code),
+      ),
+    );
+    expect(saves.sort()).toEqual(['OPENING_CHANGED', 'none']);
+  });
+
+  it('refuses an income statement account on the opening, and a Hub slot line saved before Hub came', async () => {
+    const companyId = await newCompany();
+    await recordRates(companyId);
+    expect(
+      await codeOf(
+        inCompany(companyId, async (tx) =>
+          saveOpening(
+            tx,
+            saveOpeningSchema.parse({
+              version: 0,
+              lines: [
+                { accountId: await accountId(tx, '411001'), currency: 'SYP', amount: '-100' },
+              ],
+              recordFigures: [],
+            }),
+            person(),
+          ),
+        ),
+      ),
+    ).toBe('VALIDATION_FAILED');
+    // No Hub client yet: a receivable line saves; once Hub's client stands, the check fails.
+    await inCompany(companyId, async (tx) =>
+      saveOpening(
+        tx,
+        saveOpeningSchema.parse({
+          version: 0,
+          lines: [
+            {
+              accountId: await accountId(tx, '112001'),
+              dimensionValueIds: [],
+              currency: 'SYP',
+              amount: '100',
+              itemReference: 'OLD-1',
+            },
+          ],
+          recordFigures: [],
+        }),
+        person(),
+      ),
+    );
+    await newHubClient(companyId);
+    const view = await inCompany(companyId, readOpening);
+    const lines = view.checks.find((check) => check.check === 'lines');
+    expect(lines?.failures).toEqual([{ lineNo: 1, code: 'VALIDATION_FAILED', reason: 'hub_slot' }]);
   });
 });

@@ -591,7 +591,11 @@ export function eventIssue(row: EventRow): ScheduleIssue {
     hub: {
       inboxId: row.id,
       clientId: row.apiClientId,
-      document: { type: 'invoice', id: event.payload.invoice.id, number: event.payload.invoice.number },
+      document: {
+        type: 'invoice',
+        id: event.payload.invoice.id,
+        number: event.payload.invoice.number,
+      },
     },
     payload: event.payload,
     schedules: eq(recognitionSchedules.eventId, row.id) as SQL,
@@ -603,7 +607,9 @@ export function eventIssue(row: EventRow): ScheduleIssue {
 async function openingInvoices(
   tx: Transaction,
   openingIds: readonly string[],
-): Promise<Map<string, { opening: typeof openings.$inferSelect; payload: InvoiceIssuedV1; clientId: string }>> {
+): Promise<
+  Map<string, { opening: typeof openings.$inferSelect; payload: InvoiceIssuedV1; clientId: string }>
+> {
   const found = new Map<
     string,
     { opening: typeof openings.$inferSelect; payload: InvoiceIssuedV1; clientId: string }
@@ -856,7 +862,9 @@ export async function overTimeStates(
         movement.kind === 'credited' ||
         movement.kind === 'adjusted' ||
         (movement.kind === 'released' && movement.month === null) ||
-        (movement.kind === 'before_opening' && movement.month === null && movement.creditMinor !== null),
+        (movement.kind === 'before_opening' &&
+          movement.month === null &&
+          movement.creditMinor !== null),
     );
     const voided = own.some((movement) => movement.kind === 'reversed');
     const parts = new Map<string, CarriedAmounts>();
@@ -1149,6 +1157,8 @@ export async function reclassifyRecognised(
     readonly hub: HubSource;
   },
 ): Promise<string[]> {
+  // The line's schedule; after a whole reversal of the opening and a new one, the new opening's
+  // (S10 rules 25, 29): a reversed opening's schedule no longer stands.
   const [schedule] = await tx
     .select()
     .from(recognitionSchedules)
@@ -1156,6 +1166,7 @@ export async function reclassifyRecognised(
       and(
         eq(recognitionSchedules.invoiceDocumentId, input.invoiceId),
         eq(recognitionSchedules.lineId, input.lineId),
+        sql`not exists (select 1 from ${openings} o where o.company_id = ${recognitionSchedules.companyId} and o.id = ${recognitionSchedules.openingId} and o.state = 'reversed')`,
       ),
     )
     .orderBy(asc(recognitionSchedules.id));
