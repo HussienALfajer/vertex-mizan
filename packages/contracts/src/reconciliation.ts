@@ -413,7 +413,8 @@ export type ReconciliationResult = z.infer<typeof reconciliationResultSchema>;
 /** Events per page of `GET /v1/events?date=` (S08 rule 14). */
 export const RECEIVED_EVENTS_PAGE_SIZE = 500;
 
-const cursorSchema = z.string().min(1).max(200);
+/** The last event of a page: its inbox id. */
+const cursorSchema = z.uuid();
 
 /** `GET /v1/events?date=&cursor=` (S08 rule 14). */
 export const receivedEventsQuerySchema = z

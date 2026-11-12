@@ -27,6 +27,8 @@ export const apiClients = {
     anyAddress: 'أي عنوان',
     documentTypes: 'أنواع المستندات',
     noDocumentTypes: 'لا نوع',
+    // S08 rule 13.
+    reconcileFrom: 'تاريخ بدء المطابقة',
     createdAt: 'أُنشئ',
     edit: 'تعديل',
     newKey: 'مفتاح جديد',
@@ -68,6 +70,11 @@ export const apiClients = {
     scopesRequired: 'اختر صلاحية واحدة على الأقل.',
     allowListInvalidLine: 'سطر ليس عنوانًا ولا شبكة صحيحة:',
     allowListTooMany: 'خمسون عنوانًا على الأكثر.',
+    // S08 rule 13: required with events:write or reconciliation:write, never cleared.
+    reconcileFrom: 'تاريخ بدء المطابقة',
+    reconcileFromHint:
+      'أول تاريخ محاسبي يرسل له Hub تقرير المطابقة اليومية. لا يُمسح بعد ضبطه، ولا يُؤخَّر إلى ما بعد أيام في شهر مقفل.',
+    reconcileFromRequired: 'أدخل تاريخ بدء المطابقة: يلزم مع صلاحية إرسال الأحداث أو المطابقة.',
   },
   reveal: {
     title: 'المفتاح الجديد',

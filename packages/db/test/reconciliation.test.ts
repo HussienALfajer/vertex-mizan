@@ -10,7 +10,7 @@ import {
   totalsOf,
   wireAmountOf,
 } from '@vertex-mizan/contracts';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import { beforeAll, describe, expect, it } from 'vitest';
 import {
@@ -556,27 +556,64 @@ describe('the checklist item reconciliation_clean (S08 rule 12)', () => {
     });
   });
 
-  it('reads a report committed before it inside the close’s transaction (rule 12)', async () => {
+  it('reads every day from the start date at the first close, which closes the months before (owner, 2026-11-12)', async () => {
+    const { companyId, clientId } = await newCompany('2026-10-19');
+    // Nothing arrives for October; November is reported in full and matched.
+    for (const date of [...Array(30).keys()].map(
+      (day) => `2026-11-${String(day + 1).padStart(2, '0')}`,
+    )) {
+      await send(companyId, clientId, reportOf(date, []));
+    }
+    expect(await reconciliationItem(companyId, '2026-11')).toMatchObject({
+      result: 'failed',
+      count: 13,
+    });
+    for (let day = 19; day <= 31; day += 1) {
+      await send(companyId, clientId, reportOf(`2026-10-${day}`, []));
+    }
+    expect(await reconciliationItem(companyId, '2026-11')).toMatchObject({ result: 'passed' });
+    // Once a month is closed, a later close reads its own month only.
+    await closeMonthByHand(app, companyId, '2026-11');
+    await send(
+      companyId,
+      clientId,
+      reportOf('2026-10-20', [issued('2026-10-20', 1_000)], '2026-10-21T09:00:00+03:00'),
+    );
+    // December's 31 days, not October's difference on the 20th.
+    expect(await reconciliationItem(companyId, '2026-12')).toMatchObject({
+      result: 'failed',
+      count: 31,
+    });
+  });
+
+  it('lets a report commit while a close’s transaction runs, each reading consistent (rule 12)', async () => {
     const { companyId, clientId } = await newCompany('2026-10-31');
-    let written: () => void = () => {};
-    const ready = new Promise<void>((resolve) => {
-      written = resolve;
+    let read: () => void = () => {};
+    const checked = new Promise<void>((resolve) => {
+      read = resolve;
     });
     let release: () => void = () => {};
     const until = new Promise<void>((resolve) => {
       release = resolve;
     });
-    // The checklist runs while a report for the month's one day commits first.
-    await send(companyId, clientId, reportOf('2026-10-31', []));
-    const reading = inCompany(companyId, async (tx) => {
-      written();
+    // The close's order: the ledger head, then the checklist; the transaction stays open.
+    const closing = inCompany(companyId, async (tx) => {
+      await tx.execute(sql`select id from ledger_heads for update`);
+      const before = await periodChecklist(tx, '2026-10', TODAY);
+      read();
       await until;
-      return periodChecklist(tx, '2026-10', TODAY);
+      return before;
     });
-    await ready;
+    await checked;
+    // The report waits for no ledger lock: it commits while the close's transaction is open.
+    await send(companyId, clientId, reportOf('2026-10-31', []));
     release();
-    const checklist = await reading;
-    expect(checklist.find((item) => item.item === 'reconciliation_clean')?.result).toBe('passed');
+    const before = await closing;
+    expect(before.find((item) => item.item === 'reconciliation_clean')).toMatchObject({
+      result: 'failed',
+      count: 1,
+    });
+    expect(await reconciliationItem(companyId, '2026-10')).toMatchObject({ result: 'passed' });
   });
 });
 
@@ -593,6 +630,31 @@ describe('the start date (S08 rule 13)', () => {
     await move('2026-11-01', '2026-11-10');
     await move('2026-11-10', '2026-10-01');
     await move(null, '2026-11-10');
+    // A move later waits for a close holding the ledger head, then sees the month closed.
+    const { companyId: racing } = await newCompany('2026-11-01');
+    let written: () => void = () => {};
+    const ready = new Promise<void>((resolve) => {
+      written = resolve;
+    });
+    let release: () => void = () => {};
+    const until = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const close = closeMonthByHand(app, racing, '2026-11', { written, until });
+    await ready;
+    let settled = false;
+    const moving = codeOf(
+      inCompany(racing, (tx) =>
+        checkReconcileFromMove(tx, { from: '2026-11-01', to: '2026-12-01' }),
+      ),
+    ).finally(() => {
+      settled = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(settled).toBe(false);
+    release();
+    await close;
+    expect(await moving).toBe('RECONCILIATION_START_LOCKED');
     // A report for a closed month is kept and compared like any other (rule 15).
     const day = await dayOf(companyId, '2026-10-25');
     expect(day).toMatchObject({ closed: true, state: 'missing' });

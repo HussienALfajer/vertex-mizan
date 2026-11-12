@@ -203,9 +203,11 @@ export class HubApiService {
 
   /**
    * `POST /v1/reconciliation/daily` (S08 rules 1, 4, 5): the `Idempotency-Key` equal to the
-   * report's id, then the report kept and compared in the key's company, under the company row's
-   * lock, which the close takes too: a report commits wholly before or after a close's checklist.
-   * `201` stored, `200` a replay that stores nothing.
+   * report's id, then the report kept and compared in the key's company, the company row locked
+   * for the write (an archived company refused). It takes no ledger lock, so it never waits for a
+   * close: a close's checklist reads each report whole or not at all, and a report committed after
+   * the close shows "بعد الإقفال" on its days (rules 12, 15). `201` stored, `200` a replay that
+   * stores nothing.
    */
   async reconcile(
     access: ApiClientRouteAccess,

@@ -16,7 +16,7 @@ Spec: `docs/specs/S08-daily-reconciliation.md` (Approved, owner 2026-11-12) · A
 
 ## PR 2 — The screens (ui, web, e2e)
 - [ ] ui: `ReconciliationDayBadge` if `EventStateBadge`'s pattern does not fit (tested, both densities, on the design-system page)
-- [ ] web: the sidebar's "المطابقة اليومية" with its count; `/reconciliation?month=&client=` (days, counts, gaps, annotations, "بعد الإقفال", the matched days in a row, client filter, month navigation; empty, before-start, loading and error states); `/reconciliation/:date?client=` (state, totals Hub beside Mizan through `Amount`, differences with links to `/inbox/:id`, annotations with their entries and items, the reports); the checklist's link on `/periods/:period`; "تاريخ بدء المطابقة" on `/settings/api-clients` with `RECONCILIATION_START_LOCKED`; `ar.reconciliation`
+- [ ] web: the sidebar's "المطابقة اليومية" with its count; `/reconciliation?month=&client=` (days, counts, gaps, annotations, "بعد الإقفال", the matched days in a row, client filter, month navigation; empty, before-start, loading and error states); `/reconciliation/:date?client=` (state, totals Hub beside Mizan through `Amount`, differences with links to `/inbox/:id`, annotations with their entries and items, the reports); the checklist's link on `/periods/:period`; `ar.reconciliation` (the client form's "تاريخ بدء المطابقة" came with PR 1, which the API's requirement needed)
 - [ ] e2e: the reconciliation and start-date flows; RTL screenshots light and dark at 360, 768 and 1280 px, looked at
 - [ ] wiring (Web), docs (`apps/web/CLAUDE.md`, `packages/ui/CLAUDE.md`, `docs/ROADMAP.md`: S08 done)
 - [ ] checks and reviewer, PR with auto-merge and Auto-fix; reset this file to its "No task in progress" stub

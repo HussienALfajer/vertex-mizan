@@ -46,7 +46,7 @@ import type { Transaction } from '../client.js';
 import { isClosedPeriod, readClosedPeriods } from '../posting/periods.js';
 import { apiClients } from '../schema/api-clients.js';
 import { inboundEventActions, inboundEventStates, inboundEvents } from '../schema/inbox.js';
-import { journalEntries } from '../schema/ledger.js';
+import { journalEntries, ledgerHeads } from '../schema/ledger.js';
 import { openItemMovements, openItems } from '../schema/open-items.js';
 import { reconciliationReportEvents, reconciliationReports } from '../schema/reconciliation.js';
 
@@ -418,16 +418,24 @@ async function statesOver(
 /**
  * The checklist item `reconciliation_clean` of a month (rule 12): the days of the month that are
  * not `matched` or `not_required` for some client, counted once each; not applicable when every
- * day is `not_required`. Computed inside the close's transaction like the other items. A day
- * awaited and a day missed both fail, so the time of day does not change the result.
+ * day is `not_required`. At the company's first close, which closes every earlier month too (S07
+ * rule 4), the days from the earliest start date on (owner, 2026-11-12). Computed inside the
+ * close's transaction like the other items. A day awaited and a day missed both fail, so the time
+ * of day does not change the result.
  */
 export async function reconciliationCheck(
   tx: Transaction,
   period: string,
 ): Promise<{ readonly applicable: boolean; readonly uncleanDays: number }> {
   const days = daysOfMonth(period);
-  const first = days[0] as string;
   const last = days.at(-1) as string;
+  let first = days[0] as string;
+  if ((await readClosedPeriods(tx)).closed.size === 0) {
+    const earliest = (await readReconciledClients(tx))
+      .map((client) => client.reconcileFrom)
+      .sort()[0];
+    if (earliest !== undefined && earliest < first) first = earliest;
+  }
   const states = await statesOver(tx, first, last, `${first}T00:00`);
   return {
     applicable: states.some((day) => day.state !== 'not_required'),
@@ -668,7 +676,7 @@ export async function readReceivedEvents(
 ): Promise<ReceivedEventsPage> {
   let after: { receivedAt: Date; id: string } | undefined;
   if (input.cursor !== undefined) {
-    const [row] = /^[0-9a-f-]{36}$/.test(input.cursor)
+    const [row] = /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(input.cursor)
       ? await tx
           .select({ receivedAt: inboundEvents.receivedAt, id: inboundEvents.id })
           .from(inboundEvents)
@@ -1011,15 +1019,20 @@ export async function readReconciliationDay(
 }
 
 /**
- * Sets or moves a client's start date (rule 13), inside `withCompany` with the company row locked
- * by the caller, which the close locks too. Earlier is always allowed; later only while no closed
- * month holds a day between the old and the new date (`RECONCILIATION_START_LOCKED`).
+ * Checks a move of a client's start date (rule 13), inside `withCompany`, before the caller writes
+ * it in the same transaction. Earlier is always allowed; later only while no closed month holds a
+ * day between the old and the new date (`RECONCILIATION_START_LOCKED`). A later move first locks
+ * the ledger head `FOR UPDATE`, which the close takes before its checklist (ADR 0008's lock order),
+ * so a move and a close of a month it would release run one after the other: the move waits for
+ * the close and then sees the month closed, or the close waits and then reads the new date.
  */
 export async function checkReconcileFromMove(
   tx: Transaction,
   input: { readonly from: string | null; readonly to: string },
 ): Promise<void> {
   if (input.from === null || input.to <= input.from) return;
+  const [head] = await tx.select({ id: ledgerHeads.id }).from(ledgerHeads).for('update');
+  if (!head) throw new Error('A company without its ledger head');
   const closed = await readClosedPeriods(tx);
   const lastReleased = previousDay(input.to);
   for (let month = periodOf(input.from); month <= periodOf(lastReleased); ) {

@@ -111,8 +111,9 @@ export class ApiClientsService {
    * `PUT /api/api-clients/:id`: the name, scopes and allow-list given; `documentTypes`, the whole
    * list the client is the source of, moves each type to it and the types it no longer lists to
    * none (rule 21). S08 rule 13: `reconcileFrom` moves earlier always, later only while no closed
-   * month holds a day it would release (`RECONCILIATION_START_LOCKED`; the close locks the company
-   * row too); scopes that need a start date are refused on a client without one.
+   * month holds a day it would release (`RECONCILIATION_START_LOCKED`; a later move takes the ledger
+   * head the close takes, so the two never pass each other); scopes that need a start date are
+   * refused on a client without one.
    */
   async update(access: CompanyRouteAccess, id: string, input: UpdateApiClient): Promise<ApiClient> {
     const companyId = access.company.id;

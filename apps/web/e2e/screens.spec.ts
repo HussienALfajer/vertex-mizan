@@ -578,7 +578,7 @@ for (const colorScheme of ['light', 'dark'] as const) {
 
         test('period: failing checklist', async ({ page }, testInfo) => {
           await page.goto('/periods/2026-10');
-          await expect(page.locator('[data-slot="checklist-item"]')).toHaveCount(7);
+          await expect(page.locator('[data-slot="checklist-item"]')).toHaveCount(8);
           await expectNoPageOverflow(page);
           await screenshot(page, testInfo, `period-failing-${colorScheme}-${width}`);
         });
@@ -588,7 +588,7 @@ for (const colorScheme of ['light', 'dark'] as const) {
             route.fulfill({ status: 200, json: passingOctober }),
           );
           await page.goto('/periods/2026-10');
-          await expect(page.getByText(`${ar.periods.detail.summary}: 7/7`)).toBeVisible();
+          await expect(page.getByText(`${ar.periods.detail.summary}: 8/8`)).toBeVisible();
           await expectNoPageOverflow(page);
           await screenshot(page, testInfo, `period-passing-${colorScheme}-${width}`);
           await page.getByRole('button', { name: ar.periods.close.action }).click();

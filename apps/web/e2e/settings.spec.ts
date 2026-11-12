@@ -220,8 +220,11 @@ test.describe('the API clients', () => {
     await expect(fieldError(form, `${c.form.allowListInvalidLine} 10.0.0.1/8`)).toBeVisible();
     expect(created).toHaveLength(0);
 
+    // S08 rule 13: posting events needs the reconciliation's start date.
+    await expect(fieldError(form, c.form.reconcileFromRequired)).toBeVisible();
     await form.getByLabel(c.form.name).fill('Vertex Hub 2');
     await form.getByLabel(c.form.allowList).fill('203.0.113.10\n10.0.0.0/8');
+    await form.getByLabel(c.form.reconcileFrom).fill('2026-10-19');
     await form.getByRole('button', { name: c.form.create }).click();
     await enterFreshCode(page);
 
@@ -234,6 +237,7 @@ test.describe('the API clients', () => {
       system: 'hub',
       scopes: ['events:write', 'periods:read'],
       ipAllowList: ['203.0.113.10', '10.0.0.0/8'],
+      reconcileFrom: '2026-10-19',
     });
 
     // Escape does not close it, and it is done only once the key is kept.

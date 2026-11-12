@@ -13,6 +13,7 @@ import {
   createdApiClientSchema,
   DOCUMENT_TYPES,
   type DocumentType,
+  needsReconcileFrom,
   newApiKeySchema,
   revokeApiKeySchema,
   updateApiClientSchema,
@@ -229,6 +230,14 @@ function ClientCard({
                   </Badge>
                 ))}
           </dd>
+          {client.reconcileFrom && (
+            <>
+              <dt className="text-muted-foreground">{t.client.reconcileFrom}</dt>
+              <dd>
+                <bdi dir="ltr">{client.reconcileFrom}</bdi>
+              </dd>
+            </>
+          )}
         </dl>
         {manage && active >= ACTIVE_KEY_LIMIT && (
           <p className="text-sm text-muted-foreground">{t.keys.limit}</p>
@@ -400,10 +409,14 @@ function ClientDialog({
   );
   const [allowList, setAllowList] = useState((client?.ipAllowList ?? []).join('\n'));
   const [documentTypes, setDocumentTypes] = useState<DocumentType[]>(client?.documentTypes ?? []);
+  const [reconcileFrom, setReconcileFrom] = useState(client?.reconcileFrom ?? '');
+  // S08 rule 13: the start date shows once a scope needs it, and stays once set.
+  const showsReconcileFrom = needsReconcileFrom(scopes) || Boolean(client?.reconcileFrom);
   const [errors, setErrors] = useState<{
     name?: string | undefined;
     scopes?: string | undefined;
     allowList?: string | undefined;
+    reconcileFrom?: string | undefined;
   }>({});
   const [attempt, setAttempt] = useState(0);
   const save = useMutation({
@@ -412,7 +425,14 @@ function ClientDialog({
         await run(() =>
           api('PUT', `/api-clients/${client.id}`, {
             company: companyId,
-            body: updateApiClientSchema.parse({ name, scopes, ipAllowList, documentTypes }),
+            body: updateApiClientSchema.parse({
+              name,
+              scopes,
+              ipAllowList,
+              documentTypes,
+              ...(reconcileFrom !== '' &&
+                reconcileFrom !== client.reconcileFrom && { reconcileFrom }),
+            }),
             schema: apiClientSchema,
           }),
         );
@@ -421,7 +441,13 @@ function ClientDialog({
       const created = await run(() =>
         api('POST', '/api-clients', {
           company: companyId,
-          body: createApiClientSchema.parse({ name, system, scopes, ipAllowList }),
+          body: createApiClientSchema.parse({
+            name,
+            system,
+            scopes,
+            ipAllowList,
+            ...(needsReconcileFrom(scopes) && { reconcileFrom }),
+          }),
           schema: createdApiClientSchema,
         }),
       );
@@ -447,10 +473,15 @@ function ClientDialog({
                 name.trim().length === 0 || name.trim().length > 100 ? f.nameRequired : undefined,
               scopes: scopes.length === 0 ? f.scopesRequired : undefined,
               allowList: parsed.error,
+              reconcileFrom:
+                needsReconcileFrom(scopes) && !/^\d{4}-\d{2}-\d{2}$/.test(reconcileFrom)
+                  ? f.reconcileFromRequired
+                  : undefined,
             };
             setErrors(found);
-            if (found.name || found.scopes || found.allowList) setAttempt((count) => count + 1);
-            else save.mutate(parsed.list);
+            if (found.name || found.scopes || found.allowList || found.reconcileFrom) {
+              setAttempt((count) => count + 1);
+            } else save.mutate(parsed.list);
           }}
         >
           <DialogHeader>
@@ -463,6 +494,7 @@ function ClientDialog({
               ['client-name', errors.name],
               ['client-scopes', errors.scopes],
               ['client-allow-list', errors.allowList],
+              ['client-reconcile-from', errors.reconcileFrom],
             ]}
           />
           <Field id="client-name" invalid={errors.name !== undefined}>
@@ -520,6 +552,22 @@ function ClientDialog({
             <FieldDescription>{f.allowListHint}</FieldDescription>
             <FieldError match={errors.allowList !== undefined}>{errors.allowList}</FieldError>
           </Field>
+          {showsReconcileFrom && (
+            <Field id="client-reconcile-from" invalid={errors.reconcileFrom !== undefined}>
+              <FieldLabel>{f.reconcileFrom}</FieldLabel>
+              <Input
+                type="date"
+                dir="ltr"
+                className="w-48"
+                value={reconcileFrom}
+                onChange={(event) => setReconcileFrom(event.target.value)}
+              />
+              <FieldDescription>{f.reconcileFromHint}</FieldDescription>
+              <FieldError match={errors.reconcileFrom !== undefined}>
+                {errors.reconcileFrom}
+              </FieldError>
+            </Field>
+          )}
           {client && (
             <fieldset className="flex flex-col gap-3">
               <legend className="mb-2 text-control font-medium text-foreground">
