@@ -193,12 +193,16 @@ export function JournalPage() {
           </Button>
         )}
       </ReportState>
-      <JournalBookPrintDialog
-        open={search.print === true}
-        ledger={ledger}
-        month={from.slice(0, 7)}
-        onClose={() => set({ print: undefined })}
-      />
+      {/* Mounted while open, per ledger and month: its kind and months start from them each time. */}
+      {search.print === true && (
+        <JournalBookPrintDialog
+          key={`${ledger}-${from}`}
+          open
+          ledger={ledger}
+          month={from.slice(0, 7)}
+          onClose={() => set({ print: undefined })}
+        />
+      )}
     </ReportFrame>
   );
 }

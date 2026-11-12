@@ -155,10 +155,28 @@ function lineNote(
   return notes.length === 0 ? undefined : <span className="flex flex-col">{notes}</span>;
 }
 
+/**
+ * Whether `/reports/lines` can read exactly a part's lines (rule 6): its filter names the account
+ * and, when the part has them, its client and contract, but cannot ask for "no client" or "no
+ * contract". So a part without one is drillable only when no other part of the same account falls
+ * inside its filter (another client's balance, another contract's); otherwise its lines would
+ * not sum to it, and it shows without a link.
+ */
+function drillable(part: BalanceSheetPart, parts: readonly BalanceSheetPart[]): boolean {
+  return !parts.some(
+    (other) =>
+      other !== part &&
+      other.account.id === part.account.id &&
+      (part.client === null || other.client?.id === part.client.id) &&
+      (part.contract === null || other.contract?.id === part.contract.id),
+  );
+}
+
 /** The sheet's rows in the printed order (rules 15, 16). */
 function balanceRows(data: BalanceSheet, range: { ledger: Ledger; to: string }): ReportTableRow[] {
   const compare = data.header.compare;
   const currency = data.header.currency;
+  const allParts = data.lines.flatMap((line) => line.parts);
   const linesOf = (section: string) =>
     data.lines
       .filter((line) => sectionOf(line.line) === section)
@@ -185,12 +203,14 @@ function balanceRows(data: BalanceSheet, range: { ledger: Ledger; to: string }):
             figures: {
               current: {
                 value: BigInt(part.amount),
-                link: linesLink({
-                  ...range,
-                  account: part.account.id,
-                  client: part.client?.id,
-                  contract: part.contract?.id,
-                }),
+                link: drillable(part, allParts)
+                  ? linesLink({
+                      ...range,
+                      account: part.account.id,
+                      client: part.client?.id,
+                      contract: part.contract?.id,
+                    })
+                  : undefined,
                 linkLabel: t.drill.figure,
               },
             },

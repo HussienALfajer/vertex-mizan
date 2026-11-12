@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { getRouteApi, Link, useNavigate } from '@tanstack/react-router';
+import { getRouteApi, useNavigate } from '@tanstack/react-router';
 import {
   type Ledger,
   PROFITABILITY_DIMENSIONS,
@@ -8,29 +8,22 @@ import {
   type ProfitabilityRow,
 } from '@vertex-mizan/contracts';
 import { ar } from '@vertex-mizan/i18n';
-import {
-  Amount,
-  SelectField,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@vertex-mizan/ui';
+import { type ReportFigure, ReportTable, type ReportTableRow, SelectField } from '@vertex-mizan/ui';
 import { damascusToday, formatDay } from '../../lib/format';
 import { useCompany } from '../../lib/session';
 import { companyQuery } from '../company/company-queries';
 import {
   CompareFields,
+  compareParams,
   DateInput,
   excelPathOf,
+  linesLink,
   ReportExport,
   ReportFrame,
   ReportState,
   ReportValueName,
 } from './report-parts';
-import { flagText, monthStart } from './report-search';
+import { monthStart } from './report-search';
 import { paramsOf, profitabilityQuery } from './reports-queries';
 
 const t = ar.reports;
@@ -90,9 +83,7 @@ export function ProfitabilityPage() {
     from,
     to,
     ledger,
-    compare: flagText(search.compare),
-    compareFrom: search.compare === false ? undefined : search.compareFrom,
-    compareTo: search.compare === false ? undefined : search.compareTo,
+    ...compareParams(search),
   };
   const report = useQuery({
     ...profitabilityQuery(companyId, params),
@@ -107,13 +98,30 @@ export function ProfitabilityPage() {
   );
   const compared = data?.header.compare ?? null;
   const currency = data?.header.currency ?? 'SYP';
-  const linesOf = (row: ProfitabilityRow) => ({
+  // A row's lines: the statement line's lines of the period carrying the row's value (rule 23).
+  const linesOf = (row: ProfitabilityRow, statementLine: string) => ({
     ledger,
     from,
     to,
-    statementLine: 'is.revenue',
+    statementLine,
     profitabilityBy: by,
     profitabilityValue: row.value?.id,
+  });
+  // Contribution and margin, and the comparative's when there is one ("—" without lines).
+  const figuresOf = (
+    current: ProfitabilityFigures,
+    other: ProfitabilityFigures | null,
+  ): Record<string, ReportFigure> => ({
+    contribution: { value: BigInt(current.contribution) },
+    margin: marginFigure(current.margin),
+    ...(compared
+      ? {
+          compareContribution: {
+            value: compared.hasLines && other ? BigInt(other.contribution) : null,
+          },
+          compareMargin: marginFigure(compared.hasLines ? (other?.margin ?? null) : null),
+        }
+      : {}),
   });
 
   return (
@@ -163,121 +171,64 @@ export function ProfitabilityPage() {
     >
       <ReportState query={report} empty={data !== undefined && data.rows.length === 0}>
         {data && (
-          <Table aria-label={`${t.profitabilityScreen.caption} ${from} – ${to}`}>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t.profitability.by[by]}</TableHead>
-                <TableHead numeric>{t.columns.revenue}</TableHead>
-                <TableHead numeric>{t.columns.directCosts}</TableHead>
-                <TableHead numeric>{t.columns.contribution}</TableHead>
-                <TableHead numeric>{t.columns.margin}</TableHead>
-                {compared && (
-                  <>
-                    <TableHead
-                      numeric
-                    >{`${t.columns.compare} · ${t.columns.contribution}`}</TableHead>
-                    <TableHead numeric>{`${t.columns.compare} · ${t.columns.margin}`}</TableHead>
-                  </>
-                )}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map((row) => (
-                <TableRow key={row.value?.id ?? 'unassigned'}>
-                  <TableHead scope="row" className="font-normal text-foreground">
-                    <ReportValueName value={row.value} none={t.profitability.unassigned} />
-                  </TableHead>
-                  <TableCell numeric>
-                    <Link
-                      to="/reports/lines"
-                      search={linesOf(row)}
-                      aria-label={t.drill.figure}
-                      className="underline-offset-4 hover:underline"
-                    >
-                      <Amount value={BigInt(row.current.revenue)} currency={currency} />
-                    </Link>
-                  </TableCell>
-                  <TableCell numeric>
-                    <Link
-                      to="/reports/lines"
-                      search={{ ...linesOf(row), statementLine: 'is.direct_costs' }}
-                      aria-label={t.drill.figure}
-                      className="underline-offset-4 hover:underline"
-                    >
-                      <Amount value={BigInt(row.current.directCosts)} currency={currency} />
-                    </Link>
-                  </TableCell>
-                  <TableCell numeric>
-                    <Amount value={BigInt(row.current.contribution)} currency={currency} strong />
-                  </TableCell>
-                  <TableCell numeric>
-                    <Margin margin={row.current.margin} />
-                  </TableCell>
-                  {compared && (
-                    <>
-                      <TableCell numeric className="text-muted-foreground">
-                        {compared.hasLines && row.compare ? (
-                          <Amount value={BigInt(row.compare.contribution)} currency={currency} />
-                        ) : (
-                          t.none
-                        )}
-                      </TableCell>
-                      <TableCell numeric className="text-muted-foreground">
-                        <Margin margin={compared.hasLines ? (row.compare?.margin ?? null) : null} />
-                      </TableCell>
-                    </>
-                  )}
-                </TableRow>
-              ))}
-              <TableRow className="border-t border-foreground font-bold hover:bg-transparent">
-                <TableHead scope="row" className="text-foreground">
-                  {t.totals.total}
-                </TableHead>
-                <TableCell numeric>
-                  <Amount value={BigInt(data.totals.current.revenue)} currency={currency} strong />
-                </TableCell>
-                <TableCell numeric>
-                  <Amount
-                    value={BigInt(data.totals.current.directCosts)}
-                    currency={currency}
-                    strong
-                  />
-                </TableCell>
-                <TableCell numeric>
-                  <span className="inline-block border-b-[3px] border-double border-foreground">
-                    <Amount
-                      value={BigInt(data.totals.current.contribution)}
-                      currency={currency}
-                      strong
-                    />
-                  </span>
-                </TableCell>
-                <TableCell numeric>
-                  <Margin margin={data.totals.current.margin} />
-                </TableCell>
-                {compared && (
-                  <>
-                    <TableCell numeric>
-                      {compared.hasLines && data.totals.compare ? (
-                        <Amount
-                          value={BigInt(data.totals.compare.contribution)}
-                          currency={currency}
-                          strong
-                        />
-                      ) : (
-                        t.none
-                      )}
-                    </TableCell>
-                    <TableCell numeric>
-                      <Margin
-                        margin={compared.hasLines ? (data.totals.compare?.margin ?? null) : null}
-                      />
-                    </TableCell>
-                  </>
-                )}
-              </TableRow>
-            </TableBody>
-          </Table>
+          <ReportTable
+            caption={`${t.profitabilityScreen.caption} ${from} – ${to}`}
+            columns={[
+              { id: 'revenue', label: t.columns.revenue },
+              { id: 'directCosts', label: t.columns.directCosts },
+              { id: 'contribution', label: t.columns.contribution },
+              { id: 'margin', label: t.columns.margin },
+              ...(compared
+                ? [
+                    {
+                      id: 'compareContribution',
+                      label: t.columns.contribution,
+                      group: t.columns.compare,
+                      compare: true,
+                    },
+                    {
+                      id: 'compareMargin',
+                      label: t.columns.margin,
+                      group: t.columns.compare,
+                      compare: true,
+                    },
+                  ]
+                : []),
+            ]}
+            currency={currency}
+            labels={{ row: t.profitability.by[by], none: t.none }}
+            rows={[
+              ...rows.map(
+                (row): ReportTableRow => ({
+                  key: row.value?.id ?? 'unassigned',
+                  label: <ReportValueName value={row.value} none={t.profitability.unassigned} />,
+                  figures: {
+                    revenue: {
+                      value: BigInt(row.current.revenue),
+                      link: linesLink(linesOf(row, 'is.revenue')),
+                      linkLabel: t.drill.figure,
+                    },
+                    directCosts: {
+                      value: BigInt(row.current.directCosts),
+                      link: linesLink(linesOf(row, 'is.direct_costs')),
+                      linkLabel: t.drill.figure,
+                    },
+                    ...figuresOf(row.current, row.compare),
+                  },
+                }),
+              ),
+              {
+                key: 'totals',
+                label: t.totals.total,
+                kind: 'total',
+                figures: {
+                  revenue: { value: BigInt(data.totals.current.revenue) },
+                  directCosts: { value: BigInt(data.totals.current.directCosts) },
+                  ...figuresOf(data.totals.current, data.totals.compare),
+                },
+              },
+            ]}
+          />
         )}
       </ReportState>
     </ReportFrame>
@@ -285,11 +236,6 @@ export function ProfitabilityPage() {
 }
 
 /** A margin with one decimal and its percent sign, "—" without revenue (rule 21). */
-function Margin({ margin }: { margin: string | null }) {
-  if (margin === null) return <span>{t.none}</span>;
-  return (
-    <bdi dir="ltr" className={margin.startsWith('-') ? 'text-negative' : undefined}>
-      {`${margin}%`}
-    </bdi>
-  );
+function marginFigure(margin: string | null): ReportFigure {
+  return margin === null ? { value: null } : { value: null, text: `${margin}%` };
 }

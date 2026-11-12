@@ -4,11 +4,12 @@ import type { ContractPositionRow, Ledger } from '@vertex-mizan/contracts';
 import { ar } from '@vertex-mizan/i18n';
 import { Badge, ReportTable, type ReportTableColumn, type ReportTableRow } from '@vertex-mizan/ui';
 import { damascusToday, formatDay } from '../../lib/format';
-import { useCompany } from '../../lib/session';
+import { can, useCompany } from '../../lib/session';
 import { currentMonth, formatMonth } from '../revenue/revenue-parts';
 import {
   DateInput,
   excelPathOf,
+  linesLink,
   MonthInput,
   ReportExport,
   ReportFrame,
@@ -44,9 +45,10 @@ function ContractCell({
   client: ContractPositionRow['client'];
   kind?: ContractPositionRow['kind'] | undefined;
 }) {
+  const { me } = useCompany();
   return (
     <span className="flex flex-col gap-0.5">
-      {contract ? (
+      {contract && can(me, 'recognition.read') ? (
         <Link
           to="/revenue"
           search={{ contract: contract.id }}
@@ -55,6 +57,8 @@ function ContractCell({
         >
           <ReportValueName value={contract} />
         </Link>
+      ) : contract ? (
+        <ReportValueName value={contract} />
       ) : (
         <span className="text-muted-foreground">{t.contracts.noContract}</span>
       )}
@@ -96,8 +100,26 @@ export function ContractPositionPage() {
         ? undefined
         : `${t.columns.side}: ${row.net.startsWith('-') ? t.sides.liabilities : t.sides.assets}`,
     figures: {
-      assets: { value: BigInt(row.assets) },
-      liabilities: { value: BigInt(row.liabilities) },
+      assets: {
+        value: BigInt(row.assets),
+        link: linesLink({
+          ledger,
+          to: asOf,
+          statementLine: 'bs.contract_assets',
+          contract: row.contract.id,
+        }),
+        linkLabel: t.drill.figure,
+      },
+      liabilities: {
+        value: BigInt(row.liabilities),
+        link: linesLink({
+          ledger,
+          to: asOf,
+          statementLine: 'bs.contract_liabilities',
+          contract: row.contract.id,
+        }),
+        linkLabel: t.drill.figure,
+      },
       net: { value: BigInt(row.net) },
     },
   }));
@@ -133,20 +155,24 @@ export function ContractPositionPage() {
               {
                 key: 'without-contract',
                 label: t.totals.withoutContract,
-                kind: 'subtotal',
                 figures: {
                   assets: { value: BigInt(data.totals.withoutContractAssets) },
                   liabilities: { value: BigInt(data.totals.withoutContractLiabilities) },
                 },
               },
+              // The balance sheet's two lines (rule 24): the contracts' net debits and net
+              // credits, each under the net column, never as the gross columns' totals.
               {
-                key: 'totals',
-                label: t.totals.total,
-                kind: 'total',
-                figures: {
-                  assets: { value: BigInt(data.totals.contractAssets) },
-                  liabilities: { value: BigInt(data.totals.contractLiabilities) },
-                },
+                key: 'balance-sheet-assets',
+                label: t.contracts.balanceSheetAssets,
+                kind: 'subtotal',
+                figures: { net: { value: BigInt(data.totals.contractAssets) } },
+              },
+              {
+                key: 'balance-sheet-liabilities',
+                label: t.contracts.balanceSheetLiabilities,
+                kind: 'subtotal',
+                figures: { net: { value: BigInt(data.totals.contractLiabilities) } },
               },
             ]}
           />

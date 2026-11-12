@@ -1,6 +1,6 @@
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { getRouteApi, Link } from '@tanstack/react-router';
-import { STATEMENT_LINES } from '@vertex-mizan/contracts';
+import { type CurrencyCode, debitCreditOf, STATEMENT_LINES } from '@vertex-mizan/contracts';
 import { ar } from '@vertex-mizan/i18n';
 import {
   Amount,
@@ -69,7 +69,7 @@ export function LinesPage() {
           {first && (
             <>
               <Fact label={t.lines.sum}>
-                <Amount value={BigInt(first.sum)} currency={currency} strong />
+                <LinesSum sum={first.sum} currency={currency} />
               </Fact>
               <Fact label={t.lines.count}>
                 <bdi dir="ltr">{first.count}</bdi>
@@ -150,6 +150,22 @@ export function LinesPage() {
         )}
       </ReportState>
     </ReportFrame>
+  );
+}
+
+/**
+ * The lines' sum on its side (rule 6): the ledger sums debits as positive and credits as negative,
+ * while a report presents a credit figure (a credit column, revenue, a liability) positive on its
+ * side, so the sum is shown as the figure is, with the side it is on.
+ */
+function LinesSum({ sum, currency }: { sum: string; currency: CurrencyCode }) {
+  const { debitMinor, creditMinor } = debitCreditOf(BigInt(sum));
+  const credit = creditMinor !== null;
+  return (
+    <span className="inline-flex items-baseline gap-2" data-side={credit ? 'credit' : 'debit'}>
+      <Amount value={(credit ? creditMinor : debitMinor) ?? 0n} currency={currency} strong />
+      <span className="text-muted-foreground">{credit ? t.columns.credit : t.columns.debit}</span>
+    </span>
   );
 }
 

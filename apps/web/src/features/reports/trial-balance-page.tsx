@@ -15,6 +15,7 @@ import { useCompany } from '../../lib/session';
 import {
   CodeRangeFields,
   CompareFields,
+  compareParams,
   DateInput,
   excelPathOf,
   type LinesSearch,
@@ -72,9 +73,7 @@ export function TrialBalancePage() {
     codeFrom: search.codeFrom,
     codeTo: search.codeTo,
     nonZero: flagText(search.nonZero),
-    compare: flagText(search.compare),
-    compareFrom: search.compare === false ? undefined : search.compareFrom,
-    compareTo: search.compare === false ? undefined : search.compareTo,
+    ...compareParams(search),
   };
   const report = useQuery({ ...trialBalanceQuery(companyId, params), enabled: ordered });
   const set = (patch: Partial<TrialBalanceSearch>) =>
@@ -135,9 +134,11 @@ export function TrialBalancePage() {
         figures.compareDebit = { value: null };
         figures.compareCredit = { value: null };
       } else {
+        // The comparative's closing balance: every line of the account to its end.
         const side = debitCreditOf(BigInt(row.compare));
-        if (side.debitMinor !== null) figures.compareDebit = { value: side.debitMinor };
-        if (side.creditMinor !== null) figures.compareCredit = { value: side.creditMinor };
+        const link = lines(row, { to: compared.to });
+        if (side.debitMinor !== null) figures.compareDebit = { value: side.debitMinor, link };
+        if (side.creditMinor !== null) figures.compareCredit = { value: side.creditMinor, link };
       }
     }
     return {

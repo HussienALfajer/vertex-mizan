@@ -133,6 +133,28 @@ describe('ReportTable', () => {
   });
 });
 
+describe('ReportTable figures that are not amounts', () => {
+  it('shows a percentage as given, negative in its color', () => {
+    render(
+      <ReportTable
+        caption="الربحية"
+        columns={[{ id: 'margin', label: 'نسبة الهامش' }]}
+        rows={[
+          { key: 'a', label: 'قسم', figures: { margin: { value: null, text: '68.8%' } } },
+          { key: 'b', label: 'آخر', figures: { margin: { value: null, text: '-12.5%' } } },
+        ]}
+        currency="USD"
+        labels={{ row: 'القسم', none: '—' }}
+      />,
+    );
+    const table = screen.getByRole('table', { name: 'الربحية' });
+    const negative = within(table).getByText('-12.5%');
+    expect(negative.getAttribute('dir')).toBe('ltr');
+    expect(negative.getAttribute('data-negative')).toBe('true');
+    expect(within(table).getByText('68.8%').getAttribute('data-negative')).toBeNull();
+  });
+});
+
 describe('reportTableMove', () => {
   const cells: ReportCellPosition[] = [
     { row: 0, column: 1 },

@@ -36,7 +36,7 @@ import { formatDateTime } from '../../lib/format';
 import { can, useCompany } from '../../lib/session';
 import { EntryNumberText, useFiscalYearStartMonth } from '../entries/entry-parts';
 import { ReportLedgerSwitch } from '../receivables/receivables-parts';
-import { rememberSearch } from './report-search';
+import { flagText, rememberSearch } from './report-search';
 import { type ReportParams, reportFileQuery, searchOf } from './reports-queries';
 
 const t = ar.reports;
@@ -284,9 +284,13 @@ export function ReportFrame({
   header?: ReportHeader | undefined;
   children: ReactNode;
 }) {
-  const { companyId } = useCompany();
+  const { companyId, me } = useCompany();
+  const personId = me.person.id;
   const kept = JSON.stringify(search);
-  useEffect(() => rememberSearch(report, JSON.parse(kept)), [report, kept]);
+  useEffect(
+    () => rememberSearch({ personId, companyId }, report, JSON.parse(kept)),
+    [personId, companyId, report, kept],
+  );
   return (
     <>
       <PageHeader
@@ -397,9 +401,32 @@ export function MonthInput({
   );
 }
 
+/** A comparative's parameters as the API reads them (rule 5): both dates, in order, or neither. */
+export function compareParams(search: {
+  compare?: boolean | undefined;
+  compareFrom?: string | undefined;
+  compareTo?: string | undefined;
+}): {
+  compare?: string | undefined;
+  compareFrom?: string | undefined;
+  compareTo?: string | undefined;
+} {
+  const named =
+    search.compare !== false &&
+    search.compareFrom !== undefined &&
+    search.compareTo !== undefined &&
+    search.compareFrom <= search.compareTo;
+  return {
+    compare: flagText(search.compare),
+    compareFrom: named ? search.compareFrom : undefined,
+    compareTo: named ? search.compareTo : undefined,
+  };
+}
+
 /**
- * The comparative of a period report (rule 5): on by default at the API's default period; its two
- * dates, left empty, keep that default.
+ * The comparative of a period report (rule 5): on by default at the API's default period. Its two
+ * dates are applied together once both are set and in order, and cleared together; one date alone
+ * or an end before the start is marked and keeps the period in force.
  */
 export function CompareFields({
   compare,
@@ -410,8 +437,23 @@ export function CompareFields({
   compare: boolean;
   from: string;
   to: string;
-  onChange: (next: { compare?: boolean; compareFrom?: string; compareTo?: string }) => void;
+  onChange: (next: {
+    compare?: boolean;
+    compareFrom?: string | undefined;
+    compareTo?: string | undefined;
+  }) => void;
 }) {
+  const [typedFrom, setTypedFrom] = useState(from);
+  const [typedTo, setTypedTo] = useState(to);
+  const both = typedFrom !== '' && typedTo !== '';
+  const invalid = (typedFrom === '') !== (typedTo === '') || (both && typedFrom > typedTo);
+  const commit = (nextFrom: string, nextTo: string) => {
+    if (nextFrom === '' && nextTo === '') {
+      onChange({ compareFrom: undefined, compareTo: undefined });
+    } else if (nextFrom !== '' && nextTo !== '' && nextFrom <= nextTo) {
+      onChange({ compareFrom: nextFrom, compareTo: nextTo });
+    }
+  };
   return (
     <>
       <SwitchField
@@ -424,14 +466,27 @@ export function CompareFields({
         <>
           <DateInput
             label={t.filters.compareFrom}
-            value={from}
-            onValueChange={(value) => onChange({ compareFrom: value })}
+            value={typedFrom}
+            invalid={invalid}
+            onValueChange={(value) => {
+              setTypedFrom(value);
+              commit(value, typedTo);
+            }}
           />
           <DateInput
             label={t.filters.compareTo}
-            value={to}
-            onValueChange={(value) => onChange({ compareTo: value })}
+            value={typedTo}
+            invalid={invalid}
+            onValueChange={(value) => {
+              setTypedTo(value);
+              commit(typedFrom, value);
+            }}
           />
+          {invalid && (
+            <p role="alert" className="text-destructive-text sm:col-span-2">
+              {t.filters.invalidCompare}
+            </p>
+          )}
         </>
       )}
     </>

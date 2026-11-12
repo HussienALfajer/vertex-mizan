@@ -7,11 +7,18 @@ import {
   STATEMENT_LINES,
 } from '@vertex-mizan/contracts';
 import { ar } from '@vertex-mizan/i18n';
-import { ReportTable, type ReportTableColumn, type ReportTableRow } from '@vertex-mizan/ui';
+import {
+  type ReportFigure,
+  ReportTable,
+  type ReportTableColumn,
+  type ReportTableRow,
+} from '@vertex-mizan/ui';
+import type { ReactElement } from 'react';
 import { damascusToday, formatDay } from '../../lib/format';
 import { useCompany } from '../../lib/session';
 import {
   CompareFields,
+  compareParams,
   DateInput,
   excelPathOf,
   linesLink,
@@ -20,7 +27,7 @@ import {
   ReportFrame,
   ReportState,
 } from './report-parts';
-import { flagText, monthStart } from './report-search';
+import { monthStart } from './report-search';
 import { incomeStatementQuery, paramsOf } from './reports-queries';
 
 const t = ar.reports;
@@ -57,8 +64,13 @@ const categoryOf = (code: string) =>
 export function compareFigure(
   compare: { hasLines: boolean },
   value: string | null,
-): { value: bigint | null } {
-  return { value: compare.hasLines && value !== null ? BigInt(value) : null };
+  link?: ReactElement,
+): ReportFigure {
+  const shown = compare.hasLines && value !== null;
+  return {
+    value: shown ? BigInt(value) : null,
+    ...(shown && link ? { link, linkLabel: t.drill.figure } : {}),
+  };
 }
 
 /**
@@ -79,9 +91,7 @@ export function IncomeStatementPage() {
     from,
     to,
     ledger,
-    compare: flagText(search.compare),
-    compareFrom: search.compare === false ? undefined : search.compareFrom,
-    compareTo: search.compare === false ? undefined : search.compareTo,
+    ...compareParams(search),
   };
   const report = useQuery({ ...incomeStatementQuery(companyId, params), enabled: ordered });
   const set = (patch: Partial<IncomeStatementSearch>) =>
@@ -142,6 +152,12 @@ function incomeRows(
   range: { ledger: Ledger; from: string; to: string },
 ): ReportTableRow[] {
   const compare = data.header.compare;
+  // The comparative's lines: the same figure over the comparative's dates.
+  const compareRange = {
+    ledger: range.ledger,
+    from: compare?.from ?? undefined,
+    to: compare?.to ?? range.to,
+  };
   const lineRows = (wanted: string) =>
     data.lines
       .filter((line) => categoryOf(line.line) === wanted)
@@ -155,7 +171,15 @@ function incomeRows(
               link: linesLink({ ...range, statementLine: line.line }),
               linkLabel: t.drill.figure,
             },
-            ...(compare ? { compare: compareFigure(compare, line.compare) } : {}),
+            ...(compare
+              ? {
+                  compare: compareFigure(
+                    compare,
+                    line.compare,
+                    linesLink({ ...compareRange, statementLine: line.line }),
+                  ),
+                }
+              : {}),
           },
         },
         ...line.accounts.map(
@@ -169,7 +193,15 @@ function incomeRows(
                 link: linesLink({ ...range, account: part.account.id }),
                 linkLabel: t.drill.figure,
               },
-              ...(compare ? { compare: compareFigure(compare, part.compare) } : {}),
+              ...(compare
+                ? {
+                    compare: compareFigure(
+                      compare,
+                      part.compare,
+                      linesLink({ ...compareRange, account: part.account.id }),
+                    ),
+                  }
+                : {}),
             },
           }),
         ),

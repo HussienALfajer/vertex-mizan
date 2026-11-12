@@ -27,6 +27,11 @@ export interface ReportTableColumn {
  */
 export interface ReportFigure {
   readonly value: bigint | null;
+  /**
+   * A figure that is not an amount, such as a margin's percentage (S09 rule 21), shown as given
+   * in an LTR isolate, negative when it starts with a minus; `value` is then ignored.
+   */
+  readonly text?: string | undefined;
   readonly link?: ReactElement | undefined;
   /** The figure's accessible name when it is a link ("أسطر …"). */
   readonly linkLabel?: string | undefined;
@@ -399,7 +404,19 @@ function Figure({
   cell: string | undefined;
 }) {
   const content =
-    figure.value === null ? (
+    figure.text !== undefined ? (
+      <bdi
+        dir="ltr"
+        data-negative={figure.text.startsWith('-') || undefined}
+        className={cn(
+          'whitespace-nowrap tabular-nums',
+          figure.text.startsWith('-') && 'text-negative',
+          strong && 'font-bold',
+        )}
+      >
+        {figure.text}
+      </bdi>
+    ) : figure.value === null ? (
       <span>{none}</span>
     ) : (
       <Amount value={figure.value} currency={currency} strong={strong} />

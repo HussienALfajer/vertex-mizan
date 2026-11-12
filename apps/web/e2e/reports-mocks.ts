@@ -224,7 +224,8 @@ export const incomeStatement: IncomeStatement = {
 };
 
 /**
- * The worked example in small: receivables 480,000.00 plus 2,400.00 reclassified from a client in
+ * The worked example in small: receivables 480,000.00 (5,000.00 of it on a manual line with no
+ * client) plus 2,400.00 reclassified from a client in
  * debit on ad funds; ad funds 120,000.00; P-1's deposit and done milestone netted to one contract
  * liability of 700,000.00; R-1's contract asset 300,000.00.
  */
@@ -261,7 +262,16 @@ export const balanceSheet: BalanceSheet = {
           account: receivables,
           client: clientValue,
           contract: null,
-          amount: '48000000',
+          amount: '47500000',
+          reclassified: false,
+          oppositeSide: false,
+        },
+        // A manual line with no client (edge case 16): the lines filter cannot isolate it.
+        {
+          account: receivables,
+          client: null,
+          contract: null,
+          amount: '500000',
           reclassified: false,
           oppositeSide: false,
         },

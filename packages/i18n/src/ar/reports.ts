@@ -220,6 +220,9 @@ export const reports = {
     sorts: { contribution: 'هامش المساهمة', margin: 'نسبة الهامش' },
     invalidRange: 'تاريخ البداية بعد تاريخ النهاية.',
     invalidCodes: 'رمز البداية بعد رمز النهاية، أو رمز ليس أرقامًا.',
+    invalidCompare:
+      'أدخل تاريخي المقارنة كليهما، والبداية قبل النهاية، أو اتركهما فارغين للفترة الافتراضية.',
+    dimension: 'البعد',
   },
   /** A report's states ("Screens"). */
   states: {
@@ -321,6 +324,9 @@ export const reports = {
     scheduleCaption: 'جدول تحقق الإيراد',
     schedules: 'جداول العقد',
     noContract: 'دون عقد',
+    /** The two totals as the balance sheet's lines, under the net column (rule 24). */
+    balanceSheetAssets: 'أصول العقود في الميزانية',
+    balanceSheetLiabilities: 'التزامات العقود في الميزانية',
   },
   /** The profitability screen (rules 20–23). */
   profitabilityScreen: {

@@ -30,7 +30,7 @@ import { useState } from 'react';
 import { useCompany } from '../../lib/session';
 import { accountsQuery } from '../chart/chart-queries';
 import { accountPickerLabels, pickerAccounts } from '../entries/entry-parts';
-import { rememberedSearch } from './report-search';
+import { rememberedSearch, type SearchScope } from './report-search';
 
 const t = ar.reports;
 const route = getRouteApi('/_app/_company/reports/');
@@ -133,11 +133,12 @@ const groups: { title: string; cards: ReportCard[] }[] = [
 export function ReportsPage() {
   const { find } = route.useSearch();
   const navigate = useNavigate();
-  const { companyId } = useCompany();
+  const { companyId, me } = useCompany();
+  const scope = { personId: me.person.id, companyId };
   const accounts = useQuery(accountsQuery(companyId));
   const [account, setAccount] = useState<string | null>(null);
   const openStatement = (id: string) => {
-    const kept = rememberedSearch('account-statement');
+    const kept = rememberedSearch(scope, 'account-statement');
     const { account: _account, ...search } = kept ?? {};
     void navigate({ to: '/reports/accounts/$id', params: { id }, search });
   };
@@ -157,7 +158,7 @@ export function ReportsPage() {
           <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {group.cards.map((card) => (
               <li key={card.key}>
-                <ReportLink card={card} />
+                <ReportLink card={card} scope={scope} />
               </li>
             ))}
             {group.title === t.index.groups.books && (
@@ -211,8 +212,8 @@ export function ReportsPage() {
 }
 
 /** A report's card: its name, what it shows, and whether it opens with kept parameters. */
-function ReportLink({ card }: { card: ReportCard }) {
-  const kept = rememberedSearch(card.key);
+function ReportLink({ card, scope }: { card: ReportCard; scope: SearchScope }) {
+  const kept = rememberedSearch(scope, card.key);
   const Icon = card.icon;
   return (
     <Link

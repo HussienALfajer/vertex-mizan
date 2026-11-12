@@ -7,8 +7,11 @@ import { purchase } from './entry-mocks';
 import { today } from './rate-mocks';
 import {
   cash,
+  clientValue,
   designDepartment,
   prints,
+  projectValue,
+  receivables,
   reportFile,
   reportsReads,
   serviceHistory,
@@ -102,6 +105,7 @@ test.describe('the trial balance', () => {
     const cashRow = table.getByRole('row').filter({ hasText: cash.code });
     await cashRow.getByRole('link', { name: t.drill.figure }).first().click();
     await expect(page.getByRole('heading', { level: 1 })).toHaveText(t.lines.title);
+    await expect.poll(() => lines.length).toBeGreaterThan(0);
     const search = searchOf(lines[0]);
     expect(search.get('account')).toBe(cash.id);
     expect(search.get('side')).toBe('debit');
@@ -111,6 +115,42 @@ test.describe('the trial balance', () => {
     await expect(page.getByText(t.lines.sum).locator('..')).toContainText('120,000.00');
     await page.getByRole('table', { name: t.lines.caption }).getByRole('link').first().click();
     await expect(page).toHaveURL(new RegExp(`/entries/${purchase.id}$`));
+  });
+
+  test('shows a credit figure’s lines on its side', async ({ page }) => {
+    const lines = await answer(page, 'GET', '/reports/lines?*', {
+      status: 200,
+      json: { ...reportsReads['GET /api/reports/lines'].json, sum: '-12000000' },
+    });
+    await page.goto('/reports/trial-balance');
+    const table = page.getByRole('table', { name: /ميزان المراجعة/ });
+    // The receivables row's second linked figure is the period's credits.
+    const row = table.getByRole('row').filter({ hasText: '112001' });
+    await row.getByRole('link', { name: t.drill.figure }).nth(1).click();
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(t.lines.title);
+    await expect.poll(() => lines.length).toBeGreaterThan(0);
+    expect(searchOf(lines[0]).get('side')).toBe('credit');
+    const sum = page.locator('[data-side]');
+    await expect(sum).toHaveAttribute('data-side', 'credit');
+    await expect(sum).toContainText('120,000.00');
+    await expect(sum).toContainText(t.columns.credit);
+    await expect(sum).not.toContainText('-120,000.00');
+  });
+
+  test('applies a comparative only once both of its dates are set', async ({ page }) => {
+    const read = await answer(page, 'GET', '/reports/trial-balance?*', {
+      status: 200,
+      json: reportsReads['GET /api/reports/trial-balance'].json,
+    });
+    await page.goto('/reports/trial-balance');
+    await expect(page.getByRole('table', { name: /ميزان المراجعة/ })).toBeVisible();
+    await page.getByLabel(t.filters.compareFrom).fill('2026-10-01');
+    await expect(page.getByText(t.filters.invalidCompare)).toBeVisible();
+    expect(read.every((request) => !searchOf(request).has('compareFrom'))).toBe(true);
+    await page.getByLabel(t.filters.compareTo).fill('2026-10-31');
+    await expect.poll(() => searchOf(read.at(-1)).get('compareTo')).toBe('2026-10-31');
+    expect(searchOf(read.at(-1)).get('compareFrom')).toBe('2026-10-01');
+    await expect(page.getByText(t.filters.invalidCompare)).toHaveCount(0);
   });
 
   test('moves between the figures with the arrow keys', async ({ page }) => {
@@ -199,6 +239,24 @@ test.describe('the statements', () => {
     // No investing amount: no profit before financing and income taxes.
     await expect(table).not.toContainText(t.statements.profitBeforeFinancingAndIncomeTaxes);
     await expect(table.getByRole('row').filter({ hasText: '511001' })).toContainText('-300,000.00');
+    // A line opens its lines by its statement line over the period.
+    const lines = await answer(page, 'GET', '/reports/lines?*', {
+      status: 200,
+      json: reportsReads['GET /api/reports/lines'].json,
+    });
+    await table
+      .getByRole('row')
+      .filter({ hasText: 'إيرادات العقود مع العملاء' })
+      .first()
+      .getByRole('link', { name: t.drill.figure })
+      .first()
+      .click();
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(t.lines.title);
+    await expect.poll(() => lines.length).toBeGreaterThan(0);
+    const search = searchOf(lines[0]);
+    expect(search.get('statementLine')).toBe('is.revenue');
+    expect(search.get('from')).toBe('2026-11-01');
+    expect(search.get('to')).toBe('2026-11-09');
   });
 
   test('the balance sheet notes a reclassification and balances', async ({ page }) => {
@@ -220,6 +278,26 @@ test.describe('the statements', () => {
       '1,402,400.00',
     );
     await expect(page.getByText(t.states.unbalanced)).toHaveCount(0);
+    // A part the lines filter cannot isolate (no client, beside a client's part) has no link;
+    // a client's part opens its lines by account and client.
+    const parts = table.getByRole('row').filter({ hasText: '112001' });
+    await expect(
+      parts.filter({ hasText: '5,000.00', hasNotText: '475,000.00' }).getByRole('link'),
+    ).toHaveCount(0);
+    const lines = await answer(page, 'GET', '/reports/lines?*', {
+      status: 200,
+      json: reportsReads['GET /api/reports/lines'].json,
+    });
+    await parts
+      .filter({ hasText: '475,000.00' })
+      .getByRole('link', { name: t.drill.figure })
+      .click();
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(t.lines.title);
+    await expect.poll(() => lines.length).toBeGreaterThan(0);
+    expect(searchOf(lines[0]).get('account')).toBe(receivables.id);
+    expect(searchOf(lines[0]).get('client')).toBe(clientValue.id);
+    expect(searchOf(lines[0]).get('to')).toBe('2026-11-09');
+    await page.goBack();
     // A comparative with no posted line shows "—".
     await expect(table.getByRole('row').filter({ hasText: t.totals.assets })).toContainText(t.none);
   });
@@ -233,10 +311,12 @@ test.describe('profitability', () => {
     });
     await page.goto('/reports/profitability?by=department');
     const table = page.getByRole('table', { name: /تقرير الربحية/ });
-    await expect(table.getByRole('row').nth(1)).toContainText(designDepartment.name);
-    await expect(table.getByRole('row').nth(1)).toContainText('68.8%');
-    await expect(table.getByRole('row').nth(2)).toContainText(t.profitability.unassigned);
-    await expect(table.getByRole('row').nth(2)).toContainText(t.none);
+    // Two heading rows: the comparative's group over its columns.
+    const body = table.locator('tbody').getByRole('row');
+    await expect(body.nth(0)).toContainText(designDepartment.name);
+    await expect(body.nth(0)).toContainText('68.8%');
+    await expect(body.nth(1)).toContainText(t.profitability.unassigned);
+    await expect(body.nth(1)).toContainText(t.none);
     await expect(table.getByRole('row').last()).toContainText('300.00');
     const search = searchOf(read[0]);
     expect(search.get('by')).toBe('department');
@@ -338,6 +418,15 @@ test.describe('the reports index', () => {
 
 test.describe('as a viewer', () => {
   test.use({ me: withRole('viewer') });
+
+  test('sees a contract without the link to schedules it cannot open', async ({ page }) => {
+    await page.goto('/reports/contract-position');
+    const table = page.getByRole('table', { name: /مركز العقود/ });
+    await expect(table).toContainText(projectValue.name);
+    await expect(table.getByRole('link', { name: new RegExp(t.contracts.schedules) })).toHaveCount(
+      0,
+    );
+  });
 
   test('reads every report from the sidebar', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 });

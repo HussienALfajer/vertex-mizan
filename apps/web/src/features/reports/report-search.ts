@@ -65,21 +65,34 @@ export function fiscalYearOf(date: string, startMonth: number): number {
   return Number(date.slice(5, 7)) >= startMonth ? year : year - 1;
 }
 
-const storageKey = (report: string) => `vertex-mizan.reports.${report}`;
+/**
+ * Whose parameters: one person in one company, so another person on this browser, or the same
+ * person in a company without a parallel ledger, never opens a report with someone else's.
+ */
+export interface SearchScope {
+  readonly personId: string;
+  readonly companyId: string;
+}
 
-/** Keeps a report's parameters for this viewer (rule "Screens": `/reports`). */
-export function rememberSearch(report: string, search: object): void {
+const storageKey = (scope: SearchScope, report: string) =>
+  `vertex-mizan.reports.${scope.personId}.${scope.companyId}.${report}`;
+
+/** Keeps a report's parameters for this viewer in this company ("Screens": `/reports`). */
+export function rememberSearch(scope: SearchScope, report: string, search: object): void {
   try {
-    window.localStorage.setItem(storageKey(report), JSON.stringify(search));
+    window.localStorage.setItem(storageKey(scope, report), JSON.stringify(search));
   } catch {
     // Storage refused (a private window): the report opens with its defaults next time.
   }
 }
 
 /** A report's last parameters in this browser, or none. */
-export function rememberedSearch(report: string): Record<string, unknown> | undefined {
+export function rememberedSearch(
+  scope: SearchScope,
+  report: string,
+): Record<string, unknown> | undefined {
   try {
-    const text = window.localStorage.getItem(storageKey(report));
+    const text = window.localStorage.getItem(storageKey(scope, report));
     const value: unknown = text ? JSON.parse(text) : undefined;
     return value !== null && typeof value === 'object'
       ? (value as Record<string, unknown>)

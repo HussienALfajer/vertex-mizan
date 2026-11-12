@@ -12,6 +12,7 @@ import {
   AccountPicker,
   Amount,
   Button,
+  DimensionPicker,
   SelectField,
   Table,
   TableBody,
@@ -26,10 +27,13 @@ import { useCompany } from '../../lib/session';
 import { accountsQuery } from '../chart/chart-queries';
 import {
   accountPickerLabels,
+  dimensionPickerLabels,
   EntryNumberText,
   pickerAccounts,
+  pickerValues,
   useFiscalYearStartMonth,
 } from '../entries/entry-parts';
+import { useDimensionCatalog } from '../entries/entry-queries';
 import { HubDocumentLink } from '../inbox/inbox-parts';
 import {
   CodeRangeFields,
@@ -63,6 +67,8 @@ export interface AccountStatementSearch {
   to?: string | undefined;
   ledger?: Ledger | undefined;
   currency?: string | undefined;
+  /** A dimension value every line carries (rule 11, as `GET /api/accounts/:id/lines`). */
+  dims?: string | undefined;
 }
 
 /** A balance row of an account's lines: the opening or the closing, under its rule. */
@@ -335,7 +341,8 @@ export function AccountStatementPage() {
   const to = search.to ?? damascusToday();
   const ledger = search.ledger ?? 'book';
   const ordered = from <= to;
-  const params = { from, to, ledger, currency: search.currency };
+  const catalog = useDimensionCatalog(companyId);
+  const params = { from, to, ledger, currency: search.currency, dims: search.dims };
   const pages = useInfiniteQuery({
     ...accountStatementQuery(companyId, id, params),
     enabled: ordered,
@@ -397,6 +404,13 @@ export function AccountStatementPage() {
             value={to}
             invalid={!ordered}
             onValueChange={(v) => set({ to: v })}
+          />
+          <DimensionPicker
+            label={t.filters.dimension}
+            values={pickerValues([...catalog.byId.values()])}
+            value={search.dims ?? null}
+            labels={dimensionPickerLabels}
+            onValueChange={(dims) => set({ dims: dims ?? undefined })}
           />
           <SelectField
             label={t.filters.currency}
