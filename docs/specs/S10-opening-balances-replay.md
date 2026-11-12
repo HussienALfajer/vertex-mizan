@@ -87,7 +87,7 @@ Every company table has `company_id`, forced RLS with `company_isolation`, compo
     - **Contract liabilities:** one schedule per line whose recognition is unfinished at `as_of` (rule 13), on the `contract_liability` slot with its dimensions.
     - **Contract assets:** one `document` item per milestone done and not invoiced, on the `contract_asset` slot, its installment in the project's currency, with the milestone as Hub document and its number as reference.
     - **Client ad funds:** one `running` item per wallet on the `ad_funds` slot, in USD, its balance credit (a negative wallet a debit, ADR 0007).
-12. **Hub's slots** (`receivable`, `ad_funds`, `contract_asset`) take no line from the accountant (`VALIDATION_FAILED`): Hub's snapshot is their only source. The accountant may open items on other control accounts with a reference and an optional due date (source `opening`, no Hub document), as S04 rule 6.
+12. **Hub's slots** (`receivable`, `ad_funds`, `contract_asset`) take no line from the accountant (`VALIDATION_FAILED`) in a company with an API client holding `opening:write`: Hub's snapshot is their only source. In a company without one, they take the accountant's lines as any control account does (owner, 2026-11-12). The accountant may open items on other control accounts, and on Hub's slots in a company without such a client, with a reference and an optional due date (source `opening`, no Hub document), as S04 rule 6.
 13. **A schedule's opening** is what S06's rules would leave at the end of `as_of` had each snapshot invoice posted on its `issued_on` at its rates, each credit on its date and each milestone done on its `done_on`, computed by S06's pure functions in `packages/ledger` (owner, 2026-11-12):
     - `over_time`: the line's amount less its cumulative share of the cycle's days through `as_of`, cumulative rounding in each ledger, credits applied as S06 rule 6;
     - `point_in_time`: the whole line while its milestone is not done on or before `as_of`; nothing once done;
@@ -295,7 +295,7 @@ The grid and the agreement table use `packages/ui`'s components (`DataTable`, `A
 18. `as_of` is a day without a bulletin: S02 rule 16's rate in force on that date (the last publication), as for any date.
 19. A zero balancing figure in one ledger only: the line posts with zero in that ledger.
 20. The year's result before the books start is a loss: a debit on `312002`.
-21. A `syp` company with a books start and no Hub client: no snapshot, no records' figures; the lines and the balancing figure only.
+21. A `syp` company with a books start and no Hub client: no snapshot, no records' figures; the lines (its receivables as items on `112001` with their references, rule 12) and the balancing figure only.
 22. A `usd-syp` company: monetary SYP items measured at the bulletin into the USD book, Hub's rate in the SYP parallel ledger.
 23. A `third` balance (TRY cash) in the records: measured through the cross on `as_of`; Hub's part has none.
 24. The opening reversed and posted again: entries 1 (opening), 2 (its reversal), 3 (the new opening) in the journal book; items and schedules of the first are closed and new ones opened.

@@ -2,7 +2,7 @@
 
 Status: Proposed
 
-S10 wrote these cases (S10 "Scenarios"). They stay `Proposed` until S10's feature slice brings the executors of the `opening` and `reverse_opening` steps and of the company's `books_start` (`docs/scenarios/README.md`, "Status").
+S10 wrote these cases (S10 "Scenarios"); the owner approved their expected entries and outcomes on 2026-11-12, with S10 rule 12 read for a company without Hub (its receivables may be opened on `112001`, owner, the same day; the SYP-only cases have none). They stay `Proposed` until S10's feature slice brings the executors of the `opening` and `reverse_opening` steps and of the company's `books_start`, then become `Approved (owner, 2026-11-12)` (`docs/scenarios/README.md`, "Status").
 
 ## Rule
 
@@ -491,7 +491,7 @@ expect:
 S10 edge case 21. A company with a books start and no Hub client: no snapshot and no records' figures, only the accountant's lines and the balancing figure. A USD cash balance is monetary and is measured at the bulletin of the eve; every other line is in SYP, so its amount is its book amount, and no parallel amount is stated.
 
 ```yaml
-case: SYP books only, no Hub: the records' lines, a USD cash balance at the bulletin of the eve, and a 30,000.00 SYP balancing figure
+case: SYP books only and no Hub; the records' lines, a USD cash balance at the bulletin of the eve and a 30,000.00 SYP balancing figure
 company: { shape: syp, book: SYP, template: service-agency, books_start: 2026-10-01,
            rate_policy: { book: bulletin } }
 rates:

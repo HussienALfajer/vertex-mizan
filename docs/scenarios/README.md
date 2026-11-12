@@ -59,8 +59,9 @@ company:
                                     #   contract is made by the event
   bulletin_days_off: [5, 6]         # ISO weekdays without a bulletin; default Friday and Saturday
   bulletin_holidays: []             # e.g. [2026-11-08]: dates the accountant marked (S02 rules 16–17)
-  books_start: 2026-10-01           # optional (S10 rule 1): the months before it are closed, and nothing
-                                    #   posts until an `opening` step posts (OPENING_NOT_POSTED, rule 3)
+  books_start: 2026-10-01           # optional (S10 rule 1), the first day of a month, only in a case
+                                    #   with an `opening` step: the months before it are closed, and
+                                    #   nothing posts until the opening posts (OPENING_NOT_POSTED, rule 3)
 rates:                              # company rate table rows; source: manual unless stated (hub, import)
   - { date: 2026-11-03, base: USD, quote: SYP, rate: "120.0000", type: bulletin }
 steps:                              # in order; a Hub event, a manual entry, a reversal, a job or a rate
