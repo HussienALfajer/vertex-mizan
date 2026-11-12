@@ -1,4 +1,11 @@
-import type { EventType } from './events.js';
+import { type EventType, parseEventEnvelope } from './events.js';
+import {
+  type ReconciliationReport,
+  reconciliationAmountOf,
+  reconciliationReportSchema,
+  totalsOf,
+  wireAmountOf,
+} from './reconciliation.js';
 
 // One example of every event type of the catalogue at version 1 (S05 "API"): what Hub sends, for
 // Hub's developers (`export:hub-schema`) and for the API test that posts each. Listed in the order
@@ -168,4 +175,25 @@ export function eventExamplesV1(on: string): EventExample[] {
     accounting_date: on,
     payload,
   }));
+}
+
+/**
+ * The daily report of `on` that lists every example of `eventExamplesV1(on)` as delivered (S08
+ * rule 1), consistent with itself: what Hub sends to `POST /v1/reconciliation/daily` for that
+ * date. Its id is fixed per date, so a second post is a replay.
+ */
+export function reconciliationExampleV1(on: string): ReconciliationReport {
+  const events = eventExamplesV1(on).map((example) => parseEventEnvelope(example));
+  return reconciliationReportSchema.parse({
+    id: id(Number(on.replaceAll('-', ''))),
+    date: on,
+    generated_at: `${on}T23:59:00+03:00`,
+    events: events.map((event) => {
+      const amount = wireAmountOf(reconciliationAmountOf(event));
+      return { id: event.id, type: event.type, ...(amount && { amount }), delivery: 'delivered' };
+    }),
+    totals: totalsOf(
+      events.map((event) => ({ type: event.type, amount: reconciliationAmountOf(event) })),
+    ).map((total) => ({ ...total, amount: total.amount === null ? null : Number(total.amount) })),
+  });
 }

@@ -1,5 +1,5 @@
 import type { INestApplication } from '@nestjs/common';
-import { type ApiClient, eventExamplesV1 } from '@vertex-mizan/contracts';
+import { type ApiClient, eventExamplesV1, reconciliationExampleV1 } from '@vertex-mizan/contracts';
 import {
   companies,
   type Database,
@@ -327,7 +327,9 @@ describe('GET /v1/periods/status', () => {
 describe('the examples Hub receives', () => {
   it('post every event type of the catalogue in order, each answered as its rule says', async () => {
     const book = await books(app, db);
-    const hub = await hubClient(app, book.owner);
+    const hub = await hubClient(app, book.owner, {
+      scopes: ['events:write', 'periods:read', 'reconciliation:write'],
+    });
     const answers: [string, number, string, string | null][] = [];
     for (const example of eventExamplesV1(today())) {
       const answer = await hub.send(example);
@@ -357,5 +359,17 @@ describe('the examples Hub receives', () => {
       ['ad_wallet.entry_voided', 201, 'posted', null],
       ['rate.changed', 201, 'recorded', null],
     ]);
+    // S08 acceptance step 1: the date's report listing them all is matched, counts and totals equal.
+    const report = reconciliationExampleV1(today());
+    const reconciled = await v1(app, hub.key, hub.address).post(
+      '/v1/reconciliation/daily',
+      report,
+      { 'idempotency-key': report.id },
+    );
+    expect(reconciled.status, JSON.stringify(reconciled.body)).toBe(201);
+    expect(reconciled.body).toMatchObject({ status: 'matched', gaps: 0, differences: [] });
+    for (const total of reconciled.body.totals) {
+      expect([total.hub_count, total.hub_amount]).toEqual([total.mizan_count, total.mizan_amount]);
+    }
   });
 });
