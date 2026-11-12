@@ -207,6 +207,16 @@ export interface OpeningSchedule {
   readonly beforeOpening: CarriedAmounts;
   /** The credits' parts of its transaction amount through the eve (S06 rule 6), positive. */
   readonly creditMinor: bigint;
+  /**
+   * Each month released through the eve with its release, negative (S06 rule 4): a `before_opening`
+   * movement of its month, as a `released` one would be.
+   */
+  readonly releases: readonly { readonly month: string; readonly amounts: CarriedAmounts }[];
+  /**
+   * What the credits took off its liability through the eve, zero or negative: a `before_opening`
+   * movement with no month and the credits' part, as a `credited` one would be; null with no credit.
+   */
+  readonly creditLiability: CarriedAmounts | null;
   /** What it still defers at the eve, positive in its transaction amount. */
   readonly remaining: CarriedAmounts;
   /** The months released through the eve, in order. */
@@ -217,12 +227,19 @@ export interface OpeningSchedule {
 interface Simulated {
   readonly base: Omit<
     OpeningSchedule,
-    'beforeOpening' | 'creditMinor' | 'remaining' | 'releasedMonths'
+    | 'beforeOpening'
+    | 'creditMinor'
+    | 'remaining'
+    | 'releasedMonths'
+    | 'releases'
+    | 'creditLiability'
   >;
   netMinor: bigint;
   creditMinor: bigint;
   remaining: CarriedAmounts;
   released: string[];
+  releases: { month: string; amounts: CarriedAmounts }[];
+  creditLiability: CarriedAmounts | null;
   /** Whether a credit took a part of it: its months are then cut from what remains (S06 rule 6). */
   credited: boolean;
 }
@@ -356,6 +373,8 @@ export function openingSchedules(
           conversions: measured.conversions,
           beforeOpening: zeroOf(invoice.currency, ledgers),
           creditMinor: 0n,
+          releases: [],
+          creditLiability: null,
           remaining: deferred,
           releasedMonths: [],
         });
@@ -399,6 +418,8 @@ export function openingSchedules(
         creditMinor: 0n,
         remaining: deferred,
         released: [],
+        releases: [],
+        creditLiability: null,
         credited: false,
       });
     }
@@ -454,8 +475,10 @@ export function openingSchedules(
   for (const step of steps) {
     if (step.kind === 'release') {
       const { schedule, month } = step;
-      schedule.remaining = addCarried(schedule.remaining, negate(releaseOf(schedule, month)));
+      const part = releaseOf(schedule, month);
+      schedule.remaining = addCarried(schedule.remaining, negate(part));
       schedule.released.push(month);
+      schedule.releases.push({ month, amounts: negate(part) });
       continue;
     }
     const { credit } = step;
@@ -488,9 +511,13 @@ export function openingSchedules(
       schedule.netMinor -= partMinor;
       schedule.creditMinor += partMinor;
       schedule.credited = true;
-      if (part.liability !== null) {
-        schedule.remaining = addCarried(schedule.remaining, negate(part.liability));
-      }
+      const liability =
+        part.liability === null ? zeroOf(credit.currency, ledgers) : negate(part.liability);
+      schedule.remaining = addCarried(schedule.remaining, liability);
+      schedule.creditLiability =
+        schedule.creditLiability === null
+          ? liability
+          : addCarried(schedule.creditLiability, liability);
     }
   }
 
@@ -500,6 +527,8 @@ export function openingSchedules(
       ...schedule.base,
       beforeOpening: addCarried(schedule.remaining, negate(schedule.base.deferred)),
       creditMinor: schedule.creditMinor,
+      releases: schedule.releases,
+      creditLiability: schedule.creditLiability,
       remaining: schedule.remaining,
       releasedMonths: schedule.released,
     }));
@@ -828,4 +857,19 @@ export function openingFingerprintValue(input: {
     version: String(input.version),
     rateIds: [...new Set(input.rateIds)].sort(),
   };
+}
+
+/** The debits of an entry's lines in each ledger (S10 "Audit": the opening's totals per ledger). */
+export function debitTotals(
+  lines: readonly { readonly bookMinor: bigint; readonly parallelMinor: bigint | null }[],
+): { bookMinor: bigint; parallelMinor: bigint | null } {
+  let book = 0n;
+  let parallel: bigint | null = null;
+  for (const line of lines) {
+    if (line.bookMinor > 0n) book += line.bookMinor;
+    if (line.parallelMinor !== null) {
+      parallel = (parallel ?? 0n) + (line.parallelMinor > 0n ? line.parallelMinor : 0n);
+    }
+  }
+  return { bookMinor: book, parallelMinor: parallel };
 }

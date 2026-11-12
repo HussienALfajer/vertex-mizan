@@ -1,0 +1,6 @@
+DROP INDEX "open_items_document_reference_key";--> statement-breakpoint
+DROP INDEX "open_items_hub_document_key";--> statement-breakpoint
+CREATE UNIQUE INDEX "open_items_opening_reference_key" ON "open_items" USING btree ("company_id","account_id","reference","opened_by_entry_id") WHERE "open_items"."kind" = 'document' and "open_items"."source" = 'opening';--> statement-breakpoint
+CREATE INDEX "open_items_company_hub_document_idx" ON "open_items" USING btree ("company_id",("hub_document" ->> 'type'),("hub_document" ->> 'id')) WHERE "open_items"."hub_document" is not null;--> statement-breakpoint
+CREATE UNIQUE INDEX "open_items_document_reference_key" ON "open_items" USING btree ("company_id","account_id","reference") WHERE "open_items"."kind" = 'document' and "open_items"."source" <> 'opening';--> statement-breakpoint
+CREATE UNIQUE INDEX "open_items_hub_document_key" ON "open_items" USING btree ("company_id","account_id",("hub_document" ->> 'type'),("hub_document" ->> 'id'),"reference") WHERE "open_items"."hub_document" is not null and "open_items"."source" <> 'opening';

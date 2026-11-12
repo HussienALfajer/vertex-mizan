@@ -47,6 +47,8 @@ export {
   type DealtRateSpec,
   type HubSource,
   type ManualLineSpec,
+  type OpeningLineSpec,
+  openingIsPosted,
   type PostedEntryRef,
   type PostingContent,
   type PostingRequest,
@@ -81,6 +83,7 @@ export * from './services/departments.js';
 export * from './services/dimensions.js';
 export * from './services/drafts.js';
 export * from './services/inbox.js';
+export * from './services/opening.js';
 export * from './services/periods.js';
 export * from './services/rates.js';
 export * from './services/receivables-reads.js';

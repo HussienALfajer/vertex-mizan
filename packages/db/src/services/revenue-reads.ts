@@ -28,11 +28,11 @@ import {
   amountsOf,
   companyLedgers,
   currentService,
-  issueOf,
   movementsOf,
   overTimeStates,
   releasedRevenueAccount,
   type ScheduleState,
+  scheduleIssuesOf,
 } from './recognition.js';
 
 // The reads of `/api/revenue` (S06 "API", "Screens"; ADR 0015): the schedules with what they
@@ -59,6 +59,8 @@ const RECOGNISED: readonly MovementRow['kind'][] = [
   'adjusted',
   'elapsed',
   'remainder_released',
+  // What S06 released before the books start, on an opening schedule (S10 rule 13).
+  'before_opening',
 ];
 
 /** A schedule's derived state (S06 "Data"). */
@@ -96,11 +98,7 @@ async function shape(
     tx,
     schedules.map((schedule) => schedule.id),
   );
-  const issues = await tx
-    .select()
-    .from(inboundEvents)
-    .where(inArray(inboundEvents.id, [...new Set(schedules.map((schedule) => schedule.eventId))]));
-  const issueById = new Map(issues.map((issue) => [issue.id, issueOf(issue)]));
+  const issues = await scheduleIssuesOf(tx, schedules);
   const services = new Map(
     schedules.map((schedule) => [
       schedule.id,
@@ -129,13 +127,14 @@ async function shape(
         parallel,
       );
     const remaining = sum(own);
-    const line = issueById
-      .get(schedule.eventId)
+    const line = issues
+      .get(schedule.id)
       ?.payload.lines.find((candidate) => candidate.id === schedule.lineId);
     if (!line) throw new Error('A schedule without its line');
     return {
       id: schedule.id,
       inboxId: schedule.eventId,
+      openingId: schedule.openingId,
       invoiceDocumentId: schedule.invoiceDocumentId,
       invoiceNumber: schedule.invoiceNumber,
       lineId: schedule.lineId,
@@ -297,7 +296,9 @@ export async function readRevenueSchedule(
           },
         ),
         released: movements.some(
-          (movement) => movement.kind === 'released' && movement.month?.slice(0, 7) === month.month,
+          (movement) =>
+            (movement.kind === 'released' || movement.kind === 'before_opening') &&
+            movement.month?.slice(0, 7) === month.month,
         ),
       };
     });
@@ -327,7 +328,9 @@ function unreleased(state: ScheduleState, month: string): CarriedAmounts | null 
   const part = state.parts.get(month);
   if (part === undefined || part.transaction.amountMinor === 0n) return null;
   const released = state.movements.some(
-    (movement) => movement.kind === 'released' && movement.month?.slice(0, 7) === month,
+    (movement) =>
+      (movement.kind === 'released' || movement.kind === 'before_opening') &&
+      movement.month?.slice(0, 7) === month,
   );
   return released ? null : part;
 }
@@ -460,7 +463,8 @@ export async function previewRevenueMonth(
     const part = unreleased(state, month);
     if (part === null) continue;
     const { schedule } = state;
-    const entry = byInvoice.get(schedule.eventId) ?? {
+    const key = schedule.eventId ?? `${schedule.openingId}:${schedule.invoiceDocumentId}`;
+    const entry = byInvoice.get(key) ?? {
       inboxId: schedule.eventId,
       invoiceNumber: schedule.invoiceNumber,
       date: lastDayOfMonth(`${month}-01`),
@@ -473,7 +477,7 @@ export async function previewRevenueMonth(
       service: valueById(state.serviceValueId),
       amounts: wire(part),
     });
-    byInvoice.set(schedule.eventId, entry);
+    byInvoice.set(key, entry);
   }
   return { month, entries: [...byInvoice.values()] };
 }

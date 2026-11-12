@@ -1,11 +1,14 @@
 import type { Transaction } from '../client.js';
+import { companySettings } from '../schema/companies.js';
 import { periods } from '../schema/ledger.js';
 
 /**
  * The closed months of the company in context as the rules read them (S07 rules 1 and 4): the
  * periods whose state is `closed` (a `reopened` one posts as open), and, while any month is closed,
  * every month before the company's first period, which has no row. `closedBefore` is that first
- * period (null while no month is closed).
+ * period (null while no month is closed). In a company with a books start, every month before it
+ * is closed from the moment it is set (S10 rule 4): `closedBefore` is then the books start's month
+ * at the latest.
  */
 export interface ClosedPeriods {
   readonly closed: ReadonlySet<string>;
@@ -18,7 +21,16 @@ export async function readClosedPeriods(tx: Transaction): Promise<ClosedPeriods>
     .from(periods)
     .orderBy(periods.period);
   const closed = new Set(rows.filter((row) => row.state === 'closed').map((row) => row.period));
-  return { closed, closedBefore: closed.size > 0 ? (rows[0]?.period ?? null) : null };
+  const firstPeriod = closed.size > 0 ? (rows[0]?.period ?? null) : null;
+  const [settings] = await tx.select({ booksStart: companySettings.booksStart }).from(companySettings);
+  const booksStart = settings?.booksStart?.slice(0, 7) ?? null;
+  const closedBefore =
+    booksStart === null
+      ? firstPeriod
+      : firstPeriod === null || booksStart < firstPeriod
+        ? booksStart
+        : firstPeriod;
+  return { closed, closedBefore };
 }
 
 /** Whether `period` (`YYYY-MM`) is closed (S07 rules 1, 4). */

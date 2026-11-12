@@ -533,7 +533,7 @@ function PreviewDialog({
           <div className="flex min-w-0 flex-col gap-4">
             {preview.data.entries.map((entry) => (
               <section
-                key={entry.inboxId}
+                key={entry.inboxId ?? entry.invoiceNumber}
                 aria-label={`${t.preview.invoice} ${entry.invoiceNumber}`}
                 className="flex min-w-0 flex-col gap-2"
               >

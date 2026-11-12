@@ -4,7 +4,10 @@ import {
   DomainError,
   type EventOf,
   hubMinor,
+  type InvoiceIssuedV1,
+  invoiceIssuedV1Schema,
   money,
+  openingSnapshotSchema,
   type PostingSlot,
   parseEventEnvelope,
 } from '@vertex-mizan/contracts';
@@ -35,7 +38,7 @@ import {
   type VoidedOverTime,
   voidedCreditParts,
 } from '@vertex-mizan/ledger';
-import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, type SQL, sql } from 'drizzle-orm';
 import type { AuditActor } from '../audit.js';
 import type { Transaction } from '../client.js';
 import { closedPeriodList } from '../posting/periods.js';
@@ -46,6 +49,7 @@ import { dimensionValues } from '../schema/dimensions.js';
 import { inboundEventStates, inboundEvents, postingRuleAccounts } from '../schema/inbox.js';
 import { journalEntries, journalLines, ledgerHeads, postingRequests } from '../schema/ledger.js';
 import { openItemBalances, openItems } from '../schema/open-items.js';
+import { openingSnapshots, openings } from '../schema/opening.js';
 import { recognitionMovements, recognitionSchedules } from '../schema/recognition.js';
 import { ledgersOf } from './companies.js';
 
@@ -367,6 +371,52 @@ export async function milestoneFactsOf(
       };
     }
   }
+  // A milestone done before the books start and not invoiced is the opening's contract asset
+  // (S10 rules 11, 30): its done stands, and its invoice clears that item.
+  let openedByOpening = false;
+  if (doneEntry === undefined) {
+    const [opened] = await tx
+      .select({
+        id: openItems.id,
+        accountId: openItems.accountId,
+        currency: openItems.currency,
+        openMinor: openItemBalances.openMinor,
+        bookMinor: openItemBalances.bookMinor,
+        parallelMinor: openItemBalances.parallelMinor,
+      })
+      .from(openItems)
+      .innerJoin(
+        openItemBalances,
+        and(
+          eq(openItemBalances.companyId, openItems.companyId),
+          eq(openItemBalances.itemId, openItems.id),
+        ),
+      )
+      .where(
+        and(
+          eq(openItems.source, 'opening'),
+          eq(openItems.kind, 'document'),
+          sql`${openItems.hubDocument} ->> 'type' = 'milestone'`,
+          sql`${openItems.hubDocument} ->> 'id' = ${milestoneId}`,
+          sql`not exists (select 1 from ${journalEntries} r where r.company_id = ${openItems.companyId} and r.reverses_entry_id = ${openItems.openedByEntryId})`,
+        ),
+      );
+    if (opened) {
+      const currency = opened.currency as CurrencyCode;
+      openedByOpening = true;
+      item = {
+        id: opened.id,
+        accountId: opened.accountId,
+        currency,
+        openMinor: opened.openMinor,
+        carried: {
+          transaction: money(opened.openMinor, currency),
+          bookMinor: opened.bookMinor,
+          parallelMinor: opened.parallelMinor,
+        },
+      };
+    }
+  }
   const schedules = await standingPointInTime(
     tx,
     eq(recognitionSchedules.milestoneId, milestoneId),
@@ -405,7 +455,7 @@ export async function milestoneFactsOf(
     projectCancelled = cancelled !== undefined;
   }
   return {
-    doneStanding: doneEntry !== undefined,
+    doneStanding: doneEntry !== undefined || openedByOpening,
     item,
     doneRelease,
     schedule: schedules.at(-1) ?? null,
@@ -514,6 +564,145 @@ export function issueOf(row: EventRow): EventOf<'invoice.issued'> {
   return envelope;
 }
 
+/**
+ * What an invoice's schedules come from (S06; S10 rule 13): its `invoice.issued` event, or, for the
+ * schedules an opening opened, its invoice in the snapshot the opening posted with, read as that
+ * event's payload. `key` names the invoice's releases (`release:<key>:<YYYY-MM>`): Hub's event id,
+ * or `opening:<opening id>:<invoice id>`; `hub` is the releases' Hub source, whose inbox id is the
+ * entry's `source_ref` (the opening's `opening:<opening id>`).
+ */
+export interface ScheduleIssue {
+  readonly companyId: string;
+  readonly key: string;
+  readonly hub: HubSource;
+  readonly payload: InvoiceIssuedV1;
+  /** Its schedules, as a condition on `recognition_schedules`. */
+  readonly schedules: SQL;
+  /** The invoice's number or Hub id, for a refusal's report. */
+  readonly label: string;
+}
+
+/** An invoice's issue event as its schedules' issue. */
+export function eventIssue(row: EventRow): ScheduleIssue {
+  const event = issueOf(row);
+  return {
+    companyId: row.companyId,
+    key: row.eventId,
+    hub: {
+      inboxId: row.id,
+      clientId: row.apiClientId,
+      document: { type: 'invoice', id: event.payload.invoice.id, number: event.payload.invoice.number },
+    },
+    payload: event.payload,
+    schedules: eq(recognitionSchedules.eventId, row.id) as SQL,
+    label: row.documentNumber ?? row.documentId,
+  };
+}
+
+/** The snapshot invoices of the openings of `openingIds`, by opening and invoice id. */
+async function openingInvoices(
+  tx: Transaction,
+  openingIds: readonly string[],
+): Promise<Map<string, { opening: typeof openings.$inferSelect; payload: InvoiceIssuedV1; clientId: string }>> {
+  const found = new Map<
+    string,
+    { opening: typeof openings.$inferSelect; payload: InvoiceIssuedV1; clientId: string }
+  >();
+  const ids = [...new Set(openingIds)];
+  if (ids.length === 0) return found;
+  const rows = await tx
+    .select({ opening: openings, snapshot: openingSnapshots })
+    .from(openings)
+    .innerJoin(
+      openingSnapshots,
+      and(
+        eq(openingSnapshots.companyId, openings.companyId),
+        eq(openingSnapshots.id, openings.snapshotId),
+      ),
+    )
+    .where(inArray(openings.id, ids));
+  for (const { opening, snapshot } of rows) {
+    const parsed = openingSnapshotSchema.parse(snapshot.payload);
+    for (const invoice of parsed.invoices) {
+      found.set(`${opening.id}:${invoice.invoice.id}`, {
+        opening,
+        payload: invoiceIssuedV1Schema.parse(invoice),
+        clientId: snapshot.apiClientId,
+      });
+    }
+  }
+  return found;
+}
+
+/** An opening's invoice as its schedules' issue (S10 rule 24). */
+function openingIssue(
+  openingId: string,
+  invoice: { opening: typeof openings.$inferSelect; payload: InvoiceIssuedV1; clientId: string },
+): ScheduleIssue {
+  const { payload } = invoice;
+  return {
+    companyId: invoice.opening.companyId,
+    key: `opening:${openingId}:${payload.invoice.id}`,
+    hub: {
+      inboxId: `opening:${openingId}`,
+      clientId: invoice.clientId,
+      document: { type: 'invoice', id: payload.invoice.id, number: payload.invoice.number },
+    },
+    payload,
+    schedules: and(
+      eq(recognitionSchedules.openingId, openingId),
+      eq(recognitionSchedules.invoiceDocumentId, payload.invoice.id),
+    ) as SQL,
+    label: payload.invoice.number,
+  };
+}
+
+/**
+ * The issue of each schedule (an event's, or an opening's invoice), by schedule id: what its
+ * months, its line and its releases read.
+ */
+export async function scheduleIssuesOf(
+  tx: Transaction,
+  schedules: readonly ScheduleRow[],
+): Promise<Map<string, ScheduleIssue>> {
+  const issues = new Map<string, ScheduleIssue>();
+  const eventIds = [...new Set(schedules.flatMap((schedule) => schedule.eventId ?? []))];
+  const events =
+    eventIds.length === 0
+      ? []
+      : await tx.select().from(inboundEvents).where(inArray(inboundEvents.id, eventIds));
+  const byEvent = new Map(events.map((row) => [row.id, eventIssue(row)]));
+  const fromOpenings = await openingInvoices(
+    tx,
+    schedules.flatMap((schedule) => schedule.openingId ?? []),
+  );
+  for (const schedule of schedules) {
+    const issue =
+      schedule.eventId !== null
+        ? byEvent.get(schedule.eventId)
+        : schedule.openingId === null
+          ? undefined
+          : (() => {
+              const invoice = fromOpenings.get(
+                `${schedule.openingId}:${schedule.invoiceDocumentId}`,
+              );
+              return invoice === undefined
+                ? undefined
+                : openingIssue(schedule.openingId as string, invoice);
+            })();
+    if (issue === undefined) throw new Error('A schedule without its issue');
+    issues.set(schedule.id, issue);
+  }
+  return issues;
+}
+
+/** Whether a movement releases a month: S06's `released`, or one released before the books start. */
+function releasesMonth(movement: MovementRow): boolean {
+  return (
+    (movement.kind === 'released' || movement.kind === 'before_opening') && movement.month !== null
+  );
+}
+
 /** A schedule with its movements and the release part of each of its months not elapsed. */
 export interface ScheduleState {
   readonly schedule: ScheduleRow;
@@ -600,18 +789,14 @@ export async function overTimeStates(
     tx,
     schedules.map((schedule) => schedule.id),
   );
-  const issues = await tx
-    .select()
-    .from(inboundEvents)
-    .where(inArray(inboundEvents.id, [...new Set(schedules.map((schedule) => schedule.eventId))]));
-  const issueById = new Map(issues.map((issue) => [issue.id, issueOf(issue)]));
+  const issues = await scheduleIssuesOf(tx, schedules);
   const parallel = ledgers.parallel !== null;
   const states: ScheduleState[] = [];
   for (const schedule of schedules) {
     const own = movements.get(schedule.id) ?? [];
-    const event = issueById.get(schedule.eventId);
-    const line = event?.payload.lines.find((candidate) => candidate.id === schedule.lineId);
-    if (!event || !line || schedule.serviceFrom === null || schedule.serviceTo === null) {
+    const payload = issues.get(schedule.id)?.payload;
+    const line = payload?.lines.find((candidate) => candidate.id === schedule.lineId);
+    if (!payload || !line || schedule.serviceFrom === null || schedule.serviceTo === null) {
       throw new Error('A schedule without its line or its period');
     }
     const currency = schedule.currency as CurrencyCode;
@@ -627,7 +812,7 @@ export async function overTimeStates(
       hubMinor(line.amount),
       schedule.serviceFrom,
       schedule.serviceTo,
-      event.payload.issued_on,
+      payload.issued_on,
     );
     let months = lineMonths;
     if (schedule.reissueOfScheduleId !== null) {
@@ -639,8 +824,11 @@ export async function overTimeStates(
     // Each released month's release with its adjustments (owner, 2026-11-11), positive amounts.
     const releasedRows = new Map<string, CarriedAmounts[]>();
     for (const movement of own) {
+      // A month an opening released before the books start is released (S10 rule 13).
       if (
-        (movement.kind === 'released' || movement.kind === 'adjusted') &&
+        (movement.kind === 'released' ||
+          movement.kind === 'adjusted' ||
+          movement.kind === 'before_opening') &&
         movement.month !== null
       ) {
         const month = movement.month.slice(0, 7);
@@ -653,9 +841,7 @@ export async function overTimeStates(
     const released = new Map(
       [...releasedRows.entries()]
         .filter(([month]) =>
-          own.some(
-            (movement) => movement.kind === 'released' && movement.month?.slice(0, 7) === month,
-          ),
+          own.some((movement) => releasesMonth(movement) && movement.month?.slice(0, 7) === month),
         )
         .map(([month, rows]) => [month, negate(sumCarried(rows, currency, parallel))] as const),
     );
@@ -664,11 +850,13 @@ export async function overTimeStates(
       currency,
       parallel,
     );
+    // The credits through the eve of an opening schedule are a credit (S10 rule 13).
     const credited = own.some(
       (movement) =>
         movement.kind === 'credited' ||
         movement.kind === 'adjusted' ||
-        (movement.kind === 'released' && movement.month === null),
+        (movement.kind === 'released' && movement.month === null) ||
+        (movement.kind === 'before_opening' && movement.month === null && movement.creditMinor !== null),
     );
     const voided = own.some((movement) => movement.kind === 'reversed');
     const parts = new Map<string, CarriedAmounts>();
@@ -710,21 +898,16 @@ export async function overTimeStates(
   return states;
 }
 
-/** The over-time schedules an invoice's issue event opened, in the order they were made. */
+/** The over-time schedules of an invoice's issue, in the order they were made. */
 async function scheduleStates(
   tx: Transaction,
-  issue: EventRow,
+  issue: ScheduleIssue,
   ledgers: CompanyLedgers,
 ): Promise<ScheduleState[]> {
   const schedules = await tx
     .select()
     .from(recognitionSchedules)
-    .where(
-      and(
-        eq(recognitionSchedules.eventId, issue.id),
-        eq(recognitionSchedules.pattern, 'over_time'),
-      ),
-    )
+    .where(and(issue.schedules, eq(recognitionSchedules.pattern, 'over_time')))
     .orderBy(asc(recognitionSchedules.createdAt), asc(recognitionSchedules.id));
   return overTimeStates(tx, schedules, ledgers);
 }
@@ -743,7 +926,7 @@ async function scheduleStates(
  */
 export async function releaseInvoiceMonth(
   tx: Transaction,
-  issue: EventRow,
+  issue: ScheduleIssue,
   month: string,
   today: string,
   actor: AuditActor,
@@ -761,7 +944,7 @@ export async function releaseInvoiceMonth(
       !state.voided &&
       state.parts.has(month) &&
       !state.movements.some(
-        (movement) => movement.kind === 'released' && movement.month === `${month}-01`,
+        (movement) => releasesMonth(movement) && movement.month === `${month}-01`,
       ),
   );
   const releasing = states.filter(
@@ -787,22 +970,13 @@ export async function releaseInvoiceMonth(
       },
     ];
   });
-  const event = issueOf(issue);
-  const hub: HubSource = {
-    inboxId: issue.id,
-    clientId: issue.apiClientId,
-    document: {
-      type: 'invoice',
-      id: event.payload.invoice.id,
-      number: event.payload.invoice.number,
-    },
-  };
+  const { hub, payload } = issue;
   const entry = await post(tx, {
     client: 'system',
-    idempotencyKey: `release:${issue.eventId}:${month}`,
+    idempotencyKey: `release:${issue.key}:${month}`,
     entryDate,
-    description: `تحرير إيراد ${event.payload.invoice.number} عن ${month}`,
-    reference: event.payload.invoice.number,
+    description: `تحرير إيراد ${payload.invoice.number} عن ${month}`,
+    reference: payload.invoice.number,
     draftId: null,
     preparedByUserId: null,
     approvedByUserId: null,
@@ -834,7 +1008,7 @@ export async function releaseInvoiceMonth(
  */
 export async function releaseEndedMonths(
   tx: Transaction,
-  issue: EventRow,
+  issue: ScheduleIssue,
   today: string,
   actor: AuditActor,
 ): Promise<string[]> {
@@ -876,16 +1050,14 @@ export async function releaseMonth(
   const first = `${month}-01`;
   const last = lastDayOfMonth(first);
   if (last >= today) return { posted: 0, refused: [] };
-  const issues = await tx
-    .select({ event: inboundEvents })
-    .from(inboundEvents)
-    .innerJoin(
-      recognitionSchedules,
-      and(
-        eq(recognitionSchedules.companyId, inboundEvents.companyId),
-        eq(recognitionSchedules.eventId, inboundEvents.id),
-      ),
-    )
+  // Each invoice's schedules, an event's or an opening's (S10 rule 24), in the order they were made.
+  const groups = await tx
+    .select({
+      eventId: recognitionSchedules.eventId,
+      openingId: recognitionSchedules.openingId,
+      invoiceId: recognitionSchedules.invoiceDocumentId,
+    })
+    .from(recognitionSchedules)
     .where(
       and(
         eq(recognitionSchedules.pattern, 'over_time'),
@@ -893,23 +1065,48 @@ export async function releaseMonth(
         sql`${recognitionSchedules.serviceTo} >= ${first}`,
       ),
     )
-    .groupBy(inboundEvents.id)
+    .groupBy(
+      recognitionSchedules.eventId,
+      recognitionSchedules.openingId,
+      recognitionSchedules.invoiceDocumentId,
+    )
     .orderBy(
       sql`min(${recognitionSchedules.createdAt})`,
       sql`min(${recognitionSchedules.id}::text)`,
     );
+  const eventIds = groups.flatMap((group) => group.eventId ?? []);
+  const events =
+    eventIds.length === 0
+      ? []
+      : await tx.select().from(inboundEvents).where(inArray(inboundEvents.id, eventIds));
+  const fromOpenings = await openingInvoices(
+    tx,
+    groups.flatMap((group) => group.openingId ?? []),
+  );
+  const issues = groups.map((group) => {
+    if (group.eventId !== null) {
+      const row = events.find((event) => event.id === group.eventId);
+      if (row === undefined) throw new Error('A schedule without its event');
+      return eventIssue(row);
+    }
+    const invoice = fromOpenings.get(`${group.openingId}:${group.invoiceId}`);
+    if (invoice === undefined || group.openingId === null) {
+      throw new Error('A schedule without its opening invoice');
+    }
+    return openingIssue(group.openingId, invoice);
+  });
   let posted = 0;
   const refused: ReleaseRefusal[] = [];
-  for (const { event } of issues) {
+  for (const issue of issues) {
     try {
       const entry = await tx.transaction((savepoint) =>
-        releaseInvoiceMonth(savepoint, event, month, today, actor),
+        releaseInvoiceMonth(savepoint, issue, month, today, actor),
       );
       if (entry !== null) posted += 1;
     } catch (error) {
       if (!(error instanceof DomainError)) throw error;
       refused.push({
-        invoiceNumber: event.documentNumber ?? event.documentId,
+        invoiceNumber: issue.label,
         code: error.code,
         detail: typeof error.details?.detail === 'string' ? error.details.detail : null,
       });
@@ -963,11 +1160,8 @@ export async function reclassifyRecognised(
     )
     .orderBy(asc(recognitionSchedules.id));
   if (!schedule) throw new Error('A scheduled line without its schedule');
-  const [issue] = await tx
-    .select()
-    .from(inboundEvents)
-    .where(eq(inboundEvents.id, schedule.eventId));
-  if (!issue) throw new Error('A schedule without its event');
+  const issue = (await scheduleIssuesOf(tx, [schedule])).get(schedule.id);
+  if (!issue) throw new Error('A schedule without its issue');
   const ledgers = await companyLedgers(tx);
   // A point-in-time schedule recognises by its done or its project's end, not by months: what its
   // movements released is what moves (rule 10).
@@ -1682,19 +1876,23 @@ export async function voidStandingOf(
  */
 async function releaseEndedBefore(
   tx: Transaction,
-  issueIds: readonly string[],
+  scheduleIds: readonly string[],
   before: string,
   today: string,
   actor: AuditActor,
 ): Promise<void> {
-  if (issueIds.length === 0) return;
-  const issues = await tx
+  if (scheduleIds.length === 0) return;
+  const schedules = await tx
     .select()
-    .from(inboundEvents)
-    .where(inArray(inboundEvents.id, [...new Set(issueIds)]))
-    .orderBy(asc(inboundEvents.receivedAt), asc(inboundEvents.id));
+    .from(recognitionSchedules)
+    .where(inArray(recognitionSchedules.id, [...new Set(scheduleIds)]))
+    .orderBy(asc(recognitionSchedules.createdAt), asc(recognitionSchedules.id));
+  const byKey = new Map<string, ScheduleIssue>();
+  for (const issue of (await scheduleIssuesOf(tx, schedules)).values()) {
+    if (!byKey.has(issue.key)) byKey.set(issue.key, issue);
+  }
   const ledgers = await companyLedgers(tx);
-  for (const issue of issues) {
+  for (const issue of byKey.values()) {
     const months = new Set<string>();
     for (const state of await scheduleStates(tx, issue, ledgers)) {
       if (state.voided) continue;
@@ -1730,7 +1928,7 @@ export async function releaseBeforeChange(
     const schedules = await cycleSchedules(tx, creditCycles(event));
     await releaseEndedBefore(
       tx,
-      schedules.map((schedule) => schedule.eventId),
+      schedules.map((schedule) => schedule.id),
       event.accounting_date,
       today,
       actor,
@@ -1739,12 +1937,12 @@ export async function releaseBeforeChange(
   }
   const invoiceId = event.payload.invoice.id;
   const own = await tx
-    .select({ eventId: recognitionSchedules.eventId })
+    .select({ id: recognitionSchedules.id })
     .from(recognitionSchedules)
     .where(eq(recognitionSchedules.invoiceDocumentId, invoiceId));
   // The schedules of other invoices this invoice's entries credited.
   const credited = await tx
-    .select({ eventId: recognitionSchedules.eventId })
+    .select({ id: recognitionSchedules.id })
     .from(recognitionMovements)
     .innerJoin(
       recognitionSchedules,
@@ -1769,7 +1967,7 @@ export async function releaseBeforeChange(
     );
   await releaseEndedBefore(
     tx,
-    [...own, ...credited].map((row) => row.eventId),
+    [...own, ...credited].map((row) => row.id),
     event.accounting_date,
     today,
     actor,

@@ -41,7 +41,13 @@ import { and, asc, desc, eq, gt, inArray, isNull, sql } from 'drizzle-orm';
 import { type AuditActor, SYSTEM_NAME, writeCompanyAudit } from '../audit.js';
 import type { Transaction } from '../client.js';
 import { closedPeriodList, isClosedPeriod, readClosedPeriods } from '../posting/periods.js';
-import { type HubSource, type ManualLineSpec, type PostingContent, post } from '../posting/post.js';
+import {
+  type HubSource,
+  type ManualLineSpec,
+  openingIsPosted,
+  type PostingContent,
+  post,
+} from '../posting/post.js';
 import { chartAccounts } from '../schema/chart.js';
 import { companySettings } from '../schema/companies.js';
 import { dimensionTypes, dimensionValues } from '../schema/dimensions.js';
@@ -72,6 +78,7 @@ import {
   recutSince,
   reissuesOf,
   releaseBeforeChange,
+  eventIssue,
   releaseEndedMonths,
   scheduledLineIdsOf,
   splitAtCancellation,
@@ -300,7 +307,17 @@ async function mappingOf(tx: Transaction): Promise<HubRuleContext['mapping']> {
   };
 }
 
-/** The Hub document item of an invoice, with what remains open (S04 rule 2). */
+/** An item that is not the opening's, or one whose opening entry stands (S10 rule 25). */
+export const standingOpeningItem = sql`not (${openItems.source} = 'opening' and exists (
+  select 1 from ${journalEntries} r
+  where r.company_id = ${openItems.companyId} and r.reverses_entry_id = ${openItems.openedByEntryId}
+))`;
+
+/**
+ * The Hub document item of an invoice, with what remains open (S04 rule 2): its event's, or the
+ * opening's when the opening carries the invoice (S10 rule 30), an item a reversed opening opened
+ * left out.
+ */
 async function invoiceItemOf(tx: Transaction, invoiceId: string): Promise<HubItem | null> {
   const [row] = await tx
     .select({
@@ -319,11 +336,12 @@ async function invoiceItemOf(tx: Transaction, invoiceId: string): Promise<HubIte
     )
     .where(
       and(
-        eq(openItems.source, 'hub_event'),
+        inArray(openItems.source, ['hub_event', 'opening']),
         sql`${openItems.hubDocument} ->> 'type' = 'invoice'`,
         sql`${openItems.hubDocument} ->> 'id' = ${invoiceId}`,
         // The receivable's item under Hub's number, not a late line's contract asset (S06).
         sql`${openItems.reference} = ${openItems.hubDocument} ->> 'number'`,
+        standingOpeningItem,
       ),
     );
   return row === undefined ? null : { ...row, currency: row.currency as CurrencyCode };
@@ -622,7 +640,7 @@ function codePrefix(type: string, contract: HubContractRef | null): string {
  * API client as actor. What needs the accountant is named, not refused: a value the accountant
  * archived (`dimension_value_archived`), a contract of another client (`contract_client_mismatch`).
  */
-class HubValues {
+export class HubValues {
   readonly #types = new Map<string, string>();
   readonly #ids = new Map<string, string>();
   decision: string | null = null;
@@ -1075,7 +1093,7 @@ async function decide(
             context.ledgers.parallel !== null,
           );
           // An invoice posted after its months ended releases them now (S06 rule 5).
-          await releaseEndedMonths(savepoint, row, options.today, system);
+          await releaseEndedMonths(savepoint, eventIssue(row), options.today, system);
         }
         if (plan.movements !== undefined) {
           await writeMovements(savepoint, row.companyId, plan.movements, byKey);
@@ -1332,6 +1350,14 @@ export async function receiveEvent(
   const { envelope, raw } = input;
   if (raw.id !== envelope.id || typeof raw.payload !== 'object' || raw.payload === null) {
     throw new TypeError('The raw body is the envelope that was parsed');
+  }
+  // Before the opening is posted, in a company with a books start, nothing is stored: Hub retries
+  // after `Retry-After` (S10 rule 3).
+  const [start] = await tx.select({ booksStart: companySettings.booksStart }).from(companySettings);
+  if (start?.booksStart != null && !(await openingIsPosted(tx))) {
+    throw new DomainError('OPENING_NOT_POSTED', 'The opening balances are not posted yet', {
+      booksStart: start.booksStart,
+    });
   }
   const payloadHash = envelopeHash(raw);
   const document = documentOf(envelope);

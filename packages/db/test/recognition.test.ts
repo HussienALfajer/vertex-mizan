@@ -1666,7 +1666,7 @@ describe('the guards of the recognition tables (0032)', () => {
             ],
             today: '2026-12-01',
             hub: {
-              inboxId: schedule.eventId,
+              inboxId: schedule.eventId as string,
               clientId: CLIENT_ID,
               document: {
                 type: 'invoice',

@@ -98,9 +98,15 @@ export const openItems = pgTable(
       columns: [t.companyId, t.openedByEntryId],
       foreignColumns: [journalEntries.companyId, journalEntries.id],
     }),
+    // A document's reference is unique on its account (S04 rule 6); an opening's items per opening
+    // entry, since the new opening after a whole reversal opens them again (S10 rule 25), and
+    // `open_item_reference_rules()` holds every reference unique among the items standing.
     uniqueIndex('open_items_document_reference_key')
       .on(t.companyId, t.accountId, t.reference)
-      .where(sql`${t.kind} = 'document'`),
+      .where(sql`${t.kind} = 'document' and ${t.source} <> 'opening'`),
+    uniqueIndex('open_items_opening_reference_key')
+      .on(t.companyId, t.accountId, t.reference, t.openedByEntryId)
+      .where(sql`${t.kind} = 'document' and ${t.source} = 'opening'`),
     uniqueIndex('open_items_running_key')
       .on(t.companyId, t.accountId, t.clientValueId, t.currency)
       .where(sql`${t.kind} = 'running'`),
@@ -112,12 +118,16 @@ export const openItems = pgTable(
         sql`(${t.hubDocument} ->> 'id')`,
         t.reference,
       )
-      .where(sql`${t.hubDocument} is not null`),
+      .where(sql`${t.hubDocument} is not null and ${t.source} <> 'opening'`),
     // The items of an account, by client: the ageing and the statements (S04 "Volume").
     index('open_items_company_account_idx').on(t.companyId, t.accountId, t.clientValueId),
     index('open_items_company_dimension_set_idx').on(t.companyId, t.dimensionSetId),
     index('open_items_company_client_idx').on(t.companyId, t.clientValueId),
     index('open_items_company_opened_by_entry_idx').on(t.companyId, t.openedByEntryId),
+    // A Hub document's items, the opening's included (S10 rule 30).
+    index('open_items_company_hub_document_idx')
+      .on(t.companyId, sql`(${t.hubDocument} ->> 'type')`, sql`(${t.hubDocument} ->> 'id')`)
+      .where(sql`${t.hubDocument} is not null`),
     check('open_items_kind', sql`${t.kind} in (${listed(OPEN_ITEM_KINDS)})`),
     check('open_items_source', sql`${t.source} in (${listed(OPEN_ITEM_SOURCES)})`),
     check('open_items_reference_length', sql`char_length(${t.reference}) between 1 and 100`),

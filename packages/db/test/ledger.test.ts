@@ -251,7 +251,7 @@ describe('the ledger schema', () => {
   it("stores the sources and line kinds of packages/ledger's entries", () => {
     expect([...JOURNAL_ENTRY_SOURCES]).toEqual([...ENTRY_SOURCES]);
     const kinds: readonly Line['kind'][] = JOURNAL_LINE_KINDS;
-    expect(kinds).toEqual(['measured', 'carried', 'difference', 'rounding']);
+    expect(kinds).toEqual(['measured', 'carried', 'difference', 'rounding', 'stated']);
   });
 });
 

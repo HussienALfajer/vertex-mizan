@@ -39,8 +39,10 @@ export const recognitionValueSchema = z
 export const revenueScheduleSchema = z
   .object({
     id: z.uuid(),
-    /** The `invoice.issued` event that opened it, in the inbox. */
-    inboxId: z.uuid(),
+    /** The `invoice.issued` event that opened it, in the inbox; null for the opening's (S10). */
+    inboxId: z.uuid().nullable(),
+    /** The opening that opened it (S10 rule 13); null for an event's. */
+    openingId: z.uuid().nullable().optional(),
     invoiceDocumentId: z.uuid(),
     invoiceNumber: z.string(),
     lineId: z.uuid(),
@@ -197,7 +199,8 @@ export type RevenuePreviewQuery = z.infer<typeof revenuePreviewQuerySchema>;
 /** One invoice's release the job would post for a month, each schedule's part. */
 export const revenuePreviewEntrySchema = z
   .object({
-    inboxId: z.uuid(),
+    /** The invoice's issue event; null for an invoice the opening carries (S10 rule 24). */
+    inboxId: z.uuid().nullable(),
     invoiceNumber: z.string(),
     /** The entry's date: the month's last day. */
     date: dateSchema,

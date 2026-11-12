@@ -85,7 +85,7 @@ export function SchedulePage() {
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <ScheduleStateBadge state={data.state} />
-            {can(me, 'events.read') && (
+            {can(me, 'events.read') && data.inboxId !== null && (
               <Button
                 variant="outline"
                 render={<Link to="/inbox/$id" params={{ id: data.inboxId }} />}

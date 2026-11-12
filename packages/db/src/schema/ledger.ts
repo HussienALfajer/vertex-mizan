@@ -40,7 +40,13 @@ export const JOURNAL_ENTRY_SOURCES = [
 ] as const;
 
 /** The kinds of a line (`Line['kind']` of `@vertex-mizan/ledger`). */
-export const JOURNAL_LINE_KINDS = ['measured', 'carried', 'difference', 'rounding'] as const;
+export const JOURNAL_LINE_KINDS = [
+  'measured',
+  'carried',
+  'difference',
+  'rounding',
+  'stated',
+] as const;
 
 const listed = (values: readonly string[]) =>
   sql.raw(values.map((value) => `'${value}'`).join(', '));

@@ -38,6 +38,7 @@ export const accountRole = pgEnum('account_role', [
   'fx_unrealised_gain',
   'fx_unrealised_loss',
   'retained_earnings',
+  'pre_opening_result',
 ]);
 
 /**
