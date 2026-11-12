@@ -10,9 +10,11 @@ import {
   postingRuleAccounts,
   receiveEvent,
   recordRate,
+  reopenPeriod,
   users,
   withCompany,
 } from '@vertex-mizan/db';
+import { closeMonthByHand } from '@vertex-mizan/db/testing';
 import { asc, eq, sql } from 'drizzle-orm';
 import pg from 'pg';
 import { v7 as uuidv7 } from 'uuid';
@@ -217,20 +219,38 @@ describe('revenue.release-month', () => {
   it('leaves a closed month’s release missing, and posts the next open month', async () => {
     const companyId = await company();
     await receiveCycle(companyId, NOVEMBER, '2026-11-15');
-    // S07 brings the close; here the owner role closes November, as the API's tests close months.
-    await asOwner(
-      companyId,
-      [
-        'alter table periods disable trigger period_rules',
-        // The invoice opened November's period; the close turns it closed.
-        `update periods set state = 'closed' where company_id = $1 and period = '2026-11'`,
-        'alter table periods enable always trigger period_rules',
-      ],
-      [companyId],
-    );
+    // The invoice opened November's period; the close turns it closed.
+    await closeMonthByHand(db, companyId, '2026-11');
     const run = await job.run('2027-01-01');
     expect(run.refused).toBeGreaterThanOrEqual(1);
     expect(await releases(companyId)).toEqual([['2026-12-31', 42_000n, 5_082_000n]]);
+  });
+
+  it('releases a reopened month that misses its release (S07 "Jobs"), once', async () => {
+    const companyId = await company();
+    await receiveCycle(companyId, NOVEMBER, '2026-11-15');
+    await closeMonthByHand(db, companyId, '2026-11');
+    expect((await job.run('2026-12-01')).refused).toBeGreaterThanOrEqual(1);
+    expect(await releases(companyId)).toEqual([]);
+    await withCompany(db, companyId, (tx) =>
+      reopenPeriod(tx, {
+        period: '2026-11',
+        reason: 'إعادة فتح للاختبار',
+        today: '2026-12-02',
+        actor: {
+          kind: 'person',
+          userId: uuidv7(),
+          name: 'محاسب تجريبي',
+          sessionId: null,
+          requestId: 'request-reopen-test',
+          ipAddress: null,
+          userAgent: null,
+        },
+      }),
+    );
+    await job.run('2026-12-02');
+    await job.run('2026-12-02');
+    expect((await releases(companyId)).map(([on]) => on)).toEqual(['2026-11-30']);
   });
 
   it('maps the template’s recognition slots in a company made before S06', async () => {

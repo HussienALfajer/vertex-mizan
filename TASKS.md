@@ -21,7 +21,7 @@ Spec: `docs/specs/S07-revaluation-periods-close.md` (Approved, owner 2026-11-11)
 - [x] db tests: invariants (`period_events` append-only, transitions only with their event, a posting into a closed period refused while a close commits concurrently), isolation
 - [x] scenarios: the `close`, `reopen`, `draft` and `discard` executors and `closed_periods` through the close service; `currency/stale-revaluation` and `periods/close-and-reopen` `Approved (owner, 2026-11-12)`, `inbox/post-in-next-open-period` `Approved (owner, 2026-11-07)`, `revenue/recognise-in-open-period` `Approved (owner, 2026-11-10)`, no expected value changed, counted as run; the "added with S07" notes pointed to the new scenarios
 - [x] api: `GET /api/periods`, `GET /api/periods/:period`, `POST /api/periods/:period/close` and `/reopen`; tests (success, 401, 403 by role and the period permission, another company, the refusals of rules 2 and 3)
-- [ ] worker: `events.retry` on the reopen's trigger, `revenue.release-month` for a reopened month missing its release, the daily email's line "أشهر منتهية غير مقفلة"; safe twice, per company
+- [x] worker: `events.retry` on the reopen's trigger, `revenue.release-month` for a reopened month missing its release, the daily email's line "أشهر منتهية غير مقفلة"; safe twice, per company
 - [x] bridge: OpenAPI regenerated, breaking-change check
 - [ ] wiring (Contracts, Database, API and worker), docs (`packages/*/CLAUDE.md`, `apps/*/CLAUDE.md`, `docs/ROADMAP.md`)
 - [ ] checks and reviewers (`reviewer`, `accountant-reviewer`), PR with auto-merge and Auto-fix

@@ -6,7 +6,7 @@ declare module 'vitest' {
     queueUrl: string;
     appUrl: string;
     jobsUrl: string;
-    /** Only to close a month as S07 will (S06's release of a closed month). */
+    /** Only for what no runtime role may do: a company made before S06, its slots removed. */
     ownerUrl: string;
   }
 }

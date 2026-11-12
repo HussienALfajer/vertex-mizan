@@ -295,8 +295,9 @@ export async function readPeriod(
 
 /**
  * `GET /api/periods?from=&to=` (S07 "API"): each month of the range, at most 24
- * (`VALIDATION_FAILED`), the first period to the current month by default, with its state, whether
- * it has ended, its last event and, for an ended month not closed, how many checklist items fail.
+ * (`VALIDATION_FAILED`), by default the first period (or the 24th month back, when later) to the
+ * current month, with its state, whether it has ended, its last event and, for an ended month not
+ * closed, how many checklist items fail.
  */
 export async function readPeriods(
   tx: Transaction,
@@ -309,7 +310,10 @@ export async function readPeriods(
   const rows = await tx.select().from(periods).orderBy(asc(periods.period));
   const current = periodOf(input.today);
   const to = input.to ?? current;
-  const from = input.from ?? (rows[0] !== undefined && rows[0].period < to ? rows[0].period : to);
+  let earliest = to;
+  for (let back = 1; back < PERIODS_RANGE_LIMIT; back += 1) earliest = monthBefore(earliest);
+  const first = rows[0]?.period ?? to;
+  const from = input.from ?? (first > to ? to : first < earliest ? earliest : first);
   if (from > to) {
     throw new DomainError('VALIDATION_FAILED', 'from comes before to', { from, to });
   }

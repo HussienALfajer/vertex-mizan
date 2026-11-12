@@ -30,8 +30,11 @@ export const email = {
   },
   heldDigest: {
     subject: 'أحداث معلّقة من Hub في {companyName}',
-    body: 'في صندوق الوارد لشركة {companyName} أحداث من Hub معلّقة لم تُرحَّل بعد، حتى صباح {day} (توقيت دمشق).\n\nعُلّق منذ الملخص السابق: {newlyHeld}\n\nالمعلّق كله بحسب السبب:\n{held}\n\nراجعها وعالجها من صندوق الوارد:\n{link}\n\nتصلك هذه الرسالة في كل يوم فيه حدث معلّق.',
+    body: 'في صندوق الوارد لشركة {companyName} أحداث من Hub معلّقة لم تُرحَّل بعد، حتى صباح {day} (توقيت دمشق).\n\nعُلّق منذ الملخص السابق: {newlyHeld}\n\nالمعلّق كله بحسب السبب:\n{held}{unclosed}\n\nراجعها وعالجها من صندوق الوارد:\n{link}\n\nتصلك هذه الرسالة في كل يوم فيه حدث معلّق.',
     line: '- {reason}: {count}',
+    // S07: the ended months not closed, each with its failing checklist items.
+    unclosedTitle: 'أشهر منتهية غير مقفلة:',
+    unclosedLine: '- {period}: بنود فاشلة في قائمة التحقق قبل الإقفال: {count}',
     reasons: {
       PERIOD_CLOSED: 'الفترة مقفلة',
       SERVICE_PERIOD_CLOSED: 'فترة الخدمة مقفلة',
