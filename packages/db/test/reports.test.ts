@@ -460,6 +460,7 @@ describe('profitability by department (rules 20–23)', () => {
           statementLine: 'is.direct_costs',
           profitabilityBy: 'department',
           dims: [],
+          openingEntry: false,
         },
         NOW,
       ),
@@ -537,7 +538,11 @@ describe('the readers agree with the ledger (rule 8)', () => {
               );
               // A drill-down from the closing balance sums to it.
               const lines_ = await read((tx) =>
-                readReportLines(tx, { ledger: 'book', to, account: row.account.id, dims: [] }, NOW),
+                readReportLines(
+                  tx,
+                  { ledger: 'book', to, account: row.account.id, dims: [], openingEntry: false },
+                  NOW,
+                ),
               );
               expect(lines_.sum).toBe(row.closing);
             }
