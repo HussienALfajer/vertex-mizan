@@ -1,3 +1,22 @@
-# TASKS
+# TASKS — S08 Daily reconciliation
 
-No task in progress. `/feature-slice <id>` replaces this file with the spec's checklist and commits it on the branch, so a cloud session or another machine continues from the same list.
+Spec: `docs/specs/S08-daily-reconciliation.md` (Approved, owner 2026-11-12) · ADRs 0003, 0005, 0006, 0008, 0013, 0014, 0016, 0017 · Scenarios: none (S08 posts nothing; the scenario book's companies have no API client, so `reconciliation_clean` is `not_applicable` there). Two PRs, each merged before the next starts, on the cloud session's branch `claude/sweet-hamilton-8sd0ju` (restarted from `main` for PR 2).
+
+## PR 1 — Reports, the comparison and the checklist item (contracts, ledger, db, api, worker, bridge)
+- [ ] contracts: `reconciliation.ts` — the report (`reconciliationReportSchema`: rule 1, at most 5 000 events, `totals` equal to the list, ids unique, amounts present by type), `RECONCILIATION_KINDS`, `RECONCILIATION_DAY_STATES`, `HUB_DELIVERY_STATES` (append-only), `reconciliationAmountOf()` (rule 2, one definition for both sides), the result, received events page, month and day schemas; `reconciliation.read` (owner, accountant, auditor) appended to the map; `RECONCILIATION_START_LOCKED` appended with its Arabic text; `CHECKLIST_ITEMS` appends `reconciliation_clean`; the API client's `reconcileFrom`; `held_digest` gains `reconciliation`; unit tests
+- [ ] ledger: `reconciliation.ts` — the comparison (rules 7–8: the kinds for every pairing of the two sides, `date_differs` across dates), the day's state (rule 10) and the company's worst, the totals (rule 11); properties: a report built from Mizan's own events is `matched`; removing or changing any one event yields exactly one gap of the right kind
+- [ ] db (`/db-migration`): `reconciliation_reports` and `reconciliation_report_events` append-only with forced RLS, composite keys, registry kinds, grants and guards pinned in `GUARDS`; `api_clients.reconcile_from` with its check (required with `events:write` or `reconciliation:write`) and its never-cleared trigger, set for existing clients from `created_at` in Asia/Damascus; the migration generated and reviewed
+- [ ] db: the reconciliation service — receive a report (rule 4's refusals, idempotency and `IDEMPOTENCY_CONFLICT`, `superseded`, the answer at receipt), Mizan's side of a date from `inbound_events` (rule 7), the annotations (rule 9), a month and a day (rules 10–11, 15), `reconciliation_clean` in the checklist (rule 12, inside the close's transaction), the start date's lock (rule 13, `RECONCILIATION_START_LOCKED`)
+- [ ] db tests: invariants (append-only tables, RLS, composite keys, `reconcile_from`'s check and trigger), isolation, the checklist item passing, failing per day state, `not_applicable`, and against a concurrent report; the scenario book unchanged
+- [ ] api: `POST /v1/reconciliation/daily`, `GET /v1/events?date=` (`reconciliation:write`, rate-limited per client), `GET /api/reconciliation/days` and `/days/:date` (`reconciliation.read`), `reconcileFrom` on `POST`/`PUT /api/api-clients` with its audit; tests (success, 401, 403 for a key without the scope and a session on `/v1`, another company's client, a replay and a `409`, per role)
+- [ ] worker: `events.held-digest`'s reconciliation section (rule 16), safe twice, per company
+- [ ] bridge: the report's JSON Schema and example in `export:hub-schema` and `post:hub-examples`; OpenAPI regenerated, breaking-change check
+- [ ] wiring (Contracts, Ledger, Database, API and worker), docs (`packages/*/CLAUDE.md`, `apps/*/CLAUDE.md`, `docs/glossary.md`, `docs/open-questions.md` Q5, `docs/ROADMAP.md`)
+- [ ] checks and reviewers (`reviewer`, `accountant-reviewer`), PR with auto-merge and Auto-fix
+
+## PR 2 — The screens (ui, web, e2e)
+- [ ] ui: `ReconciliationDayBadge` if `EventStateBadge`'s pattern does not fit (tested, both densities, on the design-system page)
+- [ ] web: the sidebar's "المطابقة اليومية" with its count; `/reconciliation?month=&client=` (days, counts, gaps, annotations, "بعد الإقفال", the matched days in a row, client filter, month navigation; empty, before-start, loading and error states); `/reconciliation/:date?client=` (state, totals Hub beside Mizan through `Amount`, differences with links to `/inbox/:id`, annotations with their entries and items, the reports); the checklist's link on `/periods/:period`; "تاريخ بدء المطابقة" on `/settings/api-clients` with `RECONCILIATION_START_LOCKED`; `ar.reconciliation`
+- [ ] e2e: the reconciliation and start-date flows; RTL screenshots light and dark at 360, 768 and 1280 px, looked at
+- [ ] wiring (Web), docs (`apps/web/CLAUDE.md`, `packages/ui/CLAUDE.md`, `docs/ROADMAP.md`: S08 done)
+- [ ] checks and reviewer, PR with auto-merge and Auto-fix; reset this file to its "No task in progress" stub
