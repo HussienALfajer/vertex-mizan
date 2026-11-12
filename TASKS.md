@@ -20,7 +20,7 @@ Plan approved by the owner (2026-11-13, in the session).
 - [x] contracts tooling: the snapshot's JSON Schema and example in `export:hub-schema`; `post:hub-examples --opening`
 - [x] bridge: OpenAPI regenerated, `pnpm check:openapi` passes
 - [x] wiring (API and worker), docs (`AGENTS.md` commands, `apps/api/CLAUDE.md`, `apps/worker/CLAUDE.md`, `docs/ROADMAP.md`)
-- [ ] checks and reviewers (`reviewer`, `accountant-reviewer`), PR with auto-merge and Auto-fix
+- [x] checks and reviewers (`reviewer`: the script's parse error, the missing access and isolation tests, the oversized snapshot's 422, all fixed in f725e57 and re-reviewed clean; `accountant-reviewer`: none; `pnpm verify --e2e-all` passes on f725e57 but a timing test of the export, `trust.test.ts`, which passed alone and in the first run), PR with auto-merge and Auto-fix
 
 ## PR 3 — The opening in the reports (ledger, db, scenarios, api) · `feat/s10-opening-reports`
 - [ ] ledger and db: rules 31–33 in the readers — the year's result with `312002` in the books start's year and inside retained earnings later, the opening column at the books start, a range before the books start read from it, the marks `opening_entry`, `before_books_start` and `pre_opening_result_in_equity`; the journal book from the opening as entry 1; tests
