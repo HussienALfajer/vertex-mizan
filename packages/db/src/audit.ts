@@ -170,6 +170,24 @@ export const AUDITED_FIELDS = {
     'source',
     'inboundEventId',
   ],
+  // S09: a report exported (Excel at once, PDF when its file is asked), a PDF downloaded, and the
+  // journal book's official print with its register row.
+  report_export: ['report', 'format', 'params', 'fileId', 'official'],
+  report_file: ['report', 'official', 'sizeBytes', 'sha256'],
+  journal_book_print: [
+    'reportFileId',
+    'fiscalYear',
+    'from',
+    'to',
+    'firstPage',
+    'lastPage',
+    'entryCount',
+    'lineCount',
+    'debitTotalMinor',
+    'creditTotalMinor',
+    'contentSha256',
+    'fileSha256',
+  ],
   receivables_export: [
     'format',
     'asOf',

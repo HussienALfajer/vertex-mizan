@@ -1597,7 +1597,7 @@ export async function readJournalBook(
   query: JournalBookQuery,
   now: Date,
 ): Promise<JournalBook> {
-  const context = await contextOf(tx, 'book');
+  const context = await contextOf(tx, query.ledger);
   const yearStart = `${String(query.fiscalYear).padStart(4, '0')}-${String(context.fiscalYearStartMonth).padStart(2, '0')}-01`;
   const nextYearStart = `${String(query.fiscalYear + 1).padStart(4, '0')}${yearStart.slice(4)}`;
   const months = monthsBetween(yearStart, dayBefore(nextYearStart));
@@ -1635,6 +1635,7 @@ export async function readJournalBook(
             name: chartAccounts.name,
             memo: journalLines.memo,
             bookMinor: journalLines.bookMinor,
+            parallelMinor: journalLines.parallelMinor,
           })
           .from(journalLines)
           .innerJoin(chartAccounts, eq(chartAccounts.id, journalLines.accountId))
@@ -1663,7 +1664,7 @@ export async function readJournalBook(
         accountCode: line.code,
         accountName: line.name,
         memo: line.memo,
-        amount: line.bookMinor,
+        amount: context.ledger === 'book' ? line.bookMinor : (line.parallelMinor ?? 0n),
       })),
     })),
     { from: query.from, to: query.to },
@@ -1679,7 +1680,8 @@ export async function readJournalBook(
     fiscalYear: query.fiscalYear,
     from: query.from,
     to: query.to,
-    official: range.every((month) => isClosedPeriod(closed, month)),
+    official:
+      context.ledger === 'book' && range.every((month) => isClosedPeriod(closed, month)),
     pages: pages.map((page) => ({
       page: page.page,
       month: page.month,

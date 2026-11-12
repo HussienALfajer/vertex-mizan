@@ -556,7 +556,7 @@ describe('the readers agree with the ledger (rule 8)', () => {
           }
           // The journal book's totals for November and December are the trial balance's movements.
           const book = await read((tx) =>
-            readJournalBook(tx, { fiscalYear: 2026, from: '2026-11', to: '2026-12' }, NOW),
+            readJournalBook(tx, { fiscalYear: 2026, from: '2026-11', to: '2026-12', ledger: 'book' }, NOW),
           );
           const tb = await read((tx) =>
             readTrialBalance(

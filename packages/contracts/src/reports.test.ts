@@ -6,18 +6,25 @@ import {
   setServiceDepartmentSchema,
 } from './dimensions.js';
 import {
+  accountStatementFileQuerySchema,
   accountStatementQuerySchema,
   balanceSheetQuerySchema,
   balanceSheetSchema,
+  EXCEL_REPORT_QUERIES,
+  EXCEL_REPORTS,
   incomeStatementQuerySchema,
   JOURNAL_BOOK_COLUMNS,
   JOURNAL_BOOK_ROWS_PER_PAGE,
+  journalBookPrintSchema,
   journalBookQuerySchema,
   journalBookSchema,
   profitabilityQuerySchema,
   profitabilitySchema,
+  REPORT_FILE_QUERIES,
   REPORT_MARKS,
   REPORTS,
+  reportFileRequestSchema,
+  reportFileSchema,
   reportLinesQuerySchema,
   trialBalanceQuerySchema,
   trialBalanceSchema,
@@ -170,10 +177,48 @@ describe('the JSON Schema of the reports', () => {
       [balanceSheetSchema, 'BalanceSheet'],
       [profitabilitySchema, 'Profitability'],
       [journalBookSchema, 'JournalBook'],
+      [reportFileSchema, 'ReportFile'],
+      [journalBookPrintSchema, 'JournalBookPrint'],
+      [reportFileRequestSchema, 'ReportFileRequest'],
       [serviceDepartmentHistorySchema, 'ServiceDepartmentHistory'],
     ] as const) {
       expect(z.toJSONSchema(schema, { io: 'output' })).toBeTruthy();
       expect(z.globalRegistry.get(schema)?.id).toBe(id);
     }
+  });
+});
+
+describe('the exports and files', () => {
+  it('names a query for every report: Excel for nine, PDF for all twelve', () => {
+    expect(Object.keys(REPORT_FILE_QUERIES)).toEqual([...REPORTS]);
+    expect(Object.keys(EXCEL_REPORT_QUERIES)).toEqual([...EXCEL_REPORTS]);
+    expect(EXCEL_REPORTS).not.toContain('ageing');
+  });
+
+  it('keeps an official print for the journal book alone', () => {
+    expect(
+      issuePaths(reportFileRequestSchema, { report: 'trial_balance', params: {}, official: true }),
+    ).toEqual(['official']);
+    expect(
+      reportFileRequestSchema.parse({ report: 'journal_book', params: {}, official: true }),
+    ).toMatchObject({ official: true });
+    expect(reportFileRequestSchema.parse({ report: 'chart' })).toEqual({
+      report: 'chart',
+      params: {},
+      official: false,
+    });
+  });
+
+  it('reads a statement file with its account, and a journal book in the book ledger by default', () => {
+    const account = '019a0000-0000-7000-8000-000000000001';
+    expect(
+      accountStatementFileQuerySchema.parse({ account, from: '2026-10-01', to: '2026-10-31' }),
+    ).toMatchObject({ account, ledger: 'book', dims: [] });
+    expect(
+      issuePaths(accountStatementFileQuerySchema, { from: '2026-10-01', to: '2026-10-31' }),
+    ).toEqual(['account']);
+    expect(
+      journalBookQuerySchema.parse({ fiscalYear: '2026', from: '2026-10', to: '2026-11' }),
+    ).toEqual({ fiscalYear: 2026, from: '2026-10', to: '2026-11', ledger: 'book' });
   });
 });

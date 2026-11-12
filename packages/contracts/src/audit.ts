@@ -110,6 +110,19 @@ export const COMPANY_AUDIT_ACTIONS = [
   'period.reopened',
   // S09: a service's dated department, set by the accountant or by a Hub event.
   'service_department.set',
+  // S09: the reports' exports (Excel, or PDF when the file is asked), a PDF's download and the
+  // journal book's official print with its register row.
+  'export.trial_balance',
+  'export.general_ledger',
+  'export.account_statement',
+  'export.journal_book',
+  'export.income_statement',
+  'export.balance_sheet',
+  'export.profitability',
+  'export.contract_position',
+  'export.revenue_schedule',
+  'report_file.downloaded',
+  'journal_book.printed',
 ] as const;
 
 export const companyAuditActionSchema = z

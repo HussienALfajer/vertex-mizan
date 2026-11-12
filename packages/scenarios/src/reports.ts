@@ -437,7 +437,7 @@ export async function reports(
           const { params } = stated;
           const read = await readJournalBook(
             tx,
-            { fiscalYear: params.fiscalYear, from: params.from, to: params.to },
+            { fiscalYear: params.fiscalYear, from: params.from, to: params.to, ledger: 'book' },
             now,
           );
           const order = await postingOrder(tx);

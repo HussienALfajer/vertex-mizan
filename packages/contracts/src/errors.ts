@@ -228,6 +228,8 @@ export const errorStatus = {
   // Reports (S09).
   /** A Hub service's department comes only from Hub (S09 rule 34). */
   DIMENSION_FROM_HUB: 409,
+  /** An Excel export over `REPORT_EXCEL_ROW_LIMIT` rows: a narrower range, or the PDF (S09 rule 35; details: rows, limit). */
+  REPORT_TOO_LARGE: 422,
 } as const satisfies Record<string, number>;
 
 export type ErrorCode = keyof typeof errorStatus;

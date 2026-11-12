@@ -102,4 +102,6 @@ export const errors = {
   RECONCILIATION_START_LOCKED:
     'لا يُؤخَّر تاريخ بدء المطابقة إلى ما بعد أيام في شهر مقفل: أعد فتح الشهر أولاً، أو اختر تاريخاً أبكر.',
   DIMENSION_FROM_HUB: 'قسم هذه الخدمة يأتي من Hub وحده، فلا يُعدَّل يدوياً.',
+  REPORT_TOO_LARGE:
+    'التقرير أكبر من أن يُصدَّر إلى Excel: ضيّق الفترة أو نطاق الحسابات، أو اطلبه بصيغة PDF.',
 } satisfies Record<ErrorCode, string>;
