@@ -50,11 +50,29 @@ tr.subtotal td { font-weight: 700; border-block-start: 0.6pt solid ${ink}; }
 tr.total td { font-weight: 700; border-block-start: 0.6pt solid ${ink}; border-block-end: 1.8pt double ${ink}; }
 tr.note td { color: ${muted}; }
 .draft { position: fixed; inset-block-start: 40%; inset-inline: 0; text-align: center; font-size: 40pt; font-weight: 700; color: ${negative}; opacity: 0.12; transform: rotate(-30deg); }
-.book-page { block-size: 267mm; display: flex; flex-direction: column; break-after: page; }
+`;
+}
+
+/**
+ * The journal book's page (rules 26, 27): A4 landscape, so a row holds the widths
+ * `JOURNAL_BOOK_COLUMNS` allows (an entry's description and reference, a line's account name and
+ * memo, two amounts; an entry's description spans the text columns and its reference the amount
+ * columns, which its row leaves empty), each page a fixed block Mizan fills with 30 rows, never
+ * reflowed: a cell clips rather than wraps, and the worker's Chromium check proves nothing is
+ * clipped with the widest Arabic letters.
+ */
+export function journalBookStyles(): string {
+  const ink = lightColors.foreground;
+  const muted = lightColors.mutedForeground;
+  const brand = palette.green[800];
+  return `
+@page { size: A4 landscape; margin: 10mm 8mm; }
+body { font-size: 7pt; }
+.book-page { block-size: 190mm; display: flex; flex-direction: column; break-after: page; overflow: hidden; }
 .book-page:last-child { break-after: auto; }
 .book-head { display: flex; justify-content: space-between; align-items: baseline; border-block-end: 0.6pt solid ${brand}; padding-block-end: 1.5mm; margin-block-end: 2mm; }
 .book-rows { flex: 1; }
-.book-rows td { white-space: nowrap; overflow: hidden; }
+.book-rows th, .book-rows td { white-space: nowrap; overflow: hidden; padding-block: 0.4mm; line-height: 1.3; }
 .book-rows tr.entry td { font-weight: 700; border-block-start: 0.3pt solid ${ink}; }
 .book-rows tr.continued td { color: ${muted}; }
 .book-foot { border-block-start: 0.6pt solid ${ink}; padding-block-start: 1mm; }

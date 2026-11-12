@@ -149,6 +149,8 @@ export const reports = {
     broughtForward: 'ما قبله',
     cumulative: 'المجموع حتى هذه الصفحة',
     order: 'مرتب حسب تاريخ القيد ثم رقمه',
+    textColumn: 'البيان / الحساب',
+    detailColumn: 'المرجع / الملاحظة',
     empty: 'لا قيود في الأشهر المطبوعة',
     months: 'الأشهر',
   },

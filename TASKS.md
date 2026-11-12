@@ -20,9 +20,9 @@ Plan approved by the owner (2026-11-12, in the session), with this note: the sce
 - [x] contracts: `REPORT_TOO_LARGE` (422) with its Arabic text; the audit actions `export.*` of S09, `report_file.downloaded`, `journal_book.printed` (entities and fields in `AUDITED_FIELDS` and `ar.audit`); the file and register schemas, `EXCEL_REPORT_QUERIES`, `REPORT_FILE_QUERIES`, the render job; the journal book's `ledger` (rule 30)
 - [x] api: Excel export of every report (rule 35, `REPORT_TOO_LARGE`, audited); `POST`/`GET /api/reports/files`, download (`report_file.downloaded`), `GET /api/reports/journal-book/prints` with `superseded`; the official print's `PERIOD_NOT_CLOSED`; three queued files per user (`RATE_LIMITED`); PDF for the ageing, the client statement and the chart (their readers moved to `packages/db`); tests
 - [x] ui: `print/` layout (A4, company header, "صفحة n من m", the journal book's footer), rendered to static HTML; tested; with the sheet model one for Excel and PDF (`reportSheet()`), built to `dist` for the worker; `ar.reports` (the exports' text)
-- [ ] worker: `reports.render` (one snapshot, Chromium, the official print's refusal and register row with `journal_book.printed` in one transaction, safe twice), `reports.files-expire`; tests
+- [x] worker: `reports.render` (one snapshot, Chromium, the official print's refusal and register row with `journal_book.printed` in one transaction, safe twice), `reports.files-expire`; tests (`test/reports.test.ts` with a stand-in printer; Chromium's check in `e2e/pdf.spec.ts`, run in CI's Playwright image)
 - [x] bridge: OpenAPI regenerated, `pnpm check:openapi` passes
-- [ ] wiring, docs (`AGENTS.md` commands if any, `apps/worker/CLAUDE.md`, `docs/ROADMAP.md`)
+- [x] wiring, docs (`AGENTS.md` commands, `apps/worker/CLAUDE.md`, `docs/testing.md`, `docs/ROADMAP.md`, the folder notes)
 - [ ] checks and reviewers (`reviewer`, `accountant-reviewer`), PR with auto-merge and Auto-fix
 
 ## PR 3 — The screens (ui, web, e2e)

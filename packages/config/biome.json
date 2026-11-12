@@ -46,6 +46,9 @@
         }
       },
       "linter": {
+        "domains": {
+          "react": "none"
+        },
         "rules": {
           "complexity": {
             "noStaticOnlyClass": "off"

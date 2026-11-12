@@ -357,3 +357,34 @@ export function readRangePeriods(tx: Transaction, from: string, to: string) {
     .orderBy(asc(periods.period));
 }
 
+
+/**
+ * The counts and book totals of the entries dated in a range of months of a fiscal year, as the
+ * journal book prints them (every line, debit when positive) and as the register's guard checks
+ * them (rule 28).
+ */
+export async function readJournalBookTotals(
+  tx: Transaction,
+  range: { readonly fiscalYear: number; readonly from: string; readonly to: string },
+): Promise<{ entryCount: number; lineCount: number; debitMinor: bigint; creditMinor: bigint }> {
+  const result = await tx.execute<{
+    entries: number;
+    lines: number;
+    debits: string;
+    credits: string;
+  }>(sql`select count(distinct e.id)::int as entries, count(l.id)::int as lines,
+      coalesce(sum(greatest(l.book_minor, 0)), 0)::text as debits,
+      coalesce(sum(greatest(-l.book_minor, 0)), 0)::text as credits
+    from journal_entries e
+    join journal_lines l on l.company_id = e.company_id and l.entry_id = e.id
+    where e.fiscal_year = ${range.fiscalYear}
+      and e.entry_date between to_date(${range.from} || '-01', 'YYYY-MM-DD')
+        and (to_date(${range.to} || '-01', 'YYYY-MM-DD') + interval '1 month')::date - 1`);
+  const row = result.rows[0];
+  return {
+    entryCount: row?.entries ?? 0,
+    lineCount: row?.lines ?? 0,
+    debitMinor: BigInt(row?.debits ?? '0'),
+    creditMinor: BigInt(row?.credits ?? '0'),
+  };
+}

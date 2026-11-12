@@ -6,7 +6,7 @@ import {
   type ReportPrintProps,
 } from './document.js';
 import type { SheetColumn } from './sheet.js';
-import { printStyles } from './styles.js';
+import { journalBookStyles, printStyles } from './styles.js';
 
 /**
  * A printed report as a whole HTML document (S09 rule 36): right to left, the print stylesheet,
@@ -31,8 +31,13 @@ export function columnWidthRules(selector: string, widths: readonly number[]): s
     .join('\n');
 }
 
-/** The journal book's six columns (rule 27), sized to `JOURNAL_BOOK_COLUMNS`. */
-export const JOURNAL_BOOK_WIDTHS = [11, 10, 9, 46, 12, 12] as const;
+/**
+ * The journal book's seven columns (rule 27) on a landscape A4 page (281 mm, 1062 px at 96 dpi):
+ * the date, the entry's number, the account code, a line's account name and its memo
+ * (`JOURNAL_BOOK_COLUMNS`: 40 characters each), the debit and the credit. An entry's description
+ * (70) spans the two text columns and its reference (24) the two amount columns.
+ */
+export const JOURNAL_BOOK_WIDTHS = [68, 94, 50, 300, 300, 124, 124] as const;
 
 export function renderReportHtml(props: ReportPrintProps & { readonly fontFaces: string }): string {
   const { fontFaces, ...print } = props;
@@ -50,7 +55,7 @@ export function renderJournalBookHtml(
   const { fontFaces, ...print } = props;
   return documentOf(
     print.text.title,
-    `${fontFaces}\n${printStyles()}\n${columnWidthRules('.book-rows', JOURNAL_BOOK_WIDTHS)}`,
+    `${fontFaces}\n${printStyles()}\n${journalBookStyles()}\n${columnWidthRules('.book-rows', JOURNAL_BOOK_WIDTHS)}`,
     renderToStaticMarkup(<JournalBookPrint {...print} />),
   );
 }

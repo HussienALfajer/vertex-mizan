@@ -195,14 +195,16 @@ export interface JournalBookText {
   readonly cumulative: string;
   readonly order: string;
   readonly empty: string;
+  /** The heading over an entry's description and a line's account (rule 26). */
+  readonly textColumn: string;
+  /** The heading over an entry's reference and a line's memo. */
+  readonly detailColumn: string;
   readonly fiscalYear: string;
   readonly currency: string;
   readonly columns: {
     readonly date: string;
     readonly entry: string;
     readonly code: string;
-    readonly account: string;
-    readonly description: string;
     readonly debit: string;
     readonly credit: string;
   };
@@ -264,19 +266,17 @@ export function JournalBookPrint({
           {draft === undefined ? null : <div className="report-mark">{draft}</div>}
           <table className="book-rows">
             <colgroup>
-              <col />
-              <col />
-              <col />
-              <col />
-              <col />
-              <col />
+              {JOURNAL_BOOK_COLUMN_KEYS.map((key) => (
+                <col key={key} />
+              ))}
             </colgroup>
             <thead>
               <tr>
                 <th>{text.columns.date}</th>
                 <th>{text.columns.entry}</th>
                 <th>{text.columns.code}</th>
-                <th>{text.columns.description}</th>
+                <th>{text.textColumn}</th>
+                <th>{text.detailColumn}</th>
                 <th className="num">{text.columns.debit}</th>
                 <th className="num">{text.columns.credit}</th>
               </tr>
@@ -331,6 +331,9 @@ function JournalBookRowView({
   readonly money: (minor: string) => string;
   readonly entryNumber: (number: number) => string;
 }) {
+  const textCell = (value: string | null, span = 1) => (
+    <td colSpan={span}>{value === null ? null : <bdi>{value}</bdi>}</td>
+  );
   switch (row.kind) {
     case 'entry':
       return (
@@ -338,17 +341,8 @@ function JournalBookRowView({
           <td className="code">{row.entryDate}</td>
           <td className="code">{entryNumber(row.number)}</td>
           <td />
-          <td>
-            <bdi>{row.description}</bdi>
-            {row.reference === null ? null : (
-              <>
-                {' — '}
-                <bdi>{row.reference}</bdi>
-              </>
-            )}
-          </td>
-          <td />
-          <td />
+          {textCell(row.description, 2)}
+          {textCell(row.reference, 2)}
         </tr>
       );
     case 'entry_text':
@@ -357,13 +351,8 @@ function JournalBookRowView({
           <td />
           <td />
           <td />
-          <td>
-            <bdi>
-              {[row.description, row.reference].filter((part) => part !== null).join(' — ')}
-            </bdi>
-          </td>
-          <td />
-          <td />
+          {textCell(row.description, 2)}
+          {textCell(row.reference, 2)}
         </tr>
       );
     case 'continued':
@@ -372,9 +361,7 @@ function JournalBookRowView({
           <td />
           <td />
           <td />
-          <td>{text.continued.replace('{number}', entryNumber(row.number))}</td>
-          <td />
-          <td />
+          <td colSpan={4}>{text.continued.replace('{number}', entryNumber(row.number))}</td>
         </tr>
       );
     case 'line':
@@ -383,15 +370,8 @@ function JournalBookRowView({
           <td />
           <td />
           <td className="code">{row.accountCode}</td>
-          <td>
-            <bdi>{row.accountName}</bdi>
-            {row.memo === null ? null : (
-              <>
-                {' — '}
-                <bdi>{row.memo}</bdi>
-              </>
-            )}
-          </td>
+          {textCell(row.accountName)}
+          {textCell(row.memo)}
           <td className="num">{money(row.debit)}</td>
           <td className="num">{money(row.credit)}</td>
         </tr>
@@ -402,12 +382,22 @@ function JournalBookRowView({
           <td />
           <td />
           <td />
-          <td>
-            <bdi>{[row.accountName, row.memo].filter((part) => part !== null).join(' — ')}</bdi>
-          </td>
+          {textCell(row.accountName)}
+          {textCell(row.memo)}
           <td />
           <td />
         </tr>
       );
   }
 }
+
+/** The journal book's seven columns, in reading order (`JOURNAL_BOOK_WIDTHS` sizes them). */
+const JOURNAL_BOOK_COLUMN_KEYS = [
+  'date',
+  'entry',
+  'code',
+  'text',
+  'detail',
+  'debit',
+  'credit',
+] as const;

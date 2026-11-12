@@ -52,7 +52,7 @@ The hook is `.claude/hooks/test-guard.mjs` (PreToolUse on Bash and PowerShell), 
 
 ## E2E
 
-The rules the web app's Playwright suite (`apps/web/e2e`, `apps/web/CLAUDE.md`) follows:
+The rules the web app's Playwright suite (`apps/web/e2e`, `apps/web/CLAUDE.md`) follows. The worker has one too (`apps/worker/e2e`, S09): its Chromium prints the PDFs, so the printer's checks run where Chromium is, Playwright's image in CI, with no server and no database; `pnpm test` runs the worker's jobs with a stand-in printer.
 
 - Traces are recorded on the first retry only (`trace: 'on-first-retry'`), and CI retries a failed test once, so the retry keeps its trace. Recording one for every test made Hub's suite 30% slower and kept the antivirus scanning each trace file. Debug locally with `--trace on`.
 - While building, only the changed specs run (`pnpm verify` picks them; `pnpm verify apps/web/e2e/<file>.spec.ts [--grep <title>]`). The whole suite runs once before the PR (`pnpm verify --e2e-all`) and in CI, split over parallel shards (`--shard`, with `fullyParallel`) that the `Typecheck, lint, test, build` gate waits for.
@@ -68,7 +68,7 @@ The rules the web app's Playwright suite (`apps/web/e2e`, `apps/web/CLAUDE.md`) 
 | Changes | Decides whether the checks are needed |
 | Lint, typecheck, build | Audit, Biome, typecheck, build, migration drift, the migration, error-code and OpenAPI guards |
 | Tests | The database roles and migrations, every package's tests, the scenario book, the built API and worker starting |
-| Playwright shard 1, 2 | The whole E2E suite of `apps/web` on its production build, split with `--shard`, in Playwright's image of the version `apps/web` uses (Chromium and its fonts included) |
+| Playwright shard 1, 2 | The whole E2E suite of `apps/web` on its production build and the worker's Chromium checks (`apps/worker/e2e`), split with `--shard`, in Playwright's image of the version `apps/web` uses (Chromium and its fonts included) |
 | Typecheck, lint, test, build | The gate the `main` ruleset requires: it waits for every job above |
 | Secret scan | gitleaks |
 

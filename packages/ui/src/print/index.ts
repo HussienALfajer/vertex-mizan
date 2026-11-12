@@ -36,4 +36,4 @@ export {
   type SheetText,
   sides,
 } from './sheets.js';
-export { printStyles } from './styles.js';
+export { journalBookStyles, printStyles } from './styles.js';
