@@ -121,4 +121,27 @@ export const dimensions = {
     project: 'مشروع',
     retainer: 'عقد دوري',
   } satisfies Record<ContractKind, string>,
+  /** A service's dated department (S09 rules 32–34), on the service's row of `/dimensions`. */
+  departments: {
+    open: 'سجل القسم',
+    title: 'سجل قسم الخدمة',
+    description:
+      'القسم الساري على الخدمة في تاريخ هو آخر سطر يبدأ في ذلك التاريخ أو قبله. يُعزى إليه إيراد الخدمة الذي لا يحمل قسمًا في تقرير الربحية.',
+    caption: 'سجل قسم الخدمة',
+    department: 'القسم',
+    effectiveFrom: 'ساري من',
+    source: 'المصدر',
+    sources: { hub: 'من Hub', manual: 'يدوي' },
+    recordedBy: 'سجّله',
+    reason: 'السبب',
+    recordedAt: 'سُجّل في',
+    empty: 'لا قسم مسجل لهذه الخدمة بعد.',
+    fromHub: 'خدمة من Hub: قسمها يصل من Hub فقط.',
+    add: 'سطر جديد',
+    addTitle: 'قسم جديد للخدمة',
+    effectiveHint: 'تاريخ في شهر مفتوح.',
+    submit: 'سجّل القسم',
+    saved: 'سُجّل القسم.',
+    required: 'اختر القسم والتاريخ واكتب السبب.',
+  },
 };

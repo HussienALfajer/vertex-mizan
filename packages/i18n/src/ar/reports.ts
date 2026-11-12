@@ -7,8 +7,9 @@ import type {
 
 /**
  * The reports of S09: their names, columns, marks, subtotals, the journal book's page texts and
- * the parameters printed on every export (Excel and PDF). The screens (S09 PR 3) add theirs here.
- * Terms from `docs/glossary.md`.
+ * the parameters printed on every export (Excel and PDF), and the screens of `/reports` (S09 PR 3):
+ * the index, the filters, the states, the exports, the drill-down, the journal book's print and its
+ * register. Terms from `docs/glossary.md`.
  */
 export const reports = {
   names: {
@@ -158,4 +159,173 @@ export const reports = {
   pageOf: 'صفحة {page} من {pages}',
   /** The ageing's buckets and the chart's columns come from `openItems` and `chart`. */
   ageing: { total: 'المجموع', noClient: 'دون عميل' },
+  /** The sidebar's entry and the command palette's commands ("Screens"). */
+  nav: 'التقارير',
+  palette: {
+    trialBalance: 'ميزان المراجعة',
+    incomeStatement: 'قائمة الدخل',
+    balanceSheet: 'الميزانية',
+    accountStatement: 'كشف حساب…',
+    journalBook: 'طباعة دفتر اليومية',
+  },
+  /** `/reports`: the reports by group, each opening with its last parameters. */
+  index: {
+    title: 'التقارير',
+    description:
+      'القوائم المالية والدفاتر وتقارير الإدارة من القيود المرحّلة، بالدفتر الأساسي أو الموازي. كل تقرير يُفتح بآخر معايير عُرض بها على هذا الجهاز.',
+    groups: {
+      statements: 'القوائم المالية',
+      books: 'الأرصدة والدفاتر',
+      management: 'تقارير الإدارة',
+    },
+    descriptions: {
+      trial_balance: 'أرصدة أول المدة وحركة الفترة وأرصدة آخر المدة لكل حساب، بمستوى الدليل.',
+      general_ledger: 'أسطر كل حساب بترتيب القيد مع الرصيد الجاري.',
+      account_statement: 'حساب واحد بأسطره ورصيده الجاري، ورصيد كل عملة عليه.',
+      journal_book: 'القيود المرحّلة بترتيب تاريخها ورقمها، وطباعة دفتر اليومية.',
+      income_statement: 'الإيرادات والمصروفات حسب طبيعتها والأرباح الفرعية وربح الفترة.',
+      balance_sheet: 'الأصول والالتزامات وحقوق الملكية كما في تاريخ، مع ربح السنة الحالية.',
+      profitability:
+        'الإيراد والتكاليف المباشرة وهامش المساهمة حسب العميل أو العقد أو القسم أو الخدمة.',
+      contract_position: 'أصول العقود والتزاماتها لكل عقد وصافيها.',
+      revenue_schedule: 'الإيراد المتبقي تحقيقه لكل شهر قادم ولكل عقد.',
+      prints: 'كل نسخة رسمية طُبعت من دفتر اليومية ببصماتها، والمستبدلة منها.',
+    },
+    prints: 'سجل الطبعات الرسمية',
+    lastShown: 'آخر عرض',
+    neverShown: 'بالمعايير الافتراضية',
+  },
+  /** The parameters of a report's screen. */
+  filters: {
+    label: 'معايير التقرير',
+    from: 'من',
+    to: 'إلى',
+    asOf: 'كما في',
+    compare: 'فترة مقارنة',
+    compareHint: 'الافتراضية: الفترة السابقة بعدد الأيام نفسه.',
+    compareAsOfHint: 'الافتراضية: نهاية السنة المالية السابقة.',
+    compareFrom: 'المقارنة من',
+    compareTo: 'المقارنة إلى',
+    compareAsOf: 'المقارنة كما في',
+    level: 'المستوى',
+    codeFrom: 'من الرمز',
+    codeTo: 'إلى الرمز',
+    nonZero: 'ذات الرصيد أو الحركة فقط',
+    by: 'حسب',
+    fromMonth: 'من شهر',
+    account: 'الحساب',
+    currency: 'عملة العملية',
+    allCurrencies: 'كل العملات',
+    sort: 'الترتيب',
+    sorts: { contribution: 'هامش المساهمة', margin: 'نسبة الهامش' },
+    invalidRange: 'تاريخ البداية بعد تاريخ النهاية.',
+    invalidCodes: 'رمز البداية بعد رمز النهاية، أو رمز ليس أرقامًا.',
+  },
+  /** A report's states ("Screens"). */
+  states: {
+    empty: 'لا قيود في هذه الفترة',
+    emptyDescription: 'لا أسطر مرحّلة تطابق هذه المعايير. غيّر الفترة أو المعايير.',
+    unbalanced: 'المجاميع غير متساوية. هذا لا يُتوقع أبدًا: أبلغ عنه فورًا.',
+    loadMore: 'المزيد',
+  },
+  /** The links beside rule 4's marks. */
+  markLinks: {
+    period: 'صفحة الشهر',
+    revaluation: 'إعادة التقييم',
+  },
+  /** The `ExportMenu`'s labels (rules 35, 36). */
+  exportMenu: {
+    trigger: 'تصدير',
+    excel: 'Excel',
+    pdf: 'PDF',
+    queued: 'قيد الإعداد',
+    failed: 'تعذّر الإعداد',
+    expired: 'انتهت صلاحيته',
+    download: 'تنزيل PDF',
+  },
+  /** Drill-down (rule 6). */
+  drill: {
+    figure: 'أسطر هذا الرقم',
+  },
+  /** `/reports/lines`: the lines behind a figure. */
+  lines: {
+    title: 'الأسطر خلف الرقم',
+    description: 'كل سطر مرحّل يدخل في الرقم، ومجموعها يساوي الرقم في التقرير.',
+    sum: 'مجموع الأسطر',
+    count: 'عدد الأسطر',
+    statementLine: 'بند القائمة',
+    side: { debit: 'الجانب المدين', credit: 'الجانب الدائن' },
+    hub: 'مستند Hub',
+    caption: 'الأسطر خلف الرقم',
+    fromStart: 'من بداية الدفاتر',
+    value: 'القيمة',
+  },
+  /** `/reports/general-ledger` and `/reports/accounts/:id`. */
+  ledgerBook: {
+    caption: 'دفتر الأستاذ العام',
+    statementCaption: 'كشف الحساب',
+    currencies: 'الرصيد بكل عملة',
+    currenciesCaption: 'رصيد العملات على الحساب',
+    pickAccount: 'اختر الحساب لعرض كشفه.',
+    statement: 'كشف الحساب',
+  },
+  /** `/reports/journal` and the journal book's print (rules 12, 26–30). */
+  journalScreen: {
+    caption: 'اليومية العامة',
+    print: {
+      title: 'طباعة دفتر اليومية',
+      description:
+        'النسخة الرسمية تُطبع لأشهر مقفلة من سنة مالية واحدة فقط، وتُسجَّل في سجل الطبعات. أي نطاق فيه شهر مفتوح، ودفتر الموازي، يُطبعان مسودة.',
+      open: 'اطبع دفتر اليومية',
+      fiscalYear: 'السنة المالية',
+      fromMonth: 'من شهر',
+      toMonth: 'إلى شهر',
+      kind: 'نوع النسخة',
+      official: 'رسمية',
+      draft: 'مسودة — غير رسمية',
+      submit: 'اطبع',
+      notClosed: 'الشهر {month} غير مقفل: اطبع النطاق مسودة، أو أقفل الشهر أولًا.',
+      invalidRange: 'شهر البداية بعد شهر النهاية.',
+    },
+    register: 'سجل الطبعات الرسمية',
+  },
+  /** `/reports/journal-book/prints` (rule 29). */
+  prints: {
+    title: 'سجل الطبعات الرسمية',
+    description:
+      'كل نسخة رسمية من دفتر اليومية: نطاقها وصفحاتها وعدد قيودها ومجاميعها وبصمتا محتواها وملفها، ومن طبعها ومتى. النسخة مستبدلة إذا أُعيد فتح شهر من نطاقها بعدها.',
+    caption: 'طبعات دفتر اليومية الرسمية',
+    range: 'الأشهر',
+    pages: 'الصفحات',
+    noPages: 'بلا صفحات',
+    entries: 'القيود',
+    lineCount: 'الأسطر',
+    debit: 'مجموع المدين',
+    credit: 'مجموع الدائن',
+    contentHash: 'بصمة المحتوى',
+    fileHash: 'بصمة الملف',
+    copyHash: 'انسخ البصمة',
+    copied: 'نُسخت البصمة',
+    printedBy: 'طبعها',
+    state: 'الحالة',
+    current: 'سارية',
+    superseded: 'مستبدلة',
+    supersededAt: 'أُعيد فتح شهر منها في',
+    download: 'تنزيل',
+    empty: 'لا طبعات رسمية في هذه السنة',
+    emptyDescription: 'تُطبع النسخة الرسمية من صفحة اليومية العامة بعد إقفال الأشهر.',
+  },
+  /** The contract position's and the release schedule's screens (rules 24, 25). */
+  contracts: {
+    caption: 'مركز العقود',
+    scheduleCaption: 'جدول تحقق الإيراد',
+    schedules: 'جداول العقد',
+    noContract: 'دون عقد',
+  },
+  /** The profitability screen (rules 20–23). */
+  profitabilityScreen: {
+    caption: 'تقرير الربحية',
+  },
+  /** The way back from a report's sub-page. */
+  back: 'التقارير',
 };

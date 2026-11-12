@@ -287,7 +287,8 @@ test.describe('the chart', () => {
     });
     await page.goto('/chart');
     const download = page.waitForEvent('download');
-    await page.getByRole('button', { name: t.exportExcel }).click();
+    await page.getByRole('button', { name: ar.reports.exportMenu.trigger }).click();
+    await page.getByRole('menuitem', { name: ar.reports.exportMenu.excel }).click();
     expect((await download).suggestedFilename()).toBe('chart-of-accounts.xlsx');
     expect(new URL(exported.seen[0]?.url() ?? '').search).toBe('?format=xlsx');
     expect(exported.seen[0]?.headers()['x-mizan-company']).toBe(companyId);

@@ -37,6 +37,7 @@ import {
   CalendarCheckIcon,
   CalendarDaysIcon,
   CalendarRangeIcon,
+  ChartColumnIcon,
   CheckIcon,
   ChevronDownIcon,
   FilePenLineIcon,
@@ -130,6 +131,12 @@ const navItems: NavItem[] = [
     label: ar.revenue.nav,
     icon: CalendarRangeIcon,
     permission: 'recognition.read',
+  },
+  {
+    to: '/reports',
+    label: ar.reports.nav,
+    icon: ChartColumnIcon,
+    permission: 'reports.read',
   },
   {
     to: '/periods',
@@ -477,6 +484,50 @@ function useShellCommands(me: Me | null | undefined): PaletteCommand[] {
             keywords: ['bulletin rate', 'exchange rate', 'سعر الصرف'],
             icon: <PlusIcon />,
             run: () => void router.navigate({ to: '/rates', search: { record: 'bulletin' } }),
+          },
+        ]
+      : []),
+    ...(me && can(me, 'reports.read')
+      ? [
+          {
+            id: 'report-trial-balance',
+            label: ar.reports.palette.trialBalance,
+            group: t.palette.navigation,
+            keywords: ['trial balance', 'ميزان'],
+            icon: <ChartColumnIcon />,
+            run: () => void router.navigate({ to: '/reports/trial-balance' }),
+          },
+          {
+            id: 'report-income-statement',
+            label: ar.reports.palette.incomeStatement,
+            group: t.palette.navigation,
+            keywords: ['income statement', 'profit and loss', 'الأرباح والخسائر'],
+            icon: <ChartColumnIcon />,
+            run: () => void router.navigate({ to: '/reports/income-statement' }),
+          },
+          {
+            id: 'report-balance-sheet',
+            label: ar.reports.palette.balanceSheet,
+            group: t.palette.navigation,
+            keywords: ['balance sheet', 'financial position', 'المركز المالي'],
+            icon: <ChartColumnIcon />,
+            run: () => void router.navigate({ to: '/reports/balance-sheet' }),
+          },
+          {
+            id: 'report-account-statement',
+            label: ar.reports.palette.accountStatement,
+            group: t.palette.navigation,
+            keywords: ['account statement', 'ledger', 'كشف'],
+            icon: <UserRoundSearchIcon />,
+            run: () => void router.navigate({ to: '/reports', search: { find: 'account' } }),
+          },
+          {
+            id: 'report-journal-book',
+            label: ar.reports.palette.journalBook,
+            group: t.palette.navigation,
+            keywords: ['journal book', 'print journal', 'اليومية'],
+            icon: <BookOpenIcon />,
+            run: () => void router.navigate({ to: '/reports/journal', search: { print: true } }),
           },
         ]
       : []),

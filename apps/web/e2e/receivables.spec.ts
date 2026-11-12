@@ -93,7 +93,8 @@ test.describe('the receivables ageing', () => {
     await expect(totals.getByRole('row').filter({ hasText: 'USD' })).toContainText('850.00');
 
     const download = page.waitForEvent('download');
-    await page.getByRole('button', { name: t.ageing.exportExcel }).click();
+    await page.getByRole('button', { name: ar.reports.exportMenu.trigger }).click();
+    await page.getByRole('menuitem', { name: ar.reports.exportMenu.excel }).click();
     expect((await download).suggestedFilename()).toBe('ageing.xlsx');
     const search = new URL(exported[0]?.url() ?? '').searchParams;
     expect(search.get('asOf')).toBe('2026-11-09');
@@ -185,7 +186,8 @@ test.describe('the client statement', () => {
     await expect(table.getByRole('row').nth(5)).toContainText('102,000.00');
 
     const download = page.waitForEvent('download');
-    await page.getByRole('button', { name: t.statement.exportExcel }).click();
+    await page.getByRole('button', { name: ar.reports.exportMenu.trigger }).click();
+    await page.getByRole('menuitem', { name: ar.reports.exportMenu.excel }).click();
     expect((await download).suggestedFilename()).toBe('client-statement.xlsx');
     expect(new URL(exported[0]?.url() ?? '').searchParams.get('ledger')).toBe('book');
 

@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { getRouteApi, Link, useNavigate } from '@tanstack/react-router';
 import {
   AGEING_BUCKETS,
@@ -35,14 +35,15 @@ import {
   TableHeader,
   TableRow,
 } from '@vertex-mizan/ui';
-import { DownloadIcon, ReceiptTextIcon, WalletIcon } from 'lucide-react';
+import { ReceiptTextIcon, WalletIcon } from 'lucide-react';
 import { useState } from 'react';
 import { FormError } from '../../components/form-error';
-import { download } from '../../lib/api';
 import { damascusToday, formatDay } from '../../lib/format';
 import { useCompany } from '../../lib/session';
 import { accountsQuery } from '../chart/chart-queries';
 import { dimensionPickerLabels, pickerValues } from '../entries/entry-parts';
+import { ReportExport } from '../reports/report-parts';
+import { paramsOf } from '../reports/reports-queries';
 import {
   AdjustedBadge,
   ageingBuckets,
@@ -86,10 +87,6 @@ export function ReceivablesPage() {
     client: client ?? undefined,
   };
   const ageing = useQuery({ ...ageingQuery(companyId, query), enabled: asOf !== '' });
-  const exportFile = useMutation({
-    mutationFn: () =>
-      download(`/receivables/ageing/export${searchOf(query)}`, { company: companyId }),
-  });
   const documentAccounts = (accounts.data ?? []).filter(
     (candidate) =>
       candidate.itemKind === 'document' && candidate.class === 'asset' && !candidate.archived,
@@ -117,19 +114,14 @@ export function ReceivablesPage() {
                 {t.ageing.clientFunds}
               </Button>
             )}
-            <Button
-              variant="outline"
-              loading={exportFile.isPending}
+            <ReportExport
               disabled={!report}
-              onClick={() => exportFile.mutate()}
-            >
-              <DownloadIcon aria-hidden="true" />
-              {t.ageing.exportExcel}
-            </Button>
+              excelPath={`/receivables/ageing/export${searchOf(query)}`}
+              pdf={{ report: 'ageing', params: paramsOf(query) }}
+            />
           </div>
         }
       />
-      <FormError error={exportFile.error} />
       <Card className="p-4">
         <search aria-label={t.ageing.filters} className="grid gap-4 md:grid-cols-3">
           <Field>

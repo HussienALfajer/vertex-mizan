@@ -1,3 +1,4 @@
+import { Link } from '@tanstack/react-router';
 import {
   AGEING_BUCKETS,
   type AmountTextError,
@@ -41,6 +42,8 @@ import {
   EntryTotals,
   ErrorSummary,
   EventStateBadge,
+  ExportFileState,
+  ExportMenu,
   Field,
   FieldDescription,
   FieldError,
@@ -65,6 +68,10 @@ import {
   QrCode,
   RateInput,
   ReconciliationDayBadge,
+  ReportMarks,
+  ReportTable,
+  type ReportTableColumn,
+  type ReportTableRow,
   SecretCodeList,
   SecretReveal,
   SelectField,
@@ -890,6 +897,119 @@ function ReconciliationSample() {
   );
 }
 
+/** A link the samples' figures and marks render into: the page itself, as a router link would. */
+const sampleLink = <Link to="/design-system" hash="reports" />;
+
+const reportColumns: ReportTableColumn[] = [
+  { id: 'debit', label: ar.reports.columns.debit, group: ar.reports.columns.movement },
+  { id: 'credit', label: ar.reports.columns.credit, group: ar.reports.columns.movement },
+  { id: 'compare', label: ar.reports.columns.compare, compare: true },
+];
+
+/** A synthetic trial balance in SYP: levels, a negative figure, a note, "—" and the totals. */
+const reportRows: ReportTableRow[] = [
+  {
+    key: '1',
+    label: <AccountLabel code="1" name={t.reports.assets} />,
+    kind: 'subtotal',
+    figures: {
+      debit: { value: 1287500n, link: sampleLink, linkLabel: ar.reports.drill.figure },
+      credit: { value: 412000n, link: sampleLink },
+      compare: { value: null },
+    },
+  },
+  {
+    key: '111001',
+    label: <AccountLabel code="111001" name={t.reports.cash} />,
+    level: 3,
+    figures: {
+      debit: { value: 750000n, link: sampleLink },
+      credit: { value: 412000n, link: sampleLink },
+      compare: { value: 210000n },
+    },
+  },
+  {
+    key: '112001',
+    label: <AccountLabel code="112001" name={t.reports.receivables} />,
+    level: 3,
+    note: t.reports.note,
+    figures: {
+      debit: { value: 537500n, link: sampleLink },
+      credit: { value: -2400n, link: sampleLink },
+      compare: { value: 0n },
+    },
+  },
+  {
+    key: 'totals',
+    label: ar.reports.totals.total,
+    kind: 'total',
+    figures: {
+      debit: { value: 1287500n },
+      credit: { value: 409600n },
+      compare: { value: 210000n },
+    },
+  },
+];
+
+/** The report components (S09): the table, its marks and the export menu in each PDF state. */
+function ReportsSample() {
+  const r = t.reports;
+  return (
+    <div className="flex min-w-0 flex-col gap-4">
+      <ReportMarks
+        aria-label={r.marks}
+        columns={[
+          {
+            key: 'current',
+            marks: [
+              {
+                mark: 'period_open',
+                label: ar.reports.marks.period_open,
+                link: sampleLink,
+                linkLabel: ar.reports.markLinks.period,
+              },
+              {
+                mark: 'before_revaluation',
+                label: ar.reports.marks.before_revaluation,
+                link: sampleLink,
+                linkLabel: ar.reports.markLinks.revaluation,
+              },
+            ],
+          },
+        ]}
+        details={[
+          { label: ar.reports.header.producedAt, value: <bdi dir="ltr">{r.producedAt}</bdi> },
+          { label: ar.reports.header.latestEntry, value: <bdi dir="ltr">{r.latestEntry}</bdi> },
+        ]}
+      />
+      {(['compact', 'comfortable'] as const).map((density) => (
+        <div key={density} data-density={density} className="min-w-0 text-control">
+          <ReportTable
+            caption={`${r.caption} (${common.density[density]})`}
+            columns={reportColumns}
+            rows={reportRows}
+            currency="SYP"
+            labels={{ row: ar.reports.columns.account, none: ar.reports.none }}
+          />
+        </div>
+      ))}
+      <div className="flex flex-wrap items-start gap-4">
+        <ExportMenu labels={ar.reports.exportMenu} onExcel={() => {}} onPdf={() => {}} />
+        <ExportFileState labels={ar.reports.exportMenu} file={{ state: 'queued' }} />
+        <ExportFileState
+          labels={ar.reports.exportMenu}
+          file={{ state: 'ready' }}
+          onDownload={() => {}}
+        />
+        <ExportFileState
+          labels={ar.reports.exportMenu}
+          file={{ state: 'failed', error: r.failure }}
+        />
+      </div>
+    </div>
+  );
+}
+
 /** A pre-close checklist (S07), in both densities: passed, failed with its link, not applicable. */
 function ChecklistSample() {
   const c = t.checklist;
@@ -1211,6 +1331,11 @@ export function DesignSystemPage() {
       <Section id="reconciliation" title={t.reconciliation.title}>
         <p className="text-muted-foreground">{t.reconciliation.hint}</p>
         <ReconciliationSample />
+      </Section>
+
+      <Section id="reports" title={t.reports.title}>
+        <p className="text-muted-foreground">{t.reports.hint}</p>
+        <ReportsSample />
       </Section>
 
       <Section id="checklist" title={t.checklist.title}>
