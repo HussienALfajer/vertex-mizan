@@ -6,6 +6,7 @@ import {
   entryTotals,
   type Ledger,
   money,
+  RECONCILIATION_DAY_STATES,
   summarizeAmounts,
 } from '@vertex-mizan/contracts';
 import { ar } from '@vertex-mizan/i18n';
@@ -63,6 +64,7 @@ import {
   PoweredBy,
   QrCode,
   RateInput,
+  ReconciliationDayBadge,
   SecretCodeList,
   SecretReveal,
   SelectField,
@@ -858,6 +860,36 @@ function InboxSample() {
   );
 }
 
+/** A reconciliation day's states (S08), in both densities, a gap count beside differences. */
+function ReconciliationSample() {
+  const r = t.reconciliation;
+  return (
+    <div className="grid min-w-0 gap-4 lg:grid-cols-2">
+      {(['compact', 'comfortable'] as const).map((density) => (
+        <Card key={density} data-density={density} className="min-w-0 gap-3 p-4 text-control">
+          <p className="text-muted-foreground text-sm">{r[density]}</p>
+          <div className="flex flex-wrap gap-3">
+            {RECONCILIATION_DAY_STATES.map((state) => (
+              <ReconciliationDayBadge
+                key={state}
+                state={state}
+                label={ar.reconciliation.states[state]}
+                detail={
+                  state === 'differences'
+                    ? r.gaps
+                    : state === 'missing'
+                      ? ar.reconciliation.afterClose
+                      : null
+                }
+              />
+            ))}
+          </div>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
 /** A pre-close checklist (S07), in both densities: passed, failed with its link, not applicable. */
 function ChecklistSample() {
   const c = t.checklist;
@@ -1174,6 +1206,11 @@ export function DesignSystemPage() {
       <Section id="inbox" title={t.inbox.title}>
         <p className="text-muted-foreground">{t.inbox.hint}</p>
         <InboxSample />
+      </Section>
+
+      <Section id="reconciliation" title={t.reconciliation.title}>
+        <p className="text-muted-foreground">{t.reconciliation.hint}</p>
+        <ReconciliationSample />
       </Section>
 
       <Section id="checklist" title={t.checklist.title}>

@@ -97,6 +97,10 @@ export const test = base.extend<{ health: HealthMock; me: Me | null; api: ApiMoc
       if (key === 'GET /api/inbox/counts') {
         return route.fulfill({ status: 200, json: { held: 0, reasons: [] } });
       }
+      // The shell's unclean reconciliation days (S08): none unless a test says so.
+      if (key === 'GET /api/reconciliation/counts') {
+        return route.fulfill({ status: 200, json: { uncleanDays: 0 } });
+      }
       if (key === 'GET /api/health') {
         if (health === 'unreachable') return route.abort('connectionrefused');
         return route.fulfill({ status: health.status, json: health.body });

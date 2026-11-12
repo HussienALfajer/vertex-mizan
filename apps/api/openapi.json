@@ -10184,6 +10184,57 @@
         ]
       }
     },
+    "/api/reconciliation/counts": {
+      "get": {
+        "operationId": "ReconciliationController_counts",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "The sidebar’s count: the ended days with a missing report or differences, in months still open",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReconciliationCounts"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "TWO_FACTOR_REQUIRED, FORBIDDEN",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "COMPANY_NOT_SELECTED, COMPANY_SWITCHED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "reconciliation"
+        ]
+      }
+    },
     "/api/reconciliation/days/{date}": {
       "get": {
         "operationId": "ReconciliationController_day",
@@ -21350,6 +21401,20 @@
           "postedCount",
           "gaps",
           "annotations"
+        ],
+        "additionalProperties": false
+      },
+      "ReconciliationCounts": {
+        "type": "object",
+        "properties": {
+          "uncleanDays": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "uncleanDays"
         ],
         "additionalProperties": false
       },

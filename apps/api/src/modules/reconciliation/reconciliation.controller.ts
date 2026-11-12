@@ -1,11 +1,13 @@
 import { Controller, Get, Inject, Param, Query, SerializeOptions } from '@nestjs/common';
 import { ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import {
+  type ReconciliationCounts,
   type ReconciliationDay,
   type ReconciliationDayParam,
   type ReconciliationDayQuery,
   type ReconciliationMonth,
   type ReconciliationMonthQuery,
+  reconciliationCountsSchema,
   reconciliationDayParamSchema,
   reconciliationDayQuerySchema,
   reconciliationDaySchema,
@@ -40,6 +42,19 @@ export class ReconciliationController {
     @Query({ schema: reconciliationMonthQuerySchema }) query: ReconciliationMonthQuery,
   ): Promise<ReconciliationMonth> {
     return this.reconciliation.month(inCompany(access), query);
+  }
+
+  @Get('counts')
+  @CompanyRoute('reconciliation.read')
+  @SerializeOptions({ schema: reconciliationCountsSchema })
+  @ApiOkResponse({
+    description:
+      'The sidebar’s count: the ended days with a missing report or differences, in months still open',
+    standardSchema: reconciliationCountsSchema,
+  })
+  @ApiErrors(...COMPANY_READ_ERRORS)
+  counts(@Access() access: RequestAccess): Promise<ReconciliationCounts> {
+    return this.reconciliation.counts(inCompany(access));
   }
 
   @Get('days/:date')

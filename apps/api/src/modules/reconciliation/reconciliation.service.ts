@@ -1,10 +1,12 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type {
+  ReconciliationCounts,
   ReconciliationDay,
   ReconciliationMonth,
   ReconciliationMonthQuery,
 } from '@vertex-mizan/contracts';
 import {
+  countUncleanReconciliationDays,
   type Database,
   readReconciliationDay,
   readReconciliationMonth,
@@ -45,5 +47,14 @@ export class ReconciliationService {
     return withCompany(this.db, access.company.id, (tx) =>
       readReconciliationDay(tx, { date, clientId, now: nowInDamascus() }),
     );
+  }
+
+  /** `GET /api/reconciliation/counts`: the sidebar's count of unclean ended days. */
+  async counts(access: CompanyRouteAccess): Promise<ReconciliationCounts> {
+    const now = new Date();
+    const uncleanDays = await withCompany(this.db, access.company.id, (tx) =>
+      countUncleanReconciliationDays(tx, { today: todayInDamascus(now), now: nowInDamascus(now) }),
+    );
+    return { uncleanDays };
   }
 }

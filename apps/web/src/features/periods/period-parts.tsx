@@ -81,7 +81,7 @@ export function checklistItemLabel(name: ChecklistItemName | string): string {
 /**
  * The link to the page that fixes an item (S07 "Screens"), when the person may open it: the rate
  * calendar, the month's revaluation, the drafts, the integrity check, the month's held events,
- * the revenue months.
+ * the revenue months, the month's reconciliation days.
  */
 function itemLink(item: ChecklistItem, period: string, me: Me): ReactNode {
   if (!(item.item in t.checklist.links)) return null;
@@ -113,8 +113,9 @@ function itemLink(item: ChecklistItem, period: string, me: Me): ReactNode {
         ? link(<Link to="/revenue" search={{ view: 'months' }} />)
         : null;
     case 'reconciliation_clean':
-      // S08's screens (`/reconciliation?month=`) bring this item's link.
-      return null;
+      return can(me, 'reconciliation.read')
+        ? link(<Link to="/reconciliation" search={{ month: period }} />)
+        : null;
   }
 }
 

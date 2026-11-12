@@ -42,6 +42,8 @@ import { Route as AppCompanyPeriodsPeriodRouteImport } from './routes/_app/_comp
 import { Route as AppCompanyRatesIndexRouteImport } from './routes/_app/_company/rates/index'
 import { Route as AppCompanyRatesCalendarRouteImport } from './routes/_app/_company/rates/calendar'
 import { Route as AppCompanyReceivablesIndexRouteImport } from './routes/_app/_company/receivables/index'
+import { Route as AppCompanyReconciliationIndexRouteImport } from './routes/_app/_company/reconciliation/index'
+import { Route as AppCompanyReconciliationDateRouteImport } from './routes/_app/_company/reconciliation/$date'
 import { Route as AppCompanyRevenueIndexRouteImport } from './routes/_app/_company/revenue/index'
 import { Route as AppCompanyRevenueIdRouteImport } from './routes/_app/_company/revenue/$id'
 import { Route as AppCompanySettingsApiClientsRouteImport } from './routes/_app/_company/settings/api-clients'
@@ -216,6 +218,18 @@ const AppCompanyReceivablesIndexRoute =
     path: '/receivables/',
     getParentRoute: () => AppCompanyRoute,
   } as any)
+const AppCompanyReconciliationIndexRoute =
+  AppCompanyReconciliationIndexRouteImport.update({
+    id: '/reconciliation/',
+    path: '/reconciliation/',
+    getParentRoute: () => AppCompanyRoute,
+  } as any)
+const AppCompanyReconciliationDateRoute =
+  AppCompanyReconciliationDateRouteImport.update({
+    id: '/reconciliation/$date',
+    path: '/reconciliation/$date',
+    getParentRoute: () => AppCompanyRoute,
+  } as any)
 const AppCompanyRevenueIndexRoute = AppCompanyRevenueIndexRouteImport.update({
   id: '/revenue/',
   path: '/revenue/',
@@ -298,6 +312,7 @@ export interface FileRoutesByFullPath {
   '/open-items/$id': typeof AppCompanyOpenItemsIdRoute
   '/periods/$period': typeof AppCompanyPeriodsPeriodRoute
   '/rates/calendar': typeof AppCompanyRatesCalendarRoute
+  '/reconciliation/$date': typeof AppCompanyReconciliationDateRoute
   '/revenue/$id': typeof AppCompanyRevenueIdRoute
   '/settings/api-clients': typeof AppCompanySettingsApiClientsRoute
   '/settings/audit': typeof AppCompanySettingsAuditRoute
@@ -312,6 +327,7 @@ export interface FileRoutesByFullPath {
   '/periods/': typeof AppCompanyPeriodsIndexRoute
   '/rates/': typeof AppCompanyRatesIndexRoute
   '/receivables/': typeof AppCompanyReceivablesIndexRoute
+  '/reconciliation/': typeof AppCompanyReconciliationIndexRoute
   '/revenue/': typeof AppCompanyRevenueIndexRoute
   '/accounts/$id/lines': typeof AppCompanyAccountsIdLinesRoute
   '/receivables/clients/$valueId': typeof AppCompanyReceivablesClientsValueIdRoute
@@ -340,6 +356,7 @@ export interface FileRoutesByTo {
   '/open-items/$id': typeof AppCompanyOpenItemsIdRoute
   '/periods/$period': typeof AppCompanyPeriodsPeriodRoute
   '/rates/calendar': typeof AppCompanyRatesCalendarRoute
+  '/reconciliation/$date': typeof AppCompanyReconciliationDateRoute
   '/revenue/$id': typeof AppCompanyRevenueIdRoute
   '/settings/api-clients': typeof AppCompanySettingsApiClientsRoute
   '/settings/audit': typeof AppCompanySettingsAuditRoute
@@ -354,6 +371,7 @@ export interface FileRoutesByTo {
   '/periods': typeof AppCompanyPeriodsIndexRoute
   '/rates': typeof AppCompanyRatesIndexRoute
   '/receivables': typeof AppCompanyReceivablesIndexRoute
+  '/reconciliation': typeof AppCompanyReconciliationIndexRoute
   '/revenue': typeof AppCompanyRevenueIndexRoute
   '/accounts/$id/lines': typeof AppCompanyAccountsIdLinesRoute
   '/receivables/clients/$valueId': typeof AppCompanyReceivablesClientsValueIdRoute
@@ -386,6 +404,7 @@ export interface FileRoutesById {
   '/_app/_company/open-items/$id': typeof AppCompanyOpenItemsIdRoute
   '/_app/_company/periods/$period': typeof AppCompanyPeriodsPeriodRoute
   '/_app/_company/rates/calendar': typeof AppCompanyRatesCalendarRoute
+  '/_app/_company/reconciliation/$date': typeof AppCompanyReconciliationDateRoute
   '/_app/_company/revenue/$id': typeof AppCompanyRevenueIdRoute
   '/_app/_company/settings/api-clients': typeof AppCompanySettingsApiClientsRoute
   '/_app/_company/settings/audit': typeof AppCompanySettingsAuditRoute
@@ -400,6 +419,7 @@ export interface FileRoutesById {
   '/_app/_company/periods/': typeof AppCompanyPeriodsIndexRoute
   '/_app/_company/rates/': typeof AppCompanyRatesIndexRoute
   '/_app/_company/receivables/': typeof AppCompanyReceivablesIndexRoute
+  '/_app/_company/reconciliation/': typeof AppCompanyReconciliationIndexRoute
   '/_app/_company/revenue/': typeof AppCompanyRevenueIndexRoute
   '/_app/_company/accounts/$id/lines': typeof AppCompanyAccountsIdLinesRoute
   '/_app/_company/receivables/clients/$valueId': typeof AppCompanyReceivablesClientsValueIdRoute
@@ -430,6 +450,7 @@ export interface FileRouteTypes {
     | '/open-items/$id'
     | '/periods/$period'
     | '/rates/calendar'
+    | '/reconciliation/$date'
     | '/revenue/$id'
     | '/settings/api-clients'
     | '/settings/audit'
@@ -444,6 +465,7 @@ export interface FileRouteTypes {
     | '/periods/'
     | '/rates/'
     | '/receivables/'
+    | '/reconciliation/'
     | '/revenue/'
     | '/accounts/$id/lines'
     | '/receivables/clients/$valueId'
@@ -472,6 +494,7 @@ export interface FileRouteTypes {
     | '/open-items/$id'
     | '/periods/$period'
     | '/rates/calendar'
+    | '/reconciliation/$date'
     | '/revenue/$id'
     | '/settings/api-clients'
     | '/settings/audit'
@@ -486,6 +509,7 @@ export interface FileRouteTypes {
     | '/periods'
     | '/rates'
     | '/receivables'
+    | '/reconciliation'
     | '/revenue'
     | '/accounts/$id/lines'
     | '/receivables/clients/$valueId'
@@ -517,6 +541,7 @@ export interface FileRouteTypes {
     | '/_app/_company/open-items/$id'
     | '/_app/_company/periods/$period'
     | '/_app/_company/rates/calendar'
+    | '/_app/_company/reconciliation/$date'
     | '/_app/_company/revenue/$id'
     | '/_app/_company/settings/api-clients'
     | '/_app/_company/settings/audit'
@@ -531,6 +556,7 @@ export interface FileRouteTypes {
     | '/_app/_company/periods/'
     | '/_app/_company/rates/'
     | '/_app/_company/receivables/'
+    | '/_app/_company/reconciliation/'
     | '/_app/_company/revenue/'
     | '/_app/_company/accounts/$id/lines'
     | '/_app/_company/receivables/clients/$valueId'
@@ -775,6 +801,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppCompanyReceivablesIndexRouteImport
       parentRoute: typeof AppCompanyRoute
     }
+    '/_app/_company/reconciliation/': {
+      id: '/_app/_company/reconciliation/'
+      path: '/reconciliation'
+      fullPath: '/reconciliation/'
+      preLoaderRoute: typeof AppCompanyReconciliationIndexRouteImport
+      parentRoute: typeof AppCompanyRoute
+    }
+    '/_app/_company/reconciliation/$date': {
+      id: '/_app/_company/reconciliation/$date'
+      path: '/reconciliation/$date'
+      fullPath: '/reconciliation/$date'
+      preLoaderRoute: typeof AppCompanyReconciliationDateRouteImport
+      parentRoute: typeof AppCompanyRoute
+    }
     '/_app/_company/revenue/': {
       id: '/_app/_company/revenue/'
       path: '/revenue'
@@ -862,6 +902,7 @@ interface AppCompanyRouteChildren {
   AppCompanyOpenItemsIdRoute: typeof AppCompanyOpenItemsIdRoute
   AppCompanyPeriodsPeriodRoute: typeof AppCompanyPeriodsPeriodRoute
   AppCompanyRatesCalendarRoute: typeof AppCompanyRatesCalendarRoute
+  AppCompanyReconciliationDateRoute: typeof AppCompanyReconciliationDateRoute
   AppCompanyRevenueIdRoute: typeof AppCompanyRevenueIdRoute
   AppCompanySettingsApiClientsRoute: typeof AppCompanySettingsApiClientsRoute
   AppCompanySettingsAuditRoute: typeof AppCompanySettingsAuditRoute
@@ -876,6 +917,7 @@ interface AppCompanyRouteChildren {
   AppCompanyPeriodsIndexRoute: typeof AppCompanyPeriodsIndexRoute
   AppCompanyRatesIndexRoute: typeof AppCompanyRatesIndexRoute
   AppCompanyReceivablesIndexRoute: typeof AppCompanyReceivablesIndexRoute
+  AppCompanyReconciliationIndexRoute: typeof AppCompanyReconciliationIndexRoute
   AppCompanyRevenueIndexRoute: typeof AppCompanyRevenueIndexRoute
   AppCompanyAccountsIdLinesRoute: typeof AppCompanyAccountsIdLinesRoute
   AppCompanyReceivablesClientsValueIdRoute: typeof AppCompanyReceivablesClientsValueIdRoute
@@ -895,6 +937,7 @@ const AppCompanyRouteChildren: AppCompanyRouteChildren = {
   AppCompanyOpenItemsIdRoute: AppCompanyOpenItemsIdRoute,
   AppCompanyPeriodsPeriodRoute: AppCompanyPeriodsPeriodRoute,
   AppCompanyRatesCalendarRoute: AppCompanyRatesCalendarRoute,
+  AppCompanyReconciliationDateRoute: AppCompanyReconciliationDateRoute,
   AppCompanyRevenueIdRoute: AppCompanyRevenueIdRoute,
   AppCompanySettingsApiClientsRoute: AppCompanySettingsApiClientsRoute,
   AppCompanySettingsAuditRoute: AppCompanySettingsAuditRoute,
@@ -909,6 +952,7 @@ const AppCompanyRouteChildren: AppCompanyRouteChildren = {
   AppCompanyPeriodsIndexRoute: AppCompanyPeriodsIndexRoute,
   AppCompanyRatesIndexRoute: AppCompanyRatesIndexRoute,
   AppCompanyReceivablesIndexRoute: AppCompanyReceivablesIndexRoute,
+  AppCompanyReconciliationIndexRoute: AppCompanyReconciliationIndexRoute,
   AppCompanyRevenueIndexRoute: AppCompanyRevenueIndexRoute,
   AppCompanyAccountsIdLinesRoute: AppCompanyAccountsIdLinesRoute,
   AppCompanyReceivablesClientsValueIdRoute:

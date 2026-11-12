@@ -17,6 +17,7 @@ import {
   type AuditActor,
   apiClients,
   checkReconcileFromMove,
+  countUncleanReconciliationDays,
   createCompanyBooks,
   type PersonActor,
   periodChecklist,
@@ -485,6 +486,17 @@ describe('the comparison (S08 rules 7–11)', () => {
       '2026-11-02',
       '2026-11-01',
     ]);
+    // The sidebar's count: the same ended days, none from today.
+    expect(
+      await inCompany(companyId, (tx) =>
+        countUncleanReconciliationDays(tx, { today: '2026-11-06', now: '2026-11-06T08:00' }),
+      ),
+    ).toBe(5);
+    expect(
+      await inCompany(companyId, (tx) =>
+        countUncleanReconciliationDays(tx, { today: '2026-11-01', now: '2026-11-01T08:00' }),
+      ),
+    ).toBe(0);
   });
 
   it('keeps each client to its own events and start date (rule 14, edge case 9)', async () => {
@@ -574,6 +586,13 @@ describe('the checklist item reconciliation_clean (S08 rule 12)', () => {
     expect(await reconciliationItem(companyId, '2026-11')).toMatchObject({ result: 'passed' });
     // Once a month is closed, a later close reads its own month only.
     await closeMonthByHand(app, companyId, '2026-11');
+    // The sidebar counts open months only: October and November are closed, December's ended
+    // days are not reported.
+    expect(
+      await inCompany(companyId, (tx) =>
+        countUncleanReconciliationDays(tx, { today: '2026-12-04', now: '2026-12-04T09:00' }),
+      ),
+    ).toBe(3);
     await send(
       companyId,
       clientId,

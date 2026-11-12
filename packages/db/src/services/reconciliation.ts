@@ -472,6 +472,32 @@ export async function uncleanReconciliationDays(
     }));
 }
 
+/**
+ * The sidebar's count (S08 "Screens"): the ended days, up to the day before `today`, that are
+ * `missing` or `differences` for the company in months still open. Closed months are skipped
+ * whole: their gaps show on the screens as "بعد الإقفال" (rule 15) and need a reopen.
+ */
+export async function countUncleanReconciliationDays(
+  tx: Transaction,
+  input: { readonly today: string; readonly now: string },
+): Promise<number> {
+  const clients = await readReconciledClients(tx);
+  let from = clients.map((client) => client.reconcileFrom).sort()[0];
+  const yesterday = previousDay(input.today);
+  if (from === undefined) return 0;
+  const closed = await readClosedPeriods(tx);
+  while (from <= yesterday && isClosedPeriod(closed, periodOf(from))) {
+    from = dayAfter(daysOfMonth(periodOf(from)).at(-1) as string);
+  }
+  if (yesterday < from) return 0;
+  const days = await statesOver(tx, from, yesterday, input.now);
+  return days.filter(
+    (day) =>
+      (day.state === 'missing' || day.state === 'differences') &&
+      !isClosedPeriod(closed, periodOf(day.date)),
+  ).length;
+}
+
 /** The calendar day before a date. */
 function previousDay(date: string): string {
   const [year, month, day] = date.split('-').map(Number) as [number, number, number];
