@@ -7,4 +7,4 @@
 - [x] Owner approval of the six cases' numbers (2026-11-12, in the session)
 - [x] `packages/scenarios` reads the new format and the area `reports` (the cases stay `Proposed`, skipped)
 - [x] `docs/ROADMAP.md` records the approval
-- [ ] `pnpm verify --e2e-all`, the reviewers, the PR with auto-merge
+- [x] `pnpm verify --e2e-all` (pass on a5c8460), the reviewers and their re-review (no blocking issue), the PR with auto-merge
