@@ -25,7 +25,7 @@ import {
   users,
   withCompany,
 } from '../src/index.js';
-import { connect, refusal } from './connections.js';
+import { closeMonthByHand, connect, refusal } from './connections.js';
 
 // S07's month-end revaluation on the migrated database (0038–0039): the preview and the posting of
 // each ledger with the numbers of `currency/month-end-revaluation` (a USD receivable gaining in the
@@ -35,7 +35,7 @@ import { connect, refusal } from './connections.js';
 // account and an archived value revalued, the hand reversal refused, and the guards against
 // revaluation rows written by hand. All values are synthetic.
 
-const { app, owner, superuser } = connect();
+const { app, owner } = connect();
 
 let personId = '';
 
@@ -548,20 +548,7 @@ describe('a month closed, an item settled on the last day, and a state that recu
     const books = await newBooks();
     await scenario(books);
     const { fingerprint } = await preview(books, 'book');
-    // S07's second PR brings the close; here the superuser closes the period, as ledger.test does.
-    const closer = await superuser.connect();
-    try {
-      await closer.query('begin');
-      await closer.query('alter table periods disable trigger period_rules');
-      await closer.query(
-        `update periods set state = 'closed' where company_id = $1 and period = '2026-11'`,
-        [books.id],
-      );
-      await closer.query('alter table periods enable always trigger period_rules');
-      await closer.query('commit');
-    } finally {
-      closer.release();
-    }
+    await closeMonthByHand(app, books.id, '2026-11');
     expect((await refused(preview(books, 'book'))).code).toBe('PERIOD_CLOSED');
     expect((await refused(revalue(books, 'book', fingerprint))).code).toBe('PERIOD_CLOSED');
   });

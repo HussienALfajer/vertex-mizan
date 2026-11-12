@@ -38,18 +38,13 @@ import {
 import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import type { AuditActor } from '../audit.js';
 import type { Transaction } from '../client.js';
+import { closedPeriodList } from '../posting/periods.js';
 import { type CarriedLineSpec, type HubSource, post } from '../posting/post.js';
 import { chartAccounts } from '../schema/chart.js';
 import { companySettings } from '../schema/companies.js';
 import { dimensionValues } from '../schema/dimensions.js';
 import { inboundEventStates, inboundEvents, postingRuleAccounts } from '../schema/inbox.js';
-import {
-  journalEntries,
-  journalLines,
-  ledgerHeads,
-  periods,
-  postingRequests,
-} from '../schema/ledger.js';
+import { journalEntries, journalLines, ledgerHeads, postingRequests } from '../schema/ledger.js';
 import { openItemBalances, openItems } from '../schema/open-items.js';
 import { recognitionMovements, recognitionSchedules } from '../schema/recognition.js';
 import { ledgersOf } from './companies.js';
@@ -843,9 +838,7 @@ export async function releaseEndedMonths(
   today: string,
   actor: AuditActor,
 ): Promise<string[]> {
-  const closed = (
-    await tx.select({ period: periods.period }).from(periods).where(sql`${periods.state} <> 'open'`)
-  ).map((row) => row.period);
+  const closed = await closedPeriodList(tx);
   const ledgers = await companyLedgers(tx);
   const months = new Set<string>();
   for (const state of await scheduleStates(tx, issue, ledgers)) {
@@ -1179,9 +1172,7 @@ export async function recutSince(
       and(inArray(recognitionSchedules.id, ids), eq(recognitionSchedules.pattern, 'over_time')),
     )
     .orderBy(asc(recognitionSchedules.createdAt), asc(recognitionSchedules.id));
-  const closed = (
-    await tx.select({ period: periods.period }).from(periods).where(sql`${periods.state} <> 'open'`)
-  ).map((period) => period.period);
+  const closed = await closedPeriodList(tx);
   const posted: string[] = [];
   for (const state of await overTimeStates(tx, schedules, ledgers)) {
     if (state.voided) continue;

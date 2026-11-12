@@ -26,6 +26,7 @@ import {
   type HubRuleContext,
   hold,
   type KeyedEvent,
+  lastDayOfMonth,
   type MappedAccount,
   type MilestoneReferences,
   type PlannedEntry,
@@ -38,6 +39,7 @@ import {
 import { and, asc, desc, eq, gt, inArray, isNull, sql } from 'drizzle-orm';
 import { type AuditActor, SYSTEM_NAME, writeCompanyAudit } from '../audit.js';
 import type { Transaction } from '../client.js';
+import { closedPeriodList, isClosedPeriod, readClosedPeriods } from '../posting/periods.js';
 import { type HubSource, type ManualLineSpec, type PostingContent, post } from '../posting/post.js';
 import { chartAccounts } from '../schema/chart.js';
 import { companySettings } from '../schema/companies.js';
@@ -53,7 +55,6 @@ import {
   journalEntries,
   journalLines,
   ledgerHeads,
-  periods,
   postingRequests,
 } from '../schema/ledger.js';
 import { openItemBalances, openItemDueDates, openItems } from '../schema/open-items.js';
@@ -122,7 +123,12 @@ export type RetryTrigger =
   | { readonly kind: 'rate'; readonly on: string }
   | { readonly kind: 'mapping' }
   | { readonly kind: 'deploy' }
-  | { readonly kind: 'sweep' };
+  | { readonly kind: 'sweep' }
+  /**
+   * A reopened month (S07 rule 6): the events held `PERIOD_CLOSED` dated in it, and those held
+   * `SERVICE_PERIOD_CLOSED` dated in it or later, whose elapsed months may include it.
+   */
+  | { readonly kind: 'period'; readonly period: string };
 
 /** An event's answer and what its change frees, for the retries after the commit. */
 export interface InboxResult {
@@ -1129,13 +1135,9 @@ async function decide(
   }
 }
 
-/** Whether a date's period is closed (a period with no row is open). */
+/** Whether a date's period is closed (S07 rules 1, 4; a period with no row is open otherwise). */
 async function periodClosed(tx: Transaction, on: string): Promise<boolean> {
-  const [row] = await tx
-    .select({ state: periods.state })
-    .from(periods)
-    .where(eq(periods.period, periodOf(on)));
-  return row !== undefined && row.state !== 'open';
+  return isClosedPeriod(await readClosedPeriods(tx), periodOf(on));
 }
 
 /** An event that changes data without posting (ADR 0014 `recorded`). */
@@ -1363,6 +1365,31 @@ export async function receiveEvent(
   };
 }
 
+/** The events a reopened month frees (S07 rule 6), as a condition on the held events. */
+function periodFrees(period: string) {
+  const [first, last] = [`${period}-01`, lastDayOfMonth(`${period}-01`)];
+  return sql`((${inboundEventStates.holdReason} = 'PERIOD_CLOSED'
+      and ${inboundEvents.accountingDate} between ${first} and ${last})
+    or (${inboundEventStates.holdReason} = 'SERVICE_PERIOD_CLOSED'
+      and ${inboundEvents.accountingDate} >= ${first}))`;
+}
+
+/** The events a reopen of `period` queues for retry (S07 rule 6), counted. */
+export async function countFreedByPeriod(tx: Transaction, period: string): Promise<number> {
+  const [row] = await tx
+    .select({ count: sql<number>`count(*)::int` })
+    .from(inboundEvents)
+    .innerJoin(
+      inboundEventStates,
+      and(
+        eq(inboundEventStates.companyId, inboundEvents.companyId),
+        eq(inboundEventStates.eventId, inboundEvents.id),
+      ),
+    )
+    .where(and(eq(inboundEventStates.state, 'held'), periodFrees(period)));
+  return row?.count ?? 0;
+}
+
 /** The held events a trigger frees, in received order (rule 10). */
 async function heldFreedBy(tx: Transaction, trigger: RetryTrigger): Promise<EventRow[]> {
   const reasons: Record<RetryTrigger['kind'], readonly HoldReason[]> = {
@@ -1371,6 +1398,7 @@ async function heldFreedBy(tx: Transaction, trigger: RetryTrigger): Promise<Even
     rate: ['RATE_MISSING'],
     mapping: ['NO_MAPPING'],
     deploy: ['NO_MAPPING'],
+    period: ['PERIOD_CLOSED', 'SERVICE_PERIOD_CLOSED'],
     sweep: [
       'WAITING_FOR_EARLIER_EVENT',
       'UNKNOWN_REFERENCE',
@@ -1403,6 +1431,7 @@ async function heldFreedBy(tx: Transaction, trigger: RetryTrigger): Promise<Even
           : undefined,
         // A bulletin of a date serves the days after it until the next publication (ADR 0011).
         trigger.kind === 'rate' ? sql`${inboundEvents.accountingDate} >= ${trigger.on}` : undefined,
+        trigger.kind === 'period' ? periodFrees(trigger.period) : undefined,
       ),
     )
     .orderBy(asc(inboundEvents.receivedAt), asc(inboundEvents.id));
@@ -1519,14 +1548,7 @@ export async function moveEvent(
       reason: state.holdReason,
     });
   }
-  const closed = await tx
-    .select({ period: periods.period })
-    .from(periods)
-    .where(sql`${periods.state} <> 'open'`);
-  const postOn = firstOpenDayAfter(
-    row.accountingDate,
-    closed.map((period) => period.period),
-  );
+  const postOn = firstOpenDayAfter(row.accountingDate, await closedPeriodList(tx));
   const { outcome } = await attempt(tx, row, { ...options, postOn });
   // The accountant's action is kept whatever it led to (rule 18): the entries it posted, or the
   // hold the event is still in.
@@ -1569,11 +1591,7 @@ function checkSplittable(state: StateRow): void {
 }
 
 async function closedPeriodsOf(tx: Transaction): Promise<string[]> {
-  const closed = await tx
-    .select({ period: periods.period })
-    .from(periods)
-    .where(sql`${periods.state} <> 'open'`);
-  return closed.map((period) => period.period);
+  return closedPeriodList(tx);
 }
 
 /** An action of S06 rule 16 to preview: the recognition, or a split with its revenue part. */

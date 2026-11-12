@@ -420,8 +420,10 @@ export const entryNumberCounters = pgTable(
 );
 
 /**
- * A month of a company's books (ADR 0005 invariant 4): made open by the first posting dated in it;
- * S07 brings closing and reopening.
+ * A month of a company's books (ADR 0005 invariant 4): made open by the first posting dated in it,
+ * or by the close of an empty month (S07 rule 2); `open → closed`, `closed → reopened` and
+ * `reopened → closed`, each only with its `period_events` row (S07 "Data"). A reopened month posts
+ * as an open one.
  */
 export const periods = pgTable(
   'periods',
@@ -441,7 +443,7 @@ export const periods = pgTable(
     unique('periods_period_key').on(t.companyId, t.period),
     check('periods_period_shape', sql`${t.period} ~ '^[0-9]{4}-(0[1-9]|1[0-2])$'`),
     check('periods_fiscal_year', sql`${t.fiscalYear} between 2000 and 9999`),
-    check('periods_state', sql`${t.state} in ('open', 'closed')`),
+    check('periods_state', sql`${t.state} in ('open', 'closed', 'reopened')`),
   ],
 );
 
@@ -505,6 +507,45 @@ export const periodBalances = pgTable(
         and ${t.lineCount} >= 1`,
     ),
     check('period_balances_currency', sql`${t.currency} in (${listed(SETTINGS_CURRENCY_CODES)})`),
+  ],
+);
+
+/**
+ * A period's history (S07 "Data", ADR 0016; append-only): each close with its reason and the
+ * checklist's results at the close, and each reopen with its reason, by the person who did it
+ * (kept by id with no key to `users`, as drafts keep them), with the ledger head's sequence at the
+ * event. A period's state is its latest event's (or `open` without one), at commit.
+ */
+export const periodEvents = pgTable(
+  'period_events',
+  {
+    id: id(),
+    companyId: companyId().references(() => companies.id),
+    periodId: uuid().notNull(),
+    kind: text().notNull(),
+    reason: text().notNull(),
+    userId: uuid().notNull(),
+    /** The checklist's items and results at the close; null on a reopen. */
+    checklist: jsonb(),
+    headSequence: bigint({ mode: 'bigint' }).notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    idIsUuidV7('period_events', t.id),
+    foreignKey({
+      name: 'period_events_period_fk',
+      columns: [t.companyId, t.periodId],
+      foreignColumns: [periods.companyId, periods.id],
+    }),
+    index('period_events_company_period_idx').on(t.companyId, t.periodId, t.createdAt),
+    check('period_events_kind', sql`${t.kind} in ('closed', 'reopened')`),
+    check('period_events_reason', sql`char_length(${t.reason}) between 1 and 500`),
+    check(
+      'period_events_checklist',
+      sql`(${t.kind} = 'closed') = (${t.checklist} is not null)
+        and (${t.checklist} is null or jsonb_typeof(${t.checklist}) = 'array')`,
+    ),
+    check('period_events_head_sequence', sql`${t.headSequence} >= 0`),
   ],
 );
 

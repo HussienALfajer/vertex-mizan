@@ -158,6 +158,8 @@ export const AUDITED_FIELDS = {
     'entryId',
     'reversalEntryId',
   ],
+  // S07: a month closed with its checklist, or reopened with the events it queued for retry.
+  period: ['period', 'checklist', 'queuedEvents'],
   // S04: a manual item's due date, and the filters of the receivables exports.
   open_item: ['reference', 'dueOn', 'effectiveOn'],
   receivables_export: [

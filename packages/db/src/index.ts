@@ -42,6 +42,7 @@ export {
   type StatementBalanceRow,
   type StatementMovementRow,
 } from './posting/item-reads.js';
+export { closedPeriodList, isClosedPeriod, readClosedPeriods } from './posting/periods.js';
 export {
   type DealtRateSpec,
   type HubSource,
@@ -52,6 +53,7 @@ export {
   type PreviewLine,
   post,
   previewPosting,
+  writePeriodTransition,
 } from './posting/post.js';
 export {
   type EntryRef,
@@ -76,6 +78,7 @@ export * from './services/chart.js';
 export * from './services/companies.js';
 export * from './services/dimensions.js';
 export * from './services/inbox.js';
+export * from './services/periods.js';
 export * from './services/rates.js';
 export * from './services/recognition.js';
 export * from './services/revaluation.js';

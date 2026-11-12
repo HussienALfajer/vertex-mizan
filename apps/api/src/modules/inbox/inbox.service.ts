@@ -13,6 +13,7 @@ import type {
 } from '@vertex-mizan/contracts';
 import {
   apiClients,
+  closedPeriodList,
   type Database,
   dismissEvent,
   type InboxResult,
@@ -21,7 +22,6 @@ import {
   inboundEvents,
   journalEntries,
   moveEvent,
-  periods,
   previewAction,
   recogniseEvent,
   resolveEvent,
@@ -277,24 +277,13 @@ export class InboxService {
       .leftJoin(apiClients, eq(apiClients.id, inboundEventActions.actorApiClientId))
       .where(eq(inboundEventActions.eventId, id))
       .orderBy(asc(inboundEventActions.createdAt), asc(inboundEventActions.id));
-    const closed =
-      event.reason === 'PERIOD_CLOSED'
-        ? await tx
-            .select({ period: periods.period })
-            .from(periods)
-            .where(sql`${periods.state} <> 'open'`)
-        : null;
+    const closed = event.reason === 'PERIOD_CLOSED' ? await closedPeriodList(tx) : null;
     return {
       ...event,
       payload: row.event.payload as Record<string, unknown>,
       payloadHash: row.event.payloadHash,
       requestId: row.event.requestId,
-      moveOn: closed
-        ? firstOpenDayAfter(
-            event.accountingDate,
-            closed.map((period) => period.period),
-          )
-        : null,
+      moveOn: closed ? firstOpenDayAfter(event.accountingDate, closed) : null,
       actions: actions.map(({ action, personName, clientName }): InboxAction => {
         const kind = action.actorKind as InboxAction['actor']['kind'];
         return {

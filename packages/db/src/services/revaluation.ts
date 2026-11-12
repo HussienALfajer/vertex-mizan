@@ -18,6 +18,7 @@ import {
   canonicalJson,
   type Dimensions,
   lastDayOfMonth,
+  lastPublicationDay,
   ledgerPolicyRate,
   type RevaluationBalance,
   type RevaluedBalance,
@@ -612,4 +613,63 @@ export async function postRevaluation(
   );
   if (revaluation === undefined) throw new Error('A revaluation not read back');
   return { posted: true, revaluation, entryId: entry.id, reversalEntryId: row.reversalEntryId };
+}
+
+/**
+ * A ledger's revaluation of `period` as the pre-close checklist reads it (S07 rules 8, 15): its
+ * state (`current` when every difference is zero), how many closing rates are missing, and the
+ * currencies of its revaluable balances at the month's end.
+ */
+export async function revaluationCheck(
+  tx: Transaction,
+  period: string,
+  ledger: Ledger,
+): Promise<{
+  readonly state: RevaluationState;
+  readonly missingRates: number;
+  readonly currencies: readonly CurrencyCode[];
+}> {
+  const computed = await compute(tx, period, ledger);
+  return {
+    state: computed.state,
+    missingRates: computed.missingRates.length,
+    currencies: [...new Set(computed.balances.map((balance) => balance.currency))].sort(),
+  };
+}
+
+/**
+ * The publication days of `period` on which `ledger`'s bulletin of some currency of `currencies`
+ * is not in force (S07 rule 8, `bulletins_recorded`; ADR 0011): each day is read as a posting
+ * dated on it would read it, so a third currency without a direct bulletin needs both quotes of
+ * its cross (ADR 0007). Only a ledger whose policy is the bulletin is read.
+ */
+export async function missingBulletinDays(
+  tx: Transaction,
+  period: string,
+  ledger: Ledger,
+  currencies: readonly CurrencyCode[],
+): Promise<string[]> {
+  const { settings, ledgers } = await settingsFor(tx, ledger);
+  const own = ledger === 'book' ? ledgers.book : ledgers.parallel;
+  if (own === null || own.ratePolicy.rateType !== 'bulletin') return [];
+  const foreign = currencies.filter((currency) => currency !== own.currency);
+  if (foreign.length === 0) return [];
+  const calendar = await publicationCalendar(tx, settings.bulletinDaysOff);
+  const lastDay = lastDayOfMonth(`${period}-01`);
+  const missing: string[] = [];
+  for (let day = 1; day <= Number(lastDay.slice(8)); day += 1) {
+    const on = `${period}-${String(day).padStart(2, '0')}`;
+    if (lastPublicationDay(on, calendar) !== on) continue;
+    const { rates } = await ratesOn(tx, on);
+    for (const from of foreign) {
+      try {
+        ledgerPolicyRate({ ledgers, ledger, from, on, rates, calendar });
+      } catch (error) {
+        if (!(error instanceof DomainError) || error.code !== 'RATE_MISSING') throw error;
+        missing.push(on);
+        break;
+      }
+    }
+  }
+  return missing;
 }

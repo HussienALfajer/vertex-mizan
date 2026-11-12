@@ -320,4 +320,3 @@ export const periodReopenResultSchema = z
   .meta({ id: 'PeriodReopenResult' });
 
 export type PeriodReopenResult = z.infer<typeof periodReopenResultSchema>;
-

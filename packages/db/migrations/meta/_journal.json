@@ -281,6 +281,20 @@
       "when": 1794434818979,
       "tag": "0039_s07_revaluation_guards",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1794452168667,
+      "tag": "0040_jittery_black_bolt",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1794452188312,
+      "tag": "0041_s07_period_guards",
+      "breakpoints": true
     }
   ]
 }

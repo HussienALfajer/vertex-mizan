@@ -49,7 +49,7 @@ import {
   users,
   withCompany,
 } from '../src/index.js';
-import { connect, refusal } from './connections.js';
+import { closeMonthByHand, connect, refusal } from './connections.js';
 
 // S03's ledger on the migrated database (0010–0012): the posting function and every guard of
 // ADR 0005, 0008 and 0012, as the app role (and the owner where a grant would hide a trigger):
@@ -57,7 +57,7 @@ import { connect, refusal } from './connections.js';
 // closed periods, concurrency, and the writes the posting function never makes, forged by hand to
 // prove the database refuses them. All values are synthetic.
 
-const { app, owner, superuser } = connect();
+const { app, owner } = connect();
 
 let personId = '';
 
@@ -697,27 +697,26 @@ describe('post(): numbers, periods and concurrency (ADR 0008, ADR 0012)', () => 
         ],
       });
     await entry('2026-11-08');
-    // S07 brings the close; here the superuser closes the period, holding it while a posting comes.
-    const closer = await superuser.connect();
-    try {
-      await closer.query('begin');
-      await closer.query('alter table periods disable trigger period_rules');
-      await closer.query(
-        `update periods set state = 'closed' where company_id = $1 and period = '2026-11'`,
-        [company],
-      );
-      let settled = false;
-      const posting = code(entry('2026-11-10')).finally(() => {
-        settled = true;
-      });
-      await new Promise((resolve) => setTimeout(resolve, 300));
-      expect(settled).toBe(false);
-      await closer.query('alter table periods enable always trigger period_rules');
-      await closer.query('commit');
-      expect(await posting).toBe('PERIOD_CLOSED');
-    } finally {
-      closer.release();
-    }
+    // The close's transaction holds the ledger head while a posting comes (S07 rule 5).
+    let release = () => {};
+    const until = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let written = () => {};
+    const closing = new Promise<void>((resolve) => {
+      written = resolve;
+    });
+    const closer = closeMonthByHand(app, company, '2026-11', { written, until });
+    await closing;
+    let settled = false;
+    const posting = code(entry('2026-11-10')).finally(() => {
+      settled = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(settled).toBe(false);
+    release();
+    await closer;
+    expect(await posting).toBe('PERIOD_CLOSED');
     expect(await code(entry('2026-11-30'))).toBe('PERIOD_CLOSED');
     expect((await entry('2026-12-01').catch(() => null)) ?? 'refused').toBe('refused');
     expect(
@@ -920,8 +919,8 @@ describe('the ledger guards, as each role (ADR 0005, ADR 0008, ADR 0012)', () =>
         sql`insert into entry_number_counters (id, company_id, fiscal_year, last_number) values (${uuidv7()}, ${company}, 2027, 5)`,
       ),
     ).toBe("entry_number_counters: a fiscal year's numbers start at 1");
-    expect(await write(sql`update periods set state = 'closed'`)).toBe(
-      'periods: period 2026-11 changes only through the close (S07)',
+    expect(await write(sql`update periods set state = 'reopened'`)).toBe(
+      'periods: period 2026-11 changes only its state, from open to closed or reopened',
     );
     expect(
       await write(

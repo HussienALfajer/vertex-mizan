@@ -46,7 +46,7 @@ import {
   users,
   withCompany,
 } from '../src/index.js';
-import { connect, refusal } from './connections.js';
+import { closeMonthByHand, connect, refusal } from './connections.js';
 
 // S05's event inbox on the migrated database (0024, 0025): an event kept as received and posted
 // through `post()` by its rule, replays and conflicts, two receipts at once, the order per item
@@ -55,7 +55,7 @@ import { connect, refusal } from './connections.js';
 // rate from Hub, and the writes the service never makes, forged to prove the guards refuse them.
 // Every value is synthetic.
 
-const { app, jobs, superuser } = connect();
+const { app, jobs } = connect();
 
 let personId = '';
 
@@ -481,20 +481,7 @@ describe('a move out of a closed month (rule 15; inbox/post-in-next-open-period)
       ['2026-11-01', '120.0000'],
       ['2026-11-05', '121.0000'],
     ]);
-    // S07 brings the close; here the superuser closes October, as the ledger tests do.
-    const closer = await superuser.connect();
-    try {
-      await closer.query('begin');
-      await closer.query('alter table periods disable trigger period_rules');
-      await closer.query(
-        `insert into periods (id, company_id, period, fiscal_year, state) values ($1, $2, '2026-10', 2026, 'closed')`,
-        [uuidv7(), company],
-      );
-      await closer.query('alter table periods enable always trigger period_rules');
-      await closer.query('commit');
-    } finally {
-      closer.release();
-    }
+    await closeMonthByHand(app, company, '2026-10');
     const invoice = await receive(company, issued(1, '2026-10-28', 100_000));
     expect(invoice.event).toMatchObject({ state: 'held', reason: 'PERIOD_CLOSED' });
     const payment = await receive(company, paid(1, 1, '2026-11-05', 40_000));
@@ -1127,20 +1114,7 @@ describe('the ad funds’ changes and archives (ad-funds/running-balance; S04 ru
     ]);
     await receive(company, deposited('2026-11-03', 100_000));
     await receive(company, spent('ad_spend.recorded', '2026-11-10', '2026-11-10', 30_000));
-    // S07 brings the close; here the superuser closes November, as the ledger tests do.
-    const closer = await superuser.connect();
-    try {
-      await closer.query('begin');
-      await closer.query('alter table periods disable trigger period_rules');
-      await closer.query(
-        `update periods set state = 'closed' where company_id = $1 and period = '2026-11'`,
-        [company],
-      );
-      await closer.query('alter table periods enable always trigger period_rules');
-      await closer.query('commit');
-    } finally {
-      closer.release();
-    }
+    await closeMonthByHand(app, company, '2026-11');
     const voided = await receive(
       company,
       envelope('ad_wallet.entry_voided', '2026-11-30', {
