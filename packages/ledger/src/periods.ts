@@ -35,6 +35,22 @@ export function lastDayOfMonth(date: string): string {
   return `${pad(year, 4)}-${pad(month, 2)}-${pad(daysIn(year, month), 2)}`;
 }
 
+/** The calendar day after a date (`2028-02-28` → `2028-02-29`, `2026-12-31` → `2027-01-01`). */
+export function dayAfter(date: string): string {
+  const { year, month, day } = partsOf(date);
+  if (day < daysIn(year, month)) return `${pad(year, 4)}-${pad(month, 2)}-${pad(day + 1, 2)}`;
+  return month === 12 ? `${pad(year + 1, 4)}-01-01` : `${pad(year, 4)}-${pad(month + 1, 2)}-01`;
+}
+
+/** Every day of a month `YYYY-MM`, in order (`2028-02` has 29). */
+export function daysOfMonth(period: string): string[] {
+  const { year, month } = partsOf(`${period}-01`);
+  return Array.from(
+    { length: daysIn(year, month) },
+    (_, index) => `${pad(year, 4)}-${pad(month, 2)}-${pad(index + 1, 2)}`,
+  );
+}
+
 /**
  * The fiscal year of a date, for a fiscal year that starts on the first day of `startMonth`
  * (`company_settings.fiscal_year_start_month`, 1–12). It is named after the calendar year it starts
