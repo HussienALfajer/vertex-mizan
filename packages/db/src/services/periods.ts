@@ -16,7 +16,7 @@ import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { type AuditActor, writeCompanyAudit } from '../audit.js';
 import type { Transaction } from '../client.js';
 import { isClosedPeriod, readClosedPeriods } from '../posting/periods.js';
-import { writePeriodTransition } from '../posting/post.js';
+import { openingIsPosted, writePeriodTransition } from '../posting/post.js';
 import { users } from '../schema/access.js';
 import { companySettings } from '../schema/companies.js';
 import { entryDrafts } from '../schema/drafts.js';
@@ -384,6 +384,13 @@ export async function closePeriod(
   await lockPeriod(tx, period);
   if (isClosedPeriod(await readClosedPeriods(tx), period)) {
     throw new DomainError('PERIOD_CLOSED', `The period ${period} is closed`, { period });
+  }
+  // No month closes until the opening is posted (S10 rule 3).
+  const [start] = await tx.select({ booksStart: companySettings.booksStart }).from(companySettings);
+  if (start?.booksStart != null && !(await openingIsPosted(tx))) {
+    throw new DomainError('OPENING_NOT_POSTED', 'The opening balances are not posted yet', {
+      booksStart: start.booksStart,
+    });
   }
   if (lastDayOfMonth(`${period}-01`) >= today) {
     throw new DomainError('PERIOD_NOT_ENDED', `The month ${period} has not ended`, { period });

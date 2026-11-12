@@ -100,6 +100,8 @@ export const REVENUE_MOVEMENT_KINDS = [
   'remainder_released',
   'remainder_refunded',
   'adjusted',
+  // S10 rule 13: the share S06 would have released through the eve, on the opening entry.
+  'before_opening',
 ] as const;
 
 /** A movement with its entry: signed, positive adds to what is still to recognise. */

@@ -19,6 +19,7 @@ import {
 } from '@vertex-mizan/contracts';
 import {
   balanceEntry,
+  balancingLine,
   type CanonicalValue,
   type CarriedAmounts,
   type ChainConversion,
@@ -48,12 +49,15 @@ import {
   type MeasureContext,
   manualEntry,
   manualReversalLines,
+  measuredLine,
+  moveItem,
   movementOn,
   periodOf,
   type RevaluedBalance,
   reclassifiedLines,
   revaluationLines,
   revaluationReversalLines,
+  reverseLines,
   runningVoidDifferenceLines,
   type VoidedRunningItem,
 } from '@vertex-mizan/ledger';
@@ -83,6 +87,7 @@ import {
   openItemMovements,
   openItems,
 } from '../schema/open-items.js';
+import { openings } from '../schema/opening.js';
 import { exchangeRates, ratePairs } from '../schema/rates.js';
 import { ledgersOf } from '../services/companies.js';
 import { exchangeRateOf, publicationCalendar, rateSuperseded } from '../services/rates.js';
@@ -227,7 +232,50 @@ export type PostingContent =
       readonly rates: readonly ClosingRate[];
       readonly balances: readonly RevaluedBalance[];
       readonly today: string;
-    };
+    }
+  /**
+   * The opening entry (S10 rules 17–19, 23; ADR 0019), dated on the books start: its lines in their
+   * order, each a new measurement at the rates in force on `measuredOn` (the eve) or `stated` with
+   * the book and parallel amounts the opening service computed or the records give, and the items
+   * the measured ones open (source `opening`); the balancing line on the retained-earnings role's
+   * account is added here, so each ledger balances on its own. Posted by the opening service only,
+   * under `opening:<opening id>`.
+   */
+  | {
+      readonly kind: 'opening';
+      readonly openingId: string;
+      readonly measuredOn: string;
+      readonly lines: readonly OpeningLineSpec[];
+      readonly today: string;
+    }
+  /**
+   * The opening's whole reversal (S10 rule 25): the opening entry negated line by line on the books
+   * start, each item moved back; no rate read. Its source is `opening`.
+   */
+  | { readonly kind: 'opening_reversal'; readonly entryId: string; readonly today: string };
+
+/**
+ * A line of the opening entry (S10 rules 11–17): a Hub item's (from the snapshot, `fromHub`, whose
+ * values keep Hub's records), a schedule's or the accountant's. A measured line on a document
+ * control account opens `newItem`; on a running one, the client's item. A stated line gives its
+ * book and parallel amounts (the parallel null exactly without a parallel ledger).
+ */
+export interface OpeningLineSpec {
+  readonly accountId: string;
+  readonly dimensionValueIds: readonly string[];
+  readonly currency: CurrencyCode;
+  readonly amountMinor: bigint;
+  readonly memo: string | null;
+  readonly fromHub: boolean;
+  readonly stated?: { readonly bookMinor: bigint; readonly parallelMinor: bigint | null };
+  readonly newItem?: {
+    readonly reference: string;
+    readonly dueOn: string | null;
+    /** The document's own date: an invoice's issue, a milestone's done, else the eve. */
+    readonly documentDate: string;
+    readonly hubDocument: HubSource['document'] | null;
+  };
+}
 
 /** A carried line: its account, its dimension values and the amounts it carries. */
 export interface CarriedLineSpec {
@@ -314,7 +362,8 @@ type Role =
   | 'fx_realised_gain'
   | 'fx_realised_loss'
   | 'fx_unrealised_gain'
-  | 'fx_unrealised_loss';
+  | 'fx_unrealised_loss'
+  | 'retained_earnings';
 
 /** Where a role's line goes until the role's account is read: replaced, or `ACCOUNT_ROLE_MISSING`. */
 const roleTarget = (role: Role) => `role:${role}`;
@@ -427,6 +476,34 @@ function contentPayload(content: PostingContent): CanonicalValue {
           differenceMinor: balance.differenceMinor,
         })),
       };
+    case 'opening':
+      return {
+        kind: content.kind,
+        openingId: content.openingId,
+        measuredOn: content.measuredOn,
+        lines: content.lines.map((line) => ({
+          accountId: line.accountId,
+          dimensionValueIds: [...line.dimensionValueIds].sort(),
+          currency: line.currency,
+          amountMinor: line.amountMinor,
+          memo: line.memo,
+          fromHub: line.fromHub,
+          ...(line.stated !== undefined && {
+            stated: { bookMinor: line.stated.bookMinor, parallelMinor: line.stated.parallelMinor },
+          }),
+          ...(line.newItem !== undefined && {
+            newItem: {
+              reference: line.newItem.reference,
+              dueOn: line.newItem.dueOn,
+              documentDate: line.newItem.documentDate,
+              hubDocument:
+                line.newItem.hubDocument === null ? null : { ...line.newItem.hubDocument },
+            },
+          }),
+        })),
+      };
+    case 'opening_reversal':
+      return { kind: content.kind, entryId: content.entryId };
   }
 }
 
@@ -726,7 +803,13 @@ async function itemsOf(
         row.id,
         {
           accountId: row.accountId,
-          source: row.source as ItemSource,
+          // An opening item the accountant opened, with no Hub document, is the accountant's own:
+          // a manual line moves it as a manual item, with no memo (S10 rule 12;
+          // `opening/opening-entry.md`, owner 2026-11-12).
+          source:
+            row.source === 'opening' && row.hubDocument === null
+              ? 'manual'
+              : (row.source as ItemSource),
           currency,
           dimensions: Object.fromEntries(
             values
@@ -1196,7 +1279,7 @@ async function storedEntry(tx: Transaction, entryId: string) {
     if (row.kind === 'difference' || row.kind === 'rounding') {
       return { ...fields, kind: row.kind, ledger: row.ledger as Ledger };
     }
-    if (row.kind === 'carried') return { ...fields, kind: 'carried' };
+    if (row.kind === 'carried' || row.kind === 'stated') return { ...fields, kind: row.kind };
     const of = (ledger: Ledger) =>
       conversionOf(
         conversions.filter((c) => c.lineId === row.id && c.ledger === ledger),
@@ -1513,6 +1596,33 @@ async function dimensionSetOf(
  * (`ENTRY_DATE_OUT_OF_RANGE`), and no SYP amount before the new pound, in a ledger or on a line
  * (ADR 0005 invariant 8).
  */
+/**
+ * In a company with a books start, nothing but the opening posts until the opening is posted (S10
+ * rule 3): `OPENING_NOT_POSTED`. The guards refuse it again.
+ */
+async function checkOpeningPosted(
+  tx: Transaction,
+  booksStart: string | null,
+  content: PostingContent,
+): Promise<void> {
+  if (booksStart === null || content.kind === 'opening' || content.kind === 'opening_reversal') {
+    return;
+  }
+  if (!(await openingIsPosted(tx))) {
+    refuse('OPENING_NOT_POSTED', 'The opening balances are not posted yet', { booksStart });
+  }
+}
+
+/** Whether the company in context has its opening posted (S10 rule 3). */
+export async function openingIsPosted(tx: Transaction): Promise<boolean> {
+  const [row] = await tx
+    .select({ id: openings.id })
+    .from(openings)
+    .where(eq(openings.state, 'posted'))
+    .limit(1);
+  return row !== undefined;
+}
+
 function checkDates(on: string, content: PostingContent, ledgers: CompanyLedgers): void {
   checkManualEntryDate(on, content.today);
   for (const [, ledger] of keptLedgers(ledgers)) checkCurrencyDate(ledger.currency, on);
@@ -1554,7 +1664,271 @@ async function buildLines(
       return carriedLines(tx, content, ledgers);
     case 'revaluation':
       return revaluationContentLines(tx, content, on, ledgers, lock);
+    case 'opening':
+      return openingLines(tx, content, on, ledgers, daysOff, lock);
+    case 'opening_reversal':
+      return openingReversalLines(tx, content, on, ledgers, lock);
   }
+}
+
+/**
+ * The opening entry's lines (S10 rules 17–19, 23): each spec checked against the chart (a Hub
+ * line keeps Hub's records), a stated line as given, a measured one measured at the rates of the
+ * eve, opening its item: a document item under its reference, free on its account among the items
+ * standing (another opening's, reversed, leaves it free), with its Hub document and its own date;
+ * on a running account the client's item, found at zero or made. Then the balancing line on the
+ * retained-earnings role's account, the remainder of each ledger, and `balanceEntry()`, which adds
+ * nothing. Due dates are Hub's or the records', often past: they are not checked against the
+ * entry date (S04 rule 6 is for new documents).
+ */
+async function openingLines(
+  tx: Transaction,
+  content: Extract<PostingContent, { kind: 'opening' }>,
+  on: string,
+  ledgers: CompanyLedgers,
+  daysOff: readonly number[],
+  lock: boolean,
+): Promise<Built> {
+  const keepsParallel = ledgers.parallel !== null;
+  for (const [index, spec] of content.lines.entries()) {
+    const lineNo = index + 1;
+    if (spec.amountMinor === 0n && spec.stated === undefined) {
+      refuse('VALIDATION_FAILED', 'A measured line of zero amount', { lineNo });
+    }
+    if (spec.stated !== undefined && (spec.stated.parallelMinor === null) === keepsParallel) {
+      refuse('VALIDATION_FAILED', 'A stated line without the parallel amount', { lineNo });
+    }
+    if (spec.stated !== undefined && spec.newItem !== undefined) {
+      refuse('VALIDATION_FAILED', 'A stated line opens no item', { lineNo });
+    }
+  }
+  const values = await dimensionValuesOf(tx, [
+    ...new Set(content.lines.flatMap((spec) => spec.dimensionValueIds)),
+  ]);
+  const chart = await chartOf(tx, [...new Set(content.lines.map((spec) => spec.accountId))]);
+  const { rates, ids } = await ratesOn(tx, content.measuredOn);
+  const context: MeasureContext = {
+    ledgers,
+    on: content.measuredOn,
+    rates,
+    calendar: await publicationCalendar(tx, daysOff),
+  };
+  const newItems: NewItem[] = [];
+  const lines: Line[] = [];
+  for (const [index, spec] of content.lines.entries()) {
+    const lineNo = index + 1;
+    const account = chart.get(spec.accountId);
+    const named = spec.dimensionValueIds.map((id) => values.get(id) as LineDimensionValue);
+    let dimensions = Object.fromEntries(
+      named.map((value) => [value.typeId, value.id]),
+    ) as Dimensions;
+    const origin = spec.fromHub ? 'hub' : 'manual';
+    const amount = money(spec.amountMinor, spec.currency);
+    onLine(lineNo, () =>
+      checkLineAgainstChart({
+        account,
+        currency: spec.currency,
+        dimensions: named,
+        origin,
+        ...(spec.newItem !== undefined && { item: 'new' as const }),
+      }),
+    );
+    if (spec.stated !== undefined) {
+      lines.push({
+        kind: 'stated',
+        account: spec.accountId,
+        dimensions,
+        transaction: amount,
+        bookMinor: spec.stated.bookMinor,
+        parallelMinor: spec.stated.parallelMinor,
+      });
+      continue;
+    }
+    let item: ItemState | null = null;
+    if (spec.newItem !== undefined) {
+      const { reference } = spec.newItem;
+      if (await referenceTaken(tx, spec.accountId, reference)) {
+        refuse('OPEN_ITEM_REFERENCE_TAKEN', 'The reference is used on this account', {
+          reference,
+          lineNo,
+        });
+      }
+      if (
+        newItems.some(
+          (other) => other.accountId === spec.accountId && other.reference === reference,
+        )
+      ) {
+        refuse('OPEN_ITEM_REFERENCE_TAKEN', 'The reference is used twice in the opening', {
+          reference,
+          lineNo,
+        });
+      }
+      const [normal] = await tx
+        .select({ balance: chartAccounts.normalBalance })
+        .from(chartAccounts)
+        .where(eq(chartAccounts.id, spec.accountId));
+      const id = uuidv7();
+      newItems.push({
+        id,
+        accountId: spec.accountId,
+        kind: 'document',
+        reference,
+        dimensions,
+        clientValueId: named.find((value) => value.typeCode === 'client')?.id ?? null,
+        currency: spec.currency,
+        dueOn: spec.newItem.dueOn,
+        documentDate: spec.newItem.documentDate,
+        hubDocument: spec.newItem.hubDocument,
+      });
+      item = {
+        id,
+        kind: 'document',
+        direction: null,
+        opensAs: normal?.balance === 'credit' ? -1 : 1,
+        balance: emptyBalance(spec.currency, keepsParallel),
+      };
+    } else if (account?.itemKind === 'running') {
+      const client = onLine(lineNo, () => clientOf(named, spec.accountId));
+      dimensions = { [client.typeId]: client.id };
+      const existing = await runningItemOf(tx, spec.accountId, client.id, spec.currency);
+      if (existing !== null) {
+        const stored = (await itemsOf(tx, [existing], lock)).get(existing);
+        if (stored === undefined) throw new Error('A running item read and lost');
+        if (stored.state.balance.transaction.amountMinor !== 0n) {
+          refuse('VALIDATION_FAILED', "The client's running item is not at zero", { lineNo });
+        }
+        item = stored.state;
+      } else {
+        const [code] = await tx
+          .select({ code: dimensionValues.code })
+          .from(dimensionValues)
+          .where(eq(dimensionValues.id, client.id));
+        const id = uuidv7();
+        newItems.push({
+          id,
+          accountId: spec.accountId,
+          kind: 'running',
+          reference: code?.code ?? client.id,
+          dimensions,
+          clientValueId: client.id,
+          currency: spec.currency,
+          dueOn: null,
+          documentDate: on,
+          hubDocument: null,
+        });
+        item = {
+          id,
+          kind: 'running',
+          direction: null,
+          balance: emptyBalance(spec.currency, keepsParallel),
+        };
+      }
+    }
+    const target = { account: spec.accountId, dimensions };
+    if (item === null) {
+      lines.push(onLine(lineNo, () => measuredLine({ ...target, amount }, context)));
+      continue;
+    }
+    const moved = onLine(lineNo, () => moveItem(item as ItemState, target, amount, context));
+    if (moved.lines.length !== 1) throw new Error('An opening item moved by more than one line');
+    lines.push(...moved.lines);
+  }
+  const balancing = balancingLine(lines, ledgers, roleTarget('retained_earnings'));
+  const all = balancing === null ? lines : [...lines, balancing];
+  const balanced = withRoleAccounts(
+    balanceEntry({
+      on,
+      ledgers,
+      lines: all,
+      rounding: { account: roleTarget('conversion_rounding') },
+    }),
+    await roleAccounts(tx),
+  );
+  if (balanced.length !== all.length) throw new Error('The opening needed a rounding line');
+  if (balancing !== null) {
+    await checkAgainstChart(tx, balanced.slice(-1), 'manual');
+  }
+  return {
+    lines: balanced.map((line, index) => ({
+      line,
+      memo: content.lines[index]?.memo ?? null,
+      adjusted: false,
+    })),
+    rateIds: ids,
+    newItems,
+    voided: [],
+  };
+}
+
+/**
+ * Whether a document item on the account stands under `reference`: any item but one an opening
+ * opened whose opening entry was reversed (S10 rule 25), so the new opening opens it again.
+ */
+async function referenceTaken(
+  tx: Transaction,
+  accountId: string,
+  reference: string,
+): Promise<boolean> {
+  const result = await tx.execute<{ taken: boolean }>(sql`
+    select exists (
+      select 1 from ${openItems} i
+      where i.kind = 'document' and i.account_id = ${accountId} and i.reference = ${reference}
+        and not (i.source = 'opening' and exists (
+          select 1 from ${journalEntries} r
+          where r.company_id = i.company_id and r.reverses_entry_id = i.opened_by_entry_id
+        ))
+    ) as taken`);
+  return result.rows[0]?.taken === true;
+}
+
+/**
+ * The opening's whole reversal (S10 rule 25): the opening entry, of source `opening`, not reversed,
+ * negated line by line at its amounts (`reverseLines()`: no rate read), each line moving its item
+ * back; every account checked again for its state only. The opening service has checked it is the
+ * company's only entry, which the guards hold again.
+ */
+async function openingReversalLines(
+  tx: Transaction,
+  content: Extract<PostingContent, { kind: 'opening_reversal' }>,
+  on: string,
+  ledgers: CompanyLedgers,
+  lock: boolean,
+): Promise<Built> {
+  const { original, stored, lines, movements } = await storedEntry(tx, content.entryId);
+  if (original.source !== 'opening' || original.reversesEntryId !== null) {
+    refuse('ENTRY_NOT_REVERSIBLE', 'Only an opening entry is reversed as the opening', {
+      entryId: original.id,
+    });
+  }
+  if (original.entryDate !== on) {
+    refuse('VALIDATION_FAILED', 'The opening is reversed on its own date', {
+      entryId: original.id,
+    });
+  }
+  const negated = reverseLines(lines);
+  await checkAgainstChart(tx, negated, 'reversal');
+  const balanced = balanceEntry({
+    on,
+    ledgers,
+    lines: negated,
+    rounding: { account: roleTarget('conversion_rounding') },
+  });
+  if (balanced.length !== negated.length) throw new Error('A reversal needed a rounding line');
+  await itemsOf(
+    tx,
+    movements.map((movement) => movement.itemId),
+    lock,
+  );
+  return {
+    lines: negated.map((line, index) => ({
+      line,
+      memo: stored[index]?.memo ?? null,
+      adjusted: false,
+    })),
+    rateIds: new Map(),
+    newItems: [],
+    voided: [],
+  };
 }
 
 /**
@@ -1741,6 +2115,7 @@ export async function previewPosting(
   const on = request.entryDate;
   const { content } = request;
   checkDates(on, content, ledgers);
+  await checkOpeningPosted(tx, settings.booksStart, content);
   const period = periodOf(on);
   if (isClosedPeriod(await readClosedPeriods(tx), period)) {
     refuse('PERIOD_CLOSED', `The period ${period} is closed`, { period });
@@ -1761,7 +2136,7 @@ export async function previewPosting(
     conversions: conversionsOf(
       line,
       built.rateIds,
-      content.kind === 'manual' || content.kind === 'hub',
+      content.kind === 'manual' || content.kind === 'hub' || content.kind === 'opening',
     ),
     item:
       line.item === undefined
@@ -1926,7 +2301,12 @@ async function writeEntry(
         accountId: item.accountId,
         kind: item.kind,
         reference: item.reference,
-        source: item.hubDocument === null ? ('manual' as const) : ('hub_event' as const),
+        source:
+          entry.source === 'opening'
+            ? ('opening' as const)
+            : item.hubDocument === null
+              ? ('manual' as const)
+              : ('hub_event' as const),
         hubDocument: item.hubDocument,
         dimensionSetId: sets.get(dimensionKey(item.dimensions)) as string,
         clientValueId: item.clientValueId,
@@ -2132,6 +2512,9 @@ async function writeRevaluationReversal(
  */
 export async function post(tx: Transaction, request: PostingRequest): Promise<PostedEntryRef> {
   const companyId = await contextCompany(tx);
+  // Before anything is written: nothing but the opening posts before it (S10 rule 3).
+  const [start] = await tx.select({ booksStart: companySettings.booksStart }).from(companySettings);
+  await checkOpeningPosted(tx, start?.booksStart ?? null, request.content);
   const payloadHash = sha256(canonicalJson(payloadOf(request)));
   const [created] = await tx
     .insert(postingRequests)
@@ -2168,16 +2551,22 @@ export async function post(tx: Transaction, request: PostingRequest): Promise<Po
 
   const built = await buildLines(tx, content, on, ledgers, settings.bulletinDaysOff, true);
   const reversesEntryId =
-    content.kind === 'reversal' || content.kind === 'hub_reversal' ? content.entryId : null;
+    content.kind === 'reversal' ||
+    content.kind === 'hub_reversal' ||
+    content.kind === 'opening_reversal'
+      ? content.entryId
+      : null;
   const hub = hubOf(content);
   const source: EntrySource =
     content.kind === 'carried'
       ? content.source
       : content.kind === 'revaluation'
         ? 'revaluation'
-        : hub === null
-          ? 'manual'
-          : 'hub_event';
+        : content.kind === 'opening' || content.kind === 'opening_reversal'
+          ? 'opening'
+          : hub === null
+            ? 'manual'
+            : 'hub_event';
   const head: Head = { id: headRow.id, entryCount: headRow.entryCount, lastHash: headRow.lastHash };
   const at = { on, fiscalYear, settingsId: settings.id };
   const posted = await writeEntry(tx, companyId, head, at, request.actor, {

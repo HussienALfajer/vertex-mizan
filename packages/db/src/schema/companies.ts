@@ -3,6 +3,7 @@ import {
   bigint,
   boolean,
   check,
+  date,
   index,
   pgTable,
   smallint,
@@ -106,6 +107,13 @@ export const companySettings = pgTable(
      */
     paymentToleranceSypMinor: bigint({ mode: 'bigint' }).notNull().default(sql`100`),
     paymentToleranceUsdMinor: bigint({ mode: 'bigint' }).notNull().default(sql`100`),
+    /**
+     * The books start (S10 rule 1, ADR 0019): the first day of a month, from which the company keeps
+     * its books in Mizan, its opening entry dated on it; null for a company that starts without an
+     * opening. Locked once the company has an entry, a snapshot or an opening (rule 2); never
+     * cleared. Not part of the settings lock, which the opening's posting sets.
+     */
+    booksStart: date(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
     archivedAt: archivedAt(),
@@ -152,6 +160,11 @@ export const companySettings = pgTable(
       sql`${t.bulletinDaysOff} <@ '{1,2,3,4,5,6,7}'::smallint[]
         and cardinality(${t.bulletinDaysOff}) <= 6
         and array_position(${t.bulletinDaysOff}, null) is null`,
+    ),
+    check(
+      'company_settings_books_start',
+      sql`${t.booksStart} is null
+        or (extract(day from ${t.booksStart}) = 1 and ${t.booksStart} >= date '2026-01-01')`,
     ),
     check(
       'company_settings_policy_note_length',

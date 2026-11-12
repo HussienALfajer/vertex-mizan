@@ -252,6 +252,7 @@ describe('accountRoleFits (S02 rule 7)', () => {
       fx_unrealised_gain: ['revenue'],
       fx_unrealised_loss: ['expense'],
       retained_earnings: ['equity'],
+      pre_opening_result: ['equity'],
     });
     for (const role of ACCOUNT_ROLES) {
       for (const accountClass of ACCOUNT_CLASSES) {

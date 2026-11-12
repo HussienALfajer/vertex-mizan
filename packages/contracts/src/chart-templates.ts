@@ -126,7 +126,7 @@ const p = (
 
 const M = { monetary: true } as const;
 
-/** `service-agency@1` (Vertex Media): S02 "Service agency". */
+/** `service-agency@2` (Vertex Media): S02 "Service agency", with S10's `312002` (version 2). */
 const serviceAgencyAccounts: readonly TemplateAccount[] = [
   h('1', 'الأصول', 'Assets'),
   h('11', 'الأصول المتداولة', 'Current assets'),
@@ -236,6 +236,14 @@ const serviceAgencyAccounts: readonly TemplateAccount[] = [
   p('312001', 'الأرباح المحتجزة', 'Retained earnings', 'bs.retained_earnings', {
     role: 'retained_earnings',
   }),
+  // S10 (ADR 0019): the books start's fiscal year's result before the books start (version 2).
+  p(
+    '312002',
+    'نتيجة السنة قبل بدء الدفاتر',
+    'Result of the year before the books start',
+    'bs.retained_earnings',
+    { role: 'pre_opening_result' },
+  ),
   h('313', 'جاري المالك', "Owner's current account"),
   p('313001', 'جاري المالك', "Owner's current account", 'bs.owner_current'),
   h('4', 'الإيرادات', 'Revenue'),
@@ -307,7 +315,7 @@ const serviceAgencyAccounts: readonly TemplateAccount[] = [
 ];
 
 /**
- * `general@1`: the service-agency chart without the agency's accounts (e-wallets, contract assets,
+ * `general@2`: the service-agency chart without the agency's accounts (e-wallets, contract assets,
  * ad platforms, client money, termination fees, project costs), with general equipment names,
  * trade payables, revenue and cost of sales and services, and no account requiring contract,
  * department or service (S02 "General").
@@ -362,7 +370,7 @@ function generalAccounts(): readonly TemplateAccount[] {
 export const CHART_TEMPLATES: readonly ChartTemplate[] = [
   {
     id: 'service-agency',
-    version: 1,
+    version: 2,
     name: 'وكالة خدمات',
     nameLatin: 'Service agency',
     accounts: serviceAgencyAccounts,
@@ -370,7 +378,7 @@ export const CHART_TEMPLATES: readonly ChartTemplate[] = [
   },
   {
     id: 'general',
-    version: 1,
+    version: 2,
     name: 'عام',
     nameLatin: 'General',
     accounts: generalAccounts(),

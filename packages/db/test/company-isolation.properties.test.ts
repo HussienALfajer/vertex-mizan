@@ -28,6 +28,10 @@ import {
   inboundEvents,
   journalBookPrints,
   journalEntries,
+  openingLines,
+  openingRecordFigures,
+  openingSnapshots,
+  openings,
   periods,
   post,
   postingRuleAccounts,
@@ -98,6 +102,10 @@ const COVERED = [
   'service_departments',
   'report_files',
   'journal_book_prints',
+  'opening_snapshots',
+  'openings',
+  'opening_lines',
+  'opening_record_figures',
 ];
 
 const auditRow = fc.record({
@@ -366,26 +374,29 @@ async function seedLedger(tx: Transaction, companyId: string, userId: string, da
   }
 }
 
-/** The entries `seedLedger` and `seedRevaluation` post, each with one audit row. */
-const POSTED = 6;
+/** The entries `seedOpening`, `seedLedger` and `seedRevaluation` post, each with one audit row. */
+const POSTED = 7;
 
 /** The rows each S02, S03 and S04 table holds for a company seeded with `data`. */
 const expectedRows = (data: CompanyData): Record<string, number> => ({
   // S06 adds a contract liability header, its parent and the account; S07 a monetary account and
   // the unrealised gain and loss accounts.
-  chart_accounts: 5 + data.headers.length + 3 + 4 + 3 + 3 + 3,
+  // S10 adds two headers and a postable account under assets and under equity for the opening.
+  chart_accounts: 5 + data.headers.length + 3 + 4 + 3 + 3 + 3 + 6,
   account_required_dimensions: 1,
   account_roles: 3,
   dimension_types: 4,
   // S06 adds a client and a service for its schedule.
   // The clients, S04's value, S06's client and service, and S09's service and department.
-  dimension_values: data.clients.length + 1 + 2 + 2,
+  // S10's client of the records' figure.
+  dimension_values: data.clients.length + 1 + 2 + 2 + 1,
   rate_pairs: data.bookCurrency === 'SYP' ? 1 : 2,
   exchange_rates: data.rates.length + 2,
   bulletin_holidays: data.holidays.length,
   posting_requests: POSTED,
   journal_entries: POSTED,
-  journal_lines: 12,
+  // S10's opening: two stated lines.
+  journal_lines: 14,
   // The expense's and S07's cash entry's two lines convert into the book currency; the reversal
   // carries its amounts, the invoice is in the book currency and a revaluation converts nothing.
   line_conversions: 4,
@@ -403,7 +414,8 @@ const expectedRows = (data: CompanyData): Record<string, number> => ({
   // The expense's two accounts in its currency, the invoice's two in the book currency; S07's cash
   // account in the foreign currency and the gain account in the book currency, in November and
   // again in December.
-  period_balances: 8,
+  // S10's opening: its two accounts in November.
+  period_balances: 10,
   entry_drafts: 1,
   entry_draft_lines: 2,
   entry_attachments: 2,
@@ -429,7 +441,151 @@ const expectedRows = (data: CompanyData): Record<string, number> => ({
   // A draft PDF queued and November's official print, ready with its register row.
   report_files: 2,
   journal_book_prints: 1,
+  // S10: Hub's snapshot, the posted opening, its two lines and the records' figure.
+  opening_snapshots: 1,
+  openings: 1,
+  opening_lines: 2,
+  opening_record_figures: 1,
 });
+
+/**
+ * S10's rows: the company's books start on 1 November, Hub's snapshot as of the eve, the opening's
+ * draft at version 1 with two lines and a records' figure, and its entry posted through the posting
+ * function as the company's first entry: a stated asset and a stated capital, in the book currency.
+ */
+async function seedOpening(tx: Transaction, companyId: string, userId: string) {
+  await addAccount(tx, companyId, '1', { code: '19' });
+  await addAccount(tx, companyId, '19', { code: '191' });
+  const asset = await addAccount(tx, companyId, '191', {
+    code: '191001',
+    kind: 'postable',
+    statementLine: 'bs.ppe',
+  });
+  await addAccount(tx, companyId, '3', { code: '39' });
+  await addAccount(tx, companyId, '39', { code: '391' });
+  const capital = await addAccount(tx, companyId, '391', {
+    code: '391001',
+    kind: 'postable',
+    statementLine: 'bs.share_capital',
+  });
+  const [client] = await tx
+    .select()
+    .from(dimensionTypes)
+    .where(and(eq(dimensionTypes.companyId, companyId), eq(dimensionTypes.code, 'client')));
+  const [value] = await tx
+    .insert(dimensionValues)
+    .values({ companyId, typeId: client?.id as string, code: 'C-OPEN', name: 'عميل الافتتاح' })
+    .returning({ id: dimensionValues.id });
+  const [snapshot] = await tx
+    .insert(openingSnapshots)
+    .values({
+      companyId,
+      apiClientId: uuidv7(),
+      snapshotKey: 'snapshot-generated',
+      asOf: '2026-10-31',
+      generatedAt: new Date('2026-11-01T08:00:00Z'),
+      payload: { as_of: '2026-10-31' },
+      payloadHash: 'b'.repeat(64),
+      invoiceCount: 0,
+      walletCount: 0,
+      milestoneCount: 0,
+      priorDocumentCount: 0,
+    })
+    .returning({ id: openingSnapshots.id });
+  const [opening] = await tx
+    .insert(openings)
+    .values({ companyId, preparedByUserId: userId })
+    .returning();
+  if (!opening || !snapshot || !value) throw new Error('no opening seeded');
+  const settings = await tx.select().from(companySettings);
+  const currency = settings[0]?.bookCurrency as 'SYP';
+  await tx.insert(openingLines).values([
+    {
+      companyId,
+      openingId: opening.id,
+      version: 1,
+      lineNo: 1,
+      accountId: asset,
+      currency,
+      amountMinor: 1000n,
+    },
+    {
+      companyId,
+      openingId: opening.id,
+      version: 1,
+      lineNo: 2,
+      accountId: capital,
+      currency,
+      amountMinor: -1000n,
+    },
+  ]);
+  await tx.insert(openingRecordFigures).values({
+    companyId,
+    openingId: opening.id,
+    version: 1,
+    slot: 'receivable',
+    clientValueId: value.id,
+    currency,
+    amountMinor: 0n,
+  });
+  const actor: AuditActor = {
+    kind: 'person',
+    userId,
+    name: 'شخص مولّد',
+    sessionId: null,
+    requestId: 'request-generated',
+    ipAddress: null,
+    userAgent: null,
+  };
+  const entry = await post(tx, {
+    client: 'manual',
+    idempotencyKey: `opening:${opening.id}`,
+    entryDate: '2026-11-01',
+    description: 'قيد الأرصدة الافتتاحية',
+    reference: null,
+    draftId: null,
+    preparedByUserId: userId,
+    approvedByUserId: null,
+    actor,
+    content: {
+      kind: 'opening',
+      openingId: opening.id,
+      measuredOn: '2026-10-31',
+      today: '2026-11-01',
+      lines: [
+        {
+          accountId: asset,
+          dimensionValueIds: [],
+          currency,
+          amountMinor: 1000n,
+          memo: null,
+          fromHub: false,
+          stated: { bookMinor: 1000n, parallelMinor: null },
+        },
+        {
+          accountId: capital,
+          dimensionValueIds: [],
+          currency,
+          amountMinor: -1000n,
+          memo: null,
+          fromHub: false,
+          stated: { bookMinor: -1000n, parallelMinor: null },
+        },
+      ],
+    },
+  });
+  await tx
+    .update(openings)
+    .set({
+      state: 'posted',
+      entryId: entry.id,
+      snapshotId: snapshot.id,
+      postedByUserId: userId,
+      postedAt: new Date(),
+      fingerprint: 'c'.repeat(64),
+    })
+    .where(eq(openings.id, opening.id));
+}
 
 /**
  * S07's rows: a monetary account in the foreign currency, funded on 6 November at the market rate
@@ -796,6 +952,8 @@ async function seed(userId: string, data: CompanyData): Promise<string> {
       bookAcceptsTransactionRate: false,
       fiscalYearStartMonth: data.fiscalYearStartMonth,
       policyNote: data.policyNote,
+      // S10: the books start, so the opening posts first.
+      booksStart: '2026-11-01',
     });
     for (const entry of data.audit) {
       await tx.insert(auditEntries).values({
@@ -809,6 +967,7 @@ async function seed(userId: string, data: CompanyData): Promise<string> {
       });
     }
     await seedChart(tx, row.id, userId, data);
+    await seedOpening(tx, row.id, userId);
     await seedLedger(tx, row.id, userId, data);
     await seedRevaluation(tx, row.id, userId, data);
     await tx.insert(companyExports).values({ companyId: row.id, requestedByUserId: userId });

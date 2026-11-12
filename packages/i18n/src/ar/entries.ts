@@ -26,6 +26,7 @@ export const entries = {
     carried: 'مبلغ منقول',
     difference: 'فرق صرف محقق',
     rounding: 'سطر تقريب',
+    stated: 'منقول من السجلات',
   } satisfies Record<LineKind, string>,
   filters: {
     label: 'تصفية القيود',

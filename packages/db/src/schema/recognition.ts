@@ -17,6 +17,7 @@ import { companies, SETTINGS_CURRENCY_CODES } from './companies.js';
 import { dimensionValues } from './dimensions.js';
 import { inboundEvents } from './inbox.js';
 import { journalEntries } from './ledger.js';
+import { openings } from './opening.js';
 
 // The recognition module (S06, ADR 0015): one schedule per deferred invoice line and its movements,
 // both append-only company tables under forced RLS. They are written only in the posting
@@ -48,6 +49,8 @@ export const RECOGNITION_MOVEMENT_KINDS = [
   'remainder_refunded',
   // A month released since a credit's or a credit's void's date, recut as of it (owner, 2026-11-11).
   'adjusted',
+  // S10 rule 13: what S06 would have taken off an opening schedule through the eve.
+  'before_opening',
 ] as const;
 
 const listed = (values: readonly string[]) =>
@@ -65,7 +68,10 @@ export const recognitionSchedules = pgTable(
   {
     id: id(),
     companyId: companyId().references(() => companies.id),
-    eventId: uuid().notNull(),
+    /** The `invoice.issued` that opened it; null for one the opening opened (S10 rule 13). */
+    eventId: uuid(),
+    /** The opening that opened it; exactly one of the event and the opening is set. */
+    openingId: uuid(),
     invoiceDocumentId: uuid().notNull(),
     invoiceNumber: text().notNull(),
     lineId: uuid().notNull(),
@@ -93,6 +99,16 @@ export const recognitionSchedules = pgTable(
       columns: [t.companyId, t.eventId],
       foreignColumns: [inboundEvents.companyId, inboundEvents.id],
     }),
+    unique('recognition_schedules_opening_line_key').on(t.companyId, t.openingId, t.lineId),
+    foreignKey({
+      name: 'recognition_schedules_opening_fk',
+      columns: [t.companyId, t.openingId],
+      foreignColumns: [openings.companyId, openings.id],
+    }),
+    check(
+      'recognition_schedules_one_source',
+      sql`(${t.eventId} is null) <> (${t.openingId} is null)`,
+    ),
     foreignKey({
       name: 'recognition_schedules_reissue_fk',
       columns: [t.companyId, t.reissueOfScheduleId],
@@ -234,8 +250,9 @@ export const recognitionMovements = pgTable(
     ),
     check(
       'recognition_movements_credit',
-      sql`(${t.kind} = 'credited') = (${t.creditMinor} is not null)
-        and (${t.creditMinor} is null or ${t.creditMinor} <> 0)`,
+      sql`(${t.kind} = 'credited' and ${t.creditMinor} is not null and ${t.creditMinor} <> 0)
+        or (${t.kind} = 'before_opening' and (${t.creditMinor} is null or ${t.creditMinor} > 0))
+        or (${t.kind} not in ('credited', 'before_opening') and ${t.creditMinor} is null)`,
     ),
   ],
 );

@@ -199,7 +199,7 @@ function termIn(line: Line, ledger: Ledger, currency: CurrencyCode): ExactTerm |
     }
     return asIs;
   }
-  if (line.kind === 'carried') return asIs;
+  if (line.kind === 'carried' || line.kind === 'stated') return asIs;
   if (conversion === null) throw new TypeError('A measured line with no conversion');
   if (convert(transaction, currency, conversion.rate).amountMinor !== amount) {
     throw new TypeError('A measured line whose amount is not the conversion it records');

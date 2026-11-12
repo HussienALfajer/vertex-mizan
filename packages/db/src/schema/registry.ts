@@ -113,6 +113,11 @@ export const tableRegistry = {
   // reports (S09 rules 28–31, 36): the PDF files the worker renders and the journal book's register.
   report_files: { module: 'reports', scope: 'company', kind: 'queue' },
   journal_book_prints: { module: 'reports', scope: 'company', kind: 'append-only' },
+  // opening (S10, ADR 0019): Hub's snapshots, the opening and each version's lines and figures.
+  opening_snapshots: { module: 'opening', scope: 'company', kind: 'append-only' },
+  openings: { module: 'opening', scope: 'company', kind: 'draft' },
+  opening_lines: { module: 'opening', scope: 'company', kind: 'append-only' },
+  opening_record_figures: { module: 'opening', scope: 'company', kind: 'append-only' },
 } as const satisfies Record<string, TableInfo>;
 
 export type TableScope = 'company' | 'platform';

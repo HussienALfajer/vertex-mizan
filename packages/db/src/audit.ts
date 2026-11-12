@@ -188,6 +188,20 @@ export const AUDITED_FIELDS = {
     'contentSha256',
     'fileSha256',
   ],
+  // S10: Hub's opening snapshot, and the opening's saves, posting and reversal.
+  opening_snapshot: ['snapshotKey', 'asOf', 'counts', 'totals'],
+  opening: [
+    'version',
+    'lineCount',
+    'figureCount',
+    'entryId',
+    'snapshotId',
+    'fingerprint',
+    'bookDebitMinor',
+    'parallelDebitMinor',
+    'reversalEntryId',
+    'reason',
+  ],
   receivables_export: [
     'format',
     'asOf',

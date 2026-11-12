@@ -70,7 +70,7 @@ describe('the chart templates (S02 "Templates", drafts under Q3)', () => {
         }
       });
 
-      it('sets each of the six roles once, on an account that fits it', () => {
+      it('sets each of the seven roles once, on an account that fits it', () => {
         const roles = accounts.flatMap((account) => (account.role === null ? [] : [account]));
         expect(roles.map((account) => account.role).sort()).toEqual([...ACCOUNT_ROLES].sort());
         for (const account of roles) {
@@ -126,10 +126,16 @@ describe('the chart templates (S02 "Templates", drafts under Q3)', () => {
     }
   });
 
-  it('keeps the service-agency chart of S02, account by account', () => {
+  it("keeps the service-agency chart of S02, account by account, with S10's 312002", () => {
     const agency = chartTemplate('service-agency').accounts;
-    expect(agency).toHaveLength(91);
-    expect(agency.filter((account) => account.kind === 'postable')).toHaveLength(52);
+    expect(agency).toHaveLength(92);
+    expect(agency.filter((account) => account.kind === 'postable')).toHaveLength(53);
+    expect(agency.find((account) => account.code === '312002')).toMatchObject({
+      kind: 'postable',
+      normalBalance: 'credit',
+      statementLine: 'bs.retained_earnings',
+      role: 'pre_opening_result',
+    });
     expect(agency.find((account) => account.code === '213001')).toEqual({
       code: '213001',
       name: 'أمانات إعلانات العملاء',

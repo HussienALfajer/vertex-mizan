@@ -14,7 +14,12 @@ import {
 describe('API clients', () => {
   it('publishes the systems and scopes of S05 in order', () => {
     expect(API_CLIENT_SYSTEMS).toEqual(['hub']);
-    expect(API_CLIENT_SCOPES).toEqual(['events:write', 'periods:read', 'reconciliation:write']);
+    expect(API_CLIENT_SCOPES).toEqual([
+      'events:write',
+      'periods:read',
+      'reconciliation:write',
+      'opening:write',
+    ]);
     expect(apiClientScopeSchema.safeParse('events:read').success).toBe(false);
   });
 

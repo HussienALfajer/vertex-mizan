@@ -153,7 +153,8 @@ export type Guards = {
  * period balances, the dimension sets; the drafts, their lines and attachments; S04's open items,
  * their movements, due dates and balances; S05's inbox and API clients; S06's recognition schedules
  * and movements; S07's revaluations, and its item movements and balances with revaluations).
- * S07's second PR adds the period close; S08 the reconciliation; S09 the service departments.
+ * S07's second PR adds the period close; S08 the reconciliation; S09 the service departments;
+ * S10 the opening balances.
  */
 export const GUARDS: Guards = {
   functions: [
@@ -336,13 +337,14 @@ BEGIN
     WHERE r.company_id = NEW.company_id AND r.account_id = NEW.id AND r.archived_at IS NULL
       AND NOT (
         NEW.kind = 'postable' AND NEW.blocked_at IS NULL AND NEW.archived_at IS NULL
-        AND CASE r.role
+        AND CASE r.role::text
           WHEN 'conversion_rounding' THEN NEW.class IN ('revenue', 'expense')
           WHEN 'fx_realised_gain' THEN NEW.class = 'revenue'
           WHEN 'fx_unrealised_gain' THEN NEW.class = 'revenue'
           WHEN 'fx_realised_loss' THEN NEW.class = 'expense'
           WHEN 'fx_unrealised_loss' THEN NEW.class = 'expense'
           WHEN 'retained_earnings' THEN NEW.class = 'equity'
+        WHEN 'pre_opening_result' THEN NEW.class = 'equity'
           ELSE false
         END
       )
@@ -423,13 +425,14 @@ BEGIN
     SELECT 1 FROM public.chart_accounts a
     WHERE a.company_id = NEW.company_id AND a.id = NEW.account_id
       AND a.kind = 'postable' AND a.blocked_at IS NULL AND a.archived_at IS NULL
-      AND CASE NEW.role
+      AND CASE NEW.role::text
         WHEN 'conversion_rounding' THEN a.class IN ('revenue', 'expense')
         WHEN 'fx_realised_gain' THEN a.class = 'revenue'
         WHEN 'fx_unrealised_gain' THEN a.class = 'revenue'
         WHEN 'fx_realised_loss' THEN a.class = 'expense'
         WHEN 'fx_unrealised_loss' THEN a.class = 'expense'
         WHEN 'retained_earnings' THEN a.class = 'equity'
+        WHEN 'pre_opening_result' THEN a.class = 'equity'
         ELSE false
       END
     FOR SHARE
@@ -752,6 +755,7 @@ END
       source: `
 DECLARE
   start_month smallint;
+  books_start date;
   first_period text;
   earlier integer;
 BEGIN
@@ -759,6 +763,9 @@ BEGIN
   FROM public.ledger_heads h
   WHERE h.company_id = NEW.company_id
   FOR UPDATE;
+  SELECT s.fiscal_year_start_month, s.books_start INTO start_month, books_start
+  FROM public.company_settings s
+  WHERE s.company_id = NEW.company_id;
   IF TG_OP = 'UPDATE' THEN
     IF (NEW.id, NEW.company_id, NEW.period, NEW.fiscal_year, NEW.created_at)
         IS DISTINCT FROM (OLD.id, OLD.company_id, OLD.period, OLD.fiscal_year, OLD.created_at)
@@ -766,6 +773,13 @@ BEGIN
         ('reopened', 'closed')) THEN
       RAISE EXCEPTION 'periods: period % changes only its state, from % to closed or reopened',
         OLD.period, OLD.state
+        USING ERRCODE = 'restrict_violation';
+    END IF;
+    IF NEW.state = 'closed' AND books_start IS NOT NULL AND NOT EXISTS (
+      SELECT 1 FROM public.openings o
+      WHERE o.company_id = NEW.company_id AND o.state = 'posted'
+    ) THEN
+      RAISE EXCEPTION 'periods: no month closes before the opening: OPENING_NOT_POSTED'
         USING ERRCODE = 'restrict_violation';
     END IF;
     IF NEW.state = 'closed' THEN
@@ -791,13 +805,14 @@ BEGIN
     END IF;
     RETURN NEW;
   END IF;
-  SELECT s.fiscal_year_start_month INTO start_month
-  FROM public.company_settings s
-  WHERE s.company_id = NEW.company_id;
-  IF NOT FOUND OR NEW.state <> 'open'
+  IF start_month IS NULL OR NEW.state <> 'open'
     OR NEW.fiscal_year <> left(NEW.period, 4)::integer
       - (CASE WHEN right(NEW.period, 2)::integer >= start_month THEN 0 ELSE 1 END) THEN
     RAISE EXCEPTION 'periods: period % is made open, in the fiscal year of its month', NEW.period
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF books_start IS NOT NULL AND NEW.period < to_char(books_start, 'YYYY-MM') THEN
+    RAISE EXCEPTION 'periods: period % is before the books start %', NEW.period, books_start
       USING ERRCODE = 'restrict_violation';
   END IF;
   IF EXISTS (
@@ -989,7 +1004,7 @@ DECLARE
   entry record;
   settings record;
 BEGIN
-  SELECT a.kind, a.currency, a.first_posted_at INTO account
+  SELECT a.kind, a.class, a.currency, a.first_posted_at INTO account
   FROM public.chart_accounts a
   WHERE a.company_id = NEW.company_id AND a.id = NEW.account_id
   FOR SHARE;
@@ -1002,11 +1017,20 @@ BEGIN
       account.currency, NEW.currency
       USING ERRCODE = 'restrict_violation';
   END IF;
-  SELECT e.entry_date, e.reverses_entry_id INTO entry
+  SELECT e.entry_date, e.reverses_entry_id, e.source INTO entry
   FROM public.journal_entries e
   WHERE e.company_id = NEW.company_id AND e.id = NEW.entry_id;
   IF NOT FOUND THEN
     RAISE EXCEPTION 'journal_lines: a line belongs to an entry of its company'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF NEW.kind = 'stated' AND entry.source <> 'opening' THEN
+    RAISE EXCEPTION 'journal_lines: a stated line is only on an opening entry'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF entry.source = 'opening' AND account.class IN ('revenue', 'expense') THEN
+    RAISE EXCEPTION 'journal_lines: an opening entry holds the balance sheet only, not account %',
+      NEW.account_id
       USING ERRCODE = 'restrict_violation';
   END IF;
   SELECT s.book_currency, s.parallel_currency INTO settings
@@ -1590,7 +1614,8 @@ BEGIN
   SELECT e.entry_date, e.source, e.reverses_entry_id INTO entry
   FROM public.journal_entries e
   WHERE e.company_id = NEW.company_id AND e.id = line.entry_id;
-  SELECT i.account_id, i.dimension_set_id, i.currency, i.kind, i.source, i.opened_by_entry_id
+  SELECT i.account_id, i.dimension_set_id, i.currency, i.kind, i.source, i.opened_by_entry_id,
+    i.hub_document
     INTO item
   FROM public.open_items i
   WHERE i.company_id = NEW.company_id AND i.id = NEW.item_id;
@@ -1634,7 +1659,8 @@ BEGIN
     RAISE EXCEPTION 'open_item_movements: OPEN_ITEM_DIRECTION: item % opens against its account''s normal balance', NEW.item_id
       USING ERRCODE = 'restrict_violation';
   END IF;
-  IF NEW.adjusted IS DISTINCT FROM (entry.source = 'manual' AND item.source <> 'manual') THEN
+  IF NEW.adjusted IS DISTINCT FROM (entry.source = 'manual' AND item.source <> 'manual'
+      AND NOT (item.source = 'opening' AND item.hub_document IS NULL)) THEN
     RAISE EXCEPTION 'open_item_movements: adjusted exactly when a manual entry moves a % item',
       item.source
       USING ERRCODE = 'restrict_violation';
@@ -2100,11 +2126,18 @@ END
 DECLARE
   account record;
 BEGIN
-  IF NOT EXISTS (
+  IF NEW.event_id IS NOT NULL AND NOT EXISTS (
     SELECT 1 FROM public.inbound_events e
     WHERE e.company_id = NEW.company_id AND e.id = NEW.event_id AND e.type = 'invoice.issued'
   ) THEN
     RAISE EXCEPTION 'recognition_schedules: a schedule is opened by an invoice.issued event'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF NEW.opening_id IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM public.openings o
+    WHERE o.company_id = NEW.company_id AND o.id = NEW.opening_id AND o.state = 'draft'
+  ) THEN
+    RAISE EXCEPTION 'recognition_schedules: a schedule is opened by its opening being posted'
       USING ERRCODE = 'restrict_violation';
   END IF;
   SELECT a.kind, a.class, a.is_control INTO account
@@ -2147,6 +2180,15 @@ BEGIN
   WHERE m.company_id = NEW.company_id AND m.schedule_id = NEW.schedule_id;
   IF (earlier = 0) <> (NEW.kind = 'deferred') THEN
     RAISE EXCEPTION 'recognition_movements: a schedule opens with its one deferred movement'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF NEW.kind = 'before_opening' AND NOT EXISTS (
+    SELECT 1 FROM public.recognition_schedules s
+    JOIN public.journal_entries e ON e.company_id = s.company_id AND e.id = NEW.entry_id
+    WHERE s.company_id = NEW.company_id AND s.id = NEW.schedule_id AND s.opening_id IS NOT NULL
+      AND e.source = 'opening' AND e.reverses_entry_id IS NULL
+  ) THEN
+    RAISE EXCEPTION 'recognition_movements: a before_opening movement is on an opening schedule, on its opening entry'
       USING ERRCODE = 'restrict_violation';
   END IF;
   RETURN NEW;
@@ -2674,6 +2716,308 @@ BEGIN
   END IF;
   RETURN NULL;
 END;
+`,
+    },
+    // S10: the books start, locked once the company has an entry, a snapshot or an opening.
+    {
+      name: 'company_settings_books_start',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+BEGIN
+  IF NEW.books_start IS DISTINCT FROM OLD.books_start AND (
+    NEW.books_start IS NULL
+    OR OLD.books_started_at IS NOT NULL
+    OR EXISTS (
+      SELECT 1 FROM public.opening_snapshots s WHERE s.company_id = OLD.company_id
+    )
+    OR EXISTS (
+      SELECT 1 FROM public.openings o WHERE o.company_id = OLD.company_id
+    )
+  ) THEN
+    RAISE EXCEPTION 'company_settings: the books start of company % is locked: BOOKS_START_LOCKED',
+      OLD.company_id
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  RETURN NEW;
+END
+`,
+    },
+    // S10: a snapshot as of the eve of the books start, none once the opening is posted.
+    {
+      name: 'opening_snapshot_rules',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+DECLARE
+  books_start date;
+BEGIN
+  SELECT s.books_start INTO books_start
+  FROM public.company_settings s
+  WHERE s.company_id = NEW.company_id
+  FOR SHARE;
+  IF books_start IS NULL OR NEW.as_of <> books_start - 1 THEN
+    RAISE EXCEPTION 'opening_snapshots: a snapshot is as of the eve of the books start'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM public.openings o
+    WHERE o.company_id = NEW.company_id AND o.state = 'posted'
+  ) THEN
+    RAISE EXCEPTION 'opening_snapshots: no snapshot once the opening is posted: OPENING_POSTED'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  RETURN NEW;
+END
+`,
+    },
+    // S10: the opening's states, its saves, its posting and its whole reversal.
+    {
+      name: 'opening_rules',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+DECLARE
+  books_start date;
+  entry record;
+  latest uuid;
+BEGIN
+  SELECT s.books_start INTO books_start
+  FROM public.company_settings s
+  WHERE s.company_id = NEW.company_id
+  FOR SHARE;
+  IF books_start IS NULL THEN
+    RAISE EXCEPTION 'openings: an opening is made in a company with a books start: NO_BOOKS_START'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  NEW.updated_at := now();
+  IF TG_OP = 'INSERT' THEN
+    IF NEW.state <> 'draft' OR NEW.version <> 1 OR NEW.snapshot_id IS NOT NULL THEN
+      RAISE EXCEPTION 'openings: an opening is made a draft at its first version'
+        USING ERRCODE = 'restrict_violation';
+    END IF;
+    RETURN NEW;
+  END IF;
+  IF (NEW.id, NEW.company_id, NEW.created_at) IS DISTINCT FROM (OLD.id, OLD.company_id, OLD.created_at)
+  THEN
+    RAISE EXCEPTION 'openings: an opening keeps its id, company and creation'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF OLD.state = 'draft' AND NEW.state = 'draft' THEN
+    IF NEW.version <> OLD.version + 1 THEN
+      RAISE EXCEPTION 'openings: a save adds one to the version of opening %', OLD.id
+        USING ERRCODE = 'restrict_violation';
+    END IF;
+    RETURN NEW;
+  END IF;
+  IF OLD.state = 'draft' AND NEW.state = 'posted' THEN
+    SELECT e.source, e.reverses_entry_id, e.entry_date, e.created_at INTO entry
+    FROM public.journal_entries e
+    WHERE e.company_id = NEW.company_id AND e.id = NEW.entry_id;
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'openings: opening % is posted with its entry', OLD.id
+        USING ERRCODE = 'restrict_violation';
+    END IF;
+    SELECT s.id INTO latest
+    FROM public.opening_snapshots s
+    WHERE s.company_id = NEW.company_id
+    ORDER BY s.received_at DESC, s.id DESC
+    LIMIT 1;
+    IF NEW.version <> OLD.version OR NEW.prepared_by_user_id <> OLD.prepared_by_user_id
+      OR entry.source IS DISTINCT FROM 'opening' OR entry.reverses_entry_id IS NOT NULL
+      OR entry.entry_date <> books_start OR entry.created_at <> now()
+      OR NEW.snapshot_id IS DISTINCT FROM latest THEN
+      RAISE EXCEPTION 'openings: opening % is posted as the opening entry of this transaction, with the latest snapshot',
+        OLD.id
+        USING ERRCODE = 'restrict_violation';
+    END IF;
+    RETURN NEW;
+  END IF;
+  IF OLD.state = 'posted' AND NEW.state = 'reversed' THEN
+    SELECT e.reverses_entry_id, e.created_at INTO entry
+    FROM public.journal_entries e
+    WHERE e.company_id = NEW.company_id AND e.id = NEW.reversal_entry_id;
+    IF NOT FOUND
+      OR (NEW.version, NEW.snapshot_id, NEW.entry_id, NEW.prepared_by_user_id, NEW.posted_by_user_id,
+        NEW.posted_at, NEW.fingerprint)
+        IS DISTINCT FROM (OLD.version, OLD.snapshot_id, OLD.entry_id, OLD.prepared_by_user_id,
+          OLD.posted_by_user_id, OLD.posted_at, OLD.fingerprint)
+      OR entry.reverses_entry_id IS DISTINCT FROM OLD.entry_id OR entry.created_at <> now()
+      OR EXISTS (
+        SELECT 1 FROM public.journal_entries e
+        WHERE e.company_id = NEW.company_id AND e.id NOT IN (OLD.entry_id, NEW.reversal_entry_id)
+      ) THEN
+      RAISE EXCEPTION 'openings: opening % is reversed whole while its entry is the only one: OPENING_NOT_REVERSIBLE',
+        OLD.id
+        USING ERRCODE = 'restrict_violation';
+    END IF;
+    RETURN NEW;
+  END IF;
+  RAISE EXCEPTION 'openings: opening % does not go from % to %', OLD.id, OLD.state, NEW.state
+    USING ERRCODE = 'restrict_violation';
+END
+`,
+    },
+    // S10: an opening's lines and figures written by the save of their version.
+    {
+      name: 'opening_version_rules',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+DECLARE
+  opening record;
+BEGIN
+  SELECT o.state, o.version, o.updated_at INTO opening
+  FROM public.openings o
+  WHERE o.company_id = NEW.company_id AND o.id = NEW.opening_id
+  FOR SHARE;
+  IF NOT FOUND OR opening.state <> 'draft' OR opening.version <> NEW.version
+    OR opening.updated_at <> now() THEN
+    RAISE EXCEPTION '%: a row is written by the save of its draft opening''s version', TG_TABLE_NAME
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  RETURN NEW;
+END
+`,
+    },
+    // S10: only the opening posts before it; nothing before the books start.
+    {
+      name: 'journal_entry_opening_rules',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+DECLARE
+  books_start date;
+BEGIN
+  SELECT s.books_start INTO books_start
+  FROM public.company_settings s
+  WHERE s.company_id = NEW.company_id;
+  IF NEW.source = 'opening' AND (books_start IS NULL OR NEW.entry_date <> books_start) THEN
+    RAISE EXCEPTION 'journal_entries: an opening entry is dated on the books start'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF books_start IS NULL THEN
+    RETURN NEW;
+  END IF;
+  IF NEW.entry_date < books_start THEN
+    RAISE EXCEPTION 'journal_entries: an entry dated % is before the books start %', NEW.entry_date,
+      books_start
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF NEW.source <> 'opening' AND NOT EXISTS (
+    SELECT 1 FROM public.openings o
+    WHERE o.company_id = NEW.company_id AND o.state = 'posted'
+  ) THEN
+    RAISE EXCEPTION 'journal_entries: nothing posts before the opening: OPENING_NOT_POSTED'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  RETURN NEW;
+END
+`,
+    },
+    // S10: an opening entry has its opening at commit.
+    {
+      name: 'journal_entry_opening_recorded',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+BEGIN
+  IF NEW.source <> 'opening' THEN
+    RETURN NULL;
+  END IF;
+  IF NEW.reverses_entry_id IS NULL AND NOT EXISTS (
+    SELECT 1 FROM public.openings o
+    WHERE o.company_id = NEW.company_id AND o.entry_id = NEW.id AND o.state IN ('posted', 'reversed')
+  ) OR NEW.reverses_entry_id IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM public.openings o
+    WHERE o.company_id = NEW.company_id AND o.reversal_entry_id = NEW.id
+      AND o.entry_id = NEW.reverses_entry_id AND o.state = 'reversed'
+  ) THEN
+    RAISE EXCEPTION 'journal entry % is an opening entry without its opening', NEW.id
+      USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NULL;
+END
+`,
+    },
+    // S10: a document's reference unique among the items standing.
+    {
+      name: 'open_item_reference_rules',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+BEGIN
+  IF NEW.kind = 'document' AND EXISTS (
+    SELECT 1 FROM public.open_items i
+    WHERE i.company_id = NEW.company_id AND i.kind = 'document'
+      AND i.account_id = NEW.account_id AND i.reference = NEW.reference AND i.id <> NEW.id
+      AND NOT (i.source = 'opening' AND EXISTS (
+        SELECT 1 FROM public.journal_entries r
+        WHERE r.company_id = i.company_id AND r.reverses_entry_id = i.opened_by_entry_id
+      ))
+  ) THEN
+    RAISE EXCEPTION 'open_items: reference % stands on account % already', NEW.reference,
+      NEW.account_id
+      USING ERRCODE = 'unique_violation';
+  END IF;
+  RETURN NEW;
+END
 `,
     },
   ],
@@ -3697,6 +4041,119 @@ END;
       name: 'journal_book_prints_agree',
       function: 'report_file_print_agrees',
       deferred: true,
+      on: ['INSERT'],
+    },
+    // S10: the opening balances (0053).
+    {
+      table: 'company_settings',
+      name: 'company_settings_books_start',
+      function: 'company_settings_books_start',
+      deferred: false,
+      on: ['UPDATE'],
+    },
+    {
+      table: 'opening_snapshots',
+      name: 'opening_snapshots_refuse_change',
+      function: 'refuse_change',
+      deferred: false,
+      on: ['UPDATE', 'DELETE'],
+    },
+    {
+      table: 'opening_snapshots',
+      name: 'opening_snapshots_refuse_truncate',
+      function: 'refuse_change',
+      deferred: false,
+      on: ['TRUNCATE'],
+    },
+    {
+      table: 'opening_lines',
+      name: 'opening_lines_refuse_change',
+      function: 'refuse_change',
+      deferred: false,
+      on: ['UPDATE', 'DELETE'],
+    },
+    {
+      table: 'opening_lines',
+      name: 'opening_lines_refuse_truncate',
+      function: 'refuse_change',
+      deferred: false,
+      on: ['TRUNCATE'],
+    },
+    {
+      table: 'opening_record_figures',
+      name: 'opening_record_figures_refuse_change',
+      function: 'refuse_change',
+      deferred: false,
+      on: ['UPDATE', 'DELETE'],
+    },
+    {
+      table: 'opening_record_figures',
+      name: 'opening_record_figures_refuse_truncate',
+      function: 'refuse_change',
+      deferred: false,
+      on: ['TRUNCATE'],
+    },
+    {
+      table: 'openings',
+      name: 'openings_refuse_delete',
+      function: 'refuse_delete',
+      deferred: false,
+      on: ['DELETE'],
+    },
+    {
+      table: 'openings',
+      name: 'openings_refuse_truncate',
+      function: 'refuse_delete',
+      deferred: false,
+      on: ['TRUNCATE'],
+    },
+    {
+      table: 'opening_snapshots',
+      name: 'opening_snapshot_rules',
+      function: 'opening_snapshot_rules',
+      deferred: false,
+      on: ['INSERT'],
+    },
+    {
+      table: 'openings',
+      name: 'opening_rules',
+      function: 'opening_rules',
+      deferred: false,
+      on: ['INSERT', 'UPDATE'],
+    },
+    {
+      table: 'opening_lines',
+      name: 'opening_lines_version',
+      function: 'opening_version_rules',
+      deferred: false,
+      on: ['INSERT'],
+    },
+    {
+      table: 'opening_record_figures',
+      name: 'opening_record_figures_version',
+      function: 'opening_version_rules',
+      deferred: false,
+      on: ['INSERT'],
+    },
+    {
+      table: 'journal_entries',
+      name: 'journal_entry_opening_rules',
+      function: 'journal_entry_opening_rules',
+      deferred: false,
+      on: ['INSERT'],
+    },
+    {
+      table: 'journal_entries',
+      name: 'journal_entries_opening_recorded',
+      function: 'journal_entry_opening_recorded',
+      deferred: true,
+      on: ['INSERT'],
+    },
+    {
+      table: 'open_items',
+      name: 'open_item_reference_rules',
+      function: 'open_item_reference_rules',
+      deferred: false,
       on: ['INSERT'],
     },
   ],

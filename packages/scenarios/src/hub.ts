@@ -258,6 +258,155 @@ function payloadOf(
   }
 }
 
+/** The API client a case's Hub sends as (S05; S10's snapshot, `opening:write`). */
+export function hubClientId(companyId: string): string {
+  return hubOf(companyId).clientId;
+}
+
+/**
+ * The opening step's snapshot as Hub sends it (S10 rule 5), from the book's short form: each
+ * invoice as `invoice.issued`'s payload with its total and outstanding, a credit with its invoice's
+ * number, date and rate and its line, a milestone with its project and its done, invoiced when an
+ * invoice of the snapshot bills it, each wallet by its client, and the register of prior documents,
+ * whose payments and wallet entries a later void finds (S10 rule 28).
+ */
+export function snapshotOf(
+  companyId: string,
+  asOf: string,
+  short: {
+    readonly invoices: readonly unknown[];
+    readonly credits: readonly unknown[];
+    readonly milestones: readonly unknown[];
+    readonly wallets: readonly { readonly client: string; readonly balance: bigint }[];
+    readonly prior_documents: {
+      readonly invoices: readonly { readonly invoice: string; readonly issued_on: string }[];
+      readonly payments: readonly {
+        readonly payment: string;
+        readonly receipt: string;
+        readonly invoice: string;
+        readonly paid_on: string;
+      }[];
+      readonly wallet_entries: readonly {
+        readonly entry: string;
+        readonly client: string;
+        readonly entered_on: string;
+      }[];
+      readonly spend_updates: readonly {
+        readonly update: string;
+        readonly campaign: string;
+        readonly client: string;
+        readonly period_to: string;
+      }[];
+      readonly project_expenses: readonly { readonly expense: string; readonly spent_on: string }[];
+      readonly milestone_dones: readonly { readonly milestone: string; readonly done_on: string }[];
+    };
+  },
+): unknown {
+  const hub = hubOf(companyId);
+  const invoices = short.invoices.map((item) => {
+    const { total, outstanding, ...invoice } = item as Short;
+    return {
+      ...payloadOf(companyId, hub, 'invoice.issued', invoice, asOf),
+      total,
+      outstanding,
+    };
+  });
+  const billedOn = new Map<string, string>();
+  for (const invoice of invoices as unknown as {
+    issued_on: string;
+    lines: { milestone_id?: string }[];
+  }[]) {
+    for (const line of invoice.lines) {
+      if (line.milestone_id !== undefined) billedOn.set(line.milestone_id, invoice.issued_on);
+    }
+  }
+  const credits = short.credits.map((item) => {
+    const { invoice, client, contract, currency, syp_per_usd, issued_on, ...line } = item as Short;
+    const issued = payloadOf(
+      companyId,
+      hub,
+      'invoice.issued',
+      {
+        invoice,
+        client,
+        contract,
+        currency,
+        syp_per_usd,
+        issued_on,
+        due_on: issued_on,
+        lines: [line],
+      },
+      asOf,
+    ) as Short & { lines: Short[] };
+    return {
+      invoice: issued.invoice,
+      client: issued.client,
+      contract: issued.contract,
+      currency,
+      syp_per_usd,
+      issued_on,
+      line: issued.lines[0],
+    };
+  });
+  const milestones = short.milestones.map((item) => {
+    const done = payloadOf(companyId, hub, 'milestone.done', item as Short, asOf) as Short & {
+      milestone: { id: string };
+      done_on?: string;
+    };
+    const invoiced = billedOn.get(done.milestone.id);
+    return {
+      ...done,
+      ...(invoiced !== undefined && done.done_on !== undefined && { invoiced_on: invoiced }),
+    };
+  });
+  const register = short.prior_documents;
+  for (const payment of register.payments) {
+    hub.payments.set(payment.payment, { receipt: payment.receipt, invoice: payment.invoice });
+  }
+  for (const entry of register.wallet_entries) hub.walletEntries.set(entry.entry, entry.client);
+  return asJson({
+    as_of: asOf,
+    generated_at: `${asOf}T23:00:00+03:00`,
+    invoices,
+    credits,
+    milestones,
+    wallets: short.wallets.map((wallet) => ({
+      client: valueRef(companyId, 'client', wallet.client),
+      balance: wallet.balance,
+    })),
+    prior_documents: {
+      invoices: register.invoices.map((row) => ({
+        invoice: documentRef(companyId, 'invoice', row.invoice),
+        issued_on: row.issued_on,
+      })),
+      payments: register.payments.map((row) => ({
+        payment: { id: idOf(companyId, 'payment', row.payment), number: row.receipt },
+        invoice: documentRef(companyId, 'invoice', row.invoice),
+        paid_on: row.paid_on,
+      })),
+      wallet_entries: register.wallet_entries.map((row) => ({
+        entry: documentRef(companyId, 'ad_wallet_entry', row.entry),
+        client: valueRef(companyId, 'client', row.client),
+        entered_on: row.entered_on,
+      })),
+      spend_updates: register.spend_updates.map((row) => ({
+        update: documentRef(companyId, 'ad_spend', row.update),
+        campaign: documentRef(companyId, 'campaign', row.campaign),
+        client: valueRef(companyId, 'client', row.client),
+        period_to: row.period_to,
+      })),
+      project_expenses: register.project_expenses.map((row) => ({
+        expense: documentRef(companyId, 'project_expense', row.expense),
+        spent_on: row.spent_on,
+      })),
+      milestone_dones: register.milestone_dones.map((row) => ({
+        milestone: documentRef(companyId, 'milestone', row.milestone),
+        done_on: row.done_on,
+      })),
+    },
+  });
+}
+
 /** A payload as JSON carries it: the book's integers (`bigint`) as JSON numbers. */
 function asJson(value: unknown): unknown {
   if (typeof value === 'bigint') {
@@ -292,7 +441,7 @@ export function envelopeOf(
   return { raw, envelope: parseEventEnvelope(raw) };
 }
 
-function hubActor(context: CaseContext): AuditActor {
+export function hubActor(context: CaseContext): AuditActor {
   return {
     kind: 'api_client',
     clientId: hubOf(context.companyId).clientId,

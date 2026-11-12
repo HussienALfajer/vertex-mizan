@@ -9,6 +9,7 @@ import type {
   StepKind,
 } from './format.js';
 import { event, job } from './hub.js';
+import { opening, reverse as reverseOpening } from './opening.js';
 import type { ExpectedReport } from './report-format.js';
 import { reports, serviceDepartment } from './reports.js';
 import type { NamedValue } from './run.js';
@@ -146,6 +147,8 @@ export const bookHarness: ScenarioHarness = {
     draft,
     discard,
     service_department: serviceDepartment,
+    opening,
+    reverse_opening: reverseOpening,
     ...actions,
   },
   ledger,

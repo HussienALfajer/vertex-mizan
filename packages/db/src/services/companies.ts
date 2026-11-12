@@ -57,6 +57,8 @@ export interface NewCompanyBooks {
   readonly template: ChartTemplateId | null;
   /** Null for a company a server command made. */
   readonly createdByUserId: string | null;
+  /** The books start (S10 rule 1): the first day of a month; none for a company without one. */
+  readonly booksStart?: string | null;
 }
 
 /**
@@ -88,6 +90,7 @@ export async function createCompanyBooks(
       ...ledgerColumns(input.ledgers),
       fiscalYearStartMonth: input.fiscalYearStartMonth,
       policyNote: input.policyNote,
+      booksStart: input.booksStart ?? null,
     })
     .returning();
   if (!company || !settings) throw new Error('The company was not created');

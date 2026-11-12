@@ -38,4 +38,7 @@ export const permissions = {
   'revaluation.post': 'ترحيل إعادة التقييم آخر الشهر',
   'reconciliation.read': 'قراءة المطابقة اليومية مع Hub وتقاريرها',
   'reports.read': 'قراءة التقارير والقوائم المالية وتصديرها وسجل طبعات دفتر اليومية',
+  'opening.read': 'قراءة الأرصدة الافتتاحية ولقطة Hub وفحوصها',
+  'opening.prepare': 'إعداد الأرصدة الافتتاحية: أرصدة السجلات وأرقام المطابقة',
+  'opening.post': 'ترحيل قيد الأرصدة الافتتاحية وعكسه',
 } satisfies Record<Permission, string>;

@@ -21,7 +21,7 @@ export const hubCurrencySchema = z.enum(HUB_CURRENCIES).meta({ id: 'HubCurrency'
 export type HubCurrency = z.infer<typeof hubCurrencySchema>;
 
 /** A date as Hub sends it, `YYYY-MM-DD`. */
-const hubDateSchema = z.iso.date();
+export const hubDateSchema = z.iso.date();
 
 /**
  * Hub's `syp_per_usd`: SYP per one USD as Hub stores it, up to 8 integer and 4 decimal digits,
@@ -34,7 +34,7 @@ export const sypPerUsdSchema = z
   .meta({ id: 'SypPerUsd', description: 'SYP per one USD, as a decimal string' });
 
 /** A positive amount in minor units, as Hub sends it: a JSON integer. */
-const positiveMinorSchema = z.int().min(1).max(Number.MAX_SAFE_INTEGER);
+export const positiveMinorSchema = z.int().min(1).max(Number.MAX_SAFE_INTEGER);
 
 /** A tax amount or base: zero or more, in minor units. */
 const nonNegativeMinorSchema = z.int().min(0).max(Number.MAX_SAFE_INTEGER);
@@ -178,29 +178,42 @@ export type InvoiceLine = z.infer<typeof invoiceLineSchema>;
 /** At most this many lines on one invoice (rule 22). */
 export const INVOICE_LINE_LIMIT = 200;
 
+/** The fields of `invoice.issued`, shared with an invoice of the opening snapshot (S10 rule 5). */
+export const invoiceIssuedFieldsV1 = {
+  invoice: hubDocumentIdSchema,
+  client: hubValueRefSchema,
+  contract: hubContractRefSchema.optional(),
+  currency: hubCurrencySchema,
+  syp_per_usd: sypPerUsdSchema,
+  issued_on: hubDateSchema,
+  due_on: hubDateSchema,
+  lines: z.array(invoiceLineSchema).min(1).max(INVOICE_LINE_LIMIT),
+  /** The project's installments other than its deposit (ADR 0006; S06's milestones). */
+  installment_total: positiveMinorSchema.optional(),
+};
+
+/** The checks of `invoice.issued` beyond its fields, shared with the opening snapshot's invoices. */
+export function checkIssuedInvoice(
+  invoice: {
+    readonly issued_on: string;
+    readonly due_on: string;
+    readonly lines: readonly { readonly id: string }[];
+  },
+  context: z.core.$RefinementCtx,
+): void {
+  if (invoice.due_on < invoice.issued_on) {
+    context.addIssue({ code: 'custom', path: ['due_on'], message: 'Due before its issue' });
+  }
+  // A contract of another client is held for the accountant (rule 9), not refused here.
+  const ids = new Set(invoice.lines.map((line) => line.id));
+  if (ids.size !== invoice.lines.length) {
+    context.addIssue({ code: 'custom', path: ['lines'], message: 'Two lines with one id' });
+  }
+}
+
 export const invoiceIssuedV1Schema = z
-  .object({
-    invoice: hubDocumentIdSchema,
-    client: hubValueRefSchema,
-    contract: hubContractRefSchema.optional(),
-    currency: hubCurrencySchema,
-    syp_per_usd: sypPerUsdSchema,
-    issued_on: hubDateSchema,
-    due_on: hubDateSchema,
-    lines: z.array(invoiceLineSchema).min(1).max(INVOICE_LINE_LIMIT),
-    /** The project's installments other than its deposit (ADR 0006; S06's milestones). */
-    installment_total: positiveMinorSchema.optional(),
-  })
-  .superRefine((invoice, context) => {
-    if (invoice.due_on < invoice.issued_on) {
-      context.addIssue({ code: 'custom', path: ['due_on'], message: 'Due before its issue' });
-    }
-    // A contract of another client is held for the accountant (rule 9), not refused here.
-    const ids = new Set(invoice.lines.map((line) => line.id));
-    if (ids.size !== invoice.lines.length) {
-      context.addIssue({ code: 'custom', path: ['lines'], message: 'Two lines with one id' });
-    }
-  })
+  .object(invoiceIssuedFieldsV1)
+  .superRefine(checkIssuedInvoice)
   .meta({ id: 'InvoiceIssuedV1' });
 
 export type InvoiceIssuedV1 = z.infer<typeof invoiceIssuedV1Schema>;
@@ -707,6 +720,8 @@ export const HOLD_DETAILS = [
   'invoiced_after_cancellation',
   // A credit or a credit's void after a change of its cycle dated later (owner, 2026-11-11).
   'credit_after_later_change',
+  // S10 rule 28: a void, change, archive or reopen of a document only the opening carries.
+  'before_books_start',
 ] as const;
 
 export type HoldDetailCode = (typeof HOLD_DETAILS)[number];

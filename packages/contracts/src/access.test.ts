@@ -48,6 +48,9 @@ describe('the permission map', () => {
         'revaluation.post',
         'reconciliation.read',
         'reports.read',
+        'opening.read',
+        'opening.prepare',
+        'opening.post',
       ],
       accountant: [
         'company.read',
@@ -73,6 +76,8 @@ describe('the permission map', () => {
         'revaluation.post',
         'reconciliation.read',
         'reports.read',
+        'opening.read',
+        'opening.prepare',
       ],
       approver: [
         'company.read',
@@ -112,6 +117,7 @@ describe('the permission map', () => {
         'periods.read',
         'reconciliation.read',
         'reports.read',
+        'opening.read',
       ],
     });
   });
@@ -171,6 +177,9 @@ describe('the permission map', () => {
     const holders = (key: (typeof PERMISSIONS)[number]) =>
       ROLES.filter((role) => rolePermissions[role].includes(key));
     expect(holders('reports.read')).toEqual([...ROLES]);
+    expect(holders('opening.read')).toEqual(['owner', 'accountant', 'auditor']);
+    expect(holders('opening.prepare')).toEqual(['owner', 'accountant']);
+    expect(holders('opening.post')).toEqual(['owner']);
   });
 
   it('lets every role read the company profile, the chart, dimensions and rates', () => {

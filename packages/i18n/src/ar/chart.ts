@@ -154,6 +154,7 @@ export const chart = {
     fx_unrealised_gain: 'حساب إيرادات',
     fx_unrealised_loss: 'حساب مصاريف',
     retained_earnings: 'حساب حقوق ملكية',
+    pre_opening_result: 'حساب حقوق ملكية',
   } satisfies Record<AccountRole, string>,
   picker: {
     placeholder: 'ابحث بالرمز أو الاسم',
@@ -188,6 +189,7 @@ export const chart = {
     fx_unrealised_gain: 'أرباح فروق الصرف غير المحققة',
     fx_unrealised_loss: 'خسائر فروق الصرف غير المحققة',
     retained_earnings: 'الأرباح المحتجزة',
+    pre_opening_result: 'نتيجة السنة قبل بدء الدفاتر',
   } satisfies Record<AccountRole, string>,
   templates: {
     'service-agency': 'وكالة خدمات',

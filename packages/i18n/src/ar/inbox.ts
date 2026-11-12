@@ -63,6 +63,7 @@ export const inbox = {
     schedule_split_at_cancellation: 'قُسّم جدول الفاتورة عند إلغاء المشروع',
     invoiced_after_cancellation: 'فوترة مرحلة بعد إلغاء مشروعها',
     credit_after_later_change: 'تغيير أحدث تاريخًا رُحِّل على دورة الإشعار الدائن',
+    before_books_start: 'وثيقة سابقة لبدء الدفاتر يحملها قيد الافتتاح',
   } satisfies Record<HoldDetailCode, string>,
   slotUnmapped: 'لا حساب مربوط في قواعد الترحيل',
   accountBlocked: 'الحساب المربوط محظور أو مؤرشف',

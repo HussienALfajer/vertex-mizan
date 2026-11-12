@@ -33,7 +33,12 @@ import { companies } from './companies.js';
 export const CLIENT_SYSTEMS = ['hub'] as const;
 
 /** `API_CLIENT_SCOPES` of contracts (a test keeps them equal). */
-export const CLIENT_SCOPES = ['events:write', 'periods:read', 'reconciliation:write'] as const;
+export const CLIENT_SCOPES = [
+  'events:write',
+  'periods:read',
+  'reconciliation:write',
+  'opening:write',
+] as const;
 
 /** `DOCUMENT_TYPES` of contracts (a test keeps them equal). */
 export const SOURCE_DOCUMENT_TYPES = [
