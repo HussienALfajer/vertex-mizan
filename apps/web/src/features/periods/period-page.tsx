@@ -105,10 +105,12 @@ function PeriodView({ data }: { data: PeriodDetail }) {
     .sort()
     .at(-1);
   const passing = data.checklist.every((item) => item.result !== 'failed');
-  // Rule 2's order: not before the first period, and every listed month before it closed.
+  // Rule 2's order: not before the first period, and every listed month before it closed; off
+  // until the list has loaded.
   const inOrder =
     (data.firstPeriod === null || data.period >= data.firstPeriod) &&
-    (list ?? []).every((month) => month.period >= data.period || month.state === 'closed');
+    list !== undefined &&
+    list.every((month) => month.period >= data.period || month.state === 'closed');
   const closable = data.state !== 'closed' && data.ended && passing && inOrder;
   const reopenable =
     data.state === 'closed' && (latestClosed === undefined || latestClosed === data.period);
@@ -161,7 +163,7 @@ function PeriodView({ data }: { data: PeriodDetail }) {
       {mayClose && data.state !== 'closed' && data.ended && !passing && (
         <p className="text-muted-foreground text-sm">{t.close.blocked}</p>
       )}
-      {mayClose && data.state !== 'closed' && data.ended && passing && !inOrder && (
+      {mayClose && list && data.state !== 'closed' && data.ended && passing && !inOrder && (
         <p className="text-muted-foreground text-sm">{t.close.outOfOrder}</p>
       )}
       <Card className="p-6">
