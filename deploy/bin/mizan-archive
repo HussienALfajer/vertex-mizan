@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+# Monthly archive of mizan.vertexmedia.pro (mizan-archive.timer, on the 2nd; ADR 0020, "Monthly
+# archives for 10 years"), as root:
+#   mizan-archive [YYYY-MM]   the month just ended in Damascus by default
+#
+# A pg_dump of the database and a tar of shared/files, with their SHA-256 and the deployed
+# revision in manifest.txt, in one tar encrypted with GnuPG (AES-256, the archive key), uploaded
+# to the archive bucket, whose default retention (Object Lock, compliance, 10 years) locks it.
+# The upload is checked: the object must exist with its lock in compliance mode for 10 years.
+# A month already archived is left alone. Restore: docs/deployment.md, "Restore a monthly archive".
+set -euo pipefail
+umask 077
+# shellcheck disable=SC1091
+. /usr/local/lib/mizan/common.sh
+mizan_load_settings
+
+month=${1:-$(TZ=Asia/Damascus date -d "$(TZ=Asia/Damascus date +%Y-%m-01) -1 day" +%Y-%m)}
+[[ "$month" =~ ^[0-9]{4}-(0[1-9]|1[0-2])$ ]] || { echo "usage: mizan-archive [YYYY-MM]" >&2; exit 1; }
+name="mizan-archive-$month.tar.gpg"
+object="mizan/${month%-*}/$name"
+url="https://$B2_ENDPOINT/$B2_ARCHIVE_BUCKET/$object"
+
+# A signed S3 request with the archive bucket's key; the key reaches curl through its config on
+# stdin, never its arguments. Extra curl arguments follow.
+s3() {
+  printf 'user = "%s:%s"\n' "$B2_ARCHIVE_KEY_ID" "$B2_ARCHIVE_KEY" |
+    curl -sS --fail-with-body --max-time 3600 -K - --aws-sigv4 "aws:amz:$B2_REGION:s3" "$@"
+}
+
+if s3 --head --output /dev/null "$url" 2>/dev/null; then
+  echo "$object is already archived"
+  mizan_stamp "archive-$month"
+  exit 0
+fi
+
+work=$(mktemp -d "$MIZAN_BACKUPS/archive-work/$month.XXXXXX")
+trap 'rm -rf "$work"' EXIT
+mkdir "$work/$month"
+runuser -u postgres -- pg_dump -p "$MIZAN_PG_PORT" --format=custom "$MIZAN_DB" >"$work/$month/database.dump"
+pg_restore --list "$work/$month/database.dump" >/dev/null
+tar -C "$MIZAN_SITE/shared" -cf "$work/$month/files.tar" files
+{
+  echo "Vertex Mizan monthly archive $month (ADR 0020)"
+  echo "created_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  echo "revision=$(cat "$MIZAN_SITE/current/REVISION" 2>/dev/null || echo none)"
+  echo "postgresql=$(mizan_psql 'show server_version')"
+  (cd "$work/$month" && sha256sum database.dump files.tar)
+} >"$work/$month/manifest.txt"
+
+gnupg=$(mktemp -d)
+tar -C "$work" -cf - "$month" |
+  gpg --homedir "$gnupg" --batch --quiet --symmetric --cipher-algo AES256 --compress-algo none \
+    --passphrase-file "$MIZAN_KEYS/archive.key" --output "$work/$name"
+rm -rf "$gnupg"
+size=$(stat -c %s "$work/$name")
+# A single PUT takes up to 5 GB; past that the upload needs multipart (docs/deployment.md).
+[ "$size" -lt 5000000000 ] || { echo "the archive is $size bytes, over a single upload" >&2; exit 1; }
+sha=$(sha256sum "$work/$name" | cut -d' ' -f1)
+md5=$(openssl dgst -md5 -binary "$work/$name" | base64)
+
+s3 --output /dev/null -T "$work/$name" \
+  -H "x-amz-content-sha256: $sha" -H "Content-MD5: $md5" -H "x-amz-meta-sha256: $sha" "$url"
+
+headers=$(s3 --head "$url")
+mode=$(printf '%s' "$headers" | tr -d '\r' | sed -n 's/^x-amz-object-lock-mode: *//Ip')
+until=$(printf '%s' "$headers" | tr -d '\r' | sed -n 's/^x-amz-object-lock-retain-until-date: *//Ip')
+length=$(printf '%s' "$headers" | tr -d '\r' | sed -n 's/^content-length: *//Ip')
+[ "$length" = "$size" ] || { echo "uploaded $length bytes of $size" >&2; exit 1; }
+[ "$mode" = COMPLIANCE ] || { echo "$object has lock mode '${mode:-none}', not COMPLIANCE" >&2; exit 1; }
+# Ten years, less a day of margin for the bucket's own rounding.
+[ -n "$until" ] && [ "$(date -d "$until" +%s)" -ge "$(date -d '+3649 days' +%s)" ] ||
+  { echo "$object is locked until '${until:-never}', not 10 years" >&2; exit 1; }
+
+logger -t mizan-archive "archived $object ($size bytes, sha256 $sha), locked until $until"
+mizan_stamp "archive-$month"
