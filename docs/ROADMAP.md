@@ -106,7 +106,9 @@ Scope: `docs/product/phase-1-scope.md`. One spec per line, each through `/spec` 
 - [ ] The accountants' review of the chart templates, published as a new template version before Vertex Media's production company is created (Q3)
 - [ ] Inquiry with the tax authority about program approval (Q8)
 - [ ] Hub's side of the integration, in Hub's sessions (ADR 0006, 0008, Q5)
-- [ ] Deployment and backup ADR in force: point-in-time recovery, encrypted off-server copies, a restore drill (Q2); no real company data before it
+- [~] Deployment and backup ADR in force: point-in-time recovery, encrypted off-server copies, a restore drill (Q2); no real company data before it
+  - [x] ADR 0020 written and accepted (owner, 2026-11-13): Mizan's own PostgreSQL 17 cluster on `127.0.0.1:5433`, pgBackRest with 35 days of point-in-time recovery in Backblaze B2, monthly archives under a 10-year Object Lock, restic for files and configuration, keys with two copies held by the owner, monthly automatic and quarterly manual restore drills
+  - [ ] In force: the deployment PR deployed, the first full backup in B2 with continuous log archiving, the first monthly drill passed and both copies of every key confirmed by the owner
 - [ ] Production: Vertex Media's books live; a real month closed (the scope's "Done when")
 
 ## Phase 2 — Cash, expenses, suppliers, statements, close

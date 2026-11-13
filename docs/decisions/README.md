@@ -5,7 +5,7 @@ Short records of decisions that shape the system. Each has a status: **Accepted*
 | # | Decision | Status |
 |---|---|---|
 | [0001](0001-vertex-mizan-product.md) | Vertex Mizan: a multi-company accounting product with a permanent core, optional modules and an integration layer | Accepted |
-| [0002](0002-stack-and-repository.md) | Stack and repository: Vertex Hub's stack, one monorepo, a pure ledger package | Accepted (versions amended by 0008) |
+| [0002](0002-stack-and-repository.md) | Stack and repository: Vertex Hub's stack, one monorepo, a pure ledger package | Accepted (versions amended by 0008; hosting refined by 0020) |
 | [0003](0003-tenancy-and-access.md) | Tenancy and access: companies isolated by forced row-level security, people with memberships, API clients per company | Accepted (attachments amended by 0008) |
 | [0004](0004-money-and-currencies.md) | Money and currencies: integer minor units, quoted rates, three amounts on every line | Superseded by 0007 |
 | [0005](0005-ledger-invariants.md) | Ledger invariants: guaranteed by the database, written by one posting function, proven by a hash chain and the scenario book | Accepted (amended by 0008 and 0012; currencies in 0007) |
@@ -23,3 +23,4 @@ Short records of decisions that shape the system. Each has a status: **Accepted*
 | [0017](0017-daily-reconciliation.md) | Daily reconciliation: a per-event report by accounting date, the latest report counts, no acceptance | Accepted (amends 0006) |
 | [0018](0018-reports-presentation-and-journal-book.md) | Reports: presentation from the ledger, the journal book's pages, the service's dated department | Accepted (refines 0007, 0008) |
 | [0019](0019-opening-balances-and-history-replay.md) | Opening balances and the history replay: a books start, Hub's snapshot, one opening entry, the replay by accounting date | Accepted (amends 0006, 0007, 0017, phase 1 scope §4) |
+| [0020](0020-deployment-and-backups.md) | Deployment and backups: the shared server, a PostgreSQL cluster of Mizan's own, point-in-time recovery and encrypted off-server copies | Accepted |
