@@ -23,7 +23,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` done. Phases are 
 - [x] App skeletons: api (NestJS 12, nestjs-pino, Standard Schema validation, `/api/health` with 503 when the database is down, the committed OpenAPI document with drift and breaking-change checks), worker (application context, pg-boss as `mizan_queue` in `pgboss`, heartbeat job), both started from their builds in CI (PR 7, #17)
 - [x] The test and CI model from Vertex Hub (`docs/testing.md`): `pnpm verify` (each check once, logs in `.verify/`, the changed E2E specs), the `test-guard` hook, `isolate: false` for `packages/db`, agent rules and skills on `pnpm verify`, CI ready for Turborepo's remote cache (off until the owner adds the secrets)
 - [x] Web skeleton (PR 8, #19): `apps/web` (Vite, React 19, TanStack Router and Query, Tailwind 4), the RTL shell on the design system (Vertex Green sidebar, a `Sheet` on phones, command palette, theme toggle, system status from `/api/health`), the design-system page moved from `packages/ui`'s preview with Amount and Amount input; Playwright on the production build with RTL screenshots light and dark at 360, 768 and 1280 px, the whole suite on two CI shards that the gate waits for
-- [~] Deployment skeleton on the Vertex server at `mizan.vertexmedia.pro`: `deploy/` written (ADR 0020, `docs/deployment.md`); provisioning and the first deploy wait for the owner (DNS, B2, SMTP, the alert address)
+- [x] Deployment skeleton on the Vertex server at `mizan.vertexmedia.pro`: `deploy/` (ADR 0020, `docs/deployment.md`), provisioned and first deployed on 2026-11-13 (#107, #108, #109)
 - [x] CI migration check that refuses guard-weakening SQL (ADR 0008), with `UPDATE`, `DELETE`, `TRUNCATE`, `MERGE`, upserts, `DROP TABLE`, renames, dropped columns, type changes, inheritance and partitions on the registry's append-only tables, and `CREATE OR REPLACE TRIGGER`, `CREATE RULE`, `DROP OWNED` and enum value renames anywhere; it fails when `packages/db` has no migration, a nested one or no registry
 
 ## Phase 1 — The core and the posting API
@@ -109,7 +109,8 @@ Scope: `docs/product/phase-1-scope.md`. One spec per line, each through `/spec` 
 - [~] Deployment and backup ADR in force: point-in-time recovery, encrypted off-server copies, a restore drill (Q2); no real company data before it
   - [x] ADR 0020 written and accepted (owner, 2026-11-13): Mizan's own PostgreSQL 17 cluster on `127.0.0.1:5433`, pgBackRest with 35 days of point-in-time recovery in Backblaze B2, monthly archives under a 10-year Object Lock, restic for files and configuration, keys with two copies held by the owner, monthly automatic and quarterly manual restore drills
   - [x] The deployment PR (`feat/deployment`): `deploy/` (provisioning, atomic deploys with an incremental backup before the migrations, the `17/mizan` cluster with pgBackRest to a local and a B2 repository, the 14-day dumps, restic, the monthly Object Lock archive, the monthly restore drill with `drill:check`, the backup monitor, the health check and email alerts, nginx, systemd, logrotate), `docs/deployment.md` and `docs/operations/restore-drills.md`
-  - [ ] In force: the deployment PR deployed, the first full backup in B2 with continuous log archiving, the first monthly drill passed and both copies of every key confirmed by the owner
+  - [x] Deployed (2026-11-13), the first full backup in B2 with continuous log archiving, the first drill passed
+  - [ ] In force: both copies of every key confirmed by the owner
 - [ ] Production: Vertex Media's books live; a real month closed (the scope's "Done when")
 
 ## Phase 2 — Cash, expenses, suppliers, statements, close

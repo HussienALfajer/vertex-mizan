@@ -39,3 +39,4 @@ In January, April, July and October, with the owner:
 
 | Date | Kind | Target time (UTC) | Source | Duration | Result | By |
 |---|---|---|---|---|---|---|
+| 2026-11-13 | First monthly drill, run by hand after provisioning (ADR 0020, condition 3) | end of the archive: last commit 14:23:30 | repo2 (B2), full backup `20261113-150831F` | 3 minutes | passed (`restore drill: ok`; no company yet) | Claude Code, for the owner |

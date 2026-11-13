@@ -10,7 +10,7 @@ Server work is outward-facing: the owner approves provisioning, deploys, restore
 |---|---|---|
 | Server | the Vertex VPS (`ssh vertex`, `109.199.111.169`), shared with Vertex Hub: Contabo, Ubuntu 24.04, 6 vCPU, 11 GiB RAM, 4 GiB swap, 129 GB free disk on 2026-11-13 | CONFIRMED (read on the server, 2026-11-13) |
 | Server country | France, by IP geolocation (ipinfo.io); the server's clock is `Europe/Berlin` | REPORTED |
-| B2 region of both buckets | to be written here when the owner creates the buckets (`B2_REGION` in `/etc/mizan/backup.env`) | open |
+| B2 region of both buckets | `us-east-005` (United States, East), the region of the owner's B2 account; buckets `vertex-mizan-backup` and `vertex-mizan-archive` | CONFIRMED (the buckets' endpoint `s3.us-east-005.backblazeb2.com`, 2026-11-13) |
 
 The data-residency statement for customers stays open in Q7 until phase 4.
 
