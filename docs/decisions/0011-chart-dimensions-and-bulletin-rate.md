@@ -25,5 +25,5 @@ S02 (`docs/specs/S02-chart-dimensions-rates.md`) defines the chart of accounts, 
 - `packages/ledger`'s `rateInForce()` and `policyRate()` take the publication calendar, and the bulletin lookup gains property tests.
 - The pre-close checklist (S07) checks that every publication day of the month has its bulletin.
 - S03 stores on each converted line the rate row it used, and marks an account's first posted line.
-- The chart templates are drafts until Syrian accountants review them (open question Q3). The structure above does not depend on that review.
+- The chart templates were drafts until reviewed (open question Q3). The owner decided on 2026-11-13 that Claude Code's review replaces the Syrian accountants' (`docs/audits/2026-11-13-chart-templates-review.md`); its changes are the templates' version 3. The structure above did not change.
 - A third-currency bulletin published weekly needs a per-pair schedule (open question Q10).
