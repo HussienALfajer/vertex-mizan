@@ -193,7 +193,7 @@ test.describe('/opening', () => {
   });
 
   test('a stale read refused OPENING_CHANGED is read again under a notice', async ({ page }) => {
-    await answer(page, 'GET', '/opening', { status: 200, json: readyView });
+    const reads = await answer(page, 'GET', '/opening', { status: 200, json: readyView });
     const posts = await answer(page, 'POST', '/opening/post', refusal(409, 'OPENING_CHANGED'));
     await page.goto('/opening');
     await page.getByRole('button', { name: t.actions.post }).click();
@@ -202,7 +202,43 @@ test.describe('/opening', () => {
       .getByRole('button', { name: t.postDialog.submit })
       .click();
     await expect.poll(() => posts.length).toBe(1);
+    // Read again, and the notice stays over the new read.
+    await expect.poll(() => reads.length).toBeGreaterThan(1);
+    await expect(page.getByRole('alertdialog')).toHaveCount(0);
     await expect(page.getByRole('alert').filter({ hasText: t.actions.changed })).toBeVisible();
+  });
+
+  test('a blank row inserted between saved lines leaves each line its own computed amounts', async ({
+    page,
+  }) => {
+    await answer(page, 'GET', '/opening', { status: 200, json: readyView });
+    await page.goto('/opening');
+    const grid = page.getByRole('grid', { name: t.records.grid });
+    // The cash, monetary, measured at the eve's market rate in the parallel ledger.
+    await expect(grid.locator('[data-row="0"][data-column="5"]')).toContainText('118.0000');
+    await grid.locator('[data-row="0"][data-column="1"]').click();
+    await page.keyboard.press('Control+Insert');
+    await expect(grid.locator('[data-row="1"][data-column="1"]')).toContainText('111001');
+    await expect(grid.locator('[data-row="1"][data-column="5"]')).toContainText('118.0000');
+    await expect(grid.locator('[data-row="1"][data-column="7"]')).toHaveText('16,949.15');
+    await expect(grid.locator('[data-row="0"][data-column="5"]')).toHaveText('');
+    // The capital, stated, keeps its own typed parallel amount.
+    await expect(grid.locator('[data-row="2"][data-column="5"]')).toHaveText(t.records.stated);
+    await expect(grid.locator('[data-row="2"][data-column="7"]')).toHaveText('10,000.00');
+  });
+
+  test('a read on focus keeps what was typed', async ({ page }) => {
+    const reads = await answer(page, 'GET', '/opening', { status: 200, json: failingView });
+    await page.goto('/opening');
+    const funds = step(page, 'agreement').getByRole('textbox', {
+      name: `${t.agreement.records} · ${t.agreement.slots.ad_funds} · USD`,
+    });
+    await funds.fill('500');
+    await funds.press('Enter');
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    await page.evaluate(() => window.dispatchEvent(new Event('visibilitychange')));
+    await expect(funds).toHaveValue('500.00');
+    expect(reads).toHaveLength(1);
   });
 
   test('posted: read only with its entry, and reversed by the owner with a reason', async ({
@@ -317,8 +353,11 @@ test.describe('the opening entry', () => {
 
   test('is marked "قيد افتتاحي" with the way to the opening', async ({ page }) => {
     await answer(page, 'GET', `/entries/${openingEntry.id}`, { status: 200, json: openingEntry });
+    await answer(page, 'GET', '/opening', { status: 200, json: postedView });
     await page.goto(`/entries/${openingEntry.id}`);
     await expect(page.locator('[data-slot="opening-entry-badge"]')).toHaveText(t.entry.badge);
+    // The snapshot it posted with.
+    await expect(page.getByText(/كما في 2026-09-30/)).toBeVisible();
     await expect(page.getByRole('link', { name: t.entry.description })).toHaveAttribute(
       'href',
       '/opening',

@@ -12,5 +12,7 @@ export function openingQuery(companyId: string) {
     queryKey: ['opening', companyId],
     queryFn: () => api('GET', '/opening', { company: companyId, schema: openingViewSchema }),
     retry: false,
+    // The page holds a working copy of the draft: a read on focus would start it over.
+    refetchOnWindowFocus: false,
   });
 }

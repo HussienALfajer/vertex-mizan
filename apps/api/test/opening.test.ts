@@ -782,6 +782,10 @@ describe('/api/opening (S10 rules 10–26)', () => {
     for (const role of ['viewer', 'approver'] as const) {
       const member = await book.join(role);
       expect((await member.browser.get('/api/opening')).body.code, role).toBe('FORBIDDEN');
+      expect(
+        (await member.browser.get('/api/opening/export', { part: 'preview' })).body.code,
+        role,
+      ).toBe('FORBIDDEN');
     }
     const accountant = await book.join('accountant');
     expect((await accountant.browser.get('/api/opening')).status).toBe(200);
@@ -812,6 +816,19 @@ describe('/api/opening (S10 rules 10–26)', () => {
     expect(read.snapshot).toBeNull();
     expect(read.hubItems).toEqual([]);
     expect(read.schedules).toEqual([]);
+    expect(read.agreement).toEqual([]);
+    // Its export holds nothing of the other company's: the heading and the columns only.
+    const mineRows = await workbookRows(
+      (await mine.owner.browser.download('/api/opening/export', { part: 'agreement' }))
+        .body as Buffer,
+    );
+    expect(mineRows.length).toBeGreaterThan(6);
+    const theirsRows = await workbookRows(
+      (await theirs.owner.browser.download('/api/opening/export', { part: 'agreement' }))
+        .body as Buffer,
+    );
+    expect(theirsRows).toHaveLength(5);
+    expect(theirsRows[4]?.[0]).toBe('الحساب');
   });
 
   it('is guarded', async () => {

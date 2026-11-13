@@ -84,6 +84,8 @@ export function OpeningPage() {
   const catalog = useDimensionCatalog(companyId);
   // Kept above the draft's working copy, which a new view starts over.
   const [notice, setNotice] = useState<Notice>(null);
+  // Bumped when a stale read is read again (`OPENING_CHANGED`): the working copy starts over.
+  const [resets, setResets] = useState(0);
 
   const header = <PageHeader title={t.title} description={t.description} />;
   if (opening.isError && hasCode(opening.error, 'NO_BOOKS_START')) {
@@ -134,13 +136,17 @@ export function OpeningPage() {
       {header}
       {/* A new view (a save, a read again) starts the draft's working copy over. */}
       <Opening
-        key={`${opening.data.version}:${opening.data.state ?? 'none'}:${opening.dataUpdatedAt}`}
+        key={`${opening.data.version}:${opening.data.state ?? 'none'}:${resets}`}
         view={opening.data}
         accounts={accounts.data}
         catalog={catalog}
         ledgers={ledgers}
         notice={notice}
         onNotice={setNotice}
+        onReadAgain={async () => {
+          await opening.refetch();
+          setResets((count) => count + 1);
+        }}
       />
     </>
   );
@@ -156,6 +162,7 @@ function Opening({
   ledgers,
   notice,
   onNotice: setNotice,
+  onReadAgain,
 }: {
   view: OpeningViewAnswer;
   accounts: readonly Account[];
@@ -163,6 +170,8 @@ function Opening({
   ledgers: LedgerCurrencies;
   notice: Notice;
   onNotice: (notice: Notice) => void;
+  /** Reads the opening again and starts the working copy over from it. */
+  onReadAgain: () => Promise<void>;
 }) {
   const { companyId, me } = useCompany();
   const queryClient = useQueryClient();
@@ -193,12 +202,13 @@ function Opening({
     JSON.stringify(input) !== JSON.stringify(savedInput) || typedRows.length !== input.lines.length;
   const holdsRefusedText = gridRefusal !== null || amountErrors.size > 0;
 
-  // The saved preview's records lines, in order, are the saved rows' (rule 23).
+  // The saved preview's records lines, in order, are the saved lines': the typed rows, a blank
+  // row left out as the save leaves it out (rule 23).
   const recordsPreview = view.lines.filter((line) => line.source === 'records');
   const computedOf = new Map(
     dirty
       ? []
-      : rows.flatMap((row, index) => {
+      : typedRows.flatMap((row, index) => {
           const line = recordsPreview[index];
           return line ? [[row.key, line] as const] : [];
         }),
@@ -224,7 +234,7 @@ function Opening({
     onError: async (failure) => {
       if (hasCode(failure, 'OPENING_CHANGED')) {
         setNotice('changed');
-        await queryClient.invalidateQueries({ queryKey: ['opening', companyId] });
+        await onReadAgain();
       }
     },
   });
@@ -408,6 +418,7 @@ function Opening({
         description={t.postDialog.description}
         submitLabel={t.postDialog.submit}
         onConfirm={async () => {
+          setNotice(null);
           try {
             await run(() =>
               api('POST', '/opening/post', {
@@ -418,14 +429,12 @@ function Opening({
             );
           } catch (failure) {
             if (!hasCode(failure, 'OPENING_CHANGED')) throw failure;
+            // Read again under the notice; the dialog closes on the new view.
             setNotice('changed');
-            await queryClient.invalidateQueries({ queryKey: ['opening', companyId] });
+            await onReadAgain();
           }
         }}
-        onDone={async () => {
-          setNotice(null);
-          await invalidate();
-        }}
+        onDone={invalidate}
       />
       <ReasonDialog
         open={reversing}

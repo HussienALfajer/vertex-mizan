@@ -285,6 +285,9 @@ export const opening = {
     badge: 'قيد افتتاحي',
     link: 'الأرصدة الافتتاحية',
     description: 'قيد الأرصدة الافتتاحية من لقطة Hub والسجلات القديمة.',
+    snapshot: 'لقطة Hub',
+    snapshotText: 'كما في {asOf}، وصلت في {at}',
+    noSnapshot: 'بلا لقطة من Hub',
   },
   /** `/settings/company` (S10 rules 1–2). */
   booksStart: {

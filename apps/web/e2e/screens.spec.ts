@@ -1121,6 +1121,9 @@ for (const colorScheme of ['light', 'dark'] as const) {
           await page.route(`**/api/entries/${openingEntry.id}`, (route) =>
             route.fulfill({ status: 200, json: openingEntry }),
           );
+          await page.route('**/api/opening', (route) =>
+            route.fulfill({ status: 200, json: postedView }),
+          );
           await page.goto(`/entries/${openingEntry.id}`);
           await expect(page.locator('[data-slot="opening-entry-badge"]')).toBeVisible();
           await expectNoPageOverflow(page);
