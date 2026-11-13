@@ -107,6 +107,8 @@ export const AUDITED_FIELDS = {
     // S04: the items its lines moved, and the reversal a void's difference entry follows.
     'items',
     'follows',
+    // S10 rule 28: the opening schedules its lines cleared.
+    'schedules',
   ],
   // The drafts of manual entries and their attachments (S03 PR 2).
   entry_draft: [

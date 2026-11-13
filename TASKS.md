@@ -30,13 +30,13 @@ Plan approved by the owner (2026-11-13, in the session).
 - [x] checks and reviewers (`reviewer` and `accountant-reviewer`: the opening column's drill-down on the trial balance screen, and the `reviewer` the year's note on the balance sheet screen, fixed in 914158d and re-reviewed clean; `pnpm verify --e2e-all` passes on 914158d, 5m 25s), PR with auto-merge and Auto-fix
 
 ## PR 4 — Documents before the books start (contracts, ledger, db, scenarios, api, worker) · `feat/s10-before-books-start`
-- [ ] contracts and ledger: a manual line's `schedule` (Hub's invoice and line), the residual on retained earnings of a correction on its own (rule 28), the refusals `VALIDATION_FAILED`
-- [ ] db: the register of prior documents read from the posted snapshot (an expression or GIN index); the holds `before_books_start` in the inbox for the event types of rule 28; a held opening void freezing its schedules' release and making a credit to their cycles wait; on dismissal or a resolution that leaves a schedule, each missed month released on its own last day, then the waiting events retried; rule 29's reclassification from the books start; tests
-- [ ] scenarios: the register, the `schedule` line; `opening/before-books-start` `Approved (owner, 2026-11-12)`, its seven cases run
-- [ ] api and worker: the manual line's `schedule`; the release job honouring the freeze; tests of every event type of rule 28
-- [ ] bridge: OpenAPI regenerated, `pnpm check:openapi` passes
-- [ ] wiring, docs (`docs/ROADMAP.md`)
-- [ ] checks and reviewers (`reviewer`, `accountant-reviewer`), PR with auto-merge and Auto-fix
+- [x] contracts and ledger: a draft line's `scheduleId` (an opening schedule, as `/api/revenue` lists it with Hub's invoice and line), the residual on retained earnings of a correction on its own (`ManualEntry.retainedEarnings`, rule 28), the refusal `VALIDATION_FAILED` naming the line
+- [x] db: the register of prior documents read from the posted snapshot by containment (`aboutPriorDocument()`, GIN index, 0056); the holds `before_books_start` for the event types of rule 28, after `PERIOD_CLOSED` and an opening invoice's standing settlements (`OPEN_ITEM_HAS_SETTLEMENTS`); a held opening void freezing its schedules' release and a credit to their cycles waiting behind it (order key `invoice:<id>`); on dismissal or resolution each missed month released on its own last day, then the waiting events retried; the manual line's `scheduleId` in `post()` and `entry_draft_lines.schedule_id` (0056); rule 29's reclassification needed no change (the third case runs); tests in `test/opening.test.ts`
+- [x] scenarios: the register, the `schedule` line (`scheduleIdOf()`); `opening/before-books-start` `Approved (owner, 2026-11-12)`, no expected value changed, its seven cases run (the book: 252 of 252)
+- [x] api and worker: the drafts' `scheduleId`; the release job honours the freeze through `releaseMonth()` (no worker change; its db test); tests of every event type of rule 28 in `apps/api/test/opening.test.ts`
+- [x] bridge: OpenAPI regenerated (`DraftLine` and `DraftLineInput` gain `scheduleId`), `pnpm check:openapi` passes
+- [x] wiring, docs (`docs/ROADMAP.md`, the `CLAUDE.md` of contracts, ledger, db, scenarios and api)
+- [x] checks and reviewers (`reviewer` and `accountant-reviewer`: a hand reversal of a correction that cleared an opening schedule, and the `reviewer` another company's `scheduleId` untested, fixed in df7f42b and re-reviewed clean; `pnpm verify --e2e-all` passes on df7f42b, 6m 49s), PR with auto-merge and Auto-fix
 
 ## PR 5 — The screens (ui, web, e2e) · `feat/s10-screens`
 - [ ] ui: any component `/opening` needs that `packages/ui` lacks (a step layout, the agreement table), tested, both densities, on the design-system page

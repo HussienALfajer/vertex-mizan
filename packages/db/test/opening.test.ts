@@ -7,6 +7,7 @@ import {
   incomeStatementQuerySchema,
   OPENING_STATES,
   openingSnapshotSchema,
+  parseEventEnvelope,
   REVENUE_MOVEMENT_KINDS,
   reportLinesQuerySchema,
   saveOpeningSchema,
@@ -24,6 +25,7 @@ import {
   createCompanyBooks,
   dimensionTypes,
   dimensionValues,
+  dismissEvent,
   journalEntries,
   journalLines,
   OPENING_ROW_STATES,
@@ -48,6 +50,9 @@ import {
   recognitionMovements,
   recognitionSchedules,
   recordRate,
+  releaseMonth,
+  resolveEvent,
+  retryFreed,
   reverseOpening,
   saveOpening,
   type Transaction,
@@ -1081,5 +1086,303 @@ describe('the opening in the reports (S10 rules 31–33)', () => {
       ),
     );
     expect(income.header.current.marks).not.toContain('pre_opening_result_in_equity');
+  });
+});
+
+describe('documents before the books start (S10 rule 28)', () => {
+  const INV_9 = { id: ids(9201), number: 'INV-2026-9' };
+
+  /** A Hub event received as the snapshot's client, dated `on`, with the clock on `today`. */
+  async function receive(
+    companyId: string,
+    clientId: string,
+    type: string,
+    on: string,
+    payload: Record<string, unknown>,
+    today = on,
+  ) {
+    const raw = {
+      id: uuidv7(),
+      type,
+      version: 1,
+      occurred_at: `${on}T12:00:00+03:00`,
+      accounting_date: on,
+      payload,
+    };
+    return inCompany(companyId, async (tx) => {
+      const options = { actor: hubActor(clientId), today };
+      const result = await receiveEvent(
+        tx,
+        companyId,
+        {
+          raw,
+          envelope: parseEventEnvelope(raw),
+          apiClientId: clientId,
+          requestId: 'request-opening-test',
+        },
+        options,
+      );
+      await retryFreed(tx, result.triggers, options);
+      return result.event;
+    });
+  }
+
+  /** The company's revenue releases: their dates and contract liability lines. */
+  const releases = (companyId: string) =>
+    inCompany(companyId, (tx) =>
+      tx
+        .select({
+          date: journalEntries.entryDate,
+          amount: journalLines.amountMinor,
+          book: journalLines.bookMinor,
+        })
+        .from(journalEntries)
+        .innerJoin(journalLines, eq(journalLines.entryId, journalEntries.id))
+        .innerJoin(chartAccounts, eq(chartAccounts.id, journalLines.accountId))
+        .where(
+          sql`${journalEntries.source} = 'revenue_release' and ${chartAccounts.code} = '212001'`,
+        )
+        .orderBy(journalEntries.sequence),
+    );
+
+  it('freezes a held void’s schedule; a resolution naming no schedule releases each missed month on its last day', async () => {
+    // The seventh case's INV-2026-9: 910.00 USD over 1 September to 30 November at 114, paid.
+    const companyId = await newCompany();
+    const clientId = await newHubClient(companyId);
+    await inCompany(companyId, (tx) =>
+      receiveOpeningSnapshot(tx, {
+        companyId,
+        apiClientId: clientId,
+        snapshotKey: 'snapshot-9',
+        snapshot: openingSnapshotSchema.parse({
+          as_of: '2026-09-30',
+          generated_at: '2026-10-25T08:00:00+03:00',
+          invoices: [
+            {
+              invoice: INV_9,
+              client: C1,
+              contract: { ...R1, kind: 'project' },
+              currency: 'USD',
+              syp_per_usd: '117.0000',
+              issued_on: '2026-09-01',
+              due_on: '2026-09-15',
+              total: 91_000,
+              outstanding: 0,
+              lines: [
+                {
+                  id: ids(9202),
+                  amount: 91_000,
+                  service: S1,
+                  source: 'manual',
+                  deferred: true,
+                  cycle_start: '2026-09-01',
+                  cycle_end: '2026-11-30',
+                },
+              ],
+            },
+          ],
+          prior_documents: { invoices: [{ invoice: INV_9, issued_on: '2026-09-01' }] },
+        }),
+        actor: hubActor(clientId),
+      }),
+    );
+    await inCompany(companyId, (tx) =>
+      recordRate(tx, companyId, person(), {
+        effectiveOn: '2026-09-01',
+        base: 'USD',
+        quote: 'SYP',
+        rate: '114.0000',
+        type: 'bulletin',
+        source: 'manual',
+      }),
+    );
+    await recordRates(companyId);
+    await inCompany(companyId, async (tx) =>
+      saveOpening(
+        tx,
+        saveOpeningSchema.parse({
+          version: 0,
+          lines: [
+            { accountId: await accountId(tx, '111001'), currency: 'SYP', amount: '60000000' },
+            {
+              accountId: await accountId(tx, '311001'),
+              currency: 'SYP',
+              amount: '-50000000',
+              parallel: '-450000',
+            },
+          ],
+          recordFigures: [],
+        }),
+        person(),
+      ),
+    );
+    const view = await inCompany(companyId, readOpening);
+    expect(view.checks.filter((check) => !check.passed)).toEqual([]);
+    await inCompany(companyId, (tx) =>
+      postOpening(tx, { fingerprint: view.fingerprint, actor: person() }),
+    );
+
+    const voided = await receive(companyId, clientId, 'invoice.voided', '2026-10-20', {
+      invoice: INV_9,
+      voided_on: '2026-10-20',
+      reason: 'أُلغيت في Hub',
+    });
+    expect(voided).toMatchObject({ reason: 'NEEDS_DECISION', detail: 'before_books_start' });
+    // October's and November's jobs release nothing of the frozen schedule.
+    for (const [month, today] of [
+      ['2026-10', '2026-11-01'],
+      ['2026-11', '2026-12-01'],
+    ] as const) {
+      const job = await inCompany(companyId, (tx) => releaseMonth(tx, month, today, person()));
+      expect(job).toEqual({ posted: 0, refused: [] });
+    }
+    expect(await releases(companyId)).toEqual([]);
+    // Resolved by an entry that names no schedule: the schedule stands, so each month it missed is
+    // released at once, on its own last day.
+    const entry = await inCompany(companyId, (tx) => manualEntry(tx, '2026-11-30'));
+    await inCompany(companyId, (tx) =>
+      resolveEvent(tx, voided.inboxId, entry.id, 'خطأ في Hub؛ الخدمة قُدّمت', {
+        actor: person(),
+        today: '2026-12-01',
+      }),
+    );
+    expect(await releases(companyId)).toEqual([
+      { date: '2026-10-31', amount: 31_000n, book: 3_534_000n },
+      { date: '2026-11-30', amount: 30_000n, book: 3_420_000n },
+    ]);
+    // A replay of the months posts nothing more.
+    const again = await inCompany(companyId, (tx) =>
+      releaseMonth(tx, '2026-11', '2026-12-01', person()),
+    );
+    expect(again.posted).toBe(0);
+  });
+
+  it('holds the void of an opening invoice a replayed payment settled OPEN_ITEM_HAS_SETTLEMENTS first, then before_books_start; a dismissal releases what it froze', async () => {
+    const companyId = await newCompany();
+    const clientId = await newHubClient(companyId);
+    const INV_1 = { id: ids(1), number: 'INV-1' };
+    await inCompany(companyId, (tx) =>
+      receiveOpeningSnapshot(tx, {
+        companyId,
+        apiClientId: clientId,
+        snapshotKey: 'snapshot-1',
+        snapshot: openingSnapshotSchema.parse({
+          ...snapshot(),
+          prior_documents: { invoices: [{ invoice: INV_1, issued_on: '2026-09-10' }] },
+        }),
+        actor: hubActor(clientId),
+      }),
+    );
+    await recordRates(companyId);
+    await inCompany(companyId, (tx) => save(tx, 0));
+    const view = await inCompany(companyId, readOpening);
+    await inCompany(companyId, (tx) =>
+      postOpening(tx, { fingerprint: view.fingerprint, actor: person() }),
+    );
+    await inCompany(companyId, async (tx) => {
+      for (const [type, rate] of [
+        ['bulletin', '116.0000'],
+        ['market', '119.0000'],
+      ] as const) {
+        await recordRate(tx, companyId, person(), {
+          effectiveOn: '2026-10-05',
+          base: 'USD',
+          quote: 'SYP',
+          rate,
+          type,
+          source: 'manual',
+        });
+      }
+    });
+    const payment = { id: ids(9301), number: 'R-1' };
+    const paid = await receive(companyId, clientId, 'payment.recorded', '2026-10-05', {
+      payment,
+      invoice: INV_1,
+      paid_on: '2026-10-05',
+      method: 'bank_transfer',
+      currency: 'USD',
+      amount: 10_000,
+      syp_per_usd: '117.0000',
+      applied_amount: 10_000,
+      invoice_currency: 'USD',
+    });
+    expect(paid.state).toBe('posted');
+    const voided = await receive(companyId, clientId, 'invoice.voided', '2026-10-08', {
+      invoice: INV_1,
+      voided_on: '2026-10-08',
+      reason: 'أُلغيت في Hub',
+    });
+    expect(voided).toMatchObject({ reason: 'OPEN_ITEM_HAS_SETTLEMENTS' });
+    // The payment's void posts and frees the invoice's, which is now the accountant's.
+    await receive(companyId, clientId, 'payment.voided', '2026-10-09', {
+      payment,
+      invoice: INV_1,
+      voided_on: '2026-10-09',
+      reason: 'أعادها المصرف',
+    });
+    const [state] = await inCompany(companyId, (tx) =>
+      tx.execute<{ reason: string; detail: string }>(sql`
+        select hold_reason as reason, hold_detail as detail from inbound_event_states
+        where event_id = ${voided.inboxId}`),
+    ).then((result) => result.rows);
+    expect(state).toEqual({ reason: 'NEEDS_DECISION', detail: 'before_books_start' });
+    // Frozen: October's job releases nothing of INV-1's schedule; the dismissal releases it.
+    expect(
+      (await inCompany(companyId, (tx) => releaseMonth(tx, '2026-10', '2026-11-01', person())))
+        .posted,
+    ).toBe(0);
+    await inCompany(companyId, (tx) =>
+      dismissEvent(tx, voided.inboxId, 'أُلغيت الفاتورة الخطأ في Hub', {
+        actor: person(),
+        today: '2026-11-02',
+      }),
+    );
+    expect(await releases(companyId)).toEqual([
+      { date: '2026-10-31', amount: 15_000n, book: 1_710_000n },
+    ]);
+    // Another company never finds the schedule: its line names an unknown one.
+    const [schedule] = await inCompany(companyId, (tx) =>
+      tx.select({ id: recognitionSchedules.id }).from(recognitionSchedules),
+    );
+    const otherId = await newCompany(null);
+    expect(
+      await codeOf(
+        inCompany(otherId, async (tx) =>
+          post(tx, {
+            client: 'manual',
+            idempotencyKey: uuidv7(),
+            entryDate: '2026-10-08',
+            description: 'جدول شركة أخرى',
+            reference: null,
+            draftId: null,
+            preparedByUserId: personId,
+            approvedByUserId: null,
+            actor: person(),
+            content: {
+              kind: 'manual',
+              today: '2026-10-08',
+              dealtRates: [],
+              lines: [
+                {
+                  accountId: await accountId(tx, '212001'),
+                  dimensionValueIds: [],
+                  currency: 'USD',
+                  amountMinor: 15_000n,
+                  memo: null,
+                  scheduleId: schedule?.id as string,
+                },
+                {
+                  accountId: await accountId(tx, '111004'),
+                  dimensionValueIds: [],
+                  currency: 'USD',
+                  amountMinor: -15_000n,
+                  memo: null,
+                },
+              ],
+            },
+          }),
+        ),
+      ),
+    ).toBe('NOT_FOUND');
   });
 });

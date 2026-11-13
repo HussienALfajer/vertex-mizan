@@ -239,6 +239,7 @@ export class EntriesService {
             // and the posting refuses a control-account line without one (S04 rule 5).
             openItemId: null,
             newItem: null,
+            scheduleId: null,
           })),
         },
         { copiedFromEntryId: id },

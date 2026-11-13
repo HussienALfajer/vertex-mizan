@@ -51,6 +51,12 @@ export interface ManualLine {
 export interface ManualEntry {
   readonly lines: readonly ManualLine[];
   readonly dealtRates: readonly ExchangeRate[];
+  /**
+   * The account with the `retained_earnings` role (S10 rule 28; IAS 8.42): in an entry with a line
+   * on it whose residual is a realised difference, the residual posts to it instead, and every other
+   * line must be carried (an item cleared, a schedule's line). A manual entry's only.
+   */
+  readonly retainedEarnings?: string;
 }
 
 /**
@@ -204,8 +210,40 @@ export function manualEntry(
   if (currencies.size < 2 && lines.every((line) => line.kind === 'measured')) {
     return { lines, typed };
   }
-  const differences = realisedDifferenceLines(context.ledgers, lines, targets);
+  const differences = realisedDifferenceLines(
+    context.ledgers,
+    lines,
+    correctionTargets(entry.retainedEarnings, lines, typed) ?? targets,
+  );
   return { lines: [...lines, ...differences], typed: [...typed, ...differences.map(() => null)] };
+}
+
+/**
+ * A correction against retained earnings (S10 rule 28, IAS 8.42; owner, 2026-11-12): in an entry
+ * with a line on the `retained_earnings` account, each ledger's residual posts to that account, so
+ * the correction takes exactly what the items it clears carried and the year's profit is untouched.
+ * Only a correction on its own: another line that is not carried (an item cleared or a schedule's
+ * line) is refused `VALIDATION_FAILED`, since its real exchange difference would reach equity
+ * (IAS 21.28). Null when the entry has no line on that account.
+ */
+function correctionTargets(
+  retainedEarnings: string | undefined,
+  lines: readonly Line[],
+  typed: readonly (number | null)[],
+): RealisedTargets | null {
+  if (retainedEarnings === undefined) return null;
+  if (!lines.some((line) => line.account === retainedEarnings)) return null;
+  const measured = lines.findIndex(
+    (line) => line.account !== retainedEarnings && line.kind !== 'carried',
+  );
+  if (measured >= 0) {
+    throw new DomainError(
+      'VALIDATION_FAILED',
+      'A correction against retained earnings clears items or schedules only: post another line as an entry of its own',
+      { lineNo: (typed[measured] ?? 0) + 1 },
+    );
+  }
+  return { gain: { account: retainedEarnings }, loss: { account: retainedEarnings } };
 }
 
 /** The lines of a manual entry before its rounding lines: `manualEntry()`'s lines alone. */

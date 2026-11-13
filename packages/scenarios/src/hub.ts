@@ -83,6 +83,21 @@ export function hubValueId(companyId: string, type: string, code: string): strin
   return type === 'department' ? code : idOf(companyId, type, code);
 }
 
+/**
+ * Hub's ids of an invoice line, as the short form names it (`<invoice number>/<line>`): what a
+ * manual line naming an opening schedule finds it by (S10 rule 28).
+ */
+export function hubInvoiceLine(
+  companyId: string,
+  number: string,
+  line: string,
+): { invoiceId: string; lineId: string } {
+  return {
+    invoiceId: idOf(companyId, 'invoice', number),
+    lineId: idOf(companyId, 'invoice_line', `${number}:${line}`),
+  };
+}
+
 /** Hub's value of a type, as the short form names it by code (S05 rule 2). */
 function valueRef(companyId: string, type: string, code: string) {
   return {

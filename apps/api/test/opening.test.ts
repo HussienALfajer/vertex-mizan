@@ -11,10 +11,11 @@ import {
 } from '@vertex-mizan/contracts';
 import { type Database, sessions } from '@vertex-mizan/db';
 import { eq } from 'drizzle-orm';
+import { v7 as uuidv7 } from 'uuid';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { OPENING_RETRY_AFTER_SECONDS } from '../src/core/errors/error.filter.js';
 import { createTestApp } from './app.js';
-import { type Books, books, draftOf, line } from './books.js';
+import { type Books, books, draftOf, line, posted } from './books.js';
 import { expectGuarded } from './guards.js';
 import { type HubClient, hubClient, v1 } from './hub.js';
 import { reauthenticate, testDatabase } from './people.js';
@@ -247,6 +248,238 @@ describe('before the opening posts (S10 rule 3)', () => {
     const post = await book.owner.browser.post(`/api/drafts/${draft.id}/post`);
     expect(post.status).toBe(503);
     expect(post.body.code).toBe('OPENING_NOT_POSTED');
+  });
+});
+
+describe('documents before the books start (S10 rule 28)', () => {
+  /** A held event's reason and detail, from `/v1/events`' answer. */
+  const heldAs = (body: { status: string; reason?: string; detail?: string | null }) =>
+    body.status === 'held' ? `${body.reason}:${body.detail ?? ''}` : body.status;
+
+  it('holds every void, change, archive and reopen of a listed document, and clears its schedule by hand', async () => {
+    const book = await startedBooks();
+    const hub = await hubClient(app, book.owner, {
+      scopes: ['events:write', 'opening:write'],
+      reconcileFrom: BOOKS_START,
+    });
+    const examples = eventExamplesV1('2026-10-05');
+    const example = (type: string) => {
+      const found = examples.find((event) => event.type === type);
+      if (!found) throw new Error(`No example of ${type}`);
+      return found;
+    };
+    const fresh = (type: string, payload: Record<string, unknown> = {}) => ({
+      ...example(type),
+      id: uuidv7(),
+      payload: { ...example(type).payload, ...payload },
+    });
+    const otherClient = { external_id: uuidv7(), code: 'C-EX2', name: 'عميل مثال آخر' };
+    const secondUpdate = { id: uuidv7(), number: 'U-EX-0002' };
+    const secondExpense = { id: uuidv7(), number: 'EXP-EX-0002' };
+    const pick = <T>(type: string, field: string) => example(type).payload[field] as T;
+    const payment = pick<{ id: string; number: string }>('payment.voided', 'payment');
+    const paidInvoice = pick<{ id: string; number: string }>('payment.voided', 'invoice');
+    const refund = pick<{ id: string; number: string }>('ad_wallet.entry_voided', 'entry');
+    const client = pick<{ external_id: string }>('ad_wallet.entry_voided', 'client');
+    const update = pick<{ id: string; number: string }>('ad_spend.changed', 'update');
+    const campaign = pick<{ id: string; number: string }>('ad_spend.changed', 'campaign');
+    const expense = pick<{ id: string; number: string }>('project_expense.changed', 'expense');
+    const milestone = pick<{ id: string; number: string }>('milestone.reopened', 'milestone');
+    const base = openingSnapshotExampleV1(BOOKS_START);
+    const snapshot = {
+      ...base,
+      prior_documents: {
+        ...base.prior_documents,
+        invoices: [
+          ...base.prior_documents.invoices,
+          { invoice: paidInvoice, issued_on: '2026-09-05' },
+        ],
+        payments: [{ payment, invoice: paidInvoice, paid_on: '2026-09-12' }],
+        wallet_entries: [{ entry: refund, client, entered_on: '2026-09-14' }],
+        spend_updates: [
+          { update, campaign, client, period_to: '2026-09-30' },
+          { update: secondUpdate, campaign, client: otherClient, period_to: '2026-09-30' },
+        ],
+        project_expenses: [
+          { expense, spent_on: '2026-09-18' },
+          { expense: secondExpense, spent_on: '2026-09-19' },
+        ],
+        milestone_dones: [{ milestone, done_on: '2026-09-25' }],
+      },
+    };
+    expect((await snapshotOf(hub, snapshot)).status).toBe(201);
+    await rate(book, '2026-09-10', '114.0000', 'bulletin');
+    await rate(book, '2026-09-30', '115.0000', 'bulletin');
+    await rate(book, '2026-09-30', '118.0000', 'market');
+    const read = (await book.owner.browser.get('/api/opening')).body as OpeningViewAnswer;
+    const clientValue = read.differences[0]?.client;
+    if (clientValue === undefined) throw new Error('No difference to agree');
+    const saved = await book.owner.browser.put('/api/opening', {
+      version: 0,
+      lines: [
+        recordLine(book, '111001', 'SYP', '200000000'),
+        recordLine(book, '311001', 'SYP', '-100000000', { parallel: '-1000000' }),
+      ],
+      recordFigures: [
+        { slot: 'receivable', clientValueId: clientValue, currency: 'USD', amount: '30000' },
+        { slot: 'ad_funds', clientValueId: clientValue, currency: 'USD', amount: '50000' },
+      ],
+    });
+    expect(saved.status, JSON.stringify(saved.body)).toBe(200);
+    await reauthenticate(book.owner.browser, book.owner.person);
+    const opening = await book.owner.browser.post('/api/opening/post', {
+      fingerprint: (saved.body as OpeningViewAnswer).fingerprint,
+    });
+    expect(opening.status, JSON.stringify(opening.body)).toBe(200);
+
+    // Each type of rule 28 on a listed document; events of one item wait behind the first held.
+    const [openingInvoice] = base.invoices;
+    if (!openingInvoice) throw new Error('No opening invoice');
+    const sent: [string, object][] = [
+      ['invoice.voided', fresh('invoice.voided', { invoice: openingInvoice.invoice })],
+      ['payment.voided', fresh('payment.voided')],
+      ['ad_wallet.entry_voided', fresh('ad_wallet.entry_voided')],
+      ['ad_spend.changed', fresh('ad_spend.changed')],
+      [
+        'ad_spend.archived',
+        fresh('ad_spend.archived', { update: secondUpdate, client: otherClient }),
+      ],
+      ['project_expense.changed', fresh('project_expense.changed')],
+      ['project_expense.archived', fresh('project_expense.archived', { expense: secondExpense })],
+      ['milestone.reopened', fresh('milestone.reopened')],
+      ['second payment.voided', fresh('payment.voided')],
+      [
+        'unlisted payment.voided',
+        fresh('payment.voided', {
+          payment: { id: uuidv7(), number: 'R-EX-0099' },
+          invoice: { id: uuidv7(), number: 'INV-EX-0099' },
+        }),
+      ],
+    ];
+    const answers = new Map<string, { inbox_id: string; outcome: string }>();
+    for (const [name, envelope] of sent) {
+      const answer = await hub.send(envelope as { id: string });
+      expect(answer.status, JSON.stringify(answer.body)).toBe(202);
+      answers.set(name, { inbox_id: answer.body.inbox_id, outcome: heldAs(answer.body) });
+    }
+    const outcomes = Object.fromEntries([...answers].map(([name, { outcome }]) => [name, outcome]));
+    expect(outcomes).toEqual({
+      'invoice.voided': 'NEEDS_DECISION:before_books_start',
+      'payment.voided': 'NEEDS_DECISION:before_books_start',
+      'ad_wallet.entry_voided': 'NEEDS_DECISION:before_books_start',
+      'ad_spend.changed': 'WAITING_FOR_EARLIER_EVENT:',
+      'ad_spend.archived': 'NEEDS_DECISION:before_books_start',
+      'project_expense.changed': 'NEEDS_DECISION:before_books_start',
+      'project_expense.archived': 'NEEDS_DECISION:before_books_start',
+      'milestone.reopened': 'NEEDS_DECISION:before_books_start',
+      'second payment.voided': 'WAITING_FOR_EARLIER_EVENT:',
+      'unlisted payment.voided': expect.not.stringContaining('before_books_start'),
+    });
+    const idOf = (name: string) => answers.get(name)?.inbox_id as string;
+    // A retry leaves a listed document's event held; the one behind it is held in its turn.
+    const retried = await book.owner.browser.post(`/api/inbox/${idOf('payment.voided')}/retry`);
+    expect(retried.body).toMatchObject({ reason: 'NEEDS_DECISION', detail: 'before_books_start' });
+    const dismissed = await book.owner.browser.post(
+      `/api/inbox/${idOf('ad_wallet.entry_voided')}/dismiss`,
+      { reason: 'أعادها المصرف قبل بدء الدفاتر' },
+    );
+    expect(dismissed.status, JSON.stringify(dismissed.body)).toBe(200);
+    const behind = await book.owner.browser.post(`/api/inbox/${idOf('ad_spend.changed')}/retry`);
+    expect(behind.body).toMatchObject({ reason: 'NEEDS_DECISION', detail: 'before_books_start' });
+
+    // The invoice's void resolved by hand: its receivable cleared, its schedule named and cleared at
+    // what it carries, the correction against retained earnings (IAS 8.42).
+    await rate(book, '2026-10-08', '117.0000', 'bulletin');
+    await rate(book, '2026-10-08', '119.0000', 'market');
+    const schedules = (await book.owner.browser.get('/api/revenue/schedules'))
+      .body as RevenueSchedulePage;
+    const schedule = schedules.openingSchedules[0];
+    if (!schedule) throw new Error('No opening schedule');
+    const items = await book.owner.browser.get('/api/open-items', {
+      state: 'all',
+      text: openingInvoice.invoice.number,
+    });
+    const item = items.body.items[0] as { id: string };
+    const correction = (scheduleAmount: string, extra: object[] = []) => ({
+      entryDate: '2026-10-08',
+      description: 'إلغاء فاتورة سابقة لبدء الدفاتر',
+      reference: openingInvoice.invoice.number,
+      dealtRates: [],
+      lines: [
+        {
+          ...line(book, '112001', 'USD', '-30000', 'إلغاء الفاتورة'),
+          openItemId: item.id,
+        },
+        {
+          ...line(book, '212001', 'USD', scheduleAmount, 'إقفال جدول الفاتورة'),
+          scheduleId: schedule.id,
+        },
+        line(book, '312001', 'USD', String(30000 - Number(scheduleAmount))),
+        ...extra,
+      ],
+    });
+    const otherAmount = await draftOf(book.owner.browser, correction('10000'));
+    const refusedAmount = await book.owner.browser.post(`/api/drafts/${otherAmount.id}/post`);
+    expect(refusedAmount.body.code, JSON.stringify(refusedAmount.body)).toBe('VALIDATION_FAILED');
+    // Beside a newly measured line, the correction is refused: it posts on its own.
+    const measured = await draftOf(book.owner.browser, {
+      ...correction('15000'),
+      lines: [
+        ...correction('15000').lines.slice(0, 2),
+        line(book, '312001', 'USD', '15100'),
+        line(book, '111004', 'USD', '-100'),
+      ],
+    });
+    const refusedMeasured = await book.owner.browser.post(`/api/drafts/${measured.id}/post`);
+    expect(refusedMeasured.body.code, JSON.stringify(refusedMeasured.body)).toBe(
+      'VALIDATION_FAILED',
+    );
+    const entry = await posted(book.owner.browser, correction('15000'));
+    const resolved = await book.owner.browser.post(`/api/inbox/${idOf('invoice.voided')}/resolve`, {
+      entryId: entry.id,
+      reason: 'فاتورة مكررة في أيلول؛ خطأ جوهري',
+    });
+    expect(resolved.status, JSON.stringify(resolved.body)).toBe(200);
+    const after = (await book.owner.browser.get('/api/revenue/schedules'))
+      .body as RevenueSchedulePage;
+    expect(after.openingSchedules[0]?.remaining).toMatchObject({
+      transactionMinor: '0',
+      bookMinor: '0',
+      parallelMinor: '0',
+    });
+    const shown = await book.owner.browser.get(`/api/entries/${entry.id}`);
+    const onEquity = (shown.body.lines as { accountId: string; bookMinor: string }[]).filter(
+      (entryLine) => entryLine.accountId === book.accounts.get('312001'),
+    );
+    // The residual on retained earnings too (150.00 SYP of 117 against the eve's 115), so equity
+    // takes 17,550.00 − 150.00 = 17,400.00 SYP: what the receivable carried, 34,500.00 SYP, less
+    // what the schedule carried, 17,100.00 SYP.
+    expect(onEquity.map((entryLine) => entryLine.bookMinor).sort()).toEqual(['-15000', '1755000']);
+    // The correction is never reversed by hand: the schedule it stopped would not come back.
+    const reversal = await book.owner.browser.post(`/api/entries/${entry.id}/reverse`, {
+      date: '2026-10-09',
+      description: 'عكس التصحيح',
+    });
+    expect(reversal.body.code, JSON.stringify(reversal.body)).toBe('ENTRY_NOT_REVERSIBLE');
+    // Another company names the schedule as unknown, never another company's.
+    const other = await books(app, db);
+    const foreign = await other.owner.browser.post('/api/drafts', {
+      entryDate: '2026-10-08',
+      description: 'جدول شركة أخرى',
+      reference: null,
+      dealtRates: [],
+      lines: [
+        { ...line(other, '212001', 'USD', '15000'), scheduleId: schedule.id },
+        line(other, '111004', 'USD', '-15000'),
+      ],
+    });
+    expect(foreign.body.code).toBe('VALIDATION_FAILED');
+    expect(JSON.stringify(foreign.body)).toContain('scheduleId');
+    // A schedule cleared stands no more: naming it again is refused.
+    const again = await draftOf(book.owner.browser, correction('15000'));
+    expect((await book.owner.browser.post(`/api/drafts/${again.id}/post`)).body.code).toBe(
+      'VALIDATION_FAILED',
+    );
   });
 });
 

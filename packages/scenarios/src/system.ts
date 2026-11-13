@@ -35,6 +35,7 @@ import {
   post,
   postRevaluation,
   previewRevaluation,
+  recognitionSchedules,
   recordRate,
   reopenPeriod,
   setBulletinDaysOff,
@@ -42,7 +43,7 @@ import {
   users,
   withCompany,
 } from '@vertex-mizan/db';
-import { and, asc, eq, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import { z } from 'zod';
 import type { CaseCompany, Step } from './format.js';
@@ -61,6 +62,7 @@ import {
   advanceClock,
   caseToday,
   dayAfterMonth,
+  hubInvoiceLine,
   hubValueId,
   inboxActions,
   runRetries,
@@ -260,6 +262,11 @@ const manualPayloadSchema = z.strictObject({
           })
           .optional(),
         item: z.string().trim().min(1).max(100).optional(),
+        // S10 rule 28: the opening schedule a contract liability line clears, `<invoice>/<line>`.
+        schedule: z
+          .string()
+          .regex(/^[^/\s]+\/[^/\s]+$/)
+          .optional(),
       }),
     )
     .min(1),
@@ -309,8 +316,38 @@ async function dimensionValueIds(
   return ids;
 }
 
+/**
+ * The id of the opening schedule of an invoice line, named `<invoice number>/<line>`: the latest
+ * opening's, since a reversed opening's schedule stands no more (S10 rule 25).
+ */
+async function scheduleIdOf(
+  tx: Transaction,
+  companyId: string,
+  named: string,
+): Promise<string | null> {
+  const [number, line] = named.split('/') as [string, string];
+  const { invoiceId, lineId } = hubInvoiceLine(companyId, number, line);
+  const [found] = await tx
+    .select({ id: recognitionSchedules.id })
+    .from(recognitionSchedules)
+    .where(
+      and(
+        eq(recognitionSchedules.invoiceDocumentId, invoiceId),
+        eq(recognitionSchedules.lineId, lineId),
+        sql`${recognitionSchedules.openingId} is not null`,
+      ),
+    )
+    .orderBy(desc(recognitionSchedules.createdAt))
+    .limit(1);
+  return found?.id ?? null;
+}
+
 /** A manual payload's lines as the manual-entry form sends them, accounts and items by id. */
-async function manualLines(tx: Transaction, payload: z.infer<typeof manualPayloadSchema>) {
+async function manualLines(
+  tx: Transaction,
+  companyId: string,
+  payload: z.infer<typeof manualPayloadSchema>,
+) {
   const accounts = await accountIdsByCode(tx);
   const lines = [];
   for (const line of payload.lines) {
@@ -328,6 +365,10 @@ async function manualLines(tx: Transaction, payload: z.infer<typeof manualPayloa
       // An unknown reference is the posting function's to refuse (`NOT_FOUND`).
       ...(line.item !== undefined && {
         openItemId: (await itemIdOf(tx, accountId, line.item)) ?? uuidv7(),
+      }),
+      // An unknown schedule is the posting function's to refuse (`NOT_FOUND`).
+      ...(line.schedule !== undefined && {
+        scheduleId: (await scheduleIdOf(tx, companyId, line.schedule)) ?? uuidv7(),
       }),
     });
   }
@@ -347,7 +388,7 @@ export function manual(
   advanceClock(context.companyId, step.accountingDate);
   return outcomeOf(
     withCompany(context.database.app, context.companyId, async (tx) => {
-      const lines = await manualLines(tx, payload);
+      const lines = await manualLines(tx, context.companyId, payload);
       await post(tx, {
         client: 'manual',
         idempotencyKey: uuidv7(),
@@ -452,7 +493,7 @@ export function draft(
   advanceClock(context.companyId, step.accountingDate);
   return outcomeOf(
     withCompany(context.database.app, context.companyId, async (tx) => {
-      const lines = await manualLines(tx, payload);
+      const lines = await manualLines(tx, context.companyId, payload);
       const id = await insertDraft(
         tx,
         context.companyId,
@@ -470,6 +511,7 @@ export function draft(
             memo: line.memo,
             openItemId: line.openItemId ?? null,
             newItem: line.newItem ?? null,
+            scheduleId: line.scheduleId ?? null,
           })),
         }),
       );

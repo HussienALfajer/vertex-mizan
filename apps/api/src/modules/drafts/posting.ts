@@ -107,6 +107,7 @@ export function contentOf(
       memo: line.memo,
       openItemId: line.openItemId,
       newItem: line.newItem,
+      scheduleId: line.scheduleId,
     })),
   };
 }
