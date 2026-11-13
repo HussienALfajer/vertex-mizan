@@ -114,6 +114,10 @@ Scope: `docs/product/phase-1-scope.md`. One spec per line, each through `/spec` 
   - [x] Deployed (2026-11-13), the first full backup in B2 with continuous log archiving, the first drill passed
   - [x] In force (owner, 2026-11-13): the archive bucket in compliance mode for 3000 days, both copies of every key kept
 - [ ] Production: Vertex Media's books live; a real month closed (the scope's "Done when")
+  - [x] Vertex Media's company created on `mizan.vertexmedia.pro` (owner, 2026-11-13), after `main` at #114 was deployed: `admin:create-company` with the defaults (SYP books at the bulletin, a USD parallel ledger at the market rate accepting the transaction's rate, January), `service-agency@3` (106 accounts, 17 mapped slots), the books start 2026-10-01 and the owner's approved policy note; no entry posted; the first owner's invitation sent through the server's SMTP account
+  - [ ] The first owner accepts the invitation and enrols two-factor authentication
+  - [ ] Hub's API client with `events:write`, `reconciliation:write` and `opening:write`, created once Hub's side is ready
+  - [ ] The opening as of 2026-09-30 from Hub's snapshot and the records, then the replay of Hub's events from 2026-10-01 (S10)
 
 ## Phase 2 — Cash, expenses, suppliers, statements, close
 Detailed after phase 1 is in use.
