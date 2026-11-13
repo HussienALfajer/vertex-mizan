@@ -14,4 +14,5 @@ Server facts read 2026-11-13 from `vertex` and `/root/SERVER.md`: Contabo, Ubunt
 - [x] docs/deployment.md (layout, location, deploy, rollback, restore to a moment / before a deploy / a table / an archive, B2 key capabilities) and docs/operations/restore-drills.md; ROADMAP, worker CLAUDE.md, AGENTS.md commands (`drill:check`)
 - [x] verify --e2e-all, reviewer + accountant-reviewer, PR with auto-merge (the ADR branch merged first, #106)
 - [ ] Follow-up (reviewer, not blocking): the migrations still run as `vertexmizan`, which can read the owner URL from the migration's environment during a deploy; a dedicated migration user, or connection logging on `mizan_owner`, closes it
-- [ ] Owner: DNS A record, B2 buckets/keys/region, SMTP account, alert address, go-ahead to provision
+- [x] Owner: DNS A record, B2 buckets/keys/region, SMTP account, alert address, go-ahead to provision (2026-11-13); provisioned, deployed, first full backup in B2, first drill passed
+- [ ] Owner: the archive bucket's default retention at 3650 days in compliance mode (it showed 3000), both copies of the three keys in `/etc/mizan/keys/`, and new B2 and mailbox credentials (the current ones were shown in the session) written to `/etc/mizan/backup.env` and the mailbox password in `shared/.env`, then provisioning run again
