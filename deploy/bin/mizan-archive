@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Monthly archive of mizan.vertexmedia.pro (mizan-archive.timer, on the 2nd; ADR 0020, "Monthly
-# archives for 10 years"), as root:
+# archives for 10 years", amended 2026-11-13), as root:
 #   mizan-archive [YYYY-MM]   the month just ended in Damascus by default
 #
 # A pg_dump of the database and a tar of shared/files, with their SHA-256 and the deployed
 # revision in manifest.txt, in one tar encrypted with GnuPG (AES-256, the archive key), uploaded
-# to the archive bucket, whose default retention (Object Lock, compliance, 10 years) locks it.
+# to the archive bucket, whose default retention (Object Lock, compliance, 3000 days) locks it.
 # The object is checked on every run, a first upload's and an existing one's alike: its size,
-# its recorded SHA-256, and its lock in compliance mode for 10 years from its upload.
+# its recorded SHA-256, and its lock in compliance mode for 3000 days from its upload.
 # Restore: docs/deployment.md, "A monthly archive".
 set -euo pipefail
 umask 077
@@ -29,7 +29,7 @@ s3() {
 }
 
 # The object as the bucket holds it: present, of the expected size when one is given, with its
-# SHA-256 recorded, and locked in compliance mode for 10 years from its upload. A lock that is
+# SHA-256 recorded, and locked in compliance mode for 3000 days from its upload. A lock that is
 # missing or short stays a failure until it is fixed in the bucket, never a stamp.
 check_archived() {
   local headers mode until length modified recorded
@@ -43,13 +43,14 @@ check_archived() {
   [ -z "${1:-}" ] || [ "$length" = "$1" ] || { echo "$object holds $length bytes of $1" >&2; return 1; }
   [[ "$recorded" =~ ^[0-9a-f]{64}$ ]] || { echo "$object has no recorded SHA-256" >&2; return 1; }
   [ "$mode" = COMPLIANCE ] || { echo "$object has lock mode '${mode:-none}', not COMPLIANCE" >&2; return 1; }
-  # Ten years from the upload, less a day of margin for the bucket's own rounding. Both dates are
-  # parsed first: a header date cannot fail the comparison quietly.
+  # 3000 days from the upload (the longest default retention B2 sets, owner 2026-11-13), less a
+  # day of margin for the bucket's own rounding. Both dates are parsed first: a header date
+  # cannot fail the comparison quietly.
   local until_s due_s
   until_s=$(date -d "$until" +%s 2>/dev/null) || until_s=
-  due_s=$(date -d "$modified +3649 days" +%s 2>/dev/null) || due_s=
+  due_s=$(date -d "$modified +2999 days" +%s 2>/dev/null) || due_s=
   if [ -z "$until" ] || [ -z "$until_s" ] || [ -z "$due_s" ] || [ "$until_s" -lt "$due_s" ]; then
-    echo "$object is locked until '${until:-never}', not 10 years from its upload ('${modified:-?}')" >&2
+    echo "$object is locked until '${until:-never}', not 3000 days from its upload ('${modified:-?}')" >&2
     return 1
   fi
   echo "$object: $length bytes, sha256 $recorded, locked until $until"
