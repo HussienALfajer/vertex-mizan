@@ -9,6 +9,7 @@
     "test": "vitest run",
     "start": "node --env-file-if-exists=../../.env dist/main.js",
     "revenue:run-release": "node --env-file-if-exists=../../.env dist/commands/run-release.js",
+    "drill:check": "node --env-file-if-exists=../../.env dist/commands/restore-drill-check.js",
     "test:e2e": "playwright test"
   },
   "dependencies": {
@@ -17,6 +18,7 @@
     "@vertex-mizan/contracts": "workspace:*",
     "@vertex-mizan/db": "workspace:*",
     "@vertex-mizan/i18n": "workspace:*",
+    "@vertex-mizan/ledger": "workspace:*",
     "@vertex-mizan/ui": "workspace:*",
     "drizzle-orm": "0.45.4",
     "nestjs-pino": "5.3.1",
