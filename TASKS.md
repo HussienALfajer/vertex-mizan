@@ -7,7 +7,7 @@
 - [x] packages/contracts: `export:hub-schema`, `post:hub-examples`; apps/web: the tolerance section
 - [x] The OpenAPI guard and oasdiff (owner, 2026-11-13); `openapi.json` regenerated
 - [x] Docs: AGENTS.md commands, CLAUDE.md files, testing, workflow, ROADMAP
-- [ ] verify --e2e-all, reviewers, PR with auto-merge
+- [x] verify --e2e-all, reviewers, PR with auto-merge
 
 ## ADR 0020 deployment (branch `feat/deployment`, on top of `docs/deployment-backup-adr`)
 
