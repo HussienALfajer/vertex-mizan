@@ -1,4 +1,5 @@
 import { type ExchangeRate, type Money, money } from '@vertex-mizan/contracts';
+import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import { balanceEntry } from './balance.js';
 import {
@@ -490,6 +491,57 @@ describe('opening/before-books-start: a correction against retained earnings (S1
       0n,
       null,
     ]);
+  });
+
+  it('balances in both ledgers and gives equity exactly what the item carried, for any rate (property)', () => {
+    fc.assert(
+      fc.property(
+        fc.bigInt({ min: 1n, max: 10_000_000n }),
+        fc.bigInt({ min: 1n, max: 2_000_000_000n }),
+        fc.integer({ min: 1_000, max: 999_999 }),
+        (amount, book, quote) => {
+          // In USD, the parallel ledger's own currency, the item carries its own amount there.
+          const parallel = amount;
+          const carried: ItemState = {
+            id: 'INV-P',
+            kind: 'document',
+            direction: 1,
+            balance: { transaction: usd(amount), bookMinor: book, parallelMinor: parallel },
+          };
+          const rate = `${Math.floor(quote / 100)}.${String(quote % 100).padStart(2, '0')}00`;
+          const on = at('2027-01-12', [bulletin(rate, '2027-01-12'), market(rate, '2027-01-12')]);
+          const lines = balanceEntry({
+            on: on.on,
+            ledgers: on.ledgers,
+            lines: manualEntry(
+              {
+                lines: [
+                  { account: '112001', dimensions: client, amount: usd(-amount), item: carried },
+                  { account: '312001', amount: usd(amount) },
+                ],
+                dealtRates: [],
+                retainedEarnings: '312001',
+              },
+              on,
+              targets,
+            ).lines,
+            rounding,
+          });
+          const total = (pick: (line: Line) => bigint, onEquity: boolean) =>
+            lines
+              .filter((line) => !onEquity || line.account === '312001')
+              .reduce((sum, line) => sum + pick(line), 0n);
+          expect(total((line) => line.bookMinor, false)).toBe(0n);
+          expect(total((line) => line.parallelMinor ?? 0n, false)).toBe(0n);
+          expect(total((line) => line.bookMinor, true)).toBe(book);
+          expect(total((line) => line.parallelMinor ?? 0n, true)).toBe(parallel);
+          expect(
+            lines.every((line) => line.account !== '421001' && line.account !== '541001'),
+          ).toBe(true);
+        },
+      ),
+      { numRuns: 500 },
+    );
   });
 
   it('leaves an entry of new measurements in one currency to its rounding, as any', () => {
