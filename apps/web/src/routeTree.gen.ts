@@ -20,6 +20,7 @@ import { Route as AppCompanyIndexRouteImport } from './routes/_app/_company/inde
 import { Route as AppCompanyClientFundsRouteImport } from './routes/_app/_company/client-funds'
 import { Route as AppCompanyDimensionsRouteImport } from './routes/_app/_company/dimensions'
 import { Route as AppCompanyIntegrityRouteImport } from './routes/_app/_company/integrity'
+import { Route as AppCompanyOpeningRouteImport } from './routes/_app/_company/opening'
 import { Route as AppCompanyRevaluationRouteImport } from './routes/_app/_company/revaluation'
 import { Route as AppAccountSecurityRouteImport } from './routes/_app/account/security'
 import { Route as AppCompaniesIndexRouteImport } from './routes/_app/companies/index'
@@ -117,6 +118,11 @@ const AppCompanyDimensionsRoute = AppCompanyDimensionsRouteImport.update({
 const AppCompanyIntegrityRoute = AppCompanyIntegrityRouteImport.update({
   id: '/integrity',
   path: '/integrity',
+  getParentRoute: () => AppCompanyRoute,
+} as any)
+const AppCompanyOpeningRoute = AppCompanyOpeningRouteImport.update({
+  id: '/opening',
+  path: '/opening',
   getParentRoute: () => AppCompanyRoute,
 } as any)
 const AppCompanyRevaluationRoute = AppCompanyRevaluationRouteImport.update({
@@ -379,6 +385,7 @@ export interface FileRoutesByFullPath {
   '/client-funds': typeof AppCompanyClientFundsRoute
   '/dimensions': typeof AppCompanyDimensionsRoute
   '/integrity': typeof AppCompanyIntegrityRoute
+  '/opening': typeof AppCompanyOpeningRoute
   '/revaluation': typeof AppCompanyRevaluationRoute
   '/account/security': typeof AppAccountSecurityRoute
   '/companies/new': typeof AppCompaniesNewRoute
@@ -435,6 +442,7 @@ export interface FileRoutesByTo {
   '/client-funds': typeof AppCompanyClientFundsRoute
   '/dimensions': typeof AppCompanyDimensionsRoute
   '/integrity': typeof AppCompanyIntegrityRoute
+  '/opening': typeof AppCompanyOpeningRoute
   '/revaluation': typeof AppCompanyRevaluationRoute
   '/account/security': typeof AppAccountSecurityRoute
   '/companies/new': typeof AppCompaniesNewRoute
@@ -494,6 +502,7 @@ export interface FileRoutesById {
   '/_app/_company/client-funds': typeof AppCompanyClientFundsRoute
   '/_app/_company/dimensions': typeof AppCompanyDimensionsRoute
   '/_app/_company/integrity': typeof AppCompanyIntegrityRoute
+  '/_app/_company/opening': typeof AppCompanyOpeningRoute
   '/_app/_company/revaluation': typeof AppCompanyRevaluationRoute
   '/_app/account/security': typeof AppAccountSecurityRoute
   '/_app/companies/new': typeof AppCompaniesNewRoute
@@ -553,6 +562,7 @@ export interface FileRouteTypes {
     | '/client-funds'
     | '/dimensions'
     | '/integrity'
+    | '/opening'
     | '/revaluation'
     | '/account/security'
     | '/companies/new'
@@ -609,6 +619,7 @@ export interface FileRouteTypes {
     | '/client-funds'
     | '/dimensions'
     | '/integrity'
+    | '/opening'
     | '/revaluation'
     | '/account/security'
     | '/companies/new'
@@ -667,6 +678,7 @@ export interface FileRouteTypes {
     | '/_app/_company/client-funds'
     | '/_app/_company/dimensions'
     | '/_app/_company/integrity'
+    | '/_app/_company/opening'
     | '/_app/_company/revaluation'
     | '/_app/account/security'
     | '/_app/companies/new'
@@ -799,6 +811,13 @@ declare module '@tanstack/react-router' {
       path: '/integrity'
       fullPath: '/integrity'
       preLoaderRoute: typeof AppCompanyIntegrityRouteImport
+      parentRoute: typeof AppCompanyRoute
+    }
+    '/_app/_company/opening': {
+      id: '/_app/_company/opening'
+      path: '/opening'
+      fullPath: '/opening'
+      preLoaderRoute: typeof AppCompanyOpeningRouteImport
       parentRoute: typeof AppCompanyRoute
     }
     '/_app/_company/revaluation': {
@@ -1130,6 +1149,7 @@ interface AppCompanyRouteChildren {
   AppCompanyClientFundsRoute: typeof AppCompanyClientFundsRoute
   AppCompanyDimensionsRoute: typeof AppCompanyDimensionsRoute
   AppCompanyIntegrityRoute: typeof AppCompanyIntegrityRoute
+  AppCompanyOpeningRoute: typeof AppCompanyOpeningRoute
   AppCompanyRevaluationRoute: typeof AppCompanyRevaluationRoute
   AppCompanyIndexRoute: typeof AppCompanyIndexRoute
   AppCompanyChartRolesRoute: typeof AppCompanyChartRolesRoute
@@ -1177,6 +1197,7 @@ const AppCompanyRouteChildren: AppCompanyRouteChildren = {
   AppCompanyClientFundsRoute: AppCompanyClientFundsRoute,
   AppCompanyDimensionsRoute: AppCompanyDimensionsRoute,
   AppCompanyIntegrityRoute: AppCompanyIntegrityRoute,
+  AppCompanyOpeningRoute: AppCompanyOpeningRoute,
   AppCompanyRevaluationRoute: AppCompanyRevaluationRoute,
   AppCompanyIndexRoute: AppCompanyIndexRoute,
   AppCompanyChartRolesRoute: AppCompanyChartRolesRoute,

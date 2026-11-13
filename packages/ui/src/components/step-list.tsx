@@ -33,14 +33,15 @@ const looks = {
 
 /**
  * A task's steps in order (S10 "Screens", ADR 0010 §7), such as the opening's four steps on one
- * page: each numbered, with its status as an icon and words, linking to its section. A row of
- * steps from tablet width, a column on a phone, so nothing scrolls sideways. Labels and links come
+ * page: each numbered, with its status as an icon and words, linking to its section. A column on a
+ * phone, two columns from a small tablet, a row of four on a wide screen, so nothing scrolls
+ * sideways. Labels and links come
  * from the app; the step the person is on carries `aria-current="step"`.
  */
 function StepList({ steps, label, current, className, ...props }: StepListProps) {
   return (
     <nav aria-label={label} data-slot="step-list" className={cn('min-w-0', className)} {...props}>
-      <ol className="flex flex-col gap-2 md:flex-row md:gap-3">
+      <ol className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
         {steps.map((step, index) => {
           const { Icon, tone } = looks[step.status];
           return (
@@ -48,7 +49,7 @@ function StepList({ steps, label, current, className, ...props }: StepListProps)
               key={step.id}
               data-slot="step-list-item"
               data-status={step.status}
-              className="flex-1"
+              className="min-w-0"
             >
               <a
                 href={step.href}

@@ -41,6 +41,7 @@ import {
   CheckIcon,
   ChevronDownIcon,
   FilePenLineIcon,
+  FlagIcon,
   FolderTreeIcon,
   GitCompareArrowsIcon,
   HashIcon,
@@ -68,7 +69,7 @@ import {
   WorkflowIcon,
 } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
-import { useSwitchCompany } from '../features/company/company-queries';
+import { companyQuery, useSwitchCompany } from '../features/company/company-queries';
 import { inboxCountsQuery } from '../features/inbox/inbox-queries';
 import { reconciliationCountsQuery } from '../features/reconciliation/reconciliation-queries';
 import { activeMembership, can, meQuery } from '../lib/session';
@@ -91,7 +92,15 @@ interface NavItem {
    * reconciliation's ended days not clean in open months (S08).
    */
   count?: 'inbox' | 'reconciliation';
+  /**
+   * The opening's page (S10 "Screens"): in the sidebar while the company has a books start and its
+   * opening is not posted, in the palette whenever it has a books start.
+   */
+  opening?: true;
 }
+
+/** Where the opening's page is listed for the active company (S10 "Screens"). */
+type OpeningLink = 'sidebar' | 'palette' | 'none';
 
 const navItems: NavItem[] = [
   { to: '/', label: t.nav.home, icon: HouseIcon, exact: true },
@@ -169,6 +178,13 @@ const navItems: NavItem[] = [
     icon: LandmarkIcon,
     permission: 'company.read',
   },
+  {
+    to: '/opening',
+    label: ar.opening.nav,
+    icon: FlagIcon,
+    permission: 'opening.read',
+    opening: true,
+  },
   { to: '/settings/members', label: ar.members.nav, icon: UsersIcon, permission: 'members.read' },
   {
     to: '/settings/posting-rules',
@@ -206,11 +222,32 @@ const navItems: NavItem[] = [
   },
 ];
 
-const listedItems = (me: Me | null | undefined) =>
+const listedItems = (
+  me: Me | null | undefined,
+  opening: OpeningLink,
+  where: 'sidebar' | 'palette',
+) =>
   navItems.filter(
     (item) =>
-      (!item.show || item.show()) && (!item.permission || (me ? can(me, item.permission) : false)),
+      (!item.show || item.show()) &&
+      (!item.permission || (me ? can(me, item.permission) : false)) &&
+      (!item.opening || opening === 'sidebar' || (where === 'palette' && opening === 'palette')),
   );
+
+/**
+ * Where the opening's page is listed: read from the active company's books start and opening
+ * state (`GET /api/company`, shared with `/settings/company`), for a person with `opening.read`.
+ */
+function useOpeningLink(me: Me | null | undefined): OpeningLink {
+  const companyId = me ? activeMembership(me)?.company.id : undefined;
+  const reads = me !== null && me !== undefined && can(me, 'opening.read');
+  const company = useQuery({
+    ...companyQuery(companyId ?? ''),
+    enabled: companyId !== undefined && reads,
+  }).data;
+  if (!reads || !company || company.id !== companyId || company.booksStart === null) return 'none';
+  return company.openingState === 'posted' ? 'palette' : 'sidebar';
+}
 
 /**
  * Vertex Green navigation, a gold marker on the active page (brand/identity.md §2, §7). Signed
@@ -267,6 +304,7 @@ const navLink = cn(
 );
 
 function Sidebar({ me, onNavigate }: { me: Me | null | undefined; onNavigate?: () => void }) {
+  const opening = useOpeningLink(me);
   return (
     <div className="flex h-full w-full flex-col border-e border-sidebar-border bg-sidebar text-sidebar-foreground [--ring:var(--sidebar-ring)]">
       <div className="flex h-14 shrink-0 items-center gap-3 border-b border-sidebar-border px-5">
@@ -278,7 +316,7 @@ function Sidebar({ me, onNavigate }: { me: Me | null | undefined; onNavigate?: (
         aria-label={t.navLabel}
         className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto p-3"
       >
-        {listedItems(me).map(({ to, label, icon: Icon, exact, count }) => (
+        {listedItems(me, opening, 'sidebar').map(({ to, label, icon: Icon, exact, count }) => (
           <Link
             key={to}
             to={to}
@@ -374,8 +412,9 @@ function TopBar({ me }: { me: Me | null | undefined }) {
 /** The palette's app-wide commands: the listed pages, the theme and the density. */
 function useShellCommands(me: Me | null | undefined): PaletteCommand[] {
   const router = useRouter();
+  const opening = useOpeningLink(me);
   return [
-    ...listedItems(me).map(({ to, label }) => ({
+    ...listedItems(me, opening, 'palette').map(({ to, label }) => ({
       id: `go-${to}`,
       label,
       group: t.palette.navigation,

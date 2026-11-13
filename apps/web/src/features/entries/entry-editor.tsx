@@ -1136,7 +1136,10 @@ class RefusedText extends Error {
 }
 
 /** Why typed text is not an account the line can post to, or nothing when it is one. */
-function accountProblem(code: string, byCode: ReadonlyMap<string, Account>): string | undefined {
+export function accountProblem(
+  code: string,
+  byCode: ReadonlyMap<string, Account>,
+): string | undefined {
   if (code === '') return undefined;
   const account = byCode.get(code);
   if (!account || account.archived) return te.accountUnknown;
@@ -1146,7 +1149,7 @@ function accountProblem(code: string, byCode: ReadonlyMap<string, Account>): str
 }
 
 /** The text of a grid refusal (i18n `grid.problems`). */
-function gridProblemText(problem: GridProblem): string {
+export function gridProblemText(problem: GridProblem): string {
   if (problem.problem !== 'INVALID_CELLS') return ar.grid.problems[problem.problem];
   const first = problem.cells[0];
   if (!first) return ar.grid.problems.nothingChanged;

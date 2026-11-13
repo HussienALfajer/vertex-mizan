@@ -6,7 +6,7 @@ import {
   type Member,
   PERMISSIONS,
 } from '@vertex-mizan/contracts';
-import { signedIn } from './test';
+import { defaultCompany, signedIn } from './test';
 
 /** Synthetic answers of the company API (S01) shared by the screen and flow specs. */
 
@@ -49,28 +49,7 @@ export const viewer: Me = {
 /** No active company: the person chooses on `/companies`. */
 export const noCompany: Me = { ...owner, activeCompanyId: null, permissions: [] };
 
-export const company: Company = {
-  id: companyId,
-  name: 'شركة اختبار',
-  nameLatin: 'Test Company',
-  ledgers: {
-    book: { currency: 'SYP', ratePolicy: { rateType: 'bulletin', acceptsTransactionRate: false } },
-    parallel: {
-      currency: 'USD',
-      ratePolicy: { rateType: 'market', acceptsTransactionRate: true },
-    },
-  },
-  fiscalYearStartMonth: 1,
-  policyNote: 'العملة الوظيفية هي الليرة السورية: عملة البيئة الاقتصادية الرئيسية للشركة (مثال).',
-  booksStarted: false,
-  booksStart: null,
-  openingState: null,
-  manualEntryApproval: false,
-  paymentToleranceSyp: '100',
-  paymentToleranceUsd: '100',
-  archived: null,
-  createdAt: '2026-10-20T08:00:00.000Z',
-};
+export const company: Company = defaultCompany;
 
 export const archivedCompany: Company = {
   ...company,

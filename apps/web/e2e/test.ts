@@ -6,7 +6,7 @@ import {
   type Request,
   type TestInfo,
 } from '@playwright/test';
-import type { ErrorCode, HealthResponse, Me } from '@vertex-mizan/contracts';
+import type { Company, ErrorCode, HealthResponse, Me } from '@vertex-mizan/contracts';
 
 /*
  * The `test` every spec uses: Playwright's, with the API mocked for the page and failing a test
@@ -45,6 +45,33 @@ export const signedIn: Me = {
   ],
   activeCompanyId: '01900000-0000-7000-8000-000000000003',
   permissions: ['company.read'],
+};
+
+/**
+ * The active company as `GET /api/company` answers it: the shell reads it for the opening's link
+ * (S10), so every page asks for it; a company without a books start unless a test says so.
+ */
+export const defaultCompany: Company = {
+  id: '01900000-0000-7000-8000-000000000003',
+  name: 'شركة اختبار',
+  nameLatin: 'Test Company',
+  ledgers: {
+    book: { currency: 'SYP', ratePolicy: { rateType: 'bulletin', acceptsTransactionRate: false } },
+    parallel: {
+      currency: 'USD',
+      ratePolicy: { rateType: 'market', acceptsTransactionRate: true },
+    },
+  },
+  fiscalYearStartMonth: 1,
+  policyNote: 'العملة الوظيفية هي الليرة السورية: عملة البيئة الاقتصادية الرئيسية للشركة (مثال).',
+  booksStarted: false,
+  booksStart: null,
+  openingState: null,
+  manualEntryApproval: false,
+  paymentToleranceSyp: '100',
+  paymentToleranceUsd: '100',
+  archived: null,
+  createdAt: '2026-10-20T08:00:00.000Z',
 };
 
 /** An API answer: a status and a JSON body (none for 204). */
@@ -100,6 +127,9 @@ export const test = base.extend<{ health: HealthMock; me: Me | null; api: ApiMoc
       // The shell's unclean reconciliation days (S08): none unless a test says so.
       if (key === 'GET /api/reconciliation/counts') {
         return route.fulfill({ status: 200, json: { uncleanDays: 0 } });
+      }
+      if (key === 'GET /api/company') {
+        return route.fulfill({ status: 200, json: defaultCompany });
       }
       if (key === 'GET /api/health') {
         if (health === 'unreachable') return route.abort('connectionrefused');

@@ -8,6 +8,7 @@ import {
 } from '@vertex-mizan/contracts';
 import { ar } from '@vertex-mizan/i18n';
 import {
+  Badge,
   Button,
   Card,
   CardHeader,
@@ -104,6 +105,11 @@ function EntryView({ entry }: { entry: Entry }) {
           <span className="flex flex-wrap items-center gap-x-3">
             {t.table.number}
             <EntryNumberText number={entry} startMonth={startMonth} />
+            {entry.source === 'opening' && (
+              <Badge tone="brand" data-slot="opening-entry-badge">
+                {ar.opening.entry.badge}
+              </Badge>
+            )}
           </span>
         }
         description={<bdi>{entry.description}</bdi>}
@@ -160,6 +166,13 @@ function EntryView({ entry }: { entry: Entry }) {
                 className="text-primary underline-offset-4 hover:underline"
               >
                 <EntryNumberText number={entry.reverses} startMonth={startMonth} />
+              </Link>
+            </Fact>
+          )}
+          {entry.source === 'opening' && can(me, 'opening.read') && (
+            <Fact label={ar.opening.entry.link}>
+              <Link to="/opening" className="text-primary underline-offset-4 hover:underline">
+                {ar.opening.entry.description}
               </Link>
             </Fact>
           )}
