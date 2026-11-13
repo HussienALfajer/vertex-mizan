@@ -118,7 +118,10 @@ export function reportMarks(input: {
   return marks;
 }
 
-export type BooksStartMark = 'opening_entry' | 'before_books_start' | 'pre_opening_result_in_equity';
+export type BooksStartMark =
+  | 'opening_entry'
+  | 'before_books_start'
+  | 'pre_opening_result_in_equity';
 
 export type ReportMarkValue = 'period_open' | 'before_revaluation' | BooksStartMark;
 

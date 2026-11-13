@@ -116,6 +116,8 @@ export interface LinesSearch {
   contract?: string | undefined;
   profitabilityBy?: string | undefined;
   profitabilityValue?: string | undefined;
+  /** S10 rule 32: only the opening entries' lines, an opening column read from them. */
+  openingEntry?: 'true' | undefined;
 }
 
 /** A figure's drill-down: the link to the lines behind it, for `ReportTable`'s `link`. */

@@ -66,6 +66,7 @@ export function LinesPage() {
             </Fact>
           )}
           {search.side && <Fact label={t.columns.side}>{t.lines.side[search.side]}</Fact>}
+          {search.openingEntry && <Fact label={t.filters.label}>{t.lines.openingEntry}</Fact>}
           {first && (
             <>
               <Fact label={t.lines.sum}>

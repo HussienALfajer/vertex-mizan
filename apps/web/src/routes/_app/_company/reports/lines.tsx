@@ -24,6 +24,8 @@ export const Route = createFileRoute('/_app/_company/reports/lines')({
     contract: uuidParam(search.contract),
     profitabilityBy: byParam(search.profitabilityBy),
     profitabilityValue: uuidParam(search.profitabilityValue),
+    openingEntry:
+      search.openingEntry === 'true' || search.openingEntry === true ? 'true' : undefined,
   }),
   beforeLoad: ({ context }) => requirePermission(context.me, 'reports.read'),
   component: LinesPage,

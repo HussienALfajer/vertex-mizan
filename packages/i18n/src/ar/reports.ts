@@ -267,6 +267,8 @@ export const reports = {
     hub: 'مستند Hub',
     caption: 'الأسطر خلف الرقم',
     fromStart: 'من بداية الدفاتر',
+    /** S10 rule 32: a drill-down of an opening column read from the opening entries. */
+    openingEntry: 'أسطر قيد الافتتاح وحدها',
     value: 'القيمة',
   },
   /** `/reports/general-ledger` and `/reports/accounts/:id`. */

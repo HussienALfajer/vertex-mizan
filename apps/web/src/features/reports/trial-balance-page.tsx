@@ -81,6 +81,8 @@ export function TrialBalancePage() {
   const data = report.data;
   const currency = data?.header.currency ?? 'SYP';
   const compared = data?.header.compare ?? null;
+  // S10 rule 32: an opening column read from the opening entries drills to their lines.
+  const fromOpeningEntry = data?.header.current.marks.includes('opening_entry') ?? false;
 
   const columns: ReportTableColumn[] = [
     { id: 'openingDebit', label: t.columns.debit, group: t.columns.opening },
@@ -103,7 +105,9 @@ export function TrialBalancePage() {
   const rowOf = (row: TrialBalanceRow): ReportTableRow => {
     const opening = debitCreditOf(BigInt(row.opening));
     const closing = debitCreditOf(BigInt(row.closing));
-    const balanceTo = { to: addDays(from, -1) };
+    const balanceTo = fromOpeningEntry
+      ? { to, openingEntry: 'true' as const }
+      : { to: addDays(from, -1) };
     const figures: Record<string, ReportFigure> = {
       debits: {
         value: BigInt(row.debits),

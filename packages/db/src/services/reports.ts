@@ -850,8 +850,7 @@ export async function readGeneralLedger(
       return {
         account: account.report,
         // Before its first line on this page: the opening, or the balance it continues from.
-        opening:
-          first === undefined ? text(opening.get(account.id) ?? 0n) : first.balance_before,
+        opening: first === undefined ? text(opening.get(account.id) ?? 0n) : first.balance_before,
         lines: lines.map((row) => reportLineOf(row, values)),
         closing: text(closing.get(account.id)?.net ?? 0n),
       };

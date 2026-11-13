@@ -36,7 +36,7 @@ const issuePaths = (schema: z.ZodType, input: unknown) => {
 };
 
 describe('the report identities and marks', () => {
-  it('lists rule 37 in order, and rule 4 its two marks', () => {
+  it('lists rule 37 in order, rule 4 its two marks and S10 its three', () => {
     expect(REPORTS).toEqual([
       'trial_balance',
       'general_ledger',
@@ -51,7 +51,14 @@ describe('the report identities and marks', () => {
       'client_statement',
       'chart',
     ]);
-    expect(REPORT_MARKS).toEqual(['period_open', 'before_revaluation']);
+    // S10 rules 32–33's marks appended after rule 4's two.
+    expect(REPORT_MARKS).toEqual([
+      'period_open',
+      'before_revaluation',
+      'opening_entry',
+      'before_books_start',
+      'pre_opening_result_in_equity',
+    ]);
   });
 
   it('holds 30 rows a page of the journal book, owner 2026-11-12', () => {

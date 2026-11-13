@@ -633,8 +633,7 @@ function balanceSheetSheet(data: BalanceSheet, context: SheetContext): ReportShe
         compare: compareCell(data.header, data.compareYearResult),
       },
     },
-    ...(data.yearResultPreOpening !== '0' ||
-    (data.compareYearResultPreOpening ?? '0') !== '0'
+    ...(data.yearResultPreOpening !== '0' || (data.compareYearResultPreOpening ?? '0') !== '0'
       ? [
           {
             level: 2,
