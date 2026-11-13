@@ -332,13 +332,35 @@ describe('/api/opening (S10 rules 10–26)', () => {
 
   it("reads another company's opening as nothing of the caller's", async () => {
     const mine = await startedBooks();
-    await mine.owner.browser.put('/api/opening', { version: 0, lines: [], recordFigures: [] });
+    await rate(mine, '2026-09-30', '115.0000', 'bulletin');
+    await rate(mine, '2026-09-30', '118.0000', 'market');
+    const saved = await mine.owner.browser.put('/api/opening', {
+      version: 0,
+      lines: [recordLine(mine, '111001', 'SYP', '123456700')],
+      recordFigures: [],
+    });
+    expect(saved.status, JSON.stringify(saved.body)).toBe(200);
     const theirs = await books(app, db);
     expect((await theirs.owner.browser.get('/api/opening')).body.code).toBe('NO_BOOKS_START');
     const other = await startedBooks();
     const read = (await other.owner.browser.get('/api/opening')).body as OpeningViewAnswer;
     expect(read.state).toBeNull();
     expect(read.version).toBe(0);
+    expect(read.recordLines).toEqual([]);
+    expect(read.lines).toEqual([]);
+    // The preview's workbook holds the caller's lines only: mine shows its amount, theirs none.
+    const amountIn = (rows: unknown[][]) => rows.some((row) => row.includes(1234567));
+    const mineRows = await workbookRows(
+      (await mine.owner.browser.download('/api/opening/export', { part: 'preview' }))
+        .body as Buffer,
+    );
+    expect(amountIn(mineRows)).toBe(true);
+    const otherRows = await workbookRows(
+      (await other.owner.browser.download('/api/opening/export', { part: 'preview' }))
+        .body as Buffer,
+    );
+    expect(amountIn(otherRows)).toBe(false);
+    expect(otherRows.length).toBeLessThan(mineRows.length);
   });
 
   it('needs opening.read, opening.prepare and opening.post, and a fresh code to post or reverse', async () => {
