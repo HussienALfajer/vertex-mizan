@@ -1,11 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
-import {
-  type Account,
-  AGEING_BUCKETS,
-  type AgeingBucket,
-  type ClientRef,
-} from '@vertex-mizan/contracts';
+import { AGEING_BUCKETS, type AgeingBucket, type ClientRef } from '@vertex-mizan/contracts';
 import { ar } from '@vertex-mizan/i18n';
 import { Badge, Button, LedgerSwitch } from '@vertex-mizan/ui';
 import { ArrowRightIcon } from 'lucide-react';
@@ -88,11 +83,6 @@ export function useClients(companyId: string) {
   const catalog = useDimensionCatalog(companyId);
   const type = catalog.types.find((candidate) => candidate.code === 'client');
   return { type, values: type ? catalog.valuesOf(type.id) : [], catalog };
-}
-
-/** Whether a company's chart has a running control account (ad funds): the funds screen's. */
-export function hasRunningAccount(accounts: readonly Account[] | undefined): boolean {
-  return (accounts ?? []).some((account) => account.itemKind === 'running');
 }
 
 /** The ledger switch of a report, when the company keeps a parallel ledger. */

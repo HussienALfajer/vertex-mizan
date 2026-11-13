@@ -147,22 +147,6 @@ test.describe('the receivables ageing', () => {
     await page.keyboard.press('Enter');
     await expect(page).toHaveURL(new RegExp(`/open-items/${hubItem.id}$`));
   });
-
-  test('the client funds say when the chart cannot be read', async ({ page }) => {
-    await answer(page, 'GET', '/accounts', refusal(403, 'FORBIDDEN'));
-    await page.goto('/client-funds');
-    await expect(page.getByText(ar.errors.FORBIDDEN)).toBeVisible();
-  });
-
-  test('shows the client funds, a debit balance marked', async ({ page }) => {
-    await page.goto('/receivables');
-    await page.getByRole('link', { name: t.ageing.clientFunds }).click();
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText(t.funds.title);
-    const table = page.getByRole('table', { name: t.funds.label });
-    await expect(table.getByRole('row')).toHaveCount(3);
-    await expect(table.getByRole('row').nth(1)).toContainText('-500.00USD');
-    await expect(table.getByRole('row').nth(2)).toContainText(t.labels.receivable);
-  });
 });
 
 test.describe('the client statement', () => {

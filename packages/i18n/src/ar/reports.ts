@@ -193,8 +193,6 @@ export const reports = {
       balance_sheet: 'الأصول والالتزامات وحقوق الملكية كما في تاريخ، مع ربح السنة الحالية.',
       profitability:
         'الإيراد والتكاليف المباشرة وهامش المساهمة حسب العميل أو العقد أو القسم أو الخدمة.',
-      contract_position: 'أصول العقود والتزاماتها لكل عقد وصافيها.',
-      revenue_schedule: 'الإيراد المتبقي تحقيقه لكل شهر قادم ولكل عقد.',
       prints: 'كل نسخة رسمية طُبعت من دفتر اليومية ببصماتها، والمستبدلة منها.',
     },
     prints: 'سجل الطبعات الرسمية',
@@ -325,16 +323,6 @@ export const reports = {
     download: 'تنزيل',
     empty: 'لا طبعات رسمية في هذه السنة',
     emptyDescription: 'تُطبع النسخة الرسمية من صفحة اليومية العامة بعد إقفال الأشهر.',
-  },
-  /** The contract position's and the release schedule's screens (rules 24, 25). */
-  contracts: {
-    caption: 'مركز العقود',
-    scheduleCaption: 'جدول تحقق الإيراد',
-    schedules: 'جداول العقد',
-    noContract: 'دون عقد',
-    /** The two totals as the balance sheet's lines, under the net column (rule 24). */
-    balanceSheetAssets: 'أصول العقود في الميزانية',
-    balanceSheetLiabilities: 'التزامات العقود في الميزانية',
   },
   /** The profitability screen (rules 20–23). */
   profitabilityScreen: {

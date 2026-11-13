@@ -36,25 +36,21 @@ import {
   BuildingIcon,
   CalendarCheckIcon,
   CalendarDaysIcon,
-  CalendarRangeIcon,
   ChartColumnIcon,
   CheckIcon,
   ChevronDownIcon,
   FilePenLineIcon,
   FlagIcon,
   FolderTreeIcon,
-  GitCompareArrowsIcon,
   HashIcon,
   HourglassIcon,
   HouseIcon,
-  InboxIcon,
   KeyRoundIcon,
   LandmarkIcon,
   type LucideIcon,
   MenuIcon,
   MoonIcon,
   PackageIcon,
-  PlugZapIcon,
   PlusIcon,
   RowsIcon,
   ScaleIcon,
@@ -66,12 +62,9 @@ import {
   TagsIcon,
   UserRoundSearchIcon,
   UsersIcon,
-  WorkflowIcon,
 } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { companyQuery, useSwitchCompany } from '../features/company/company-queries';
-import { inboxCountsQuery } from '../features/inbox/inbox-queries';
-import { reconciliationCountsQuery } from '../features/reconciliation/reconciliation-queries';
 import { activeMembership, can, meQuery } from '../lib/session';
 
 const t = ar.shell;
@@ -87,11 +80,6 @@ interface NavItem {
   show?: () => boolean;
   /** Lists the item only for a person holding this permission in the active company (cosmetic). */
   permission?: Permission;
-  /**
-   * Shows a count beside the label, hidden at zero: the inbox's held events (S05), the
-   * reconciliation's ended days not clean in open months (S08).
-   */
-  count?: 'inbox' | 'reconciliation';
   /**
    * The opening's page (S10 "Screens"): in the sidebar while the company has a books start and its
    * opening is not posted, in the palette whenever it has a books start.
@@ -116,30 +104,10 @@ const navItems: NavItem[] = [
   { to: '/entries', label: ar.entries.nav, icon: BookOpenIcon, permission: 'entries.read' },
   { to: '/drafts', label: ar.drafts.nav, icon: FilePenLineIcon, permission: 'drafts.read' },
   {
-    to: '/inbox',
-    label: ar.inbox.nav,
-    icon: InboxIcon,
-    permission: 'events.read',
-    count: 'inbox',
-  },
-  {
-    to: '/reconciliation',
-    label: ar.reconciliation.nav,
-    icon: GitCompareArrowsIcon,
-    permission: 'reconciliation.read',
-    count: 'reconciliation',
-  },
-  {
     to: '/receivables',
     label: ar.openItems.ageing.nav,
     icon: HourglassIcon,
     permission: 'open_items.read',
-  },
-  {
-    to: '/revenue',
-    label: ar.revenue.nav,
-    icon: CalendarRangeIcon,
-    permission: 'recognition.read',
   },
   {
     to: '/reports',
@@ -186,18 +154,6 @@ const navItems: NavItem[] = [
     opening: true,
   },
   { to: '/settings/members', label: ar.members.nav, icon: UsersIcon, permission: 'members.read' },
-  {
-    to: '/settings/posting-rules',
-    label: ar.postingRules.nav,
-    icon: WorkflowIcon,
-    permission: 'posting_rules.read',
-  },
-  {
-    to: '/settings/api-clients',
-    label: ar.apiClients.nav,
-    icon: PlugZapIcon,
-    permission: 'api_clients.read',
-  },
   { to: '/settings/audit', label: ar.audit.nav, icon: ScrollTextIcon, permission: 'audit.read' },
   {
     to: '/integrity',
@@ -316,7 +272,7 @@ function Sidebar({ me, onNavigate }: { me: Me | null | undefined; onNavigate?: (
         aria-label={t.navLabel}
         className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto p-3"
       >
-        {listedItems(me, opening, 'sidebar').map(({ to, label, icon: Icon, exact, count }) => (
+        {listedItems(me, opening, 'sidebar').map(({ to, label, icon: Icon, exact }) => (
           <Link
             key={to}
             to={to}
@@ -326,8 +282,6 @@ function Sidebar({ me, onNavigate }: { me: Me | null | undefined; onNavigate?: (
           >
             <Icon aria-hidden="true" className="size-icon" />
             {label}
-            {count === 'inbox' && me && <HeldCount me={me} />}
-            {count === 'reconciliation' && me && <UncleanDaysCount me={me} />}
           </Link>
         ))}
       </nav>
@@ -339,40 +293,6 @@ function Sidebar({ me, onNavigate }: { me: Me | null | undefined; onNavigate?: (
         />
       </div>
     </div>
-  );
-}
-
-/** The held events of the active company beside the inbox's link (S05), hidden at zero. */
-function HeldCount({ me }: { me: Me }) {
-  const companyId = activeMembership(me)?.company.id;
-  const counts = useQuery({
-    ...inboxCountsQuery(companyId ?? ''),
-    enabled: companyId !== undefined,
-  });
-  const held = counts.data?.held ?? 0;
-  if (held === 0) return null;
-  return (
-    <Badge tone="gold" className="ms-auto" data-slot="held-count">
-      <bdi dir="ltr">{held}</bdi>
-      <span className="sr-only">{ar.inbox.heldCount}</span>
-    </Badge>
-  );
-}
-
-/** The reconciliation's ended days not clean in open months (S08), hidden at zero. */
-function UncleanDaysCount({ me }: { me: Me }) {
-  const companyId = activeMembership(me)?.company.id;
-  const counts = useQuery({
-    ...reconciliationCountsQuery(companyId ?? ''),
-    enabled: companyId !== undefined,
-  });
-  const days = counts.data?.uncleanDays ?? 0;
-  if (days === 0) return null;
-  return (
-    <Badge tone="gold" className="ms-auto" data-slot="unclean-days-count">
-      <bdi dir="ltr">{days}</bdi>
-      <span className="sr-only">{ar.reconciliation.uncleanCount}</span>
-    </Badge>
   );
 }
 
@@ -475,18 +395,6 @@ function useShellCommands(me: Me | null | undefined): PaletteCommand[] {
             keywords: ['open item', 'invoice', 'reference', 'فاتورة'],
             icon: <HashIcon />,
             run: () => void router.navigate({ to: '/receivables', search: { find: 'item' } }),
-          },
-        ]
-      : []),
-    ...(me && can(me, 'events.read')
-      ? [
-          {
-            id: 'find-event',
-            label: ar.inbox.palette.find,
-            group: t.palette.navigation,
-            keywords: ['hub event', 'inbox', 'حدث', 'Hub'],
-            icon: <InboxIcon />,
-            run: () => void router.navigate({ to: '/inbox', search: { find: 'document' } }),
           },
         ]
       : []),

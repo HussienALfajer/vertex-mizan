@@ -89,8 +89,9 @@ test.describe('the periods', () => {
     await expect(page.getByRole('heading', { level: 1 })).toContainText(t.detail.title);
     const items = page.locator('[data-slot="checklist-item"]');
     await expect(items).toHaveCount(8);
-    // S08's item, last (its link: reconciliation.spec.ts).
+    // S08's item, last, without a link: its page left with Hub (ADR 0021).
     await expect(items.last()).toContainText(t.checklist.items.reconciliation_clean);
+    await expect(items.last().getByRole('link')).toHaveCount(0);
     const drafts = items.filter({ hasText: t.checklist.items.no_drafts });
     await expect(drafts).toContainText(t.checklist.results.failed);
     await expect(drafts).toContainText(`${t.checklist.counts.no_drafts}: 1`);
@@ -99,10 +100,7 @@ test.describe('the periods', () => {
       '/drafts',
     );
     const held = items.filter({ hasText: t.checklist.items.no_held_events });
-    await expect(held.getByRole('link')).toHaveAttribute(
-      'href',
-      '/inbox?view=held&from=2026-10-01&to=2026-10-31',
-    );
+    await expect(held.getByRole('link')).toHaveCount(0);
     const revaluation = items.filter({ hasText: t.checklist.items.revaluation_current });
     await expect(revaluation).toContainText(r.ledgers.book);
     await expect(revaluation.getByRole('link')).toHaveAttribute(
@@ -114,23 +112,6 @@ test.describe('the periods', () => {
     );
     await expect(page.getByText(`${t.detail.summary}: 5/8`)).toBeVisible();
     await expect(page.getByRole('button', { name: t.close.action })).toBeDisabled();
-  });
-
-  test('the held events link opens the inbox filtered to the month', async ({ page }) => {
-    const asked = await answer(page, 'GET', '/inbox*', {
-      status: 200,
-      json: { events: [], nextCursor: null },
-    });
-    await page.goto('/periods/2026-10');
-    await page
-      .locator('[data-slot="checklist-item"]')
-      .filter({ hasText: t.checklist.items.no_held_events })
-      .getByRole('link')
-      .click();
-    await expect.poll(() => asked.length).toBeGreaterThan(0);
-    const params = new URL(asked.at(-1)?.url() ?? '').searchParams;
-    expect(params.get('from')).toBe('2026-10-01');
-    expect(params.get('to')).toBe('2026-10-31');
   });
 
   test('closes a month with a reason, and keeps a refusal with its failing items', async ({

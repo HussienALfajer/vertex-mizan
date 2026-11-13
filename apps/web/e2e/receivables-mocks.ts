@@ -1,6 +1,5 @@
 import type {
   AgeingReport,
-  ClientFunds,
   ClientRef,
   ClientStatement,
   OpenItem,
@@ -14,8 +13,7 @@ import { entryReads, ownerRef } from './entry-mocks';
  * Synthetic answers of the receivables API (S04), on the spec's example shifted before the tests'
  * today (2026-11-09): invoice M-1 of 1,000.00 USD opened on 3 November at 120 (120,000.00 SYP),
  * due 3 December, with a first receipt of 400.00 USD on 5 November clearing 48,000.00 SYP; an
- * older M-0 of 250.00 USD past due; a Hub invoice of a second client adjusted in Mizan; and each
- * client's ad funds on 213001.
+ * older M-0 of 250.00 USD past due; and a Hub invoice of a second client adjusted in Mizan.
  */
 
 const itemId = (n: number) => `01900000-0000-7000-800c-${String(n).padStart(12, '0')}`;
@@ -23,9 +21,7 @@ const entryId = (n: number) => `01900000-0000-7000-8009-${String(n + 10).padStar
 const movementId = (n: number) => `01900000-0000-7000-800d-${String(n).padStart(12, '0')}`;
 
 const receivables = accountOf('112001');
-const funds = accountOf('213001');
 const receivablesRef = { id: receivables.id, code: receivables.code, name: receivables.name };
-const fundsRef = { id: funds.id, code: funds.code, name: funds.name };
 
 export const client: ClientRef = {
   id: manualClient.id,
@@ -151,7 +147,7 @@ export const m1Extended: OpenItem = {
 export const hubOpenItem: OpenItem = {
   ...hubItem,
   asOf: '2026-11-09',
-  // The posted invoice of `inbox-mocks.ts`.
+  // A posted Hub invoice's event, kept on the item (ADR 0021: a Hub item stays readable).
   hubEventId: '01900000-0000-7000-a000-000000000001',
   hubDocument: {
     type: 'invoice',
@@ -332,34 +328,6 @@ export const statement: ClientStatement = {
   closingLedgerMinor: '10200000',
 };
 
-/** The ad funds on 9 November: one client's funds held, the other's debit balance. */
-export const clientFunds: ClientFunds = {
-  asOf: '2026-11-09',
-  ledger: 'book',
-  bookCurrency: 'SYP',
-  parallelCurrency: 'USD',
-  funds: [
-    {
-      itemId: itemId(10),
-      account: fundsRef,
-      client,
-      currency: 'USD',
-      amounts: { openMinor: '-50000', bookMinor: '-6000000', parallelMinor: '-50000' },
-      receivable: false,
-    },
-    {
-      itemId: itemId(11),
-      account: fundsRef,
-      client: otherClient,
-      currency: 'USD',
-      amounts: { openMinor: '10000', bookMinor: '1200000', parallelMinor: '10000' },
-      receivable: true,
-    },
-  ],
-  heldMinor: '-6000000',
-  receivableMinor: '1200000',
-};
-
 /** `GET /api/open-items`: the items filtered by account, client, state and reference text. */
 export function itemsPage(url: URL) {
   const params = url.searchParams;
@@ -383,5 +351,4 @@ export const receivablesReads = {
   [`GET /api/open-items/${m1.id}`]: { status: 200, json: m1Item },
   [`GET /api/open-items/${hubItem.id}`]: { status: 200, json: hubOpenItem },
   [`GET /api/clients/${client.id}/statement`]: { status: 200, json: statement },
-  'GET /api/client-funds': { status: 200, json: clientFunds },
 };

@@ -24,7 +24,6 @@ import {
   ScrollTextIcon,
   SheetIcon,
   UserRoundSearchIcon,
-  WalletCardsIcon,
 } from 'lucide-react';
 import { useState } from 'react';
 import { useCompany } from '../../lib/session';
@@ -106,20 +105,6 @@ const groups: { title: string; cards: ReportCard[] }[] = [
         title: t.names.profitability,
         description: t.index.descriptions.profitability,
         icon: ChartPieIcon,
-      },
-      {
-        key: 'contract-position',
-        to: '/reports/contract-position',
-        title: t.names.contract_position,
-        description: t.index.descriptions.contract_position,
-        icon: WalletCardsIcon,
-      },
-      {
-        key: 'revenue-schedule',
-        to: '/reports/revenue-schedule',
-        title: t.names.revenue_schedule,
-        description: t.index.descriptions.revenue_schedule,
-        icon: FileClockIcon,
       },
     ],
   },

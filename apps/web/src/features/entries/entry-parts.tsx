@@ -8,6 +8,8 @@ import {
   attachmentSchema,
   type CurrencyCode,
   type DimensionValue,
+  DOCUMENT_TYPES,
+  type DocumentType,
   type EntryLine,
   type EntryLineItem,
   type EntryNumber,
@@ -87,6 +89,26 @@ export const dimensionPickerLabels = ar.dimensions.picker;
 /** The month the company's fiscal year starts in, for entry numbers (1 while it loads). */
 export function useFiscalYearStartMonth(companyId: string): number {
   return useQuery(companyQuery(companyId)).data?.fiscalYearStartMonth ?? 1;
+}
+
+/**
+ * The Hub document an entry, a line or an item came from: its type and number, kept readable after
+ * the integration's removal (ADR 0021).
+ */
+export function HubDocumentText({
+  document,
+}: {
+  document: { type: string; number: string | null };
+}) {
+  const type = (DOCUMENT_TYPES as readonly string[]).includes(document.type)
+    ? ar.entries.hubDocument.types[document.type as DocumentType]
+    : null;
+  return (
+    <span className="inline-flex flex-wrap items-baseline gap-x-2">
+      {type && <span>{type}</span>}
+      {document.number && <bdi dir="ltr">{document.number}</bdi>}
+    </span>
+  );
 }
 
 /** An entry's number, `2026/123` or `2026-27/123`, as one LTR isolate (S03 "Periods"). */

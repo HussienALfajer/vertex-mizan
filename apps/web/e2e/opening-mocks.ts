@@ -335,20 +335,6 @@ export const reversedView: OpeningViewAnswer = {
   },
 };
 
-/** Before Hub's snapshot: check `snapshot` fails and Hub's step waits. */
-export const noSnapshotView: OpeningViewAnswer = {
-  ...failingView,
-  snapshot: null,
-  hubItems: [],
-  schedules: [],
-  differences: [],
-  agreement: [],
-  checks: [
-    { check: 'snapshot', passed: false, failures: [{ reason: 'snapshot_missing' }] },
-    ...allPassing.slice(1),
-  ],
-};
-
 /** Every read of `/opening`, its view given. */
 export const openingReads = (
   view: OpeningViewAnswer,

@@ -32,9 +32,8 @@ import { FormError } from '../../components/form-error';
 import { ApiError, download, hasCode } from '../../lib/api';
 import { damascusToday, formatDateTime, formatDay, formatMonthName } from '../../lib/format';
 import { useCompany } from '../../lib/session';
-import { EntryNumberText, useFiscalYearStartMonth } from '../entries/entry-parts';
-import { HubDocumentLink } from '../inbox/inbox-parts';
-import { formatMonth } from '../revenue/revenue-parts';
+import { EntryNumberText, HubDocumentText, useFiscalYearStartMonth } from '../entries/entry-parts';
+import { formatMonth } from '../periods/period-parts';
 import {
   DateInput,
   excelPathOf,
@@ -149,9 +148,7 @@ export function JournalPage() {
                       {entry.reference && (
                         <bdi className="text-muted-foreground">{entry.reference}</bdi>
                       )}
-                      {entry.hubDocument && (
-                        <HubDocumentLink document={entry.hubDocument} eventId={null} />
-                      )}
+                      {entry.hubDocument && <HubDocumentText document={entry.hubDocument} />}
                     </span>
                   </TableHead>
                 </TableRow>

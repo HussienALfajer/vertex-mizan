@@ -11,7 +11,6 @@ import {
   clientValue,
   designDepartment,
   prints,
-  projectValue,
   receivables,
   reportFile,
   reportsReads,
@@ -470,15 +469,6 @@ test.describe('the reports index', () => {
 
 test.describe('as a viewer', () => {
   test.use({ me: withRole('viewer') });
-
-  test('sees a contract without the link to schedules it cannot open', async ({ page }) => {
-    await page.goto('/reports/contract-position');
-    const table = page.getByRole('table', { name: /مركز العقود/ });
-    await expect(table).toContainText(projectValue.name);
-    await expect(table.getByRole('link', { name: new RegExp(t.contracts.schedules) })).toHaveCount(
-      0,
-    );
-  });
 
   test('reads every report from the sidebar', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 });

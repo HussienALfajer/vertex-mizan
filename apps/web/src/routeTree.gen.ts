@@ -17,7 +17,6 @@ import { Route as AuthForgotPasswordRouteImport } from './routes/_auth/forgot-pa
 import { Route as AuthInvitationRouteImport } from './routes/_auth/invitation'
 import { Route as AuthResetPasswordRouteImport } from './routes/_auth/reset-password'
 import { Route as AppCompanyIndexRouteImport } from './routes/_app/_company/index'
-import { Route as AppCompanyClientFundsRouteImport } from './routes/_app/_company/client-funds'
 import { Route as AppCompanyDimensionsRouteImport } from './routes/_app/_company/dimensions'
 import { Route as AppCompanyIntegrityRouteImport } from './routes/_app/_company/integrity'
 import { Route as AppCompanyOpeningRouteImport } from './routes/_app/_company/opening'
@@ -35,34 +34,24 @@ import { Route as AppCompanyDraftsIdRouteImport } from './routes/_app/_company/d
 import { Route as AppCompanyEntriesIndexRouteImport } from './routes/_app/_company/entries/index'
 import { Route as AppCompanyEntriesIdRouteImport } from './routes/_app/_company/entries/$id'
 import { Route as AppCompanyEntriesNewRouteImport } from './routes/_app/_company/entries/new'
-import { Route as AppCompanyInboxIndexRouteImport } from './routes/_app/_company/inbox/index'
-import { Route as AppCompanyInboxIdRouteImport } from './routes/_app/_company/inbox/$id'
 import { Route as AppCompanyOpenItemsIdRouteImport } from './routes/_app/_company/open-items/$id'
 import { Route as AppCompanyPeriodsIndexRouteImport } from './routes/_app/_company/periods/index'
 import { Route as AppCompanyPeriodsPeriodRouteImport } from './routes/_app/_company/periods/$period'
 import { Route as AppCompanyRatesIndexRouteImport } from './routes/_app/_company/rates/index'
 import { Route as AppCompanyRatesCalendarRouteImport } from './routes/_app/_company/rates/calendar'
 import { Route as AppCompanyReceivablesIndexRouteImport } from './routes/_app/_company/receivables/index'
-import { Route as AppCompanyReconciliationIndexRouteImport } from './routes/_app/_company/reconciliation/index'
-import { Route as AppCompanyReconciliationDateRouteImport } from './routes/_app/_company/reconciliation/$date'
 import { Route as AppCompanyReportsIndexRouteImport } from './routes/_app/_company/reports/index'
 import { Route as AppCompanyReportsBalanceSheetRouteImport } from './routes/_app/_company/reports/balance-sheet'
-import { Route as AppCompanyReportsContractPositionRouteImport } from './routes/_app/_company/reports/contract-position'
 import { Route as AppCompanyReportsGeneralLedgerRouteImport } from './routes/_app/_company/reports/general-ledger'
 import { Route as AppCompanyReportsIncomeStatementRouteImport } from './routes/_app/_company/reports/income-statement'
 import { Route as AppCompanyReportsJournalRouteImport } from './routes/_app/_company/reports/journal'
 import { Route as AppCompanyReportsLinesRouteImport } from './routes/_app/_company/reports/lines'
 import { Route as AppCompanyReportsProfitabilityRouteImport } from './routes/_app/_company/reports/profitability'
-import { Route as AppCompanyReportsRevenueScheduleRouteImport } from './routes/_app/_company/reports/revenue-schedule'
 import { Route as AppCompanyReportsTrialBalanceRouteImport } from './routes/_app/_company/reports/trial-balance'
-import { Route as AppCompanyRevenueIndexRouteImport } from './routes/_app/_company/revenue/index'
-import { Route as AppCompanyRevenueIdRouteImport } from './routes/_app/_company/revenue/$id'
-import { Route as AppCompanySettingsApiClientsRouteImport } from './routes/_app/_company/settings/api-clients'
 import { Route as AppCompanySettingsAuditRouteImport } from './routes/_app/_company/settings/audit'
 import { Route as AppCompanySettingsCompanyRouteImport } from './routes/_app/_company/settings/company'
 import { Route as AppCompanySettingsExportRouteImport } from './routes/_app/_company/settings/export'
 import { Route as AppCompanySettingsMembersRouteImport } from './routes/_app/_company/settings/members'
-import { Route as AppCompanySettingsPostingRulesRouteImport } from './routes/_app/_company/settings/posting-rules'
 import { Route as AppCompanyAccountsIdLinesRouteImport } from './routes/_app/_company/accounts/$id/lines'
 import { Route as AppCompanyReceivablesClientsValueIdRouteImport } from './routes/_app/_company/receivables/clients/$valueId'
 import { Route as AppCompanyReportsAccountsIdRouteImport } from './routes/_app/_company/reports/accounts/$id'
@@ -103,11 +92,6 @@ const AuthResetPasswordRoute = AuthResetPasswordRouteImport.update({
 const AppCompanyIndexRoute = AppCompanyIndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => AppCompanyRoute,
-} as any)
-const AppCompanyClientFundsRoute = AppCompanyClientFundsRouteImport.update({
-  id: '/client-funds',
-  path: '/client-funds',
   getParentRoute: () => AppCompanyRoute,
 } as any)
 const AppCompanyDimensionsRoute = AppCompanyDimensionsRouteImport.update({
@@ -195,16 +179,6 @@ const AppCompanyEntriesNewRoute = AppCompanyEntriesNewRouteImport.update({
   path: '/entries/new',
   getParentRoute: () => AppCompanyRoute,
 } as any)
-const AppCompanyInboxIndexRoute = AppCompanyInboxIndexRouteImport.update({
-  id: '/inbox/',
-  path: '/inbox/',
-  getParentRoute: () => AppCompanyRoute,
-} as any)
-const AppCompanyInboxIdRoute = AppCompanyInboxIdRouteImport.update({
-  id: '/inbox/$id',
-  path: '/inbox/$id',
-  getParentRoute: () => AppCompanyRoute,
-} as any)
 const AppCompanyOpenItemsIdRoute = AppCompanyOpenItemsIdRouteImport.update({
   id: '/open-items/$id',
   path: '/open-items/$id',
@@ -236,18 +210,6 @@ const AppCompanyReceivablesIndexRoute =
     path: '/receivables/',
     getParentRoute: () => AppCompanyRoute,
   } as any)
-const AppCompanyReconciliationIndexRoute =
-  AppCompanyReconciliationIndexRouteImport.update({
-    id: '/reconciliation/',
-    path: '/reconciliation/',
-    getParentRoute: () => AppCompanyRoute,
-  } as any)
-const AppCompanyReconciliationDateRoute =
-  AppCompanyReconciliationDateRouteImport.update({
-    id: '/reconciliation/$date',
-    path: '/reconciliation/$date',
-    getParentRoute: () => AppCompanyRoute,
-  } as any)
 const AppCompanyReportsIndexRoute = AppCompanyReportsIndexRouteImport.update({
   id: '/reports/',
   path: '/reports/',
@@ -257,12 +219,6 @@ const AppCompanyReportsBalanceSheetRoute =
   AppCompanyReportsBalanceSheetRouteImport.update({
     id: '/reports/balance-sheet',
     path: '/reports/balance-sheet',
-    getParentRoute: () => AppCompanyRoute,
-  } as any)
-const AppCompanyReportsContractPositionRoute =
-  AppCompanyReportsContractPositionRouteImport.update({
-    id: '/reports/contract-position',
-    path: '/reports/contract-position',
     getParentRoute: () => AppCompanyRoute,
   } as any)
 const AppCompanyReportsGeneralLedgerRoute =
@@ -294,32 +250,10 @@ const AppCompanyReportsProfitabilityRoute =
     path: '/reports/profitability',
     getParentRoute: () => AppCompanyRoute,
   } as any)
-const AppCompanyReportsRevenueScheduleRoute =
-  AppCompanyReportsRevenueScheduleRouteImport.update({
-    id: '/reports/revenue-schedule',
-    path: '/reports/revenue-schedule',
-    getParentRoute: () => AppCompanyRoute,
-  } as any)
 const AppCompanyReportsTrialBalanceRoute =
   AppCompanyReportsTrialBalanceRouteImport.update({
     id: '/reports/trial-balance',
     path: '/reports/trial-balance',
-    getParentRoute: () => AppCompanyRoute,
-  } as any)
-const AppCompanyRevenueIndexRoute = AppCompanyRevenueIndexRouteImport.update({
-  id: '/revenue/',
-  path: '/revenue/',
-  getParentRoute: () => AppCompanyRoute,
-} as any)
-const AppCompanyRevenueIdRoute = AppCompanyRevenueIdRouteImport.update({
-  id: '/revenue/$id',
-  path: '/revenue/$id',
-  getParentRoute: () => AppCompanyRoute,
-} as any)
-const AppCompanySettingsApiClientsRoute =
-  AppCompanySettingsApiClientsRouteImport.update({
-    id: '/settings/api-clients',
-    path: '/settings/api-clients',
     getParentRoute: () => AppCompanyRoute,
   } as any)
 const AppCompanySettingsAuditRoute = AppCompanySettingsAuditRouteImport.update({
@@ -343,12 +277,6 @@ const AppCompanySettingsMembersRoute =
   AppCompanySettingsMembersRouteImport.update({
     id: '/settings/members',
     path: '/settings/members',
-    getParentRoute: () => AppCompanyRoute,
-  } as any)
-const AppCompanySettingsPostingRulesRoute =
-  AppCompanySettingsPostingRulesRouteImport.update({
-    id: '/settings/posting-rules',
-    path: '/settings/posting-rules',
     getParentRoute: () => AppCompanyRoute,
   } as any)
 const AppCompanyAccountsIdLinesRoute =
@@ -382,7 +310,6 @@ export interface FileRoutesByFullPath {
   '/forgot-password': typeof AuthForgotPasswordRoute
   '/invitation': typeof AuthInvitationRoute
   '/reset-password': typeof AuthResetPasswordRoute
-  '/client-funds': typeof AppCompanyClientFundsRoute
   '/dimensions': typeof AppCompanyDimensionsRoute
   '/integrity': typeof AppCompanyIntegrityRoute
   '/opening': typeof AppCompanyOpeningRoute
@@ -397,37 +324,27 @@ export interface FileRoutesByFullPath {
   '/drafts/$id': typeof AppCompanyDraftsIdRoute
   '/entries/$id': typeof AppCompanyEntriesIdRoute
   '/entries/new': typeof AppCompanyEntriesNewRoute
-  '/inbox/$id': typeof AppCompanyInboxIdRoute
   '/open-items/$id': typeof AppCompanyOpenItemsIdRoute
   '/periods/$period': typeof AppCompanyPeriodsPeriodRoute
   '/rates/calendar': typeof AppCompanyRatesCalendarRoute
-  '/reconciliation/$date': typeof AppCompanyReconciliationDateRoute
   '/reports/balance-sheet': typeof AppCompanyReportsBalanceSheetRoute
-  '/reports/contract-position': typeof AppCompanyReportsContractPositionRoute
   '/reports/general-ledger': typeof AppCompanyReportsGeneralLedgerRoute
   '/reports/income-statement': typeof AppCompanyReportsIncomeStatementRoute
   '/reports/journal': typeof AppCompanyReportsJournalRoute
   '/reports/lines': typeof AppCompanyReportsLinesRoute
   '/reports/profitability': typeof AppCompanyReportsProfitabilityRoute
-  '/reports/revenue-schedule': typeof AppCompanyReportsRevenueScheduleRoute
   '/reports/trial-balance': typeof AppCompanyReportsTrialBalanceRoute
-  '/revenue/$id': typeof AppCompanyRevenueIdRoute
-  '/settings/api-clients': typeof AppCompanySettingsApiClientsRoute
   '/settings/audit': typeof AppCompanySettingsAuditRoute
   '/settings/company': typeof AppCompanySettingsCompanyRoute
   '/settings/export': typeof AppCompanySettingsExportRoute
   '/settings/members': typeof AppCompanySettingsMembersRoute
-  '/settings/posting-rules': typeof AppCompanySettingsPostingRulesRoute
   '/chart/': typeof AppCompanyChartIndexRoute
   '/drafts/': typeof AppCompanyDraftsIndexRoute
   '/entries/': typeof AppCompanyEntriesIndexRoute
-  '/inbox/': typeof AppCompanyInboxIndexRoute
   '/periods/': typeof AppCompanyPeriodsIndexRoute
   '/rates/': typeof AppCompanyRatesIndexRoute
   '/receivables/': typeof AppCompanyReceivablesIndexRoute
-  '/reconciliation/': typeof AppCompanyReconciliationIndexRoute
   '/reports/': typeof AppCompanyReportsIndexRoute
-  '/revenue/': typeof AppCompanyRevenueIndexRoute
   '/accounts/$id/lines': typeof AppCompanyAccountsIdLinesRoute
   '/receivables/clients/$valueId': typeof AppCompanyReceivablesClientsValueIdRoute
   '/reports/accounts/$id': typeof AppCompanyReportsAccountsIdRoute
@@ -439,7 +356,6 @@ export interface FileRoutesByTo {
   '/forgot-password': typeof AuthForgotPasswordRoute
   '/invitation': typeof AuthInvitationRoute
   '/reset-password': typeof AuthResetPasswordRoute
-  '/client-funds': typeof AppCompanyClientFundsRoute
   '/dimensions': typeof AppCompanyDimensionsRoute
   '/integrity': typeof AppCompanyIntegrityRoute
   '/opening': typeof AppCompanyOpeningRoute
@@ -454,37 +370,27 @@ export interface FileRoutesByTo {
   '/drafts/$id': typeof AppCompanyDraftsIdRoute
   '/entries/$id': typeof AppCompanyEntriesIdRoute
   '/entries/new': typeof AppCompanyEntriesNewRoute
-  '/inbox/$id': typeof AppCompanyInboxIdRoute
   '/open-items/$id': typeof AppCompanyOpenItemsIdRoute
   '/periods/$period': typeof AppCompanyPeriodsPeriodRoute
   '/rates/calendar': typeof AppCompanyRatesCalendarRoute
-  '/reconciliation/$date': typeof AppCompanyReconciliationDateRoute
   '/reports/balance-sheet': typeof AppCompanyReportsBalanceSheetRoute
-  '/reports/contract-position': typeof AppCompanyReportsContractPositionRoute
   '/reports/general-ledger': typeof AppCompanyReportsGeneralLedgerRoute
   '/reports/income-statement': typeof AppCompanyReportsIncomeStatementRoute
   '/reports/journal': typeof AppCompanyReportsJournalRoute
   '/reports/lines': typeof AppCompanyReportsLinesRoute
   '/reports/profitability': typeof AppCompanyReportsProfitabilityRoute
-  '/reports/revenue-schedule': typeof AppCompanyReportsRevenueScheduleRoute
   '/reports/trial-balance': typeof AppCompanyReportsTrialBalanceRoute
-  '/revenue/$id': typeof AppCompanyRevenueIdRoute
-  '/settings/api-clients': typeof AppCompanySettingsApiClientsRoute
   '/settings/audit': typeof AppCompanySettingsAuditRoute
   '/settings/company': typeof AppCompanySettingsCompanyRoute
   '/settings/export': typeof AppCompanySettingsExportRoute
   '/settings/members': typeof AppCompanySettingsMembersRoute
-  '/settings/posting-rules': typeof AppCompanySettingsPostingRulesRoute
   '/chart': typeof AppCompanyChartIndexRoute
   '/drafts': typeof AppCompanyDraftsIndexRoute
   '/entries': typeof AppCompanyEntriesIndexRoute
-  '/inbox': typeof AppCompanyInboxIndexRoute
   '/periods': typeof AppCompanyPeriodsIndexRoute
   '/rates': typeof AppCompanyRatesIndexRoute
   '/receivables': typeof AppCompanyReceivablesIndexRoute
-  '/reconciliation': typeof AppCompanyReconciliationIndexRoute
   '/reports': typeof AppCompanyReportsIndexRoute
-  '/revenue': typeof AppCompanyRevenueIndexRoute
   '/accounts/$id/lines': typeof AppCompanyAccountsIdLinesRoute
   '/receivables/clients/$valueId': typeof AppCompanyReceivablesClientsValueIdRoute
   '/reports/accounts/$id': typeof AppCompanyReportsAccountsIdRoute
@@ -499,7 +405,6 @@ export interface FileRoutesById {
   '/_auth/forgot-password': typeof AuthForgotPasswordRoute
   '/_auth/invitation': typeof AuthInvitationRoute
   '/_auth/reset-password': typeof AuthResetPasswordRoute
-  '/_app/_company/client-funds': typeof AppCompanyClientFundsRoute
   '/_app/_company/dimensions': typeof AppCompanyDimensionsRoute
   '/_app/_company/integrity': typeof AppCompanyIntegrityRoute
   '/_app/_company/opening': typeof AppCompanyOpeningRoute
@@ -515,37 +420,27 @@ export interface FileRoutesById {
   '/_app/_company/drafts/$id': typeof AppCompanyDraftsIdRoute
   '/_app/_company/entries/$id': typeof AppCompanyEntriesIdRoute
   '/_app/_company/entries/new': typeof AppCompanyEntriesNewRoute
-  '/_app/_company/inbox/$id': typeof AppCompanyInboxIdRoute
   '/_app/_company/open-items/$id': typeof AppCompanyOpenItemsIdRoute
   '/_app/_company/periods/$period': typeof AppCompanyPeriodsPeriodRoute
   '/_app/_company/rates/calendar': typeof AppCompanyRatesCalendarRoute
-  '/_app/_company/reconciliation/$date': typeof AppCompanyReconciliationDateRoute
   '/_app/_company/reports/balance-sheet': typeof AppCompanyReportsBalanceSheetRoute
-  '/_app/_company/reports/contract-position': typeof AppCompanyReportsContractPositionRoute
   '/_app/_company/reports/general-ledger': typeof AppCompanyReportsGeneralLedgerRoute
   '/_app/_company/reports/income-statement': typeof AppCompanyReportsIncomeStatementRoute
   '/_app/_company/reports/journal': typeof AppCompanyReportsJournalRoute
   '/_app/_company/reports/lines': typeof AppCompanyReportsLinesRoute
   '/_app/_company/reports/profitability': typeof AppCompanyReportsProfitabilityRoute
-  '/_app/_company/reports/revenue-schedule': typeof AppCompanyReportsRevenueScheduleRoute
   '/_app/_company/reports/trial-balance': typeof AppCompanyReportsTrialBalanceRoute
-  '/_app/_company/revenue/$id': typeof AppCompanyRevenueIdRoute
-  '/_app/_company/settings/api-clients': typeof AppCompanySettingsApiClientsRoute
   '/_app/_company/settings/audit': typeof AppCompanySettingsAuditRoute
   '/_app/_company/settings/company': typeof AppCompanySettingsCompanyRoute
   '/_app/_company/settings/export': typeof AppCompanySettingsExportRoute
   '/_app/_company/settings/members': typeof AppCompanySettingsMembersRoute
-  '/_app/_company/settings/posting-rules': typeof AppCompanySettingsPostingRulesRoute
   '/_app/_company/chart/': typeof AppCompanyChartIndexRoute
   '/_app/_company/drafts/': typeof AppCompanyDraftsIndexRoute
   '/_app/_company/entries/': typeof AppCompanyEntriesIndexRoute
-  '/_app/_company/inbox/': typeof AppCompanyInboxIndexRoute
   '/_app/_company/periods/': typeof AppCompanyPeriodsIndexRoute
   '/_app/_company/rates/': typeof AppCompanyRatesIndexRoute
   '/_app/_company/receivables/': typeof AppCompanyReceivablesIndexRoute
-  '/_app/_company/reconciliation/': typeof AppCompanyReconciliationIndexRoute
   '/_app/_company/reports/': typeof AppCompanyReportsIndexRoute
-  '/_app/_company/revenue/': typeof AppCompanyRevenueIndexRoute
   '/_app/_company/accounts/$id/lines': typeof AppCompanyAccountsIdLinesRoute
   '/_app/_company/receivables/clients/$valueId': typeof AppCompanyReceivablesClientsValueIdRoute
   '/_app/_company/reports/accounts/$id': typeof AppCompanyReportsAccountsIdRoute
@@ -559,7 +454,6 @@ export interface FileRouteTypes {
     | '/forgot-password'
     | '/invitation'
     | '/reset-password'
-    | '/client-funds'
     | '/dimensions'
     | '/integrity'
     | '/opening'
@@ -574,37 +468,27 @@ export interface FileRouteTypes {
     | '/drafts/$id'
     | '/entries/$id'
     | '/entries/new'
-    | '/inbox/$id'
     | '/open-items/$id'
     | '/periods/$period'
     | '/rates/calendar'
-    | '/reconciliation/$date'
     | '/reports/balance-sheet'
-    | '/reports/contract-position'
     | '/reports/general-ledger'
     | '/reports/income-statement'
     | '/reports/journal'
     | '/reports/lines'
     | '/reports/profitability'
-    | '/reports/revenue-schedule'
     | '/reports/trial-balance'
-    | '/revenue/$id'
-    | '/settings/api-clients'
     | '/settings/audit'
     | '/settings/company'
     | '/settings/export'
     | '/settings/members'
-    | '/settings/posting-rules'
     | '/chart/'
     | '/drafts/'
     | '/entries/'
-    | '/inbox/'
     | '/periods/'
     | '/rates/'
     | '/receivables/'
-    | '/reconciliation/'
     | '/reports/'
-    | '/revenue/'
     | '/accounts/$id/lines'
     | '/receivables/clients/$valueId'
     | '/reports/accounts/$id'
@@ -616,7 +500,6 @@ export interface FileRouteTypes {
     | '/forgot-password'
     | '/invitation'
     | '/reset-password'
-    | '/client-funds'
     | '/dimensions'
     | '/integrity'
     | '/opening'
@@ -631,37 +514,27 @@ export interface FileRouteTypes {
     | '/drafts/$id'
     | '/entries/$id'
     | '/entries/new'
-    | '/inbox/$id'
     | '/open-items/$id'
     | '/periods/$period'
     | '/rates/calendar'
-    | '/reconciliation/$date'
     | '/reports/balance-sheet'
-    | '/reports/contract-position'
     | '/reports/general-ledger'
     | '/reports/income-statement'
     | '/reports/journal'
     | '/reports/lines'
     | '/reports/profitability'
-    | '/reports/revenue-schedule'
     | '/reports/trial-balance'
-    | '/revenue/$id'
-    | '/settings/api-clients'
     | '/settings/audit'
     | '/settings/company'
     | '/settings/export'
     | '/settings/members'
-    | '/settings/posting-rules'
     | '/chart'
     | '/drafts'
     | '/entries'
-    | '/inbox'
     | '/periods'
     | '/rates'
     | '/receivables'
-    | '/reconciliation'
     | '/reports'
-    | '/revenue'
     | '/accounts/$id/lines'
     | '/receivables/clients/$valueId'
     | '/reports/accounts/$id'
@@ -675,7 +548,6 @@ export interface FileRouteTypes {
     | '/_auth/forgot-password'
     | '/_auth/invitation'
     | '/_auth/reset-password'
-    | '/_app/_company/client-funds'
     | '/_app/_company/dimensions'
     | '/_app/_company/integrity'
     | '/_app/_company/opening'
@@ -691,37 +563,27 @@ export interface FileRouteTypes {
     | '/_app/_company/drafts/$id'
     | '/_app/_company/entries/$id'
     | '/_app/_company/entries/new'
-    | '/_app/_company/inbox/$id'
     | '/_app/_company/open-items/$id'
     | '/_app/_company/periods/$period'
     | '/_app/_company/rates/calendar'
-    | '/_app/_company/reconciliation/$date'
     | '/_app/_company/reports/balance-sheet'
-    | '/_app/_company/reports/contract-position'
     | '/_app/_company/reports/general-ledger'
     | '/_app/_company/reports/income-statement'
     | '/_app/_company/reports/journal'
     | '/_app/_company/reports/lines'
     | '/_app/_company/reports/profitability'
-    | '/_app/_company/reports/revenue-schedule'
     | '/_app/_company/reports/trial-balance'
-    | '/_app/_company/revenue/$id'
-    | '/_app/_company/settings/api-clients'
     | '/_app/_company/settings/audit'
     | '/_app/_company/settings/company'
     | '/_app/_company/settings/export'
     | '/_app/_company/settings/members'
-    | '/_app/_company/settings/posting-rules'
     | '/_app/_company/chart/'
     | '/_app/_company/drafts/'
     | '/_app/_company/entries/'
-    | '/_app/_company/inbox/'
     | '/_app/_company/periods/'
     | '/_app/_company/rates/'
     | '/_app/_company/receivables/'
-    | '/_app/_company/reconciliation/'
     | '/_app/_company/reports/'
-    | '/_app/_company/revenue/'
     | '/_app/_company/accounts/$id/lines'
     | '/_app/_company/receivables/clients/$valueId'
     | '/_app/_company/reports/accounts/$id'
@@ -790,13 +652,6 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof AppCompanyIndexRouteImport
-      parentRoute: typeof AppCompanyRoute
-    }
-    '/_app/_company/client-funds': {
-      id: '/_app/_company/client-funds'
-      path: '/client-funds'
-      fullPath: '/client-funds'
-      preLoaderRoute: typeof AppCompanyClientFundsRouteImport
       parentRoute: typeof AppCompanyRoute
     }
     '/_app/_company/dimensions': {
@@ -918,20 +773,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppCompanyEntriesNewRouteImport
       parentRoute: typeof AppCompanyRoute
     }
-    '/_app/_company/inbox/': {
-      id: '/_app/_company/inbox/'
-      path: '/inbox'
-      fullPath: '/inbox/'
-      preLoaderRoute: typeof AppCompanyInboxIndexRouteImport
-      parentRoute: typeof AppCompanyRoute
-    }
-    '/_app/_company/inbox/$id': {
-      id: '/_app/_company/inbox/$id'
-      path: '/inbox/$id'
-      fullPath: '/inbox/$id'
-      preLoaderRoute: typeof AppCompanyInboxIdRouteImport
-      parentRoute: typeof AppCompanyRoute
-    }
     '/_app/_company/open-items/$id': {
       id: '/_app/_company/open-items/$id'
       path: '/open-items/$id'
@@ -974,20 +815,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppCompanyReceivablesIndexRouteImport
       parentRoute: typeof AppCompanyRoute
     }
-    '/_app/_company/reconciliation/': {
-      id: '/_app/_company/reconciliation/'
-      path: '/reconciliation'
-      fullPath: '/reconciliation/'
-      preLoaderRoute: typeof AppCompanyReconciliationIndexRouteImport
-      parentRoute: typeof AppCompanyRoute
-    }
-    '/_app/_company/reconciliation/$date': {
-      id: '/_app/_company/reconciliation/$date'
-      path: '/reconciliation/$date'
-      fullPath: '/reconciliation/$date'
-      preLoaderRoute: typeof AppCompanyReconciliationDateRouteImport
-      parentRoute: typeof AppCompanyRoute
-    }
     '/_app/_company/reports/': {
       id: '/_app/_company/reports/'
       path: '/reports'
@@ -1000,13 +827,6 @@ declare module '@tanstack/react-router' {
       path: '/reports/balance-sheet'
       fullPath: '/reports/balance-sheet'
       preLoaderRoute: typeof AppCompanyReportsBalanceSheetRouteImport
-      parentRoute: typeof AppCompanyRoute
-    }
-    '/_app/_company/reports/contract-position': {
-      id: '/_app/_company/reports/contract-position'
-      path: '/reports/contract-position'
-      fullPath: '/reports/contract-position'
-      preLoaderRoute: typeof AppCompanyReportsContractPositionRouteImport
       parentRoute: typeof AppCompanyRoute
     }
     '/_app/_company/reports/general-ledger': {
@@ -1044,39 +864,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppCompanyReportsProfitabilityRouteImport
       parentRoute: typeof AppCompanyRoute
     }
-    '/_app/_company/reports/revenue-schedule': {
-      id: '/_app/_company/reports/revenue-schedule'
-      path: '/reports/revenue-schedule'
-      fullPath: '/reports/revenue-schedule'
-      preLoaderRoute: typeof AppCompanyReportsRevenueScheduleRouteImport
-      parentRoute: typeof AppCompanyRoute
-    }
     '/_app/_company/reports/trial-balance': {
       id: '/_app/_company/reports/trial-balance'
       path: '/reports/trial-balance'
       fullPath: '/reports/trial-balance'
       preLoaderRoute: typeof AppCompanyReportsTrialBalanceRouteImport
-      parentRoute: typeof AppCompanyRoute
-    }
-    '/_app/_company/revenue/': {
-      id: '/_app/_company/revenue/'
-      path: '/revenue'
-      fullPath: '/revenue/'
-      preLoaderRoute: typeof AppCompanyRevenueIndexRouteImport
-      parentRoute: typeof AppCompanyRoute
-    }
-    '/_app/_company/revenue/$id': {
-      id: '/_app/_company/revenue/$id'
-      path: '/revenue/$id'
-      fullPath: '/revenue/$id'
-      preLoaderRoute: typeof AppCompanyRevenueIdRouteImport
-      parentRoute: typeof AppCompanyRoute
-    }
-    '/_app/_company/settings/api-clients': {
-      id: '/_app/_company/settings/api-clients'
-      path: '/settings/api-clients'
-      fullPath: '/settings/api-clients'
-      preLoaderRoute: typeof AppCompanySettingsApiClientsRouteImport
       parentRoute: typeof AppCompanyRoute
     }
     '/_app/_company/settings/audit': {
@@ -1105,13 +897,6 @@ declare module '@tanstack/react-router' {
       path: '/settings/members'
       fullPath: '/settings/members'
       preLoaderRoute: typeof AppCompanySettingsMembersRouteImport
-      parentRoute: typeof AppCompanyRoute
-    }
-    '/_app/_company/settings/posting-rules': {
-      id: '/_app/_company/settings/posting-rules'
-      path: '/settings/posting-rules'
-      fullPath: '/settings/posting-rules'
-      preLoaderRoute: typeof AppCompanySettingsPostingRulesRouteImport
       parentRoute: typeof AppCompanyRoute
     }
     '/_app/_company/accounts/$id/lines': {
@@ -1146,7 +931,6 @@ declare module '@tanstack/react-router' {
 }
 
 interface AppCompanyRouteChildren {
-  AppCompanyClientFundsRoute: typeof AppCompanyClientFundsRoute
   AppCompanyDimensionsRoute: typeof AppCompanyDimensionsRoute
   AppCompanyIntegrityRoute: typeof AppCompanyIntegrityRoute
   AppCompanyOpeningRoute: typeof AppCompanyOpeningRoute
@@ -1156,37 +940,27 @@ interface AppCompanyRouteChildren {
   AppCompanyDraftsIdRoute: typeof AppCompanyDraftsIdRoute
   AppCompanyEntriesIdRoute: typeof AppCompanyEntriesIdRoute
   AppCompanyEntriesNewRoute: typeof AppCompanyEntriesNewRoute
-  AppCompanyInboxIdRoute: typeof AppCompanyInboxIdRoute
   AppCompanyOpenItemsIdRoute: typeof AppCompanyOpenItemsIdRoute
   AppCompanyPeriodsPeriodRoute: typeof AppCompanyPeriodsPeriodRoute
   AppCompanyRatesCalendarRoute: typeof AppCompanyRatesCalendarRoute
-  AppCompanyReconciliationDateRoute: typeof AppCompanyReconciliationDateRoute
   AppCompanyReportsBalanceSheetRoute: typeof AppCompanyReportsBalanceSheetRoute
-  AppCompanyReportsContractPositionRoute: typeof AppCompanyReportsContractPositionRoute
   AppCompanyReportsGeneralLedgerRoute: typeof AppCompanyReportsGeneralLedgerRoute
   AppCompanyReportsIncomeStatementRoute: typeof AppCompanyReportsIncomeStatementRoute
   AppCompanyReportsJournalRoute: typeof AppCompanyReportsJournalRoute
   AppCompanyReportsLinesRoute: typeof AppCompanyReportsLinesRoute
   AppCompanyReportsProfitabilityRoute: typeof AppCompanyReportsProfitabilityRoute
-  AppCompanyReportsRevenueScheduleRoute: typeof AppCompanyReportsRevenueScheduleRoute
   AppCompanyReportsTrialBalanceRoute: typeof AppCompanyReportsTrialBalanceRoute
-  AppCompanyRevenueIdRoute: typeof AppCompanyRevenueIdRoute
-  AppCompanySettingsApiClientsRoute: typeof AppCompanySettingsApiClientsRoute
   AppCompanySettingsAuditRoute: typeof AppCompanySettingsAuditRoute
   AppCompanySettingsCompanyRoute: typeof AppCompanySettingsCompanyRoute
   AppCompanySettingsExportRoute: typeof AppCompanySettingsExportRoute
   AppCompanySettingsMembersRoute: typeof AppCompanySettingsMembersRoute
-  AppCompanySettingsPostingRulesRoute: typeof AppCompanySettingsPostingRulesRoute
   AppCompanyChartIndexRoute: typeof AppCompanyChartIndexRoute
   AppCompanyDraftsIndexRoute: typeof AppCompanyDraftsIndexRoute
   AppCompanyEntriesIndexRoute: typeof AppCompanyEntriesIndexRoute
-  AppCompanyInboxIndexRoute: typeof AppCompanyInboxIndexRoute
   AppCompanyPeriodsIndexRoute: typeof AppCompanyPeriodsIndexRoute
   AppCompanyRatesIndexRoute: typeof AppCompanyRatesIndexRoute
   AppCompanyReceivablesIndexRoute: typeof AppCompanyReceivablesIndexRoute
-  AppCompanyReconciliationIndexRoute: typeof AppCompanyReconciliationIndexRoute
   AppCompanyReportsIndexRoute: typeof AppCompanyReportsIndexRoute
-  AppCompanyRevenueIndexRoute: typeof AppCompanyRevenueIndexRoute
   AppCompanyAccountsIdLinesRoute: typeof AppCompanyAccountsIdLinesRoute
   AppCompanyReceivablesClientsValueIdRoute: typeof AppCompanyReceivablesClientsValueIdRoute
   AppCompanyReportsAccountsIdRoute: typeof AppCompanyReportsAccountsIdRoute
@@ -1194,7 +968,6 @@ interface AppCompanyRouteChildren {
 }
 
 const AppCompanyRouteChildren: AppCompanyRouteChildren = {
-  AppCompanyClientFundsRoute: AppCompanyClientFundsRoute,
   AppCompanyDimensionsRoute: AppCompanyDimensionsRoute,
   AppCompanyIntegrityRoute: AppCompanyIntegrityRoute,
   AppCompanyOpeningRoute: AppCompanyOpeningRoute,
@@ -1204,38 +977,27 @@ const AppCompanyRouteChildren: AppCompanyRouteChildren = {
   AppCompanyDraftsIdRoute: AppCompanyDraftsIdRoute,
   AppCompanyEntriesIdRoute: AppCompanyEntriesIdRoute,
   AppCompanyEntriesNewRoute: AppCompanyEntriesNewRoute,
-  AppCompanyInboxIdRoute: AppCompanyInboxIdRoute,
   AppCompanyOpenItemsIdRoute: AppCompanyOpenItemsIdRoute,
   AppCompanyPeriodsPeriodRoute: AppCompanyPeriodsPeriodRoute,
   AppCompanyRatesCalendarRoute: AppCompanyRatesCalendarRoute,
-  AppCompanyReconciliationDateRoute: AppCompanyReconciliationDateRoute,
   AppCompanyReportsBalanceSheetRoute: AppCompanyReportsBalanceSheetRoute,
-  AppCompanyReportsContractPositionRoute:
-    AppCompanyReportsContractPositionRoute,
   AppCompanyReportsGeneralLedgerRoute: AppCompanyReportsGeneralLedgerRoute,
   AppCompanyReportsIncomeStatementRoute: AppCompanyReportsIncomeStatementRoute,
   AppCompanyReportsJournalRoute: AppCompanyReportsJournalRoute,
   AppCompanyReportsLinesRoute: AppCompanyReportsLinesRoute,
   AppCompanyReportsProfitabilityRoute: AppCompanyReportsProfitabilityRoute,
-  AppCompanyReportsRevenueScheduleRoute: AppCompanyReportsRevenueScheduleRoute,
   AppCompanyReportsTrialBalanceRoute: AppCompanyReportsTrialBalanceRoute,
-  AppCompanyRevenueIdRoute: AppCompanyRevenueIdRoute,
-  AppCompanySettingsApiClientsRoute: AppCompanySettingsApiClientsRoute,
   AppCompanySettingsAuditRoute: AppCompanySettingsAuditRoute,
   AppCompanySettingsCompanyRoute: AppCompanySettingsCompanyRoute,
   AppCompanySettingsExportRoute: AppCompanySettingsExportRoute,
   AppCompanySettingsMembersRoute: AppCompanySettingsMembersRoute,
-  AppCompanySettingsPostingRulesRoute: AppCompanySettingsPostingRulesRoute,
   AppCompanyChartIndexRoute: AppCompanyChartIndexRoute,
   AppCompanyDraftsIndexRoute: AppCompanyDraftsIndexRoute,
   AppCompanyEntriesIndexRoute: AppCompanyEntriesIndexRoute,
-  AppCompanyInboxIndexRoute: AppCompanyInboxIndexRoute,
   AppCompanyPeriodsIndexRoute: AppCompanyPeriodsIndexRoute,
   AppCompanyRatesIndexRoute: AppCompanyRatesIndexRoute,
   AppCompanyReceivablesIndexRoute: AppCompanyReceivablesIndexRoute,
-  AppCompanyReconciliationIndexRoute: AppCompanyReconciliationIndexRoute,
   AppCompanyReportsIndexRoute: AppCompanyReportsIndexRoute,
-  AppCompanyRevenueIndexRoute: AppCompanyRevenueIndexRoute,
   AppCompanyAccountsIdLinesRoute: AppCompanyAccountsIdLinesRoute,
   AppCompanyReceivablesClientsValueIdRoute:
     AppCompanyReceivablesClientsValueIdRoute,

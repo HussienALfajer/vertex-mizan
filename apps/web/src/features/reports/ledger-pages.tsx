@@ -29,12 +29,12 @@ import {
   accountPickerLabels,
   dimensionPickerLabels,
   EntryNumberText,
+  HubDocumentText,
   pickerAccounts,
   pickerValues,
   useFiscalYearStartMonth,
 } from '../entries/entry-parts';
 import { useDimensionCatalog } from '../entries/entry-queries';
-import { HubDocumentLink } from '../inbox/inbox-parts';
 import {
   CodeRangeFields,
   DateInput,
@@ -137,7 +137,7 @@ function LineRow({
               <bdi>{line.openItem.reference}</bdi>
             </Link>
           )}
-          {line.hubDocument && <HubDocumentLink document={line.hubDocument} eventId={null} />}
+          {line.hubDocument && <HubDocumentText document={line.hubDocument} />}
         </span>
       </TableCell>
       <TableCell numeric>

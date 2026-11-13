@@ -37,9 +37,6 @@ import { api, hasCode } from '../../lib/api';
 import { formatDateTime, formatDay, formatEntryNumber } from '../../lib/format';
 import { can, useCompany } from '../../lib/session';
 import { companyQuery } from '../company/company-queries';
-import { HubDocumentLink } from '../inbox/inbox-parts';
-import { fill } from '../opening/opening-parts';
-import { openingQuery } from '../opening/opening-queries';
 import { previousMonth } from '../periods/period-parts';
 import {
   AttachmentsCard,
@@ -47,6 +44,7 @@ import {
   EntryLinesTable,
   EntryNumberText,
   Fact,
+  HubDocumentText,
   useFiscalYearStartMonth,
 } from './entry-parts';
 import { entryQuery, useDimensionCatalog } from './entry-queries';
@@ -139,11 +137,8 @@ function EntryView({ entry }: { entry: Entry }) {
           <Fact label={t.entry.postedAt}>{formatDateTime(entry.postedAt)}</Fact>
           <Fact label={t.entry.source}>{t.sources[entry.source]}</Fact>
           {entry.hubDocument && (
-            <Fact label={ar.inbox.entryLink.hubDocument}>
-              <HubDocumentLink
-                document={entry.hubDocument}
-                eventId={entry.source === 'hub_event' ? entry.sourceRef : null}
-              />
+            <Fact label={ar.entries.hubDocument.label}>
+              <HubDocumentText document={entry.hubDocument} />
             </Fact>
           )}
           <Fact label={t.entry.reference}>
@@ -172,14 +167,11 @@ function EntryView({ entry }: { entry: Entry }) {
             </Fact>
           )}
           {entry.source === 'opening' && can(me, 'opening.read') && (
-            <>
-              <Fact label={ar.opening.entry.link}>
-                <Link to="/opening" className="text-primary underline-offset-4 hover:underline">
-                  {ar.opening.entry.description}
-                </Link>
-              </Fact>
-              <OpeningSnapshotFact entryId={entry.id} />
-            </>
+            <Fact label={ar.opening.entry.link}>
+              <Link to="/opening" className="text-primary underline-offset-4 hover:underline">
+                {ar.opening.entry.description}
+              </Link>
+            </Fact>
           )}
           {entry.source === 'revaluation' && can(me, 'periods.read') && (
             <Fact label={ar.revaluation.entry.month}>
@@ -392,26 +384,5 @@ function RevaluationMonthLink({ entry }: { entry: Entry }) {
       </bdi>
       {` · ${ar.revaluation.ledgers[ledger]}`}
     </Link>
-  );
-}
-
-/**
- * The snapshot of Hub an opening entry posted with (S10 "Screens"): read from `/api/opening`
- * while this entry is its posted opening; a reversed opening's entry shows none.
- */
-function OpeningSnapshotFact({ entryId }: { entryId: string }) {
-  const { companyId } = useCompany();
-  const view = useQuery(openingQuery(companyId)).data;
-  if (!view || view.posted?.entry.id !== entryId) return null;
-  const e = ar.opening.entry;
-  return (
-    <Fact label={e.snapshot}>
-      {view.snapshot === null
-        ? e.noSnapshot
-        : fill(e.snapshotText, {
-            asOf: view.snapshot.result.as_of,
-            at: formatDateTime(view.snapshot.receivedAt),
-          })}
-    </Fact>
   );
 }

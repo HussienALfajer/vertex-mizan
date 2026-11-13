@@ -35,7 +35,7 @@ import {
   TableHeader,
   TableRow,
 } from '@vertex-mizan/ui';
-import { ReceiptTextIcon, WalletIcon } from 'lucide-react';
+import { ReceiptTextIcon } from 'lucide-react';
 import { useState } from 'react';
 import { FormError } from '../../components/form-error';
 import { damascusToday, formatDay } from '../../lib/format';
@@ -49,7 +49,6 @@ import {
   ageingBuckets,
   bucketLabel,
   ClientName,
-  hasRunningAccount,
   ItemLink,
   ReportLedgerSwitch,
   useClients,
@@ -108,12 +107,6 @@ export function ReceivablesPage() {
         description={t.ageing.description}
         actions={
           <div className="flex flex-wrap gap-2">
-            {hasRunningAccount(accounts.data) && (
-              <Button variant="outline" render={<Link to="/client-funds" />}>
-                <WalletIcon aria-hidden="true" />
-                {t.ageing.clientFunds}
-              </Button>
-            )}
             <ReportExport
               disabled={!report}
               excelPath={`/receivables/ageing/export${searchOf(query)}`}

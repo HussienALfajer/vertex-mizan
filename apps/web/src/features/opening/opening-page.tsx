@@ -2,8 +2,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import {
   type Account,
-  type AmountTextError,
-  type DimensionValue,
   type OpeningViewAnswer,
   openingEntryResultSchema,
   openingViewSchema,
@@ -11,7 +9,6 @@ import {
 } from '@vertex-mizan/contracts';
 import { ar } from '@vertex-mizan/i18n';
 import {
-  Amount,
   Badge,
   Button,
   Callout,
@@ -23,13 +20,6 @@ import {
   PageHeader,
   Skeleton,
   StepList,
-  Table,
-  TableBody,
-  TableCaption,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
 } from '@vertex-mizan/ui';
 import {
   CircleCheckIcon,
@@ -38,7 +28,6 @@ import {
   InfoIcon,
   RefreshCwIcon,
   SettingsIcon,
-  TriangleAlertIcon,
 } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { ConfirmDialog } from '../../components/confirm-dialog';
@@ -53,7 +42,6 @@ import { companyQuery } from '../company/company-queries';
 import { useFiscalYearStartMonth } from '../entries/entry-parts';
 import { useDimensionCatalog } from '../entries/entry-queries';
 import { ReportExport } from '../reports/report-parts';
-import { AgreementStep, type FigureEdit, figuresInput, figuresOf } from './agreement-step';
 import { fill, stepStatuses } from './opening-parts';
 import { openingQuery } from './opening-queries';
 import {
@@ -70,9 +58,8 @@ import { ReviewStep } from './review-step';
 const t = ar.opening;
 
 /**
- * `/opening` (S10 "Screens"): the company's opening in four steps on one page — Hub's snapshot,
- * the old records' lines, the agreement with Hub per client and currency, and the review with the
- * checks and the entry it would post. The owner and the accountant save the draft; the owner posts
+ * `/opening` (S10 "Screens", without Hub: ADR 0021): the company's opening in two steps on one
+ * page — the old records' lines, and the review with the checks and the entry it would post. The owner and the accountant save the draft; the owner posts
  * it with a fresh code and, while it is the only entry, reverses it with a reason. Posted, it is
  * read only; a stale read (`OPENING_CHANGED`) is read again under a notice.
  */
@@ -179,28 +166,24 @@ function Opening({
   const posted = view.state === 'posted';
   const editable = can(me, 'opening.prepare') && !posted;
   const [rows, setRows] = useState<readonly RecordRow[]>(() => recordRowsOf(view));
-  const [figures, setFigures] = useState<readonly FigureEdit[]>(() => figuresOf(view));
   const [gridRefusal, setGridRefusal] = useState<GridProblem | null>(null);
-  const [amountErrors, setAmountErrors] = useState<ReadonlySet<string>>(new Set());
   const [linesError, setLinesError] = useState<string | undefined>();
   const [attempt, setAttempt] = useState(0);
   const [posting, setPosting] = useState(false);
   const [reversing, setReversing] = useState(false);
 
   const accountsById = new Map(accounts.map((account) => [account.id, account]));
-  const input = {
-    lines: recordLinesInput(rows, accountsById, ledgers),
-    recordFigures: figuresInput(figures),
-  };
+  // The save still takes the records' figures of Hub's agreement (rule 16): none, without Hub.
+  const input = { lines: recordLinesInput(rows, accountsById, ledgers), recordFigures: [] };
   const savedRows = recordRowsOf(view);
   const savedInput = {
     lines: recordLinesInput(savedRows, accountsById, ledgers),
-    recordFigures: figuresInput(figuresOf(view)),
+    recordFigures: [],
   };
   const typedRows = rows.filter((row) => !isBlankRecord(row));
   const dirty =
     JSON.stringify(input) !== JSON.stringify(savedInput) || typedRows.length !== input.lines.length;
-  const holdsRefusedText = gridRefusal !== null || amountErrors.size > 0;
+  const holdsRefusedText = gridRefusal !== null;
 
   // The saved preview's records lines, in order, are the saved lines': the typed rows, a blank
   // row left out as the save leaves it out (rule 23).
@@ -278,28 +261,18 @@ function Opening({
       )}
       {view.posted && <PostedNotice view={view} />}
       {view.reversed && <ReversedNotice view={view} />}
-      {!posted && <Callout tone="info" icon={<InfoIcon />} title={t.replayNote} />}
       {!editable && !posted && (
         <Callout tone="info" icon={<InfoIcon />} title={t.records.readOnly} />
       )}
 
       <StepList
         label={t.steps.label}
-        steps={[
-          step('hub', t.steps.hub),
-          step('records', t.steps.records),
-          step('agreement', t.steps.agreement),
-          step('review', t.steps.review),
-        ]}
+        steps={[step('records', t.steps.records), step('review', t.steps.review)]}
       />
-
-      <StepCard id="hub" number={1} title={t.steps.hub}>
-        <HubStep view={view} />
-      </StepCard>
 
       <StepCard
         id="records"
-        number={2}
+        number={1}
         title={t.steps.records}
         description={`${t.records.description} ${t.records.yearResult}`}
       >
@@ -329,36 +302,8 @@ function Opening({
       </StepCard>
 
       <StepCard
-        id="agreement"
-        number={3}
-        title={t.steps.agreement}
-        description={t.agreement.description}
-        actions={<ReportExport excelPath="/opening/export?part=agreement" />}
-      >
-        <AgreementStep
-          view={view}
-          figures={figures}
-          onFiguresChange={(next) => {
-            setNotice(null);
-            setFigures(next);
-          }}
-          editable={editable}
-          clients={clientValues(catalog)}
-          values={catalog.byId}
-          onTextError={(key, refused: AmountTextError | null) =>
-            setAmountErrors((current) => {
-              const next = new Set(current);
-              if (refused) next.add(key);
-              else next.delete(key);
-              return next;
-            })
-          }
-        />
-      </StepCard>
-
-      <StepCard
         id="review"
-        number={4}
+        number={2}
         title={t.steps.review}
         description={t.review.description}
         actions={<ReportExport excelPath="/opening/export?part=preview" />}
@@ -459,12 +404,6 @@ function Opening({
   );
 }
 
-/** The client dimension's values, for a client the records hold and Hub does not. */
-function clientValues(catalog: Catalog): readonly DimensionValue[] {
-  const client = catalog.types.find((type) => type.code === 'client');
-  return client ? catalog.valuesOf(client.id) : [];
-}
-
 /** A step's card, its number in its heading, reached by its id from the step list. */
 function StepCard({
   id,
@@ -541,93 +480,6 @@ function Facts({ view, dirty }: { view: OpeningViewAnswer; dirty: boolean }) {
         </div>
       )}
     </dl>
-  );
-}
-
-/** Step 1 (S10 rules 5–9): the latest snapshot's date, counts and totals, or none yet. */
-function HubStep({ view }: { view: OpeningViewAnswer }) {
-  const h = t.hub;
-  if (!view.hubClient && view.snapshot === null) {
-    return <p className="text-muted-foreground">{h.noHubClient}</p>;
-  }
-  if (view.snapshot === null) {
-    return (
-      <Callout
-        tone="warning"
-        icon={<TriangleAlertIcon />}
-        title={h.noSnapshot}
-        description={h.noSnapshotDescription}
-      />
-    );
-  }
-  const { result, receivedAt } = view.snapshot;
-  const counts = [
-    [h.counts.invoices, result.counts.invoices],
-    [h.counts.credits, result.counts.credits],
-    [h.counts.milestones, result.counts.milestones],
-    [h.counts.wallets, result.counts.wallets],
-    [h.counts.priorDocuments, result.counts.prior_documents],
-  ] as const;
-  return (
-    <div className="flex min-w-0 flex-col gap-4">
-      <dl className="flex flex-wrap gap-x-6 gap-y-2 text-control">
-        <div className="flex gap-2">
-          <dt className="text-muted-foreground">
-            {view.state === 'posted' ? h.usedSnapshot : h.receivedAt}
-          </dt>
-          <dd>{formatDateTime(receivedAt)}</dd>
-        </div>
-        <div className="flex gap-2">
-          <dt className="text-muted-foreground">{h.asOf}</dt>
-          <dd>
-            <bdi dir="ltr">{result.as_of}</bdi>
-          </dd>
-        </div>
-      </dl>
-      <dl
-        aria-label={h.counts.label}
-        className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5"
-        data-slot="opening-snapshot-counts"
-      >
-        {counts.map(([label, count]) => (
-          <div key={label} className="flex flex-col gap-0.5 rounded-lg border border-border p-3">
-            <dt className="text-muted-foreground text-xs">{label}</dt>
-            <dd className="text-lg font-semibold">
-              <bdi dir="ltr">{count}</bdi>
-            </dd>
-          </div>
-        ))}
-      </dl>
-      {result.totals.length === 0 ? (
-        <p className="text-muted-foreground">{h.totals.none}</p>
-      ) : (
-        <div className="min-w-0 overflow-x-auto">
-          <Table>
-            <TableCaption className="sr-only">{h.totals.label}</TableCaption>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{h.totals.list}</TableHead>
-                <TableHead>{h.totals.currency}</TableHead>
-                <TableHead numeric>{h.totals.amount}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {result.totals.map((total) => (
-                <TableRow key={`${total.list}:${total.currency}`}>
-                  <TableCell>{h.totals.lists[total.list]}</TableCell>
-                  <TableCell>
-                    <bdi dir="ltr">{total.currency}</bdi>
-                  </TableCell>
-                  <TableCell numeric>
-                    <Amount value={BigInt(total.amount)} currency={total.currency} />
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      )}
-    </div>
   );
 }
 

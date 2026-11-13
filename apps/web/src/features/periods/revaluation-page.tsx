@@ -43,7 +43,6 @@ import { damascusToday, formatDateTime, formatDay } from '../../lib/format';
 import { can, useCompany } from '../../lib/session';
 import { companyQuery } from '../company/company-queries';
 import { EntryNumberText, useFiscalYearStartMonth } from '../entries/entry-parts';
-import { ValueName } from '../revenue/revenue-parts';
 import { PeriodName, previousMonth } from './period-parts';
 import { revaluationQuery } from './periods-queries';
 
@@ -560,5 +559,19 @@ function Posted({ data }: { data: RevaluationPreview }) {
         </TableBody>
       </Table>
     </Card>
+  );
+}
+
+/** A dimension value as the balances name it: its code first when it has one. */
+function ValueName({ value }: { value: { code: string | null; name: string } }) {
+  return (
+    <span className="inline-flex flex-wrap items-baseline gap-x-2">
+      {value.code && (
+        <bdi dir="ltr" className="font-medium tabular-nums">
+          {value.code}
+        </bdi>
+      )}
+      <bdi>{value.name}</bdi>
+    </span>
   );
 }

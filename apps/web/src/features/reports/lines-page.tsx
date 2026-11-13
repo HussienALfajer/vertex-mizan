@@ -16,8 +16,7 @@ import {
 import type { ReactNode } from 'react';
 import { formatDay } from '../../lib/format';
 import { useCompany } from '../../lib/session';
-import { EntryNumberText, useFiscalYearStartMonth } from '../entries/entry-parts';
-import { HubDocumentLink } from '../inbox/inbox-parts';
+import { EntryNumberText, HubDocumentText, useFiscalYearStartMonth } from '../entries/entry-parts';
 import {
   type LinesSearch,
   ReportAccountName,
@@ -131,9 +130,7 @@ export function LinesPage() {
                   />
                 </TableCell>
                 <TableCell className="max-md:hidden">
-                  {line.hubDocument && (
-                    <HubDocumentLink document={line.hubDocument} eventId={null} />
-                  )}
+                  {line.hubDocument && <HubDocumentText document={line.hubDocument} />}
                 </TableCell>
               </TableRow>
             ))}
