@@ -368,6 +368,7 @@ export async function mapAppendedTemplateSlots(
       ? [
           {
             rule,
+            code: account.code,
             row: { companyId, slot: rule.slot, currency: rule.currency, accountId: account.id },
           },
         ]
@@ -382,7 +383,7 @@ export async function mapAppendedTemplateSlots(
     .onConflictDoNothing()
     .returning({ id: postingRuleAccounts.id, slot: postingRuleAccounts.slot });
   const made = rows.filter(({ rule }) => inserted.some((row) => row.slot === rule.slot));
-  for (const { rule, row } of made) {
+  for (const { rule, code, row } of made) {
     await writeCompanyAudit(tx, companyId, actor, {
       action: 'posting_rule.mapped',
       entityType: 'posting_rule',
@@ -392,7 +393,7 @@ export async function mapAppendedTemplateSlots(
         slot: rule.slot,
         currency: rule.currency,
         accountId: row.accountId,
-        accountCode: rule.code,
+        accountCode: code,
       },
     });
   }

@@ -13,6 +13,7 @@ import { v7 as uuidv7 } from 'uuid';
 import { beforeAll, describe, expect, it } from 'vitest';
 import {
   type AuditActor,
+  auditEntries,
   chartAccounts,
   createCompanyBooks,
   inboundEventActions,
@@ -1126,6 +1127,16 @@ describe('the template’s recognition slots for an existing company (S06 "Data"
         .where(eq(postingRuleAccounts.slot, 'cancelled_project_refund')),
     );
     expect(refund).toEqual([{ code: '211003' }]);
+    // The audit row names the account mapped, not the template's default.
+    const audited = await inCompany(company, (tx) =>
+      tx
+        .select({ after: auditEntries.after })
+        .from(auditEntries)
+        .where(eq(auditEntries.action, 'posting_rule.mapped')),
+    );
+    expect(audited.map((row) => row.after)).toContainEqual(
+      expect.objectContaining({ slot: 'cancelled_project_refund', accountCode: '211003' }),
+    );
   });
 });
 
