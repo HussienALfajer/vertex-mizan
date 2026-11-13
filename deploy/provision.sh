@@ -165,7 +165,8 @@ if ! pg_lsclusters -h | awk '{print $1"/"$2}' | grep -qx "$PG_VERSION/$PG_CLUSTE
   echo "created"
 fi
 conf=/etc/postgresql/$PG_VERSION/$PG_CLUSTER
-before=$(cat "$conf/conf.d/mizan.conf" "$conf/pg_hba.conf" /etc/pgbackrest/pgbackrest.conf 2>/dev/null | sha256sum)
+# On the first run none of these files exists yet: cat fails, and pipefail must not stop the run.
+before=$({ cat "$conf/conf.d/mizan.conf" "$conf/pg_hba.conf" /etc/pgbackrest/pgbackrest.conf 2>/dev/null || true; } | sha256sum)
 install -o postgres -g postgres -m 644 "$src/deploy/postgresql/mizan.conf" "$conf/conf.d/mizan.conf"
 install -o postgres -g postgres -m 640 "$src/deploy/postgresql/pg_hba.conf" "$conf/pg_hba.conf"
 
@@ -295,8 +296,12 @@ else
 fi
 
 step "nginx"
-nginx -T 2>/dev/null | grep -q 'zone=perip:' ||
+# Read whole before matching: `grep -q` stops at the first match, nginx then dies of SIGPIPE, and
+# pipefail would report the zone missing.
+nginx_config=$(nginx -T 2>/dev/null) || true
+grep -q 'zone=perip:' <<<"$nginx_config" ||
   { echo "the nginx perip zone the site uses is not defined" >&2; exit 1; }
+unset nginx_config
 install -m 644 "$src/deploy/nginx/mizan-headers.conf" /etc/nginx/snippets/mizan-headers.conf
 install -m 644 "$src/deploy/nginx/mizan-proxy.conf" /etc/nginx/snippets/mizan-proxy.conf
 install -m 644 "$src/deploy/nginx/mizan-limits.conf" /etc/nginx/conf.d/mizan-limits.conf
