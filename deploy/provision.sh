@@ -196,6 +196,10 @@ repo2-retention-full=35
 compress-type=zst
 process-max=2
 start-fast=y
+# How long a backup waits for its last segment, and archive-push for the asynchronous push. B2 is
+# across the Atlantic (us-east-005): one upload that hangs to its 60-second I/O timeout and is
+# retried must not fail a deploy's backup, as the first deploy's did at the default 60 seconds.
+archive-timeout=300
 archive-async=y
 spool-path=/var/spool/pgbackrest
 log-level-console=info
