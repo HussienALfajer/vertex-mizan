@@ -12,5 +12,6 @@ Server facts read 2026-11-13 from `vertex` and `/root/SERVER.md`: Contabo, Ubunt
 - [x] nginx: mizan.vertexmedia.pro (+ .bootstrap), mizan-headers.conf (CSP self), mizan-proxy.conf, mizan-limits.conf (general, sign-in/2FA/reset/invitations tight, /v1 own zone, attachments 11m, /v1/opening/snapshot 6m, /api/docs 404)
 - [x] logrotate/mizan.vertexmedia.pro; postgresql/mizan.conf (127.0.0.1:5433, shared_buffers 1GB, archive_command pgbackrest, archive_timeout 60) and postgresql/pg_hba.conf
 - [x] docs/deployment.md (layout, location, deploy, rollback, restore to a moment / before a deploy / a table / an archive, B2 key capabilities) and docs/operations/restore-drills.md; ROADMAP, worker CLAUDE.md, AGENTS.md commands (`drill:check`)
-- [ ] verify --e2e-all, reviewer + accountant-reviewer, PR with auto-merge (the ADR branch first)
+- [x] verify --e2e-all, reviewer + accountant-reviewer, PR with auto-merge (the ADR branch merged first, #106)
+- [ ] Follow-up (reviewer, not blocking): the migrations still run as `vertexmizan`, which can read the owner URL from the migration's environment during a deploy; a dedicated migration user, or connection logging on `mizan_owner`, closes it
 - [ ] Owner: DNS A record, B2 buckets/keys/region, SMTP account, alert address, go-ahead to provision
