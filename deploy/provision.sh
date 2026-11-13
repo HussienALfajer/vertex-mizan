@@ -64,7 +64,7 @@ B2_REGION=
 B2_BACKUP_BUCKET=
 B2_BACKUP_KEY_ID=
 B2_BACKUP_KEY=
-# The archive bucket (Object Lock, compliance, 10 years) and its write-only key.
+# The archive bucket (Object Lock, compliance, 3000 days) and its key.
 B2_ARCHIVE_BUCKET=
 B2_ARCHIVE_KEY_ID=
 B2_ARCHIVE_KEY=
