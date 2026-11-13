@@ -1,6 +1,6 @@
 # 0019 — Opening balances and the history replay: a books start, Hub's snapshot, one opening entry, the replay by accounting date
 
-Status: Accepted (owner, 2026-11-12, with S10) · Date: 2026-11-12 · Amends [0006](0006-hub-posting-api-contract.md) ("History replay"), [0007](0007-book-and-parallel-currency-ledgers.md) (line kinds), [0017](0017-daily-reconciliation.md) (Vertex Media's start date) and phase 1 scope §4 ("Start of the books")
+Status: Accepted (owner, 2026-11-12, with S10), amended by [0021](0021-stand-alone-without-hub.md) (Hub's snapshot and the replay removed) · Date: 2026-11-12 · Amends [0006](0006-hub-posting-api-contract.md) ("History replay"), [0007](0007-book-and-parallel-currency-ledgers.md) (line kinds), [0017](0017-daily-reconciliation.md) (Vertex Media's start date) and phase 1 scope §4 ("Start of the books")
 
 ## Context
 Phase 1 starts Vertex Media's books on 2026-10-01 with opening balances, summarised manual entries for 1–18 October, and Hub's events replayed from 2026-10-19 (scope §4, F12; ADR 0006). Hub went into production on 2026-10-19, but its users entered older documents with their original dates: unpaid invoices, payments, wallet deposits and retainer cycles dated before 19 October, some before 1 October (owner, 2026-11-12). Hub holds no recognition schedule and no as-of export. S10 (`docs/specs/S10-opening-balances-replay.md`) needed to settle:

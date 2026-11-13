@@ -1,6 +1,6 @@
 # 0017 — Daily reconciliation: a per-event report by accounting date, the latest report counts, no acceptance
 
-Status: Accepted (owner, 2026-11-12, with S08) · Date: 2026-11-12 (owner's answers in the S08 interview) · Amends [0006](0006-hub-posting-api-contract.md) ("Daily reconciliation")
+Status: Superseded by [0021](0021-stand-alone-without-hub.md) (owner, 2026-11-13; was Accepted (owner, 2026-11-12, with S08)) · Date: 2026-11-12 (owner's answers in the S08 interview) · Amends [0006](0006-hub-posting-api-contract.md) ("Daily reconciliation")
 
 ## Context
 ADR 0006 has Hub send, for one date, the count of events and the totals per type and currency, and Mizan compare them with what it received and posted, with `GET /v1/events?date=` for Hub to find what is missing; the pre-close checklist requires every day of the month reconciled. F11 asks Mizan to list every difference down to the event. S08 (`docs/specs/S08-daily-reconciliation.md`) needed to settle:

@@ -1,6 +1,6 @@
 # 0001 — Vertex Mizan: a multi-company accounting product with a permanent core, optional modules and an integration layer
 
-Status: Accepted · Date: 2026-10-20 (owner)
+Status: Accepted, amended by [0021](0021-stand-alone-without-hub.md) (the integration layer dropped) · Date: 2026-10-20 (owner)
 
 ## Context
 Vertex needs a complete, professional accounting system. Vertex Media's operations run on Vertex Hub, which decided not to build accounting inside itself and to post its financial events to a separate ledger product (Hub ADR 0035). Vertex also wants an accounting product to sell, like Vertex Food and Vertex Shifa.

@@ -1,6 +1,6 @@
 # 0015 — Revenue recognition: schedules and movements, releases per invoice and month, deposits with their milestone
 
-Status: Accepted (owner, 2026-11-10, with S06) · Date: 2026-11-10 (owner's answers in the S06 interview) · Amends `docs/product/phase-1-scope.md` §6 ("Project deposit")
+Status: Superseded by [0021](0021-stand-alone-without-hub.md) (owner, 2026-11-13; was Accepted (owner, 2026-11-10, with S06)) · Date: 2026-11-10 (owner's answers in the S06 interview) · Amends `docs/product/phase-1-scope.md` §6 ("Project deposit")
 
 ## Context
 S06 (`docs/specs/S06-revenue-recognition.md`) recognises Hub's deferred revenue under IFRS 15. The phase 1 scope fixes the patterns (retainer cycles evenly over their days, milestones on their done dates, releases at the amounts booked at issue), but leaves open:

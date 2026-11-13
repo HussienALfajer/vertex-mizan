@@ -2,6 +2,7 @@
 
 - **Date:** 2026-10-20 · **Status:** approved by the owner (2026-10-20). The order of phases 2 and 3 is reviewed when phase 2 is detailed (open question Q6).
 - **Decisions:** ADR 0001. **Evidence:** `docs/research/market-syria.md`.
+- **Revised by ADR 0021 (owner, 2026-11-13):** the integration with Vertex Hub is cancelled and Mizan is a stand-alone system; its first user is a contracting client, not Vertex Media (`docs/product/phase-1-scope.md` §0). Where this document speaks of Hub, Vertex Media or the posting API, ADR 0021 prevails.
 
 ## 1. Vision
 

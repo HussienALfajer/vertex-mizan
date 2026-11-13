@@ -1,12 +1,40 @@
 # Phase 1 scope: the core and the posting API
 
-- **Date:** 2026-10-20 · **Status:** approved by the owner (2026-10-20); revised the same day after the foundation audit (`docs/audits/2026-10-foundation-audit.md`)
+- **Date:** 2026-10-20 · **Status:** approved by the owner (2026-10-20); revised the same day after the foundation audit (`docs/audits/2026-10-foundation-audit.md`); revised on 2026-11-13 by ADR 0021, a stand-alone system without Hub (§0)
 - **Decisions:** ADR 0001, ADRs 0007, 0008 and 0011 (the chart, the contract dimension and the bulletin rate, which refine F02–F04 below); the owner's answers to `docs/product/phase-1-analysis.md` §6 and to the audit, recorded in §10 below.
 - **Labels:** Syrian legal or tax facts carry CONFIRMED, REPORTED or UNVERIFIED (`docs/research/market-syria.md`).
 
+## 0. Revision: a stand-alone system (ADR 0021, owner, 2026-11-13)
+
+The owner cancelled the integration with Vertex Hub. This revision takes precedence over the sections below wherever they differ.
+
+- **Goal:** a contracting client's books are kept in Mizan, one company per business, entered in Mizan itself. Nothing posts from another system.
+- **Withdrawn:**
+  - F07 revenue recognition, F10 the posting API, F11 the daily reconciliation;
+  - Hub's snapshot and the replay in F12;
+  - the reports that only Hub's events fed in F13;
+  - §6 and §7;
+  - the API client role in §3;
+  - Vertex Media's policies in §4, as Vertex Media's company is archived with its data kept.
+- **Kept:** F01–F06, F08, F09, F12 (manual), F13 and F14, without their Hub parts. F06 serves manual items: suppliers', contractors' and workers' balances.
+- **Added**, each specified with the owner before it is built:
+  - **N1 Cash boxes:** receipts and payments in any currency.
+  - **N2 Expenses by project.**
+  - **N3 Wages** of workers and craftsmen.
+  - **N4 Materials** with quantities.
+  - **N5 A contracting chart template.**
+- **Done when** (proposed, settled with the specs):
+  1. the client's first company is created with its chart;
+  2. N1–N4 are in use on it;
+  3. a real month is closed;
+  4. the client keeps the full export (F14);
+  5. the ledger invariants, tenant isolation and the scenario book pass in CI.
+- **Out of scope:** an installed desktop version and work without a connection.
+- **Open:** the client's book currency, and whether they need statutory books in Syrian pounds.
+
 ## 1. Goal
 
-Vertex Media's books are kept in Mizan, fed by Vertex Hub, on a core that serves any number of companies.
+Superseded by §0. Was: Vertex Media's books are kept in Mizan, fed by Vertex Hub, on a core that serves any number of companies.
 
 ## 2. Done when
 
