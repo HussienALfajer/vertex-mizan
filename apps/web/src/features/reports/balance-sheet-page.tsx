@@ -156,6 +156,31 @@ function lineNote(
 }
 
 /**
+ * S10 rule 31's note under the year's result: its part from before the books start, in each
+ * column where it is not zero (the books start's fiscal year).
+ */
+function preOpeningNote(data: BalanceSheet, currency: BalanceSheet['header']['currency']) {
+  const notes: ReactNode[] = [];
+  if (data.yearResultPreOpening !== '0') {
+    notes.push(
+      <span key="current" data-note="year-result-pre-opening">
+        {`${s.yearResultPreOpening}: `}
+        <Amount value={BigInt(data.yearResultPreOpening)} currency={currency} />
+      </span>,
+    );
+  }
+  if (data.compareYearResultPreOpening !== null && data.compareYearResultPreOpening !== '0') {
+    notes.push(
+      <span key="compare" data-note="compare-year-result-pre-opening">
+        {`${t.columns.compare}: ${s.yearResultPreOpening}: `}
+        <Amount value={BigInt(data.compareYearResultPreOpening)} currency={currency} />
+      </span>,
+    );
+  }
+  return notes.length === 0 ? undefined : <span className="flex flex-col">{notes}</span>;
+}
+
+/**
  * Whether `/reports/lines` can read exactly a part's lines (rule 6): its filter names the account
  * and, when the part has them, its client and contract, but cannot ask for "no client" or "no
  * contract". So a part without one is drillable only when no other part of the same account falls
@@ -244,6 +269,8 @@ function balanceRows(data: BalanceSheet, range: { ledger: Ledger; to: string }):
     {
       key: 'year-result',
       label: s.yearResult,
+      // S10 rule 31: the part of the year's result from before the books start.
+      note: preOpeningNote(data, currency),
       figures: {
         current: { value: BigInt(data.yearResult) },
         ...(compare ? { compare: compareFigure(compare, data.compareYearResult) } : {}),

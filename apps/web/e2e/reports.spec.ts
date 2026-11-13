@@ -6,6 +6,7 @@ import { typeOf } from './dimension-mocks';
 import { purchase } from './entry-mocks';
 import { today } from './rate-mocks';
 import {
+  balanceSheet,
   cash,
   clientValue,
   designDepartment,
@@ -15,6 +16,7 @@ import {
   reportFile,
   reportsReads,
   serviceHistory,
+  trialBalance,
 } from './reports-mocks';
 import { type ApiReply, expect, test } from './test';
 
@@ -115,6 +117,42 @@ test.describe('the trial balance', () => {
     await expect(page.getByText(t.lines.sum).locator('..')).toContainText('120,000.00');
     await page.getByRole('table', { name: t.lines.caption }).getByRole('link').first().click();
     await expect(page).toHaveURL(new RegExp(`/entries/${purchase.id}$`));
+  });
+
+  test('opens an opening column read from the opening entry to its lines (S10 rule 32)', async ({
+    page,
+  }) => {
+    await answer(page, 'GET', '/reports/trial-balance?*', {
+      status: 200,
+      json: {
+        ...trialBalance,
+        header: {
+          ...trialBalance.header,
+          booksStart: '2026-11-01',
+          current: {
+            ...trialBalance.header.current,
+            marks: ['period_open', 'before_revaluation', 'opening_entry'],
+          },
+        },
+      },
+    });
+    const lines = await answer(page, 'GET', '/reports/lines?*', {
+      status: 200,
+      json: { ...reportsReads['GET /api/reports/lines'].json, sum: '50000000' },
+    });
+    await page.goto('/reports/trial-balance');
+    await expect(page.getByText(t.marks.opening_entry)).toBeVisible();
+    const table = page.getByRole('table', { name: /ميزان المراجعة/ });
+    const cashRow = table.getByRole('row').filter({ hasText: cash.code });
+    await cashRow.locator('a[href*="openingEntry="]').first().click();
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(t.lines.title);
+    await expect.poll(() => lines.length).toBeGreaterThan(0);
+    const search = searchOf(lines[0]);
+    expect(search.get('openingEntry')).toBe('true');
+    expect(search.get('to')).toBe('2026-11-09');
+    expect(search.get('from')).toBeNull();
+    await expect(page.getByText(t.lines.openingEntry)).toBeVisible();
+    await expect(page.getByText(t.lines.sum).locator('..')).toContainText('500,000.00');
   });
 
   test('shows a credit figure’s lines on its side', async ({ page }) => {
@@ -257,6 +295,20 @@ test.describe('the statements', () => {
     expect(search.get('statementLine')).toBe('is.revenue');
     expect(search.get('from')).toBe('2026-11-01');
     expect(search.get('to')).toBe('2026-11-09');
+  });
+
+  test('the balance sheet notes the year’s result before the books start (S10 rule 31)', async ({
+    page,
+  }) => {
+    await answer(page, 'GET', '/reports/balance-sheet?*', {
+      status: 200,
+      json: { ...balanceSheet, yearResultPreOpening: '12000000' },
+    });
+    await page.goto('/reports/balance-sheet');
+    const table = page.getByRole('table', { name: /الميزانية/ });
+    await expect(
+      table.getByRole('row').filter({ hasText: t.statements.yearResult }).first(),
+    ).toContainText(`${t.statements.yearResultPreOpening}: 120,000.00`);
   });
 
   test('the balance sheet notes a reclassification and balances', async ({ page }) => {

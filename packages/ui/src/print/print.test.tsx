@@ -34,6 +34,7 @@ const trialBalance: TrialBalance = {
     currency: 'SYP',
     producedAt: '2026-11-12T09:30:00+03:00',
     latestEntry: { fiscalYear: 2026, number: 42 },
+    booksStart: null,
     current: { from: '2026-10-01', to: '2026-10-31', marks: ['period_open'], hasLines: true },
     compare: { from: '2026-09-01', to: '2026-09-30', marks: [], hasLines: false },
   },
@@ -84,6 +85,30 @@ describe('the sheets', () => {
     expect(sheet.title).toBe('ميزان المراجعة');
     expect(sheet.currencyLabel).toBe('الليرة السورية الجديدة');
     expect(sheet.marks).toEqual(['غير نهائية: الفترة مفتوحة']);
+    // S10 rules 32–33: the books start's date in its mark.
+    const opened = reportSheet(
+      {
+        report: 'trial_balance',
+        data: {
+          ...trialBalance,
+          header: {
+            ...trialBalance.header,
+            booksStart: '2026-10-01',
+            current: {
+              ...trialBalance.header.current,
+              from: '2026-09-01',
+              marks: ['period_open', 'before_books_start', 'opening_entry'],
+            },
+          },
+        },
+      },
+      context,
+    );
+    expect(opened.marks).toEqual([
+      'غير نهائية: الفترة مفتوحة',
+      'تبدأ الدفاتر في 2026-10-01',
+      'الرصيد الافتتاحي من قيد الافتتاح',
+    ]);
     expect(sheet.columns.map((column) => column.key)).toEqual([
       'code',
       'account',
@@ -268,6 +293,8 @@ describe('the statements’ sheets', () => {
           ],
           yearResult: '850000',
           compareYearResult: null,
+          yearResultPreOpening: '120000',
+          compareYearResultPreOpening: null,
           totals: {
             assets: '602400',
             liabilities: '0',
@@ -282,6 +309,10 @@ describe('the statements’ sheets', () => {
     const lines = sheet.rows.map((row) => row.cells.line);
     expect(lines).toContain('أعيد تبويب للعرض');
     expect(lines).toContain('ربح (خسارة) السنة الحالية');
+    // S10 rule 31: the year's result names its part from before the books start.
+    expect(
+      sheet.rows.find((row) => row.cells.line === 'تشمل نتيجة ما قبل بدء الدفاتر'),
+    ).toMatchObject({ emphasis: 'note', cells: { current: '120000' } });
     expect(sheet.parameters[0]).toEqual({ label: 'كما في', value: '2026-10-31' });
     expect(sheet.rows.at(-1)).toMatchObject({
       emphasis: 'total',

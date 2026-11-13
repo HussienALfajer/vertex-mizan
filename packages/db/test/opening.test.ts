@@ -1,10 +1,16 @@
 import {
+  accountStatementQuerySchema,
+  balanceSheetQuerySchema,
   type CompanyLedgers,
   DomainError,
+  generalLedgerQuerySchema,
+  incomeStatementQuerySchema,
   OPENING_STATES,
   openingSnapshotSchema,
   REVENUE_MOVEMENT_KINDS,
+  reportLinesQuerySchema,
   saveOpeningSchema,
+  trialBalanceQuerySchema,
 } from '@vertex-mizan/contracts';
 import { eq, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
@@ -30,7 +36,13 @@ import {
   post,
   postOpening,
   RECOGNITION_MOVEMENT_KINDS,
+  readAccountStatement,
+  readBalanceSheet,
+  readGeneralLedger,
+  readIncomeStatement,
   readOpening,
+  readReportLines,
+  readTrialBalance,
   receiveEvent,
   receiveOpeningSnapshot,
   recognitionMovements,
@@ -921,5 +933,153 @@ describe('the opening at once (S10 rules 7, 16)', () => {
     const view = await inCompany(companyId, readOpening);
     const lines = view.checks.find((check) => check.check === 'lines');
     expect(lines?.failures).toEqual([{ lineNo: 1, code: 'VALIDATION_FAILED', reason: 'hub_slot' }]);
+  });
+});
+
+describe('the opening in the reports (S10 rules 31–33)', () => {
+  const NOW = new Date('2026-11-13T09:00:00Z');
+
+  it('reads the opening entries as the opening balance, the period after them, and marks the reports', async () => {
+    const { companyId } = await readyCompany();
+    // Posted, reversed whole and posted again: entries 1, 2 and 3 on the books start.
+    const first = await inCompany(companyId, readOpening);
+    await inCompany(companyId, (tx) =>
+      postOpening(tx, { fingerprint: first.fingerprint, actor: person() }),
+    );
+    await inCompany(companyId, (tx) =>
+      reverseOpening(tx, { reason: 'تصحيح تجريبي', actor: person() }),
+    );
+    await inCompany(companyId, (tx) => save(tx, 0));
+    const again = await inCompany(companyId, readOpening);
+    await inCompany(companyId, (tx) =>
+      postOpening(tx, { fingerprint: again.fingerprint, actor: person() }),
+    );
+    // A rent of the books start's own date, and one later: the period's lines.
+    await inCompany(companyId, (tx) => manualEntry(tx, '2026-10-01'));
+    await inCompany(companyId, (tx) => manualEntry(tx, '2026-10-05'));
+    const cash = await inCompany(companyId, (tx) => accountId(tx, '111001'));
+
+    for (const from of ['2026-10-01', '2026-09-01']) {
+      const expectedMarks =
+        from === '2026-10-01'
+          ? ['before_revaluation', 'opening_entry', 'period_open']
+          : ['before_books_start', 'before_revaluation', 'opening_entry', 'period_open'];
+      const trial = await inCompany(companyId, (tx) =>
+        readTrialBalance(
+          tx,
+          trialBalanceQuerySchema.parse({ from, to: '2026-10-31', compare: 'false' }),
+          NOW,
+        ),
+      );
+      expect(trial.header.booksStart).toBe('2026-10-01');
+      expect([...trial.header.current.marks].sort()).toEqual(expectedMarks);
+      expect(trial.rows.find((row) => row.account.id === cash)).toMatchObject({
+        opening: '200000000',
+        debits: '0',
+        credits: '200',
+        closing: '199999800',
+      });
+      expect(trial.totals.openingDebit).toBe(trial.totals.openingCredit);
+      expect(trial.totals.debits).toBe('200');
+
+      const ledger = await inCompany(companyId, (tx) =>
+        readGeneralLedger(
+          tx,
+          generalLedgerQuerySchema.parse({
+            from,
+            to: '2026-10-31',
+            codeFrom: '111001',
+            codeTo: '111001',
+          }),
+          NOW,
+        ),
+      );
+      expect([...ledger.header.current.marks].sort()).toEqual(expectedMarks);
+      const [account] = ledger.accounts;
+      expect(account?.opening).toBe('200000000');
+      expect(account?.lines.map((line) => [line.entryDate, line.amount, line.balance])).toEqual([
+        ['2026-10-01', '-100', '199999900'],
+        ['2026-10-05', '-100', '199999800'],
+      ]);
+
+      const statement = await inCompany(companyId, (tx) =>
+        readAccountStatement(
+          tx,
+          cash,
+          accountStatementQuerySchema.parse({ from, to: '2026-10-31' }),
+          NOW,
+        ),
+      );
+      expect([...statement.header.current.marks].sort()).toEqual(expectedMarks);
+      expect(statement.opening).toBe('200000000');
+      expect(statement.lines).toHaveLength(2);
+      expect(statement.currencies).toEqual([
+        { currency: 'SYP', opening: '200000000', closing: '199999800' },
+      ]);
+    }
+
+    // The drill-down: the opening column's lines sum to it; the period's leave them out.
+    const lines = (query: Record<string, string>) =>
+      inCompany(companyId, (tx) =>
+        readReportLines(tx, reportLinesQuerySchema.parse({ account: cash, ...query }), NOW),
+      );
+    expect((await lines({ to: '2026-10-31', openingEntry: 'true' })).sum).toBe('200000000');
+    expect((await lines({ from: '2026-10-01', to: '2026-10-31', side: 'debit' })).sum).toBe('0');
+    expect((await lines({ from: '2026-10-01', to: '2026-10-31', side: 'credit' })).sum).toBe(
+      '-200',
+    );
+    expect((await lines({ to: '2026-10-31' })).sum).toBe('199999800');
+
+    // After the books start, the opening entry is in the balance before the range, unmarked.
+    const november = await inCompany(companyId, (tx) =>
+      readTrialBalance(
+        tx,
+        trialBalanceQuerySchema.parse({ from: '2026-11-01', to: '2026-11-30', compare: 'false' }),
+        NOW,
+      ),
+    );
+    expect(november.header.current.marks).toEqual(['period_open', 'before_revaluation']);
+    expect(november.rows.find((row) => row.account.id === cash)?.opening).toBe('199999800');
+
+    // Every income statement of 2026 says the result before the books start is in equity.
+    const income = await inCompany(companyId, (tx) =>
+      readIncomeStatement(
+        tx,
+        incomeStatementQuerySchema.parse({ from: '2026-11-01', to: '2026-11-30' }),
+        NOW,
+      ),
+    );
+    expect(income.header.current.marks).toContain('pre_opening_result_in_equity');
+    expect(income.header.compare?.marks).toContain('pre_opening_result_in_equity');
+    expect(income.header.current.marks).not.toContain('before_books_start');
+    const sheet = await inCompany(companyId, (tx) =>
+      readBalanceSheet(tx, balanceSheetQuerySchema.parse({ asOf: '2026-10-31' }), NOW),
+    );
+    expect(sheet.header.current.marks).not.toContain('opening_entry');
+    expect(sheet.totals.assets).toBe(sheet.totals.liabilitiesAndEquity);
+  });
+
+  it('marks nothing of S10 in a company without a books start', async () => {
+    const companyId = await newCompany(null);
+    await recordRates(companyId);
+    await inCompany(companyId, (tx) => manualEntry(tx, '2026-10-05'));
+    const trial = await inCompany(companyId, (tx) =>
+      readTrialBalance(
+        tx,
+        trialBalanceQuerySchema.parse({ from: '2026-01-01', to: '2026-10-31', compare: 'false' }),
+        NOW,
+      ),
+    );
+    expect(trial.header.booksStart).toBeNull();
+    expect(trial.header.current.marks).not.toContain('opening_entry');
+    expect(trial.header.current.marks).not.toContain('before_books_start');
+    const income = await inCompany(companyId, (tx) =>
+      readIncomeStatement(
+        tx,
+        incomeStatementQuerySchema.parse({ from: '2026-01-01', to: '2026-10-31' }),
+        NOW,
+      ),
+    );
+    expect(income.header.current.marks).not.toContain('pre_opening_result_in_equity');
   });
 });

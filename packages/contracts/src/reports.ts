@@ -47,9 +47,20 @@ export type ReportFileState = z.infer<typeof reportFileStateSchema>;
 /**
  * Rule 4's marks: `period_open` ("غير نهائية: الفترة مفتوحة") when a month the report reads is
  * open or reopened; `before_revaluation` ("قبل إعادة التقييم") when its end is not a month's last
- * day, or that month's revaluation in the report's ledger is not `current`.
+ * day, or that month's revaluation in the report's ledger is not `current`. S10 rules 32–33
+ * (appended): `opening_entry` ("الرصيد الافتتاحي من قيد الافتتاح") on a trial balance, general
+ * ledger or account statement whose range holds the opening entry, read as its opening balance;
+ * `before_books_start` ("تبدأ الدفاتر في <date>") on a range that starts before the books start,
+ * read from it; `pre_opening_result_in_equity` ("نتيجة ما قبل بدء الدفاتر ضمن حقوق الملكية") on an
+ * income statement of the books start's fiscal year.
  */
-export const REPORT_MARKS = ['period_open', 'before_revaluation'] as const;
+export const REPORT_MARKS = [
+  'period_open',
+  'before_revaluation',
+  'opening_entry',
+  'before_books_start',
+  'pre_opening_result_in_equity',
+] as const;
 
 export const reportMarkSchema = z.enum(REPORT_MARKS).meta({ id: 'ReportMark' });
 
@@ -151,6 +162,8 @@ export const reportHeaderSchema = z
     producedAt: z.iso.datetime({ offset: true }),
     /** The latest posted entry the report includes (rule 4), by posting order. */
     latestEntry: entryNumberSchema.nullable(),
+    /** The company's books start (S10), the date `before_books_start` names; null without one. */
+    booksStart: dateSchema.nullable(),
     current: reportColumnSchema,
     compare: reportColumnSchema.nullable(),
   })
@@ -538,6 +551,13 @@ export const balanceSheetSchema = z
     /** "ربح (خسارة) السنة الحالية": classes 4–5 from the fiscal year's start (rule 16). */
     yearResult: minorUnitsSchema,
     compareYearResult: minorUnitsSchema.nullable(),
+    /**
+     * S10 rule 31: the balance of the result before the books start (`pre_opening_result`) that
+     * the year's result includes, in the books start's fiscal year ("تشمل نتيجة ما قبل بدء
+     * الدفاتر" when not zero); zero in a later year, where it is in retained earnings.
+     */
+    yearResultPreOpening: minorUnitsSchema,
+    compareYearResultPreOpening: minorUnitsSchema.nullable(),
     totals: balanceSheetTotalsSchema,
     compareTotals: balanceSheetTotalsSchema.nullable(),
   })
@@ -715,6 +735,12 @@ export const reportLinesQuerySchema = z
     dims: dimsQuerySchema,
     profitabilityBy: profitabilityDimensionSchema.optional(),
     profitabilityValue: z.uuid().optional(),
+    /**
+     * S10 rule 32: only the opening entries' lines (source `opening`) up to `to`, the figure of
+     * an opening column read from the opening entry. Without it, a range with `from` leaves them
+     * out, as the period's columns do.
+     */
+    openingEntry: flagSchema('false'),
     cursor: cursorSchema.optional(),
   })
   .superRefine((query, context) => {

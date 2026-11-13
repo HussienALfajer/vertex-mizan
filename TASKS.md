@@ -23,11 +23,11 @@ Plan approved by the owner (2026-11-13, in the session).
 - [x] checks and reviewers (`reviewer`: the script's parse error, the missing access and isolation tests, the oversized snapshot's 422, all fixed in f725e57 and re-reviewed clean; `accountant-reviewer`: none; `pnpm verify --e2e-all` passes on f725e57 but a timing test of the export, `trust.test.ts`, which passed alone and in the first run), PR with auto-merge and Auto-fix
 
 ## PR 3 — The opening in the reports (ledger, db, scenarios, api) · `feat/s10-opening-reports`
-- [ ] ledger and db: rules 31–33 in the readers — the year's result with `312002` in the books start's year and inside retained earnings later, the opening column at the books start, a range before the books start read from it, the marks `opening_entry`, `before_books_start` and `pre_opening_result_in_equity`; the journal book from the opening as entry 1; tests
-- [ ] scenarios: the readers' marks and `year_result_pre_opening`; `reports/opening-presentation` `Approved (owner, 2026-11-12)`, its two cases run
-- [ ] api: the marks in the report answers; OpenAPI regenerated if they change it
-- [ ] wiring, docs (`docs/ROADMAP.md`)
-- [ ] checks and reviewers (`reviewer`, `accountant-reviewer`), PR with auto-merge and Auto-fix
+- [x] ledger and db: rules 31–33 in the readers — the year's result with `312002` in the books start's year and inside retained earnings later, the opening column at the books start, a range before the books start read from it, the marks `opening_entry`, `before_books_start` and `pre_opening_result_in_equity`; the journal book from the opening as entry 1; tests
+- [x] scenarios: the readers' marks and `year_result_pre_opening`; `reports/opening-presentation` `Approved (owner, 2026-11-12)`, its two cases run
+- [x] api: the marks in the report answers; OpenAPI regenerated if they change it
+- [x] wiring, docs (`docs/ROADMAP.md`)
+- [x] checks and reviewers (`reviewer` and `accountant-reviewer`: the opening column's drill-down on the trial balance screen, and the `reviewer` the year's note on the balance sheet screen, fixed in 914158d and re-reviewed clean; `pnpm verify --e2e-all` passes on 914158d, 5m 25s), PR with auto-merge and Auto-fix
 
 ## PR 4 — Documents before the books start (contracts, ledger, db, scenarios, api, worker) · `feat/s10-before-books-start`
 - [ ] contracts and ledger: a manual line's `schedule` (Hub's invoice and line), the residual on retained earnings of a correction on its own (rule 28), the refusals `VALIDATION_FAILED`

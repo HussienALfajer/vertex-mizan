@@ -153,6 +153,7 @@ test('a draft journal book prints its mark, and a long report flows over its pag
       currency: 'SYP',
       producedAt: '2026-12-31T21:00:00+03:00',
       latestEntry: { fiscalYear: 2026, number: 400 },
+      booksStart: null,
       current: { from: '2026-12-01', to: '2026-12-31', marks: ['period_open'], hasLines: true },
       compare: null,
     },

@@ -35,6 +35,7 @@ import {
 import {
   balanceSheet,
   balanceSheetComparative,
+  booksStartMarks,
   contractPosition,
   dayAfter,
   dayBefore,
@@ -56,11 +57,12 @@ import {
   sumAmounts,
   sumCarried,
   trialBalance,
+  withOpeningEntry,
 } from '@vertex-mizan/ledger';
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import type { Transaction } from '../client.js';
 import { isClosedPeriod, readClosedPeriods } from '../posting/periods.js';
-import { chartAccounts } from '../schema/chart.js';
+import { accountRoles, chartAccounts } from '../schema/chart.js';
 import { companySettings } from '../schema/companies.js';
 import { dimensionTypes, dimensionValues } from '../schema/dimensions.js';
 import { dimensionSetValues, journalEntries, journalLines, periods } from '../schema/ledger.js';
@@ -91,6 +93,10 @@ interface ReportContext {
   readonly hasParallel: boolean;
   readonly fiscalYearStartMonth: number;
   readonly firstPeriod: string | null;
+  /** S10: the company's books start, or null. */
+  readonly booksStart: string | null;
+  /** S10 rule 31: the accounts that ever held the role `pre_opening_result`. */
+  readonly preOpeningAccountIds: readonly string[];
 }
 
 /** The company's ledgers and fiscal year; a parallel ledger asked of a company without one fails. */
@@ -110,12 +116,18 @@ async function contextOf(tx: Transaction, ledger: Ledger | undefined): Promise<R
     .from(periods)
     .orderBy(asc(periods.period))
     .limit(1);
+  const preOpening = await tx
+    .select({ accountId: accountRoles.accountId })
+    .from(accountRoles)
+    .where(eq(accountRoles.role, 'pre_opening_result'));
   return {
     ledger: chosen,
     currency: currency as CurrencyCode,
     hasParallel: ledgers.parallel !== null,
     fiscalYearStartMonth: settings.fiscalYearStartMonth,
     firstPeriod: first?.period ?? null,
+    booksStart: settings.booksStart,
+    preOpeningAccountIds: [...new Set(preOpening.map((row) => row.accountId))],
   };
 }
 
@@ -397,6 +409,57 @@ async function accountSums(
   );
 }
 
+/**
+ * S10 rule 32: the debits and credits per account of the opening entries (the opening, its
+ * reversal and a new opening, all of source `opening` on the books start) dated in a range, which
+ * a trial balance, general ledger or account statement reads as its opening balance.
+ */
+async function openingEntrySums(
+  tx: Transaction,
+  ledger: Ledger,
+  range: { readonly from: string; readonly to: string },
+): Promise<Map<string, { debits: bigint; credits: bigint }>> {
+  const { line } = ledgerColumns(ledger);
+  const result = await tx.execute<{ account_id: string; debits: string; credits: string }>(sql`
+    select l.account_id, sum(greatest(${line}, 0))::text as debits,
+      sum(greatest(-${line}, 0))::text as credits
+    from journal_lines l
+    join journal_entries e on e.company_id = l.company_id and e.id = l.entry_id
+    where e.source = 'opening' and e.entry_date between ${range.from} and ${range.to}
+    group by l.account_id`);
+  return new Map(
+    result.rows.map((row) => [
+      row.account_id,
+      { debits: BigInt(row.debits), credits: BigInt(row.credits) },
+    ]),
+  );
+}
+
+/** Whether an opening entry is dated in a range (S10 rule 32's mark). */
+async function holdsOpeningEntry(
+  tx: Transaction,
+  range: { readonly from: string; readonly to: string },
+): Promise<boolean> {
+  const [row] = await tx
+    .select({ id: journalEntries.id })
+    .from(journalEntries)
+    .where(
+      sql`${journalEntries.source} = 'opening' and ${journalEntries.entryDate} between ${range.from} and ${range.to}`,
+    )
+    .limit(1);
+  return row !== undefined;
+}
+
+/**
+ * S10 rule 32 in SQL over `e` (an entry): its lines are before a range starting on `from` when
+ * dated before it, or when it is an opening entry dated up to `to` (the opening column); they are
+ * in the range otherwise when dated in it.
+ */
+const beforeRange = (from: string, to: string) =>
+  sql`(e.entry_date < ${from} or (e.source = 'opening' and e.entry_date <= ${to}))`;
+const inRange = (from: string, to: string) =>
+  sql`(e.entry_date between ${from} and ${to} and e.source <> 'opening')`;
+
 // --- Headers and marks (rule 4) ---
 
 async function hasLinesIn(tx: Transaction, from: string | null, to: string): Promise<boolean> {
@@ -412,10 +475,18 @@ async function hasLinesIn(tx: Transaction, from: string | null, to: string): Pro
   return row !== undefined;
 }
 
+/** What a column's S10 marks depend on besides its dates. */
+interface ColumnKind {
+  /** A trial balance, general ledger or account statement: it reads the opening entry apart. */
+  readonly opensWithEntry?: boolean;
+  readonly incomeStatement?: boolean;
+}
+
 async function columnOf(
   tx: Transaction,
   context: ReportContext,
   range: { readonly from: string | null; readonly to: string },
+  kind: ColumnKind,
 ): Promise<ReportColumn> {
   const closed = await readClosedPeriods(tx);
   // A balance reads from the start of the books: the company's first period.
@@ -431,7 +502,22 @@ async function columnOf(
   return {
     from: range.from,
     to: range.to,
-    marks: reportMarks({ anyMonthOpen, to: range.to, revaluationCurrent }),
+    marks: reportMarks({
+      anyMonthOpen,
+      to: range.to,
+      revaluationCurrent,
+      booksStart: booksStartMarks({
+        booksStart: context.booksStart,
+        from: range.from,
+        to: range.to,
+        fiscalYearStartMonth: context.fiscalYearStartMonth,
+        readsOpeningEntry:
+          kind.opensWithEntry === true &&
+          range.from !== null &&
+          (await holdsOpeningEntry(tx, { from: range.from, to: range.to })),
+        incomeStatement: kind.incomeStatement === true,
+      }),
+    }),
     hasLines: await hasLinesIn(tx, range.from, range.to),
   };
 }
@@ -442,6 +528,7 @@ async function headerOf(
   current: { readonly from: string | null; readonly to: string },
   compare: { readonly from: string | null; readonly to: string } | null,
   now: Date,
+  kind: ColumnKind = {},
 ): Promise<ReportHeader> {
   const [latest] = await tx
     .select({ fiscalYear: journalEntries.fiscalYear, number: journalEntries.number })
@@ -454,8 +541,13 @@ async function headerOf(
     currency: context.currency,
     producedAt: now.toISOString(),
     latestEntry: latest ?? null,
-    current: await columnOf(tx, context, current),
-    compare: compare === null ? null : await columnOf(tx, context, compare),
+    booksStart: context.booksStart,
+    current: await columnOf(tx, context, current, kind),
+    // A trial balance's comparative is a balance at its end: no opening column of its own.
+    compare:
+      compare === null
+        ? null
+        : await columnOf(tx, context, compare, { incomeStatement: kind.incomeStatement === true }),
   };
 }
 
@@ -489,10 +581,12 @@ export async function readTrialBalance(
   const compare = comparativeOf(query);
   const net = (rows: Map<string, { net: bigint }>) =>
     new Map([...rows.entries()].map(([id, row]) => [id, row.net]));
-  const opening = net(
-    await accountSums(tx, context.ledger, { from: null, to: dayBefore(query.from) }),
+  // S10 rule 32: the opening entry is the opening column, the period's columns start after it.
+  const { opening, movements } = withOpeningEntry(
+    net(await accountSums(tx, context.ledger, { from: null, to: dayBefore(query.from) })),
+    await accountSums(tx, context.ledger, { from: query.from, to: query.to }),
+    await openingEntrySums(tx, context.ledger, { from: query.from, to: query.to }),
   );
-  const movements = await accountSums(tx, context.ledger, { from: query.from, to: query.to });
   const compared =
     compare === null
       ? null
@@ -509,7 +603,9 @@ export async function readTrialBalance(
   });
   const account = chartIndex(chart);
   return {
-    header: await headerOf(tx, context, { from: query.from, to: query.to }, compare, now),
+    header: await headerOf(tx, context, { from: query.from, to: query.to }, compare, now, {
+      opensWithEntry: true,
+    }),
     rows: rows.map((row) => ({
       account: account(row.accountId).report,
       opening: text(row.opening),
@@ -624,7 +720,7 @@ async function runningLines(
       select l.account_id, l.currency, sum(${amount}) as ledger, sum(l.amount_minor) as transaction
       from journal_lines l
       join journal_entries e on e.company_id = l.company_id and e.id = l.entry_id
-      where ${filters} and e.entry_date < ${input.from}
+      where ${filters} and ${beforeRange(input.from, input.to)}
       group by l.account_id, l.currency
     ),
     opening_ledger as (
@@ -652,7 +748,7 @@ async function runningLines(
       left join opening o on o.account_id = l.account_id and o.currency = l.currency
       left join open_item_movements m on m.company_id = l.company_id and m.line_id = l.id
       left join open_items i on i.company_id = m.company_id and i.id = m.item_id
-      where ${filters} and e.entry_date between ${input.from} and ${input.to}
+      where ${filters} and ${inRange(input.from, input.to)}
     )
     select * from ranged
     where ${
@@ -707,12 +803,17 @@ export async function readGeneralLedger(
         account.code.slice(0, query.codeFrom.length) >= query.codeFrom) &&
       (query.codeTo === undefined || account.code.slice(0, query.codeTo.length) <= query.codeTo),
   );
-  const opening = await accountSums(tx, context.ledger, { from: null, to: dayBefore(query.from) });
   const closing = await accountSums(tx, context.ledger, { from: null, to: query.to });
-  const movements = await accountSums(tx, context.ledger, { from: query.from, to: query.to });
+  // S10 rule 32: the opening entry is in the opening balance, the lines start after it.
+  const balances = await accountSums(tx, context.ledger, { from: null, to: dayBefore(query.from) });
+  const { opening, movements } = withOpeningEntry(
+    new Map([...balances.entries()].map(([id, row]) => [id, row.net])),
+    await accountSums(tx, context.ledger, { from: query.from, to: query.to }),
+    await openingEntrySums(tx, context.ledger, { from: query.from, to: query.to }),
+  );
   const shown = chart.filter(
     (account) =>
-      (opening.get(account.id)?.net ?? 0n) !== 0n ||
+      (opening.get(account.id) ?? 0n) !== 0n ||
       (movements.get(account.id)?.debits ?? 0n) !== 0n ||
       (movements.get(account.id)?.credits ?? 0n) !== 0n,
   );
@@ -740,15 +841,16 @@ export async function readGeneralLedger(
       (!more || last === undefined || account.code <= last.code),
   );
   return {
-    header: await headerOf(tx, context, { from: query.from, to: query.to }, null, now),
+    header: await headerOf(tx, context, { from: query.from, to: query.to }, null, now, {
+      opensWithEntry: true,
+    }),
     accounts: accounts.map((account) => {
       const lines = page.filter((row) => row.account_id === account.id);
       const first = lines[0];
       return {
         account: account.report,
         // Before its first line on this page: the opening, or the balance it continues from.
-        opening:
-          first === undefined ? text(opening.get(account.id)?.net ?? 0n) : first.balance_before,
+        opening: first === undefined ? text(opening.get(account.id) ?? 0n) : first.balance_before,
         lines: lines.map((row) => reportLineOf(row, values)),
         closing: text(closing.get(account.id)?.net ?? 0n),
       };
@@ -796,7 +898,9 @@ export async function readAccountStatement(
     ],
     sql` and `,
   );
-  // Each currency's opening and closing on the account, and the ledger's, over the same lines.
+  // Each currency's opening and closing on the account, and the ledger's, over the same lines;
+  // the opening entry in the opening (S10 rule 32).
+  const opened = beforeRange(query.from, query.to);
   const balances = await tx.execute<{
     currency: string;
     opening: string;
@@ -805,9 +909,9 @@ export async function readAccountStatement(
     ledger_closing: string;
   }>(sql`
     select l.currency,
-      coalesce(sum(l.amount_minor) filter (where e.entry_date < ${query.from}), 0)::text as opening,
+      coalesce(sum(l.amount_minor) filter (where ${opened}), 0)::text as opening,
       coalesce(sum(l.amount_minor), 0)::text as closing,
-      coalesce(sum(${amount}) filter (where e.entry_date < ${query.from}), 0)::text as ledger_opening,
+      coalesce(sum(${amount}) filter (where ${opened}), 0)::text as ledger_opening,
       coalesce(sum(${amount}), 0)::text as ledger_closing
     from journal_lines l
     join journal_entries e on e.company_id = l.company_id and e.id = l.entry_id
@@ -815,14 +919,16 @@ export async function readAccountStatement(
     group by l.currency
     order by l.currency`);
   const totals = await tx.execute<{ opening: string; closing: string }>(sql`
-    select coalesce(sum(${amount}) filter (where e.entry_date < ${query.from}), 0)::text as opening,
+    select coalesce(sum(${amount}) filter (where ${opened}), 0)::text as opening,
       coalesce(sum(${amount}), 0)::text as closing
     from journal_lines l
     join journal_entries e on e.company_id = l.company_id and e.id = l.entry_id
     where ${filters} and e.entry_date <= ${query.to}`);
   const first = page[0];
   return {
-    header: await headerOf(tx, context, { from: query.from, to: query.to }, null, now),
+    header: await headerOf(tx, context, { from: query.from, to: query.to }, null, now, {
+      opensWithEntry: true,
+    }),
     account: row.report,
     opening:
       cursor !== null && first !== undefined
@@ -990,7 +1096,9 @@ export async function readIncomeStatement(
     profit: text(value.profit),
   });
   return {
-    header: await headerOf(tx, context, { from: query.from, to: query.to }, compare, now),
+    header: await headerOf(tx, context, { from: query.from, to: query.to }, compare, now, {
+      incomeStatement: true,
+    }),
     lines: statement.lines.map((line) => ({
       line: line.line,
       amount: text(line.amount),
@@ -1044,10 +1152,15 @@ async function balanceColumn(
       .filter(([id]) => INCOME_LINE_CODES.has(account(id).statementLine ?? ''))
       .map(([, row]) => row.net);
   };
+  // S10 rule 31: in the books start's fiscal year, the result before it is the year's.
+  const booksStartYear =
+    context.booksStart !== null &&
+    fiscalYearStart(context.booksStart, context.fiscalYearStartMonth) === yearStart;
   return {
     balances,
     yearNet: sumAmounts(await incomeNet({ from: yearStart, to: asOf })),
     unclosedNet: sumAmounts(await incomeNet({ from: null, to: dayBefore(yearStart) })),
+    yearResultAccountIds: booksStartYear ? context.preOpeningAccountIds : [],
   };
 }
 
@@ -1115,6 +1228,8 @@ export async function readBalanceSheet(
     })),
     yearResult: text(sheet.yearResult),
     compareYearResult: textOrNull(sheet.compareYearResult),
+    yearResultPreOpening: text(sheet.yearResultPreOpening),
+    compareYearResultPreOpening: textOrNull(sheet.compareYearResultPreOpening),
     totals: totals(sheet.totals),
     compareTotals: sheet.compareTotals === null ? null : totals(sheet.compareTotals),
   };
@@ -1454,6 +1569,12 @@ export async function readReportLines(
         )})`,
     query.from === undefined ? sql`true` : sql`e.entry_date >= ${query.from}`,
     sql`e.entry_date <= ${query.to}`,
+    // S10 rule 32: the opening column's lines, or a range's without them.
+    query.openingEntry
+      ? sql`e.source = 'opening'`
+      : query.from === undefined
+        ? sql`true`
+        : sql`e.source <> 'opening'`,
     query.side === 'debit'
       ? sql`${amount} > 0`
       : query.side === 'credit'

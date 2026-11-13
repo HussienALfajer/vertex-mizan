@@ -1,8 +1,8 @@
 # Presenting the opening in the reports
 
-Status: Proposed
+Status: Approved (owner, 2026-11-12)
 
-S10 wrote these cases (S10 "Scenarios", rules 31–33). They extend `reports/statement-presentation.md` to a company with a books start, in a file of their own because the status is the file's (`docs/scenarios/README.md`, "File format"): the presentation file's cases run, and these need the `opening` step, which has no executor until S10's feature slice. They post with the `opening`, `manual` and `revalue` steps and read the reports as `reports/statement-presentation.md` does.
+S10 wrote these cases (S10 "Scenarios", rules 31–33). They extend `reports/statement-presentation.md` to a company with a books start, in a file of their own because the status is the file's (`docs/scenarios/README.md`, "File format"): the presentation file's cases ran before these, which needed the `opening` step and the readers of S10 rules 31–33 (S10's third PR, which made them `Approved`). They post with the `opening`, `manual` and `revalue` steps and read the reports as `reports/statement-presentation.md` does.
 
 The owner approved both cases' figures on 2026-11-12, with four decisions: a file of its own; a report from before the books start carries both marks; the income statement's note on every statement of the books start's year; and `312002` a part of retained earnings in later years, with `unclosed_years` the net of classes 4–5 only (S10 rules 31–33).
 

@@ -14,6 +14,7 @@ import {
   type Profitability,
   type ProfitabilityFigures,
   type ReportHeader,
+  type ReportMark,
   type ReportValue,
   type RevenueReleaseSchedule,
   STATEMENT_LINES,
@@ -113,6 +114,15 @@ export function printedCurrency(currency: CurrencyCode, text: SheetText): string
   return currency === 'SYP' ? text.accounting.sypPrintedName : text.accounting.currencies[currency];
 }
 
+/** A mark's words, the books start's date in `before_books_start` (S10 rule 33). */
+export function reportMarkText(
+  mark: ReportMark,
+  header: Pick<ReportHeader, 'booksStart'>,
+  text: SheetText,
+): string {
+  return text.reports.marks[mark].replace('{date}', header.booksStart ?? '');
+}
+
 /** An entry's number as accountants read it: `2026/123`, or `2026-27/123` across two years. */
 export function entryNumberText(
   entry: { readonly fiscalYear: number; readonly number: number },
@@ -188,9 +198,9 @@ function headerParts(
           : entryNumberText(header.latestEntry, context.fiscalYearStartMonth),
     },
   );
-  const marks = header.current.marks.map((mark) => text.reports.marks[mark]);
+  const marks = header.current.marks.map((mark) => reportMarkText(mark, header, text));
   for (const mark of header.compare?.marks ?? []) {
-    marks.push(`${h.compare}: ${text.reports.marks[mark]}`);
+    marks.push(`${h.compare}: ${reportMarkText(mark, header, text)}`);
   }
   return {
     parameters,
@@ -623,6 +633,19 @@ function balanceSheetSheet(data: BalanceSheet, context: SheetContext): ReportShe
         compare: compareCell(data.header, data.compareYearResult),
       },
     },
+    ...(data.yearResultPreOpening !== '0' || (data.compareYearResultPreOpening ?? '0') !== '0'
+      ? [
+          {
+            level: 2,
+            emphasis: 'note' as const,
+            cells: {
+              line: s.yearResultPreOpening,
+              current: data.yearResultPreOpening,
+              compare: compareCell(data.header, data.compareYearResultPreOpening),
+            },
+          },
+        ]
+      : []),
     total(t.totals.equity, 'equity', 'subtotal'),
     total(t.totals.liabilitiesAndEquity, 'liabilitiesAndEquity', 'total'),
   ];

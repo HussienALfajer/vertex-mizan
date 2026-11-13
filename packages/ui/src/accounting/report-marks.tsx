@@ -2,17 +2,30 @@
 
 import { mergeProps } from '@base-ui/react/merge-props';
 import { useRender } from '@base-ui/react/use-render';
-import { CalendarClockIcon, LockOpenIcon, ScaleIcon } from 'lucide-react';
+import {
+  BookOpenIcon,
+  CalendarClockIcon,
+  CalendarIcon,
+  LandmarkIcon,
+  LockOpenIcon,
+  ScaleIcon,
+} from 'lucide-react';
 import type { ComponentProps, ReactElement, ReactNode } from 'react';
 import { cn } from '../lib/cn';
 
 /**
  * A status mark of a report (S09 rule 4): `period_open` ("غير نهائية: الفترة مفتوحة") or
- * `before_revaluation` ("قبل إعادة التقييم"), its words, and the page that explains or fixes it
- * (the month's period page, the revaluation) as an element such as a router link, with its words.
+ * `before_revaluation` ("قبل إعادة التقييم"), and S10's `opening_entry`, `before_books_start` and
+ * `pre_opening_result_in_equity`; its words, and the page that explains or fixes it (the month's
+ * period page, the revaluation) as an element such as a router link, with its words.
  */
 export interface ReportMarkItem {
-  readonly mark: 'period_open' | 'before_revaluation';
+  readonly mark:
+    | 'period_open'
+    | 'before_revaluation'
+    | 'opening_entry'
+    | 'before_books_start'
+    | 'pre_opening_result_in_equity';
   readonly label: string;
   readonly link?: ReactElement | undefined;
   readonly linkLabel?: string | undefined;
@@ -31,7 +44,13 @@ export interface ReportMarksDetail {
   readonly value: ReactNode;
 }
 
-const icons = { period_open: LockOpenIcon, before_revaluation: ScaleIcon } as const;
+const icons = {
+  period_open: LockOpenIcon,
+  before_revaluation: ScaleIcon,
+  opening_entry: BookOpenIcon,
+  before_books_start: CalendarIcon,
+  pre_opening_result_in_equity: LandmarkIcon,
+} as const;
 
 /**
  * A report's marks (S09 rule 4, "Screens"): each column's marks in words with an icon, never

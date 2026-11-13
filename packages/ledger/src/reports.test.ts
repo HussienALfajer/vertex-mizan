@@ -11,6 +11,7 @@ import { addDays, dayBefore, daysBetween } from './periods.js';
 import {
   balanceSheet,
   balanceSheetComparative,
+  booksStartMarks,
   codeInRange,
   contractPosition,
   departmentInForce,
@@ -24,6 +25,7 @@ import {
   releaseSchedule,
   reportMarks,
   trialBalance,
+  withOpeningEntry,
 } from './reports.js';
 
 // A synthetic chart in the service-agency template's codes (S02): headers at levels 1–3 and the
@@ -91,6 +93,8 @@ const CHART: ReportChartAccount[] = [
   postable('311001', '311', 'bs.share_capital'),
   header('312', '31', 3),
   postable('312001', '312', 'bs.retained_earnings'),
+  // The result before the books start (S10, role `pre_opening_result`).
+  postable('312002', '312', 'bs.retained_earnings'),
   header('4', null, 1),
   header('41', '4', 2),
   header('411', '41', 3),
@@ -373,6 +377,188 @@ describe('the balance sheet (rules 15–19)', () => {
   });
 });
 
+describe('the opening in the reports (S10 rules 31–33, `reports/opening-presentation`)', () => {
+  const marks = (input: { from: string | null; to: string; income?: boolean; reads?: boolean }) =>
+    booksStartMarks({
+      booksStart: '2026-10-01',
+      from: input.from,
+      to: input.to,
+      fiscalYearStartMonth: 1,
+      readsOpeningEntry: input.reads ?? false,
+      incomeStatement: input.income ?? false,
+    });
+
+  it('marks a range from before the books start, the opening column and the income statements of its year', () => {
+    expect(marks({ from: '2026-10-01', to: '2026-10-31', reads: true })).toEqual(['opening_entry']);
+    expect(marks({ from: '2026-09-01', to: '2026-10-31', reads: true })).toEqual([
+      'opening_entry',
+      'before_books_start',
+    ]);
+    expect(marks({ from: '2027-01-01', to: '2027-01-31' })).toEqual([]);
+    expect(marks({ from: '2026-01-01', to: '2026-12-31', income: true })).toEqual([
+      'before_books_start',
+      'pre_opening_result_in_equity',
+    ]);
+    // Any income statement of 2026, whatever its range; none of 2027; one across both is marked.
+    expect(marks({ from: '2026-11-01', to: '2026-11-30', income: true })).toEqual([
+      'pre_opening_result_in_equity',
+    ]);
+    expect(marks({ from: '2027-01-01', to: '2027-03-31', income: true })).toEqual([]);
+    expect(marks({ from: '2026-12-01', to: '2027-01-31', income: true })).toEqual([
+      'pre_opening_result_in_equity',
+    ]);
+    // A balance (no start) is never before the books start.
+    expect(marks({ from: null, to: '2026-12-31' })).toEqual([]);
+    expect(
+      booksStartMarks({
+        booksStart: null,
+        from: '2026-01-01',
+        to: '2026-12-31',
+        fiscalYearStartMonth: 1,
+        readsOpeningEntry: false,
+        incomeStatement: true,
+      }),
+    ).toEqual([]);
+    // A fiscal year from July: the books start of 2026-10 is in 2026-27.
+    expect(
+      booksStartMarks({
+        booksStart: '2026-10-01',
+        from: '2027-06-01',
+        to: '2027-06-30',
+        fiscalYearStartMonth: 7,
+        readsOpeningEntry: false,
+        incomeStatement: true,
+      }),
+    ).toEqual(['pre_opening_result_in_equity']);
+    expect(
+      reportMarks({
+        anyMonthOpen: true,
+        to: '2026-10-31',
+        revaluationCurrent: true,
+        booksStart: ['opening_entry', 'before_books_start'],
+      }),
+    ).toEqual(['period_open', 'opening_entry', 'before_books_start']);
+  });
+
+  it("moves the opening entry into the trial balance's opening column", () => {
+    // October from the books start: the opening entry and the rent of the same date in the lines.
+    const { opening, movements } = withOpeningEntry(
+      new Map(),
+      new Map([
+        [id('111003'), { debits: 80_000_000n, credits: 10_000_000n }],
+        [id('311001'), { debits: 0n, credits: 50_000_000n }],
+        [id('312001'), { debits: 0n, credits: 18_000_000n }],
+        [id('312002'), { debits: 0n, credits: 12_000_000n }],
+        [id('531001'), { debits: 10_000_000n, credits: 0n }],
+      ]),
+      new Map([
+        [id('111003'), { debits: 80_000_000n, credits: 0n }],
+        [id('311001'), { debits: 0n, credits: 50_000_000n }],
+        [id('312001'), { debits: 0n, credits: 18_000_000n }],
+        [id('312002'), { debits: 0n, credits: 12_000_000n }],
+      ]),
+    );
+    const { rows, totals } = trialBalance({
+      accounts: CHART,
+      opening,
+      movements,
+      compare: null,
+      level: 4,
+      nonZero: true,
+    });
+    const row = (code: string) => rows.find((candidate) => candidate.accountId === id(code));
+    expect(row('111003')).toMatchObject({
+      opening: 80_000_000n,
+      debits: 0n,
+      credits: 10_000_000n,
+      closing: 70_000_000n,
+    });
+    expect(row('312002')).toMatchObject({ opening: -12_000_000n, debits: 0n, credits: 0n });
+    expect(totals).toMatchObject({
+      openingDebit: 80_000_000n,
+      openingCredit: 80_000_000n,
+      debits: 10_000_000n,
+      credits: 10_000_000n,
+    });
+    expect(() =>
+      withOpeningEntry(
+        new Map(),
+        new Map(),
+        new Map([[id('111003'), { debits: 1n, credits: 0n }]]),
+      ),
+    ).toThrow(RangeError);
+  });
+
+  it("adds the result before the books start to its year's result, and to retained earnings later", () => {
+    const row = (code: string, amount: bigint, clientId: string | null = null) => ({
+      accountId: id(code),
+      clientId,
+      contractId: null,
+      amount,
+    });
+    // At 31 January 2027, compared with 31 December 2026 (the books start's year).
+    const sheet = balanceSheet({
+      accounts: CHART,
+      current: {
+        balances: [
+          row('111003', 54_000_000n),
+          row('112001', 50_000_000n, 'C1'),
+          row('311001', -50_000_000n),
+          row('312001', -18_000_000n),
+          row('312002', -12_000_000n),
+        ],
+        yearNet: -10_000_000n,
+        unclosedNet: -14_000_000n,
+        yearResultAccountIds: [],
+      },
+      compare: {
+        balances: [
+          row('111003', 64_000_000n),
+          row('112001', 30_000_000n, 'C1'),
+          row('311001', -50_000_000n),
+          row('312001', -18_000_000n),
+          row('312002', -12_000_000n),
+        ],
+        yearNet: -14_000_000n,
+        unclosedNet: 0n,
+        yearResultAccountIds: [id('312002')],
+      },
+    });
+    const retained = sheet.lines.find((line) => line.line === 'bs.retained_earnings');
+    expect(retained).toMatchObject({
+      amount: 44_000_000n,
+      compare: 18_000_000n,
+      unclosedYears: 14_000_000n,
+      compareUnclosedYears: 0n,
+    });
+    expect(retained?.parts.map((part) => [part.accountId, part.amount])).toEqual([
+      [id('312001'), 18_000_000n],
+      [id('312002'), 12_000_000n],
+    ]);
+    expect(sheet).toMatchObject({
+      yearResult: 10_000_000n,
+      yearResultPreOpening: 0n,
+      compareYearResult: 26_000_000n,
+      compareYearResultPreOpening: 12_000_000n,
+      totals: { assets: 104_000_000n, equity: 104_000_000n },
+      compareTotals: { assets: 94_000_000n, equity: 94_000_000n },
+    });
+    // A loss before the books start (S10 edge case 20) lowers the year's result.
+    const loss = balanceSheet({
+      accounts: CHART,
+      current: {
+        balances: [row('111003', 1_000n), row('312002', 400n), row('312001', -1_400n)],
+        yearNet: 0n,
+        unclosedNet: 0n,
+        yearResultAccountIds: [id('312002')],
+      },
+      compare: null,
+    });
+    expect(loss).toMatchObject({ yearResult: -400n, yearResultPreOpening: -400n });
+    expect(loss.totals.assets).toBe(loss.totals.liabilitiesAndEquity);
+  });
+});
+
 describe('profitability (rules 20–23)', () => {
   it('gives the scenario\'s margins, half away from zero, and "—" with no revenue', () => {
     expect(marginOf(80_000n, 55_000n)).toBe('68.8');
@@ -644,6 +830,24 @@ describe('properties of the reports (rule 8)', () => {
           const parts = line.parts.reduce((total, part) => total + part.amount, 0n);
           expect(parts + (line.unclosedYears ?? 0n)).toBe(line.amount);
         }
+        // S10 rule 31: in the books start's year, 312002 moves from retained earnings into the
+        // year's result; the sheet still balances and equity is unchanged.
+        const opening = balanceSheet({
+          accounts: CHART,
+          current: {
+            balances: [...balances.values()],
+            yearNet,
+            unclosedNet,
+            yearResultAccountIds: [id('312002')],
+          },
+          compare: null,
+        });
+        expect(opening.totals).toEqual(sheet.totals);
+        const preOpening = [...balances.values()]
+          .filter((row) => row.accountId === id('312002'))
+          .reduce((total, row) => total - row.amount, 0n);
+        expect(opening.yearResultPreOpening).toBe(preOpening);
+        expect(opening.yearResult).toBe(sheet.yearResult + preOpening);
         const statement = incomeStatement({ accounts: CHART, current: incomeNet, compare: null });
         const classes = [...incomeNet.values()].reduce((total, amount) => total + amount, 0n);
         expect(statement.subtotals.profit).toBe(-classes);
@@ -670,6 +874,52 @@ describe('properties of the reports (rule 8)', () => {
           position.totals.contractLiabilities + position.totals.withoutContractLiabilities,
         ).toBe(sheetLine('bs.contract_liabilities'));
       }),
+    );
+  });
+
+  it('moving the opening entry to the opening column keeps every closing and balances both columns', () => {
+    type Sums = Map<string, { debits: bigint; credits: bigint }>;
+    const add = (
+      into: Sums,
+      entries: readonly { lines: { accountId: string; amount: bigint }[] }[],
+    ) => {
+      for (const { lines } of entries) {
+        for (const line of lines) {
+          const before = into.get(line.accountId) ?? { debits: 0n, credits: 0n };
+          into.set(line.accountId, {
+            debits: before.debits + (line.amount > 0n ? line.amount : 0n),
+            credits: before.credits + (line.amount < 0n ? -line.amount : 0n),
+          });
+        }
+      }
+      return into;
+    };
+    fc.assert(
+      fc.property(
+        fc.array(entryArbitrary, { minLength: 1, maxLength: 15 }),
+        fc.array(entryArbitrary, { maxLength: 15 }),
+        (openingEntries, others) => {
+          const openingEntry = add(new Map(), openingEntries);
+          const movements = add(add(new Map(), openingEntries), others);
+          const read = (opening: Map<string, bigint>, moved: Sums) =>
+            trialBalance({
+              accounts: CHART,
+              opening,
+              movements: moved,
+              compare: null,
+              level: 4,
+              nonZero: false,
+            });
+          const plain = read(new Map(), movements);
+          const moved = withOpeningEntry(new Map(), movements, openingEntry);
+          const withOpening = read(moved.opening, moved.movements);
+          expect(withOpening.rows.map((row) => row.closing)).toEqual(
+            plain.rows.map((row) => row.closing),
+          );
+          expect(withOpening.totals.openingDebit).toBe(withOpening.totals.openingCredit);
+          expect(withOpening.totals.debits).toBe(withOpening.totals.credits);
+        },
+      ),
     );
   });
 
