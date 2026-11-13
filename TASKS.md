@@ -27,7 +27,7 @@ Plan approved by the owner (2026-11-13, in the session).
 - [x] scenarios: the readers' marks and `year_result_pre_opening`; `reports/opening-presentation` `Approved (owner, 2026-11-12)`, its two cases run
 - [x] api: the marks in the report answers; OpenAPI regenerated if they change it
 - [x] wiring, docs (`docs/ROADMAP.md`)
-- [ ] checks and reviewers (`reviewer`, `accountant-reviewer`), PR with auto-merge and Auto-fix
+- [x] checks and reviewers (`reviewer` and `accountant-reviewer`: the opening column's drill-down on the trial balance screen, and the `reviewer` the year's note on the balance sheet screen, fixed in 914158d and re-reviewed clean; `pnpm verify --e2e-all` passes on 914158d, 5m 25s), PR with auto-merge and Auto-fix
 
 ## PR 4 — Documents before the books start (contracts, ledger, db, scenarios, api, worker) · `feat/s10-before-books-start`
 - [ ] contracts and ledger: a manual line's `schedule` (Hub's invoice and line), the residual on retained earnings of a correction on its own (rule 28), the refusals `VALIDATION_FAILED`
