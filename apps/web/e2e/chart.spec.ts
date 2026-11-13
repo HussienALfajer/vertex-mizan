@@ -321,7 +321,7 @@ test.describe('the chart', () => {
       t.normalBalances.debit,
     );
     await choose(page, s.parent, `21 ${accountOf('21').name}`);
-    await expect(sheet.getByLabel(s.code)).toHaveValue('216');
+    await expect(sheet.getByLabel(s.code)).toHaveValue('217');
     await expect(sheet.getByRole('combobox', { name: s.kind })).toHaveText(t.kinds.postable);
     await expect(sheet.getByRole('combobox', { name: s.normalBalance })).toHaveText(
       t.normalBalances.credit,
@@ -332,7 +332,7 @@ test.describe('the chart', () => {
     await expect(sheet).toHaveCount(0);
     expect(create.seen[0]?.postDataJSON()).toMatchObject({
       parentId: accountOf('21').id,
-      code: '216',
+      code: '217',
       kind: 'postable',
       normalBalance: 'credit',
       statementLine: 'bs.client_money',

@@ -67,9 +67,9 @@ Every company table has `company_id`, forced RLS with `company_isolation`, compo
   | `contract_liability` | `212001` | liability, postable, not monetary (IAS 21.16; ADR 0007) |
   | `contract_asset` | `113001` | a `document` control account, asset, monetary |
   | `released_revenue` | `411001` | revenue, postable |
-  | `cancelled_project_refund` | `211003` | liability, postable, monetary |
+  | `cancelled_project_refund` | `211005` (`211003` until the templates' version 3) | liability, postable, monetary |
 
-  Like S05's, the migration fills the defaults for existing companies whose chart holds the codes; the general template's companies start unmapped and hold `NO_MAPPING` (`slot_unmapped:<slot>`).
+  Like S05's, the migration fills the defaults for existing companies whose chart holds the codes (a chart without `211005`, made before version 3, takes `211003` for the refund); the general template's companies start unmapped and hold `NO_MAPPING` (`slot_unmapped:<slot>`).
 - **Contracts** (`packages/contracts`, additive, ADR 0006): the event type `milestone.reopened` v1; an optional `service` and `number` on `milestone.done`; the hold details, inbox actions and slots below, appended to their lists and kept by the error-code guard. `SERVICE_PERIOD_CLOSED` already exists in `HOLD_REASONS`; it joins `HOLD_CHECK_ORDER` after `PERIOD_CLOSED`. The entry source `revenue_release` already exists (S03).
 
 ## States and rules

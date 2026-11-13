@@ -1084,6 +1084,49 @@ describe('the template’s recognition slots for an existing company (S06 "Data"
       { slot: 'released_revenue', code: '411001' },
     ]);
   });
+
+  it("maps the refund to S06's 211003 in a chart made before the templates' version 3", async () => {
+    const company = await newCompany([]);
+    // As a company created before S06, on the templates' version 1: no 211005, no recognition slot.
+    const removed = await superuser.connect();
+    try {
+      await removed.query('begin');
+      await removed.query(`select set_config('app.company_id', $1, true)`, [company]);
+      await removed.query(
+        'alter table posting_rule_accounts disable trigger posting_rule_accounts_refuse_delete',
+      );
+      await removed.query(
+        `delete from posting_rule_accounts where slot in ('contract_liability', 'contract_asset', 'released_revenue', 'cancelled_project_refund')`,
+      );
+      await removed.query(
+        'alter table posting_rule_accounts enable always trigger posting_rule_accounts_refuse_delete',
+      );
+      await removed.query(
+        `update chart_accounts set archived_at = now(), archived_reason = 'version 1' where code = '211005'`,
+      );
+      await removed.query('commit');
+    } finally {
+      removed.release();
+    }
+    expect(
+      await inCompany(company, (tx) =>
+        mapAppendedTemplateSlots(
+          tx,
+          company,
+          ['contract_liability', 'contract_asset', 'released_revenue', 'cancelled_project_refund'],
+          system,
+        ),
+      ),
+    ).toBe(4);
+    const refund = await inCompany(company, (tx) =>
+      tx
+        .select({ code: chartAccounts.code })
+        .from(postingRuleAccounts)
+        .innerJoin(chartAccounts, eq(chartAccounts.id, postingRuleAccounts.accountId))
+        .where(eq(postingRuleAccounts.slot, 'cancelled_project_refund')),
+    );
+    expect(refund).toEqual([{ code: '211003' }]);
+  });
 });
 
 // A project, its milestones and a deposit invoice (`revenue/milestones`, `revenue/cancelled-project`).

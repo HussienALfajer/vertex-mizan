@@ -312,7 +312,10 @@ export function AccountSheet({
       candidate.archived === null &&
       candidate.id !== account?.id,
   );
-  const lines = STATEMENT_LINES.filter((line) => statementLineFits(line.code, accountClass));
+  // In presentation order: a line appended to the catalogue is placed by its `order`.
+  const lines = STATEMENT_LINES.filter((line) => statementLineFits(line.code, accountClass)).sort(
+    (a, b) => a.order - b.order,
+  );
   const flagsFit = accountClass === 'asset' || accountClass === 'liability';
   const title = !account ? s.createTitle : readOnly ? s.viewTitle : s.editTitle;
 

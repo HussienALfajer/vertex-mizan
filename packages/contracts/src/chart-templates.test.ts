@@ -230,9 +230,9 @@ describe('the chart templates (S02 "Templates", version 3 after the review of Q3
       isMonetary: false,
     });
     // A14: the cancelled project's refund moves to the refund liabilities.
-    expect(
-      agency.postingRules.find((rule) => rule.slot === 'cancelled_project_refund')?.code,
-    ).toBe('211005');
+    expect(agency.postingRules.find((rule) => rule.slot === 'cancelled_project_refund')?.code).toBe(
+      '211005',
+    );
   });
 
   it('gives each control account its item kind (S04)', () => {
