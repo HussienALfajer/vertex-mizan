@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+# Periodic health check for mizan.vertexmedia.pro (mizan-health.timer, every 2 minutes), as root.
+# Copied from Vertex Hub's vertexhub-healthcheck. Heals, not only logs, with a cooldown so it never
+# loops on restarts; what it cannot heal reaches the owner through mizan_alert (once every 6 hours
+# per kind). Read with: journalctl -t mizan-health -n 50
+set -u
+# shellcheck disable=SC1091
+. /usr/local/lib/mizan/common.sh
+
+UNIT=pm2-vertexmizan.service
+PORT=3300
+APPS="mizan-api mizan-worker"
+STATE_DIR=/var/lib/mizan-health
+COOLDOWN=600
+mkdir -p "$STATE_DIR"
+
+log() { logger -t mizan-health "$*"; }
+
+cooled_down() {
+  local f="$STATE_DIR/$1.last" now last
+  now=$(date +%s); last=$(cat "$f" 2>/dev/null || echo 0)
+  if [ $((now - last)) -ge "$COOLDOWN" ]; then echo "$now" >"$f"; return 0; fi
+  return 1
+}
+
+pm2_as_app() {
+  runuser -u "$MIZAN_USER" -- env HOME="/home/$MIZAN_USER" PM2_HOME="/home/$MIZAN_USER/.pm2" \
+    PATH=/usr/local/bin:/usr/bin:/bin pm2 "$@"
+}
+
+restart_app() {
+  cooled_down "$1" || return 0
+  pm2_as_app restart "$1" >/dev/null 2>&1 && log "$1 restarted"
+}
+
+# 0. The database cluster: the API answers 503 without it, and PM2 cannot heal that.
+if ! runuser -u postgres -- pg_isready -q -h /var/run/postgresql -p "$MIZAN_PG_PORT"; then
+  log "the mizan cluster does not accept connections"
+  if cooled_down cluster; then
+    pg_ctlcluster "$MIZAN_PG_VERSION" "$MIZAN_PG_CLUSTER" start 2>/dev/null && log "the mizan cluster started"
+  fi
+  mizan_alert health-cluster "قاعدة البيانات متوقفة" \
+    "The mizan cluster (17/mizan, port $MIZAN_PG_PORT) did not accept connections; a start was attempted. Read: journalctl -u postgresql@17-mizan -n 50"
+fi
+
+# 1. The PM2 unit: if it is down, nothing else is worth checking.
+if ! systemctl is-active --quiet "$UNIT"; then
+  log "$UNIT is not active"
+  cooled_down unit && systemctl start "$UNIT" && log "$UNIT started"
+  exit 0
+fi
+
+# 2. The API answers on loopback, database included (/api/health checks it).
+code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 "http://127.0.0.1:$PORT/api/health")
+if [ "$code" != 200 ]; then
+  log "API answers $code on port $PORT"
+  if [ "$code" = 503 ]; then
+    log "the API is up but reports a dependency down (database?)"
+  else
+    restart_app mizan-api
+  fi
+  # One failed probe is noise; two in a row reach the owner.
+  if [ -f "$STATE_DIR/api.failing" ]; then
+    mizan_alert health-api "ميزان لا يجيب" "http://127.0.0.1:$PORT/api/health answered $code twice in a row. Read: pm2 logs mizan-api --err (as $MIZAN_USER)"
+  fi
+  touch "$STATE_DIR/api.failing"
+else
+  rm -f "$STATE_DIR/api.failing"
+fi
+
+# 3. PM2 state and restart counts of each process.
+jlist=$(pm2_as_app jlist 2>/dev/null || echo '[]')
+for app in $APPS; do
+  read -r state restarts < <(printf '%s' "$jlist" | python3 -c "
+import json, sys
+apps = {p['name']: p['pm2_env'] for p in json.load(sys.stdin)}
+env = apps.get('$app')
+print(env['status'], env['restart_time']) if env else print('missing', 0)
+" 2>/dev/null || echo "unknown 0")
+  [ "$state" = online ] || { log "$app is $state"; restart_app "$app"; }
+  [ "${restarts:-0}" -gt 20 ] && log "warning: $app restarted $restarts times; check pm2 logs $app --err"
+done
+
+# 4. Public path and certificate.
+if [ -f "/etc/letsencrypt/live/$MIZAN_DOMAIN/fullchain.pem" ]; then
+  code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 20 "https://$MIZAN_DOMAIN/api/health")
+  [ "$code" = 200 ] || log "public https://$MIZAN_DOMAIN/api/health answers $code"
+  end=$(openssl x509 -enddate -noout -in "/etc/letsencrypt/live/$MIZAN_DOMAIN/fullchain.pem" | cut -d= -f2)
+  days=$(( ($(date -d "$end" +%s) - $(date +%s)) / 86400 ))
+  if [ "$days" -lt 15 ]; then
+    log "warning: certificate for $MIZAN_DOMAIN expires in $days days"
+    mizan_alert certificate "الشهادة تنتهي خلال $days يومًا" "The TLS certificate of $MIZAN_DOMAIN expires on $end; certbot renews it from 30 days before."
+  fi
+fi
+
+# Disk use is the backup monitor's (mizan-backup-monitor).
+exit 0

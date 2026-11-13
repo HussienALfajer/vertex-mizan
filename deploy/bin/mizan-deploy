@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# Entry point for deploys (root, ADR 0020):
+#
+#   ssh vertex "mizan-deploy [<ref>]"     build, back up, migrate and switch (default origin/main)
+#   ssh vertex "mizan-deploy rollback"    the previous release, on the migrated database
+#
+# Runs the latest deploy/deploy.sh from origin/main as vertexmizan, so a change to it applies on
+# the same deploy. Between the build and the migrations, root takes an incremental pgBackRest
+# backup to the local repository, annotated with the release: the point to restore the database
+# to if a migration goes wrong (docs/deployment.md, "Restore the database to before a deploy").
+set -euo pipefail
+
+SITE_DIR=/srv/mizan.vertexmedia.pro
+APP_USER=vertexmizan
+[ "$(id -u)" -eq 0 ] || { echo "run as root" >&2; exit 1; }
+
+runuser -u "$APP_USER" -- git -C "$SITE_DIR/repo.git" fetch --quiet --prune origin \
+  '+refs/heads/*:refs/remotes/origin/*'
+script=$(mktemp)
+output=$(mktemp)
+trap 'rm -f "$script" "$output"' EXIT
+runuser -u "$APP_USER" -- git -C "$SITE_DIR/repo.git" show origin/main:deploy/deploy.sh >"$script"
+chmod 755 "$script"
+
+as_app() {
+  (cd "$SITE_DIR" && runuser -u "$APP_USER" -- env -i HOME="/home/$APP_USER" USER="$APP_USER" \
+    LOGNAME="$APP_USER" PATH=/usr/local/bin:/usr/bin:/bin PM2_HOME="/home/$APP_USER/.pm2" \
+    LANG=C.UTF-8 bash "$script" "$@")
+}
+
+if [ "${1:-}" = rollback ]; then
+  as_app rollback
+  exit 0
+fi
+
+as_app build "${1:-origin/main}" | tee "$output"
+release=$(sed -n 's/^RELEASE=//p' "$output" | tail -1)
+[ -n "$release" ] || { echo "the build did not name its release" >&2; exit 1; }
+
+echo "[deploy] incremental backup before the migrations"
+if ! runuser -u postgres -- pgbackrest --stanza=mizan --repo=1 --type=incr \
+  --annotation=release="$release" --log-level-console=warn backup; then
+  as_app discard "$release" || true
+  echo "[deploy] FAILED: the backup did not complete; nothing was migrated or switched" >&2
+  exit 1
+fi
+
+# The migrations' owner URL, root's, reaches the activation on descriptor 3 only (deploy.sh).
+# While the deploy runs, the backup monitor accepts mizan_owner sessions.
+touch /run/mizan-deploy.active
+trap 'rm -f "$script" "$output" /run/mizan-deploy.active' EXIT
+if ! as_app activate "$release" 3</etc/mizan/owner.env; then
+  # The failed release is removed unless it is still the active one; its logs are in PM2's.
+  [ "$(readlink -f "$SITE_DIR/current")" = "$SITE_DIR/releases/$release" ] || as_app discard "$release" || true
+  exit 1
+fi

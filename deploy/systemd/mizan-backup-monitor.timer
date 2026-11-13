@@ -1,0 +1,11 @@
+[Unit]
+Description=Backup monitor of mizan.vertexmedia.pro every 5 minutes
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=5min
+AccuracySec=30s
+Unit=mizan-backup-monitor.service
+
+[Install]
+WantedBy=timers.target

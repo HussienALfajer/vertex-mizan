@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# Daily backup of mizan.vertexmedia.pro (mizan-backup.timer, ADR 0020), as root:
+#   1. pgBackRest to both repositories: a full backup on Sunday (UTC), a differential one on the
+#      other days; the write-ahead log archives continuously between them;
+#   2. a pg_dump in custom format, kept 14 days in /var/backups/mizan.vertexmedia.pro/dumps, for a
+#      single table or old data without a cluster restore;
+#   3. restic to the 35-day bucket: shared/files, shared/.env, the nginx site and the deployed
+#      revision, then the snapshots older than 35 days forgotten.
+# A failure stops the run; mizan-backup.service alerts through OnFailure, and the monitor checks
+# each repository's last backup every day. Read with: journalctl -u mizan-backup -n 50
+set -euo pipefail
+umask 077
+# shellcheck disable=SC1091
+. /usr/local/lib/mizan/common.sh
+mizan_load_settings
+
+type="diff"
+[ "$(date -u +%u)" = 7 ] && type=full
+# pgBackRest makes the first backup of a repository full whatever the type asked.
+for repo in 1 2; do
+  runuser -u postgres -- pgbackrest --stanza="$MIZAN_STANZA" --repo="$repo" --type="$type" \
+    --log-level-console=warn backup
+  # Expiry follows each repository's retention (repo1: two full backups; repo2: 35 days).
+  runuser -u postgres -- pgbackrest --stanza="$MIZAN_STANZA" --repo="$repo" \
+    --log-level-console=warn expire
+done
+logger -t mizan-backup "pgBackRest $type backup in both repositories"
+
+dump="$MIZAN_BACKUPS/dumps/$(date -u +%Y%m%dT%H%M%SZ).dump"
+# pg_dump runs as postgres, which cannot write here: it writes to stdout and root redirects
+# (SERVER.md rule 8). As the superuser it reads every company's rows.
+runuser -u postgres -- pg_dump -p "$MIZAN_PG_PORT" --format=custom "$MIZAN_DB" >"$dump"
+pg_restore --list "$dump" >/dev/null
+find "$MIZAN_BACKUPS/dumps" -maxdepth 1 -name '*.dump' -mtime +14 -delete
+logger -t mizan-backup "pg_dump $(basename "$dump") ($(du -h "$dump" | cut -f1))"
+
+mizan_restic_env
+paths=("$MIZAN_FILES" "$MIZAN_ENV" "/etc/nginx/sites-available/$MIZAN_DOMAIN")
+[ -f "$MIZAN_SITE/current/REVISION" ] && paths+=("$MIZAN_SITE/current/REVISION")
+restic backup --quiet --tag daily --host "$MIZAN_DOMAIN" "${paths[@]}"
+restic forget --quiet --host "$MIZAN_DOMAIN" --keep-within 35d --prune
+logger -t mizan-backup "restic snapshot of the files and configuration"
+
+mizan_stamp backup

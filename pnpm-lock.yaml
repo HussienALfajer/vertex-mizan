@@ -372,6 +372,9 @@ importers:
       '@vertex-mizan/i18n':
         specifier: workspace:*
         version: link:../../packages/i18n
+      '@vertex-mizan/ledger':
+        specifier: workspace:*
+        version: link:../../packages/ledger
       '@vertex-mizan/ui':
         specifier: workspace:*
         version: link:../../packages/ui

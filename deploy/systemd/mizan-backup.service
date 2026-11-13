@@ -1,0 +1,14 @@
+[Unit]
+Description=Daily backup of mizan.vertexmedia.pro (ADR 0020)
+Wants=network-online.target
+After=network-online.target postgresql@17-mizan.service
+OnFailure=mizan-alert@%n.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/mizan-backup
+UMask=0077
+TimeoutStartSec=6h
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7

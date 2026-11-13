@@ -1,0 +1,9 @@
+# The OnFailure of every Mizan unit: one email to the owner with the failed unit's status and
+# journal (deploy/bin/mizan-alert, ADR 0020).
+[Unit]
+Description=Alert the owner that %i failed
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/mizan-alert unit %i
+UMask=0077

@@ -1,0 +1,11 @@
+[Unit]
+Description=Monthly restore drill of mizan.vertexmedia.pro on the 5th at 03:30 UTC
+
+[Timer]
+# After the archive of the 2nd and three daily backups since.
+OnCalendar=*-*-05 03:30:00 UTC
+Persistent=true
+Unit=mizan-restore-drill.service
+
+[Install]
+WantedBy=timers.target

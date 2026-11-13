@@ -1,0 +1,11 @@
+[Unit]
+Description=Health check of mizan.vertexmedia.pro every 2 minutes
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=2min
+AccuracySec=15s
+Unit=mizan-health.service
+
+[Install]
+WantedBy=timers.target
