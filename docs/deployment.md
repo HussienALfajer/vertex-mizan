@@ -165,7 +165,7 @@ Required after either database restore, before the apps start. The moved directo
 ```bash
 old=/var/lib/postgresql/17/mizan.before-restore-<time>
 runuser -u postgres -- /usr/lib/postgresql/17/bin/pg_ctl -D "$old" -l /tmp/mizan-old.log -w start \
-  -o "-c config_file=/etc/postgresql/17/mizan/postgresql.conf -c data_directory=$old -c port=5434 -c archive_mode=off -c default_transaction_read_only=on"
+  -o "-c config_file=/etc/postgresql/17/mizan/postgresql.conf -c data_directory=$old -c port=5434 -c archive_mode=off -c external_pid_file= -c default_transaction_read_only=on"
 ```
 
 For each company, with the restored head's sequence from the integrity check (`select company_id, max(sequence) from journal_entries group by company_id` on 5433):
