@@ -62,7 +62,9 @@ cat >"$drill/postgresql.conf" <<EOF
 listen_addresses = '127.0.0.1'
 port = $port
 unix_socket_directories = '/var/run/postgresql'
-max_connections = 20
+# Recovery refuses to start below the values production ran with (pg_control): at least
+# deploy/postgresql/mizan.conf's max_connections; the others PostgreSQL compares stay at defaults.
+max_connections = 60
 shared_buffers = 256MB
 archive_mode = off
 ssl = off

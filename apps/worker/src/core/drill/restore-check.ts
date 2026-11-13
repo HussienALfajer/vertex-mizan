@@ -1,5 +1,22 @@
-import { type Database, readChain, readLedgerState, withCompany } from '@vertex-mizan/db';
-import { checkIntegrity } from '@vertex-mizan/ledger';
+import type { AnchorResult } from '@vertex-mizan/contracts';
+import {
+  type Database,
+  readChain,
+  readLedgerState,
+  readOpenItemState,
+  readRecognitionState,
+  type Transaction,
+  withCompany,
+} from '@vertex-mizan/db';
+import {
+  anchorResult,
+  checkIntegrity,
+  type IntegrityFindings,
+  type OpenItemFindings,
+  openItemProblems,
+  type RecognitionProblem,
+  recognitionProblems,
+} from '@vertex-mizan/ledger';
 import { sql } from 'drizzle-orm';
 
 /**
@@ -63,6 +80,68 @@ export function compareTrialBalances(
     );
 }
 
+/** What the integrity checks found in a restored company. */
+export interface RestoredBooksFindings {
+  readonly findings: IntegrityFindings;
+  readonly items: OpenItemFindings;
+  readonly recognition: readonly RecognitionProblem[];
+  readonly anchors: readonly { readonly anchoredOn: string; readonly result: AnchorResult }[];
+}
+
+/**
+ * Every problem the integrity checks found in a restored company, one line each: the problems
+ * `POST /api/integrity/check` counts, and any stored anchor the restored chain does not verify.
+ */
+export function restoredBooksProblems(restored: RestoredBooksFindings): string[] {
+  const { findings, items, recognition, anchors } = restored;
+  const problems: string[] = [];
+  if (findings.firstBreak !== null) {
+    problems.push(
+      `chain breaks at sequence ${findings.firstBreak.sequence}: ${findings.firstBreak.reason}`,
+    );
+  }
+  if (!findings.headMatchesChain) problems.push('the head does not match the chain');
+  for (const entry of findings.unbalanced) {
+    problems.push(
+      `entry ${entry.fiscalYear}/${entry.number} unbalanced in the ${entry.ledger} ledger`,
+    );
+  }
+  for (const gap of findings.numbering) {
+    problems.push(`numbering ${gap.fiscalYear}/${gap.number}: ${gap.problem}`);
+  }
+  for (const row of findings.periodBalances) {
+    problems.push(
+      `period balance ${row.period} ${row.accountId} ${row.currency}${row.dimensionKey === '' ? '' : ` [${row.dimensionKey}]`}: ${row.problem}`,
+    );
+  }
+  for (const row of items.controlAccounts) {
+    problems.push(
+      `control account ${row.accountId} ${row.currency}: its items differ in the ${row.amount} amount`,
+    );
+  }
+  for (const row of items.itemBalances) {
+    problems.push(`open item ${row.itemId} balance: ${row.problem}`);
+  }
+  for (const row of recognition) {
+    problems.push(
+      `recognition ${row.contractValueId ?? 'without contract'} ${row.currency}: schedules differ from the contract liability in the ${row.amount} amount`,
+    );
+  }
+  for (const anchor of anchors) {
+    if (anchor.result !== 'verified')
+      problems.push(`anchor ${anchor.anchoredOn}: ${anchor.result}`);
+  }
+  return problems;
+}
+
+/**
+ * A whole company is read in one transaction, past the pools' 10-second statement limit
+ * (`createDatabase`): as `POST /api/integrity/check` does, with a longer bound for the drill.
+ */
+async function longReads(tx: Transaction): Promise<void> {
+  await tx.execute(sql`set local statement_timeout = '15min'`);
+}
+
 /** The trial balance of a company's entries up to `sequence` (all of them when null). */
 async function trialBalance(
   db: Database,
@@ -70,6 +149,7 @@ async function trialBalance(
   sequence: string | null,
 ): Promise<TrialBalanceRow[]> {
   return withCompany(db, companyId, async (tx) => {
+    await longReads(tx);
     const { rows } = await tx.execute<{
       account_id: string;
       currency: string;
@@ -102,6 +182,7 @@ async function productionAt(
   before: Date,
 ): Promise<{ hash: string | null; lastBefore: string | null }> {
   return withCompany(db, companyId, async (tx) => {
+    await longReads(tx);
     const at =
       sequence === null
         ? []
@@ -132,37 +213,37 @@ async function checkCompany(
   restoredAt: Date,
 ): Promise<CompanyDrillResult> {
   const problems: string[] = [];
-  // The restored company whole: its chain from the first entry, every entry balanced in both
-  // ledgers, its numbering and its head, through the same check as `POST /api/integrity/check`.
+  // The restored company whole, through the same checks as `POST /api/integrity/check`, in one
+  // snapshot: its chain from the first entry, numbering, head and every entry balanced in both
+  // ledgers; the period balances the reports read against the lines; each control account against
+  // its items and each item's balance row against its movements; each contract's schedules against
+  // its contract liability lines; every stored anchor against the chain.
   const restored = await withCompany(
     databases.restored,
     companyId,
     async (tx) => {
+      await longReads(tx);
       const chain = await readChain(tx);
       const state = await readLedgerState(tx);
       const last = chain.at(-1);
       return {
         findings: checkIntegrity({ chain, ...state }),
+        items: openItemProblems({
+          ...(await readOpenItemState(tx)),
+          periodBalances: state.periodBalances,
+        }),
+        recognition: recognitionProblems(await readRecognitionState(tx)),
+        anchors: state.anchors.map((anchor) => ({
+          anchoredOn: anchor.anchoredOn,
+          result: anchorResult(chain, anchor),
+        })),
         last: last ? { sequence: last.entry.sequence.toString(), hash: last.hash } : null,
       };
     },
     { isolationLevel: 'repeatable read' },
   );
   const { findings, last } = restored;
-  if (findings.firstBreak !== null) {
-    problems.push(
-      `chain breaks at sequence ${findings.firstBreak.sequence}: ${findings.firstBreak.reason}`,
-    );
-  }
-  if (!findings.headMatchesChain) problems.push('the head does not match the chain');
-  for (const entry of findings.unbalanced) {
-    problems.push(
-      `entry ${entry.fiscalYear}/${entry.number} unbalanced in the ${entry.ledger} ledger`,
-    );
-  }
-  if (findings.numbering.length > 0) {
-    problems.push(`${findings.numbering.length} numbering problems`);
-  }
+  problems.push(...restoredBooksProblems(restored));
 
   const headSequence = last?.sequence ?? null;
   const production = await productionAt(

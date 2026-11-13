@@ -45,7 +45,11 @@ if ! runuser -u postgres -- pgbackrest --stanza=mizan --repo=1 --type=incr \
   exit 1
 fi
 
-if ! as_app activate "$release"; then
+# The migrations' owner URL, root's, reaches the activation on descriptor 3 only (deploy.sh).
+# While the deploy runs, the backup monitor accepts mizan_owner sessions.
+touch /run/mizan-deploy.active
+trap 'rm -f "$script" "$output" /run/mizan-deploy.active' EXIT
+if ! as_app activate "$release" 3</etc/mizan/owner.env; then
   # The failed release is removed unless it is still the active one; its logs are in PM2's.
   [ "$(readlink -f "$SITE_DIR/current")" = "$SITE_DIR/releases/$release" ] || as_app discard "$release" || true
   exit 1

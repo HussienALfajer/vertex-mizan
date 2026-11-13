@@ -18,6 +18,8 @@ import {
   checkRestore,
   compareTrialBalances,
   type DrillDatabases,
+  type RestoredBooksFindings,
+  restoredBooksProblems,
 } from '../src/core/drill/restore-check.js';
 
 // The restore drill's checks (ADR 0020): the run's database stands for both production and a sound
@@ -31,6 +33,9 @@ let jobs: Database;
 let empty: TestDatabase;
 let emptyDb: Database;
 let emptyJobs: Database;
+let other: TestDatabase;
+let otherDb: Database;
+let otherJobs: Database;
 let personId = '';
 let companyId = '';
 
@@ -55,13 +60,23 @@ beforeAll(async () => {
   empty = await createTestDatabase();
   emptyDb = createDatabase(empty.appUrl);
   emptyJobs = createDatabase(empty.jobsUrl);
-  const [person] = await db
+  other = await createTestDatabase();
+  otherDb = createDatabase(other.appUrl);
+  otherJobs = createDatabase(other.jobsUrl);
+  companyId = uuidv7();
+  await seed(db, [1_000n, 2_500n]);
+  // The same company in another database, with one entry of its own: a restore whose chain is
+  // not production's.
+  await seed(otherDb, [1_000n]);
+});
+
+async function seed(target: Database, amounts: readonly bigint[]): Promise<void> {
+  const [person] = await target
     .insert(users)
     .values({ email: 'worker.drill@example.test', name: 'محاسب تجريبي' })
     .returning({ id: users.id });
   personId = person?.id as string;
-  companyId = uuidv7();
-  await withCompany(db, companyId, async (tx) => {
+  await withCompany(target, companyId, async (tx) => {
     await createCompanyBooks(
       tx,
       companyId,
@@ -90,8 +105,8 @@ beforeAll(async () => {
       });
     }
   });
-  for (const amount of [1_000n, 2_500n]) {
-    await withCompany(db, companyId, async (tx) => {
+  for (const amount of amounts) {
+    await withCompany(target, companyId, async (tx) => {
       const accounts = new Map(
         (
           await tx.select({ id: chartAccounts.id, code: chartAccounts.code }).from(chartAccounts)
@@ -123,11 +138,13 @@ beforeAll(async () => {
       });
     });
   }
-});
+}
 
 afterAll(async () => {
-  await Promise.all([db, jobs, emptyDb, emptyJobs].map((pool) => pool.$client.end()));
-  await empty.drop();
+  await Promise.all(
+    [db, jobs, emptyDb, emptyJobs, otherDb, otherJobs].map((pool) => pool.$client.end()),
+  );
+  await Promise.all([empty.drop(), other.drop()]);
 });
 
 const sound = (): DrillDatabases => ({
@@ -180,6 +197,109 @@ describe('checkRestore', () => {
       26 * HOUR,
     );
     expect(result.problems).not.toContain(`company ${companyId} is missing from the restore`);
+  });
+});
+
+describe('checkRestore against a restore that differs', () => {
+  it("fails a restore whose chain is not production's and lacks a posted entry", async () => {
+    const later = new Date(Date.now() + COMMIT_MARGIN_MS + HOUR);
+    const result = await checkRestore(
+      { ...sound(), restored: otherDb, restoredJobs: otherJobs },
+      later,
+      later,
+      26 * HOUR,
+    );
+    expect(result.ok).toBe(false);
+    const company = result.companies.find((row) => row.companyId === companyId);
+    expect(company?.headSequence).toBe('1');
+    expect(company?.problems).toContain(
+      "the restored head 1 is not production's entry at that place",
+    );
+    expect(company?.problems).toContain(
+      "production's entry 2, posted before the restored moment, is missing",
+    );
+    // The same codes, but the restore's own accounts: the trial balances share no row.
+    expect(company?.problems.some((problem) => problem.startsWith('trial balance '))).toBe(true);
+  });
+});
+
+describe('restoredBooksProblems', () => {
+  const clean: RestoredBooksFindings = {
+    findings: {
+      entryCount: 2,
+      lineCount: 4,
+      firstBreak: null,
+      headMatchesChain: true,
+      numbering: [],
+      unbalanced: [],
+      periodBalances: [],
+    },
+    items: { controlAccounts: [], itemBalances: [] },
+    recognition: [],
+    anchors: [{ anchoredOn: '2026-11-08', result: 'verified' }],
+  };
+
+  it('finds nothing in sound books', () => {
+    expect(restoredBooksProblems(clean)).toEqual([]);
+  });
+
+  it('names every problem the integrity check counts, and each anchor not verified', () => {
+    expect(
+      restoredBooksProblems({
+        findings: {
+          ...clean.findings,
+          firstBreak: {
+            sequence: 2n,
+            entryId: 'entry-2',
+            fiscalYear: 2026,
+            number: 2,
+            reason: 'hash',
+          },
+          headMatchesChain: false,
+          numbering: [{ fiscalYear: 2026, number: 3, problem: 'missing' }],
+          unbalanced: [
+            {
+              entryId: 'entry-2',
+              fiscalYear: 2026,
+              number: 2,
+              ledger: 'parallel',
+              residualMinor: 1n,
+              incompleteLines: 0,
+            },
+          ],
+          periodBalances: [
+            {
+              period: '2026-11',
+              accountId: 'account-111003',
+              dimensionKey: '',
+              currency: 'SYP',
+              problem: 'different',
+            },
+          ],
+        },
+        items: {
+          controlAccounts: [{ accountId: 'account-112001', currency: 'USD', amount: 'book' }],
+          itemBalances: [{ itemId: 'item-1', problem: 'missing' }],
+        },
+        recognition: [{ contractValueId: 'contract-1', currency: 'USD', amount: 'transaction' }],
+        anchors: [
+          { anchoredOn: '2026-11-08', result: 'verified' },
+          { anchoredOn: '2026-11-09', result: 'missing' },
+          { anchoredOn: '2026-11-10', result: 'mismatch' },
+        ],
+      }),
+    ).toEqual([
+      'chain breaks at sequence 2: hash',
+      'the head does not match the chain',
+      'entry 2026/2 unbalanced in the parallel ledger',
+      'numbering 2026/3: missing',
+      'period balance 2026-11 account-111003 SYP: different',
+      'control account account-112001 USD: its items differ in the book amount',
+      'open item item-1 balance: missing',
+      'recognition contract-1 USD: schedules differ from the contract liability in the transaction amount',
+      'anchor 2026-11-09: missing',
+      'anchor 2026-11-10: mismatch',
+    ]);
   });
 });
 

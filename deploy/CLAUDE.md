@@ -10,7 +10,8 @@ Everything installed on the production server for `mizan.vertexmedia.pro` comes 
 - `systemd/`, `nginx/`, `logrotate/`, `postgresql/` (the `mizan` cluster's settings and `pg_hba.conf`).
 
 ## Rules
-- The server is never edited by hand. A change lands here, merges to `main`, and is installed by `provision.sh` or a deploy. The exception is the secrets: `/etc/mizan/backup.env` (B2, SMTP, the alert address) and `/etc/mizan/keys/`, written on the server only and never printed, committed or copied into this folder (the repository is public).
+- The server is never edited by hand. A change lands here, merges to `main`, and is installed by `provision.sh` or a deploy. The exception is the secrets: `/etc/mizan/backup.env` (B2, SMTP, the alert address), `/etc/mizan/owner.env` (the owner role's URL) and `/etc/mizan/keys/`, root's, written on the server only and never printed, committed or copied into this folder (the repository is public).
+- Root never installs or runs anything the app user can write: `provision.sh` takes `deploy/` as a GitHub tarball of one commit, not from `repo.git`, and never runs the release's `node_modules`. The owner role's URL reaches the migrations on a file descriptor from `mizan-deploy`, never through `vertexmizan`'s files (ADR 0008).
 - Server work (`ssh vertex`) on Mizan's production is outward-facing: ask the owner before provisioning, deploying, restoring or deleting there (`AGENTS.md`, "How to work"). Read `/root/SERVER.md` first; never run git as root on the server.
 - `provision.sh` stays idempotent: a second run changes nothing.
 - Mizan's database is its own PostgreSQL cluster (`17/mizan`, `127.0.0.1:5433`); nothing here touches Hub's cluster (`17/main`, 5432) or its roles.

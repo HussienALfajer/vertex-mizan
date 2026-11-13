@@ -116,15 +116,18 @@ discard)
 activate)
   release=$(release_path "${2:-}")
   log "migrating as mizan_owner"
+  # The owner role's URL lives in root's /etc/mizan/owner.env, which this user cannot read:
+  # mizan-deploy opens it and hands it over on descriptor 3 for this command only, so the API, the
+  # worker and the build never reach it (ADR 0008).
+  owner_url=$(sed -n 's/^DATABASE_OWNER_URL=//p' <&3) || owner_url=
+  exec 3<&-
+  [ -n "$owner_url" ] || fail "no owner URL on descriptor 3 (run through mizan-deploy)"
   (
     cd "$release"
-    # Only for this command: the owner role never reaches the API or the worker (ADR 0008).
-    set -a
-    # shellcheck disable=SC1091
-    . "$SHARED/owner.env"
-    set +a
+    export DATABASE_OWNER_URL="$owner_url"
     corepack pnpm --filter @vertex-mizan/db db:migrate >&2
   ) || fail "the migration failed; the running release is untouched (mizan-deploy discards it)"
+  unset owner_url
 
   previous=$(readlink -f "$CURRENT" 2>/dev/null || true)
   log "switching to $(basename "$release")"

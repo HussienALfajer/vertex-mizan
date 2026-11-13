@@ -2,8 +2,8 @@
 # Server setup for mizan.vertexmedia.pro (ADR 0020, docs/deployment.md). Idempotent: it creates
 # what is missing and reinstalls the configuration from the repository. Run as root, streamed:
 #
-#   ssh vertex 'bash -s' < deploy/provision.sh            # configuration from origin/main
-#   ssh vertex 'bash -s -- <ref>' < deploy/provision.sh   # from another ref
+#   ssh vertex 'bash -s' < deploy/provision.sh            # configuration from main on GitHub
+#   ssh vertex 'bash -s -- <ref>' < deploy/provision.sh   # from another branch, tag or commit
 #
 # Before the first run, /etc/mizan/backup.env (root, 600) holds the B2 buckets and keys, the alert
 # address and the SMTP account; a run without it writes an empty one and stops. It never prints a
@@ -27,7 +27,8 @@ SERVER_IP=109.199.111.169
 # Pinned (ADR 0020): a newer candidate stops the run until this line is changed on purpose.
 PGBACKREST_VERSION=2.60.0-1.pgdg24.04+1
 RESTIC_VERSION=0.16.4-2ubuntu0.24.04.3
-REF=${1:-origin/main}
+REPO_API=https://api.github.com/repos/HussienALfajer/vertex-mizan
+REF=${1:-main}
 
 step() { printf '\n\033[1m== %s\033[0m\n' "$*"; }
 listening() { ss -ltn | awk 'NR>1{print $4}' | grep -qx "127.0.0.1:$1"; }
@@ -118,10 +119,16 @@ if [ ! -d "$SITE_DIR/repo.git" ]; then
 fi
 runuser -u "$APP_USER" -- git -C "$SITE_DIR/repo.git" fetch --quiet --prune origin \
   '+refs/heads/*:refs/remotes/origin/*'
-sha=$(runuser -u "$APP_USER" -- git -C "$SITE_DIR/repo.git" rev-parse --verify "$REF^{commit}")
+# What root installs and runs never comes from anything the app user can write (its clone, its
+# node_modules): root fetches the configuration itself from GitHub, as a tarball of one commit,
+# without git (SERVER.md: never run git as root).
+sha=$(curl -fsS --max-time 30 -H 'Accept: application/vnd.github.sha' "$REPO_API/commits/$REF")
+[[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo "could not resolve $REF on GitHub" >&2; exit 1; }
 src=$(mktemp -d)
 trap 'rm -rf "$src"' EXIT
-runuser -u "$APP_USER" -- git -C "$SITE_DIR/repo.git" archive "$sha" deploy | tar -x -C "$src"
+curl -fsSL --max-time 120 "$REPO_API/tarball/$sha" |
+  tar -xz -C "$src" --strip-components=1 --wildcards '*/deploy/'
+[ -f "$src/deploy/provision.sh" ] || { echo "the tarball of ${sha:0:7} has no deploy/" >&2; exit 1; }
 echo "configuration from ${sha:0:7}"
 
 step "Scripts, systemd units, logrotate"
@@ -216,21 +223,32 @@ echo "both repositories accept the archive"
 
 step "Roles, database and environment"
 env_file=$SITE_DIR/shared/.env
-owner_env=$SITE_DIR/shared/owner.env
+# The owner role's URL is root's: the app user, whose processes run the API, the worker and every
+# build script, must never read it (ADR 0008). mizan-deploy hands it to the migrations only.
+owner_env=$CONF_DIR/owner.env
 db_exists=$(mizan_psql "select 1 from pg_database where datname = '$DB'" postgres)
 if [ "$db_exists" != 1 ]; then
   [ ! -e "$env_file" ] || { echo "$env_file exists but database $DB does not; refusing to guess" >&2; exit 1; }
+  # A run stopped half-way leaves roles whose passwords nothing holds: stop instead of guessing.
+  roles=$(mizan_psql "select string_agg(rolname, ' ') from pg_roles where rolname like 'mizan\_%'" postgres)
+  [ -z "$roles" ] || { echo "roles exist without database $DB ($roles); drop them by hand first" >&2; exit 1; }
   declare -A password
   for role in mizan_owner mizan_app mizan_jobs mizan_queue; do password[$role]=$(openssl rand -hex 32); done
   # The roles of packages/db (ADR 0003, ADR 0008), as scripts/setup-local.ts makes them, without
-  # CREATEDB: production makes no test databases. Through stdin: arguments are public.
+  # CREATEDB: production makes no test databases. Through stdin: arguments are public. Statements
+  # that fail are not logged, so a password never reaches the server log; the roles in one
+  # transaction, so a failure leaves none.
   runuser -u postgres -- psql -X -q -v ON_ERROR_STOP=1 -p "$PG_PORT" -d postgres <<SQL
+set log_min_error_statement = panic;
+set log_statement = none;
+begin;
 create role mizan_owner login nosuperuser nobypassrls nocreaterole noreplication nocreatedb password '${password[mizan_owner]}';
 create role mizan_app login nosuperuser nobypassrls nocreaterole noreplication nocreatedb noinherit password '${password[mizan_app]}';
 create role mizan_jobs login nosuperuser nobypassrls nocreaterole noreplication nocreatedb noinherit password '${password[mizan_jobs]}';
 create role mizan_queue login nosuperuser nobypassrls nocreaterole noreplication nocreatedb noinherit password '${password[mizan_queue]}';
 alter role mizan_jobs set log_statement = 'all';
 alter role mizan_jobs set log_parameter_max_length = 0;
+commit;
 create database $DB owner mizan_owner encoding 'UTF8' template template0;
 revoke all on database $DB from public;
 grant connect on database $DB to mizan_app, mizan_jobs, mizan_queue;
@@ -256,7 +274,7 @@ EOF
     # The owner role runs the migrations only, never the API or the worker (ADR 0008).
     printf 'DATABASE_OWNER_URL=%s\n' "$(url mizan_owner)" >"$owner_env"
   )
-  chown "$APP_USER:$APP_USER" "$env_file" "$owner_env"
+  chown "$APP_USER:$APP_USER" "$env_file"
   unset password
   echo "roles, database, $env_file and $owner_env created"
 else
@@ -265,6 +283,7 @@ else
   fi
   echo "already set up"
 fi
+chown root:root "$owner_env"
 chmod 600 "$env_file" "$owner_env"
 
 step "restic repository"
@@ -337,19 +356,31 @@ systemctl list-timers 'mizan-*' --no-pager
 
 step "Chromium libraries"
 # The worker prints PDFs with Playwright's Chromium (S09). Each deploy downloads the browser as
-# $APP_USER; its system libraries need root, and Playwright knows the list for this release.
-if [ -d "$SITE_DIR/current" ]; then
-  (cd "$SITE_DIR/current" && corepack pnpm --filter @vertex-mizan/worker exec playwright install-deps chromium)
-  echo "installed"
-else
-  echo "no release yet: run provision.sh again after the first deploy"
+# $APP_USER; its system libraries need root. Root never runs the app's node_modules, so the list
+# is Playwright's for Chromium on Ubuntu 24.04, kept here; a missing library is found below.
+DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends \
+  libasound2t64 libatk-bridge2.0-0t64 libatk1.0-0t64 libatspi2.0-0t64 libcairo2 libcups2t64 \
+  libdbus-1-3 libdrm2 libfontconfig1 libfreetype6 libgbm1 libglib2.0-0t64 libnspr4 libnss3 \
+  libpango-1.0-0 libx11-6 libxcb1 libxcomposite1 libxdamage1 libxext6 libxfixes3 libxkbcommon0 \
+  libxrandr2 >/dev/null
+# The browser's libraries checked as the app user, which owns it: ldd may run what it reads. The
+# inner shell expands its own $HOME.
+# shellcheck disable=SC2016
+missing=$(runuser -u "$APP_USER" -- bash -c '
+  find "$HOME/.cache/ms-playwright" -type f \( -name headless_shell -o -name chrome \) -perm -u+x 2>/dev/null |
+    while read -r browser; do ldd "$browser" | grep "not found"; done | sort -u' || true)
+if [ -n "$missing" ]; then
+  echo "Chromium misses libraries; add their packages to provision.sh:" >&2
+  echo "$missing" >&2
+  exit 1
 fi
+echo "installed"
 
 cat <<EOF
 
 Provisioning complete. Next:
   mizan-deploy                                       # first release
-  bash -s < deploy/provision.sh                      # again, for Chromium's libraries
+  bash -s < deploy/provision.sh                      # again, to check Chromium's libraries
   systemctl enable --now mizan-health.timer          # once the first release is healthy
   systemctl start mizan-restore-drill.service        # the first drill (ADR 0020, condition 3)
 The owner copies the three keys in $CONF_DIR/keys/ twice (password manager and paper).

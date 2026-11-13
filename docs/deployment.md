@@ -19,7 +19,7 @@ The data-residency statement for customers stays open in Q7 until phase 4.
 | What | Where |
 |---|---|
 | Releases, the active one, shared state | `/srv/mizan.vertexmedia.pro/{releases,current,shared}`, owner `vertexmizan`; a bare clone in `repo.git` |
-| Environment | `shared/.env` (600): the app, jobs and queue roles' URLs, `AUTH_SECRET`, SMTP; `shared/owner.env` (600): the owner role's URL, read by the migrations only (ADR 0008) |
+| Environment | `shared/.env` (`vertexmizan`, 600): the app, jobs and queue roles' URLs, `AUTH_SECRET`, SMTP. The owner role's URL is root's, in `/etc/mizan/owner.env` (600): `mizan-deploy` hands it to the migrations on a file descriptor, and the app user, whose processes run the API, the worker and every build script, never reads it (ADR 0008). The backup monitor alerts on any `mizan_owner` session outside a deploy |
 | Attachments and exports | `shared/files` (`MIZAN_FILES_DIR`) |
 | Processes | PM2 as `vertexmizan` (`pm2-vertexmizan.service`): `mizan-api` on `127.0.0.1:3300`, `mizan-worker` |
 | Public gateway | nginx: `/etc/nginx/sites-available/mizan.vertexmedia.pro`, snippets `mizan-headers.conf` and `mizan-proxy.conf`, zones in `conf.d/mizan-limits.conf`; TLS from Let's Encrypt |
@@ -60,7 +60,9 @@ Once, then again after any change to `deploy/` other than `deploy.sh` (it is ide
 ssh vertex 'bash -s' < deploy/provision.sh
 ```
 
-The first run writes an empty `/etc/mizan/backup.env` and stops: fill it in on the server, then run again. The run checks DNS, the ports and free memory, installs the pinned pgBackRest and restic, the user, directories, scripts, units and logrotate, generates the three backup keys, creates the `17/mizan` cluster with `deploy/postgresql/`, the pgBackRest stanza (both repositories checked), the roles, database and environment, the restic repository, the nginx site (bootstrap, certificate, then the real site; a site failing `nginx -t` is disabled at once), PM2's unit, the first full backup and the timers. It ends with the steps that follow:
+`ssh vertex 'bash -s -- <ref>' < deploy/provision.sh` installs another branch, tag or commit. Root takes the configuration as a tarball of that commit from GitHub, never from the app user's clone or `node_modules`, so a compromised app cannot change what root installs and runs.
+
+The first run writes an empty `/etc/mizan/backup.env` and stops: fill it in on the server, then run again. A run stopped after the roles were created but before the environment was written stops the next run with the roles' names: drop them by hand first. The run checks DNS, the ports and free memory, installs the pinned pgBackRest and restic, the user, directories, scripts, units and logrotate, generates the three backup keys, creates the `17/mizan` cluster with `deploy/postgresql/`, the pgBackRest stanza (both repositories checked), the roles, database and environment, the restic repository, the nginx site (bootstrap, certificate, then the real site; a site failing `nginx -t` is disabled at once), PM2's unit, the first full backup and the timers. It ends with the steps that follow:
 
 ```bash
 ssh vertex mizan-deploy
@@ -69,7 +71,7 @@ ssh vertex systemctl enable --now mizan-health.timer
 ssh vertex systemctl start mizan-restore-drill.service
 ```
 
-The second provisioning installs Chromium's libraries for the worker's PDFs. Then the owner copies the three keys of `/etc/mizan/keys/` twice: into the password manager and on paper kept in a safe place (ADR 0020, "Keys"). Losing every copy of a key loses the backups it encrypted.
+Each provisioning installs Chromium's libraries for the worker's PDFs from a list kept in `provision.sh`; the second one, after the browser exists, checks with `ldd` (as the app user) that none is missing and names any that is. Then the owner copies the three keys of `/etc/mizan/keys/` twice: into the password manager and on paper kept in a safe place (ADR 0020, "Keys"). Losing every copy of a key loses the backups it encrypted.
 
 ### Before real data (ADR 0020)
 
@@ -81,14 +83,14 @@ Vertex Media's production company is created (`admin:create-company`, `AGENTS.md
 ## Deploy
 
 ```bash
-ssh vertex mizan-deploy            # origin/main
+ssh vertex mizan-deploy            # main
 ssh vertex "mizan-deploy <ref>"    # another branch, tag or commit
 ```
 
 `mizan-deploy` (root) runs the latest `deploy/deploy.sh` from `origin/main` as `vertexmizan`:
 1. **build**: a clean checkout into `releases/<UTC time>-<sha>`, `pnpm install --frozen-lockfile`, the build, Playwright's Chromium;
 2. **backup**: an incremental pgBackRest backup to repo1, annotated `release=<name>`; a failed backup stops the deploy before anything changes;
-3. **activate**: the migrations as `mizan_owner`, the switch of `current`, PM2's reload, `/api/health` and the worker checked; an unhealthy release switches back to the previous one at once.
+3. **activate**: the migrations as `mizan_owner` (the URL from root's `/etc/mizan/owner.env` on descriptor 3, for that command only), the switch of `current`, PM2's reload, `/api/health` and the worker checked; an unhealthy release switches back to the previous one at once.
 
 Five releases are kept. Migrations are backward compatible (expand, then contract: `packages/db/CLAUDE.md`), so the previous release runs on the migrated database.
 
@@ -102,7 +104,9 @@ Switches `current` to the previous release and reloads PM2. The database stays m
 
 ## Restore
 
-Every restore of production is decided by the owner. While it runs the books are closed: stop the apps and the jobs that touch the cluster first, and announce the window to the people using Mizan. Whatever is restored, the books are corrected only by reversals afterwards (ADR 0005): never by editing rows.
+Every restore of production is decided by the owner. While it runs the books are closed: stop the apps and the jobs that touch the cluster first, and announce the window to the people using Mizan. Whatever is restored, the books are corrected only by new entries and reversals afterwards (ADR 0005): never by editing rows.
+
+**A restore of the database discards everything committed after its target**: Hub's events and daily reports, manual entries and their audit rows, closes and reopens of months, revaluations, opening postings. Mizan answered Hub 201 or 202 for those events, so Hub will not send them again on its own (ADR 0006: it retries only after a 5xx or a timeout). Their entry numbers will be given again to other entries, and the daily anchors already emailed to owners, and any official journal-book print of those months, no longer match the chain. So no restore of the database opens the books before the step "What the restore discarded" below has been done.
 
 ```bash
 systemctl stop mizan-health.timer mizan-backup-monitor.timer mizan-backup.timer
@@ -128,7 +132,7 @@ The cluster replays the log to the target and promotes on a new timeline; its se
 runuser -u postgres -- psql -p 5433 -d vertex_mizan -c "select pg_is_in_recovery(), now()"
 ```
 
-then, as an owner in the app, `POST /api/integrity/check` for each company ("سلامة السلسلة"). Start the apps and timers again (`systemctl start pm2-vertexmizan.service mizan-health.timer mizan-backup-monitor.timer mizan-backup.timer`) and take a full backup at once, since the new timeline starts here:
+Then do "What the restore discarded" below, start the apps and timers again (`systemctl start pm2-vertexmizan.service mizan-health.timer mizan-backup-monitor.timer mizan-backup.timer`), and take a full backup at once, since the new timeline starts here:
 
 ```bash
 runuser -u postgres -- pgbackrest --stanza=mizan --type=full backup
@@ -152,7 +156,40 @@ runuser -u postgres -- pgbackrest --stanza=mizan --repo=1 --set=<backup label> \
   --type=immediate --target-action=promote restore
 ```
 
-then `mizan-deploy rollback` before starting PM2, so the release matches the schema. Entries committed after that backup are lost: compare with Hub's events (they are reposted by Hub's retries, idempotent by key) and the audit log before choosing this over a moment.
+then `mizan-deploy rollback` before starting PM2, so the release matches the schema, and "What the restore discarded" below before opening the books. Everything committed after that backup is discarded, so prefer a moment just before the damage when one is known.
+
+### What the restore discarded
+
+Required after either database restore, before the apps start. The moved directory still holds the books as they were; start it read-only on the drill's spare port, read it as the superuser, then stop it:
+
+```bash
+old=/var/lib/postgresql/17/mizan.before-restore-<time>
+runuser -u postgres -- /usr/lib/postgresql/17/bin/pg_ctl -D "$old" -l /tmp/mizan-old.log -w start \
+  -o "-c config_file=/etc/postgresql/17/mizan/postgresql.conf -c data_directory=$old -c port=5434 -c archive_mode=off -c default_transaction_read_only=on"
+```
+
+For each company, with the restored head's sequence from the integrity check (`select company_id, max(sequence) from journal_entries group by company_id` on 5433):
+
+```sql
+-- on 5434, the books before the restore
+select company_id, sequence, fiscal_year, number, entry_date, source, source_ref, posted_at
+  from journal_entries where company_id = '<company>' and sequence > <restored head> order by sequence;
+select company_id, event_id, type, received_at from inbound_events
+  where company_id = '<company>' and received_at > '<target>' order by received_at;
+select company_id, report_id, report_date, received_at from reconciliation_reports
+  where company_id = '<company>' and received_at > '<target>';
+select company_id, period_id, kind, reason, created_at from period_events
+  where company_id = '<company>' and created_at > '<target>';
+```
+
+Then, with the owner:
+1. **Hub's events and reports:** give Hub the event IDs and report dates to send again. The restored database no longer holds their idempotency keys, so each posts once. How Hub resends a delivered event is Hub's procedure: confirm it with Hub's side before the restore.
+2. **Manual entries, revaluations and the opening:** enter them again through the app from the list above, each with its original date; they receive new numbers.
+3. **Closes and reopens:** close and reopen the months again through the app, with the original reasons; print again any official journal-book print of those months, and treat the earlier prints as superseded.
+4. **Anchors:** tell the owners that the daily anchors emailed after the target no longer verify; the next anchors start from the restored chain.
+5. **Record:** the restore, its target, what was re-entered and by whom, in `docs/operations/restore-drills.md` ("Record", kind "production restore").
+
+Stop the old cluster (`runuser -u postgres -- /usr/lib/postgresql/17/bin/pg_ctl -D "$old" -m fast stop`) and run `POST /api/integrity/check` for each company ("سلامة السلسلة") before opening the books.
 
 ### One table, or old data, without a cluster restore
 
@@ -185,7 +222,7 @@ The archives outlive the 35-day window, for 10 years. A restore needs the archiv
 1. Download the object `mizan/<year>/mizan-archive-<YYYY-MM>.tar.gpg` from the archive bucket (B2's web console, or the archive key's credentials) and compare its SHA-256 with its `x-amz-meta-sha256` metadata.
 2. Decrypt and unpack:
    ```bash
-   gpg --batch --decrypt --passphrase-file archive.key mizan-archive-2026-11.tar.gpg | tar -x
+   gpg --batch --pinentry-mode loopback --decrypt --passphrase-file archive.key mizan-archive-2026-11.tar.gpg | tar -x
    cd 2026-11 && sha256sum -c <(sed -n '/  /p' manifest.txt)
    ```
 3. Restore the database into a scratch cluster or database and read it: `createdb archive_2026_11 && pg_restore --no-owner --no-privileges -d archive_2026_11 database.dump`. `files.tar` holds the attachments and exports as they were. The manifest names the release that wrote them.

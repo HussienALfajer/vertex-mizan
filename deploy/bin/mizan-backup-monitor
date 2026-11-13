@@ -4,6 +4,7 @@
 #   - the mizan cluster answers;
 #   - write-ahead-log archiving: no failure since the last success, and no completed segment left
 #     unarchived for over 15 minutes (the recovery point);
+#   - no session of the owner role outside a deploy (ADR 0008);
 #   - disk use under 85% where the cluster, the local repository and the dumps live.
 # Once a UTC day, after 06:00 (the daily backup runs at 00:30):
 #   - `pgbackrest check` of both repositories;
@@ -52,6 +53,16 @@ else
     fi
   elif [ $((now - provisioned)) -gt 3600 ]; then
     problem archive-late "لم تُؤرشف أي مقاطع" "The mizan cluster has archived no segment since it was provisioned."
+  fi
+fi
+
+# The owner role owns the tables and could disable their guards: only a deploy's migrations may
+# connect as it (ADR 0008). mizan-deploy marks its run with /run/mizan-deploy.active.
+if [ ! -e /run/mizan-deploy.active ]; then
+  owners=$(mizan_psql "select count(*) from pg_stat_activity where usename = 'mizan_owner'" 2>/dev/null)
+  if [ -n "$owners" ] && [ "$owners" != 0 ]; then
+    problem owner-session "اتصال بدور المالك خارج النشر" \
+      "$owners session(s) of mizan_owner are open while no deploy runs. Only the migrations may use that role (ADR 0008). Read: select * from pg_stat_activity where usename = 'mizan_owner'"
   fi
 fi
 
