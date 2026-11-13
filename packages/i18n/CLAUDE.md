@@ -14,7 +14,7 @@ The Arabic text of every front end (ADR 0009): plain catalogs and locale constan
   - `shell`: the web app's shell (navigation, skip link, system status, home, not-found page);
   - `roles`: the name of each membership role (S01);
   - `auth`: signing in, two-factor, passwords, invitations, enrolment, re-authentication and the account security page, with the name of each platform audit action a person sees there (S01);
-  - `company`: the companies list, a new company, the company settings (with S05's payments' tolerance), the switcher and the archived banner (S01);
+  - `company`: the companies list, a new company, the company settings, the switcher and the archived banner (S01);
   - `members`: members and invitations of the active company (S01);
   - `permissions`: what each permission of the permission map allows (S01);
   - `audit`: the company audit log screen, with the name of each company audit action, audited entity and field (S01);

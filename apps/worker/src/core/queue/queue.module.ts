@@ -23,7 +23,8 @@ export const QUEUE_SCHEMA = 'pgboss';
 
 /**
  * pg-boss (ADR 0002), run as `mizan_queue` in its own schema (ADR 0003): at start it installs or
- * migrates its tables there, then creates each scheduled job's queue, schedules it and works it.
+ * migrates its tables there, then creates each scheduled job's queue, schedules it and works it,
+ * and removes the schedule of a job that no longer exists.
  * It stops gracefully on shutdown. Copied from Vertex Food's queue module.
  */
 @Global()
@@ -79,8 +80,14 @@ export class QueueModule implements OnModuleInit, OnApplicationShutdown {
       await this.boss.work(job.queue, async () => {
         await job.run();
       });
-      if (job.runAtStart) await this.boss.send(job.queue, {});
       this.logger.log(`Scheduled ${job.queue} (${job.cron})`);
+    }
+    // A schedule whose job left (ADR 0021: the event, digest and release jobs) stops firing.
+    const scheduled = new Set(this.jobs.filter(isScheduled).map((job) => job.queue));
+    for (const schedule of await this.boss.getSchedules()) {
+      if (scheduled.has(schedule.name)) continue;
+      await this.boss.unschedule(schedule.name, schedule.key);
+      this.logger.log(`Unscheduled ${schedule.name}`);
     }
   }
 

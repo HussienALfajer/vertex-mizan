@@ -67,16 +67,7 @@ it('keeps the public routes to the ones the spec names', () => {
   ]);
 });
 
-// S05 "Access": a key is accepted on `/v1` only, and `/v1` accepts nothing but a key.
-it('puts exactly the API-client routes under /v1', () => {
-  const wrong = routes()
-    .filter(({ handler, path }) => {
-      const rules = (Reflect.getMetadata(ACCESS_RULES, handler) as AccessRule[] | undefined) ?? [];
-      const viaKey = rules.some((rule) => rule.kind === 'api-client');
-      return viaKey !== (path === 'v1' || path.startsWith('v1/'));
-    })
-    .map(({ name }) => name);
-  expect(wrong).toEqual([]);
-  // S05's events and period status, S08's daily report and received events, S10's snapshot.
-  expect(routes().filter(({ path }) => path === 'v1').length).toBe(5);
+// ADR 0021: Hub's /v1 is gone; every route lives under /api.
+it('has no route under /v1', () => {
+  expect(routes().filter(({ path }) => path === 'v1' || path.startsWith('v1/'))).toEqual([]);
 });

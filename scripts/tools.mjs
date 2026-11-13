@@ -1,6 +1,6 @@
 // The pinned command-line tools the checks run, installed the same way on the owner's Windows
-// machine, a cloud session and CI: oasdiff for the OpenAPI guard (ADR 0006) and gitleaks for the
-// secret scan. Each release is downloaded once into .tools/ (git-ignored), checked against the
+// machine, a cloud session and CI: gitleaks for the secret scan (ADR 0021 removed oasdiff with the
+// OpenAPI guard). Each release is downloaded once into .tools/ (git-ignored), checked against the
 // SHA-256 pinned here (from the release's checksums file), and unpacked. Updating a tool means
 // changing its version and both checksums in one reviewed commit; gitleaks stays on the version
 // the CI secret scan pins (GITLEAKS_VERSION in .github/workflows/ci.yml).
@@ -8,7 +8,7 @@
 //   node scripts/tools.mjs install [name...]   install the named tools (all when none is named)
 //   node scripts/tools.mjs path <name>          print the tool's path; exit 1 when it is missing
 //
-// `OASDIFF` or `GITLEAKS` names another binary instead (the guard's tests use it for a missing one).
+// `GITLEAKS` names another binary instead.
 
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -20,21 +20,6 @@ const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const dir = join(root, '.tools');
 
 export const TOOLS = {
-  oasdiff: {
-    version: '1.34.1',
-    env: 'OASDIFF',
-    url: (file) => `https://github.com/oasdiff/oasdiff/releases/download/v1.34.1/${file}`,
-    assets: {
-      'linux-x64': {
-        file: 'oasdiff_1.34.1_linux_amd64.tar.gz',
-        sha256: '75775f65b0adebd26a8e013af51a799342dfdc6262d89efa9e3b7bdf89657d90',
-      },
-      'win32-x64': {
-        file: 'oasdiff_1.34.1_windows_amd64.tar.gz',
-        sha256: '15e6f32ece94244534a61ce4fb1d60912e51e67e363a05bb6561d89b28df73bb',
-      },
-    },
-  },
   gitleaks: {
     version: '8.24.3',
     env: 'GITLEAKS',
