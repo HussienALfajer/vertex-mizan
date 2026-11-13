@@ -36,7 +36,7 @@ Plan approved by the owner (2026-11-13, in the session).
 - [x] api and worker: the drafts' `scheduleId`; the release job honours the freeze through `releaseMonth()` (no worker change; its db test); tests of every event type of rule 28 in `apps/api/test/opening.test.ts`
 - [x] bridge: OpenAPI regenerated (`DraftLine` and `DraftLineInput` gain `scheduleId`), `pnpm check:openapi` passes
 - [x] wiring, docs (`docs/ROADMAP.md`, the `CLAUDE.md` of contracts, ledger, db, scenarios and api)
-- [ ] checks and reviewers (`reviewer`, `accountant-reviewer`), PR with auto-merge and Auto-fix
+- [x] checks and reviewers (`reviewer` and `accountant-reviewer`: a hand reversal of a correction that cleared an opening schedule, and the `reviewer` another company's `scheduleId` untested, fixed in df7f42b and re-reviewed clean; `pnpm verify --e2e-all` passes on df7f42b, 6m 49s), PR with auto-merge and Auto-fix
 
 ## PR 5 — The screens (ui, web, e2e) · `feat/s10-screens`
 - [ ] ui: any component `/opening` needs that `packages/ui` lacks (a step layout, the agreement table), tested, both densities, on the design-system page
