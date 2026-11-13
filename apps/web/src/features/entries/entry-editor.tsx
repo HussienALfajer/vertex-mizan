@@ -260,7 +260,8 @@ export function EntryEditor({
    * item named for another account is dropped (S04 rule 7: the item is the account's).
    */
   function withAccount(line: EditLine, account: Account | null): EditLine {
-    const item = account?.id === line.accountId ? {} : { openItemId: null, newItem: null };
+    const item =
+      account?.id === line.accountId ? {} : { openItemId: null, newItem: null, scheduleId: null };
     if (!account) return { ...line, ...item, accountId: null };
     return {
       ...line,

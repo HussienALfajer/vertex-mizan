@@ -75,6 +75,7 @@ export const line = (
   memo,
   openItemId: null,
   newItem: null,
+  scheduleId: null,
 });
 
 /**
