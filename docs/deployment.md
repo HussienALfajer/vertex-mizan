@@ -48,9 +48,9 @@ Two buckets in one region, each with its own application key restricted to that 
 | Bucket | Settings | Its key's capabilities |
 |---|---|---|
 | The 35-day bucket (pgBackRest's repo2 under `/pgbackrest`, restic under `/restic`) | private; lifecycle "keep only the last version" (hidden files deleted after a day), since pgBackRest and restic expire their own files | `listBuckets`, `listFiles`, `readFiles`, `writeFiles`, `deleteFiles` |
-| The archive bucket (`mizan/<year>/mizan-archive-<YYYY-MM>.tar.gpg`) | private; Object Lock enabled at creation, default retention **compliance, 10 years**; no lifecycle rule | `listBuckets`, `listFiles`, `readFiles`, `writeFiles`, `readFileRetentions`; never `deleteFiles`, `writeFileRetentions`, `writeBucketRetentions` or `bypassGovernance` |
+| The archive bucket (`mizan/<year>/mizan-archive-<YYYY-MM>.tar.gpg`) | private; Object Lock enabled at creation, default retention **compliance, 3000 days** (the longest B2's console sets; ADR 0020 as amended on 2026-11-13); no lifecycle rule, so each archive stays 10 years and more | `listBuckets`, `listFiles`, `readFiles`, `writeFiles`, `readFileRetentions`; never `deleteFiles`, `writeFileRetentions`, `writeBucketRetentions` or `bypassGovernance` |
 
-Neither key reaches the other bucket. `mizan-archive` refuses an upload whose lock is not compliance mode for 10 years.
+Neither key reaches the other bucket. `mizan-archive` refuses an archive whose lock is not compliance mode for 3000 days from its upload.
 
 ## Provisioning
 
@@ -217,7 +217,7 @@ Copy back what is needed with its owner `vertexmizan`, then remove `/root/restor
 
 ### A monthly archive
 
-The archives outlive the 35-day window, for 10 years. A restore needs the archive key; on the server it is `/etc/mizan/keys/archive.key`, otherwise the owner's copy. On any machine with PostgreSQL 17:
+The archives outlive the 35-day window: each is locked 3000 days and kept 10 years. A restore needs the archive key; on the server it is `/etc/mizan/keys/archive.key`, otherwise the owner's copy. On any machine with PostgreSQL 17:
 
 1. Download the object `mizan/<year>/mizan-archive-<YYYY-MM>.tar.gpg` from the archive bucket (B2's web console, or the archive key's credentials) and compare its SHA-256 with its `x-amz-meta-sha256` metadata.
 2. Decrypt and unpack:

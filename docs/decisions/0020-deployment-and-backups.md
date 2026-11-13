@@ -40,7 +40,7 @@ The server is the owner's Ubuntu 24.04 VPS of Hub ADR 0009 (6 vCPU, about 11 GB 
 
 ### Monthly archives for 10 years
 - On the 2nd of each month (after the month ends in Damascus), a systemd timer takes a `pg_dump` of the database and a snapshot of `shared/files`. It encrypts both, with their checksums and the deployed revision, and uploads them to a second B2 bucket used only for archives.
-- That bucket has **Object Lock** in compliance mode for **10 years** from each upload, and the server's key for it can write but cannot delete or shorten a lock. A compromised server cannot erase the archives, and no one can delete one before its 10 years end.
+- That bucket has **Object Lock** in compliance mode for **3000 days** (about 8 years and 2 months) from each upload, and the server's key for it cannot shorten a lock. A compromised server cannot erase an archive, and no one can delete one, before its lock ends. No lifecycle rule deletes the archives, so each is kept at least 10 years. (Amended 2026-11-13 by the owner: B2's console sets a default retention of at most 3000 days; the ADR first said 10 years of lock. Between the lock's end and the tenth year an archive is kept but no longer protected from deletion.)
 - The 35-day bucket's key cannot reach the archive bucket, and the archive bucket's key cannot reach the 35-day bucket.
 - The books themselves stay in the database at least 10 years (ADR 0005, `AGENTS.md`); the archives are the copy that survives a loss of the server and of the 35-day window.
 
