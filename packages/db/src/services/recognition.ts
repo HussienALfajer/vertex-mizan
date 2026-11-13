@@ -709,7 +709,15 @@ export async function releaseAfterHeldVoid(
 ): Promise<string[]> {
   const issue = await postedOpeningIssue(tx, invoiceId);
   if (issue === null) return [];
-  return releaseEndedMonths(tx, issue, today, actor);
+  // In its own savepoint, as the month's job releases each invoice: a release that cannot post (its
+  // slot unmapped, its account blocked) never refuses the accountant's action, and the daily
+  // catch-up of missing months (`releaseMissingMonths()`) posts it once fixed.
+  try {
+    return await tx.transaction((savepoint) => releaseEndedMonths(savepoint, issue, today, actor));
+  } catch (error) {
+    if (error instanceof DomainError) return [];
+    throw error;
+  }
 }
 
 /**

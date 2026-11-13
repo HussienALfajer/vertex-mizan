@@ -455,6 +455,26 @@ describe('documents before the books start (S10 rule 28)', () => {
     // takes 17,550.00 − 150.00 = 17,400.00 SYP: what the receivable carried, 34,500.00 SYP, less
     // what the schedule carried, 17,100.00 SYP.
     expect(onEquity.map((entryLine) => entryLine.bookMinor).sort()).toEqual(['-15000', '1755000']);
+    // The correction is never reversed by hand: the schedule it stopped would not come back.
+    const reversal = await book.owner.browser.post(`/api/entries/${entry.id}/reverse`, {
+      date: '2026-10-09',
+      description: 'عكس التصحيح',
+    });
+    expect(reversal.body.code, JSON.stringify(reversal.body)).toBe('ENTRY_NOT_REVERSIBLE');
+    // Another company names the schedule as unknown, never another company's.
+    const other = await books(app, db);
+    const foreign = await other.owner.browser.post('/api/drafts', {
+      entryDate: '2026-10-08',
+      description: 'جدول شركة أخرى',
+      reference: null,
+      dealtRates: [],
+      lines: [
+        { ...line(other, '212001', 'USD', '15000'), scheduleId: schedule.id },
+        line(other, '111004', 'USD', '-15000'),
+      ],
+    });
+    expect(foreign.body.code).toBe('VALIDATION_FAILED');
+    expect(JSON.stringify(foreign.body)).toContain('scheduleId');
     // A schedule cleared stands no more: naming it again is refused.
     const again = await draftOf(book.owner.browser, correction('15000'));
     expect((await book.owner.browser.post(`/api/drafts/${again.id}/post`)).body.code).toBe(

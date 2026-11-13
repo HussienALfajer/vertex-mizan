@@ -1518,6 +1518,20 @@ async function reversalLines(
     followsReversal,
     lines,
   };
+  // A correction that cleared an opening schedule stopped it for good (S10 rule 28): its reversal
+  // would put the liability back with no schedule to release it, so it is refused, as a release.
+  if (content.kind === 'reversal') {
+    const [cleared] = await tx
+      .select({ id: recognitionMovements.id })
+      .from(recognitionMovements)
+      .where(eq(recognitionMovements.entryId, original.id))
+      .limit(1);
+    if (cleared) {
+      refuse('ENTRY_NOT_REVERSIBLE', 'An entry that cleared a schedule is never reversed by hand', {
+        source: original.source,
+      });
+    }
+  }
   // The accountant reverses manual entries only; a Hub entry only its event reverses (rule 14).
   const negated =
     content.kind === 'reversal' ? manualReversalLines(posted, on) : hubReversalLines(posted, on);

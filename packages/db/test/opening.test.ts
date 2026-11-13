@@ -1340,5 +1340,49 @@ describe('documents before the books start (S10 rule 28)', () => {
     expect(await releases(companyId)).toEqual([
       { date: '2026-10-31', amount: 15_000n, book: 1_710_000n },
     ]);
+    // Another company never finds the schedule: its line names an unknown one.
+    const [schedule] = await inCompany(companyId, (tx) =>
+      tx.select({ id: recognitionSchedules.id }).from(recognitionSchedules),
+    );
+    const otherId = await newCompany(null);
+    expect(
+      await codeOf(
+        inCompany(otherId, async (tx) =>
+          post(tx, {
+            client: 'manual',
+            idempotencyKey: uuidv7(),
+            entryDate: '2026-10-08',
+            description: 'جدول شركة أخرى',
+            reference: null,
+            draftId: null,
+            preparedByUserId: personId,
+            approvedByUserId: null,
+            actor: person(),
+            content: {
+              kind: 'manual',
+              today: '2026-10-08',
+              dealtRates: [],
+              lines: [
+                {
+                  accountId: await accountId(tx, '212001'),
+                  dimensionValueIds: [],
+                  currency: 'USD',
+                  amountMinor: 15_000n,
+                  memo: null,
+                  scheduleId: schedule?.id as string,
+                },
+                {
+                  accountId: await accountId(tx, '111004'),
+                  dimensionValueIds: [],
+                  currency: 'USD',
+                  amountMinor: -15_000n,
+                  memo: null,
+                },
+              ],
+            },
+          }),
+        ),
+      ),
+    ).toBe('NOT_FOUND');
   });
 });
