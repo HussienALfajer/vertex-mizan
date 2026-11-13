@@ -138,6 +138,7 @@ export const audit = {
     'opening.saved': 'حفظ مسودة الأرصدة الافتتاحية',
     'opening.posted': 'رحّل قيد الأرصدة الافتتاحية',
     'opening.reversed': 'عكس قيد الأرصدة الافتتاحية كاملاً',
+    'export.opening': 'صدّر الأرصدة الافتتاحية',
   } satisfies Record<CompanyAuditAction, string>,
   /** The audited entities (`AUDITED_FIELDS` in `packages/db`). */
   entities: {
@@ -170,6 +171,7 @@ export const audit = {
     journal_book_print: 'طبعة رسمية لدفتر اليومية',
     opening_snapshot: 'لقطة الأرصدة الافتتاحية',
     opening: 'الأرصدة الافتتاحية',
+    opening_export: 'تصدير الأرصدة الافتتاحية',
   },
   /** The audited fields, by entity field name. */
   fields: {
@@ -219,6 +221,7 @@ export const audit = {
     accountCount: 'عدد الحسابات',
     mappedSlotCount: 'عدد الحسابات المربوطة بقواعد الترحيل',
     format: 'صيغة الملف',
+    part: 'الجزء المصدّر',
     accountId: 'الحساب',
     position: 'الترتيب',
     archived: 'مؤرشف',

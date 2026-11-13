@@ -35,6 +35,7 @@ import {
   openingRecordLine,
   openingScheduleLine,
   openingSchedules,
+  recordsAgreement,
   recordsDifferences,
   type ScheduleFailure,
   type SlotFigure,
@@ -422,6 +423,8 @@ export interface OpeningView {
   readonly recordLines: readonly (typeof openingLines.$inferSelect)[];
   readonly recordFigures: readonly (typeof openingRecordFigures.$inferSelect)[];
   readonly differences: readonly FigureDifference[];
+  /** Every client and currency of Hub's slots, either side, agreeing or not (step 3). */
+  readonly agreement: readonly FigureDifference[];
   /** The entry the draft would post now; empty while a check before `lines` fails. */
   readonly lines: readonly OpeningPreviewLine[];
   readonly checks: readonly CheckResult[];
@@ -722,15 +725,14 @@ export async function readOpening(tx: Transaction): Promise<OpeningView> {
     const value = found.get(`client:${item.client.external_id}`);
     return [{ ...figure, client: value?.id ?? `hub:${item.client.external_id}` }];
   });
-  const differences = recordsDifferences(
-    hubFigures,
-    recordFigures.map((figure) => ({
-      slot: figure.slot as SlotFigure['slot'],
-      client: figure.clientValueId,
-      currency: figure.currency as CurrencyCode,
-      amountMinor: figure.amountMinor,
-    })),
-  );
+  const recordsSide: SlotFigure[] = recordFigures.map((figure) => ({
+    slot: figure.slot as SlotFigure['slot'],
+    client: figure.clientValueId,
+    currency: figure.currency as CurrencyCode,
+    amountMinor: figure.amountMinor,
+  }));
+  const agreement = recordsAgreement(hubFigures, recordsSide);
+  const differences = recordsDifferences(hubFigures, recordsSide);
 
   const uniqueMissing = missingRates.filter(
     (rate, index) =>
@@ -825,6 +827,7 @@ export async function readOpening(tx: Transaction): Promise<OpeningView> {
     recordLines,
     recordFigures,
     differences,
+    agreement,
     lines,
     checks,
     fingerprint,

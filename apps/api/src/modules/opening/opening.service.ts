@@ -1,7 +1,14 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type { OpeningEntryResult, OpeningViewAnswer, SaveOpening } from '@vertex-mizan/contracts';
+import type {
+  OpeningEntryResult,
+  OpeningExportQuery,
+  OpeningViewAnswer,
+  SaveOpening,
+} from '@vertex-mizan/contracts';
 import {
+  chartAccounts,
   type Database,
+  dimensionValues,
   journalEntries,
   type OpeningView,
   openings,
@@ -15,7 +22,13 @@ import {
 import { desc, eq, inArray } from 'drizzle-orm';
 import { actorOf, type CompanyRouteAccess } from '../../core/access/access.js';
 import { lockCompanyForWrite } from '../../core/access/company-lock.js';
+import { writeCompanyAudit } from '../../core/audit/audit.js';
 import { DATABASE } from '../../core/database/database.module.js';
+import type { ExportFile } from '../chart/chart.service.js';
+import { ledgerCurrencies } from '../entries/entry-shape.js';
+import { openingWorkbook } from './opening-workbook.js';
+
+const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
 type Amounts = {
   readonly transaction: { readonly amountMinor: bigint };
@@ -43,6 +56,18 @@ const partyOf = (party: HubParty) => ({
   code: party.code ?? null,
   name: party.name,
 });
+
+/** A client and currency of the records' comparison, amounts as text. */
+function differenceOf(pair: OpeningView['differences'][number]) {
+  return {
+    slot: pair.slot,
+    client: pair.client,
+    currency: pair.currency,
+    hubMinor: text(pair.hubMinor),
+    recordsMinor: textOrNull(pair.recordsMinor),
+    differenceMinor: textOrNull(pair.differenceMinor),
+  };
+}
 
 /** A check's failing item as plain values: amounts as text, anything nested as JSON. */
 function failureOf(failure: Record<string, unknown>) {
@@ -166,13 +191,8 @@ async function answerOf(tx: Transaction, view: OpeningView): Promise<OpeningView
       currency: figure.currency as OpeningViewAnswer['recordFigures'][number]['currency'],
       amountMinor: text(figure.amountMinor),
     })),
-    differences: view.differences.map((difference) => ({
-      slot: difference.slot,
-      client: difference.client,
-      currency: difference.currency,
-      hubMinor: text(difference.hubMinor),
-      recordsMinor: textOrNull(difference.recordsMinor),
-    })),
+    differences: view.differences.map(differenceOf),
+    agreement: view.agreement.map(differenceOf),
     lines: view.lines.map((line) => ({
       lineNo: line.lineNo,
       source: line.source,
@@ -233,6 +253,51 @@ export class OpeningService {
       async (tx) => answerOf(tx, await readOpening(tx)),
       { isolationLevel: 'repeatable read' },
     );
+  }
+
+  /**
+   * `GET /api/opening/export?part=`: the preview or the agreement as an Arabic workbook, read in
+   * one repeatable-read snapshot and audited `export.opening` (S10 "Screens", Export).
+   */
+  async export(access: CompanyRouteAccess, query: OpeningExportQuery): Promise<ExportFile> {
+    const companyId = access.company.id;
+    const { view, names } = await withCompany(
+      this.db,
+      companyId,
+      async (tx) => {
+        const view = await answerOf(tx, await readOpening(tx));
+        const accounts = await tx
+          .select({ id: chartAccounts.id, code: chartAccounts.code, name: chartAccounts.name })
+          .from(chartAccounts);
+        const values = await tx
+          .select({
+            id: dimensionValues.id,
+            code: dimensionValues.code,
+            name: dimensionValues.name,
+          })
+          .from(dimensionValues);
+        await writeCompanyAudit(tx, companyId, actorOf(access), {
+          action: 'export.opening',
+          entityType: 'opening_export',
+          entityId: null,
+          after: { format: 'xlsx', part: query.part, version: view.version },
+        });
+        return {
+          view,
+          names: {
+            accounts: new Map(accounts.map((row) => [row.id, row])),
+            values: new Map(values.map((row) => [row.id, row])),
+            ledgers: await ledgerCurrencies(tx),
+          },
+        };
+      },
+      { isolationLevel: 'repeatable read' },
+    );
+    return {
+      fileName: `opening-${query.part}-${view.booksStart}.xlsx`,
+      contentType: XLSX,
+      body: await openingWorkbook(view, query.part, names),
+    };
   }
 
   /** `PUT /api/opening`: the draft saved against its version, then read again. */

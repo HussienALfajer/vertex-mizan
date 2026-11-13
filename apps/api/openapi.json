@@ -1482,7 +1482,8 @@
                 "opening.snapshot_received",
                 "opening.saved",
                 "opening.posted",
-                "opening.reversed"
+                "opening.reversed",
+                "export.opening"
               ]
             }
           },
@@ -10548,6 +10549,81 @@
         ]
       }
     },
+    "/api/opening/export": {
+      "get": {
+        "operationId": "OpeningController_export",
+        "parameters": [
+          {
+            "name": "part",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "preview",
+                "agreement"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The opening's preview or its agreement with Hub as an Excel workbook",
+            "content": {
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "TWO_FACTOR_REQUIRED, FORBIDDEN",
+            "content": {
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "COMPANY_NOT_SELECTED, COMPANY_SWITCHED, NO_BOOKS_START",
+            "content": {
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_FAILED",
+            "content": {
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "opening"
+        ]
+      }
+    },
     "/api/opening/post": {
       "post": {
         "operationId": "OpeningController_post",
@@ -14398,7 +14474,8 @@
           "opening.snapshot_received",
           "opening.saved",
           "opening.posted",
-          "opening.reversed"
+          "opening.reversed",
+          "export.opening"
         ]
       },
       "AuditPage": {
@@ -24713,6 +24790,12 @@
               "$ref": "#/components/schemas/OpeningDifference"
             }
           },
+          "agreement": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OpeningDifference"
+            }
+          },
           "lines": {
             "type": "array",
             "items": {
@@ -24794,6 +24877,7 @@
           "recordLines",
           "recordFigures",
           "differences",
+          "agreement",
           "lines",
           "checks",
           "fingerprint",
@@ -25288,6 +25372,14 @@
                 "$ref": "#/components/schemas/MinorUnits"
               }
             ]
+          },
+          "differenceMinor": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MinorUnits"
+              }
+            ]
           }
         },
         "required": [
@@ -25295,7 +25387,8 @@
           "client",
           "currency",
           "hubMinor",
-          "recordsMinor"
+          "recordsMinor",
+          "differenceMinor"
         ],
         "additionalProperties": false
       },
@@ -25496,6 +25589,21 @@
           "number"
         ],
         "additionalProperties": false
+      },
+      "OpeningExportQuery": {
+        "type": "object",
+        "properties": {
+          "part": {
+            "type": "string",
+            "enum": [
+              "preview",
+              "agreement"
+            ]
+          }
+        },
+        "required": [
+          "part"
+        ]
       },
       "SaveOpening": {
         "type": "object",

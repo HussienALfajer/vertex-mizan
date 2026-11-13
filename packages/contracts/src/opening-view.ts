@@ -117,6 +117,8 @@ export const openingDifferenceSchema = z
     currency: currencyCodeSchema,
     hubMinor: minorUnitsSchema,
     recordsMinor: minorUnitsSchema.nullable(),
+    /** The records' figure less Hub's; null when not entered. */
+    differenceMinor: minorUnitsSchema.nullable(),
   })
   .meta({ id: 'OpeningDifference' });
 
@@ -188,6 +190,11 @@ export const openingViewSchema = z
     recordLines: z.array(openingRecordLineSchema),
     recordFigures: z.array(openingRecordFigureSchema),
     differences: z.array(openingDifferenceSchema),
+    /**
+     * Step 3 of `/opening`: every client and currency of Hub's slots that Hub or the records hold,
+     * agreeing or not, in the order of slot, client and currency (S10 "Screens").
+     */
+    agreement: z.array(openingDifferenceSchema),
     /** The entry the draft would post now, in rule 23's order; empty while a check stops it. */
     lines: z.array(openingPreviewLineSchema),
     checks: z.array(openingCheckResultSchema),
@@ -222,3 +229,13 @@ export const openingEntryResultSchema = z
   .meta({ id: 'OpeningEntryResult' });
 
 export type OpeningEntryResult = z.infer<typeof openingEntryResultSchema>;
+
+/** What `GET /api/opening/export` writes (S10 "Screens"): the entry's preview or the agreement. */
+export const OPENING_EXPORT_PARTS = ['preview', 'agreement'] as const;
+
+/** `GET /api/opening/export?part=`: the opening's preview or its agreement as an Excel workbook. */
+export const openingExportQuerySchema = z
+  .object({ part: z.enum(OPENING_EXPORT_PARTS) })
+  .meta({ id: 'OpeningExportQuery' });
+
+export type OpeningExportQuery = z.infer<typeof openingExportQuerySchema>;

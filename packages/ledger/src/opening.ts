@@ -800,15 +800,17 @@ export interface FigureDifference {
   readonly hubMinor: bigint;
   /** The records' figure; null when not entered. */
   readonly recordsMinor: bigint | null;
+  /** The records' figure less Hub's; null when not entered (S10 "Screens" step 3). */
+  readonly differenceMinor: bigint | null;
 }
 
 /**
- * The records against Hub (S10 rules 15, 21): per slot, client and currency, Hub's items summed as
- * the account's natural balance (a receivable's debit, client funds' credit) against the records'
- * figure; every pair that is not equal, a figure not entered included, with no tolerance (owner,
- * 2026-11-12). In order of slot, client and currency.
+ * The records against Hub (S10 rules 15, 21, "Screens" step 3): per slot, client and currency,
+ * Hub's items summed as the account's natural balance (a receivable's debit, client funds'
+ * credit) beside the records' figure (null when not entered), every pair either side holds. In
+ * order of slot, client and currency.
  */
-export function recordsDifferences(
+export function recordsAgreement(
   hub: readonly SlotFigure[],
   records: readonly SlotFigure[],
 ): FigureDifference[] {
@@ -827,14 +829,25 @@ export function recordsDifferences(
   }
   return [...sums.entries()]
     .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-    .filter(([, entry]) => entry.records !== entry.hub)
     .map(([, { figure, hub: hubTotal, records: recordsTotal }]) => ({
       slot: figure.slot,
       client: figure.client,
       currency: figure.currency,
       hubMinor: hubTotal,
       recordsMinor: recordsTotal,
+      differenceMinor: recordsTotal === null ? null : recordsTotal - hubTotal,
     }));
+}
+
+/**
+ * The pairs of `recordsAgreement()` that are not equal, a figure not entered included, with no
+ * tolerance (owner, 2026-11-12): what fails check `records_agree`.
+ */
+export function recordsDifferences(
+  hub: readonly SlotFigure[],
+  records: readonly SlotFigure[],
+): FigureDifference[] {
+  return recordsAgreement(hub, records).filter((pair) => pair.recordsMinor !== pair.hubMinor);
 }
 
 /** Hub's item as a figure of its slot (rule 15): the ad funds' credit as a positive balance. */

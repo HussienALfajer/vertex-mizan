@@ -19,6 +19,7 @@ import {
   openingRecordLine,
   openingScheduleLine,
   openingSchedules,
+  recordsAgreement,
   recordsDifferences,
 } from './opening.js';
 import { releaseParts, remainingReleaseParts } from './recognition.js';
@@ -398,8 +399,42 @@ describe('the opening entry (S10 rules 11â€“19)', () => {
         { slot: 'ad_funds', client: 'C1', currency: 'USD', amountMinor: 25_000n },
       ]),
     ).toEqual([
-      { slot: 'ad_funds', client: 'C2', currency: 'USD', hubMinor: -12_000n, recordsMinor: null },
+      {
+        slot: 'ad_funds',
+        client: 'C2',
+        currency: 'USD',
+        hubMinor: -12_000n,
+        recordsMinor: null,
+        differenceMinor: null,
+      },
     ]);
+    // Step 3 lists every pair either side holds, the agreeing ones too, in the same order.
+    const records = [
+      { slot: 'receivable' as const, client: 'C1', currency: 'USD' as const, amountMinor: 60_000n },
+      { slot: 'receivable' as const, client: 'C3', currency: 'SYP' as const, amountMinor: 500n },
+    ];
+    const agreement = recordsAgreement(hub, records);
+    expect(agreement.map((pair) => `${pair.slot}:${pair.client}:${pair.currency}`)).toEqual([
+      'ad_funds:C1:USD',
+      'ad_funds:C2:USD',
+      'receivable:C1:USD',
+      'receivable:C2:SYP',
+      'receivable:C3:SYP',
+    ]);
+    expect(agreement).toContainEqual({
+      slot: 'receivable',
+      client: 'C3',
+      currency: 'SYP',
+      hubMinor: 0n,
+      recordsMinor: 500n,
+      differenceMinor: 500n,
+    });
+    expect(
+      agreement.find((pair) => pair.client === 'C1' && pair.slot === 'receivable'),
+    ).toMatchObject({ recordsMinor: 60_000n, differenceMinor: 0n });
+    expect(recordsDifferences(hub, records)).toEqual(
+      agreement.filter((pair) => pair.recordsMinor !== pair.hubMinor),
+    );
   });
 
   it('holds a deposit whose milestone was done for another amount, and opens no asset a line bills', () => {

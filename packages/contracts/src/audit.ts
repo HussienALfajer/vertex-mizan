@@ -129,6 +129,8 @@ export const COMPANY_AUDIT_ACTIONS = [
   'opening.saved',
   'opening.posted',
   'opening.reversed',
+  // S10 "Screens": the Excel of the opening's preview or of its agreement with Hub.
+  'export.opening',
 ] as const;
 
 export const companyAuditActionSchema = z

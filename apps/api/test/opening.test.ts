@@ -11,6 +11,7 @@ import {
 } from '@vertex-mizan/contracts';
 import { type Database, sessions } from '@vertex-mizan/db';
 import { eq } from 'drizzle-orm';
+import ExcelJS from 'exceljs';
 import { v7 as uuidv7 } from 'uuid';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { OPENING_RETRY_AFTER_SECONDS } from '../src/core/errors/error.filter.js';
@@ -557,6 +558,58 @@ describe('/api/opening (S10 rules 10–26)', () => {
     ]);
     expect(view.schedules).toHaveLength(1);
     expect((await auditor.browser.get('/api/opening')).status).toBe(200);
+    // Step 3 lists every client and currency, agreeing ones included; the read before the figures
+    // held both of Hub's without a records' figure.
+    expect(first.agreement.map((pair) => [pair.slot, pair.recordsMinor])).toEqual([
+      ['ad_funds', null],
+      ['receivable', null],
+    ]);
+    expect(view.agreement).toEqual([
+      {
+        slot: 'ad_funds',
+        client: clientValue,
+        currency: 'USD',
+        hubMinor: '50000',
+        recordsMinor: '50000',
+        differenceMinor: '0',
+      },
+      {
+        slot: 'receivable',
+        client: clientValue,
+        currency: 'USD',
+        hubMinor: '30000',
+        recordsMinor: '30000',
+        differenceMinor: '0',
+      },
+    ]);
+    expect(view.differences).toEqual([]);
+    // The Excel of the preview and of the agreement (S10 "Screens"), read by the auditor, audited.
+    const preview = await auditor.browser.download('/api/opening/export', { part: 'preview' });
+    expect(preview.status).toBe(200);
+    expect(preview.headers['content-disposition']).toBe(
+      `attachment; filename="opening-preview-${BOOKS_START}.xlsx"`,
+    );
+    const previewRows = await workbookRows(preview.body as Buffer);
+    expect(previewRows[0]).toEqual(['تاريخ بدء الدفاتر', BOOKS_START]);
+    const balancing = previewRows.find((row) => row[0] === 7);
+    expect(balancing?.slice(2, 3)).toEqual(['312001']);
+    expect(balancing?.slice(6, 10)).toEqual(['الليرة السورية الجديدة', -659900, -659900, -3999.15]);
+    const agreement = await accountant.browser.download('/api/opening/export', {
+      part: 'agreement',
+    });
+    const agreementRows = await workbookRows(agreement.body as Buffer);
+    expect(agreementRows.slice(-2).map((row) => [row[0], row[3], row[4], row[5], row[6]])).toEqual([
+      ['أموال إعلانات العملاء', 500, 500, 0, 'متطابق'],
+      ['الذمم المدينة', 300, 300, 0, 'متطابق'],
+    ]);
+    expect(
+      (await accountant.browser.get('/api/opening/export', { part: 'snapshot' })).body.code,
+    ).toBe('VALIDATION_FAILED');
+    const audit = await book.owner.browser.get('/api/audit', { action: 'export.opening' });
+    expect(audit.status, JSON.stringify(audit.body)).toBe(200);
+    expect(
+      (audit.body.entries as { after: { part: string } }[]).map((entry) => entry.after.part).sort(),
+    ).toEqual(['agreement', 'preview']);
     const stale = await accountant.browser.put('/api/opening', draft);
     expect(stale.status).toBe(409);
     expect(stale.body.code).toBe('OPENING_CHANGED');
@@ -767,6 +820,18 @@ describe('/api/opening (S10 rules 10–26)', () => {
       { method: 'put', path: '/api/opening' },
       { method: 'post', path: '/api/opening/post' },
       { method: 'post', path: '/api/opening/reverse' },
+      { method: 'get', path: '/api/opening/export?part=preview' },
     ]);
   });
 });
+
+/** A workbook's first sheet as arrays of cell values, from row 1. */
+async function workbookRows(body: Buffer): Promise<unknown[][]> {
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(body as never);
+  const rows: unknown[][] = [];
+  workbook.worksheets[0]?.eachRow({ includeEmpty: true }, (row) => {
+    rows.push((row.values as unknown[]).slice(1));
+  });
+  return rows;
+}
