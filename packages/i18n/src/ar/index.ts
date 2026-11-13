@@ -1,5 +1,4 @@
 import { accounting } from './accounting.js';
-import { apiClients } from './api-clients.js';
 import { audit } from './audit.js';
 import { auth } from './auth.js';
 import { chart } from './chart.js';
@@ -14,19 +13,15 @@ import { entries } from './entries.js';
 import { errors } from './errors.js';
 import { exportData } from './export.js';
 import { grid } from './grid.js';
-import { inbox } from './inbox.js';
 import { integrity } from './integrity.js';
 import { members } from './members.js';
 import { openItems } from './open-items.js';
 import { opening } from './opening.js';
 import { periods } from './periods.js';
 import { permissions } from './permissions.js';
-import { postingRules } from './posting-rules.js';
 import { rates } from './rates.js';
-import { reconciliation } from './reconciliation.js';
 import { reports } from './reports.js';
 import { revaluation } from './revaluation.js';
-import { revenue } from './revenue.js';
 import { roles } from './roles.js';
 import { shell } from './shell.js';
 import { shortcuts } from './shortcuts.js';
@@ -56,13 +51,8 @@ export const ar = {
   integrity,
   export: exportData,
   openItems,
-  inbox,
-  postingRules,
-  apiClients,
-  revenue,
   periods,
   revaluation,
-  reconciliation,
   reports,
   opening,
 };

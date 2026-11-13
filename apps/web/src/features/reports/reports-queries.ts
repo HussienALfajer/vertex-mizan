@@ -2,7 +2,6 @@ import { infiniteQueryOptions, queryOptions } from '@tanstack/react-query';
 import {
   accountStatementSchema,
   balanceSheetSchema,
-  contractPositionSchema,
   generalLedgerSchema,
   incomeStatementSchema,
   journalBookPrintSchema,
@@ -10,7 +9,6 @@ import {
   profitabilitySchema,
   reportFileSchema,
   reportLinesSchema,
-  revenueReleaseScheduleSchema,
   serviceDepartmentHistorySchema,
   trialBalanceSchema,
 } from '@vertex-mizan/contracts';
@@ -106,24 +104,6 @@ export const balanceSheetQuery = (companyId: string, params: ReportParams) =>
 
 export const profitabilityQuery = (companyId: string, params: ReportParams) =>
   reportQuery(companyId, 'profitability', '/reports/profitability', params, profitabilitySchema);
-
-export const contractPositionQuery = (companyId: string, params: ReportParams) =>
-  reportQuery(
-    companyId,
-    'contract-position',
-    '/reports/contract-position',
-    params,
-    contractPositionSchema,
-  );
-
-export const revenueScheduleQuery = (companyId: string, params: ReportParams) =>
-  reportQuery(
-    companyId,
-    'revenue-schedule',
-    '/reports/revenue-schedule',
-    params,
-    revenueReleaseScheduleSchema,
-  );
 
 export const reportLinesQuery = (companyId: string, params: ReportParams) =>
   pagedQuery(companyId, 'lines', '/reports/lines', params, reportLinesSchema);

@@ -10,11 +10,20 @@ import { ar } from '@vertex-mizan/i18n';
 import { Button, type ChecklistItemData, PeriodBadge } from '@vertex-mizan/ui';
 import { ArrowRightIcon } from 'lucide-react';
 import type { ReactElement, ReactNode } from 'react';
-import { addDays } from '../../lib/format';
+import { addDays, formatMonthName } from '../../lib/format';
 import { can } from '../../lib/session';
-import { formatMonth } from '../revenue/revenue-parts';
 
 const t = ar.periods;
+
+/** A month, `YYYY-MM`, as its name and year: "تشرين الثاني 2026". */
+export function formatMonth(month: string) {
+  return (
+    <span className="whitespace-nowrap">
+      {`${formatMonthName(Number(month.slice(5, 7)))} `}
+      <bdi dir="ltr">{month.slice(0, 4)}</bdi>
+    </span>
+  );
+}
 
 /** A period's state as the period screens name it (مفتوحة · مقفلة · معاد فتحها). */
 export function PeriodStateBadge({ state }: { state: PeriodState }) {
@@ -80,15 +89,15 @@ export function checklistItemLabel(name: ChecklistItemName | string): string {
 
 /**
  * The link to the page that fixes an item (S07 "Screens"), when the person may open it: the rate
- * calendar, the month's revaluation, the drafts, the integrity check, the month's held events,
- * the revenue months, the month's reconciliation days.
+ * calendar, the month's revaluation, the drafts, the integrity check. The items Hub's events fed
+ * (held events, revenue releases, the reconciliation) have no page left (ADR 0021).
  */
 function itemLink(item: ChecklistItem, period: string, me: Me): ReactNode {
-  if (!(item.item in t.checklist.links)) return null;
+  const links: Partial<Record<ChecklistItemName, string>> = t.checklist.links;
   const name = item.item as ChecklistItemName;
-  const label = t.checklist.links[name];
+  const label = links[name];
+  if (label === undefined) return null;
   const ledger: Ledger = item.ledgers[0] ?? 'book';
-  const { first, last } = monthDays(period);
   const link = (element: ReactElement) => (
     <Button variant="link" size="sm" render={element}>
       {label}
@@ -104,18 +113,8 @@ function itemLink(item: ChecklistItem, period: string, me: Me): ReactNode {
       return can(me, 'drafts.read') ? link(<Link to="/drafts" />) : null;
     case 'open_items_agree':
       return can(me, 'integrity.read') ? link(<Link to="/integrity" />) : null;
-    case 'no_held_events':
-      return can(me, 'events.read')
-        ? link(<Link to="/inbox" search={{ view: 'held', from: first, to: last }} />)
-        : null;
-    case 'releases_posted':
-      return can(me, 'recognition.read')
-        ? link(<Link to="/revenue" search={{ view: 'months' }} />)
-        : null;
-    case 'reconciliation_clean':
-      return can(me, 'reconciliation.read')
-        ? link(<Link to="/reconciliation" search={{ month: period }} />)
-        : null;
+    default:
+      return null;
   }
 }
 

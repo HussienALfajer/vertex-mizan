@@ -1,7 +1,6 @@
 import type {
   Account,
   BalanceSheet,
-  ContractPosition,
   IncomeStatement,
   Journal,
   JournalBookPrint,
@@ -11,7 +10,6 @@ import type {
   ReportHeader,
   ReportLines,
   ReportValue,
-  RevenueReleaseSchedule,
   ServiceDepartmentHistory,
   TrialBalance,
 } from '@vertex-mizan/contracts';
@@ -392,66 +390,6 @@ export const profitability: Profitability = {
   },
 };
 
-export const contractPosition: ContractPosition = {
-  header: balanceHeader,
-  rows: [
-    {
-      contract: projectValue,
-      client: clientValue,
-      kind: 'project',
-      assets: '50000000',
-      liabilities: '120000000',
-      net: '-70000000',
-    },
-    {
-      contract: contractValue,
-      client: fundsClient,
-      kind: 'retainer',
-      assets: '30000000',
-      liabilities: '0',
-      net: '30000000',
-    },
-  ],
-  totals: {
-    contractAssets: '30000000',
-    contractLiabilities: '70000000',
-    withoutContractAssets: '0',
-    withoutContractLiabilities: '0',
-  },
-};
-
-export const revenueSchedule: RevenueReleaseSchedule = {
-  header: { ...novemberHeader, compare: null },
-  months: ['2026-11', '2026-12'],
-  rows: [
-    {
-      contract: contractValue,
-      client: fundsClient,
-      months: [
-        { month: '2026-11', amount: '10000000' },
-        { month: '2026-12', amount: '10000000' },
-      ],
-      atDone: '0',
-      total: '20000000',
-    },
-    {
-      contract: projectValue,
-      client: clientValue,
-      months: [],
-      atDone: '50000000',
-      total: '50000000',
-    },
-  ],
-  totals: {
-    months: [
-      { month: '2026-11', amount: '10000000' },
-      { month: '2026-12', amount: '10000000' },
-    ],
-    atDone: '50000000',
-    total: '70000000',
-  },
-};
-
 export const journal: Journal = {
   header: novemberHeader,
   entries: [
@@ -578,8 +516,6 @@ export const reportsReads = {
   'GET /api/reports/income-statement': { status: 200, json: incomeStatement },
   'GET /api/reports/balance-sheet': { status: 200, json: balanceSheet },
   'GET /api/reports/profitability': { status: 200, json: profitability },
-  'GET /api/reports/contract-position': { status: 200, json: contractPosition },
-  'GET /api/reports/revenue-schedule': { status: 200, json: revenueSchedule },
   'GET /api/reports/journal': { status: 200, json: journal },
   'GET /api/reports/journal-book/prints': { status: 200, json: prints },
 };

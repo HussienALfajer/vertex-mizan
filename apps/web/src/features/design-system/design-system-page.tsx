@@ -3,11 +3,9 @@ import {
   AGEING_BUCKETS,
   type AmountTextError,
   type CurrencyCode,
-  EVENT_STATES,
   entryTotals,
   type Ledger,
   money,
-  RECONCILIATION_DAY_STATES,
   summarizeAmounts,
 } from '@vertex-mizan/contracts';
 import { ar } from '@vertex-mizan/i18n';
@@ -19,8 +17,6 @@ import {
   type AccountTreeNode,
   AgeingTable,
   type AgeingTableRow,
-  type AgreementRow,
-  AgreementTable,
   Amount,
   AmountInput,
   AscentLines,
@@ -39,11 +35,8 @@ import {
   Digest,
   DimensionPicker,
   type DimensionPickerOption,
-  EntryPicker,
-  type EntryPickerOption,
   EntryTotals,
   ErrorSummary,
-  EventStateBadge,
   ExportFileState,
   ExportMenu,
   Field,
@@ -55,7 +48,6 @@ import {
   type GridColumnDef,
   type GridProblem,
   Input,
-  JsonViewer,
   Kbd,
   type KeymapAction,
   keymap,
@@ -69,13 +61,11 @@ import {
   PoweredBy,
   QrCode,
   RateInput,
-  ReconciliationDayBadge,
   ReportMarks,
   ReportTable,
   type ReportTableColumn,
   type ReportTableRow,
   SecretCodeList,
-  SecretReveal,
   SelectField,
   Sheet,
   SheetClose,
@@ -811,96 +801,6 @@ function EntryToolsSample() {
   );
 }
 
-/** A synthetic Hub payment, as the inbox's raw view shows it (S05). */
-const samplePayload = {
-  payment: { id: '01900000-0000-7000-8000-000000000101', number: 'PAY-2026-0001' },
-  invoice: { id: '01900000-0000-7000-8000-000000000100', number: 'INV-2026-0001' },
-  paid_on: '2026-11-19',
-  method: 'bank_transfer',
-  currency: 'SYP',
-  amount: 1_230_000,
-  syp_per_usd: '123.0000',
-  applied_amount: 10_000,
-  invoice_currency: 'USD',
-};
-
-const sampleEntries: EntryPickerOption[] = [
-  {
-    id: 'e14',
-    number: '2026/14',
-    date: '2026-11-20',
-    description: t.inbox.entries[0] as string,
-    totalMinor: 1_230_000n,
-    totalCurrency: 'SYP',
-  },
-  {
-    id: 'e9',
-    number: '2026/9',
-    date: '2026-11-02',
-    description: t.inbox.entries[1] as string,
-    totalMinor: 30_000n,
-    totalCurrency: 'SYP',
-  },
-];
-
-/** The inbox's components (S05): each event state, the raw payload, the entry picker. */
-function InboxSample() {
-  const [entry, setEntry] = useState<string | null>('e14');
-  return (
-    <div className="flex min-w-0 flex-col gap-4">
-      <div className="flex flex-wrap gap-3">
-        {EVENT_STATES.map((state) => (
-          <EventStateBadge
-            key={state}
-            state={state}
-            label={ar.inbox.states[state]}
-            reason={state === 'held' ? t.inbox.reason : null}
-          />
-        ))}
-      </div>
-      <JsonViewer value={samplePayload} labels={ar.inbox.event.json} className="max-w-xl" />
-      <EntryPicker
-        className="max-w-md"
-        label={t.inbox.entry}
-        entries={sampleEntries}
-        value={entry}
-        onValueChange={setEntry}
-        labels={ar.inbox.resolve.picker}
-      />
-    </div>
-  );
-}
-
-/** A reconciliation day's states (S08), in both densities, a gap count beside differences. */
-function ReconciliationSample() {
-  const r = t.reconciliation;
-  return (
-    <div className="grid min-w-0 gap-4 lg:grid-cols-2">
-      {(['compact', 'comfortable'] as const).map((density) => (
-        <Card key={density} data-density={density} className="min-w-0 gap-3 p-4 text-control">
-          <p className="text-muted-foreground text-sm">{r[density]}</p>
-          <div className="flex flex-wrap gap-3">
-            {RECONCILIATION_DAY_STATES.map((state) => (
-              <ReconciliationDayBadge
-                key={state}
-                state={state}
-                label={ar.reconciliation.states[state]}
-                detail={
-                  state === 'differences'
-                    ? r.gaps
-                    : state === 'missing'
-                      ? ar.reconciliation.afterClose
-                      : null
-                }
-              />
-            ))}
-          </div>
-        </Card>
-      ))}
-    </div>
-  );
-}
-
 /** A link the samples' figures and marks render into: the page itself, as a router link would. */
 const sampleLink = <Link to="/design-system" hash="reports" />;
 
@@ -1056,7 +956,7 @@ function ChecklistSample() {
 function OpeningSample() {
   const c = t.opening;
   const o = ar.opening;
-  const statuses = ['done', 'attention', 'pending', 'pending'] as const;
+  const statuses = ['done', 'attention', 'pending'] as const;
   const steps: StepData[] = c.stepNames.map((label, index) => ({
     id: `step-${index}`,
     label,
@@ -1064,89 +964,14 @@ function OpeningSample() {
     statusLabel: o.steps.status[statuses[index] ?? 'pending'],
     href: '#opening',
   }));
-  const rows: AgreementRow[] = [
-    {
-      key: 'a',
-      group: c.groups[0],
-      label: <bdi>{c.clients[0]}</bdi>,
-      currency: 'USD',
-      recordsMinor: 30000n,
-      hubMinor: 30000n,
-      differenceMinor: 0n,
-      status: 'agrees',
-    },
-    {
-      key: 'b',
-      group: c.groups[1],
-      label: <bdi>{c.clients[1]}</bdi>,
-      currency: 'USD',
-      recordsMinor: 10000n,
-      hubMinor: -12000n,
-      differenceMinor: 22000n,
-      status: 'differs',
-    },
-    {
-      key: 'c',
-      group: c.groups[0],
-      label: <bdi>{c.clients[2]}</bdi>,
-      currency: 'SYP',
-      recordsMinor: null,
-      hubMinor: 500000n,
-      differenceMinor: null,
-      status: 'missing',
-    },
-  ];
-  const a = o.agreement;
   return (
     <div className="grid min-w-0 gap-4">
       {(['compact', 'comfortable'] as const).map((density) => (
         <Card key={density} data-density={density} className="min-w-0 gap-3 p-4 text-control">
           <p className="text-muted-foreground text-sm">{c[density]}</p>
           <StepList steps={steps} label={c.steps} current="step-1" />
-          <AgreementTable
-            caption={c.table}
-            rows={rows}
-            labels={{
-              group: a.slot,
-              row: a.client,
-              currency: a.currency,
-              records: a.records,
-              hub: a.hub,
-              difference: a.difference,
-              status: a.status,
-              statuses: { agrees: a.agrees, differs: a.differs, missing: a.missing },
-            }}
-          />
         </Card>
       ))}
-    </div>
-  );
-}
-
-/** A synthetic key, made at run time: the secret scan refuses literals that look like keys. */
-const sampleSecret = ['mzn', 'Example'.repeat(6).slice(0, 40)].join('_');
-
-/** A secret shown once (S05: an API key), confirmed before it closes. */
-function SecretRevealSample() {
-  const [done, setDone] = useState(false);
-  const r = ar.apiClients.reveal;
-  return (
-    <div className="flex max-w-xl min-w-0 flex-col gap-3">
-      <SecretReveal
-        secret={sampleSecret}
-        label={r.label}
-        warning={r.warning}
-        copyLabel={r.copy}
-        copiedLabel={r.copied}
-        confirmLabel={r.confirm}
-        doneLabel={r.done}
-        onDone={() => setDone(true)}
-      />
-      {done && (
-        <p role="status" className="text-control text-muted-foreground">
-          {t.secretReveal.done}
-        </p>
-      )}
     </div>
   );
 }
@@ -1398,16 +1223,6 @@ export function DesignSystemPage() {
         <ReceivablesSample />
       </Section>
 
-      <Section id="inbox" title={t.inbox.title}>
-        <p className="text-muted-foreground">{t.inbox.hint}</p>
-        <InboxSample />
-      </Section>
-
-      <Section id="reconciliation" title={t.reconciliation.title}>
-        <p className="text-muted-foreground">{t.reconciliation.hint}</p>
-        <ReconciliationSample />
-      </Section>
-
       <Section id="reports" title={t.reports.title}>
         <p className="text-muted-foreground">{t.reports.hint}</p>
         <ReportsSample />
@@ -1423,10 +1238,6 @@ export function DesignSystemPage() {
         <OpeningSample />
       </Section>
 
-      <Section id="secret-reveal" title={t.secretReveal.title}>
-        <p className="text-muted-foreground">{t.secretReveal.hint}</p>
-        <SecretRevealSample />
-      </Section>
       <Section id="brand" title={t.brand.title}>
         <p className="text-muted-foreground">{t.brand.hint}</p>
         <Card className="flex-row items-center justify-between gap-4 overflow-hidden">

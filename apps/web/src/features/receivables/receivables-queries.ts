@@ -2,9 +2,7 @@ import { queryOptions } from '@tanstack/react-query';
 import {
   type AgeingQuery,
   ageingReportSchema,
-  type ClientFundsQuery,
   type ClientStatementQuery,
-  clientFundsSchema,
   clientStatementSchema,
   type OpenItemQuery,
   openItemPageSchema,
@@ -69,17 +67,5 @@ export function clientStatementQuery(
         schema: clientStatementSchema,
       }),
     retry: false,
-  });
-}
-
-/** `GET /api/client-funds`: the running items as of a date (S04 rule 17). */
-export function clientFundsQuery(companyId: string, query: Partial<ClientFundsQuery>) {
-  return queryOptions({
-    queryKey: ['receivables', companyId, 'funds', query],
-    queryFn: () =>
-      api('GET', `/client-funds${searchOf(query)}`, {
-        company: companyId,
-        schema: clientFundsSchema,
-      }),
   });
 }

@@ -71,7 +71,6 @@ export const openItems = {
     allAccounts: 'حسابات الذمم التجارية',
     client: 'العميل',
     caption: 'أعمار الذمم حتى',
-    clientFunds: 'أمانات العملاء',
     emptyTitle: 'لا بنود مفتوحة في هذا التاريخ',
     emptyDescription:
       'لا يظهر هنا إلا بند مستند على حساب ذمم رصيده المفتوح غير صفري حتى نهاية التاريخ المختار.',
@@ -177,24 +176,6 @@ export const openItems = {
     required: 'هذا الحقل مطلوب.',
     reasonLength: 'السبب أطول من 1000 حرف.',
     beforeDocument: 'لا يُعدّل تاريخ الاستحقاق قبل تاريخ مستند البند.',
-  },
-  /** `/client-funds`: the running items at a date (S04 rule 17). */
-  funds: {
-    title: 'أمانات العملاء',
-    description:
-      'رصيد كل عميل بكل عملة على حسابات الرصيد الجاري حتى نهاية التاريخ، بالعملة وبالدفترين. الرصيد المدين مستحق من العميل ولا يُقاصّ بأرصدة غيره.',
-    asOf: 'حتى تاريخ',
-    label: 'أمانات العملاء',
-    client: 'العميل',
-    account: 'الحساب',
-    currency: 'العملة',
-    balance: 'الرصيد بالعملة',
-    book: 'الدفتري',
-    parallel: 'الموازي',
-    held: 'أمانات محتفظ بها',
-    receivable: 'مستحقات من العملاء',
-    empty: 'لا أرصدة أمانات في هذا التاريخ.',
-    noRunning: 'لا حساب رصيد جارٍ في دليل الحسابات، فلا أمانات تُعرض.',
   },
   /** The entry screen's item cell and lookup (S04 "Screens"). */
   editor: {

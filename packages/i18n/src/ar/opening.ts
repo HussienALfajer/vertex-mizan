@@ -1,24 +1,22 @@
 import type {
   OPENING_EXPORT_PARTS,
-  OPENING_HUB_SLOTS,
   OPENING_LINE_SOURCES,
-  OPENING_SNAPSHOT_TOTAL_LISTS,
   OpeningCheck,
   OpeningFigureSlot,
   OpeningState,
 } from '@vertex-mizan/contracts';
 
 /**
- * The opening balances (S10 "Screens", "Arabic strings"): `/opening` in its four steps, its states,
- * the line sources, the checks and what fails them, the dialogs, and the Excel of the preview and
- * of the agreement. Terms from `docs/glossary.md` (الأرصدة الافتتاحية، تاريخ بدء الدفاتر، قيد
+ * The opening balances (S10 "Screens", "Arabic strings", without Hub: ADR 0021): `/opening` in its
+ * two steps, its states, the line sources, the checks and what fails them, the dialogs, and the
+ * Excel of the preview and of the agreement (the API's workbook reads the agreement's columns until
+ * the API drops it). Terms from `docs/glossary.md` (الأرصدة الافتتاحية، تاريخ بدء الدفاتر، قيد
  * الأرصدة الافتتاحية، لقطة Hub الافتتاحية، الرقم الموازن، مبلغ منقول).
  */
 export const opening = {
   nav: 'الأرصدة الافتتاحية',
   title: 'الأرصدة الافتتاحية',
-  description:
-    'قيد واحد في تاريخ بدء الدفاتر: ذمم Hub وعقوده ومحافظه من لقطته، وبقية الميزانية من السجلات القديمة.',
+  description: 'قيد واحد في تاريخ بدء الدفاتر: أرصدة الميزانية من السجلات القديمة.',
   states: {
     draft: 'مسودة',
     posted: 'مرحّل',
@@ -36,48 +34,14 @@ export const opening = {
     description: 'تُعدّ الأرصدة الافتتاحية بعد تحديد أول يوم تحفظه الدفاتر في ميزان.',
     action: 'إعدادات الشركة',
   },
-  replayNote:
-    'ما سجّله Hub من تاريخ بدء الدفاتر يصل بإعادة الإرسال بعد الترحيل، وما لا يحمله Hub يُدخل بقيود يدوية بعده.',
   steps: {
     label: 'خطوات الأرصدة الافتتاحية',
-    hub: 'لقطة Hub',
     records: 'أرصدة السجلات',
-    agreement: 'المطابقة مع Hub',
     review: 'المراجعة والترحيل',
     status: {
       done: 'مكتملة',
       attention: 'تحتاج إلى معالجة',
       pending: 'لم تكتمل بعد',
-    },
-  },
-  hub: {
-    noSnapshot: 'لم تصل لقطة Hub بعد',
-    noSnapshotDescription:
-      'يرسل Hub لقطة مستنداته المفتوحة كما في عشية تاريخ بدء الدفاتر، ثم تظهر هنا بأعدادها ومجاميعها.',
-    noHubClient: 'لا عميل API من Hub لهذه الشركة: تُعدّ الأرصدة الافتتاحية من السجلات وحدها.',
-    receivedAt: 'وصلت في',
-    asOf: 'كما في',
-    usedSnapshot: 'اللقطة التي رُحّل بها القيد',
-    counts: {
-      label: 'الأعداد',
-      invoices: 'الفواتير',
-      credits: 'الإشعارات الدائنة',
-      wallets: 'المحافظ',
-      milestones: 'المراحل',
-      priorDocuments: 'الوثائق السابقة',
-    },
-    totals: {
-      label: 'المجاميع حسب العملة',
-      list: 'القائمة',
-      currency: 'العملة',
-      amount: 'المجموع',
-      lists: {
-        invoices: 'المستحق من الفواتير',
-        credits: 'الإشعارات الدائنة',
-        contract_assets: 'المراحل المنجزة غير المفوترة',
-        wallets: 'أرصدة المحافظ',
-      } satisfies Record<(typeof OPENING_SNAPSHOT_TOTAL_LISTS)[number], string>,
-      none: 'لا مبالغ في اللقطة.',
     },
   },
   records: {
@@ -112,10 +76,8 @@ export const opening = {
     memoLength: 'البيان 300 حرف على الأكثر',
     readOnly: 'المسودة للقراءة فقط.',
   },
+  /** The agreement's columns, read by the API's workbook (`opening-workbook.ts`). */
   agreement: {
-    description:
-      'لكل عميل وعملة: رصيد السجلات القديمة مقابل بنود Hub، على الذمم وأموال الإعلانات. لا يُرحَّل القيد مع أي فرق.',
-    table: 'المطابقة مع Hub',
     slot: 'الحساب',
     client: 'العميل',
     currency: 'العملة',
@@ -130,17 +92,6 @@ export const opening = {
       receivable: 'الذمم المدينة',
       ad_funds: 'أموال إعلانات العملاء',
     } satisfies Record<OpeningFigureSlot, string>,
-    empty: 'لا عملاء على حسابات Hub في اللقطة.',
-    add: {
-      title: 'عميل في السجلات ليس في Hub',
-      client: 'العميل',
-      slot: 'الحساب',
-      currency: 'العملة',
-      submit: 'أضف إلى المطابقة',
-      exists: 'العميل مدرج بهذا الحساب والعملة.',
-      required: 'اختر العميل.',
-    },
-    hubClient: 'عميل Hub غير مربوط: {name}',
   },
   review: {
     description:
@@ -160,22 +111,13 @@ export const opening = {
     } satisfies Record<OpeningCheck, string>,
     links: {
       rates: 'سجّل الأسعار',
-      mappings: 'قواعد الترحيل',
-      values: 'الأبعاد',
-      agreement: 'المطابقة',
+      roles: 'أدوار الحسابات',
       records: 'أسطر السجلات',
     },
     failure: {
-      snapshot_missing: 'لم تصل لقطة Hub.',
-      difference: '{client} بعملة {currency}: السجلات {records}، Hub {hub}',
       rate: '{ledger}: سعر {from} إلى {to} في {on}',
-      slotUnmapped: 'لا حساب مربوط لـ «{slot}»',
-      slotBlocked: 'الحساب {account} المربوط لـ «{slot}» موقوف أو مؤرشف أو غير مناسب',
       roleMissing: 'لا حساب لدور «{role}»',
       roleBlocked: 'الحساب {account} لدور «{role}» موقوف أو مؤرشف',
-      valueUnlinked: 'قيمة Hub «{value}» غير مربوطة',
-      valueArchived: 'قيمة Hub «{value}» مؤرشفة',
-      schedule: 'الفاتورة {invoice}: {detail}',
       line: 'السطر {no}: {reason}',
       other: 'مشكلة غير معروفة',
       lineReasons: {
@@ -194,19 +136,10 @@ export const opening = {
       balancing: 'الرقم الموازن',
     } satisfies Record<(typeof OPENING_LINE_SOURCES)[number], string>,
     groups: {
-      receivable: 'الذمم المدينة من Hub',
-      contract_asset: 'أصول العقود من Hub',
-      ad_funds: 'أموال إعلانات العملاء من Hub',
-      schedules: 'التزامات العقود من Hub',
       records: 'أرصدة السجلات',
       balancing: 'الرقم الموازن',
-    } satisfies Record<
-      (typeof OPENING_HUB_SLOTS)[number] | 'schedules' | 'records' | 'balancing',
-      string
-    >,
+    },
     groupCount: '{count} سطر',
-    showItems: 'اعرض بنود «{group}»',
-    hideItems: 'أخفِ بنود «{group}»',
     columns: {
       lineNo: 'م',
       account: 'الحساب',
@@ -217,17 +150,7 @@ export const opening = {
       amount: 'المبلغ',
       book: 'الدفتر الأساسي',
       parallel: 'الدفتر الموازي',
-      document: 'الوثيقة',
-      documentDate: 'تاريخ الوثيقة',
-      dueOn: 'الاستحقاق',
-      period: 'فترة الخدمة',
-      deferred: 'المؤجل',
-      beforeOpening: 'المعترف به قبل بدء الدفاتر',
-      remaining: 'المتبقي',
-      issuedOn: 'تاريخ الإصدار',
-      service: 'الخدمة',
     },
-    documentTypes: { invoice: 'فاتورة', milestone: 'مرحلة', wallet: 'محفظة' },
     balancing: 'الرقم الموازن على الأرباح المحتجزة',
     balancingNone: 'لا رقم موازن: القيد متوازن في الدفترين.',
     kinds: { measured: 'محسوب', stated: 'منقول' } as Record<string, string>,
@@ -243,12 +166,10 @@ export const opening = {
     changed: 'تغيّرت الأرصدة الافتتاحية منذ قراءتها، فقُرئت من جديد: راجعها ثم أعد المحاولة.',
     reverse: 'اعكس القيد كاملاً',
     exportPreview: 'Excel المعاينة',
-    exportAgreement: 'Excel المطابقة',
   },
   postDialog: {
     title: 'ترحيل قيد الأرصدة الافتتاحية',
-    description:
-      'يُرحَّل القيد في تاريخ بدء الدفاتر قيداً أول في السنة المالية، فتبدأ أحداث Hub بالترحيل. يُطلب رمز المصادقة.',
+    description: 'يُرحَّل القيد في تاريخ بدء الدفاتر قيداً أول في السنة المالية. يُطلب رمز المصادقة.',
     submit: 'رحّل',
   },
   reverseDialog: {
@@ -284,10 +205,7 @@ export const opening = {
   entry: {
     badge: 'قيد افتتاحي',
     link: 'الأرصدة الافتتاحية',
-    description: 'قيد الأرصدة الافتتاحية من لقطة Hub والسجلات القديمة.',
-    snapshot: 'لقطة Hub',
-    snapshotText: 'كما في {asOf}، وصلت في {at}',
-    noSnapshot: 'بلا لقطة من Hub',
+    description: 'قيد الأرصدة الافتتاحية من السجلات القديمة.',
   },
   /** `/settings/company` (S10 rules 1–2). */
   booksStart: {
@@ -305,7 +223,7 @@ export const opening = {
     locked: {
       posted: 'رُحّل قيد في الشركة.',
       opening: 'بدأت مسودة الأرصدة الافتتاحية.',
-      general: 'لا يتغيّر بعد ترحيل قيد أو استلام لقطة من Hub أو بدء المسودة، ولا يُمحى بعد تحديده.',
+      general: 'لا يتغيّر بعد ترحيل قيد أو بدء المسودة، ولا يُمحى بعد تحديده.',
     },
     openOpening: 'افتح الأرصدة الافتتاحية',
   },

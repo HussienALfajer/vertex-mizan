@@ -120,14 +120,6 @@ export const test = base.extend<{ health: HealthMock; me: Me | null; api: ApiMoc
         const reply = me ? { status: 200, json: me } : refusal(401, 'UNAUTHENTICATED');
         return route.fulfill({ status: reply.status, json: reply.json });
       }
-      // The shell's held count beside the inbox's link (S05): none held unless a test says so.
-      if (key === 'GET /api/inbox/counts') {
-        return route.fulfill({ status: 200, json: { held: 0, reasons: [] } });
-      }
-      // The shell's unclean reconciliation days (S08): none unless a test says so.
-      if (key === 'GET /api/reconciliation/counts') {
-        return route.fulfill({ status: 200, json: { uncleanDays: 0 } });
-      }
       if (key === 'GET /api/company') {
         return route.fulfill({ status: 200, json: defaultCompany });
       }

@@ -7,7 +7,6 @@ import {
   booksStart,
   failingView,
   fingerprint,
-  noSnapshotView,
   openingCompany,
   openingEntry,
   openingReads,
@@ -46,33 +45,22 @@ const step = (page: Page, id: string) => page.locator(`#${id}`);
 test.use({ me: owner, api: openingReads(failingView) });
 
 test.describe('/opening', () => {
-  test("shows Hub's snapshot, the failing checks with their links, and no post", async ({
+  test('shows the two steps, the failing checks with their links, and no post', async ({
     page,
   }) => {
     await page.goto('/opening');
     await expect(page.getByRole('heading', { level: 1 })).toHaveText(t.title);
+    // Hub's snapshot and the agreement with Hub left with the integration (ADR 0021).
     const steps = page.getByRole('navigation', { name: t.steps.label });
-    await expect(steps.getByRole('link')).toHaveCount(4);
-    await expect(steps.getByRole('listitem').nth(0)).toContainText(t.steps.status.done);
-    await expect(steps.getByRole('listitem').nth(2)).toContainText(t.steps.status.attention);
+    await expect(steps.getByRole('link')).toHaveCount(2);
+    await expect(steps.getByRole('listitem').nth(1)).toContainText(t.steps.status.attention);
+    await expect(step(page, 'hub')).toHaveCount(0);
+    await expect(step(page, 'agreement')).toHaveCount(0);
 
-    // Step 1: the snapshot's counts and totals.
-    const hub = step(page, 'hub');
-    await expect(hub.locator('[data-slot="opening-snapshot-counts"]')).toContainText(
-      `${t.hub.counts.invoices}2`,
-    );
-    await expect(hub.getByRole('table')).toContainText('300.00');
-
-    // Step 3: Hub's two pairs without a records' figure.
-    const agreement = step(page, 'agreement').getByRole('table', { name: t.agreement.table });
-    await expect(agreement.getByRole('row')).toHaveCount(3);
-    await expect(agreement.getByRole('row').nth(1)).toContainText(t.agreement.missing);
-
-    // Step 4: rates and the agreement fail, each item named, each with its way to fix it.
+    // Step 2: the failing rates named, with the way to fix them.
     const review = step(page, 'review');
     const failed = review.locator('[data-slot="checklist-item"][data-status="failed"]');
     await expect(failed).toHaveCount(2);
-    await expect(failed.nth(0)).toContainText(t.review.checkNames.records_agree);
     await expect(failed.nth(1)).toContainText(t.review.checkNames.rates);
     await expect(failed.nth(1)).toContainText('USD/SYP 2026-09-10');
     await expect(failed.nth(1).getByRole('link', { name: t.review.links.rates })).toHaveAttribute(
@@ -90,9 +78,7 @@ test.describe('/opening', () => {
     await expect(nav.getByRole('link', { name: t.nav })).toBeVisible();
   });
 
-  test("saves the records' lines and figures, then posts with the preview's fingerprint", async ({
-    page,
-  }) => {
+  test("saves the records' lines, then posts with the preview's fingerprint", async ({ page }) => {
     let state: 'failing' | 'ready' | 'posted' = 'failing';
     await answer(page, 'GET', '/opening', () => ({
       status: 200,
@@ -128,21 +114,6 @@ test.describe('/opening', () => {
     // A monetary line is measured at the eve's rates, once saved.
     await expect(grid.locator('[data-row="0"][data-column="5"]')).toContainText(t.records.computed);
 
-    // The records' figures for Hub's client.
-    const agreement = step(page, 'agreement');
-    const funds = agreement.getByRole('textbox', {
-      name: `${t.agreement.records} · ${t.agreement.slots.ad_funds} · USD`,
-    });
-    await funds.fill('500');
-    await funds.press('Enter');
-    const receivable = agreement.getByRole('textbox', {
-      name: `${t.agreement.records} · ${t.agreement.slots.receivable} · USD`,
-    });
-    await receivable.fill('300');
-    await receivable.press('Enter');
-    await expect(agreement.getByRole('table').getByRole('row').nth(2)).toContainText(
-      t.agreement.agrees,
-    );
     await expect(page.getByText(t.actions.unsaved).first()).toBeVisible();
 
     await page.getByRole('button', { name: t.actions.save }).click();
@@ -162,23 +133,19 @@ test.describe('/opening', () => {
         memo: null,
       },
     ]);
-    expect(body.recordFigures.map((figure) => [figure.slot, figure.amount])).toEqual([
-      ['ad_funds', '50000'],
-      ['receivable', '30000'],
-    ]);
+    // No records' figures: the agreement with Hub is gone, and the save still takes the list.
+    expect(body.recordFigures).toEqual([]);
     await expect(page.getByRole('status').filter({ hasText: t.actions.saved })).toBeVisible();
 
-    // Every check passes: the preview's seven lines and the balancing figure per ledger.
+    // Every check passes: the balancing figure per ledger.
     const review = step(page, 'review');
     await expect(review.locator('[data-slot="checklist-item"][data-status="passed"]')).toHaveCount(
       6,
     );
     await expect(review.locator('[data-slot="opening-balancing"]')).toContainText('-659,900.00');
     await expect(review.locator('[data-slot="opening-balancing"]')).toContainText('-3,999.15');
-    // Hub's lines open to their documents.
-    const receivables = review.locator('[data-group="receivable"]');
-    await receivables.getByRole('button').click();
-    await expect(receivables.getByRole('table')).toContainText('INV-EX-0007');
+    // Only the records' lines and the balancing line are grouped: no Hub group.
+    await expect(review.locator('[data-group="receivable"]')).toHaveCount(0);
 
     await page.getByRole('button', { name: t.actions.post }).click();
     const dialog = page.getByRole('alertdialog', { name: t.postDialog.title });
@@ -230,14 +197,14 @@ test.describe('/opening', () => {
   test('a read on focus keeps what was typed', async ({ page }) => {
     const reads = await answer(page, 'GET', '/opening', { status: 200, json: failingView });
     await page.goto('/opening');
-    const funds = step(page, 'agreement').getByRole('textbox', {
-      name: `${t.agreement.records} · ${t.agreement.slots.ad_funds} · USD`,
-    });
-    await funds.fill('500');
-    await funds.press('Enter');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(t.title);
+    const grid = page.getByRole('grid', { name: t.records.grid });
+    await grid.locator('[data-row="0"][data-column="1"]').click();
+    await page.keyboard.type('111001');
+    await page.keyboard.press('Enter');
     await page.evaluate(() => window.dispatchEvent(new Event('focus')));
     await page.evaluate(() => window.dispatchEvent(new Event('visibilitychange')));
-    await expect(funds).toHaveValue('500.00');
+    await expect(grid.locator('[data-row="0"][data-column="1"]')).toContainText('111001');
     expect(reads).toHaveLength(1);
   });
 
@@ -280,15 +247,7 @@ test.describe('/opening', () => {
     await expect(grid.locator('[data-row="2"][data-column="1"]')).toContainText('312002');
   });
 
-  test("before Hub's snapshot, and without a books start", async ({ page }) => {
-    await answer(page, 'GET', '/opening', { status: 200, json: noSnapshotView });
-    await page.goto('/opening');
-    await expect(step(page, 'hub')).toContainText(t.hub.noSnapshot);
-    await expect(
-      step(page, 'review').locator('[data-slot="checklist-item"][data-status="failed"]'),
-    ).toContainText(t.review.failure.snapshot_missing);
-
-    // A later route answers first: the company without a books start.
+  test('without a books start', async ({ page }) => {
     await answer(page, 'GET', '/opening', refusal(409, 'NO_BOOKS_START'));
     await page.goto('/opening');
     await expect(page.getByText(t.noBooksStart.title)).toBeVisible();
@@ -305,7 +264,6 @@ test.describe('/opening', () => {
     await expect(page.getByText(t.records.readOnly)).toBeVisible();
     await expect(page.getByRole('button', { name: t.actions.save })).toHaveCount(0);
     await expect(page.getByRole('button', { name: t.actions.post })).toHaveCount(0);
-    await expect(step(page, 'agreement').getByRole('textbox')).toHaveCount(0);
   });
 });
 
@@ -356,8 +314,6 @@ test.describe('the opening entry', () => {
     await answer(page, 'GET', '/opening', { status: 200, json: postedView });
     await page.goto(`/entries/${openingEntry.id}`);
     await expect(page.locator('[data-slot="opening-entry-badge"]')).toHaveText(t.entry.badge);
-    // The snapshot it posted with.
-    await expect(page.getByText(/كما في 2026-09-30/)).toBeVisible();
     await expect(page.getByRole('link', { name: t.entry.description })).toHaveAttribute(
       'href',
       '/opening',
