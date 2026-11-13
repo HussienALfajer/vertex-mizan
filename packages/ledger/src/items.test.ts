@@ -428,6 +428,71 @@ describe('receivables/write-off (rule 11)', () => {
   });
 });
 
+describe('opening/before-books-start: a correction against retained earnings (S10 rule 28)', () => {
+  // INV-2026-88: 200.00 USD carried at the eve's 125, voided on 12 January 2027 at 126 (IAS 8.42).
+  const item = (): ItemState => ({
+    id: 'INV-2026-88',
+    kind: 'document',
+    direction: 1,
+    balance: { transaction: usd(20_000n), bookMinor: 2_500_000n, parallelMinor: 20_000n },
+  });
+  const january = at('2027-01-12', [bulletin('126.0000', '2027-01-12')]);
+  const correct = (lines: Parameters<typeof manualEntry>[0]['lines']) =>
+    balanceEntry({
+      on: january.on,
+      ledgers: january.ledgers,
+      lines: manualEntry({ lines, dealtRates: [], retainedEarnings: '312001' }, january, targets)
+        .lines,
+      rounding,
+    });
+
+  it('posts the residual to retained earnings, so it takes exactly what the item carried', () => {
+    const lines = correct([
+      { account: '112001', dimensions: client, amount: usd(-20_000n), item: item() },
+      { account: '312001', amount: usd(20_000n) },
+    ]);
+    expect(rows(lines)).toEqual([
+      ['carried', '112001', 'USD', -20_000n, -2_500_000n, -20_000n, 'INV-2026-88:clear'],
+      ['measured', '312001', 'USD', 20_000n, 2_520_000n, 20_000n, null],
+      ['difference', '312001', 'SYP', -20_000n, -20_000n, 0n, null],
+    ]);
+    const onEquity = lines.filter((line) => line.account === '312001');
+    expect(onEquity.reduce((total, line) => total + line.bookMinor, 0n)).toBe(2_500_000n);
+  });
+
+  it('refuses another newly measured line beside it, naming the line', () => {
+    const error = (() => {
+      try {
+        correct([
+          { account: '112001', dimensions: client, amount: usd(-20_000n), item: item() },
+          { account: '312001', amount: usd(15_000n) },
+          { account: '411001', amount: usd(5_000n) },
+        ]);
+      } catch (thrown) {
+        return thrown;
+      }
+      return null;
+    })();
+    expect(error).toMatchObject({ code: 'VALIDATION_FAILED', details: { lineNo: 3 } });
+  });
+
+  it('leaves an entry without a line on retained earnings to the realised accounts', () => {
+    const lines = correct([
+      { account: '112001', dimensions: client, amount: usd(-20_000n), item: item() },
+      { account: '411001', amount: usd(20_000n) },
+    ]);
+    expect(rows(lines).at(-1)).toEqual(['difference', '421001', 'SYP', -20_000n, -20_000n, 0n, null]);
+  });
+
+  it('leaves an entry of new measurements in one currency to its rounding, as any', () => {
+    const lines = correct([
+      { account: '312001', amount: usd(20_000n) },
+      { account: '111004', amount: usd(-20_000n) },
+    ]);
+    expect(lines.map((line) => line.kind)).toEqual(['measured', 'measured']);
+  });
+});
+
 describe('the void of a running movement (S04 rule 13, ad-funds/running-balance)', () => {
   const target = { account: '213001', dimensions: client };
   const voidDay = (on: string, value: string) => at(on, [bulletin(value, on)]);

@@ -30,7 +30,7 @@ Plan approved by the owner (2026-11-13, in the session).
 - [x] checks and reviewers (`reviewer` and `accountant-reviewer`: the opening column's drill-down on the trial balance screen, and the `reviewer` the year's note on the balance sheet screen, fixed in 914158d and re-reviewed clean; `pnpm verify --e2e-all` passes on 914158d, 5m 25s), PR with auto-merge and Auto-fix
 
 ## PR 4 — Documents before the books start (contracts, ledger, db, scenarios, api, worker) · `feat/s10-before-books-start`
-- [ ] contracts and ledger: a manual line's `schedule` (Hub's invoice and line), the residual on retained earnings of a correction on its own (rule 28), the refusals `VALIDATION_FAILED`
+- [x] contracts and ledger: a draft line's `scheduleId` (an opening schedule, as `/api/revenue` lists it with Hub's invoice and line), the residual on retained earnings of a correction on its own (`ManualEntry.retainedEarnings`, rule 28), the refusal `VALIDATION_FAILED` naming the line
 - [ ] db: the register of prior documents read from the posted snapshot (an expression or GIN index); the holds `before_books_start` in the inbox for the event types of rule 28; a held opening void freezing its schedules' release and making a credit to their cycles wait; on dismissal or a resolution that leaves a schedule, each missed month released on its own last day, then the waiting events retried; rule 29's reclassification from the books start; tests
 - [ ] scenarios: the register, the `schedule` line; `opening/before-books-start` `Approved (owner, 2026-11-12)`, its seven cases run
 - [ ] api and worker: the manual line's `schedule`; the release job honouring the freeze; tests of every event type of rule 28

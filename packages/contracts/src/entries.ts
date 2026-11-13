@@ -149,10 +149,20 @@ export const draftLineInputSchema = z
     openItemId: z.uuid().nullable().default(null),
     /** The manual document item the line opens (S04 rule 6). */
     newItem: newItemSchema.nullable().default(null),
+    /**
+     * The opening schedule a contract liability line clears (S10 rule 28): its id, as
+     * `/api/revenue`'s opening schedules list it with Hub's invoice and line. The line takes the
+     * schedule's dimensions and must be for exactly what it still carries.
+     */
+    scheduleId: z.uuid().nullable().default(null),
   })
   .refine((line) => line.openItemId === null || line.newItem === null, {
     message: 'A line moves an item or opens one, not both',
     path: ['newItem'],
+  })
+  .refine((line) => line.scheduleId === null || (line.openItemId === null && line.newItem === null), {
+    message: 'A line clears a schedule or names an item, not both',
+    path: ['scheduleId'],
   })
   .meta({ id: 'DraftLineInput' });
 
@@ -201,6 +211,8 @@ export const draftLineSchema = z
     memo: z.string().nullable(),
     openItemId: z.uuid().nullable(),
     newItem: newItemSchema.nullable(),
+    /** The opening schedule the line clears (S10 rule 28). */
+    scheduleId: z.uuid().nullable(),
   })
   .meta({ id: 'DraftLine' });
 
