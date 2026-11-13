@@ -13,6 +13,7 @@ import { v7 as uuidv7 } from 'uuid';
 import { beforeAll, describe, expect, it } from 'vitest';
 import {
   type AuditActor,
+  auditEntries,
   chartAccounts,
   createCompanyBooks,
   inboundEventActions,
@@ -1079,10 +1080,63 @@ describe('the template’s recognition slots for an existing company (S06 "Data"
     );
     expect(mapped).toEqual([
       { slot: 'contract_asset', code: '113001' },
-      { slot: 'cancelled_project_refund', code: '211003' },
+      { slot: 'cancelled_project_refund', code: '211005' },
       { slot: 'contract_liability', code: '212001' },
       { slot: 'released_revenue', code: '411001' },
     ]);
+  });
+
+  it("maps the refund to S06's 211003 in a chart made before the templates' version 3", async () => {
+    const company = await newCompany([]);
+    // As a company created before S06, on the templates' version 1: no 211005, no recognition slot.
+    const removed = await superuser.connect();
+    try {
+      await removed.query('begin');
+      await removed.query(`select set_config('app.company_id', $1, true)`, [company]);
+      await removed.query(
+        'alter table posting_rule_accounts disable trigger posting_rule_accounts_refuse_delete',
+      );
+      await removed.query(
+        `delete from posting_rule_accounts where slot in ('contract_liability', 'contract_asset', 'released_revenue', 'cancelled_project_refund')`,
+      );
+      await removed.query(
+        'alter table posting_rule_accounts enable always trigger posting_rule_accounts_refuse_delete',
+      );
+      await removed.query(
+        `update chart_accounts set archived_at = now(), archived_reason = 'version 1' where code = '211005'`,
+      );
+      await removed.query('commit');
+    } finally {
+      removed.release();
+    }
+    expect(
+      await inCompany(company, (tx) =>
+        mapAppendedTemplateSlots(
+          tx,
+          company,
+          ['contract_liability', 'contract_asset', 'released_revenue', 'cancelled_project_refund'],
+          system,
+        ),
+      ),
+    ).toBe(4);
+    const refund = await inCompany(company, (tx) =>
+      tx
+        .select({ code: chartAccounts.code })
+        .from(postingRuleAccounts)
+        .innerJoin(chartAccounts, eq(chartAccounts.id, postingRuleAccounts.accountId))
+        .where(eq(postingRuleAccounts.slot, 'cancelled_project_refund')),
+    );
+    expect(refund).toEqual([{ code: '211003' }]);
+    // The audit row names the account mapped, not the template's default.
+    const audited = await inCompany(company, (tx) =>
+      tx
+        .select({ after: auditEntries.after })
+        .from(auditEntries)
+        .where(eq(auditEntries.action, 'posting_rule.mapped')),
+    );
+    expect(audited.map((row) => row.after)).toContainEqual(
+      expect.objectContaining({ slot: 'cancelled_project_refund', accountCode: '211003' }),
+    );
   });
 });
 
@@ -1432,7 +1486,7 @@ describe('milestones and projects (S06 rules 11–17)', () => {
     expect(entry?.lines).toEqual([
       ['212001', 'USD', 30_000n, 3_600_000n, 30_000n],
       ['411001', 'USD', -10_000n, -1_200_000n, -10_000n],
-      ['211003', 'USD', -20_000n, -2_480_000n, -20_000n],
+      ['211005', 'USD', -20_000n, -2_480_000n, -20_000n],
       ['541001', 'SYP', 80_000n, 80_000n, 0n],
     ]);
     // The split frees the project's order: the void, retried, is the accountant's.
@@ -1547,7 +1601,7 @@ describe('the previews of the accountant’s actions (S06 "Screens", rule 16)', 
         date: '2026-12-10',
         lines: [
           ['212001', 'USD', 30_000n, 3_600_000n, 30_000n],
-          ['211003', 'USD', -30_000n, -3_720_000n, -30_000n],
+          ['211005', 'USD', -30_000n, -3_720_000n, -30_000n],
           ['541001', 'SYP', 120_000n, 120_000n, 0n],
         ],
       },

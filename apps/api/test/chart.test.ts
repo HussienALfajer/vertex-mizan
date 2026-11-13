@@ -117,8 +117,8 @@ describe('templates (rule 1)', () => {
     ]);
     const listed = await owner.browser.get('/api/chart/templates');
     expect(listed.body).toEqual([
-      expect.objectContaining({ id: 'service-agency', version: 2 }),
-      expect.objectContaining({ id: 'general', version: 2 }),
+      expect.objectContaining({ id: 'service-agency', version: 3 }),
+      expect.objectContaining({ id: 'general', version: 3 }),
     ]);
     const [first, second] = await Promise.all([
       owner.browser.post('/api/chart/apply-template', { templateId: 'general' }),
@@ -182,7 +182,7 @@ describe('POST /api/accounts (rule 2)', () => {
     const account = (change: Record<string, unknown>) =>
       owner.browser.post('/api/accounts', {
         parentId: receivables.id,
-        code: '112009',
+        code: '112008',
         kind: 'postable',
         name: 'ذمم مدينة تجريبية',
         statementLine: 'bs.trade_receivables',
@@ -288,10 +288,10 @@ describe('PATCH /api/accounts/:id (rules 3–4)', () => {
     const receivables = byCode(accounts, '112');
     const moved = await owner.browser.patch(`/api/accounts/${id}`, {
       parentId: receivables.id,
-      code: '112009',
+      code: '112008',
       statementLine: 'bs.trade_receivables',
     });
-    expect(moved.body).toMatchObject({ code: '112009', parentId: receivables.id });
+    expect(moved.body).toMatchObject({ code: '112008', parentId: receivables.id });
     expect((await owner.browser.patch(`/api/accounts/${id}`, { code: '111009' })).body.code).toBe(
       'ACCOUNT_CODE_INVALID',
     );
@@ -487,7 +487,7 @@ describe("another company's ids on every account route", () => {
       }),
       await owner.browser.patch(`/api/accounts/${id}`, {
         parentId: theirHeader.id,
-        code: '112009',
+        code: '112008',
         statementLine: 'bs.trade_receivables',
       }),
       await owner.browser.patch(`/api/accounts/${id}`, { requiredDimensionTypeIds: [theirType] }),

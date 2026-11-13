@@ -300,13 +300,30 @@ export async function applyChartTemplate(
 }
 
 /**
+ * The S06 default of a slot whose template default moved since (the templates' version 3 moved the
+ * cancelled project's refund from other payables to the refund liabilities, `211005`).
+ */
+const APPENDED_SLOT_FALLBACKS: Partial<Record<PostingSlot, string>> = {
+  cancelled_project_refund: '211003',
+};
+
+/** A slot's default code, then its S06 default when it moved. */
+const codesOf = (slot: PostingSlot, code: string) => {
+  const fallback = APPENDED_SLOT_FALLBACKS[slot];
+  return fallback === undefined ? [code] : [code, fallback];
+};
+
+/**
  * The service-agency template's default for each slot a later spec appended (S06 "Data": the four
  * recognition slots), mapped in the company in context when none of them is mapped yet and its chart
  * holds every code of them, each account fitting its slot (`slotAccountFits()`); a company of the
  * general template, or a chart of its own, stays unmapped and holds its events `NO_MAPPING` until
  * the accountant maps them. Runs at the worker's start after the deploy that appended the slots,
  * since a value added to the enum cannot be used in the migration's transaction. Safe to run twice:
- * a slot mapped already is left as it is. Answers how many slots it mapped.
+ * a slot mapped already is left as it is. Answers how many slots it mapped. A company made before
+ * S06 holds a chart of the templates' version 1, without the version 3 accounts: a slot whose
+ * default moved since S06 (`APPENDED_SLOT_FALLBACKS`) takes its S06 default when the chart lacks the
+ * current one.
  */
 export async function mapAppendedTemplateSlots(
   tx: Transaction,
@@ -328,13 +345,15 @@ export async function mapAppendedTemplateSlots(
       and(
         inArray(
           chartAccounts.code,
-          rules.map((rule) => rule.code),
+          rules.flatMap((rule) => codesOf(rule.slot, rule.code)),
         ),
         isNull(chartAccounts.archivedAt),
       ),
     );
   const rows = rules.flatMap((rule) => {
-    const account = accounts.find((candidate) => candidate.code === rule.code);
+    const account = codesOf(rule.slot, rule.code)
+      .map((code) => accounts.find((candidate) => candidate.code === code))
+      .find((candidate) => candidate !== undefined);
     const fits =
       account !== undefined &&
       slotAccountFits(rule.slot, rule.currency, {
@@ -349,6 +368,7 @@ export async function mapAppendedTemplateSlots(
       ? [
           {
             rule,
+            code: account.code,
             row: { companyId, slot: rule.slot, currency: rule.currency, accountId: account.id },
           },
         ]
@@ -363,7 +383,7 @@ export async function mapAppendedTemplateSlots(
     .onConflictDoNothing()
     .returning({ id: postingRuleAccounts.id, slot: postingRuleAccounts.slot });
   const made = rows.filter(({ rule }) => inserted.some((row) => row.slot === rule.slot));
-  for (const { rule, row } of made) {
+  for (const { rule, code, row } of made) {
     await writeCompanyAudit(tx, companyId, actor, {
       action: 'posting_rule.mapped',
       entityType: 'posting_rule',
@@ -373,7 +393,7 @@ export async function mapAppendedTemplateSlots(
         slot: rule.slot,
         currency: rule.currency,
         accountId: row.accountId,
-        accountCode: rule.code,
+        accountCode: code,
       },
     });
   }

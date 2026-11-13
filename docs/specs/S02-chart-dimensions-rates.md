@@ -64,7 +64,7 @@ All tables are company tables: `company_id`, forced RLS with `company_isolation`
 The **five root accounts** (1 Assets, 2 Liabilities, 3 Equity, 4 Revenue, 5 Expenses) are created with every company, in the company's creation transaction, and can only be renamed.
 
 ### The statement-line catalogue
-A platform catalogue in code (`packages/contracts/src/chart.ts`, `STATEMENT_LINES`), not a table: reports (S09) present from it, accounts reference its codes, and a new line is an additive change to the catalogue. Each line has a code, the statement, a section, an order, Arabic and English names, and for the income statement its IFRS 18 category (owner, 2026-10-27; ADR 0011).
+A platform catalogue in code (`packages/contracts/src/chart.ts`, `STATEMENT_LINES`), not a table: reports (S09) present from it, accounts reference its codes, and a new line is an additive change to the catalogue: appended, placed by its order (which readers sort by), and added to the database's statement-line check by a migration. Each line has a code, the statement, a section, an order, Arabic and English names, and for the income statement its IFRS 18 category (owner, 2026-10-27; ADR 0011).
 
 | Code | Statement · section | IFRS 18 category | Arabic | Basis |
 |---|---|---|---|---|
@@ -73,23 +73,30 @@ A platform catalogue in code (`packages/contracts/src/chart.ts`, `STATEMENT_LINE
 | `bs.contract_assets` | current assets | — | أصول العقود | IFRS 15.105 |
 | `bs.other_current_assets` | current assets | — | مصاريف مدفوعة مقدمًا وأصول متداولة أخرى | IAS 1.55 |
 | `bs.ppe` | non-current assets | — | الممتلكات والمعدات | IAS 1.54(a) |
+| `bs.intangible_assets` | non-current assets | — | الأصول غير الملموسة | IAS 1.54(c) |
 | `bs.trade_payables` | current liabilities | — | الذمم الدائنة التجارية والأخرى | IAS 1.54(k) |
 | `bs.contract_liabilities` | current liabilities | — | التزامات العقود | IFRS 15.105 |
 | `bs.client_money` | current liabilities | — | أمانات العملاء | IAS 1.55 |
+| `bs.borrowings` | current liabilities | — | القروض | IAS 1.54(m) |
 | `bs.tax_liabilities` | current liabilities | — | التزامات الضرائب والرسوم الجارية | IAS 1.54(n) |
+| `bs.other_taxes_payable` | current liabilities | — | ضرائب ورسوم أخرى مستحقة | IAS 1.55 |
 | `bs.accruals` | current liabilities | — | المصاريف المستحقة | IAS 1.55 |
 | `bs.share_capital` | equity | — | رأس المال | IAS 1.54(r) |
+| `bs.reserves` | equity | — | الاحتياطيات | IAS 1.54(r); IAS 1.78(e) |
 | `bs.retained_earnings` | equity | — | الأرباح المحتجزة | IAS 1.54(r) |
 | `bs.owner_current` | equity | — | جاري المالك | IAS 1.55 |
 | `is.revenue` | Income statement | operating | إيرادات العقود مع العملاء | IFRS 15.113(a) |
 | `is.other_income` | | operating | إيرادات تشغيلية أخرى | IFRS 18.47 |
 | `is.direct_costs` | | operating | تكاليف المشاريع والخدمات المباشرة | IAS 1.102 (by nature) |
 | `is.employee_benefits` | | operating | مصاريف الموظفين | IAS 1.102 |
-| `is.depreciation` | | operating | الاستهلاك | IAS 1.102 |
+| `is.depreciation` | | operating | الاستهلاك والإطفاء | IAS 1.102 |
+| `is.impairment_losses` | | operating | خسائر انخفاض قيمة الذمم المدينة وأصول العقود | IAS 1.82(ba) |
 | `is.other_expenses` | | operating | مصاريف تشغيلية أخرى | IAS 1.102 |
 | `is.fx_differences` | | operating | صافي فروق الصرف | IAS 21.52(a); IFRS 18.B65 (open question Q11) |
 | `is.finance_costs` | | financing | تكاليف التمويل | IAS 1.82(b) |
 | `is.income_tax` | | income taxes | مصروف ضريبة الدخل | IAS 1.82(d) |
+
+The table is in presentation order. `bs.intangible_assets`, `bs.borrowings`, `bs.other_taxes_payable`, `bs.reserves` and `is.impairment_losses` came with the templates' version 3 (the chart templates' review, `docs/audits/2026-11-13-chart-templates-review.md`), and `is.depreciation` was renamed "الاستهلاك والإطفاء" (Depreciation and amortisation), its code unchanged.
 
 A debit-balance client ad funds account is presented as a receivable from that client (ADR 0007); that per-counterparty split is S09's, from the open items, and needs no line here.
 
@@ -293,17 +300,19 @@ Accounting rules this spec introduces, each written and approved through `/posti
 - `docs/scenarios/currency/rate-correction-after-use.md`: a bulletin corrected after an entry used it: the posted entry is unchanged, a later entry uses the corrected rate, the reversal and repost the accountant chooses.
 
 ## Open questions
-- **Q3 (stays open, owner 2026-10-27):** the two templates below are drafts. One or two Syrian accountants review them before Vertex Media's production company is created; the code ships with them, and their changes are a new template version.
+- **Q3 (answered, owner 2026-11-13):** the owner approved the templates on Claude Code's review instead of Syrian accountants' (`docs/audits/2026-11-13-chart-templates-review.md`); its changes are version 3, below. A later change is a new template version.
 - **Q10 (`docs/open-questions.md`):** the bulletin schedule of a third-currency pair (TRY or EUR), which may be published weekly. Recommendation: each bulletin pair carries its schedule (daily, or weekly on a weekday), decided when a company first deals in a third currency; no phase 1 company does.
 - **Q11 (`docs/open-questions.md`, for S09):** IFRS 18.B65 classifies exchange differences in the category of the item that caused them, so differences on cash fall in investing for a company without a specified main business activity. Recommendation: S09 splits `is.fx_differences` by the monetary item's category when IFRS 18 statements are first produced (periods from 2027-01-01).
 - **For S05:** how a Hub event whose mapped account is blocked is held. Recommendation: `NO_MAPPING`.
 
-## Templates (drafts, Q3)
+## Templates (version 3, Q3 answered)
+
+The templates hold accounts only. Where the review labels a Syrian point REPORTED or UNVERIFIED (social insurance rates, the consumption fee, stamp duty, the salary tax, the non-resident tax's reach to online ad platforms, the legal reserve), the account only gives such amounts a place: no posting rule depends on it without a written owner decision.
 
 Columns: code · Arabic · English · kind (H header, P postable) · normal balance (D, C) · flags (M monetary, Ctl control, a currency) · required dimensions · statement line · role. Headers carry no flags.
 
-### Service agency (`service-agency@1`, Vertex Media)
-Dimension types: client, contract, department, service (all built in).
+### Service agency (`service-agency@3`, Vertex Media)
+Dimension types: client, contract, department, service (all built in). Vertex Media is a sole proprietorship (owner, 2026-11-13): `313001` stays in equity and the template has no legal reserve. Version 2 added S10's `312002`; version 3 the review's E1, E2 and A1–A14, and the slot `cancelled_project_refund` maps to `211005` instead of `211003`.
 
 | Code | Arabic | English | Kind | Bal | Flags | Required | Line | Role |
 |---|---|---|---|---|---|---|---|---|
@@ -319,40 +328,53 @@ Dimension types: client, contract, department, service (all built in).
 | 112 | الذمم المدينة | Receivables | H | D | | | | |
 | 112001 | ذمم العملاء التجارية | Trade receivables | P | D | M, Ctl | client | `bs.trade_receivables` | |
 | 112002 | ذمم مدينة أخرى | Other receivables | P | D | M | | `bs.trade_receivables` | |
+| 112003 | سلف الموظفين | Employee advances | P | D | M | | `bs.trade_receivables` | |
+| 112009 | مخصص الخسائر الائتمانية المتوقعة | Allowance for expected credit losses | P | C | M | client | `bs.trade_receivables` | |
 | 113 | أصول العقود | Contract assets | H | D | | | | |
 | 113001 | أصول العقود | Contract assets | P | D | M, Ctl | client, contract | `bs.contract_assets` | |
 | 114 | أصول متداولة أخرى | Other current assets | H | D | | | | |
 | 114001 | مصاريف مدفوعة مقدمًا | Prepaid expenses | P | D | | | `bs.other_current_assets` | |
+| 114002 | دفعات مقدمة للموردين | Advances to suppliers | P | D | | | `bs.other_current_assets` | |
+| 114003 | تأمينات مستردة | Refundable deposits | P | D | M | | `bs.other_current_assets` | |
 | 12 | الأصول غير المتداولة | Non-current assets | H | D | | | | |
 | 121 | الممتلكات والمعدات | Property and equipment | H | D | | | | |
 | 121001 | أجهزة الحاسوب ومعدات التصوير | Computers and camera equipment | P | D | | | `bs.ppe` | |
 | 121002 | الأثاث والمفروشات | Furniture and fittings | P | D | | | `bs.ppe` | |
 | 121003 | مجمع استهلاك أجهزة الحاسوب ومعدات التصوير | Accumulated depreciation — computers and equipment | P | C | | | `bs.ppe` | |
 | 121004 | مجمع استهلاك الأثاث والمفروشات | Accumulated depreciation — furniture | P | C | | | `bs.ppe` | |
+| 122 | الأصول غير الملموسة | Intangible assets | H | D | | | | |
+| 122001 | البرمجيات والمواقع الإلكترونية | Software and websites | P | D | | | `bs.intangible_assets` | |
+| 122002 | مجمع الإطفاء | Accumulated amortisation | P | C | | | `bs.intangible_assets` | |
 | 2 | الخصوم | Liabilities | H | C | | | | |
 | 21 | الخصوم المتداولة | Current liabilities | H | C | | | | |
 | 211 | الذمم الدائنة | Payables | H | C | | | | |
 | 211001 | ذمم منصات الإعلان | Ad platforms payable | P | C | M | client | `bs.trade_payables` | |
 | 211002 | مصاريف مشاريع بانتظار مصدر الدفع | Project expenses awaiting payment source | P | C | M | | `bs.trade_payables` | |
 | 211003 | ذمم دائنة أخرى | Other payables | P | C | M | | `bs.trade_payables` | |
+| 211004 | اشتراكات التأمينات الاجتماعية المستحقة | Social insurance contributions payable | P | C | M | | `bs.trade_payables` | |
+| 211005 | مبالغ مستردة مستحقة للعملاء | Refund liabilities to clients | P | C | M | client | `bs.trade_payables` | |
 | 212 | التزامات العقود | Contract liabilities | H | C | | | | |
 | 212001 | التزامات العقود (إيرادات مؤجلة) | Contract liabilities (deferred revenue) | P | C | | client, contract | `bs.contract_liabilities` | |
 | 213 | أمانات العملاء | Client money held | H | C | | | | |
 | 213001 | أمانات إعلانات العملاء | Client ad funds held | P | C | M, Ctl, USD | client | `bs.client_money` | |
 | 214 | الضرائب والرسوم المستحقة | Taxes and fees payable | H | C | | | | |
 | 214001 | ضريبة الدخل المستحقة | Income tax payable | P | C | M | | `bs.tax_liabilities` | |
-| 214002 | رسم الإنفاق الاستهلاكي المستحق | Consumption expenditure fee payable (UNVERIFIED) | P | C | M | | `bs.tax_liabilities` | |
-| 214003 | رسم الطابع المستحق | Stamp duty payable (UNVERIFIED) | P | C | M | | `bs.tax_liabilities` | |
-| 214004 | ضريبة الرواتب والأجور المقتطعة | Payroll tax withheld (UNVERIFIED) | P | C | M | | `bs.tax_liabilities` | |
+| 214002 | رسم الإنفاق الاستهلاكي المستحق | Consumption expenditure fee payable | P | C | M | | `bs.other_taxes_payable` | |
+| 214003 | رسم الطابع المستحق | Stamp duty payable | P | C | M | | `bs.other_taxes_payable` | |
+| 214004 | ضريبة الرواتب والأجور المقتطعة | Payroll tax withheld | P | C | M | | `bs.other_taxes_payable` | |
+| 214005 | ضريبة غير المقيمين المقتطعة | Non-resident tax withheld | P | C | M | | `bs.other_taxes_payable` | |
 | 215 | المصاريف المستحقة | Accrued expenses | H | C | | | | |
 | 215001 | رواتب وأجور مستحقة | Accrued salaries and wages | P | C | M | | `bs.accruals` | |
 | 215002 | مصاريف مستحقة أخرى | Other accrued expenses | P | C | M | | `bs.accruals` | |
+| 216 | القروض والسلف قصيرة الأجل | Short-term borrowings | H | C | | | | |
+| 216001 | القروض والسلف قصيرة الأجل | Short-term borrowings | P | C | M | | `bs.borrowings` | |
 | 3 | حقوق الملكية | Equity | H | C | | | | |
 | 31 | رأس المال والاحتياطيات | Capital and reserves | H | C | | | | |
 | 311 | رأس المال | Capital | H | C | | | | |
 | 311001 | رأس المال | Capital | P | C | | | `bs.share_capital` | |
 | 312 | الأرباح المحتجزة | Retained earnings | H | C | | | | |
 | 312001 | الأرباح المحتجزة | Retained earnings | P | C | | | `bs.retained_earnings` | `retained_earnings` |
+| 312002 | نتيجة السنة قبل بدء الدفاتر | Result of the year before the books start | P | C | | | `bs.retained_earnings` | `pre_opening_result` |
 | 313 | جاري المالك | Owner's current account | H | C | | | | |
 | 313001 | جاري المالك | Owner's current account | P | C | | | `bs.owner_current` | |
 | 4 | الإيرادات | Revenue | H | C | | | | |
@@ -374,6 +396,7 @@ Dimension types: client, contract, department, service (all built in).
 | 521 | الرواتب والأجور | Salaries and wages | H | D | | | | |
 | 521001 | رواتب وأجور | Salaries and wages | P | D | | department | `is.employee_benefits` | |
 | 521002 | مزايا الموظفين الأخرى | Other employee benefits | P | D | | department | `is.employee_benefits` | |
+| 521003 | حصة صاحب العمل من التأمينات الاجتماعية | Employer's social insurance contributions | P | D | | department | `is.employee_benefits` | |
 | 53 | المصاريف التشغيلية | Operating expenses | H | D | | | | |
 | 531 | مصاريف المكتب | Office expenses | H | D | | | | |
 | 531001 | الإيجار | Rent | P | D | | | `is.other_expenses` | |
@@ -387,9 +410,12 @@ Dimension types: client, contract, department, service (all built in).
 | 532002 | الرسوم المصرفية وعمولات التحويل | Bank and transfer charges | P | D | | | `is.other_expenses` | |
 | 532003 | الرسوم والطوابع الحكومية | Government fees and stamps | P | D | | | `is.other_expenses` | |
 | 532004 | تسويق الوكالة | Agency marketing | P | D | | | `is.other_expenses` | |
-| 533 | الاستهلاك | Depreciation | H | D | | | | |
+| 532005 | ضريبة غير المقيمين المتحمَّلة | Non-resident tax borne | P | D | | | `is.other_expenses` | |
+| 532006 | خسائر انخفاض قيمة الذمم المدينة وأصول العقود | Impairment losses on receivables and contract assets | P | D | | | `is.impairment_losses` | |
+| 533 | الاستهلاك والإطفاء | Depreciation and amortisation | H | D | | | | |
 | 533001 | استهلاك أجهزة الحاسوب ومعدات التصوير | Depreciation — computers and equipment | P | D | | | `is.depreciation` | |
 | 533002 | استهلاك الأثاث والمفروشات | Depreciation — furniture | P | D | | | `is.depreciation` | |
+| 533003 | إطفاء الأصول غير الملموسة | Amortisation of intangible assets | P | D | | | `is.depreciation` | |
 | 54 | مصاريف أخرى | Other expenses | H | D | | | | |
 | 541 | خسائر فروق الصرف والتقريب | Exchange losses and rounding | H | D | | | | |
 | 541001 | خسائر فروق صرف محققة | Realised exchange losses | P | D | | | `is.fx_differences` | `fx_realised_loss` |
@@ -398,14 +424,18 @@ Dimension types: client, contract, department, service (all built in).
 | 55 | ضريبة الدخل | Income tax | H | D | | | | |
 | 551 | مصروف ضريبة الدخل | Income tax expense | H | D | | | | |
 | 551001 | مصروف ضريبة الدخل | Income tax expense | P | D | | | `is.income_tax` | |
+| 56 | تكاليف التمويل | Finance costs | H | D | | | | |
+| 561 | فوائد القروض والسحب على المكشوف | Interest on loans and overdrafts | H | D | | | | |
+| 561001 | فوائد القروض والسحب على المكشوف | Interest on loans and overdrafts | P | D | | | `is.finance_costs` | |
 
 The cash, bank and e-wallet accounts are one per Hub payment method and currency (scope Q6); the real bank and wallet accounts are open question Q4, settled by the opening-balances spec.
 
-### General (`general@1`)
+### General (`general@3`)
 Dimension types: the four built-in types; no account requires contract, department or service. The service-agency chart with these differences:
 - removed: 111005, 111006 (e-wallets), 113 and 113001 (contract assets), 211001, 211002, 213 and 213001, 411002, 511 and 511001;
 - 121001 is "أجهزة ومعدات" (Equipment), 121003 "مجمع استهلاك الأجهزة والمعدات", 533001 "استهلاك الأجهزة والمعدات";
-- added: 211001 "ذمم الموردين" (Trade payables, P, C, M, `bs.trade_payables`); 212001 is "التزامات العقود (دفعات مقدمة من العملاء)" requiring client only; 411001 "إيرادات المبيعات والخدمات" (Revenue from sales and services) requiring client only; 511 "تكلفة المبيعات والخدمات" with 511001 "تكلفة المبيعات والخدمات" (Cost of sales and services, `is.direct_costs`), no required dimensions; 521001 and 521002 require nothing.
+- added: 211001 "ذمم الموردين" (Trade payables, P, C, M, `bs.trade_payables`); 212001 is "التزامات العقود (دفعات مقدمة من العملاء)" requiring client only; 411001 "إيرادات المبيعات والخدمات" (Revenue from sales and services) requiring client only; 511 "تكلفة المبيعات والخدمات" with 511001 "تكلفة المبيعات والخدمات" (Cost of sales and services, `is.direct_costs`), no required dimensions; 521001, 521002 and 521003 require nothing;
+- added for a company with legal personality (version 3, the review's A15 and A16): 217 and 217001 "جاري الشركاء" (Partners' current accounts, P, C, M, `bs.trade_payables`: a withdrawable balance is a monetary liability, IAS 32.11, 32.16), 314 "الاحتياطيات" with 314001 "الاحتياطي القانوني" (Legal reserve, P, C, `bs.reserves`; the Companies Law 29/2011 rule is UNVERIFIED).
 
 ## Acceptance
 - **The owner's end-to-end check, step by step:**

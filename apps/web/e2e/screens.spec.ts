@@ -552,7 +552,7 @@ for (const colorScheme of ['light', 'dark'] as const) {
         test('inbox event: cancelled project remainder', async ({ page }, testInfo) => {
           await page.goto(`/inbox/${cancelledProject.id}`);
           // The refund payable's line of the whole remainder refunded.
-          await expect(page.getByText('211003').first()).toBeVisible();
+          await expect(page.getByText('211005').first()).toBeVisible();
           await expectNoPageOverflow(page);
           await screenshot(page, testInfo, `inbox-event-remainder-${colorScheme}-${width}`);
         });

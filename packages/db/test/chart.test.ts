@@ -134,13 +134,11 @@ beforeAll(async () => {
 describe('the database lists', () => {
   it('match the contracts: roles, statement lines, contract kinds, sources', () => {
     expect(accountRole.enumValues).toEqual(ACCOUNT_ROLES);
-    expect([
-      ...CHART_STATEMENT_LINES.balance_sheet,
-      ...CHART_STATEMENT_LINES.income_statement,
-    ]).toEqual(STATEMENT_LINES.map((line) => line.code));
-    expect(CHART_STATEMENT_LINES.balance_sheet).toEqual(
-      STATEMENT_LINES.filter((line) => line.statement === 'balance_sheet').map((line) => line.code),
-    );
+    for (const statement of ['balance_sheet', 'income_statement'] as const) {
+      expect(CHART_STATEMENT_LINES[statement]).toEqual(
+        STATEMENT_LINES.filter((line) => line.statement === statement).map((line) => line.code),
+      );
+    }
     expect(VALUE_CONTRACT_KINDS).toEqual(CONTRACT_KINDS);
     expect(VALUE_EXTERNAL_SOURCES).toEqual(DIMENSION_EXTERNAL_SOURCES);
     expect(RATE_ROW_SOURCES).toEqual(RATE_SOURCES);

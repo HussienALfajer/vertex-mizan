@@ -396,7 +396,7 @@ describe('a control account’s slot', () => {
     const receivables = async (book: Awaited<ReturnType<typeof books>>) => {
       const created = await book.owner.browser.post('/api/accounts', {
         parentId: book.accounts.get('112'),
-        code: '112009',
+        code: '112008',
         kind: 'postable',
         name: 'ذمم عملاء أخرى',
         statementLine: 'bs.trade_receivables',
@@ -425,7 +425,7 @@ describe('a control account’s slot', () => {
       accountId: freshSecond,
     });
     expect(moved.status, JSON.stringify(moved.body)).toBe(200);
-    expect(moved.body.account.code).toBe('112009');
+    expect(moved.body.account.code).toBe('112008');
   });
 });
 
@@ -607,7 +607,7 @@ describe('POST /api/inbox/:id/split-remainder (S06 rules 15–16)', () => {
       expect.arrayContaining([
         ['212001', '30000'],
         ['411001', '-10000'],
-        ['211003', '-20000'],
+        ['211005', '-20000'],
       ]),
     );
     expect(
@@ -629,7 +629,7 @@ describe('POST /api/inbox/:id/split-remainder (S06 rules 15–16)', () => {
       expect.arrayContaining([
         ['212001', '30000'],
         ['411001', '-10000'],
-        ['211003', '-20000'],
+        ['211005', '-20000'],
       ]),
     );
     expect((await accountant.browser.post(path, body)).body.code).toBe('EVENT_NOT_HELD');

@@ -70,7 +70,7 @@ const TEMPLATE: Record<string, string> = {
   contract_liability: '212001',
   contract_asset: '113001',
   released_revenue: '411001',
-  cancelled_project_refund: '211003',
+  cancelled_project_refund: '211005',
 };
 
 function contextOf(
@@ -1241,7 +1241,7 @@ describe('milestones and projects (revenue/milestones, revenue/cancelled-project
     expect(rows(measure(held, sypUsd, '2026-12-10', [bulletin('124.0000', '2026-12-10')]))).toEqual(
       [
         ['212001', 'USD', 30_000n, 3_600_000n, 30_000n],
-        ['211003', 'USD', -30_000n, -3_720_000n, -30_000n],
+        ['211005', 'USD', -30_000n, -3_720_000n, -30_000n],
         ['541001', 'SYP', 120_000n, 120_000n, 0n],
       ],
     );
@@ -1251,7 +1251,7 @@ describe('milestones and projects (revenue/milestones, revenue/cancelled-project
     ).toEqual([
       ['212001', 'USD', 30_000n, 3_600_000n, 30_000n],
       ['411001', 'USD', -10_000n, -1_200_000n, -10_000n],
-      ['211003', 'USD', -20_000n, -2_480_000n, -20_000n],
+      ['211005', 'USD', -20_000n, -2_480_000n, -20_000n],
       ['541001', 'SYP', 80_000n, 80_000n, 0n],
     ]);
     expect(split).toMatchObject({
@@ -1291,7 +1291,7 @@ describe('milestones and projects (revenue/milestones, revenue/cancelled-project
     ).toEqual([
       ['112001', 'USD', 30_000n, 3_750_000n, 30_000n],
       ['411001', 'USD', -10_000n, -1_250_000n, -10_000n],
-      ['211003', 'USD', -20_000n, -2_500_000n, -20_000n],
+      ['211005', 'USD', -20_000n, -2_500_000n, -20_000n],
     ]);
     expect(refusal(() => planEvent(deposit(30_000), NO_REFERENCES, context, 0n))).toBe(
       'EVENT_ACTION_NOT_ALLOWED',

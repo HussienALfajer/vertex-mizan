@@ -1354,7 +1354,7 @@ function cancellationEntry(
   }
   if (split.refund) {
     const { amountMinor, currency } = split.refund;
-    lines.push(measuredLine({ account: '211003', amount: money(-amountMinor, currency) }, on));
+    lines.push(measuredLine({ account: '211005', amount: money(-amountMinor, currency) }, on));
   }
   return balanceEntry({
     ...on,
@@ -1401,7 +1401,7 @@ describe('cancelledProjectSplit', () => {
     ).toEqual([
       ['212001', 3_600_000n, 30_000n],
       ['411001', -1_200_000n, -10_000n],
-      ['211003', -2_480_000n, -20_000n],
+      ['211005', -2_480_000n, -20_000n],
       ['541001', 80_000n, 0n],
     ]);
     // SYP books only: the same book amounts, no parallel.
@@ -1411,7 +1411,7 @@ describe('cancelledProjectSplit', () => {
     ).toEqual([
       ['212001', 3_600_000n, null],
       ['411001', -1_200_000n, null],
-      ['211003', -2_480_000n, null],
+      ['211005', -2_480_000n, null],
       ['541001', 80_000n, null],
     ]);
   });
@@ -1433,7 +1433,7 @@ describe('cancelledProjectSplit', () => {
       ['212001', 2_817_500n, 23_000n],
       ['411001', -279_960n, -2_333n],
       ['411001', -939_208n, -7_667n],
-      ['211003', -2_480_000n, -20_000n],
+      ['211005', -2_480_000n, -20_000n],
       ['541001', 41_668n, 0n],
     ]);
   });
@@ -1462,7 +1462,7 @@ describe('cancelledProjectSplit', () => {
       amountsOf(cancellationEntry(sypUsd, on(sypUsd, '124.0000', '125.0000'), [sypDeposit], 0n)),
     ).toEqual([
       ['212001', 3_600_000n, 30_000n],
-      ['211003', -3_600_000n, -28_800n],
+      ['211005', -3_600_000n, -28_800n],
       ['421001', 0n, -1_200n],
     ]);
   });
@@ -1474,7 +1474,7 @@ describe('cancelledProjectSplit', () => {
     ).toEqual([
       ['212001', 30_000n, 3_720_000n],
       ['411001', -10_000n, -1_240_000n],
-      ['211003', -20_667n, -2_480_000n],
+      ['211005', -20_667n, -2_480_000n],
       ['541001', 667n, 0n],
     ]);
   });
@@ -1575,7 +1575,7 @@ describe("a cancelled project's split", () => {
         );
         // No refund: every line is carried, so no residual in any ledger.
         if (revenueMinor === sum(remaining.map((a) => a.transaction.amountMinor))) {
-          expect(entry.every((line) => line.account !== '211003')).toBe(true);
+          expect(entry.every((line) => line.account !== '211005')).toBe(true);
           expect(entry).toHaveLength(remaining.length * 2);
         }
         const both = [...entry, ...reverseLines(entry)];
@@ -1613,14 +1613,14 @@ describe('invoicedAfterCancellationSplit', () => {
       lines: [
         measuredLine({ account: '112001', amount: money(30_000n, 'USD') }, on),
         measuredLine({ account: '411001', amount: money(-10_000n, 'USD') }, on),
-        measuredLine({ account: '211003', amount: money(-20_000n, 'USD') }, on),
+        measuredLine({ account: '211005', amount: money(-20_000n, 'USD') }, on),
       ],
       rounding: { account: '541003' },
     });
     expect(amountsOf(entry)).toEqual([
       ['112001', 3_750_000n, 30_000n],
       ['411001', -1_250_000n, -10_000n],
-      ['211003', -2_500_000n, -20_000n],
+      ['211005', -2_500_000n, -20_000n],
     ]);
   });
 

@@ -123,8 +123,8 @@ test.describe('the chart', () => {
     const receivables = accountOf('112');
     const added: Account = {
       ...accountOf('112001'),
-      id: '01900000-0000-7000-8002-000000112003',
-      code: '112003',
+      id: '01900000-0000-7000-8002-000000112004',
+      code: '112004',
       name: 'ذمم عملاء بالتقسيط',
       itemKind: 'document',
     };
@@ -137,7 +137,7 @@ test.describe('the chart', () => {
     await page.goto('/chart');
     await rowAction(page, '112', t.actions.addChild);
     const sheet = page.getByRole('dialog', { name: s.createTitle });
-    await expect(sheet.getByLabel(s.code)).toHaveValue('112003');
+    await expect(sheet.getByLabel(s.code)).toHaveValue('112004');
     await sheet.getByLabel(s.name).fill('ذمم عملاء بالتقسيط');
     await choose(page, s.statementLine, 'الذمم المدينة التجارية والأخرى');
     await expect(sheet.getByRole('combobox', { name: s.itemKind })).toHaveCount(0);
@@ -150,7 +150,7 @@ test.describe('the chart', () => {
     await expect(sheet).toHaveCount(0);
     expect(create.seen[0]?.postDataJSON()).toMatchObject({
       parentId: receivables.id,
-      code: '112003',
+      code: '112004',
       statementLine: 'bs.trade_receivables',
       isControl: true,
       itemKind: 'document',
@@ -321,7 +321,7 @@ test.describe('the chart', () => {
       t.normalBalances.debit,
     );
     await choose(page, s.parent, `21 ${accountOf('21').name}`);
-    await expect(sheet.getByLabel(s.code)).toHaveValue('216');
+    await expect(sheet.getByLabel(s.code)).toHaveValue('217');
     await expect(sheet.getByRole('combobox', { name: s.kind })).toHaveText(t.kinds.postable);
     await expect(sheet.getByRole('combobox', { name: s.normalBalance })).toHaveText(
       t.normalBalances.credit,
@@ -332,7 +332,7 @@ test.describe('the chart', () => {
     await expect(sheet).toHaveCount(0);
     expect(create.seen[0]?.postDataJSON()).toMatchObject({
       parentId: accountOf('21').id,
-      code: '216',
+      code: '217',
       kind: 'postable',
       normalBalance: 'credit',
       statementLine: 'bs.client_money',

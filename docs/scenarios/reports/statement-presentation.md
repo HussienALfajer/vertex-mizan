@@ -21,7 +21,7 @@ Reports post nothing: every figure is the exact sum of stored ledger amounts, in
 
 ## Cases
 
-The account codes are the service-agency template's (S02): the SYP and USD bank accounts `111003` and `111004`, trade receivables `112001` and contract assets `113001` (document control accounts, `bs.trade_receivables` and `bs.contract_assets`), project expenses awaiting payment `211002` and other payables `211003` (`bs.trade_payables`), contract liabilities `212001` (`bs.contract_liabilities`, not a control account), client ad funds held `213001` (a running control account, USD only, `bs.client_money`), income tax payable `214001`, capital `311001`, retained earnings `312001`, service revenue `411001` (`is.revenue`), realised exchange gains `421001` (`is.fx_differences`), other income `422001` (`is.other_income`), direct project costs `511001` (`is.direct_costs`), salaries `521001` (`is.employee_benefits`), rent `531001`, software subscriptions `531004` and repairs `531006` (`is.other_expenses`), and income tax expense `551001` (`is.income_tax`). The `usd-syp` case adds finance costs `532005` (`is.finance_costs`; the template has no account on that line), and the `third` case a TRY cash account `111007`. Every rate and amount is synthetic. December 2026 runs from Tuesday 1 to Thursday 31.
+The account codes are the service-agency template's (S02): the SYP and USD bank accounts `111003` and `111004`, trade receivables `112001` and contract assets `113001` (document control accounts, `bs.trade_receivables` and `bs.contract_assets`), project expenses awaiting payment `211002` and other payables `211003` (`bs.trade_payables`), contract liabilities `212001` (`bs.contract_liabilities`, not a control account), client ad funds held `213001` (a running control account, USD only, `bs.client_money`), income tax payable `214001`, capital `311001`, retained earnings `312001`, service revenue `411001` (`is.revenue`), realised exchange gains `421001` (`is.fx_differences`), other income `422001` (`is.other_income`), direct project costs `511001` (`is.direct_costs`), salaries `521001` (`is.employee_benefits`), rent `531001`, software subscriptions `531004` and repairs `531006` (`is.other_expenses`), and income tax expense `551001` (`is.income_tax`). The `usd-syp` case posts finance costs to interest on loans and overdrafts `561001` (`is.finance_costs`), and the `third` case adds a TRY cash account `111007`. (Until the templates' version 3 the template had no account on `is.finance_costs` and the case added one as `532005`, a code version 3 gives the non-resident tax borne; the case's lines and amounts are unchanged.) Every rate and amount is synthetic. December 2026 runs from Tuesday 1 to Thursday 31.
 
 How the expectations read (`docs/scenarios/README.md`, "Reports"):
 - amounts are minor units of the report's ledger currency; a trial balance's opening and closing balances are signed (positive debit, negative credit) and its debits and credits are magnitudes;
@@ -638,9 +638,7 @@ December in USD books, with the parallel ledger in SYP at the market rate of 125
 case: December's income statement in USD books with operating profit, profit before tax and profit for the period; the parallel ledger in SYP
 company: { shape: usd-syp, book: USD, parallel: SYP, template: service-agency,
            rate_policy: { book: bulletin, parallel: market },
-           contracts: [{ code: P1, kind: project, client: C1 }],
-           accounts: [{ code: "532005", name: "تكاليف التمويل", name_latin: "Finance costs",
-                        statement_line: is.finance_costs }] }
+           contracts: [{ code: P1, kind: project, client: C1 }] }
 rates:
   - { date: 2026-12-01, base: USD, quote: SYP, rate: "125.0000", type: market }
   - { date: 2026-12-24, base: USD, quote: SYP, rate: "120.0000", type: bulletin }
@@ -677,7 +675,7 @@ steps:
                        { account: "112001", currency: USD, amount: -100000, item: M-1 }] }
   - manual: finance costs
     accounting_date: 2026-12-28
-    payload: { lines: [{ account: "532005", currency: USD, amount: 3000 },
+    payload: { lines: [{ account: "561001", currency: USD, amount: 3000 },
                        { account: "111004", currency: USD, amount: -3000 }] }
   - manual: income tax for the period
     accounting_date: 2026-12-31
@@ -733,7 +731,7 @@ expect:
     - source: manual
       date: 2026-12-28
       lines:
-        - { account: "532005", currency: USD, amount: 3000, book: 3000, parallel: 375000 }
+        - { account: "561001", currency: USD, amount: 3000, book: 3000, parallel: 375000 }
         - { account: "111004", currency: USD, amount: -3000, book: -3000, parallel: -375000 }
     - source: manual
       date: 2026-12-31
