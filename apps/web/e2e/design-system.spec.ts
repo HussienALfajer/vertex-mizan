@@ -64,4 +64,18 @@ test.describe('design-system page', () => {
     await input.press('Enter');
     await expect(page.getByText(ar.accounting.amountInput.NEGATIVE_NOT_ALLOWED)).toBeVisible();
   });
+
+  test("shows a task's steps and two sources' figures, each status in words", async ({ page }) => {
+    await page.goto('/design-system');
+    const section = page.locator('#opening');
+    const steps = section.getByRole('navigation', { name: t.opening.steps }).first();
+    await expect(steps.getByRole('link')).toHaveCount(4);
+    await expect(steps.locator('[aria-current="step"]')).toContainText(
+      t.opening.stepNames[1] ?? '',
+    );
+    const table = section.getByRole('table', { name: t.opening.table }).first();
+    await expect(table.getByRole('row')).toHaveCount(4);
+    await expect(table.getByRole('row').nth(2)).toContainText(ar.opening.agreement.differs);
+    await expect(table.getByRole('row').nth(3)).toContainText(ar.opening.agreement.missing);
+  });
 });

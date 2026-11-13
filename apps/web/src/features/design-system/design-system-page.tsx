@@ -19,6 +19,8 @@ import {
   type AccountTreeNode,
   AgeingTable,
   type AgeingTableRow,
+  type AgreementRow,
+  AgreementTable,
   Amount,
   AmountInput,
   AscentLines,
@@ -80,6 +82,8 @@ import {
   SheetContent,
   SheetTitle,
   SheetTrigger,
+  type StepData,
+  StepList,
   SwitchField,
   Table,
   TableBody,
@@ -1048,6 +1052,77 @@ function ChecklistSample() {
   );
 }
 
+/** A task's steps (S10) and two sources' figures side by side, in both densities. */
+function OpeningSample() {
+  const c = t.opening;
+  const o = ar.opening;
+  const statuses = ['done', 'attention', 'pending', 'pending'] as const;
+  const steps: StepData[] = c.stepNames.map((label, index) => ({
+    id: `step-${index}`,
+    label,
+    status: statuses[index] ?? 'pending',
+    statusLabel: o.steps.status[statuses[index] ?? 'pending'],
+    href: '#opening',
+  }));
+  const rows: AgreementRow[] = [
+    {
+      key: 'a',
+      group: c.groups[0],
+      label: <bdi>{c.clients[0]}</bdi>,
+      currency: 'USD',
+      recordsMinor: 30000n,
+      hubMinor: 30000n,
+      differenceMinor: 0n,
+      status: 'agrees',
+    },
+    {
+      key: 'b',
+      group: c.groups[1],
+      label: <bdi>{c.clients[1]}</bdi>,
+      currency: 'USD',
+      recordsMinor: 10000n,
+      hubMinor: -12000n,
+      differenceMinor: 22000n,
+      status: 'differs',
+    },
+    {
+      key: 'c',
+      group: c.groups[0],
+      label: <bdi>{c.clients[2]}</bdi>,
+      currency: 'SYP',
+      recordsMinor: null,
+      hubMinor: 500000n,
+      differenceMinor: null,
+      status: 'missing',
+    },
+  ];
+  const a = o.agreement;
+  return (
+    <div className="grid min-w-0 gap-4">
+      {(['compact', 'comfortable'] as const).map((density) => (
+        <Card key={density} data-density={density} className="min-w-0 gap-3 p-4 text-control">
+          <p className="text-muted-foreground text-sm">{c[density]}</p>
+          <StepList steps={steps} label={c.steps} current="step-1" />
+          <AgreementTable
+            caption={c.table}
+            rows={rows}
+            labels={{
+              group: a.slot,
+              row: a.client,
+              currency: a.currency,
+              records: a.records,
+              hub: a.hub,
+              difference: a.difference,
+              status: a.status,
+              statuses: { agrees: a.agrees, differs: a.differs, missing: a.missing },
+            }}
+          />
+        </Card>
+      ))}
+    </div>
+  );
+}
+
 /** A synthetic key, made at run time: the secret scan refuses literals that look like keys. */
 const sampleSecret = ['mzn', 'Example'.repeat(6).slice(0, 40)].join('_');
 
@@ -1341,6 +1416,11 @@ export function DesignSystemPage() {
       <Section id="checklist" title={t.checklist.title}>
         <p className="text-muted-foreground">{t.checklist.hint}</p>
         <ChecklistSample />
+      </Section>
+
+      <Section id="opening" title={t.opening.title}>
+        <p className="text-muted-foreground">{t.opening.hint}</p>
+        <OpeningSample />
       </Section>
 
       <Section id="secret-reveal" title={t.secretReveal.title}>

@@ -40,7 +40,7 @@ Plan approved by the owner (2026-11-13, in the session).
 
 ## PR 5 — The screens (ui, web, e2e) · `feat/s10-screens`
 - [x] contracts and api: the Excel of the preview and of the agreement (S10 "Screens", Export), `GET /api/opening/export?part=preview|agreement` (`opening.read`, audited `export.opening` on the entity `opening_export`), its test; the view's `agreement` (every client and currency of Hub's slots, `recordsAgreement()` in `packages/ledger`, additive), which step 3 shows; `ar.opening`; OpenAPI regenerated, `pnpm check:openapi` passes
-- [ ] ui: any component `/opening` needs that `packages/ui` lacks (a step layout, the agreement table), tested, both densities, on the design-system page
+- [x] ui: `StepList` (a task's steps with their status and links) and `AgreementTable` (the records' and Hub's figures per client and currency), tested, both densities, on the design-system page (`#opening`) and its E2E
 - [ ] web: `/opening` in four steps (Hub, the records' grid with computed and stated lines, the agreement, the review with the checks and their links), save, post and reverse dialogs with two-factor, every state of the spec; "تاريخ بدء الدفاتر" in `/settings/company` with its lock; "قيد افتتاحي" on `/entries/:id`; the sidebar and palette entries; Excel of the preview and the agreement; `ar.opening`, `ar.settings.booksStart`, the report marks and the hold detail
 - [ ] e2e: `/opening` through its steps, the failing checks, the post dialog, the posted and reversed states, the books start in `/settings/company`; RTL screenshots light and dark at 360, 768 and 1280 px, looked at
 - [ ] wiring (Web), docs (`apps/web/CLAUDE.md`, `packages/ui/CLAUDE.md`, `docs/ROADMAP.md`: S10 done)
