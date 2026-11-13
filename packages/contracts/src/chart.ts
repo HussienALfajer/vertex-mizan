@@ -193,8 +193,8 @@ const line = (
 
 /**
  * The statement-line catalogue (S02 "The statement-line catalogue", ADR 0011): reports present
- * from it and postable accounts reference its codes. A new line is an additive change; a code is
- * never renamed or removed.
+ * from it and postable accounts reference its codes. A new line is appended (an additive change)
+ * and placed by its `order`, which readers sort by; a code is never renamed or removed.
  */
 export const STATEMENT_LINES: readonly StatementLine[] = [
   line(
@@ -233,7 +233,7 @@ export const STATEMENT_LINES: readonly StatementLine[] = [
   line(
     'bs.trade_payables',
     'current_liabilities',
-    6,
+    7,
     'الذمم الدائنة التجارية والأخرى',
     'Trade and other payables',
     'IAS 1.54(k)',
@@ -241,7 +241,7 @@ export const STATEMENT_LINES: readonly StatementLine[] = [
   line(
     'bs.contract_liabilities',
     'current_liabilities',
-    7,
+    8,
     'التزامات العقود',
     'Contract liabilities',
     'IFRS 15.105',
@@ -249,7 +249,7 @@ export const STATEMENT_LINES: readonly StatementLine[] = [
   line(
     'bs.client_money',
     'current_liabilities',
-    8,
+    9,
     'أمانات العملاء',
     'Client money held',
     'IAS 1.55',
@@ -257,7 +257,7 @@ export const STATEMENT_LINES: readonly StatementLine[] = [
   line(
     'bs.tax_liabilities',
     'current_liabilities',
-    9,
+    11,
     'التزامات الضرائب والرسوم الجارية',
     'Current tax and duty liabilities',
     'IAS 1.54(n)',
@@ -265,21 +265,21 @@ export const STATEMENT_LINES: readonly StatementLine[] = [
   line(
     'bs.accruals',
     'current_liabilities',
-    10,
+    13,
     'المصاريف المستحقة',
     'Accrued expenses',
     'IAS 1.55',
   ),
-  line('bs.share_capital', 'equity', 11, 'رأس المال', 'Share capital', 'IAS 1.54(r)'),
+  line('bs.share_capital', 'equity', 14, 'رأس المال', 'Share capital', 'IAS 1.54(r)'),
   line(
     'bs.retained_earnings',
     'equity',
-    12,
+    16,
     'الأرباح المحتجزة',
     'Retained earnings',
     'IAS 1.54(r)',
   ),
-  line('bs.owner_current', 'equity', 13, 'جاري المالك', "Owner's current account", 'IAS 1.55'),
+  line('bs.owner_current', 'equity', 17, 'جاري المالك', "Owner's current account", 'IAS 1.55'),
   line(
     'is.revenue',
     'profit_or_loss',
@@ -320,15 +320,15 @@ export const STATEMENT_LINES: readonly StatementLine[] = [
     'is.depreciation',
     'profit_or_loss',
     5,
-    'الاستهلاك',
-    'Depreciation',
+    'الاستهلاك والإطفاء',
+    'Depreciation and amortisation',
     'IAS 1.102',
     'operating',
   ),
   line(
     'is.other_expenses',
     'profit_or_loss',
-    6,
+    7,
     'مصاريف تشغيلية أخرى',
     'Other operating expenses',
     'IAS 1.102',
@@ -337,7 +337,7 @@ export const STATEMENT_LINES: readonly StatementLine[] = [
   line(
     'is.fx_differences',
     'profit_or_loss',
-    7,
+    8,
     'صافي فروق الصرف',
     'Net foreign exchange differences',
     'IAS 21.52(a); IFRS 18.B65',
@@ -346,7 +346,7 @@ export const STATEMENT_LINES: readonly StatementLine[] = [
   line(
     'is.finance_costs',
     'profit_or_loss',
-    8,
+    9,
     'تكاليف التمويل',
     'Finance costs',
     'IAS 1.82(b)',
@@ -355,11 +355,40 @@ export const STATEMENT_LINES: readonly StatementLine[] = [
   line(
     'is.income_tax',
     'profit_or_loss',
-    9,
+    10,
     'مصروف ضريبة الدخل',
     'Income tax expense',
     'IAS 1.82(d)',
     'income_taxes',
+  ),
+  // The templates' version 3 (the chart templates' review, 2026-11-13): appended, each placed by
+  // its order.
+  line(
+    'bs.other_taxes_payable',
+    'current_liabilities',
+    12,
+    'ضرائب ورسوم أخرى مستحقة',
+    'Other taxes and duties payable',
+    'IAS 1.55',
+  ),
+  line(
+    'bs.intangible_assets',
+    'non_current_assets',
+    6,
+    'الأصول غير الملموسة',
+    'Intangible assets',
+    'IAS 1.54(c)',
+  ),
+  line('bs.borrowings', 'current_liabilities', 10, 'القروض', 'Borrowings', 'IAS 1.54(m)'),
+  line('bs.reserves', 'equity', 15, 'الاحتياطيات', 'Reserves', 'IAS 1.54(r); IAS 1.78(e)'),
+  line(
+    'is.impairment_losses',
+    'profit_or_loss',
+    6,
+    'خسائر انخفاض قيمة الذمم المدينة وأصول العقود',
+    'Impairment losses on receivables and contract assets',
+    'IAS 1.82(ba)',
+    'operating',
   ),
 ];
 

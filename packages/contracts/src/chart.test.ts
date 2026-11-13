@@ -135,6 +135,25 @@ describe('the statement-line catalogue', () => {
     }
   });
 
+  it('orders each statement once, its sections in presentation order', () => {
+    const sections = ['current_assets', 'non_current_assets', 'current_liabilities', 'equity'];
+    for (const statement of ['balance_sheet', 'income_statement'] as const) {
+      const lines = STATEMENT_LINES.filter((line) => line.statement === statement).sort(
+        (a, b) => a.order - b.order,
+      );
+      expect(lines.map((line) => line.order)).toEqual(lines.map((_, index) => index + 1));
+      if (statement === 'balance_sheet') {
+        const order = lines.map((line) => sections.indexOf(line.section));
+        expect(order).toEqual([...order].sort((a, b) => a - b));
+      }
+    }
+    const order = (code: string) => STATEMENT_LINES.find((line) => line.code === code)?.order;
+    expect(order('bs.intangible_assets')).toBe((order('bs.ppe') ?? 0) + 1);
+    expect(order('bs.other_taxes_payable')).toBe((order('bs.tax_liabilities') ?? 0) + 1);
+    expect(order('bs.reserves')).toBe((order('bs.share_capital') ?? 0) + 1);
+    expect(order('is.impairment_losses')).toBe((order('is.depreciation') ?? 0) + 1);
+  });
+
   it('fits balance-sheet lines to classes 1–3 and income-statement lines to 4–5', () => {
     expect(statementLineFits('bs.cash', 'asset')).toBe(true);
     expect(statementLineFits('bs.cash', 'revenue')).toBe(false);

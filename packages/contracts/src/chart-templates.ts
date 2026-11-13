@@ -12,9 +12,12 @@ import type { CurrencyCode } from './money.js';
 import type { ItemKind } from './open-items.js';
 
 /**
- * The chart templates of S02 ("Templates", drafts until Syrian accountants review them, open
- * question Q3; their changes are a new version). Applied at company creation or to a chart that
+ * The chart templates of S02 ("Templates"), at version 3 after their review
+ * (`docs/audits/2026-11-13-chart-templates-review.md`, approved by the owner instead of Syrian
+ * accountants, Q3); any change is a new version. Applied at company creation or to a chart that
  * holds the five roots alone. Accounts are in code order, so each parent comes before its children.
+ * They hold accounts only: no posting rule depends on the Syrian points the review leaves
+ * UNVERIFIED.
  */
 
 export interface TemplateAccount {
@@ -73,7 +76,7 @@ const serviceAgencyMapping: readonly TemplateMapping[] = [
   { slot: 'contract_liability', currency: null, code: '212001' },
   { slot: 'contract_asset', currency: null, code: '113001' },
   { slot: 'released_revenue', currency: null, code: '411001' },
-  { slot: 'cancelled_project_refund', currency: null, code: '211003' },
+  { slot: 'cancelled_project_refund', currency: null, code: '211005' },
 ];
 
 /** A header: no flags, the class's normal balance. */
@@ -126,7 +129,10 @@ const p = (
 
 const M = { monetary: true } as const;
 
-/** `service-agency@2` (Vertex Media): S02 "Service agency", with S10's `312002` (version 2). */
+/**
+ * `service-agency@3` (Vertex Media, a sole proprietorship): S02 "Service agency", with S10's
+ * `312002` (version 2) and the review's E1, E2 and A1–A14 (version 3).
+ */
 const serviceAgencyAccounts: readonly TemplateAccount[] = [
   h('1', 'الأصول', 'Assets'),
   h('11', 'الأصول المتداولة', 'Current assets'),
@@ -156,6 +162,15 @@ const serviceAgencyAccounts: readonly TemplateAccount[] = [
     dims: ['client'],
   }),
   p('112002', 'ذمم مدينة أخرى', 'Other receivables', 'bs.trade_receivables', M),
+  p('112003', 'سلف الموظفين', 'Employee advances', 'bs.trade_receivables', M),
+  // IFRS 9.5.5.15, the simplified approach (IFRS 15.107).
+  p(
+    '112009',
+    'مخصص الخسائر الائتمانية المتوقعة',
+    'Allowance for expected credit losses',
+    'bs.trade_receivables',
+    { ...M, balance: 'credit', dims: ['client'] },
+  ),
   h('113', 'أصول العقود', 'Contract assets'),
   p('113001', 'أصول العقود', 'Contract assets', 'bs.contract_assets', {
     ...M,
@@ -164,6 +179,9 @@ const serviceAgencyAccounts: readonly TemplateAccount[] = [
   }),
   h('114', 'أصول متداولة أخرى', 'Other current assets'),
   p('114001', 'مصاريف مدفوعة مقدمًا', 'Prepaid expenses', 'bs.other_current_assets'),
+  // Non-monetary: goods or services to receive (IAS 21.16).
+  p('114002', 'دفعات مقدمة للموردين', 'Advances to suppliers', 'bs.other_current_assets'),
+  p('114003', 'تأمينات مستردة', 'Refundable deposits', 'bs.other_current_assets', M),
   h('12', 'الأصول غير المتداولة', 'Non-current assets'),
   h('121', 'الممتلكات والمعدات', 'Property and equipment'),
   p('121001', 'أجهزة الحاسوب ومعدات التصوير', 'Computers and camera equipment', 'bs.ppe'),
@@ -176,6 +194,11 @@ const serviceAgencyAccounts: readonly TemplateAccount[] = [
     { balance: 'credit' },
   ),
   p('121004', 'مجمع استهلاك الأثاث والمفروشات', 'Accumulated depreciation — furniture', 'bs.ppe', {
+    balance: 'credit',
+  }),
+  h('122', 'الأصول غير الملموسة', 'Intangible assets'),
+  p('122001', 'البرمجيات والمواقع الإلكترونية', 'Software and websites', 'bs.intangible_assets'),
+  p('122002', 'مجمع الإطفاء', 'Accumulated amortisation', 'bs.intangible_assets', {
     balance: 'credit',
   }),
   h('2', 'الخصوم', 'Liabilities'),
@@ -193,6 +216,20 @@ const serviceAgencyAccounts: readonly TemplateAccount[] = [
     M,
   ),
   p('211003', 'ذمم دائنة أخرى', 'Other payables', 'bs.trade_payables', M),
+  // The obligation REPORTED (Decree 92/1959 as amended by Law 78/2001); rates and ceilings
+  // UNVERIFIED.
+  p(
+    '211004',
+    'اشتراكات التأمينات الاجتماعية المستحقة',
+    'Social insurance contributions payable',
+    'bs.trade_payables',
+    M,
+  ),
+  // IFRS 15.55: a cancelled project's refund (`cancelled_project_refund`).
+  p('211005', 'مبالغ مستردة مستحقة للعملاء', 'Refund liabilities to clients', 'bs.trade_payables', {
+    ...M,
+    dims: ['client'],
+  }),
   h('212', 'التزامات العقود', 'Contract liabilities'),
   p(
     '212001',
@@ -210,24 +247,37 @@ const serviceAgencyAccounts: readonly TemplateAccount[] = [
   }),
   h('214', 'الضرائب والرسوم المستحقة', 'Taxes and fees payable'),
   p('214001', 'ضريبة الدخل المستحقة', 'Income tax payable', 'bs.tax_liabilities', M),
+  // Not the entity's income taxes (IAS 12), so not on `bs.tax_liabilities` (E1). Their Syrian
+  // rules stay UNVERIFIED (S02 and the review); the names carry no mark (E2).
   p(
     '214002',
     'رسم الإنفاق الاستهلاكي المستحق',
-    'Consumption expenditure fee payable (UNVERIFIED)',
-    'bs.tax_liabilities',
+    'Consumption expenditure fee payable',
+    'bs.other_taxes_payable',
     M,
   ),
-  p('214003', 'رسم الطابع المستحق', 'Stamp duty payable (UNVERIFIED)', 'bs.tax_liabilities', M),
+  p('214003', 'رسم الطابع المستحق', 'Stamp duty payable', 'bs.other_taxes_payable', M),
   p(
     '214004',
     'ضريبة الرواتب والأجور المقتطعة',
-    'Payroll tax withheld (UNVERIFIED)',
-    'bs.tax_liabilities',
+    'Payroll tax withheld',
+    'bs.other_taxes_payable',
+    M,
+  ),
+  // Income Tax Law 24/2003 art. 61(b): CONFIRMED on the 2003 text; later amendments and its reach
+  // to online ad platforms UNVERIFIED.
+  p(
+    '214005',
+    'ضريبة غير المقيمين المقتطعة',
+    'Non-resident tax withheld',
+    'bs.other_taxes_payable',
     M,
   ),
   h('215', 'المصاريف المستحقة', 'Accrued expenses'),
   p('215001', 'رواتب وأجور مستحقة', 'Accrued salaries and wages', 'bs.accruals', M),
   p('215002', 'مصاريف مستحقة أخرى', 'Other accrued expenses', 'bs.accruals', M),
+  h('216', 'القروض والسلف قصيرة الأجل', 'Short-term borrowings'),
+  p('216001', 'القروض والسلف قصيرة الأجل', 'Short-term borrowings', 'bs.borrowings', M),
   h('3', 'حقوق الملكية', 'Equity'),
   h('31', 'رأس المال والاحتياطيات', 'Capital and reserves'),
   h('311', 'رأس المال', 'Capital'),
@@ -277,6 +327,13 @@ const serviceAgencyAccounts: readonly TemplateAccount[] = [
   p('521002', 'مزايا الموظفين الأخرى', 'Other employee benefits', 'is.employee_benefits', {
     dims: ['department'],
   }),
+  p(
+    '521003',
+    'حصة صاحب العمل من التأمينات الاجتماعية',
+    "Employer's social insurance contributions",
+    'is.employee_benefits',
+    { dims: ['department'] },
+  ),
   h('53', 'المصاريف التشغيلية', 'Operating expenses'),
   h('531', 'مصاريف المكتب', 'Office expenses'),
   p('531001', 'الإيجار', 'Rent', 'is.other_expenses'),
@@ -290,7 +347,15 @@ const serviceAgencyAccounts: readonly TemplateAccount[] = [
   p('532002', 'الرسوم المصرفية وعمولات التحويل', 'Bank and transfer charges', 'is.other_expenses'),
   p('532003', 'الرسوم والطوابع الحكومية', 'Government fees and stamps', 'is.other_expenses'),
   p('532004', 'تسويق الوكالة', 'Agency marketing', 'is.other_expenses'),
-  h('533', 'الاستهلاك', 'Depreciation'),
+  // Borne instead of withheld: not IAS 12 income tax. UNVERIFIED as `214005`.
+  p('532005', 'ضريبة غير المقيمين المتحمَّلة', 'Non-resident tax borne', 'is.other_expenses'),
+  p(
+    '532006',
+    'خسائر انخفاض قيمة الذمم المدينة وأصول العقود',
+    'Impairment losses on receivables and contract assets',
+    'is.impairment_losses',
+  ),
+  h('533', 'الاستهلاك والإطفاء', 'Depreciation and amortisation'),
   p(
     '533001',
     'استهلاك أجهزة الحاسوب ومعدات التصوير',
@@ -298,6 +363,7 @@ const serviceAgencyAccounts: readonly TemplateAccount[] = [
     'is.depreciation',
   ),
   p('533002', 'استهلاك الأثاث والمفروشات', 'Depreciation — furniture', 'is.depreciation'),
+  p('533003', 'إطفاء الأصول غير الملموسة', 'Amortisation of intangible assets', 'is.depreciation'),
   h('54', 'مصاريف أخرى', 'Other expenses'),
   h('541', 'خسائر فروق الصرف والتقريب', 'Exchange losses and rounding'),
   p('541001', 'خسائر فروق صرف محققة', 'Realised exchange losses', 'is.fx_differences', {
@@ -312,13 +378,23 @@ const serviceAgencyAccounts: readonly TemplateAccount[] = [
   h('55', 'ضريبة الدخل', 'Income tax'),
   h('551', 'مصروف ضريبة الدخل', 'Income tax expense'),
   p('551001', 'مصروف ضريبة الدخل', 'Income tax expense', 'is.income_tax'),
+  h('56', 'تكاليف التمويل', 'Finance costs'),
+  h('561', 'فوائد القروض والسحب على المكشوف', 'Interest on loans and overdrafts'),
+  p(
+    '561001',
+    'فوائد القروض والسحب على المكشوف',
+    'Interest on loans and overdrafts',
+    'is.finance_costs',
+  ),
 ];
 
 /**
- * `general@2`: the service-agency chart without the agency's accounts (e-wallets, contract assets,
+ * `general@3`: the service-agency chart without the agency's accounts (e-wallets, contract assets,
  * ad platforms, client money, termination fees, project costs), with general equipment names,
  * trade payables, revenue and cost of sales and services, and no account requiring contract,
- * department or service (S02 "General").
+ * department or service (S02 "General"); version 3 adds, for a company with legal personality,
+ * the partners' current accounts as a monetary liability (IAS 32.11, 32.16) and the legal reserve
+ * (the review's A15 and A16).
  */
 function generalAccounts(): readonly TemplateAccount[] {
   const removed = new Set([
@@ -353,11 +429,17 @@ function generalAccounts(): readonly TemplateAccount[] {
     },
     '521001': { requiredDimensions: [] },
     '521002': { requiredDimensions: [] },
+    '521003': { requiredDimensions: [] },
   };
   const added = [
     p('211001', 'ذمم الموردين', 'Trade payables', 'bs.trade_payables', M),
     h('511', 'تكلفة المبيعات والخدمات', 'Cost of sales and services'),
     p('511001', 'تكلفة المبيعات والخدمات', 'Cost of sales and services', 'is.direct_costs'),
+    h('217', 'جاري الشركاء', "Partners' current accounts"),
+    p('217001', 'جاري الشركاء', "Partners' current accounts", 'bs.trade_payables', M),
+    h('314', 'الاحتياطيات', 'Reserves'),
+    // The Companies Law 29/2011 rule (10% of profit until 25% of capital) is UNVERIFIED.
+    p('314001', 'الاحتياطي القانوني', 'Legal reserve', 'bs.reserves'),
   ];
   return [
     ...serviceAgencyAccounts
@@ -370,7 +452,7 @@ function generalAccounts(): readonly TemplateAccount[] {
 export const CHART_TEMPLATES: readonly ChartTemplate[] = [
   {
     id: 'service-agency',
-    version: 2,
+    version: 3,
     name: 'وكالة خدمات',
     nameLatin: 'Service agency',
     accounts: serviceAgencyAccounts,
@@ -378,7 +460,7 @@ export const CHART_TEMPLATES: readonly ChartTemplate[] = [
   },
   {
     id: 'general',
-    version: 2,
+    version: 3,
     name: 'عام',
     nameLatin: 'General',
     accounts: generalAccounts(),

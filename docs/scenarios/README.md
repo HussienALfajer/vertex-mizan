@@ -246,7 +246,7 @@ The runner is `packages/scenarios` (`pnpm test:scenarios`, in CI).
 
 ## Examples
 
-These two cases show the format only; they are not approved rules. Their account codes are the service-agency template's (`service-agency@1`, a draft until the templates are reviewed, Q3): trade receivables `112001`, service revenue `411001`, the USD and SYP bank accounts `111004` and `111003`, realised exchange gains `421001` and losses `541001`.
+These two cases show the format only; they are not approved rules. Their account codes are the service-agency template's (`service-agency@3` since the templates' review, Q3): trade receivables `112001`, service revenue `411001`, the USD and SYP bank accounts `111004` and `111003`, realised exchange gains `421001` and losses `541001`.
 
 ### A USD invoice paid in USD, in the SYP books at the bulletin
 

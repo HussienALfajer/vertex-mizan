@@ -1079,7 +1079,7 @@ describe('the template’s recognition slots for an existing company (S06 "Data"
     );
     expect(mapped).toEqual([
       { slot: 'contract_asset', code: '113001' },
-      { slot: 'cancelled_project_refund', code: '211003' },
+      { slot: 'cancelled_project_refund', code: '211005' },
       { slot: 'contract_liability', code: '212001' },
       { slot: 'released_revenue', code: '411001' },
     ]);
@@ -1432,7 +1432,7 @@ describe('milestones and projects (S06 rules 11–17)', () => {
     expect(entry?.lines).toEqual([
       ['212001', 'USD', 30_000n, 3_600_000n, 30_000n],
       ['411001', 'USD', -10_000n, -1_200_000n, -10_000n],
-      ['211003', 'USD', -20_000n, -2_480_000n, -20_000n],
+      ['211005', 'USD', -20_000n, -2_480_000n, -20_000n],
       ['541001', 'SYP', 80_000n, 80_000n, 0n],
     ]);
     // The split frees the project's order: the void, retried, is the accountant's.
@@ -1547,7 +1547,7 @@ describe('the previews of the accountant’s actions (S06 "Screens", rule 16)', 
         date: '2026-12-10',
         lines: [
           ['212001', 'USD', 30_000n, 3_600_000n, 30_000n],
-          ['211003', 'USD', -30_000n, -3_720_000n, -30_000n],
+          ['211005', 'USD', -30_000n, -3_720_000n, -30_000n],
           ['541001', 'SYP', 120_000n, 120_000n, 0n],
         ],
       },

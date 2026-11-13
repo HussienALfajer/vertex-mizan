@@ -10,7 +10,7 @@ import {
 import { CHART_TEMPLATES, chartTemplate } from './chart-templates.js';
 import { POSTING_SLOTS, slotAccountFits, slotIsPerCurrency } from './events.js';
 
-describe('the chart templates (S02 "Templates", drafts under Q3)', () => {
+describe('the chart templates (S02 "Templates", version 3 after the review of Q3)', () => {
   for (const template of CHART_TEMPLATES) {
     describe(`${template.id}@${template.version}`, () => {
       const accounts = template.accounts;
@@ -109,7 +109,12 @@ describe('the chart templates (S02 "Templates", drafts under Q3)', () => {
       '213001',
       '411002',
     ]);
-    expect([...generalCodes].filter((code) => !agencyCodes.has(code))).toEqual([]);
+    expect([...generalCodes].filter((code) => !agencyCodes.has(code))).toEqual([
+      '217',
+      '217001',
+      '314',
+      '314001',
+    ]);
     const find = (code: string) => general.find((account) => account.code === code);
     expect(find('211001')).toMatchObject({ name: 'ذمم الموردين', requiredDimensions: [] });
     expect(find('511')).toMatchObject({ kind: 'header', name: 'تكلفة المبيعات والخدمات' });
@@ -119,6 +124,21 @@ describe('the chart templates (S02 "Templates", drafts under Q3)', () => {
     });
     expect(find('212001')?.requiredDimensions).toEqual(['client']);
     expect(find('411001')?.requiredDimensions).toEqual(['client']);
+    expect(find('521003')?.requiredDimensions).toEqual([]);
+    // A15 and A16: a company with legal personality (IAS 32.11, 32.16; IAS 1.54(r), 1.78(e)).
+    expect(find('217001')).toMatchObject({
+      kind: 'postable',
+      normalBalance: 'credit',
+      isMonetary: true,
+      isControl: false,
+      statementLine: 'bs.trade_payables',
+    });
+    expect(find('314001')).toMatchObject({
+      kind: 'postable',
+      normalBalance: 'credit',
+      isMonetary: false,
+      statementLine: 'bs.reserves',
+    });
     for (const account of general) {
       for (const dimension of ['contract', 'department', 'service'] as const) {
         expect(account.requiredDimensions, account.code).not.toContain(dimension);
@@ -128,8 +148,8 @@ describe('the chart templates (S02 "Templates", drafts under Q3)', () => {
 
   it("keeps the service-agency chart of S02, account by account, with S10's 312002", () => {
     const agency = chartTemplate('service-agency').accounts;
-    expect(agency).toHaveLength(92);
-    expect(agency.filter((account) => account.kind === 'postable')).toHaveLength(53);
+    expect(agency).toHaveLength(111);
+    expect(agency.filter((account) => account.kind === 'postable')).toHaveLength(68);
     expect(agency.find((account) => account.code === '312002')).toMatchObject({
       kind: 'postable',
       normalBalance: 'credit',
@@ -151,6 +171,68 @@ describe('the chart templates (S02 "Templates", drafts under Q3)', () => {
       role: null,
     });
     expect(agency.find((account) => account.code === '121003')?.normalBalance).toBe('credit');
+  });
+
+  it('applies the review of 2026-11-13 to both templates (E1, E2, A1–A14)', () => {
+    for (const template of CHART_TEMPLATES) {
+      expect(template.version).toBe(3);
+      const find = (code: string) => {
+        const account = template.accounts.find((candidate) => candidate.code === code);
+        if (account === undefined) throw new Error(`${template.id} has no ${code}`);
+        return account;
+      };
+      const shape = (code: string) => {
+        const account = find(code);
+        return [
+          account.statementLine,
+          account.normalBalance,
+          account.isMonetary,
+          account.isControl,
+          account.requiredDimensions,
+        ];
+      };
+      // E1 and E2: the other taxes on their own line, no mark in the names.
+      expect(find('214001').statementLine).toBe('bs.tax_liabilities');
+      for (const code of ['214002', '214003', '214004', '214005']) {
+        expect(shape(code), code).toEqual(['bs.other_taxes_payable', 'credit', true, false, []]);
+      }
+      for (const account of template.accounts) {
+        expect(account.nameLatin, account.code).not.toContain('UNVERIFIED');
+      }
+      const department = template.id === 'service-agency' ? ['department'] : [];
+      expect(shape('211004')).toEqual(['bs.trade_payables', 'credit', true, false, []]);
+      expect(shape('521003')).toEqual(['is.employee_benefits', 'debit', false, false, department]);
+      expect(shape('532005')).toEqual(['is.other_expenses', 'debit', false, false, []]);
+      expect(shape('112003')).toEqual(['bs.trade_receivables', 'debit', true, false, []]);
+      expect(shape('114002')).toEqual(['bs.other_current_assets', 'debit', false, false, []]);
+      expect(shape('114003')).toEqual(['bs.other_current_assets', 'debit', true, false, []]);
+      expect(shape('112009')).toEqual(['bs.trade_receivables', 'credit', true, false, ['client']]);
+      expect(shape('532006')).toEqual(['is.impairment_losses', 'debit', false, false, []]);
+      expect(find('122').kind).toBe('header');
+      expect(shape('122001')).toEqual(['bs.intangible_assets', 'debit', false, false, []]);
+      expect(shape('122002')).toEqual(['bs.intangible_assets', 'credit', false, false, []]);
+      expect(shape('533003')).toEqual(['is.depreciation', 'debit', false, false, []]);
+      expect(find('533').nameLatin).toBe('Depreciation and amortisation');
+      expect([find('56').kind, find('561').kind]).toEqual(['header', 'header']);
+      expect(shape('561001')).toEqual(['is.finance_costs', 'debit', false, false, []]);
+      expect(find('216').kind).toBe('header');
+      expect(shape('216001')).toEqual(['bs.borrowings', 'credit', true, false, []]);
+      expect(shape('211005')).toEqual(['bs.trade_payables', 'credit', true, false, ['client']]);
+    }
+    // A sole proprietorship: no partners' current accounts and no legal reserve (owner, 2026-11-13).
+    const agency = chartTemplate('service-agency');
+    const agencyCodes = agency.accounts.map((account) => account.code);
+    for (const code of ['217', '217001', '314', '314001']) {
+      expect(agencyCodes).not.toContain(code);
+    }
+    expect(agency.accounts.find((account) => account.code === '313001')).toMatchObject({
+      statementLine: 'bs.owner_current',
+      isMonetary: false,
+    });
+    // A14: the cancelled project's refund moves to the refund liabilities.
+    expect(
+      agency.postingRules.find((rule) => rule.slot === 'cancelled_project_refund')?.code,
+    ).toBe('211005');
   });
 
   it('gives each control account its item kind (S04)', () => {

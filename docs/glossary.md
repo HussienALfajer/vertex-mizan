@@ -29,6 +29,13 @@ One name per concept. Code, contracts and tables use the English term; the Arabi
 | دور الحساب | account role | The company's account for a system purpose: conversion rounding, exchange gains and losses, retained earnings |
 | قالب دليل الحسابات | chart template | A versioned starting chart of accounts (service agency, general) applied at company creation or to an empty chart |
 | فئة IFRS 18 | IFRS 18 category | The income-statement category of a statement line: operating, investing, financing, income taxes |
+| مخصص الخسائر الائتمانية المتوقعة | allowance for expected credit losses | A credit-balance account against receivables and contract assets for the losses expected on them (IFRS 9.5.5.15) |
+| خسائر انخفاض القيمة | impairment losses | The expense of that allowance, a separate income-statement line (IAS 1.82(ba)) |
+| مبالغ مستردة مستحقة للعملاء | refund liability | What the company expects to pay back to a client, such as a cancelled project's refund (IFRS 15.55) |
+| الأصول غير الملموسة / الإطفاء | intangible assets / amortisation | Software and websites the company owns, and their cost spread over their useful life |
+| القروض | borrowings | Loans and bank overdrafts the company owes |
+| جاري الشركاء | partners' current accounts | Partners' withdrawable balances in a company with legal personality: a monetary liability, not equity (IAS 32.11, 32.16) |
+| الاحتياطي القانوني | legal reserve | Profit set aside in equity as company law requires |
 | حساب مراقبة | control account | An account whose balance is the sum of its open items (receivables, client ad funds) |
 | بند مفتوح | open item | One document's outstanding balance in a control account (an invoice, a client's ad funds) |
 | المبلغ الدفتري | carrying amount | An item's amount in a ledger: what it was measured at, less what was cleared before; month-end revaluations reverse and are not part of it (ADR 0007) |

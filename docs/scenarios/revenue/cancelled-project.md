@@ -19,11 +19,11 @@ When Hub cancels a project, what the project's point-in-time schedules still hol
 
 ## Cases
 
-The account codes are the service-agency template's (S02): trade receivables `112001` (a `document` control account, client), contract assets `113001` (a `document` control account, monetary, client and contract), other payables `211003` (monetary; the `cancelled_project_refund` slot's default), contract liabilities `212001` (client and contract, not monetary), service revenue `411001` (client and service; the contract when the invoice names one), realised exchange gains `421001` and losses `541001`. The slots `contract_liability`, `contract_asset`, `released_revenue` and `cancelled_project_refund` take their template defaults (S06 "Data"). The refund line carries the client and the project, so the manual entry that pays the refund back and the client's statement find it. Every rate and amount is synthetic. 3 November and 1, 10 and 15 December 2026 are publication days; 20 November 2026 is a Friday, a day without a bulletin, and no case reads a rate on it.
+The account codes are the service-agency template's (S02): trade receivables `112001` (a `document` control account, client), contract assets `113001` (a `document` control account, monetary, client and contract), refund liabilities to clients `211005` (monetary, client required; the `cancelled_project_refund` slot's default since the templates' version 3, which moved it from other payables `211003` as the chart templates' review approved on 2026-11-13, A14, IFRS 15.55; the amounts are unchanged), contract liabilities `212001` (client and contract, not monetary), service revenue `411001` (client and service; the contract when the invoice names one), realised exchange gains `421001` and losses `541001`. The slots `contract_liability`, `contract_asset`, `released_revenue` and `cancelled_project_refund` take their template defaults (S06 "Data"). The refund line carries the client and the project, so the manual entry that pays the refund back and the client's statement find it. Every rate and amount is synthetic. 3 November and 1, 10 and 15 December 2026 are publication days; 20 November 2026 is a Friday, a day without a bulletin, and no case reads a rate on it.
 
 The payloads use the short form of `revenue/milestones.md`: the project is the invoice's `contract` and the events' `project`, `{ code, kind: project, client }`; `project.cancelled` is `{ project, client, on }`. The step `split: { step: <n>, revenue: <minor units> }` is the accountant's action on the held cancellation of step *n*, with its written reason: `revenue` is the transaction amount to revenue, in the project's currency, and the rest of the remainder goes to the refund payable. Its entry has the event as its source, `project.cancelled`, dated on its `on`. A step whose answer is `recorded` (no entry) completes like a posted one.
 
-The cases leave out what other scenarios own or what cannot occur: a cancellation dated in a closed month is held `PERIOD_CLOSED` like any event (`inbox/post-in-next-open-period.md`, S05 rule 8); `third` cannot occur, since Hub invoices only in SYP and USD; a project's remainder is in one currency, since a Hub project has one (Hub F05 M2). A replayed event and a second split post nothing new: property tests, since a step carries no event ID. Paying the refund back is an ordinary manual entry on `211003` (`receivables/manual-settlement.md`).
+The cases leave out what other scenarios own or what cannot occur: a cancellation dated in a closed month is held `PERIOD_CLOSED` like any event (`inbox/post-in-next-open-period.md`, S05 rule 8); `third` cannot occur, since Hub invoices only in SYP and USD; a project's remainder is in one currency, since a Hub project has one (Hub F05 M2). A replayed event and a second split post nothing new: property tests, since a step carries no event ID. Paying the refund back is an ordinary manual entry on `211005` (`receivables/manual-settlement.md`).
 
 ### Vertex Media: a deposit's remainder split between revenue and the refund payable
 
@@ -64,13 +64,13 @@ expect:
         # revenue part, carried share: 3,600,000 × 10,000 ÷ 30,000 = 1,200,000
         - { account: "411001", dims: { client: C1, contract: P1, service: S1 }, currency: USD, amount: -10000, book: -1200000, parallel: -10000 }
         # refund payable, a new measurement: 200.00 USD × 124 (bulletin of 10 Dec) = 24,800.00 SYP
-        - { account: "211003", dims: { client: C1, contract: P1 }, currency: USD, amount: -20000, book: -2480000, parallel: -20000 }
+        - { account: "211005", dims: { client: C1, contract: P1 }, currency: USD, amount: -20000, book: -2480000, parallel: -20000 }
         # book residual: 3,600,000 − 1,200,000 − 2,480,000 = −80,000 → a realised loss of 800.00 SYP; parallel: none
         - { account: "541001", currency: SYP, amount: 80000, book: 80000, parallel: 0 }
   balances:
     - { account: "212001", book: 0, parallel: 0 }
     - { account: "411001", book: -1200000, parallel: -10000 }
-    - { account: "211003", book: -2480000, parallel: -20000 }
+    - { account: "211005", book: -2480000, parallel: -20000 }
     - { account: "541001", book: 80000, parallel: 0 }
   open_items:
     - { item: INV-2026-80, account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 30000, book: 3600000, parallel: 30000 }
@@ -119,11 +119,11 @@ expect:
       lines:
         - { account: "212001", dims: { client: C1, contract: P1 }, currency: USD, amount: 30000, book: 3600000, parallel: 30000 }
         - { account: "411001", dims: { client: C1, contract: P1, service: S1 }, currency: USD, amount: -10000, book: -1200000, parallel: -10000 }
-        - { account: "211003", dims: { client: C1, contract: P1 }, currency: USD, amount: -20000, book: -2480000, parallel: -20000 }
+        - { account: "211005", dims: { client: C1, contract: P1 }, currency: USD, amount: -20000, book: -2480000, parallel: -20000 }
         - { account: "541001", currency: SYP, amount: 80000, book: 80000, parallel: 0 }
   balances:
     - { account: "212001", book: 0, parallel: 0 }
-    - { account: "211003", book: -2480000, parallel: -20000 }
+    - { account: "211005", book: -2480000, parallel: -20000 }
 ```
 
 ### Vertex Media: a cancellation received behind its project's held invoice
@@ -166,13 +166,13 @@ expect:
         # 3,600,000 × 15,000 ÷ 30,000 = 1,800,000
         - { account: "411001", dims: { client: C1, contract: P1, service: S1 }, currency: USD, amount: -15000, book: -1800000, parallel: -15000 }
         # 150.00 USD × 124 = 18,600.00 SYP
-        - { account: "211003", dims: { client: C1, contract: P1 }, currency: USD, amount: -15000, book: -1860000, parallel: -15000 }
+        - { account: "211005", dims: { client: C1, contract: P1 }, currency: USD, amount: -15000, book: -1860000, parallel: -15000 }
         # book residual: 3,600,000 − 1,800,000 − 1,860,000 = −60,000 → a realised loss of 600.00 SYP
         - { account: "541001", currency: SYP, amount: 60000, book: 60000, parallel: 0 }
   balances:
     - { account: "212001", book: 0, parallel: 0 }
     - { account: "411001", book: -1800000, parallel: -15000 }
-    - { account: "211003", book: -1860000, parallel: -15000 }
+    - { account: "211005", book: -1860000, parallel: -15000 }
     - { account: "541001", book: 60000, parallel: 0 }
 ```
 
@@ -232,14 +232,14 @@ expect:
         # MS-2's carried share: 2,817,500 × 7,667 ÷ 23,000 = 939,207.5 → 939,208 (half away from zero)
         - { account: "411001", dims: { client: C1, contract: P1, service: S2 }, currency: USD, amount: -7667, book: -939208, parallel: -7667 }
         # refund: 30,000 − 10,000 = 20,000 → 200.00 USD × 124 = 24,800.00 SYP, one new measurement
-        - { account: "211003", dims: { client: C1, contract: P1 }, currency: USD, amount: -20000, book: -2480000, parallel: -20000 }
+        - { account: "211005", dims: { client: C1, contract: P1 }, currency: USD, amount: -20000, book: -2480000, parallel: -20000 }
         # book residual: 840,000 + 2,817,500 − 279,960 − 939,208 − 2,480,000 = −41,668 → a realised loss of 416.68 SYP
         - { account: "541001", currency: SYP, amount: 41668, book: 41668, parallel: 0 }
   balances:
     - { account: "212001", book: 0, parallel: 0 }
     # 279,960 + 939,208 = 1,219,168; 23.33 + 76.67 = 100.00 USD
     - { account: "411001", book: -1219168, parallel: -10000 }
-    - { account: "211003", book: -2480000, parallel: -20000 }
+    - { account: "211005", book: -2480000, parallel: -20000 }
     - { account: "541001", book: 41668, parallel: 0 }
 ```
 
@@ -296,7 +296,7 @@ expect:
   balances:
     - { account: "212001", book: 0, parallel: 0 }
     - { account: "411001", book: -9700000, parallel: -80000 }
-    - { account: "211003", book: 0, parallel: 0 }
+    - { account: "211005", book: 0, parallel: 0 }
 ```
 
 ### Vertex Media: an SYP deposit refunded whole
@@ -334,13 +334,13 @@ expect:
       lines:
         - { account: "212001", dims: { client: C1, contract: P1 }, currency: SYP, amount: 3600000, book: 3600000, parallel: 30000 }
         # refund payable: SYP as is; parallel 36,000.00 SYP ÷ 125 (market of 10 Dec) = 288.00 USD
-        - { account: "211003", dims: { client: C1, contract: P1 }, currency: SYP, amount: -3600000, book: -3600000, parallel: -28800 }
+        - { account: "211005", dims: { client: C1, contract: P1 }, currency: SYP, amount: -3600000, book: -3600000, parallel: -28800 }
         # parallel residual: 30,000 − 28,800 = 1,200 → a realised gain of 12.00 USD; book: none
         - { account: "421001", currency: USD, amount: -1200, book: 0, parallel: -1200 }
   balances:
     - { account: "212001", book: 0, parallel: 0 }
     - { account: "411001", book: 0, parallel: 0 }
-    - { account: "211003", book: -3600000, parallel: -28800 }
+    - { account: "211005", book: -3600000, parallel: -28800 }
     - { account: "421001", book: 0, parallel: -1200 }
 ```
 
@@ -406,7 +406,7 @@ expect:
         - { account: "421001", currency: SYP, amount: -120000, book: -120000, parallel: 0 }
   balances:
     - { account: "212001", book: 0, parallel: 0 }
-    - { account: "211003", book: 0, parallel: 0 }
+    - { account: "211005", book: 0, parallel: 0 }
     # 3,600,000 + 4,880,000 = 8,480,000; 300 + 400 = 700.00 USD
     - { account: "411001", book: -8480000, parallel: -70000 }
     - { account: "421001", book: -120000, parallel: 0 }
@@ -454,11 +454,11 @@ expect:
       lines:
         - { account: "212001", dims: { client: C1, contract: P1 }, currency: USD, amount: 30000, book: 3600000, parallel: 30000 }
         - { account: "411001", dims: { client: C1, contract: P1, service: S1 }, currency: USD, amount: -10000, book: -1200000, parallel: -10000 }
-        - { account: "211003", dims: { client: C1, contract: P1 }, currency: USD, amount: -20000, book: -2480000, parallel: -20000 }
+        - { account: "211005", dims: { client: C1, contract: P1 }, currency: USD, amount: -20000, book: -2480000, parallel: -20000 }
         - { account: "541001", currency: SYP, amount: 80000, book: 80000, parallel: 0 }
   balances:
     - { account: "212001", book: 0, parallel: 0 }
-    - { account: "211003", book: -2480000, parallel: -20000 }
+    - { account: "211005", book: -2480000, parallel: -20000 }
   open_items:
     - { item: INV-2026-92, account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 30000, book: 3600000, parallel: 30000 }
   outcome: { status: held, reason: NEEDS_DECISION, detail: schedule_split_at_cancellation }
@@ -496,11 +496,11 @@ expect:
         # 100.00 USD × 125 = 12,500.00 SYP, a new measurement like the receivable
         - { account: "411001", dims: { client: C1, contract: P1, service: S1 }, currency: USD, amount: -10000, book: -1250000, parallel: -10000 }
         # 200.00 USD × 125 = 25,000.00 SYP
-        - { account: "211003", dims: { client: C1, contract: P1 }, currency: USD, amount: -20000, book: -2500000, parallel: -20000 }
+        - { account: "211005", dims: { client: C1, contract: P1 }, currency: USD, amount: -20000, book: -2500000, parallel: -20000 }
   balances:
     - { account: "212001", book: 0, parallel: 0 }
     - { account: "411001", book: -1250000, parallel: -10000 }
-    - { account: "211003", book: -2500000, parallel: -20000 }
+    - { account: "211005", book: -2500000, parallel: -20000 }
   open_items:
     - { item: INV-2026-93, account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 30000, book: 3750000, parallel: 30000 }
 ```
@@ -560,7 +560,7 @@ expect:
         - { account: "212001", dims: { client: C1, contract: P1 }, currency: USD, amount: 23000, book: 2817500, parallel: 23000 }
         - { account: "411001", dims: { client: C1, contract: P1, service: S1 }, currency: USD, amount: -2333, book: -279960, parallel: -2333 }
         - { account: "411001", dims: { client: C1, contract: P1, service: S2 }, currency: USD, amount: -7667, book: -939208, parallel: -7667 }
-        - { account: "211003", dims: { client: C1, contract: P1 }, currency: USD, amount: -20000, book: -2480000, parallel: -20000 }
+        - { account: "211005", dims: { client: C1, contract: P1 }, currency: USD, amount: -20000, book: -2480000, parallel: -20000 }
         - { account: "541001", currency: SYP, amount: 41668, book: 41668, parallel: 0 }
   balances:
     - { account: "212001", book: 0, parallel: 0 }
@@ -602,12 +602,12 @@ expect:
       lines:
         - { account: "212001", dims: { client: C1, contract: P1 }, currency: USD, amount: 30000, book: 3600000 }
         - { account: "411001", dims: { client: C1, contract: P1, service: S1 }, currency: USD, amount: -10000, book: -1200000 }
-        - { account: "211003", dims: { client: C1, contract: P1 }, currency: USD, amount: -20000, book: -2480000 }
+        - { account: "211005", dims: { client: C1, contract: P1 }, currency: USD, amount: -20000, book: -2480000 }
         - { account: "541001", currency: SYP, amount: 80000, book: 80000 }
   balances:
     - { account: "212001", book: 0 }
     - { account: "411001", book: -1200000 }
-    - { account: "211003", book: -2480000 }
+    - { account: "211005", book: -2480000 }
     - { account: "541001", book: 80000 }
 ```
 
@@ -649,13 +649,13 @@ expect:
         # carried share: 30,000 × 1,240,000 ÷ 3,720,000 = 10,000
         - { account: "411001", dims: { client: C1, contract: P1, service: S1 }, currency: SYP, amount: -1240000, book: -10000, parallel: -1240000 }
         # refund: 24,800.00 SYP ÷ 120 (bulletin of 10 Dec) = 206.666… → 206.67 USD
-        - { account: "211003", dims: { client: C1, contract: P1 }, currency: SYP, amount: -2480000, book: -20667, parallel: -2480000 }
+        - { account: "211005", dims: { client: C1, contract: P1 }, currency: SYP, amount: -2480000, book: -20667, parallel: -2480000 }
         # book residual: 30,000 − 10,000 − 20,667 = −667 → a realised loss of 6.67 USD; parallel: none
         - { account: "541001", currency: USD, amount: 667, book: 667, parallel: 0 }
   balances:
     - { account: "212001", book: 0, parallel: 0 }
     - { account: "411001", book: -10000, parallel: -1240000 }
-    - { account: "211003", book: -20667, parallel: -2480000 }
+    - { account: "211005", book: -20667, parallel: -2480000 }
     - { account: "541001", book: 667, parallel: 0 }
 ```
 

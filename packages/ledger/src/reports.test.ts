@@ -279,6 +279,71 @@ describe('the income statement (rules 13, 14)', () => {
   });
 });
 
+describe("the templates' version 3 lines in the statements", () => {
+  // The review of 2026-11-13: each new line in its place by the catalogue's order.
+  const chart: ReportChartAccount[] = [
+    ...CHART,
+    postable('122001', '121', 'bs.intangible_assets'),
+    postable('122002', '121', 'bs.intangible_assets', false, 'credit'),
+    postable('214002', '213', 'bs.other_taxes_payable'),
+    postable('216001', '213', 'bs.borrowings'),
+    postable('314001', '311', 'bs.reserves'),
+    postable('532006', '521', 'is.impairment_losses'),
+    postable('533003', '521', 'is.depreciation'),
+  ];
+
+  it('presents impairment losses after depreciation and amortisation, as operating', () => {
+    const net = new Map([
+      [id('411001'), -100_000n],
+      [id('531001'), 10_000n],
+      [id('532006'), 4_000n],
+      [id('533003'), 1_000n],
+    ]);
+    const statement = incomeStatement({ accounts: chart, current: net, compare: null });
+    expect(statement.lines.map((line) => [line.line, line.amount])).toEqual([
+      ['is.revenue', 100_000n],
+      ['is.other_income', 0n],
+      ['is.direct_costs', 0n],
+      ['is.employee_benefits', 0n],
+      ['is.depreciation', -1_000n],
+      ['is.impairment_losses', -4_000n],
+      ['is.other_expenses', -10_000n],
+      ['is.fx_differences', 0n],
+      ['is.finance_costs', 0n],
+      ['is.income_tax', 0n],
+    ]);
+    expect(statement.subtotals.operatingProfit).toBe(85_000n);
+  });
+
+  it('places intangible assets, borrowings, other taxes and reserves in their sections', () => {
+    const balances: PresentationBalance[] = [
+      { accountId: id('111003'), clientId: null, contractId: null, amount: 100_000n },
+      { accountId: id('122001'), clientId: null, contractId: null, amount: 30_000n },
+      { accountId: id('122002'), clientId: null, contractId: null, amount: -5_000n },
+      { accountId: id('214002'), clientId: null, contractId: null, amount: -7_000n },
+      { accountId: id('216001'), clientId: null, contractId: null, amount: -40_000n },
+      { accountId: id('311001'), clientId: null, contractId: null, amount: -60_000n },
+      { accountId: id('314001'), clientId: null, contractId: null, amount: -18_000n },
+    ];
+    const sheet = balanceSheet({
+      accounts: chart,
+      current: { balances, yearNet: 0n, unclosedNet: 0n },
+      compare: null,
+    });
+    const lines = sheet.lines.filter((line) => line.amount !== 0n).map((line) => line.line);
+    expect(lines).toEqual([
+      'bs.cash',
+      'bs.intangible_assets',
+      'bs.borrowings',
+      'bs.other_taxes_payable',
+      'bs.share_capital',
+      'bs.reserves',
+    ]);
+    expect(sheet.lines.find((line) => line.line === 'bs.intangible_assets')?.amount).toBe(25_000n);
+    expect(sheet.totals).toMatchObject({ assets: 125_000n, liabilitiesAndEquity: 125_000n });
+  });
+});
+
 describe('the balance sheet (rules 15–19)', () => {
   // S09's worked example in the book ledger, per counterparty and contract.
   const balances: PresentationBalance[] = [

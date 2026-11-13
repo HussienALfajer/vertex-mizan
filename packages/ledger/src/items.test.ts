@@ -418,11 +418,11 @@ describe('receivables/write-off (rule 11)', () => {
       balance: { transaction: usd(100_000n), bookMinor: 12_000_000n, parallelMinor: 100_000n },
     };
     const lines = post(at('2026-11-19', [bulletin('123.0000', '2026-11-19')]), [
-      { account: '532005', amount: usd(100_000n) },
+      { account: '532009', amount: usd(100_000n) },
       { account: '112001', dimensions: client, amount: usd(-100_000n), item },
     ]);
     expect(rows(lines)).toEqual([
-      ['measured', '532005', 'USD', 100_000n, 12_300_000n, 100_000n, null],
+      ['measured', '532009', 'USD', 100_000n, 12_300_000n, 100_000n, null],
       ['carried', '112001', 'USD', -100_000n, -12_000_000n, -100_000n, 'M-1:clear'],
       ['difference', '421001', 'SYP', -300_000n, -300_000n, 0n, null],
     ]);

@@ -60,6 +60,10 @@ export const CHART_STATEMENT_LINES = {
     'bs.share_capital',
     'bs.retained_earnings',
     'bs.owner_current',
+    'bs.other_taxes_payable',
+    'bs.intangible_assets',
+    'bs.borrowings',
+    'bs.reserves',
   ],
   income_statement: [
     'is.revenue',
@@ -71,6 +75,7 @@ export const CHART_STATEMENT_LINES = {
     'is.fx_differences',
     'is.finance_costs',
     'is.income_tax',
+    'is.impairment_losses',
   ],
 } as const;
 
