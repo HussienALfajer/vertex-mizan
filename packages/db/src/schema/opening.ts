@@ -64,6 +64,12 @@ export const openingSnapshots = pgTable(
     unique('opening_snapshots_company_id_id_key').on(t.companyId, t.id),
     unique('opening_snapshots_key').on(t.companyId, t.apiClientId, t.snapshotKey),
     index('opening_snapshots_company_received_idx').on(t.companyId, t.receivedAt),
+    // The register of prior documents, which an event about one of them reads (S10 rule 28).
+    index('opening_snapshots_company_prior_documents_idx').using(
+      'gin',
+      t.companyId,
+      sql`(${t.payload} -> 'prior_documents') jsonb_path_ops`,
+    ),
     check('opening_snapshots_key_length', sql`char_length(${t.snapshotKey}) between 1 and 100`),
     check('opening_snapshots_payload_hash', sql`${t.payloadHash} ~ '^[0-9a-f]{64}$'`),
     check('opening_snapshots_payload', sql`jsonb_typeof(${t.payload}) = 'object'`),

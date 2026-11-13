@@ -27,6 +27,7 @@ import {
 import { companies, SETTINGS_CURRENCY_CODES } from './companies.js';
 import { journalEntries } from './ledger.js';
 import { openItems } from './open-items.js';
+import { recognitionSchedules } from './recognition.js';
 
 // The drafts module (S03 PR 2, ADR 0005 "drafts are not ledger"): the accountant's drafts of
 // manual entries and their lines, which change until they post, and the files attached to a draft
@@ -142,7 +143,8 @@ export const entryDrafts = pgTable(
  * A line of a draft as typed: the account, the currency and the amount may be missing while the
  * accountant types; an amount is never zero. Line numbers 1 to 500, each row kept for its number:
  * a line removed from the draft is archived, and taken back when the draft grows again. A line on
- * a control account keeps the item it moves or the new item it opens (S04), checked at posting.
+ * a control account keeps the item it moves or the new item it opens (S04), and a contract
+ * liability line the opening schedule it clears (S10), checked at posting.
  */
 export const entryDraftLines = pgTable(
   'entry_draft_lines',
@@ -161,6 +163,11 @@ export const entryDraftLines = pgTable(
     /** The manual document item the line opens (S04 rule 6): its reference and due date. */
     newItemReference: text(),
     newItemDueOn: date(),
+    /**
+     * The opening schedule a contract liability line clears (S10 rule 28): checked at posting, as
+     * the item a line names.
+     */
+    scheduleId: uuid(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
     archivedAt: archivedAt(),
@@ -185,6 +192,17 @@ export const entryDraftLines = pgTable(
       foreignColumns: [openItems.companyId, openItems.id],
     }),
     index('entry_draft_lines_company_open_item_idx').on(t.companyId, t.openItemId),
+    foreignKey({
+      name: 'entry_draft_lines_schedule_fk',
+      columns: [t.companyId, t.scheduleId],
+      foreignColumns: [recognitionSchedules.companyId, recognitionSchedules.id],
+    }),
+    index('entry_draft_lines_company_schedule_idx').on(t.companyId, t.scheduleId),
+    // A line clears a schedule or names an item, never both (S10 rule 28).
+    check(
+      'entry_draft_lines_schedule',
+      sql`${t.scheduleId} is null or (${t.openItemId} is null and ${t.newItemReference} is null)`,
+    ),
     // A line moves an item or opens one, never both; a due date only with a new item's reference.
     check(
       'entry_draft_lines_item',

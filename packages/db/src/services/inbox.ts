@@ -64,20 +64,29 @@ import {
   ledgerHeads,
   postingRequests,
 } from '../schema/ledger.js';
-import { openItemBalances, openItemDueDates, openItems } from '../schema/open-items.js';
+import {
+  openItemBalances,
+  openItemDueDates,
+  openItemMovements,
+  openItems,
+} from '../schema/open-items.js';
 import { ledgersOf } from './companies.js';
 import { recordHubDepartments } from './departments.js';
+import { aboutPriorDocument } from './prior-documents.js';
 import { recordRate } from './rates.js';
 import {
   creditChangedLaterOf,
   cyclesOf,
   eventIssue,
+  heldVoidCreditKeys,
   milestoneFactsOf,
+  openingInvoicePayload,
   openSchedules,
   projectSchedulesOf,
   reclassifyRecognised,
   recutSince,
   reissuesOf,
+  releaseAfterHeldVoid,
   releaseBeforeChange,
   releaseEndedMonths,
   scheduledLineIdsOf,
@@ -584,6 +593,30 @@ async function documentLeftToHand(tx: Transaction, row: EventRow): Promise<boole
   return found !== undefined;
 }
 
+/**
+ * Whether the item of an invoice the opening carries has a settlement standing (S04 rule 13): a
+ * movement of another entry than its opening's, neither a reversal nor reversed nor a revaluation,
+ * which the accountant's correction of the void would have to undo first (S10 rule 28, S05 rule 8).
+ */
+async function openingItemSettled(tx: Transaction, invoiceId: string): Promise<boolean> {
+  const item = await invoiceItemOf(tx, invoiceId);
+  if (item === null) return false;
+  const result = await tx.execute<{ settled: boolean }>(sql`
+    select exists (
+      select 1 from ${openItemMovements} m
+      join ${journalEntries} e on e.company_id = m.company_id and e.id = m.entry_id
+      join ${openItems} i on i.company_id = m.company_id and i.id = m.item_id
+      where m.item_id = ${item.id} and m.kind not in ('open', 'revaluation')
+        and m.entry_id <> i.opened_by_entry_id
+        and e.reverses_entry_id is null
+        and not exists (
+          select 1 from ${journalEntries} r
+          where r.company_id = m.company_id and r.reverses_entry_id = m.entry_id
+        )
+    ) as settled`);
+  return result.rows[0]?.settled === true;
+}
+
 /** A sentinel that rolls back an attempt's savepoint once it decided to hold. */
 class HeldAttempt extends Error {
   constructor(readonly outcome: Hold) {
@@ -990,6 +1023,21 @@ async function decide(
   }
   if (await documentLeftToHand(tx, row))
     return hold('NEEDS_DECISION', 'document_resolved_manually');
+  // A void, change, archive or reopen of a document dated before the books start, which only the
+  // snapshot's register lists: Mizan holds no posting of it to reverse (S10 rule 28). It is found,
+  // so never an unknown reference; the period and the settlements still hold it first (rule 8).
+  if (await aboutPriorDocument(tx, event)) {
+    if (options.postOn === undefined && (await periodClosed(tx, row.accountingDate))) {
+      return hold('PERIOD_CLOSED');
+    }
+    if (
+      event.type === 'invoice.voided' &&
+      (await openingItemSettled(tx, event.payload.invoice.id))
+    ) {
+      return hold('OPEN_ITEM_HAS_SETTLEMENTS');
+    }
+    return hold('NEEDS_DECISION', 'before_books_start');
+  }
   const [settings] = await tx.select().from(companySettings);
   if (!settings) throw new Error('A company without its settings');
   const context: HubRuleContext = {
@@ -1378,7 +1426,11 @@ export async function receiveEvent(
       .limit(1);
     const parsed = issue === undefined ? null : envelopeOf(issue);
     issued = parsed?.type === 'invoice.issued' ? parsed.payload : null;
+    // An invoice the opening carries has no issue event: its snapshot invoice (S10 rule 28).
+    issued ??= await openingInvoicePayload(tx, envelope.payload.invoice.id);
   }
+  // A credit to a cycle of an opening invoice whose void is held waits behind it (S10 rule 28).
+  const waitsFor = envelope.type === 'invoice.issued' ? await heldVoidCreditKeys(tx, envelope) : [];
   const [inserted] = await tx
     .insert(inboundEvents)
     .values({
@@ -1395,7 +1447,7 @@ export async function receiveEvent(
       documentId: document.id,
       documentNumber: document.number,
       itemKey: itemKeyOf(envelope),
-      orderKeys: orderKeysOf(envelope, issued),
+      orderKeys: [...orderKeysOf(envelope, issued), ...waitsFor],
       requestId: input.requestId,
     })
     .onConflictDoNothing()
@@ -1913,12 +1965,27 @@ export async function resolveEvent(
     state: 'resolved',
     entryId,
   });
+  await releaseFrozenMonths(tx, row, options);
   const event = await viewOf(tx, row);
   return {
     event,
     replayed: false,
     triggers: keysOf(row).map((itemKey) => ({ kind: 'item', itemKey })),
   };
+}
+
+/**
+ * A void of an invoice the opening carries that leaves held releases, as the system, every ended
+ * month its schedules missed while it was held, each on its month's last day (S10 rule 28); the
+ * events waiting behind it retry after the commit, through the action's triggers.
+ */
+async function releaseFrozenMonths(
+  tx: Transaction,
+  row: EventRow,
+  options: AttemptOptions,
+): Promise<void> {
+  if (row.type !== 'invoice.voided') return;
+  await releaseAfterHeldVoid(tx, row.documentId, options.today, systemActor(options.actor));
 }
 
 /** Dismiss, by the owner, for any held event (rule 17): it never posts; waiting events retry. */
@@ -1939,6 +2006,7 @@ export async function dismissEvent(
     state: 'dismissed',
     holdReason: state.holdReason,
   });
+  await releaseFrozenMonths(tx, row, options);
   const event = await viewOf(tx, row);
   return {
     event,

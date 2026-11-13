@@ -640,6 +640,105 @@ async function openingInvoices(
   return found;
 }
 
+/** Whether an issue is an opening's invoice (S10), not an `invoice.issued` event. */
+function isOpeningIssue(issue: ScheduleIssue): boolean {
+  return issue.hub.inboxId.startsWith('opening:');
+}
+
+/** The posted opening's invoice of a Hub invoice id as its schedules' issue, or null (S10). */
+async function postedOpeningIssue(
+  tx: Transaction,
+  invoiceId: string,
+): Promise<ScheduleIssue | null> {
+  const [posted] = await tx
+    .select({ id: openings.id })
+    .from(openings)
+    .where(eq(openings.state, 'posted'));
+  if (!posted) return null;
+  const invoice = (await openingInvoices(tx, [posted.id])).get(`${posted.id}:${invoiceId}`);
+  return invoice === undefined ? null : openingIssue(posted.id, invoice);
+}
+
+/**
+ * The posted opening's snapshot invoice of a Hub invoice id, read as its `invoice.issued` payload:
+ * what a void of an invoice the opening carries orders behind (S06 rule 17, S10 rule 28).
+ */
+export async function openingInvoicePayload(
+  tx: Transaction,
+  invoiceId: string,
+): Promise<InvoiceIssuedV1 | null> {
+  return (await postedOpeningIssue(tx, invoiceId))?.payload ?? null;
+}
+
+/** The held `invoice.voided` of a Hub invoice, its inbox id, or null (S10 rule 28). */
+export async function heldVoidOf(tx: Transaction, invoiceId: string): Promise<string | null> {
+  const [held] = await tx
+    .select({ id: inboundEvents.id })
+    .from(inboundEvents)
+    .innerJoin(
+      inboundEventStates,
+      and(
+        eq(inboundEventStates.companyId, inboundEvents.companyId),
+        eq(inboundEventStates.eventId, inboundEvents.id),
+      ),
+    )
+    .where(
+      and(
+        eq(inboundEvents.type, 'invoice.voided'),
+        eq(inboundEvents.documentType, 'invoice'),
+        eq(inboundEvents.documentId, invoiceId),
+        eq(inboundEventStates.state, 'held'),
+      ),
+    )
+    .limit(1);
+  return held?.id ?? null;
+}
+
+/**
+ * Once an invoice's held void leaves held (dismissed, or resolved by an entry that leaves a
+ * schedule standing; S10 rule 28, owner 2026-11-12): every ended month the opening's schedules of
+ * the invoice did not release is released at once, each dated on its own month's last day (a held
+ * event kept the month open, S07), in the caller's transaction. A schedule the resolving entry
+ * cleared releases nothing. Answers the entries posted.
+ */
+export async function releaseAfterHeldVoid(
+  tx: Transaction,
+  invoiceId: string,
+  today: string,
+  actor: AuditActor,
+): Promise<string[]> {
+  const issue = await postedOpeningIssue(tx, invoiceId);
+  if (issue === null) return [];
+  return releaseEndedMonths(tx, issue, today, actor);
+}
+
+/**
+ * The item keys a credit waits behind (S10 rule 28; owner, 2026-11-12): `invoice:<id>` of each
+ * opening invoice whose schedule of a cycle the invoice credits has its void held, so the credit is
+ * held `WAITING_FOR_EARLIER_EVENT` until that void leaves held, and its release retries it.
+ */
+export async function heldVoidCreditKeys(
+  tx: Transaction,
+  event: EventOf<'invoice.issued'>,
+): Promise<string[]> {
+  const keys = creditCycles(event);
+  if (keys.length === 0) return [];
+  const rows = await tx
+    .selectDistinct({ invoiceId: recognitionSchedules.invoiceDocumentId })
+    .from(recognitionSchedules)
+    .where(
+      and(
+        inArray(recognitionSchedules.cycleKey, keys),
+        sql`${recognitionSchedules.openingId} is not null`,
+      ),
+    );
+  const waiting: string[] = [];
+  for (const { invoiceId } of rows) {
+    if ((await heldVoidOf(tx, invoiceId)) !== null) waiting.push(`invoice:${invoiceId}`);
+  }
+  return waiting.sort();
+}
+
 /** An opening's invoice as its schedules' issue (S10 rule 24). */
 function openingIssue(
   openingId: string,
@@ -943,6 +1042,10 @@ export async function releaseInvoiceMonth(
   const lastDay = lastDayOfMonth(`${month}-01`);
   if (lastDay >= today) return null;
   await tx.select({ id: ledgerHeads.id }).from(ledgerHeads).for('update');
+  // An opening invoice's schedules release nothing while its void is held (S10 rule 28).
+  if (isOpeningIssue(issue) && (await heldVoidOf(tx, issue.payload.invoice.id)) !== null) {
+    return null;
+  }
   const entryDate = closedPeriods.includes(month)
     ? firstOpenDayAfter(lastDay, closedPeriods)
     : lastDay;

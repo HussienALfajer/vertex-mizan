@@ -52,6 +52,7 @@ import {
   measuredLine,
   moveItem,
   movementOn,
+  negate,
   periodOf,
   type RevaluedBalance,
   reclassifiedLines,
@@ -59,6 +60,7 @@ import {
   revaluationReversalLines,
   reverseLines,
   runningVoidDifferenceLines,
+  sumCarried,
   type VoidedRunningItem,
 } from '@vertex-mizan/ledger';
 import { and, asc, desc, eq, inArray, isNull, lte, or, sql } from 'drizzle-orm';
@@ -68,6 +70,7 @@ import type { Transaction } from '../client.js';
 import { accountRequiredDimensions, accountRoles, chartAccounts } from '../schema/chart.js';
 import { companySettings } from '../schema/companies.js';
 import { dimensionTypes, dimensionValues } from '../schema/dimensions.js';
+import { inboundEventStates, inboundEvents } from '../schema/inbox.js';
 import {
   dimensionSets,
   dimensionSetValues,
@@ -89,6 +92,7 @@ import {
 } from '../schema/open-items.js';
 import { openings } from '../schema/opening.js';
 import { exchangeRates, ratePairs } from '../schema/rates.js';
+import { recognitionMovements, recognitionSchedules } from '../schema/recognition.js';
 import { ledgersOf } from '../services/companies.js';
 import { exchangeRateOf, publicationCalendar, rateSuperseded } from '../services/rates.js';
 import { isClosedPeriod, readClosedPeriods } from './periods.js';
@@ -126,6 +130,14 @@ export interface ManualLineSpec {
    * transaction amount. Refused on a manual entry's line and on a line on an item.
    */
   readonly carried?: CarriedAmounts;
+  /**
+   * The opening schedule a manual line on its contract liability account clears (S10 rule 28; owner,
+   * 2026-11-12): the line takes the schedule's dimensions and carries what it still holds, read
+   * from its movements, at its carried amounts (no rate read; IAS 21.23(b)); its transaction amount
+   * must be exactly that. The schedule takes a `reversed` movement on the entry and stops. Only an
+   * opening schedule standing, of an invoice whose `invoice.voided` is held.
+   */
+  readonly scheduleId?: string | null;
 }
 
 /**
@@ -355,6 +367,14 @@ interface Built {
   readonly newItems: readonly NewItem[];
   /** The running items a reversal moves, for the difference entry of S04 rule 13. */
   readonly voided: readonly VoidedRunningItem[];
+  /** The opening schedules a manual entry's lines clear, with what each carried (S10 rule 28). */
+  readonly clearedSchedules?: readonly ClearedSchedule[];
+}
+
+/** An opening schedule a manual line clears, and the amounts it carried, positive. */
+interface ClearedSchedule {
+  readonly scheduleId: string;
+  readonly amounts: CarriedAmounts;
 }
 
 type Role =
@@ -400,6 +420,7 @@ function linesPayload(lines: readonly ManualLineSpec[]): CanonicalValue {
       newItem: { reference: line.newItem.reference, dueOn: line.newItem.dueOn },
     }),
     ...(line.carriesItems === true && { carriesItems: true }),
+    ...(line.scheduleId && { scheduleId: line.scheduleId }),
     ...(line.carried !== undefined && {
       carried: {
         bookMinor: line.carried.bookMinor,
@@ -931,6 +952,18 @@ async function manualLines(
       });
     }
     if (
+      spec.scheduleId &&
+      (hub !== null ||
+        spec.openItemId ||
+        spec.newItem ||
+        spec.carriesItems === true ||
+        spec.carried !== undefined)
+    ) {
+      refuse('VALIDATION_FAILED', 'Only a manual line off an item clears an opening schedule', {
+        lineNo: index + 1,
+      });
+    }
+    if (
       spec.carried !== undefined &&
       (hub === null ||
         spec.openItemId ||
@@ -951,11 +984,24 @@ async function manualLines(
     specs.flatMap((spec) => (spec.openItemId ? [spec.openItemId] : [])),
     lock,
   );
-  // The values of the lines and of the items they name, for the chart check and dimension sets.
+  const schedules = new Map<string, OpeningScheduleLine>();
+  for (const [index, spec] of specs.entries()) {
+    if (!spec.scheduleId) continue;
+    if (schedules.has(spec.scheduleId)) {
+      refuse('VALIDATION_FAILED', 'A schedule is cleared by one line', { lineNo: index + 1 });
+    }
+    schedules.set(
+      spec.scheduleId,
+      await openingScheduleOf(tx, spec.scheduleId, index + 1, ledgers.parallel !== null),
+    );
+  }
+  // The values of the lines and of the items and schedules they name, for the chart check and
+  // dimension sets.
   const values = await dimensionValuesOf(tx, [
     ...new Set([
       ...specs.flatMap((spec) => spec.dimensionValueIds),
       ...[...existing.values()].flatMap((item) => Object.values(item.dimensions)),
+      ...[...schedules.values()].flatMap((schedule) => schedule.valueIds),
     ]),
   ]);
   const chart = await chartOf(tx, [...new Set(specs.map((spec) => spec.accountId))]);
@@ -974,7 +1020,39 @@ async function manualLines(
     let dimensions = namedDimensions;
     let item: ItemState | undefined;
     let adjusted = false;
-    if (spec.openItemId) {
+    let carried = spec.carried;
+    const schedule = spec.scheduleId ? schedules.get(spec.scheduleId) : undefined;
+    if (schedule !== undefined) {
+      const scheduleValues = schedule.valueIds.map((id) => values.get(id) as LineDimensionValue);
+      if (
+        spec.accountId !== schedule.accountId ||
+        spec.currency !== schedule.amounts.transaction.currency ||
+        spec.amountMinor !== schedule.amounts.transaction.amountMinor ||
+        spec.dimensionValueIds.some((id) => !schedule.valueIds.includes(id))
+      ) {
+        refuse(
+          'VALIDATION_FAILED',
+          'A line clears its schedule on its account, for exactly what it still carries',
+          {
+            lineNo,
+            scheduleId: spec.scheduleId,
+            carries: String(schedule.amounts.transaction.amountMinor),
+          },
+        );
+      }
+      onLine(lineNo, () =>
+        checkLineAgainstChart({
+          account,
+          currency: spec.currency,
+          dimensions: scheduleValues,
+          origin,
+        }),
+      );
+      dimensions = Object.fromEntries(
+        scheduleValues.map((value) => [value.typeId, value.id]),
+      ) as Dimensions;
+      carried = schedule.amounts;
+    } else if (spec.openItemId) {
       const stored = existing.get(spec.openItemId);
       if (stored === undefined) {
         refuse('NOT_FOUND', 'No such open item', { itemId: spec.openItemId, lineNo });
@@ -1144,10 +1222,13 @@ async function manualLines(
       amount: money(spec.amountMinor, spec.currency),
       ...(item !== undefined && { item }),
       ...(spec.carriesItems === true && { carriesItems: true as const }),
-      ...(spec.carried !== undefined && { carried: spec.carried }),
+      ...(carried !== undefined && { carried }),
     });
     adjustedOf.push(adjusted);
   }
+  // A correction against retained earnings takes the residual there (S10 rule 28, IAS 8.42).
+  const roles = await roleAccounts(tx);
+  const retainedEarnings = hub === null ? roles.get(roleTarget('retained_earnings')) : undefined;
   const { rates, ids } = await ratesOn(tx, measureOn);
   const context: MeasureContext = {
     ledgers,
@@ -1159,6 +1240,7 @@ async function manualLines(
   const built = manualEntry(
     {
       lines,
+      ...(retainedEarnings !== undefined && { retainedEarnings }),
       // Hub's rate is the transaction's own rate, from Hub (ADR 0007), as the conversions record it.
       dealtRates:
         hub === null ? dealtRates : dealtRates.map((rate) => ({ ...rate, source: 'hub' as const })),
@@ -1176,7 +1258,7 @@ async function manualLines(
       lines: built.lines,
       rounding: { account: roleTarget('conversion_rounding') },
     }),
-    await roleAccounts(tx),
+    roles,
   );
   const typedOf = (index: number) => built.typed[index] ?? null;
   // The difference and rounding lines go on the role accounts: checked as manual lines too.
@@ -1197,6 +1279,79 @@ async function manualLines(
     rateIds: ids,
     newItems,
     voided: [],
+    clearedSchedules: [...schedules.entries()].map(([scheduleId, schedule]) => ({
+      scheduleId,
+      amounts: schedule.amounts,
+    })),
+  };
+}
+
+/** An opening schedule a manual line clears: its account, values and what it carries. */
+interface OpeningScheduleLine {
+  readonly accountId: string;
+  readonly valueIds: readonly string[];
+  readonly amounts: CarriedAmounts;
+}
+
+/**
+ * The opening schedule a manual line names (S10 rule 28): one an opening opened, standing
+ * (no `reversed` movement), of an invoice whose `invoice.voided` is held, with what its movements
+ * leave it carrying, positive; `NOT_FOUND` or `VALIDATION_FAILED` naming the line otherwise.
+ */
+async function openingScheduleOf(
+  tx: Transaction,
+  scheduleId: string,
+  lineNo: number,
+  keepsParallel: boolean,
+): Promise<OpeningScheduleLine> {
+  // Read under the ledger head's lock, which every posting and release takes first.
+  const [schedule] = await tx
+    .select()
+    .from(recognitionSchedules)
+    .where(eq(recognitionSchedules.id, scheduleId));
+  if (!schedule) refuse('NOT_FOUND', 'No such schedule', { scheduleId, lineNo });
+  const result = await tx.execute<{ held: boolean }>(sql`
+    select exists (
+      select 1 from ${inboundEvents} e
+      join ${inboundEventStates} s on s.company_id = e.company_id and s.event_id = e.id
+      where e.type = 'invoice.voided' and e.document_type = 'invoice'
+        and e.document_id = ${schedule.invoiceDocumentId} and s.state = 'held'
+    ) as held`);
+  const movements = await tx
+    .select()
+    .from(recognitionMovements)
+    .where(eq(recognitionMovements.scheduleId, scheduleId));
+  const currency = schedule.currency as CurrencyCode;
+  if (
+    schedule.openingId === null ||
+    result.rows[0]?.held !== true ||
+    movements.some((movement) => movement.kind === 'reversed')
+  ) {
+    refuse(
+      'VALIDATION_FAILED',
+      'A manual line clears only a standing opening schedule of an invoice whose void is held',
+      { scheduleId, lineNo },
+    );
+  }
+  const amounts = sumCarried(
+    movements.map((movement) => ({
+      transaction: money(movement.transactionMinor, currency),
+      bookMinor: movement.bookMinor,
+      parallelMinor: movement.parallelMinor,
+    })),
+    currency,
+    keepsParallel,
+  );
+  if (amounts.transaction.amountMinor <= 0n) {
+    refuse('VALIDATION_FAILED', 'The schedule carries nothing to clear', { scheduleId, lineNo });
+  }
+  return {
+    accountId: schedule.liabilityAccountId,
+    valueIds:
+      schedule.contractValueId === null
+        ? [schedule.clientValueId]
+        : [schedule.clientValueId, schedule.contractValueId],
+    amounts,
   };
 }
 
@@ -2349,6 +2504,24 @@ async function writeEntry(
         ],
   );
   if (movements.length > 0) await tx.insert(openItemMovements).values(movements);
+  // Each opening schedule a line cleared stops with its `reversed` movement (S10 rule 28).
+  const cleared = built.clearedSchedules ?? [];
+  if (cleared.length > 0) {
+    await tx.insert(recognitionMovements).values(
+      cleared.map(({ scheduleId, amounts }) => {
+        const back = negate(amounts);
+        return {
+          companyId,
+          scheduleId,
+          kind: 'reversed',
+          entryId,
+          transactionMinor: back.transaction.amountMinor,
+          bookMinor: back.bookMinor,
+          parallelMinor: back.parallelMinor,
+        };
+      }),
+    );
+  }
   const items = built.lines.flatMap(({ line }, index) =>
     line.item === undefined
       ? []
@@ -2368,6 +2541,7 @@ async function writeEntry(
       lineCount: lines.length,
       ...(reversesEntryId !== null && { reverses: reversesEntryId }),
       ...(items.length > 0 && { items }),
+      ...(cleared.length > 0 && { schedules: cleared.map(({ scheduleId }) => scheduleId) }),
       ...(entry.follows !== null && { follows: entry.follows }),
     },
   });

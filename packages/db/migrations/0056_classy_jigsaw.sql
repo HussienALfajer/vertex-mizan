@@ -1,0 +1,5 @@
+ALTER TABLE "entry_draft_lines" ADD COLUMN "schedule_id" uuid;--> statement-breakpoint
+ALTER TABLE "entry_draft_lines" ADD CONSTRAINT "entry_draft_lines_schedule_fk" FOREIGN KEY ("company_id","schedule_id") REFERENCES "public"."recognition_schedules"("company_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+CREATE INDEX "entry_draft_lines_company_schedule_idx" ON "entry_draft_lines" USING btree ("company_id","schedule_id");--> statement-breakpoint
+CREATE INDEX "opening_snapshots_company_prior_documents_idx" ON "opening_snapshots" USING gin ("company_id",("payload" -> 'prior_documents') jsonb_path_ops);--> statement-breakpoint
+ALTER TABLE "entry_draft_lines" ADD CONSTRAINT "entry_draft_lines_schedule" CHECK ("entry_draft_lines"."schedule_id" is null or ("entry_draft_lines"."open_item_id" is null and "entry_draft_lines"."new_item_reference" is null));

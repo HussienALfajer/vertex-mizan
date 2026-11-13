@@ -11,6 +11,7 @@ import type { Transaction } from '../client.js';
 import { chartAccounts } from '../schema/chart.js';
 import { entryAttachments, entryDraftLines, entryDrafts } from '../schema/drafts.js';
 import { openItems } from '../schema/open-items.js';
+import { recognitionSchedules } from '../schema/recognition.js';
 import type { PersonActor } from './rates.js';
 
 // The drafts' writes that the API's drafts and entries modules and the scenario book's `draft` and
@@ -27,6 +28,8 @@ export const auditedLines = (lines: readonly (DraftLine | DraftLineInput)[]) =>
     memo: line.memo,
     openItemId: line.openItemId,
     newItem: line.newItem,
+    // Only when set, so an audit row of S04's shape reads as it did.
+    ...(line.scheduleId !== null && { scheduleId: line.scheduleId }),
   }));
 
 /**
@@ -83,6 +86,28 @@ export async function writeLines(
   if (unknownItems.length > 0) {
     throw new DomainError('VALIDATION_FAILED', 'Unknown open item', { issues: unknownItems });
   }
+  // A schedule of another company, or none, likewise (S10 rule 28).
+  const scheduleIds = [
+    ...new Set(lines.flatMap((line) => (line.scheduleId === null ? [] : [line.scheduleId]))),
+  ];
+  const knownSchedules = new Set(
+    scheduleIds.length === 0
+      ? []
+      : (
+          await tx
+            .select({ id: recognitionSchedules.id })
+            .from(recognitionSchedules)
+            .where(inArray(recognitionSchedules.id, scheduleIds))
+        ).map((row) => row.id),
+  );
+  const unknownSchedules = lines.flatMap((line, index) =>
+    line.scheduleId !== null && !knownSchedules.has(line.scheduleId)
+      ? [{ path: ['lines', index, 'scheduleId'], message: 'Unknown schedule' }]
+      : [],
+  );
+  if (unknownSchedules.length > 0) {
+    throw new DomainError('VALIDATION_FAILED', 'Unknown schedule', { issues: unknownSchedules });
+  }
   const rows = await tx.select().from(entryDraftLines).where(eq(entryDraftLines.draftId, draftId));
   const byNumber = new Map(rows.map((row) => [row.lineNo, row]));
   for (const [index, line] of lines.entries()) {
@@ -95,6 +120,7 @@ export async function writeLines(
       openItemId: line.openItemId,
       newItemReference: line.newItem?.reference ?? null,
       newItemDueOn: line.newItem?.dueOn ?? null,
+      scheduleId: line.scheduleId,
       archivedAt: null,
     };
     const row = byNumber.get(index + 1);
