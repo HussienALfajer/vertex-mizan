@@ -106,11 +106,11 @@ Scope: `docs/product/phase-1-scope.md`. One spec per line, each through `/spec` 
 - [ ] The accountants' review of the chart templates, published as a new template version before Vertex Media's production company is created (Q3)
 - [ ] Inquiry with the tax authority about program approval (Q8)
 - [ ] Hub's side of the integration, in Hub's sessions (ADR 0006, 0008, Q5)
-- [~] Deployment and backup ADR in force: point-in-time recovery, encrypted off-server copies, a restore drill (Q2); no real company data before it
+- [x] Deployment and backup ADR in force: point-in-time recovery, encrypted off-server copies, a restore drill (Q2); no real company data before it
   - [x] ADR 0020 written and accepted (owner, 2026-11-13): Mizan's own PostgreSQL 17 cluster on `127.0.0.1:5433`, pgBackRest with 35 days of point-in-time recovery in Backblaze B2, monthly archives kept 10 years under a 3000-day Object Lock (amended by the owner, 2026-11-13), restic for files and configuration, keys with two copies held by the owner, monthly automatic and quarterly manual restore drills
   - [x] The deployment PR (`feat/deployment`): `deploy/` (provisioning, atomic deploys with an incremental backup before the migrations, the `17/mizan` cluster with pgBackRest to a local and a B2 repository, the 14-day dumps, restic, the monthly Object Lock archive, the monthly restore drill with `drill:check`, the backup monitor, the health check and email alerts, nginx, systemd, logrotate), `docs/deployment.md` and `docs/operations/restore-drills.md`
   - [x] Deployed (2026-11-13), the first full backup in B2 with continuous log archiving, the first drill passed
-  - [ ] In force: both copies of every key confirmed by the owner
+  - [x] In force (owner, 2026-11-13): the archive bucket in compliance mode for 3000 days, both copies of every key kept
 - [ ] Production: Vertex Media's books live; a real month closed (the scope's "Done when")
 
 ## Phase 2 — Cash, expenses, suppliers, statements, close
