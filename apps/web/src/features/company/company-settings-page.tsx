@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from '@tanstack/react-router';
+import { Link, useNavigate } from '@tanstack/react-router';
 import {
   type AmountTextError,
   type Company,
@@ -98,7 +98,10 @@ function Settings({
           <ManualEntryApproval company={company} canEdit={canEdit} />
           <PaymentTolerance company={company} canEdit={canEdit} />
         </div>
-        <Ledgers company={company} canEdit={canEdit} />
+        <div className="flex flex-col gap-6">
+          <Ledgers company={company} canEdit={canEdit} />
+          <BooksStart company={company} canEdit={canEdit} />
+        </div>
       </div>
       <div className="grid gap-6 lg:grid-cols-2 [&>*]:min-w-0">
         {canArchive && <ArchiveOrRestore company={company} />}
@@ -438,6 +441,107 @@ function Ledgers({ company, canEdit }: { company: Company; canEdit: boolean }) {
             {t.ledgers.submit}
           </Button>
         )}
+      </form>
+      {dialog}
+    </Section>
+  );
+}
+
+/**
+ * The books start (S10 rules 1–2): a month's first day, set by the owner with a fresh code through
+ * the ledgers' change. Locked once an entry posted, a snapshot arrived or the opening's draft
+ * started (`BOOKS_START_LOCKED` names a snapshot, which this page cannot see), never cleared.
+ */
+function BooksStart({ company, canEdit }: { company: Company; canEdit: boolean }) {
+  const { companyId, me } = useCompany();
+  const { run, dialog } = useSensitiveAction();
+  const b = ar.opening.booksStart;
+  const [month, setMonth] = useState(company.booksStart?.slice(0, 7) ?? '');
+  const [error, setError] = useState<string | undefined>();
+  const [attempt, setAttempt] = useState(0);
+  const lock = company.booksStarted
+    ? b.locked.posted
+    : company.openingState !== null
+      ? b.locked.opening
+      : null;
+  const editable = canEdit && lock === null;
+  const save = useCompanyWrite((booksStart: string) =>
+    run(() =>
+      api('PUT', '/company/ledgers', {
+        company: companyId,
+        body: {
+          ledgers: company.ledgers,
+          fiscalYearStartMonth: company.fiscalYearStartMonth,
+          booksStart,
+        },
+        schema: companySchema,
+      }),
+    ),
+  );
+  return (
+    <Section title={b.title} description={b.description}>
+      {lock !== null && (
+        <Callout
+          tone="warning"
+          icon={<LockIcon />}
+          title={b.lockedTitle}
+          description={`${lock} ${b.locked.general}`}
+        />
+      )}
+      <form
+        noValidate
+        className="flex flex-col gap-4"
+        onSubmit={(event) => {
+          event.preventDefault();
+          const found =
+            month === ''
+              ? company.booksStart === null
+                ? b.invalid
+                : b.required
+              : !/^\d{4}-(0[1-9]|1[0-2])$/.test(month) || month < '2026-01'
+                ? b.invalid
+                : undefined;
+          setError(found);
+          if (found) setAttempt((count) => count + 1);
+          else save.mutate(`${month}-01`);
+        }}
+      >
+        <FormErrorSummary attempt={attempt} errors={[['company-books-start', error]]} />
+        <Field id="company-books-start" invalid={error !== undefined}>
+          <FieldLabel>{b.label}</FieldLabel>
+          <Input
+            type="month"
+            dir="ltr"
+            className="w-48"
+            min="2026-01"
+            value={month}
+            readOnly={!editable}
+            onChange={(event) => {
+              save.reset();
+              setMonth(event.target.value);
+            }}
+          />
+          <FieldDescription>
+            {company.booksStart === null ? b.none : <bdi dir="ltr">{company.booksStart}</bdi>}
+            {' · '}
+            {b.hint}
+          </FieldDescription>
+          <FieldError match={error !== undefined}>{error}</FieldError>
+        </Field>
+        <FormError error={save.error} />
+        <Saved show={save.isSuccess} title={b.saved} />
+        <div className="flex flex-wrap gap-2">
+          {editable && (
+            <Button type="submit" className="w-fit" loading={save.isPending}>
+              {b.submit}
+            </Button>
+          )}
+          {company.booksStart !== null && can(me, 'opening.read') && (
+            <Button variant="outline" className="w-fit" render={<Link to="/opening" />}>
+              {b.openOpening}
+            </Button>
+          )}
+        </div>
       </form>
       {dialog}
     </Section>

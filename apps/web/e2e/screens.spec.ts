@@ -25,6 +25,15 @@ import {
   retainerInvoice,
 } from './inbox-mocks';
 import {
+  failingView,
+  openingCompany,
+  openingEntry,
+  openingReads,
+  postedView,
+  readyView,
+  reversedView,
+} from './opening-mocks';
+import {
   closedOctober,
   currentBookPreview,
   octoberClosedList,
@@ -1047,6 +1056,78 @@ for (const colorScheme of ['light', 'dark'] as const) {
           await expect(page.getByRole('button', { name: ar.drafts.editor.approve })).toBeVisible();
           await expectNoPageOverflow(page);
           await screenshot(page, testInfo, `draft-approval-${colorScheme}-${width}`);
+        });
+      });
+
+      test.describe('opening screens', () => {
+        test.use({ me: owner, api: openingReads(failingView) });
+
+        const views = [
+          ['opening-failing', failingView],
+          ['opening-ready', readyView],
+          ['opening-posted', postedView],
+          ['opening-reversed', reversedView],
+        ] as const;
+        for (const [name, view] of views) {
+          test(`opening: ${name}`, async ({ page }, testInfo) => {
+            await page.route('**/api/opening', (route) =>
+              route.request().method() === 'GET'
+                ? route.fulfill({ status: 200, json: view })
+                : route.fallback(),
+            );
+            await page.route('**/api/company', (route) =>
+              route.request().method() === 'GET'
+                ? route.fulfill({ status: 200, json: openingCompany(view.state) })
+                : route.fallback(),
+            );
+            await page.goto('/opening');
+            await expect(
+              page.getByRole('navigation', { name: ar.opening.steps.label }),
+            ).toBeVisible();
+            await expect(page.locator('#review [data-slot="checklist-item"]')).toHaveCount(6);
+            await expectNoPageOverflow(page);
+            await screenshot(page, testInfo, `${name}-${colorScheme}-${width}`);
+          });
+        }
+
+        test('opening: post dialog', async ({ page }, testInfo) => {
+          await page.route('**/api/opening', (route) =>
+            route.request().method() === 'GET'
+              ? route.fulfill({ status: 200, json: readyView })
+              : route.fallback(),
+          );
+          await page.goto('/opening');
+          await page.getByRole('button', { name: ar.opening.actions.post }).click();
+          await expect(
+            page.getByRole('alertdialog', { name: ar.opening.postDialog.title }),
+          ).toBeVisible();
+          await screenshot(page, testInfo, `opening-post-dialog-${colorScheme}-${width}`);
+        });
+
+        test('opening: books start in the company settings', async ({ page }, testInfo) => {
+          await page.route('**/api/company', (route) =>
+            route.request().method() === 'GET'
+              ? route.fulfill({ status: 200, json: openingCompany('draft') })
+              : route.fallback(),
+          );
+          await page.goto('/settings/company');
+          await expect(page.getByText(ar.opening.booksStart.lockedTitle)).toBeVisible();
+          await page.getByText(ar.opening.booksStart.lockedTitle).scrollIntoViewIfNeeded();
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `opening-books-start-${colorScheme}-${width}`);
+        });
+
+        test('opening: the opening entry', async ({ page }, testInfo) => {
+          await page.route(`**/api/entries/${openingEntry.id}`, (route) =>
+            route.fulfill({ status: 200, json: openingEntry }),
+          );
+          await page.route('**/api/opening', (route) =>
+            route.fulfill({ status: 200, json: postedView }),
+          );
+          await page.goto(`/entries/${openingEntry.id}`);
+          await expect(page.locator('[data-slot="opening-entry-badge"]')).toBeVisible();
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `opening-entry-${colorScheme}-${width}`);
         });
       });
 

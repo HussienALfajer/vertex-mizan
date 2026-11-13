@@ -6,13 +6,17 @@ import {
   Inject,
   Post,
   Put,
+  Query,
   SerializeOptions,
+  StreamableFile,
 } from '@nestjs/common';
 import { ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import {
   type OpeningEntryResult,
+  type OpeningExportQuery,
   type OpeningViewAnswer,
   openingEntryResultSchema,
+  openingExportQuerySchema,
   openingViewSchema,
   type PostOpening,
   postOpeningSchema,
@@ -33,7 +37,11 @@ import {
   COMPANY_READ_ERRORS,
   COMPANY_WRITE_ERRORS,
 } from '../../core/http/api-errors.js';
+import { ApiOkProducesResponse } from '../../core/http/api-files.js';
+import { ApiQueryFrom } from '../../core/http/api-parameters.js';
 import { OpeningService } from './opening.service.js';
+
+const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
 /** `/api/opening` (S10 "API"): the opening's view, its draft, its posting and its reversal. */
 @ApiTags('opening')
@@ -52,6 +60,24 @@ export class OpeningController {
   @ApiErrors(...COMPANY_READ_ERRORS, 'NO_BOOKS_START')
   read(@Access() access: RequestAccess): Promise<OpeningViewAnswer> {
     return this.opening.read(inCompany(access));
+  }
+
+  @Get('export')
+  @ApiQueryFrom(openingExportQuerySchema)
+  @CompanyRoute('opening.read')
+  @ApiOkProducesResponse("The opening's preview or its agreement with Hub as an Excel workbook", [
+    XLSX,
+  ])
+  @ApiErrors(...COMPANY_READ_ERRORS, 'NO_BOOKS_START', 'VALIDATION_FAILED')
+  async export(
+    @Access() access: RequestAccess,
+    @Query({ schema: openingExportQuerySchema }) query: OpeningExportQuery,
+  ): Promise<StreamableFile> {
+    const file = await this.opening.export(inCompany(access), query);
+    return new StreamableFile(file.body, {
+      type: file.contentType,
+      disposition: `attachment; filename="${file.fileName}"`,
+    });
   }
 
   @Put()

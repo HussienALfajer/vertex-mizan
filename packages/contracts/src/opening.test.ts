@@ -11,6 +11,7 @@ import {
 } from './opening.js';
 import {
   openingEntryResultSchema,
+  openingExportQuerySchema,
   openingViewSchema,
   reverseOpeningSchema,
 } from './opening-view.js';
@@ -238,5 +239,11 @@ describe('the view of GET /api/opening (S10 rule 20)', () => {
     }
     expect(reverseOpeningSchema.safeParse({ reason: '  ' }).success).toBe(false);
     expect(reverseOpeningSchema.safeParse({ reason: 'x'.repeat(501) }).success).toBe(false);
+  });
+
+  it("takes the export's part, the preview or the agreement", () => {
+    expect(openingExportQuerySchema.parse({ part: 'agreement' })).toEqual({ part: 'agreement' });
+    expect(openingExportQuerySchema.safeParse({ part: 'snapshot' }).success).toBe(false);
+    expect(openingExportQuerySchema.safeParse({}).success).toBe(false);
   });
 });

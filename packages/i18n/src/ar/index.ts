@@ -18,6 +18,7 @@ import { inbox } from './inbox.js';
 import { integrity } from './integrity.js';
 import { members } from './members.js';
 import { openItems } from './open-items.js';
+import { opening } from './opening.js';
 import { periods } from './periods.js';
 import { permissions } from './permissions.js';
 import { postingRules } from './posting-rules.js';
@@ -63,6 +64,7 @@ export const ar = {
   revaluation,
   reconciliation,
   reports,
+  opening,
 };
 
 export type Catalog = typeof ar;

@@ -6,14 +6,14 @@ describe('audit actions', () => {
   // Stored values: a later spec appends, never renames (S01, "Audit").
   it('are the platform and company actions of S01 to S10, as <entity>.<verb>', () => {
     expect(PLATFORM_AUDIT_ACTIONS).toHaveLength(11);
-    expect(COMPANY_AUDIT_ACTIONS).toHaveLength(88);
+    expect(COMPANY_AUDIT_ACTIONS).toHaveLength(89);
     expect(COMPANY_AUDIT_ACTIONS.slice(15, 17)).toEqual(['account.created', 'account.updated']);
     expect(COMPANY_AUDIT_ACTIONS.slice(38, 41)).toEqual([
       'export.chart',
       'entry.posted',
       'draft.created',
     ]);
-    expect(COMPANY_AUDIT_ACTIONS.slice(-39, -16)).toEqual([
+    expect(COMPANY_AUDIT_ACTIONS.slice(-40, -17)).toEqual([
       'company.settings_updated',
       'integrity.checked',
       'export.requested',
@@ -38,7 +38,7 @@ describe('audit actions', () => {
       'period.reopened',
       'service_department.set',
     ]);
-    expect(COMPANY_AUDIT_ACTIONS.slice(-16)).toEqual([
+    expect(COMPANY_AUDIT_ACTIONS.slice(-17)).toEqual([
       'export.trial_balance',
       'export.general_ledger',
       'export.account_statement',
@@ -55,6 +55,7 @@ describe('audit actions', () => {
       'opening.saved',
       'opening.posted',
       'opening.reversed',
+      'export.opening',
     ]);
     for (const action of [...PLATFORM_AUDIT_ACTIONS, ...COMPANY_AUDIT_ACTIONS]) {
       expect(action).toMatch(/^[a-z]+(_[a-z]+)*\.[a-z]+(_[a-z]+)*$/);

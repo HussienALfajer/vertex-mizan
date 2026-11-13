@@ -206,6 +206,8 @@ export const AUDITED_FIELDS = {
     'reversalEntryId',
     'reason',
   ],
+  // S10 "Screens": the Excel of the opening's preview or agreement, with the draft's version.
+  opening_export: ['format', 'part', 'version'],
   receivables_export: [
     'format',
     'asOf',

@@ -8,6 +8,7 @@ import {
 } from '@vertex-mizan/contracts';
 import { ar } from '@vertex-mizan/i18n';
 import {
+  Badge,
   Button,
   Card,
   CardHeader,
@@ -37,6 +38,8 @@ import { formatDateTime, formatDay, formatEntryNumber } from '../../lib/format';
 import { can, useCompany } from '../../lib/session';
 import { companyQuery } from '../company/company-queries';
 import { HubDocumentLink } from '../inbox/inbox-parts';
+import { fill } from '../opening/opening-parts';
+import { openingQuery } from '../opening/opening-queries';
 import { previousMonth } from '../periods/period-parts';
 import {
   AttachmentsCard,
@@ -104,6 +107,11 @@ function EntryView({ entry }: { entry: Entry }) {
           <span className="flex flex-wrap items-center gap-x-3">
             {t.table.number}
             <EntryNumberText number={entry} startMonth={startMonth} />
+            {entry.source === 'opening' && (
+              <Badge tone="brand" data-slot="opening-entry-badge">
+                {ar.opening.entry.badge}
+              </Badge>
+            )}
           </span>
         }
         description={<bdi>{entry.description}</bdi>}
@@ -162,6 +170,16 @@ function EntryView({ entry }: { entry: Entry }) {
                 <EntryNumberText number={entry.reverses} startMonth={startMonth} />
               </Link>
             </Fact>
+          )}
+          {entry.source === 'opening' && can(me, 'opening.read') && (
+            <>
+              <Fact label={ar.opening.entry.link}>
+                <Link to="/opening" className="text-primary underline-offset-4 hover:underline">
+                  {ar.opening.entry.description}
+                </Link>
+              </Fact>
+              <OpeningSnapshotFact entryId={entry.id} />
+            </>
           )}
           {entry.source === 'revaluation' && can(me, 'periods.read') && (
             <Fact label={ar.revaluation.entry.month}>
@@ -374,5 +392,26 @@ function RevaluationMonthLink({ entry }: { entry: Entry }) {
       </bdi>
       {` · ${ar.revaluation.ledgers[ledger]}`}
     </Link>
+  );
+}
+
+/**
+ * The snapshot of Hub an opening entry posted with (S10 "Screens"): read from `/api/opening`
+ * while this entry is its posted opening; a reversed opening's entry shows none.
+ */
+function OpeningSnapshotFact({ entryId }: { entryId: string }) {
+  const { companyId } = useCompany();
+  const view = useQuery(openingQuery(companyId)).data;
+  if (!view || view.posted?.entry.id !== entryId) return null;
+  const e = ar.opening.entry;
+  return (
+    <Fact label={e.snapshot}>
+      {view.snapshot === null
+        ? e.noSnapshot
+        : fill(e.snapshotText, {
+            asOf: view.snapshot.result.as_of,
+            at: formatDateTime(view.snapshot.receivedAt),
+          })}
+    </Fact>
   );
 }
