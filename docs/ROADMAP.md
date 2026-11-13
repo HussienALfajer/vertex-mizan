@@ -107,17 +107,36 @@ Scope: `docs/product/phase-1-scope.md`. One spec per line, each through `/spec` 
   - [x] Reviewed by Claude Code instead of Syrian accountants (owner, 2026-11-13): `docs/audits/2026-11-13-chart-templates-review.md`; Vertex Media is a sole proprietorship
   - [x] `service-agency@3` and `general@3`: E1 (`214002`–`214005` on the new line `bs.other_taxes_payable`), E2 (no "(UNVERIFIED)" in the Latin names), A1–A14 in both templates (A2's department in the service agency only), A15 and A16 in `general@3` only; the slot `cancelled_project_refund` moved to `211005` (`revenue/cancelled-project`'s account, its numbers unchanged); the statement lines `bs.intangible_assets`, `bs.borrowings`, `bs.other_taxes_payable`, `bs.reserves` and `is.impairment_losses` placed by their order, `is.depreciation` named "الاستهلاك والإطفاء"; migration 0057 widens the statement-line check
 - [ ] Inquiry with the tax authority about program approval (Q8)
-- [ ] Hub's side of the integration, in Hub's sessions (ADR 0006, 0008, Q5)
+- Withdrawn (ADR 0021, owner, 2026-11-13): Hub's side of the integration, in Hub's sessions (ADR 0006, 0008, Q5)
 - [x] Deployment and backup ADR in force: point-in-time recovery, encrypted off-server copies, a restore drill (Q2); no real company data before it
   - [x] ADR 0020 written and accepted (owner, 2026-11-13): Mizan's own PostgreSQL 17 cluster on `127.0.0.1:5433`, pgBackRest with 35 days of point-in-time recovery in Backblaze B2, monthly archives kept 10 years under a 3000-day Object Lock (amended by the owner, 2026-11-13), restic for files and configuration, keys with two copies held by the owner, monthly automatic and quarterly manual restore drills
   - [x] The deployment PR (`feat/deployment`): `deploy/` (provisioning, atomic deploys with an incremental backup before the migrations, the `17/mizan` cluster with pgBackRest to a local and a B2 repository, the 14-day dumps, restic, the monthly Object Lock archive, the monthly restore drill with `drill:check`, the backup monitor, the health check and email alerts, nginx, systemd, logrotate), `docs/deployment.md` and `docs/operations/restore-drills.md`
   - [x] Deployed (2026-11-13), the first full backup in B2 with continuous log archiving, the first drill passed
   - [x] In force (owner, 2026-11-13): the archive bucket in compliance mode for 3000 days, both copies of every key kept
-- [ ] Production: Vertex Media's books live; a real month closed (the scope's "Done when")
+- Withdrawn (ADR 0021, owner, 2026-11-13; Vertex Media's company is archived with its data kept): Production: Vertex Media's books live; a real month closed
   - [x] Vertex Media's company created on `mizan.vertexmedia.pro` (owner, 2026-11-13), after `main` at #114 was deployed: `admin:create-company` with the defaults (SYP books at the bulletin, a USD parallel ledger at the market rate accepting the transaction's rate, January), `service-agency@3` (106 accounts, 17 mapped slots), the books start 2026-10-01 and the owner's approved policy note; no entry posted; the first owner's invitation sent through the server's SMTP account
-  - [ ] The first owner accepts the invitation and enrols two-factor authentication
-  - [ ] Hub's API client with `events:write`, `reconciliation:write` and `opening:write`, created once Hub's side is ready
-  - [ ] The opening as of 2026-09-30 from Hub's snapshot and the records, then the replay of Hub's events from 2026-10-01 (S10)
+  - Withdrawn: the first owner accepts the invitation and enrols two-factor authentication
+  - Withdrawn: Hub's API client with `events:write`, `reconciliation:write` and `opening:write`
+  - Withdrawn: the opening as of 2026-09-30 from Hub's snapshot and the records, then the replay of Hub's events from 2026-10-01 (S10)
+
+## Phase 1, revised — a stand-alone system for a contracting client (ADR 0021)
+
+The owner cancelled the integration with Hub on 2026-11-13 (`docs/product/phase-1-scope.md` §0). Phase 1's Hub work above stays as history.
+
+- [~] ADR 0021, the scope's revision and this roadmap (`docs/adr-0021-standalone-without-hub`)
+- [ ] Vertex Media's production company archived, its data kept (a way to archive a company, if Mizan has none)
+- [ ] Removal, one PR per layer, each with `pnpm verify --e2e-all` green and no guard of the remaining tables weakened
+  - [ ] The screens: the inbox, revenue, reconciliation, ad funds, API clients, posting rules and the Hub parts of the opening
+  - [ ] The API and the worker: `/v1`, API keys, the inbox, revenue and reconciliation endpoints, the release, retry, digest and reconciliation jobs, the Hub commands and the schema export
+  - [ ] The ledger, the database and the contracts: `hub.ts`, `recognition.ts`, `reconciliation.ts`, the Hub parts of `opening.ts`; the tables dropped only while empty; codes, permissions and audit actions kept as retired; the service-agency template
+  - [ ] The scenario book and the docs: the Hub areas (`ad-funds`, `expenses`, `inbox`, `revenue`, `receivables/hub-payment`, the Hub cases of `opening`), specs S05, S06 and S08, `AGENTS.md`'s commands
+- [ ] The client's book currency and statutory books (ADR 0021 "Open"), before their first company
+- [ ] N5 A contracting chart template
+- [ ] N1 Cash boxes: receipts and payments in any currency (spec, scenarios, slice)
+- [ ] N2 Expenses by project (spec, scenarios, slice)
+- [ ] N3 Wages of workers and craftsmen (spec, scenarios, slice)
+- [ ] N4 Materials with quantities (spec, scenarios, slice)
+- [ ] The client's first company in production; a real month closed; the client keeps the full export
 
 ## Phase 2 — Cash, expenses, suppliers, statements, close
 Detailed after phase 1 is in use.

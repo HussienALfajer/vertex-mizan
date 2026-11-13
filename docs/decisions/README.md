@@ -4,12 +4,12 @@ Short records of decisions that shape the system. Each has a status: **Accepted*
 
 | # | Decision | Status |
 |---|---|---|
-| [0001](0001-vertex-mizan-product.md) | Vertex Mizan: a multi-company accounting product with a permanent core, optional modules and an integration layer | Accepted |
+| [0001](0001-vertex-mizan-product.md) | Vertex Mizan: a multi-company accounting product with a permanent core, optional modules and an integration layer | Accepted (integration layer dropped by 0021) |
 | [0002](0002-stack-and-repository.md) | Stack and repository: Vertex Hub's stack, one monorepo, a pure ledger package | Accepted (versions amended by 0008; hosting refined by 0020) |
-| [0003](0003-tenancy-and-access.md) | Tenancy and access: companies isolated by forced row-level security, people with memberships, API clients per company | Accepted (attachments amended by 0008) |
+| [0003](0003-tenancy-and-access.md) | Tenancy and access: companies isolated by forced row-level security, people with memberships, API clients per company | Accepted (attachments amended by 0008; API clients removed by 0021) |
 | [0004](0004-money-and-currencies.md) | Money and currencies: integer minor units, quoted rates, three amounts on every line | Superseded by 0007 |
 | [0005](0005-ledger-invariants.md) | Ledger invariants: guaranteed by the database, written by one posting function, proven by a hash chain and the scenario book | Accepted (amended by 0008 and 0012; currencies in 0007) |
-| [0006](0006-hub-posting-api-contract.md) | The posting API contract with Vertex Hub: versioned events, exactly once, closed periods, daily reconciliation | Accepted (amended by 0008, 0014 and 0017) |
+| [0006](0006-hub-posting-api-contract.md) | The posting API contract with Vertex Hub: versioned events, exactly once, closed periods, daily reconciliation | Superseded by 0021 |
 | [0007](0007-book-and-parallel-currency-ledgers.md) | Money and currencies: a book currency and a parallel currency ledger, a rate policy per ledger | Accepted (bulletin lookup amended by 0011; manual entries by 0012; partial settlements by 0013; revaluation by 0016; reporting by 0018) |
 | [0008](0008-foundation-audit-amendments.md) | Amendments after the foundation audit: journal order, hardened guards, period balances, scenario runner, API holds and tax lines | Accepted (numbering year and derived state amended by 0012; hold reasons by 0014; period states by 0016; the journal book's pages by 0018) |
 | [0009](0009-brand-and-design-system.md) | Brand and design system: the Vertex identity, accounting components, company branding on printed books | Accepted (components refined by 0010) |
@@ -17,10 +17,11 @@ Short records of decisions that shape the system. Each has a status: **Accepted*
 | [0011](0011-chart-dimensions-and-bulletin-rate.md) | Chart of accounts, the contract dimension and the bulletin rate of the day | Accepted (amends 0007) |
 | [0012](0012-journal-entries-and-ledger-state.md) | Journal entries: numbering year, manual rates, approval and the ledger's derived state | Accepted (amends 0005, 0007, 0008; residuals of manual entries amended by 0013) |
 | [0013](0013-open-items-and-settlements.md) | Open items and settlements: item kinds, manual movements, settlement in proportion to what remains | Accepted (amends 0007, 0012) |
-| [0014](0014-event-inbox-holds-and-order.md) | The event inbox: outcomes, order per item, the accountant's actions and the dates of changes | Accepted (amends 0006, 0008) |
-| [0015](0015-revenue-recognition-schedules.md) | Revenue recognition: schedules and movements, releases per invoice and month, deposits with their milestone | Accepted (amends phase 1 scope §6) |
+| [0014](0014-event-inbox-holds-and-order.md) | The event inbox: outcomes, order per item, the accountant's actions and the dates of changes | Superseded by 0021 |
+| [0015](0015-revenue-recognition-schedules.md) | Revenue recognition: schedules and movements, releases per invoice and month, deposits with their milestone | Superseded by 0021 |
 | [0016](0016-periods-close-and-month-end-revaluation.md) | Periods, the close and the month-end revaluation: close in order, no override, revaluation units, closing rate, staleness | Accepted (amends 0007, 0008) |
-| [0017](0017-daily-reconciliation.md) | Daily reconciliation: a per-event report by accounting date, the latest report counts, no acceptance | Accepted (amends 0006) |
+| [0017](0017-daily-reconciliation.md) | Daily reconciliation: a per-event report by accounting date, the latest report counts, no acceptance | Superseded by 0021 |
 | [0018](0018-reports-presentation-and-journal-book.md) | Reports: presentation from the ledger, the journal book's pages, the service's dated department | Accepted (refines 0007, 0008) |
-| [0019](0019-opening-balances-and-history-replay.md) | Opening balances and the history replay: a books start, Hub's snapshot, one opening entry, the replay by accounting date | Accepted (amends 0006, 0007, 0017, phase 1 scope §4) |
+| [0019](0019-opening-balances-and-history-replay.md) | Opening balances and the history replay: a books start, Hub's snapshot, one opening entry, the replay by accounting date | Accepted (amends 0006, 0007, 0017, phase 1 scope §4; Hub's snapshot and the replay removed by 0021) |
 | [0020](0020-deployment-and-backups.md) | Deployment and backups: the shared server, a PostgreSQL cluster of Mizan's own, point-in-time recovery and encrypted off-server copies | Accepted |
+| [0021](0021-stand-alone-without-hub.md) | A stand-alone accounting system: the Hub integration removed, a contracting client first | Accepted |
