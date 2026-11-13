@@ -481,7 +481,15 @@ describe('opening/before-books-start: a correction against retained earnings (S1
       { account: '112001', dimensions: client, amount: usd(-20_000n), item: item() },
       { account: '411001', amount: usd(20_000n) },
     ]);
-    expect(rows(lines).at(-1)).toEqual(['difference', '421001', 'SYP', -20_000n, -20_000n, 0n, null]);
+    expect(rows(lines).at(-1)).toEqual([
+      'difference',
+      '421001',
+      'SYP',
+      -20_000n,
+      -20_000n,
+      0n,
+      null,
+    ]);
   });
 
   it('leaves an entry of new measurements in one currency to its rounding, as any', () => {

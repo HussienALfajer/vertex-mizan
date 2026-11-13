@@ -160,10 +160,13 @@ export const draftLineInputSchema = z
     message: 'A line moves an item or opens one, not both',
     path: ['newItem'],
   })
-  .refine((line) => line.scheduleId === null || (line.openItemId === null && line.newItem === null), {
-    message: 'A line clears a schedule or names an item, not both',
-    path: ['scheduleId'],
-  })
+  .refine(
+    (line) => line.scheduleId === null || (line.openItemId === null && line.newItem === null),
+    {
+      message: 'A line clears a schedule or names an item, not both',
+      path: ['scheduleId'],
+    },
+  )
   .meta({ id: 'DraftLineInput' });
 
 export type DraftLineInput = z.infer<typeof draftLineInputSchema>;

@@ -127,9 +127,9 @@ describe('a draft line on a control account (S04 rules 6–7)', () => {
       openItemId: null,
       newItem: null,
     });
-    expect(draftLineInputSchema.safeParse({ ...line, scheduleId: ITEM, openItemId: ITEM }).success).toBe(
-      false,
-    );
+    expect(
+      draftLineInputSchema.safeParse({ ...line, scheduleId: ITEM, openItemId: ITEM }).success,
+    ).toBe(false);
     expect(
       draftLineInputSchema.safeParse({ ...line, scheduleId: ITEM, newItem: { reference: 'M-1' } })
         .success,
