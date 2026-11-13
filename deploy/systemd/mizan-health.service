@@ -1,0 +1,10 @@
+[Unit]
+Description=Health check of mizan.vertexmedia.pro
+After=network.target
+OnFailure=mizan-alert@%n.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/mizan-healthcheck
+UMask=0077
+TimeoutStartSec=5min

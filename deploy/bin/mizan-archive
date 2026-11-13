@@ -68,8 +68,9 @@ length=$(printf '%s' "$headers" | tr -d '\r' | sed -n 's/^content-length: *//Ip'
 [ "$length" = "$size" ] || { echo "uploaded $length bytes of $size" >&2; exit 1; }
 [ "$mode" = COMPLIANCE ] || { echo "$object has lock mode '${mode:-none}', not COMPLIANCE" >&2; exit 1; }
 # Ten years, less a day of margin for the bucket's own rounding.
-[ -n "$until" ] && [ "$(date -d "$until" +%s)" -ge "$(date -d '+3649 days' +%s)" ] ||
-  { echo "$object is locked until '${until:-never}', not 10 years" >&2; exit 1; }
+if [ -z "$until" ] || [ "$(date -d "$until" +%s)" -lt "$(date -d '+3649 days' +%s)" ]; then
+  echo "$object is locked until '${until:-never}', not 10 years" >&2; exit 1
+fi
 
 logger -t mizan-archive "archived $object ($size bytes, sha256 $sha), locked until $until"
 mizan_stamp "archive-$month"

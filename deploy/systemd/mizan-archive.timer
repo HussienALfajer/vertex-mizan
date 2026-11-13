@@ -1,0 +1,11 @@
+[Unit]
+Description=Monthly archive of mizan.vertexmedia.pro on the 2nd at 03:00 UTC
+
+[Timer]
+# After the month has ended in Damascus (UTC+3), with a day of margin for late entries.
+OnCalendar=*-*-02 03:00:00 UTC
+Persistent=true
+Unit=mizan-archive.service
+
+[Install]
+WantedBy=timers.target

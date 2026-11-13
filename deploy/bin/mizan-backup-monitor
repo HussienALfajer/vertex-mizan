@@ -1,0 +1,138 @@
+#!/usr/bin/env bash
+# Backup monitor of mizan.vertexmedia.pro (mizan-backup-monitor.timer, every 5 minutes; ADR 0020,
+# "Daily monitoring"), as root. Every run:
+#   - the mizan cluster answers;
+#   - write-ahead-log archiving: no failure since the last success, and no completed segment left
+#     unarchived for over 15 minutes (the recovery point);
+#   - disk use under 85% where the cluster, the local repository and the dumps live.
+# Once a UTC day, after 06:00 (the daily backup runs at 00:30):
+#   - `pgbackrest check` of both repositories;
+#   - the last backup of each repository under 30 hours old, and restic's last snapshot;
+#   - the last restore drill under 35 days old;
+#   - from the 4th, last month's archive (mizan-archive runs on the 2nd).
+# Each problem is one alert, at most every 6 hours per kind (mizan_alert). It survives failed
+# probes (set -u only) and always exits 0. Read with: journalctl -t mizan-alert -n 50
+set -u
+umask 077
+# shellcheck disable=SC1091
+. /usr/local/lib/mizan/common.sh
+
+now=$(date +%s)
+problems=0
+problem() {
+  problems=$((problems + 1))
+  mizan_alert "$1" "$2" "$3"
+}
+age_hours() { echo $(((now - $1) / 3600)); }
+provisioned=$(stat -c %Y "$MIZAN_STATE/provisioned.ok" 2>/dev/null || echo "$now")
+
+# --- Every run -------------------------------------------------------------------------------
+# One row: seconds since the last archived segment (-1 when none yet), the last archived segment,
+# the current one, and whether the last failure is newer than the last success.
+if ! row=$(mizan_psql "select coalesce(extract(epoch from now() - last_archived_time)::bigint, -1),
+  coalesce(left(last_archived_wal, 24), ''), pg_walfile_name(pg_current_wal_lsn()),
+  coalesce(last_failed_time > coalesce(last_archived_time, '-infinity'), false),
+  coalesce(last_failed_wal, '')
+  from pg_stat_archiver" 2>&1) || [ -z "$row" ]; then
+  problem cluster "قاعدة البيانات لا تجيب" "The mizan cluster (17/mizan, port $MIZAN_PG_PORT) did not answer: $row"
+else
+  IFS='|' read -r archived_age archived_wal current_wal failing failed_wal <<<"$row"
+  if [ "$failing" = t ]; then
+    problem archive-failing "فشل أرشفة سجل الكتابة" \
+      "PostgreSQL could not archive $failed_wal. Until it succeeds nothing after it reaches the backups. Read: journalctl -u postgresql@17-mizan; /var/log/pgbackrest/"
+  fi
+  # A segment's number is its log id times 256 plus its segment id (16 MB segments). The current
+  # one is being written; any earlier one not archived is pending.
+  segno() { echo $((16#${1:8:8} * 256 + 16#${1:16:8})); }
+  if [[ "$archived_wal" =~ ^[0-9A-F]{24}$ ]]; then
+    pending=$(($(segno "$current_wal") - $(segno "$archived_wal") - 1))
+    if [ "$pending" -gt 0 ] && [ "$archived_age" -gt 900 ]; then
+      problem archive-late "تأخر أرشفة سجل الكتابة" \
+        "$pending completed segment(s) wait for archiving; the last archived segment ($archived_wal) is $((archived_age / 60)) minutes old. The recovery point is about one minute (ADR 0020)."
+    fi
+  elif [ $((now - provisioned)) -gt 3600 ]; then
+    problem archive-late "لم تُؤرشف أي مقاطع" "The mizan cluster has archived no segment since it was provisioned."
+  fi
+fi
+
+for path in / "$(dirname "$MIZAN_DRILL_DIR")" "$MIZAN_BACKUPS"; do
+  use=$(df --output=pcent "$path" 2>/dev/null | tail -1 | tr -dc '0-9')
+  if [ -n "$use" ] && [ "$use" -ge 85 ]; then
+    problem "disk" "القرص ممتلئ بنسبة ${use}%" "The file system of $path is ${use}% full: backups, dumps and the restore drill need room."
+  fi
+done
+
+# --- Once a day ------------------------------------------------------------------------------
+today=$(date -u +%Y-%m-%d)
+if [ "$(date -u +%H)" -ge 6 ] && [ "$(cat "$MIZAN_STATE/monitor-daily.ok" 2>/dev/null)" != "$today" ]; then
+  daily_problems=$problems
+
+  if ! output=$(runuser -u postgres -- pgbackrest --stanza="$MIZAN_STANZA" --log-level-console=error check 2>&1); then
+    problem pgbackrest-check "فشل فحص pgBackRest" "pgbackrest check failed: $output"
+  fi
+
+  # The newest backup's end in each repository, as "<repo> <epoch>" lines.
+  latest=$(runuser -u postgres -- pgbackrest --stanza="$MIZAN_STANZA" --output=json info 2>/dev/null |
+    python3 -c '
+import json, sys
+latest = {}
+for backup in json.load(sys.stdin)[0]["backup"]:
+    repo = backup["database"]["repo-key"]
+    latest[repo] = max(latest.get(repo, 0), backup["timestamp"]["stop"])
+for repo in (1, 2):
+    print(repo, latest.get(repo, 0))
+' 2>/dev/null)
+  if [ -z "$latest" ]; then
+    problem backup-age "تعذرت قراءة النسخ الاحتياطية" "pgbackrest info could not be read."
+  else
+    while read -r repo stop; do
+      if [ $((now - stop)) -gt 108000 ]; then
+        [ "$stop" -gt 0 ] && when="$(age_hours "$stop") hours ago" || when=never
+        problem "backup-age-$repo" "النسخة الاحتياطية قديمة (المستودع $repo)" \
+          "The last backup in pgBackRest's repo$repo ended $when; one is taken daily at 00:30 UTC. Read: journalctl -u mizan-backup -n 50"
+      fi
+    done <<<"$latest"
+  fi
+
+  if mizan_load_settings 2>/dev/null; then
+    mizan_restic_env
+    snapshot=$(restic snapshots --host "$MIZAN_DOMAIN" --latest 1 --json 2>/dev/null |
+      python3 -c '
+import datetime, json, re, sys
+snapshots = json.load(sys.stdin)
+# restic writes nanoseconds, which fromisoformat may refuse: the fraction is dropped.
+time = re.sub(r"\.\d+", "", snapshots[-1]["time"]) if snapshots else None
+print(int(datetime.datetime.fromisoformat(time).timestamp()) if time else 0)
+' 2>/dev/null || echo 0)
+    if [ $((now - ${snapshot:-0})) -gt 108000 ]; then
+      problem restic-age "نسخة الملفات قديمة" \
+        "restic's last snapshot of the files and configuration is older than 30 hours (or missing). Read: journalctl -u mizan-backup -n 50"
+    fi
+  else
+    problem settings "إعدادات النسخ ناقصة" "$MIZAN_SETTINGS is missing or incomplete."
+  fi
+
+  drill=$(stat -c %Y "$MIZAN_STATE/drill.ok" 2>/dev/null || echo "$provisioned")
+  if [ $((now - drill)) -gt $((35 * 86400)) ]; then
+    problem drill-age "لم يُجرَ تمرين الاستعادة" \
+      "No restore drill has passed for over 35 days; it runs on the 5th of each month. Read: journalctl -u mizan-restore-drill -n 100"
+  fi
+
+  # Last month's archive is due on the 2nd; from the 4th it must exist, unless the server was
+  # provisioned after this month's archive time.
+  if [ "$(date -u +%d)" -ge 4 ]; then
+    month=$(TZ=Asia/Damascus date -d "$(TZ=Asia/Damascus date +%Y-%m-01) -1 day" +%Y-%m)
+    due=$(date -u -d "$(date -u +%Y-%m-02) 03:00" +%s)
+    if [ "$provisioned" -lt "$due" ] && [ ! -f "$MIZAN_STATE/archive-$month.ok" ]; then
+      problem "archive-$month" "أرشيف الشهر $month غير موجود" \
+        "The monthly archive of $month is not in the archive bucket. Read: journalctl -u mizan-archive -n 50; run: mizan-archive $month"
+    fi
+  fi
+
+  if [ "$problems" -eq "$daily_problems" ]; then
+    logger -t mizan-backup-monitor "daily checks passed"
+  fi
+  echo "$today" >"$MIZAN_STATE/monitor-daily.ok"
+fi
+
+exit 0

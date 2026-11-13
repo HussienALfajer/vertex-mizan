@@ -14,7 +14,7 @@ umask 077
 . /usr/local/lib/mizan/common.sh
 mizan_load_settings
 
-type=diff
+type="diff"
 [ "$(date -u +%u)" = 7 ] && type=full
 # pgBackRest makes the first backup of a repository full whatever the type asked.
 for repo in 1 2; do

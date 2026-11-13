@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# One alert email to the owner (ADR 0020), as root, through mizan_alert (common.sh): logged to the
+# journal under mizan-alert and emailed at most once every 6 hours per key.
+#
+#   mizan-alert unit <unit>                 a failed unit with its status and last journal lines
+#                                           (mizan-alert@.service, the units' OnFailure)
+#   mizan-alert <key> <subject> [<body>]    any alert; the body from stdin when omitted
+#   mizan-alert test                        a test email, sent whatever the last one
+set -euo pipefail
+# shellcheck disable=SC1091
+. /usr/local/lib/mizan/common.sh
+
+usage() { sed -n '5,7s/^#   //p' "$0" >&2; exit 2; }
+
+case "${1:-}" in
+unit)
+  unit=${2:-}
+  [[ "$unit" =~ ^[A-Za-z0-9@._-]+$ ]] || usage
+  body=$(
+    echo "The unit $unit failed on $(hostname -f) at $(date -u +%Y-%m-%dT%H:%M:%SZ)."
+    echo
+    systemctl status --no-pager --lines=0 "$unit" 2>&1 || true
+    echo
+    journalctl -u "$unit" -n 60 --no-pager -o short-iso 2>&1 || true
+  )
+  mizan_alert "unit-$unit" "فشلت المهمة $unit" "$body"
+  ;;
+test)
+  printf 'A test of the alert email of %s, sent by mizan-alert test.\n' "$MIZAN_DOMAIN" |
+    mizan_send_email "ميزان: تجربة التنبيه"
+  echo "sent"
+  ;;
+"" | -h | --help) usage ;;
+*)
+  [ $# -ge 2 ] || usage
+  [[ "$1" =~ ^[A-Za-z0-9._-]+$ ]] || usage
+  if [ $# -ge 3 ]; then body=$3; else body=$(cat); fi
+  mizan_alert "$1" "$2" "$body"
+  ;;
+esac

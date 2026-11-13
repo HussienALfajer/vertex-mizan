@@ -260,7 +260,9 @@ EOF
   unset password
   echo "roles, database, $env_file and $owner_env created"
 else
-  [ -f "$env_file" ] && [ -f "$owner_env" ] || { echo "database $DB exists but $env_file or $owner_env is missing" >&2; exit 1; }
+  if [ ! -f "$env_file" ] || [ ! -f "$owner_env" ]; then
+    echo "database $DB exists but $env_file or $owner_env is missing" >&2; exit 1
+  fi
   echo "already set up"
 fi
 chmod 600 "$env_file" "$owner_env"

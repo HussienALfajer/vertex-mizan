@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily backup of mizan.vertexmedia.pro at 00:30 UTC
+
+[Timer]
+# 03:30 in Damascus, after the day's end there; a full backup on Sunday (mizan-backup).
+OnCalendar=*-*-* 00:30:00 UTC
+Persistent=true
+Unit=mizan-backup.service
+
+[Install]
+WantedBy=timers.target
