@@ -15,9 +15,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
-    "export:hub-schema": "node scripts/export-hub-schema.mjs",
-    "post:hub-examples": "node scripts/post-hub-examples.mjs"
+    "test": "vitest run"
   },
   "dependencies": {
     "zod": "4.6.7"

@@ -37,7 +37,7 @@ import { todayInDamascus } from '../../core/clock/today.js';
 import { DATABASE } from '../../core/database/database.module.js';
 import { CodedException } from '../../core/errors/coded-exception.js';
 import { FileStore } from '../../core/files/file-store.js';
-import { RetryQueue } from '../../core/jobs/retry-queue.js';
+import { JobQueue } from '../../core/jobs/job-queue.js';
 import type { ExportFile } from '../chart/chart.service.js';
 import { peopleOf, personOf } from '../entries/entry-shape.js';
 import { reportWorkbook } from './report-workbook.js';
@@ -79,7 +79,7 @@ export interface ReportFileDownload {
 export class ReportFilesService {
   constructor(
     @Inject(DATABASE) private readonly db: Database,
-    @Inject(RetryQueue) private readonly queue: RetryQueue,
+    @Inject(JobQueue) private readonly queue: JobQueue,
     @Inject(FileStore) private readonly files: FileStore,
   ) {}
 

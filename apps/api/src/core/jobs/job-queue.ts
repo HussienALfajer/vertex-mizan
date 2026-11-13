@@ -6,37 +6,25 @@ import {
   Module,
   type OnApplicationShutdown,
 } from '@nestjs/common';
-import { EVENTS_RETRY_QUEUE, type EventsRetryJob } from '@vertex-mizan/contracts';
-import { describeForLog, type RetryTrigger } from '@vertex-mizan/db';
+import { describeForLog } from '@vertex-mizan/db';
 import { PgBoss } from 'pg-boss';
 import type { Config } from '../config/config.js';
 import { CONFIG } from '../config/config.module.js';
 
 /**
- * Queues the automatic retries after the commit of a change that frees held events (S05 rule 10):
- * pg-boss as the queue role, started on the first job, never installing or scheduling anything
- * (the worker owns the queues). A job is only a nudge: a failure to queue is logged, and the
- * worker's daily sweep retries what it missed. Without `DATABASE_QUEUE_URL` (the tests) nothing is
- * queued.
+ * Queues a job for the worker after the commit of its change (S09: `reports.render` for a report
+ * file): pg-boss as the queue role, started on the first job, never installing or scheduling
+ * anything (the worker owns the queues). A failure to queue is logged, never thrown. Without
+ * `DATABASE_QUEUE_URL` (the tests) nothing is queued.
  */
 @Injectable()
-export class RetryQueue implements OnApplicationShutdown {
-  private readonly logger = new Logger('RetryQueue');
+export class JobQueue implements OnApplicationShutdown {
+  private readonly logger = new Logger('JobQueue');
   private boss: Promise<PgBoss> | null = null;
 
   constructor(@Inject(CONFIG) private readonly config: Config) {}
 
-  /** Queues the retries of `triggers` in `companyId`, once its change has committed. */
-  async afterCommit(companyId: string, triggers: readonly RetryTrigger[]): Promise<void> {
-    if (triggers.length === 0) return;
-    const job: EventsRetryJob = { companyId, triggers: [...triggers] };
-    await this.send(EVENTS_RETRY_QUEUE, job);
-  }
-
-  /**
-   * Queues one job for the worker after its change committed (S09: `reports.render` for a file);
-   * a failure is logged, never thrown, and without `DATABASE_QUEUE_URL` (the tests) nothing goes.
-   */
+  /** Queues one job for the worker; a failure is logged, never thrown. */
   async send(queue: string, data: object): Promise<void> {
     if (!this.config.queueDatabaseUrl) return;
     try {
@@ -75,7 +63,7 @@ export class RetryQueue implements OnApplicationShutdown {
   }
 }
 
-/** The retry producer, for every module whose change frees held events. */
+/** The worker's job producer, for every module that queues work after its commit. */
 @Global()
-@Module({ providers: [RetryQueue], exports: [RetryQueue] })
+@Module({ providers: [JobQueue], exports: [JobQueue] })
 export class JobsModule {}

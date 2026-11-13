@@ -1,5 +1,14 @@
 # TASKS
 
+## ADR 0021 removal, the API and the worker (branch `refactor/remove-hub-api-worker`)
+
+- [x] apps/api: `/v1`, API clients and keys, inbox, posting rules, revenue, reconciliation; tolerance no longer written; `JobQueue` without event retries
+- [x] apps/worker: the event, digest and release jobs and `revenue:run-release`; removed schedules dropped at start
+- [x] packages/contracts: `export:hub-schema`, `post:hub-examples`; apps/web: the tolerance section
+- [x] The OpenAPI guard and oasdiff (owner, 2026-11-13); `openapi.json` regenerated
+- [x] Docs: AGENTS.md commands, CLAUDE.md files, testing, workflow, ROADMAP
+- [x] verify --e2e-all, reviewers, PR with auto-merge
+
 ## ADR 0020 deployment (branch `feat/deployment`, on top of `docs/deployment-backup-adr`)
 
 Server facts read 2026-11-13 from `vertex` and `/root/SERVER.md`: Contabo, Ubuntu 24.04, 6 vCPU, 11 GiB RAM (6.3 GiB available), 4 GiB swap (822 MiB used), 129 GB free disk, country FR by IP geolocation (REPORTED, ipinfo.io), timezone Europe/Berlin, PostgreSQL 17.11 cluster `main` on 5432 only, pgBackRest 2.60.0 (PGDG) and restic 0.16.4 not installed. `mizan.vertexmedia.pro` has no DNS record yet.

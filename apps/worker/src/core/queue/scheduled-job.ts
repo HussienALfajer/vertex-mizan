@@ -12,14 +12,12 @@ export interface ScheduledJob {
   readonly cron: string;
   /** The queue's pg-boss options, such as how long finished jobs are kept. */
   readonly queueOptions?: Parameters<PgBoss['createQueue']>[1];
-  /** Also queued once when the worker starts, after a deploy (S05's retry sweep). */
-  readonly runAtStart?: boolean;
   /** Does one run; throwing fails the job for a retry. Safe to run twice or concurrently. */
   run(): Promise<unknown>;
 }
 
 /**
- * A queue another process sends to (S05's `events.retry`, which the API queues after a commit):
+ * A queue another process sends to (S09's `reports.render`, which the API queues after a commit):
  * no schedule, each job worked with its data. Its data is unvalidated: parse it with its contract.
  */
 export interface QueueWorker {

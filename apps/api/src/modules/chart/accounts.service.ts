@@ -39,16 +39,12 @@ import { type AuditActor, changedFields, writeCompanyAudit } from '../../core/au
 import { DATABASE } from '../../core/database/database.module.js';
 import { onUniqueViolation } from '../../core/database/unique-violation.js';
 import { CodedException } from '../../core/errors/coded-exception.js';
-import { RetryQueue } from '../../core/jobs/retry-queue.js';
 import { levelOf, readAccount, readChart } from './chart-shape.js';
 
 /** The chart of accounts and its roles (S02 rules 1–7). */
 @Injectable()
 export class AccountsService {
-  constructor(
-    @Inject(DATABASE) private readonly db: Database,
-    @Inject(RetryQueue) private readonly retries: RetryQueue,
-  ) {}
+  constructor(@Inject(DATABASE) private readonly db: Database) {}
 
   /** `GET /api/accounts`: the whole tree in code order. */
   async list(access: CompanyRouteAccess, includeArchived: boolean): Promise<Account[]> {
@@ -213,22 +209,20 @@ export class AccountsService {
 
   /** `POST /api/accounts/:id/unblock` (rule 5): no reason needed. */
   async unblock(access: CompanyRouteAccess, id: string): Promise<Account> {
-    return this.freeingMapped(access, () =>
-      this.changeState(access, id, async (tx, row, actor) => {
-        if (!row.blockedAt) return;
-        await tx
-          .update(chartAccounts)
-          .set({ blockedAt: null, blockedReason: null })
-          .where(eq(chartAccounts.id, id));
-        await writeCompanyAudit(tx, access.company.id, actor, {
-          action: 'account.unblocked',
-          entityType: 'account',
-          entityId: id,
-          before: { blockedReason: row.blockedReason },
-          after: { blockedReason: null },
-        });
-      }),
-    );
+    return this.changeState(access, id, async (tx, row, actor) => {
+      if (!row.blockedAt) return;
+      await tx
+        .update(chartAccounts)
+        .set({ blockedAt: null, blockedReason: null })
+        .where(eq(chartAccounts.id, id));
+      await writeCompanyAudit(tx, access.company.id, actor, {
+        action: 'account.unblocked',
+        entityType: 'account',
+        entityId: id,
+        before: { blockedReason: row.blockedReason },
+        after: { blockedReason: null },
+      });
+    });
   }
 
   /**
@@ -266,42 +260,27 @@ export class AccountsService {
 
   /** `POST /api/accounts/:id/restore` (rule 6): with a reason, under an unarchived parent. */
   async restore(access: CompanyRouteAccess, id: string, reason: string): Promise<Account> {
-    return this.freeingMapped(access, () =>
-      this.changeState(access, id, async (tx, row, actor) => {
-        if (!row.archivedAt) return;
-        if (row.parentId !== null) {
-          const parent = await this.accountRow(tx, row.parentId, 'share');
-          if (parent.archivedAt) {
-            throw new CodedException('ACCOUNT_ARCHIVED', 'Restore the parent first');
-          }
+    return this.changeState(access, id, async (tx, row, actor) => {
+      if (!row.archivedAt) return;
+      if (row.parentId !== null) {
+        const parent = await this.accountRow(tx, row.parentId, 'share');
+        if (parent.archivedAt) {
+          throw new CodedException('ACCOUNT_ARCHIVED', 'Restore the parent first');
         }
-        await tx
-          .update(chartAccounts)
-          .set({ archivedAt: null, archivedReason: null })
-          .where(eq(chartAccounts.id, id));
-        await writeCompanyAudit(tx, access.company.id, actor, {
-          action: 'account.restored',
-          entityType: 'account',
-          entityId: id,
-          reason,
-          before: { archivedReason: row.archivedReason },
-          after: { archivedReason: null },
-        });
-      }),
-    );
-  }
-
-  /**
-   * An account unblocked or restored frees the events held `NO_MAPPING` on it (`account_blocked`),
-   * retried once the change commits (S05 rule 10).
-   */
-  private async freeingMapped(
-    access: CompanyRouteAccess,
-    change: () => Promise<Account>,
-  ): Promise<Account> {
-    const account = await change();
-    await this.retries.afterCommit(access.company.id, [{ kind: 'mapping' }]);
-    return account;
+      }
+      await tx
+        .update(chartAccounts)
+        .set({ archivedAt: null, archivedReason: null })
+        .where(eq(chartAccounts.id, id));
+      await writeCompanyAudit(tx, access.company.id, actor, {
+        action: 'account.restored',
+        entityType: 'account',
+        entityId: id,
+        reason,
+        before: { archivedReason: row.archivedReason },
+        after: { archivedReason: null },
+      });
+    });
   }
 
   /** `GET /api/account-roles`: the six roles, each with its account or null. */

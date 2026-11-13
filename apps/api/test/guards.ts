@@ -21,7 +21,7 @@ function send(browser: Browser, route: GuardedRoute, headers: Record<string, str
 
 /**
  * The guard's answers on each company route (S01 "Rules of the guard", S02 "Acceptance"): no
- * session `401`; a viewer writing `403`; a page of a company the session left `COMPANY_SWITCHED`;
+ * session `401`; a key or token beside a live session `401` (ADR 0021); a viewer writing `403`; a page of a company the session left `COMPANY_SWITCHED`;
  * a write to an archived company `COMPANY_ARCHIVED`. Nothing reaches the handler, so the routes
  * need no body or real id.
  */
@@ -37,6 +37,9 @@ export async function expectGuarded(
   for (const route of routes) {
     const label = `${route.method} ${route.path}`;
     expect((await send(stranger, route)).status, label).toBe(401);
+    // Only the session is read: a key or token is refused, even beside a live session (ADR 0021).
+    const keyed = await send(owner.browser, route, { authorization: `Bearer ${uuidv7()}` });
+    expect([keyed.status, keyed.body.code], label).toEqual([401, 'UNAUTHENTICATED']);
     const switched = await send(owner.browser, route, { 'x-mizan-company': uuidv7() });
     expect(switched.body.code, label).toBe('COMPANY_SWITCHED');
     if (route.method !== 'get') {

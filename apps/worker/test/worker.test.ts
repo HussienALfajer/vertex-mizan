@@ -1,6 +1,5 @@
 import type { INestApplicationContext } from '@nestjs/common';
 import type { PgBoss } from 'pg-boss';
-import { v7 as uuidv7 } from 'uuid';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { BOSS } from '../src/core/queue/queue.module.js';
 import { isScheduled } from '../src/core/queue/scheduled-job.js';
@@ -34,10 +33,6 @@ describe('worker boot', () => {
       'ledger.daily-anchor',
       'company.export',
       'company.export-expire',
-      'events.retry',
-      'events.retry-sweep',
-      'events.held-digest',
-      'revenue.release-month',
       'reports.render',
       'reports.files-expire',
     ]);
@@ -47,23 +42,16 @@ describe('worker boot', () => {
     }
   });
 
-  it('works an events.retry job the API queued, and runs the sweep at start', async () => {
-    const id = await boss.send('events.retry', {
-      companyId: uuidv7(),
-      triggers: [{ kind: 'sweep' }],
-    });
-    await expect
-      .poll(async () => (await boss.getJobById('events.retry', id as string))?.state, {
-        timeout: 15_000,
-        interval: 250,
-      })
-      .toBe('completed');
-    await expect
-      .poll(async () => (await boss.findJobs('events.retry-sweep')).length, {
-        timeout: 15_000,
-        interval: 250,
-      })
-      .toBeGreaterThan(0);
+  it('drops the schedule of a job that left when a worker boots (ADR 0021)', async () => {
+    await boss.createQueue('revenue.release-month');
+    await boss.schedule('revenue.release-month', '0 22 * * *');
+    const second = await startWorker();
+    try {
+      expect(await boss.getSchedules('revenue.release-month')).toEqual([]);
+      expect(await boss.getSchedules(heartbeat.queue)).toHaveLength(1);
+    } finally {
+      await second.close();
+    }
   });
 
   it('works a queued heartbeat job', async () => {

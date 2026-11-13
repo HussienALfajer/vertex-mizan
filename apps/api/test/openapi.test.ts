@@ -13,9 +13,9 @@ beforeAll(async () => {
 });
 afterAll(() => app.close());
 
-// The committed document is what Hub and the web app read (ADR 0006): a route or contract change
+// The committed document is what the web app reads: a route or contract change
 // that alters it fails here until the file is regenerated with `pnpm --filter @vertex-mizan/api
-// test -u` and reviewed. CI also refuses a breaking change to it (`pnpm check:openapi`).
+// test -u` and reviewed.
 it('matches the committed openapi.json', async () => {
   await expect(`${JSON.stringify(document, null, 2)}\n`).toMatchFileSnapshot('../openapi.json');
 });

@@ -18,6 +18,16 @@ describe('GET /api/health', () => {
     expect(response.headers['x-powered-by']).toBeUndefined();
   });
 
+  // A public route reads no key or token either: only the session cookie (ADR 0021).
+  it('refuses a request carrying an Authorization header', async () => {
+    app = await createTestApp();
+    const response = await request(app.getHttpServer())
+      .get('/api/health')
+      .set('authorization', `Bearer ${crypto.randomUUID()}`)
+      .expect(401);
+    expect(response.body.code).toBe('UNAUTHENTICATED');
+  });
+
   it('answers 503 with the database down when it does not answer', async () => {
     app = await createTestApp({
       databaseUrl: 'postgres://mizan_app:unused@127.0.0.1:1/vertex_mizan',

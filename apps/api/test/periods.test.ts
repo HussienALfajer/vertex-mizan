@@ -5,13 +5,12 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createTestApp } from './app.js';
 import { type Books, books, draftOf, line, posted, today } from './books.js';
 import { expectGuarded } from './guards.js';
-import { hubClient } from './hub.js';
 import { joinCompany, testDatabase } from './people.js';
 
 // S07's `/api/periods` over HTTP ("API", "Acceptance" tests): the months and a month's checklist
 // and history with `periods.read` (owner, accountant, auditor), the close and the reopen with
 // `periods.close` (the owner, an accountant with the period permission), each refusal of rules 2
-// and 3, a posting refused in a closed month, Hub's period status answering `closed` (rules 1, 4),
+// and 3, a posting refused in a closed month (rule 1),
 // the audit rows, and another company's month read as an empty month of the caller's. The months
 // come from the API's clock; every value is synthetic.
 
@@ -136,24 +135,14 @@ describe('/api/periods', () => {
     expect(tooLong.body.code).toBe('VALIDATION_FAILED');
   });
 
-  it('reopens the latest closed month only, and Hub reads the states', async () => {
+  it('reopens the latest closed month only', async () => {
     const { book, earlier, last } = await periodBooks();
     const owner = book.owner.browser;
     for (const period of [earlier, last]) {
       const closed = await owner.post(`/api/periods/${period}/close`, reason(`إقفال ${period}`));
       expect(closed.status, JSON.stringify(closed.body)).toBe(200);
     }
-    const hub = await hubClient(app, book.owner);
-    const before = monthsAgo(3);
     const current = today().slice(0, 7);
-    const status = await hub.get('/v1/periods/status', { from: before, to: current });
-    expect(status.status).toBe(200);
-    expect(status.body).toEqual([
-      { period: before, state: 'closed' },
-      { period: earlier, state: 'closed' },
-      { period: last, state: 'closed' },
-      { period: current, state: 'open' },
-    ]);
     const order = await owner.post(`/api/periods/${earlier}/reopen`, reason('مراجعة'));
     expect([order.status, order.body.code, order.body.details]).toEqual([
       409,
@@ -172,8 +161,6 @@ describe('/api/periods', () => {
       queuedEvents: 0,
       period: { period: last, state: 'reopened' },
     });
-    const after = await hub.get('/v1/periods/status', { from: last, to: last });
-    expect(after.body).toEqual([{ period: last, state: 'open' }]);
     await posted(owner, expense(book, `${last}-28`));
 
     const audit = await owner.get('/api/audit', { entityType: 'period' });

@@ -17,7 +17,6 @@ import { actorOf, type CompanyRouteAccess } from '../../core/access/access.js';
 import { lockCompanyForWrite } from '../../core/access/company-lock.js';
 import { todayInDamascus } from '../../core/clock/today.js';
 import { DATABASE } from '../../core/database/database.module.js';
-import { RetryQueue } from '../../core/jobs/retry-queue.js';
 
 /**
  * `/api/periods` (S07 rules 1–9): the months with their states, a month's history and checklist,
@@ -26,10 +25,7 @@ import { RetryQueue } from '../../core/jobs/retry-queue.js';
  */
 @Injectable()
 export class PeriodsService {
-  constructor(
-    @Inject(DATABASE) private readonly db: Database,
-    @Inject(RetryQueue) private readonly retries: RetryQueue,
-  ) {}
+  constructor(@Inject(DATABASE) private readonly db: Database) {}
 
   /** `GET /api/periods?from=&to=`: a read, so nothing is audited. */
   list(access: CompanyRouteAccess, query: PeriodsQuery): Promise<PeriodSummary[]> {
@@ -59,8 +55,7 @@ export class PeriodsService {
   }
 
   /**
-   * `POST /api/periods/:period/reopen`: as the close, then, after the commit, the events held for
-   * the month queued for retry (S07 rule 6), which the worker's `events.retry` posts.
+   * `POST /api/periods/:period/reopen`: as the close (S07 rule 6).
    */
   async reopen(
     access: CompanyRouteAccess,
@@ -72,7 +67,6 @@ export class PeriodsService {
       await lockCompanyForWrite(tx, companyId);
       return reopenPeriod(tx, { period, reason, today: todayInDamascus(), actor: actorOf(access) });
     });
-    await this.retries.afterCommit(companyId, reopened.triggers);
     return { period: reopened.period, queuedEvents: reopened.queuedEvents };
   }
 }

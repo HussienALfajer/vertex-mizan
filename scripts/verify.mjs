@@ -143,10 +143,6 @@ async function verifyBranch() {
   ]);
   section('error-code guard', codes, codes.code === 0 ? [] : pick(read(codes.log), /\S/, 12));
 
-  if (changed.some((file) => /^(apps\/api|packages\/contracts\/src)\//.test(file))) {
-    await openApiGuard(tools.oasdiff);
-  }
-
   await audit();
   await secretScan(tools.gitleaks);
 
@@ -294,7 +290,7 @@ async function migrationDrift() {
 }
 
 /**
- * The pinned oasdiff and gitleaks (scripts/tools.mjs), downloaded on the first run. A tool that
+ * The pinned gitleaks (scripts/tools.mjs), downloaded on the first run. A tool that
  * cannot be installed (no network) skips its step, and the summary says so; CI runs it.
  */
 async function installTools() {
@@ -307,21 +303,6 @@ async function installTools() {
     }
   }
   return found;
-}
-
-/** The OpenAPI guard against the base, with the pinned oasdiff. */
-async function openApiGuard(oasdiff) {
-  if (!oasdiff.path) {
-    report.push(`openapi guard: skipped, no oasdiff (${oasdiff.error}); CI runs it`);
-    return;
-  }
-  const result = await run(
-    'check-openapi',
-    process.execPath,
-    ['scripts/openapi-guard.mjs', '--base', base],
-    { env: { OASDIFF: oasdiff.path } },
-  );
-  section('openapi guard', result, result.code === 0 ? [] : pick(read(result.log), /\S/, 12));
 }
 
 /**
