@@ -1,6 +1,6 @@
 # 0002 — Stack and repository: Vertex Hub's stack, one monorepo, a pure ledger package
 
-Status: Accepted, amended by [0008](0008-foundation-audit-amendments.md) (versions) · Date: 2026-10-20
+Status: Accepted, amended by [0008](0008-foundation-audit-amendments.md) (versions); hosting refined by [0020](0020-deployment-and-backups.md) · Date: 2026-10-20
 
 ## Context
 Claude Code writes the whole system (`docs/research/working-method.md`). Vertex Hub runs in production on a stack its sessions know well, and Vertex Food and Vertex Shifa run the same backend stack with stronger tenancy and ledger patterns. Mizan integrates with Hub first, shares its server, and is built by the same owner and agent. The owner asked for Hub's stack unless there is a reason to differ (2026-10-20).
@@ -35,7 +35,7 @@ Claude Code writes the whole system (`docs/research/working-method.md`). Vertex 
   - Architecture and convention tests.
   - GitHub Actions CI with gitleaks, migration drift, the OpenAPI breaking-change check, `pnpm audit` and a docs-only skip.
 - **Exact versions** are pinned at the scaffold, the newest stable at that time that the NestJS ecosystem supports (Hub ADR 0012's check is repeated then).
-- **Hosting:** the existing Vertex server beside Hub, behind nginx with PM2, at `mizan.vertexmedia.pro`. Mizan has its own database and roles, and no database access to Hub's. A deployment ADR is written before the first production deploy.
+- **Hosting:** the existing Vertex server beside Hub, behind nginx with PM2, at `mizan.vertexmedia.pro`. Mizan has its own database and roles, and no database access to Hub's. A deployment ADR is written before the first production deploy ([0020](0020-deployment-and-backups.md)).
 
 ## Consequences
 - Hub's and the sister products' code (money module, design system, tenancy roles, outbox, PDF worker, CI) is copied and adapted, never imported across repositories.
