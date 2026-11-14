@@ -192,7 +192,12 @@ describe('counterparties on control accounts (S11 rule 4, ADR 0022)', () => {
     parentValueId: null,
     archived: false,
   };
-  const worker: LineDimensionValue = { ...supplier, id: 'worker-1', typeId: 'type-worker', typeCode: 'worker' };
+  const worker: LineDimensionValue = {
+    ...supplier,
+    id: 'worker-1',
+    typeId: 'type-worker',
+    typeCode: 'worker',
+  };
   const manualContract: LineDimensionValue = { ...contract, parentValueId: null };
   /** Like 211001 (suppliers): a running account requiring the supplier. */
   const suppliers: ChartAccount = {
@@ -214,9 +219,9 @@ describe('counterparties on control accounts (S11 rule 4, ADR 0022)', () => {
 
   it('lets a running line carry a contract beside its counterparty (rule 3)', () => {
     const withContract = { ...suppliers, requiredDimensionTypeIds: [SUPPLIER_TYPE, CONTRACT_TYPE] };
-    expect(
-      refusal(line({ account: withContract, dimensions: [supplier, manualContract] })),
-    ).toBe('accepted');
+    expect(refusal(line({ account: withContract, dimensions: [supplier, manualContract] }))).toBe(
+      'accepted',
+    );
     expect(counterpartyOf(withContract, [manualContract, supplier])).toBe(supplier);
   });
 

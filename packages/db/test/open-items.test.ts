@@ -19,8 +19,8 @@ import {
   companySettings,
   createCompanyBooks,
   type Database,
-  dimensionSetValues,
   dimensionSets,
+  dimensionSetValues,
   dimensionTypes,
   dimensionValues,
   entriesUsingRate,
@@ -821,7 +821,7 @@ describe('counterparties of the items (S11 rules 3–4, ADR 0022)', () => {
         .sort(),
     );
 
-  it("keys a running item by its counterparty alone, while its lines keep the contract they carry", async () => {
+  it('keys a running item by its counterparty alone, while its lines keep the contract they carry', async () => {
     const books = await newBooks();
     const contract = await contractOf(books);
     books.values.set('P1', contract);

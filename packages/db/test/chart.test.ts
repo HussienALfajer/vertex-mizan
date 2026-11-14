@@ -4,9 +4,9 @@ import {
   CASH_KINDS,
   CONTRACT_KINDS,
   COUNTERPARTY_TYPES,
+  chartTemplate,
   DIMENSION_EXTERNAL_SOURCES,
   RATE_SOURCES,
-  chartTemplate,
   ROOT_ACCOUNTS,
   STATEMENT_LINES,
 } from '@vertex-mizan/contracts';
@@ -429,7 +429,9 @@ describe('the lock after first use (S02 check 5) as the app role', () => {
       /chart_accounts_item_kind/,
     );
     expect(
-      await refusal(addAccount('111', { code: '111013', isControl: true, counterpartyType: 'client' })),
+      await refusal(
+        addAccount('111', { code: '111013', isControl: true, counterpartyType: 'client' }),
+      ),
     ).toMatch(/chart_accounts_item_kind/);
   });
 
@@ -613,11 +615,24 @@ describe('counterparties and cash kinds (S11 "Data", ADR 0022)', () => {
   };
 
   it('puts a cash kind only on a postable, monetary asset under 111 in one currency on bs.cash', async () => {
-    await addAccount('111', { code: '111020', currency: 'SYP', isMonetary: true, cashKind: 'bank' });
+    await addAccount('111', {
+      code: '111020',
+      currency: 'SYP',
+      isMonetary: true,
+      cashKind: 'bank',
+    });
     for (const [label, values] of [
       ['no currency', { code: '111021', isMonetary: true }],
       ['not monetary', { code: '111022', currency: 'USD' }],
-      ['another line', { code: '111023', currency: 'USD', isMonetary: true, statementLine: 'bs.trade_receivables' }],
+      [
+        'another line',
+        {
+          code: '111023',
+          currency: 'USD',
+          isMonetary: true,
+          statementLine: 'bs.trade_receivables',
+        },
+      ],
     ] as const) {
       expect(await refusal(addAccount('111', { ...values, cashKind: 'box' })), label).toMatch(
         /chart_accounts_cash_kind/,
@@ -636,7 +651,14 @@ describe('counterparties and cash kinds (S11 "Data", ADR 0022)', () => {
     ).toMatch(/chart_accounts_cash_kind/);
     expect(
       await refusal(
-        addControlAccount('111', { code: '111024', itemKind: 'running', currency: 'USD', isMonetary: true, statementLine: 'bs.cash', cashKind: 'box' }),
+        addControlAccount('111', {
+          code: '111024',
+          itemKind: 'running',
+          currency: 'USD',
+          isMonetary: true,
+          statementLine: 'bs.cash',
+          cashKind: 'box',
+        }),
       ),
     ).toMatch(/chart_accounts_cash_kind/);
   });
@@ -645,16 +667,20 @@ describe('counterparties and cash kinds (S11 "Data", ADR 0022)', () => {
     expect(
       await refusal(addAccount('112', { code: '112021', isControl: true, itemKind: 'document' })),
     ).toMatch(/chart_accounts_counterparty_type/);
-    expect(await refusal(addAccount('112', { code: '112022', counterpartyType: 'client' }))).toMatch(
-      /chart_accounts_counterparty_type/,
-    );
+    expect(
+      await refusal(addAccount('112', { code: '112022', counterpartyType: 'client' })),
+    ).toMatch(/chart_accounts_counterparty_type/);
   });
 
   it("requires a control account's counterparty dimension at commit, and keeps it required", async () => {
     // A supplier account requiring the client only is refused when its transaction commits.
     expect(
       await refusal(
-        addControlAccount('112', { code: '112023', itemKind: 'running', counterpartyType: 'supplier' }),
+        addControlAccount('112', {
+          code: '112023',
+          itemKind: 'running',
+          counterpartyType: 'supplier',
+        }),
       ),
     ).toMatch(/requires its supplier dimension/);
     const supplier = await typeByCode('supplier');

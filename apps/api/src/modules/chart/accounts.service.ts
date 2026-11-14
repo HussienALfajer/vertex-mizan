@@ -175,7 +175,10 @@ export class AccountsService {
       } catch (error) {
         // A used control account keeps its counterparty dimension (S11 rule 5).
         if (error instanceof DomainError && (row.firstPostedAt !== null || hasChildren)) {
-          throw new CodedException('ACCOUNT_LOCKED', 'A used control account keeps its counterparty dimension');
+          throw new CodedException(
+            'ACCOUNT_LOCKED',
+            'A used control account keeps its counterparty dimension',
+          );
         }
         throw error;
       }

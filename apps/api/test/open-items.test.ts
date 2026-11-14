@@ -2,13 +2,13 @@ import type { INestApplication } from '@nestjs/common';
 import type {
   AgeingReport,
   CounterpartyStatement,
-  RunningBalances,
   DimensionType,
   Entry,
   EntryPreview,
   IntegrityReport,
   OpenItem,
   OpenItemPage,
+  RunningBalances,
 } from '@vertex-mizan/contracts';
 import { auditEntries, type Database, withCompany } from '@vertex-mizan/db';
 import { ar } from '@vertex-mizan/i18n';
@@ -373,12 +373,12 @@ describe('an invoice and its receipts through drafts (S04 acceptance steps 2–6
         })
       ).body.code,
     ).toBe('NOT_FOUND');
-    expect((await browser.get(`/api/counterparties/${other.values.get('C1')}/statement`)).body.code).toBe(
-      'NOT_FOUND',
-    );
-    expect((await browser.get(`/api/counterparties/${book.values.get('S1')}/statement`)).body.code).toBe(
-      'NOT_FOUND',
-    );
+    expect(
+      (await browser.get(`/api/counterparties/${other.values.get('C1')}/statement`)).body.code,
+    ).toBe('NOT_FOUND');
+    expect(
+      (await browser.get(`/api/counterparties/${book.values.get('S1')}/statement`)).body.code,
+    ).toBe('NOT_FOUND');
     expect((await browser.post('/api/drafts', receipt(book, theirs.id, '10000'))).body.code).toBe(
       'VALIDATION_FAILED',
     );
@@ -410,7 +410,9 @@ describe('an invoice and its receipts through drafts (S04 acceptance steps 2–6
         { ...line(other, '213001', 'USD', '-30000'), dimensionValueIds: dims(other, 'C1') },
       ],
     });
-    expect(((await browser.get('/api/running-balances')).body as RunningBalances).balances).toEqual([]);
+    expect(((await browser.get('/api/running-balances')).body as RunningBalances).balances).toEqual(
+      [],
+    );
     const theirExport = await browser.get(
       `/api/counterparties/${other.values.get('C1')}/statement/export`,
     );
@@ -546,12 +548,16 @@ describe('the ageing (S04 rule 16, acceptance step 3)', () => {
     ]);
     const later = await ageing({ asOf: inDays(37), ledger: 'parallel' });
     expect(later.ledgerCurrency).toBe('USD');
-    expect(later.counterparties[0]?.items.map((item) => [item.bucket, item.carryingMinor])).toEqual([
-      ['days_31_60', '20000'],
-      ['days_1_30', '100000'],
-    ]);
+    expect(later.counterparties[0]?.items.map((item) => [item.bucket, item.carryingMinor])).toEqual(
+      [
+        ['days_31_60', '20000'],
+        ['days_1_30', '100000'],
+      ],
+    );
     expect((await ageing({ asOf: inDays(-1) })).counterparties).toEqual([]);
-    expect((await ageing({ counterparty: book.values.get('C2') as string })).counterparties).toEqual([]);
+    expect(
+      (await ageing({ counterparty: book.values.get('C2') as string })).counterparties,
+    ).toEqual([]);
     expect(
       (
         await browser.get('/api/receivables/ageing', {
@@ -675,14 +681,21 @@ describe('client funds and the client statement (S04 rule 17, acceptance step 7)
       ['clear', 'M-1', '-40000', '60000', '7290000'],
     ]);
     const tomorrow = (
-      await browser.get(`/api/counterparties/${client}/statement`, { from: inDays(1), to: inDays(1) })
+      await browser.get(`/api/counterparties/${client}/statement`, {
+        from: inDays(1),
+        to: inDays(1),
+      })
     ).body as CounterpartyStatement;
     expect(tomorrow.lines).toEqual([]);
     expect(tomorrow.opening).toEqual(statement.closing);
     expect(tomorrow.closing).toEqual(statement.closing);
     expect(
-      (await browser.get(`/api/counterparties/${client}/statement`, { from: inDays(1), to: inDays(0) }))
-        .body.code,
+      (
+        await browser.get(`/api/counterparties/${client}/statement`, {
+          from: inDays(1),
+          to: inDays(0),
+        })
+      ).body.code,
     ).toBe('VALIDATION_FAILED');
 
     const exported = await browser.download(`/api/counterparties/${client}/statement/export`);

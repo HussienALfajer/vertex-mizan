@@ -279,7 +279,12 @@ describe('checkAccountShape (S02 checks 2–4)', () => {
       );
       expect(
         codeOf(() =>
-          checkAccountShape({ ...postable, isControl: true, itemKind: 'running', counterpartyType }),
+          checkAccountShape({
+            ...postable,
+            isControl: true,
+            itemKind: 'running',
+            counterpartyType,
+          }),
         ),
       ).toBe('none');
     }
@@ -295,14 +300,15 @@ describe('checkAccountShape (S02 checks 2–4)', () => {
         { isControl: true, itemKind: 'running', counterpartyType: 'client' },
         { statementLine: 'bs.trade_receivables' },
       ] as const) {
-        expect(codeOf(() => checkAccountShape({ ...postable, ...change, cashKind })), JSON.stringify(change)).toBe(
-          'CASH_ACCOUNT_INVALID',
-        );
+        expect(
+          codeOf(() => checkAccountShape({ ...postable, ...change, cashKind })),
+          JSON.stringify(change),
+        ).toBe('CASH_ACCOUNT_INVALID');
       }
     }
-    expect(
-      canBeCashAccount({ ...postable, class: 'liability', statementLine: 'bs.cash' }),
-    ).toBe(false);
+    expect(canBeCashAccount({ ...postable, class: 'liability', statementLine: 'bs.cash' })).toBe(
+      false,
+    );
   });
 });
 

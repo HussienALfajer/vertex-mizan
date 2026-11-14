@@ -69,7 +69,9 @@ describe('the receivables queries', () => {
     expect(
       counterpartyStatementQuerySchema.safeParse({ from: '2026-11-30', to: '2026-11-01' }).success,
     ).toBe(false);
-    expect(counterpartyStatementQuerySchema.parse({ from: '2026-11-01', to: '2026-11-01' })).toEqual({
+    expect(
+      counterpartyStatementQuerySchema.parse({ from: '2026-11-01', to: '2026-11-01' }),
+    ).toEqual({
       from: '2026-11-01',
       to: '2026-11-01',
       ledger: 'book',

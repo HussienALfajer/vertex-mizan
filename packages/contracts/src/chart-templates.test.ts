@@ -210,9 +210,9 @@ describe('the chart templates (S02 "Templates" after the review of Q3, S11 "Temp
       .accounts.filter((account) => account.isControl || account.itemKind !== null)
       .map((account) => [account.code, account.itemKind, account.counterpartyType]);
     expect(kinds).toEqual([['112001', 'document', 'client']]);
-    expect(chartTemplate('general').accounts.filter((account) => account.cashKind !== null)).toEqual(
-      [],
-    );
+    expect(
+      chartTemplate('general').accounts.filter((account) => account.cashKind !== null),
+    ).toEqual([]);
   });
 
   describe('contracting@1 (S11 "Templates", N5)', () => {
@@ -231,7 +231,9 @@ describe('the chart templates (S02 "Templates" after the review of Q3, S11 "Temp
         'Contracting',
       ]);
       expect(contracting.accounts).toHaveLength(128);
-      expect(contracting.accounts.filter((account) => account.kind === 'postable')).toHaveLength(84);
+      expect(contracting.accounts.filter((account) => account.kind === 'postable')).toHaveLength(
+        84,
+      );
     });
 
     it('marks five cash accounts: a box per currency and the two banks', () => {

@@ -520,11 +520,7 @@ export async function statementWorkbook(statement: CounterpartyStatement): Promi
   const labels = ar.openItems.statementExport;
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet(labels.sheet, { views: [{ rightToLeft: true }] });
-  sheet.addRow([
-    labels.client,
-    statement.counterparty.name,
-    statement.counterparty.code ?? '',
-  ]);
+  sheet.addRow([labels.client, statement.counterparty.name, statement.counterparty.code ?? '']);
   sheet.addRow([labels.from, statement.from ?? '']);
   sheet.addRow([labels.to, statement.to]);
   sheet.addRow([labels.ledger, ar.accounting.ledger[statement.ledger]]);
