@@ -136,6 +136,7 @@ The owner cancelled the integration with Hub on 2026-11-13 (`docs/product/phase-
   - [x] Spec `docs/specs/S11-contracting-chart-cash.md` and ADR 0022 (`docs/S11-spec`)
   - [ ] Scenarios through `/posting-rule`: `cash/receipt-and-payment`, `cash/transfer-and-exchange`, `cash/cash-count`
     - [x] `cash/transfer-and-exchange`: eight cases, numbers approved by the owner on 2026-11-14, `Proposed` until the slice brings their executors; the book gains the area `cash` and the step `voucher` (`docs/cash-transfer-and-exchange-scenario`)
+    - [x] `cash/receipt-and-payment`: eleven cases, numbers approved by the owner on 2026-11-14, `Proposed` until the slice brings their executors (`docs/cash-receipt-and-payment-scenario`)
   - [ ] Slice (`/feature-slice S11`)
   - [ ] Before the client's first company: the TRY bulletin's schedule checked (Q10)
 - [ ] S12 Project costs: N2 expenses by project, N3 wages of workers and craftsmen, N4 materials with quantities (spec, scenarios, slice); N4 becomes a spec of its own if materials go through a store (Q19); with the application of advances at their carrying amount (IFRIC 22, owner 2026-11-14) and contract revenue's recognition (Q20)

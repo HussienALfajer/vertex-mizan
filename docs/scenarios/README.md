@@ -113,8 +113,9 @@ steps:                              # in order; a manual entry, a reversal, a ra
                lines: [ ... ] }     #   voucher header { kind (receipt, payment, transfer, count),
                                     #   cash_account, counter_cash_account? (a transfer's destination),
                                     #   party_name?, counted? } and the lines as a manual entry's; a
-                                    #   transfer states no dealt_rates: the system derives the rate
-                                    #   from its amounts (rule 12)
+                                    #   receipt or a payment may state dealt_rates as a manual entry
+                                    #   does (S03 rule 13); a transfer states none: the system derives
+                                    #   the rate from its amounts (rule 12)
 expect:
   entries:                          # the exact set posted, in posting order; every line of every entry
     - source: <manual | opening | revaluation | reversal>

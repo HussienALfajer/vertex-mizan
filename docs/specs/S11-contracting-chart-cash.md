@@ -441,7 +441,7 @@ Notes, each the owner's answer of 2026-11-14 or the standard it rests on:
 Accounting rules this spec introduces or confirms, each written and approved through `/posting-rule` before its code, in the `usd-syp` shape with TRY unless stated:
 - **`docs/scenarios/cash/receipt-and-payment.md`:**
   - a USD receipt settling a client's USD billing on `112001` (no book difference; the parallel difference at the bulletin);
-  - a TRY receipt settling a USD billing, with a dealt USD/TRY rate (differences in both ledgers);
+  - a TRY receipt settling a USD billing at the USD/TRY rate dealt with the client (no book difference, the parallel difference at the bulletin), and the same receipt with no dealt rate (differences in both ledgers, the book's at market);
   - a receipt of an advance from a client on `212002`, then the month-end revaluation that leaves it unchanged;
   - a payment of a site cost in TRY on `511005` with its contract;
   - a TRY payment to supplier S1's running balance (the example above);
