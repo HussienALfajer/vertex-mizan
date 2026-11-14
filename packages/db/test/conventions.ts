@@ -1049,8 +1049,10 @@ DECLARE
   account record;
   entry record;
   settings record;
+  remeasures boolean;
 BEGIN
-  SELECT a.kind, a.class, a.currency, a.first_posted_at INTO account
+  SELECT a.kind, a.class, a.currency, a.first_posted_at, a.item_kind, a.counterparty_type
+    INTO account
   FROM public.chart_accounts a
   WHERE a.company_id = NEW.company_id AND a.id = NEW.account_id
   FOR SHARE;
@@ -1063,7 +1065,7 @@ BEGIN
       account.currency, NEW.currency
       USING ERRCODE = 'restrict_violation';
   END IF;
-  SELECT e.entry_date, e.reverses_entry_id, e.source INTO entry
+  SELECT e.entry_date, e.reverses_entry_id, e.source, e.request_id, e.draft_id INTO entry
   FROM public.journal_entries e
   WHERE e.company_id = NEW.company_id AND e.id = NEW.entry_id;
   IF NOT FOUND THEN
@@ -1087,10 +1089,28 @@ BEGIN
     RAISE EXCEPTION 'journal_lines: no SYP amount is dated before 2026-01-01'
       USING ERRCODE = 'restrict_violation';
   END IF;
+  -- Never NULL, so a line off a running account is checked as before.
+  remeasures := coalesce(account.item_kind = 'running', false)
+    AND EXISTS (
+      SELECT 1 FROM public.dimension_set_values v
+      JOIN public.dimension_types t ON t.company_id = v.company_id AND t.id = v.type_id
+      WHERE v.company_id = NEW.company_id AND v.set_id = NEW.dimension_set_id
+        AND t.builtin AND t.code = account.counterparty_type::text
+    )
+    AND (
+      entry.source = 'revaluation'
+      OR (entry.draft_id IS NULL AND EXISTS (
+        SELECT 1 FROM public.posting_requests p
+        WHERE p.company_id = NEW.company_id AND p.id = entry.request_id
+          AND p.idempotency_key LIKE '%:difference'
+      ))
+    );
   IF entry.reverses_entry_id IS NULL AND EXISTS (
     SELECT 1 FROM public.account_required_dimensions r
+    JOIN public.dimension_types t ON t.company_id = r.company_id AND t.id = r.dimension_type_id
     WHERE r.company_id = NEW.company_id AND r.account_id = NEW.account_id
       AND r.archived_at IS NULL
+      AND NOT (remeasures AND NOT (t.builtin AND t.code = account.counterparty_type::text))
       AND NOT EXISTS (
         SELECT 1 FROM public.dimension_set_values v
         WHERE v.company_id = NEW.company_id AND v.set_id = NEW.dimension_set_id
