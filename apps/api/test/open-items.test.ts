@@ -16,7 +16,7 @@ import ExcelJS from 'exceljs';
 import { v7 as uuidv7 } from 'uuid';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createTestApp } from './app.js';
-import { type Books, books, draftOf, line, posted, today } from './books.js';
+import { type Books, books, draftOf, line, posted, today, withClientMoney } from './books.js';
 import type { Browser } from './browser.js';
 import { expectGuarded } from './guards.js';
 import { testDatabase } from './people.js';
@@ -59,7 +59,7 @@ interface Receivables extends Books {
 
 /** The books with two clients and a service. */
 async function receivables(): Promise<Receivables> {
-  const book = await books(app, db);
+  const book = await withClientMoney(await books(app, db));
   const types = (await book.owner.browser.get('/api/dimension-types')).body as DimensionType[];
   const typeId = (code: string) => types.find((type) => type.code === code)?.id as string;
   const values = new Map<string, string>();

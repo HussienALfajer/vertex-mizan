@@ -60,7 +60,7 @@ test.describe('an empty chart', () => {
     await page.getByRole('button', { name: t.empty.apply }).first().click();
     await expect(row(page, '111001')).toBeVisible();
     await expect(page.getByText(t.empty.title)).toHaveCount(0);
-    expect(apply.seen[0]?.postDataJSON()).toEqual({ templateId: 'service-agency' });
+    expect(apply.seen[0]?.postDataJSON()).toEqual({ templateId: 'general' });
     expect(apply.seen[0]?.headers()['x-mizan-company']).toBe(companyId);
   });
 });
@@ -350,7 +350,7 @@ test.describe('archived accounts', () => {
         status: 200,
         json: [
           ...chart.map((account) =>
-            account.code === '113001' ? { ...account, archived } : account,
+            account.code === '122001' ? { ...account, archived } : account,
           ),
           {
             ...accountOf('111001'),
@@ -369,7 +369,7 @@ test.describe('archived accounts', () => {
     let sheet = page.getByRole('dialog', { name: s.createTitle });
     await expect(sheet.getByLabel(s.code)).toHaveValue('111008');
     await page.keyboard.press('Escape');
-    await rowAction(page, '113', t.actions.edit);
+    await rowAction(page, '122', t.actions.edit);
     sheet = page.getByRole('dialog', { name: s.editTitle });
     await expect(sheet.getByText(s.headerLockedTitle)).toBeVisible();
     await expect(sheet.getByLabel(s.code)).toBeDisabled();

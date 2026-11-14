@@ -13,7 +13,6 @@ import {
   balanceSheetComparative,
   booksStartMarks,
   codeInRange,
-  contractPosition,
   departmentInForce,
   incomeStatement,
   marginOf,
@@ -22,7 +21,6 @@ import {
   previousPeriod,
   profitability,
   type ReportChartAccount,
-  releaseSchedule,
   reportMarks,
   trialBalance,
   withOpeningEntry,
@@ -389,23 +387,6 @@ describe('the balance sheet (rules 15–19)', () => {
       equity: 140_000_000n,
       liabilitiesAndEquity: 227_000_000n,
     });
-    const position = contractPosition({ accounts: CHART, balances });
-    expect(position.rows).toEqual([
-      {
-        contractId: 'P1',
-        clientId: 'C1',
-        assets: 50_000_000n,
-        liabilities: 120_000_000n,
-        net: -70_000_000n,
-      },
-      { contractId: 'R1', clientId: 'C3', assets: 30_000_000n, liabilities: 0n, net: 30_000_000n },
-    ]);
-    expect(position.totals).toEqual({
-      contractAssets: 30_000_000n,
-      contractLiabilities: 70_000_000n,
-      withoutContractAssets: 0n,
-      withoutContractLiabilities: 0n,
-    });
   });
 
   it('shows earlier unclosed years in retained earnings and flags a non-control account in credit', () => {
@@ -703,21 +684,6 @@ describe('profitability (rules 20–23)', () => {
   });
 });
 
-describe('the revenue release schedule (rule 25)', () => {
-  it('sums each contract per month and at its done', () => {
-    const schedule = releaseSchedule([
-      { contractId: 'R1', month: '2027-01', amount: 100n },
-      { contractId: 'R1', month: '2027-02', amount: 100n },
-      { contractId: 'P1', month: null, amount: 500n },
-      { contractId: 'R1', month: '2027-01', amount: 50n },
-    ]);
-    expect(schedule.months).toEqual(['2027-01', '2027-02']);
-    expect(schedule.totals.total).toBe(750n);
-    expect(schedule.totals.atDone).toBe(500n);
-    expect(schedule.rows[0]?.months.get('2027-01')).toBe(150n);
-  });
-});
-
 describe('the journal book (rules 26, 27)', () => {
   const entry = (number: number, date: string, amount: bigint): JournalBookEntryInput => ({
     fiscalYear: 2026,
@@ -928,16 +894,6 @@ describe('properties of the reports (rule 8)', () => {
           statement.lines.find((line) => line.line === code)?.amount ?? 0n;
         expect(totals.revenue).toBe(lineAmount('is.revenue'));
         expect(-totals.directCosts).toBe(lineAmount('is.direct_costs'));
-        // The contract position's totals are the balance sheet's two contract lines.
-        const position = contractPosition({ accounts: CHART, balances: [...balances.values()] });
-        const sheetLine = (code: string) =>
-          sheet.lines.find((line) => line.line === code)?.amount ?? 0n;
-        expect(position.totals.contractAssets + position.totals.withoutContractAssets).toBe(
-          sheetLine('bs.contract_assets'),
-        );
-        expect(
-          position.totals.contractLiabilities + position.totals.withoutContractLiabilities,
-        ).toBe(sheetLine('bs.contract_liabilities'));
       }),
     );
   });

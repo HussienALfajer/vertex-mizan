@@ -89,7 +89,7 @@ async function newBooks(): Promise<Books> {
         ledgers: SYP_USD,
         fiscalYearStartMonth: 1,
         policyNote: 'مذكرة سياسة تجريبية.',
-        template: 'service-agency',
+        template: 'general',
         createdByUserId: personId,
       },
       actor(),
@@ -496,14 +496,14 @@ describe('postRevaluation (S07 rules 13–18)', () => {
   it('revalues a blocked account and an archived value, and refuses the hand reversal', async () => {
     const books = await newBooks();
     await manual(books, '2026-11-03', [
-      { code: '111006', currency: 'USD', amount: 20000n },
+      { code: '111002', currency: 'USD', amount: 20000n },
       { code: '211001', currency: 'USD', amount: -20000n, dims: ['C2'] },
     ]);
     await inCompany(books.id, async (tx) => {
       await tx
         .update(chartAccounts)
         .set({ blockedAt: new Date(), blockedReason: 'حساب موقوف تجريبي' })
-        .where(eq(chartAccounts.code, '111006'));
+        .where(eq(chartAccounts.code, '111002'));
       await tx
         .update(dimensionValues)
         .set({ archivedAt: new Date() })
@@ -518,7 +518,7 @@ describe('postRevaluation (S07 rules 13–18)', () => {
         b.differenceMinor,
       ]),
     ).toEqual([
-      ['111006', true, null, '100000'],
+      ['111002', true, null, '100000'],
       ['211001', false, true, '-100000'],
     ]);
     const posted = await revalue(books, 'book', view.fingerprint);

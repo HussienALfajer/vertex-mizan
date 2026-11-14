@@ -39,7 +39,8 @@ The owner chose to build this inside Mizan, keep only what the client needs, and
    - one PR per layer: the screens, then the API and the worker, then the ledger, the database and the contracts, then the scenario book and the docs;
    - each PR keeps `pnpm verify --e2e-all` green;
    - no ledger invariant, trigger, grant or guard of the remaining tables is weakened;
-   - a migration that drops a table refuses to run while the table holds rows;
+   - a migration that drops a table refuses to run while the table holds rows. Drizzle-kit drops a table with `CASCADE`; a migration does so only after the keys of the remaining tables to it are dropped, so `CASCADE` takes only the table's own triggers and policies (`migration-guard: allow drop-cascade`);
+   - the removal ships in one release (owner, 2026-11-13): the release before it does not run on the migrated database, so a rollback past it restores the database to before the deploy (`docs/deployment.md`);
    - an entry whose source was a Hub event stays readable, so the entry sources keep their values;
    - the error codes, permissions and audit actions of removed features stay in their registries as retired, never reused (ADR 0006's rule on codes outlives it);
    - removed specs and scenarios stay in git history only.

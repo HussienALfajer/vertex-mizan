@@ -8,7 +8,6 @@ import {
   type DimensionValue,
   dimensionTypeSchema,
   dimensionValueSchema,
-  linkDimensionValueSchema,
   type UpdateDimensionValue,
   updateDimensionTypeSchema,
   updateDimensionValueSchema,
@@ -74,9 +73,8 @@ type Confirm =
 
 /**
  * `/dimensions` (S02 rules 9–13): a tab per dimension type with its values. Owners and accountants
- * add custom types and manual values, rename them, link a manual value to its Hub ID once, and
- * archive and restore; every role reads them. Hub's values carry their Hub ID and are renamed by
- * Hub's next differing name.
+ * add custom types and manual values, rename them, and archive and restore; every role reads
+ * them. Values Hub fed before its removal (ADR 0021) show their Hub ID, read only.
  */
 export function DimensionsPage() {
   const { companyId, me, membership } = useCompany();
@@ -216,7 +214,6 @@ function TypePanel({
   );
   const parentType = types.find((candidate) => candidate.id === type.parentTypeId);
   const [valueDialog, setValueDialog] = useState<ValueDialog | null>(null);
-  const [linking, setLinking] = useState<DimensionValue | null>(null);
   const [departmentsOf, setDepartmentsOf] = useState<DimensionValue | null>(null);
   const [confirm, setConfirm] = useState<Confirm | null>(null);
   const rows = values.data?.pages.flatMap((page) => page.values) ?? [];
@@ -347,7 +344,6 @@ function TypePanel({
                       <ValueActions
                         value={value}
                         onEdit={() => setValueDialog({ kind: 'edit', value })}
-                        onLink={() => setLinking(value)}
                         onConfirm={setConfirm}
                       />
                     )}
@@ -377,7 +373,6 @@ function TypePanel({
           onClose={() => setValueDialog(null)}
         />
       )}
-      {linking && <LinkDialog key={linking.id} value={linking} onClose={() => setLinking(null)} />}
       {departmentsOf && (
         <ServiceDepartmentsDialog
           key={departmentsOf.id}
@@ -416,12 +411,10 @@ function TypePanel({
 function ValueActions({
   value,
   onEdit,
-  onLink,
   onConfirm,
 }: {
   value: DimensionValue;
   onEdit: () => void;
-  onLink: () => void;
   onConfirm: (confirm: Confirm) => void;
 }) {
   const archived = value.archivedAt !== null;
@@ -436,9 +429,6 @@ function ValueActions({
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         {!archived && <DropdownMenuItem onClick={onEdit}>{t.actions.edit}</DropdownMenuItem>}
-        {!archived && value.externalId === null && (
-          <DropdownMenuItem onClick={onLink}>{t.actions.link}</DropdownMenuItem>
-        )}
         {archived ? (
           <DropdownMenuItem onClick={() => onConfirm({ kind: 'restore', value })}>
             {t.actions.restore}
@@ -657,77 +647,6 @@ function ValueFormDialog({
           <DialogFooter>
             <Button type="submit" loading={save.isPending}>
               {current ? t.value.save : t.value.create}
-            </Button>
-            <Button type="button" variant="ghost" onClick={onClose}>
-              {ar.common.cancel}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-/** A manual value to its Hub ID, once (rule 11). */
-function LinkDialog({ value, onClose }: { value: DimensionValue; onClose: () => void }) {
-  const { companyId } = useCompany();
-  const queryClient = useQueryClient();
-  const [externalId, setExternalId] = useState('');
-  const [invalid, setInvalid] = useState(false);
-  const [attempt, setAttempt] = useState(0);
-  const link = useMutation({
-    mutationFn: (body: unknown) =>
-      api('POST', `/dimension-values/${value.id}/link`, {
-        company: companyId,
-        body,
-        schema: dimensionValueSchema,
-      }),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['dimensions', companyId] });
-      onClose();
-    },
-  });
-  return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent closeLabel={ar.common.close}>
-        <form
-          noValidate
-          className="flex flex-col gap-4"
-          onSubmit={(event) => {
-            event.preventDefault();
-            const parsed = linkDimensionValueSchema.safeParse({ externalId });
-            setInvalid(!parsed.success);
-            if (parsed.success) link.mutate(parsed.data);
-            else setAttempt((count) => count + 1);
-          }}
-        >
-          <DialogHeader>
-            <DialogTitle>{`${t.link.title}: ${value.name}`}</DialogTitle>
-            <DialogDescription>{t.link.description}</DialogDescription>
-          </DialogHeader>
-          <FormErrorSummary
-            attempt={attempt}
-            errors={[['link-external-id', invalid ? t.validation.required : undefined]]}
-          />
-          <Field id="link-external-id" invalid={invalid}>
-            <FieldLabel>{t.link.externalId}</FieldLabel>
-            <Input
-              dir="ltr"
-              autoComplete="off"
-              spellCheck={false}
-              value={externalId}
-              onChange={(event) => {
-                setInvalid(false);
-                setExternalId(event.target.value);
-              }}
-            />
-            <FieldDescription>{t.link.externalIdHint}</FieldDescription>
-            <FieldError match={invalid}>{t.validation.required}</FieldError>
-          </Field>
-          <FormError error={link.error} />
-          <DialogFooter>
-            <Button type="submit" loading={link.isPending}>
-              {t.link.submit}
             </Button>
             <Button type="button" variant="ghost" onClick={onClose}>
               {ar.common.cancel}

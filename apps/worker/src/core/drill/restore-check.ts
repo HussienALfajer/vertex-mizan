@@ -4,7 +4,6 @@ import {
   readChain,
   readLedgerState,
   readOpenItemState,
-  readRecognitionState,
   type Transaction,
   withCompany,
 } from '@vertex-mizan/db';
@@ -14,8 +13,6 @@ import {
   type IntegrityFindings,
   type OpenItemFindings,
   openItemProblems,
-  type RecognitionProblem,
-  recognitionProblems,
 } from '@vertex-mizan/ledger';
 import { sql } from 'drizzle-orm';
 
@@ -84,7 +81,6 @@ export function compareTrialBalances(
 export interface RestoredBooksFindings {
   readonly findings: IntegrityFindings;
   readonly items: OpenItemFindings;
-  readonly recognition: readonly RecognitionProblem[];
   readonly anchors: readonly { readonly anchoredOn: string; readonly result: AnchorResult }[];
 }
 
@@ -93,7 +89,7 @@ export interface RestoredBooksFindings {
  * `POST /api/integrity/check` counts, and any stored anchor the restored chain does not verify.
  */
 export function restoredBooksProblems(restored: RestoredBooksFindings): string[] {
-  const { findings, items, recognition, anchors } = restored;
+  const { findings, items, anchors } = restored;
   const problems: string[] = [];
   if (findings.firstBreak !== null) {
     problems.push(
@@ -121,11 +117,6 @@ export function restoredBooksProblems(restored: RestoredBooksFindings): string[]
   }
   for (const row of items.itemBalances) {
     problems.push(`open item ${row.itemId} balance: ${row.problem}`);
-  }
-  for (const row of recognition) {
-    problems.push(
-      `recognition ${row.contractValueId ?? 'without contract'} ${row.currency}: schedules differ from the contract liability in the ${row.amount} amount`,
-    );
   }
   for (const anchor of anchors) {
     if (anchor.result !== 'verified')
@@ -232,7 +223,6 @@ async function checkCompany(
           ...(await readOpenItemState(tx)),
           periodBalances: state.periodBalances,
         }),
-        recognition: recognitionProblems(await readRecognitionState(tx)),
         anchors: state.anchors.map((anchor) => ({
           anchoredOn: anchor.anchoredOn,
           result: anchorResult(chain, anchor),

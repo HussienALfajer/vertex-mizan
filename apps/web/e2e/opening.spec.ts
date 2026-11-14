@@ -60,10 +60,10 @@ test.describe('/opening', () => {
     // Step 2: the failing rates named, with the way to fix them.
     const review = step(page, 'review');
     const failed = review.locator('[data-slot="checklist-item"][data-status="failed"]');
-    await expect(failed).toHaveCount(2);
-    await expect(failed.nth(1)).toContainText(t.review.checkNames.rates);
-    await expect(failed.nth(1)).toContainText('USD/SYP 2026-09-10');
-    await expect(failed.nth(1).getByRole('link', { name: t.review.links.rates })).toHaveAttribute(
+    await expect(failed).toHaveCount(1);
+    await expect(failed.nth(0)).toContainText(t.review.checkNames.rates);
+    await expect(failed.nth(0)).toContainText('2026-09-30');
+    await expect(failed.nth(0).getByRole('link', { name: t.review.links.rates })).toHaveAttribute(
       'href',
       '/rates',
     );
@@ -133,17 +133,17 @@ test.describe('/opening', () => {
         memo: null,
       },
     ]);
-    // No records' figures: the agreement with Hub is gone, and the save still takes the list.
-    expect(body.recordFigures).toEqual([]);
+    // No records' figures: the agreement with Hub left with it (ADR 0021).
+    expect(body).not.toHaveProperty('recordFigures');
     await expect(page.getByRole('status').filter({ hasText: t.actions.saved })).toBeVisible();
 
     // Every check passes: the balancing figure per ledger.
     const review = step(page, 'review');
     await expect(review.locator('[data-slot="checklist-item"][data-status="passed"]')).toHaveCount(
-      6,
+      3,
     );
-    await expect(review.locator('[data-slot="opening-balancing"]')).toContainText('-659,900.00');
-    await expect(review.locator('[data-slot="opening-balancing"]')).toContainText('-3,999.15');
+    await expect(review.locator('[data-slot="opening-balancing"]')).toContainText('-700,000.00');
+    await expect(review.locator('[data-slot="opening-balancing"]')).toContainText('-4,349.15');
     // Only the records' lines and the balancing line are grouped: no Hub group.
     await expect(review.locator('[data-group="receivable"]')).toHaveCount(0);
 

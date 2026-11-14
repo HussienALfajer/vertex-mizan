@@ -133,6 +133,32 @@ export const COMPANY_AUDIT_ACTIONS = [
   'export.opening',
 ] as const;
 
+/**
+ * The company audit actions of features removed with Hub (ADR 0021): API clients and document
+ * sources, the posting-rule mapping and the inbox's actions (S05), the recognition actions (S06),
+ * a dimension value's Hub link (S02), the contract position's and release schedule's exports (S09)
+ * and Hub's opening snapshot (S10). They stay in `COMPANY_AUDIT_ACTIONS`, since the audit log keeps
+ * the rows that carry them, and are never written again or reused.
+ */
+export const RETIRED_COMPANY_AUDIT_ACTIONS = [
+  'dimension_value.linked',
+  'api_client.created',
+  'api_client.updated',
+  'api_client_key.created',
+  'api_client_key.revoked',
+  'document_source.set',
+  'posting_rule.mapped',
+  'event.retried',
+  'event.moved_to_open_period',
+  'event.resolved',
+  'event.dismissed',
+  'event.recognised_in_open_period',
+  'event.remainder_split',
+  'export.contract_position',
+  'export.revenue_schedule',
+  'opening.snapshot_received',
+] as const satisfies readonly (typeof COMPANY_AUDIT_ACTIONS)[number][];
+
 export const companyAuditActionSchema = z
   .enum(COMPANY_AUDIT_ACTIONS)
   .meta({ id: 'CompanyAuditAction' });

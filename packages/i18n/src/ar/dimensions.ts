@@ -1,14 +1,13 @@
 import type { ContractKind } from '@vertex-mizan/contracts';
 
 /**
- * Dimensions (S02 rules 9–13): types and values, Hub's values and the manual ones linked to a Hub
- * ID. Terms from `docs/glossary.md` (نوع البعد، قيمة البعد، العقد، الربط بـ Hub).
+ * Dimensions (S02 rules 9–13): types and values; the values Hub fed before ADR 0021 keep their Hub
+ * ID, read only. Terms from `docs/glossary.md` (نوع البعد، قيمة البعد، العقد، الربط بـ Hub).
  */
 export const dimensions = {
   title: 'الأبعاد',
   nav: 'الأبعاد',
-  description:
-    'أنواع الأبعاد التي تحملها سطور القيود للتحليل، وقيمها: ما يرسله Hub بمعرّفه، وما تضيفه بنفسك.',
+  description: 'أنواع الأبعاد التي تحملها سطور القيود للتحليل، وقيمها التي تضيفها بنفسك.',
   readOnly: 'تعرض الأبعاد دون تعديل: إضافتها وتعديلها للمالك والمحاسب.',
   types: 'أنواع الأبعاد',
   builtin: 'أساسي',
@@ -34,13 +33,11 @@ export const dimensions = {
   },
   empty: {
     title: 'لا قيم في هذا النوع بعد',
-    description:
-      'يضيف Hub قيمه عند أول حدث يذكرها، ويمكنك إضافة قيمة يدوية وربطها بمعرّف Hub لاحقًا.',
+    description: 'أضف قيمة لهذا النوع لتختارها في سطور القيود.',
     search: 'لا قيمة تطابق البحث.',
   },
   actions: {
     edit: 'تعديل',
-    link: 'ربط بـ Hub',
     archive: 'أرشفة',
     restore: 'استعادة',
     editType: 'تعديل النوع',
@@ -59,25 +56,15 @@ export const dimensions = {
     client: 'العميل',
     clientHint: 'العميل الذي يتبع له العقد.',
     hubTitle: 'قيمة من Hub',
-    hubDescription: 'يعيد Hub تسمية هذه القيمة عندما يرسل اسمًا مختلفًا في حدث لاحق.',
+    hubDescription: 'وصلت هذه القيمة من Hub قبل إيقاف الربط معه، ويبقى معرّفها للقراءة.',
     create: 'إضافة القيمة',
     save: 'حفظ',
     saved: 'حُفظت القيمة.',
     nothingChanged: 'لم يتغير شيء.',
   },
-  link: {
-    title: 'ربط القيمة بـ Hub',
-    description:
-      'بعد الربط تجد أحداث Hub هذه القيمة بمعرّفها. لا يتغير الربط بعد ذلك، فتحقق من المعرّف قبل الحفظ.',
-    externalId: 'معرّف Hub',
-    externalIdHint: 'المعرّف كما يظهر في Hub، أو رمز القسم الثابت.',
-    submit: 'ربط',
-    linked: 'رُبطت القيمة بـ Hub.',
-  },
   archive: {
     title: 'أرشفة القيمة',
-    description:
-      'تختفي القيمة المؤرشفة من قوائم الاختيار وتُرفض في السطور اليدوية، ويبقى Hub قادرًا على ذكرها.',
+    description: 'تختفي القيمة المؤرشفة من قوائم الاختيار وتُرفض في السطور اليدوية.',
     submit: 'أرشفة القيمة',
   },
   restore: {

@@ -407,6 +407,34 @@
       "when": 1794582102296,
       "tag": "0057_nostalgic_doorman",
       "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1794601818352,
+      "tag": "0058_adr0021_hub_removal_checks",
+      "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1794601819717,
+      "tag": "0059_adr0021_kept_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1794601830451,
+      "tag": "0060_adr0021_drop_hub_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1794601831701,
+      "tag": "0061_adr0021_drop_hub_functions",
+      "breakpoints": true
     }
   ]
 }

@@ -173,13 +173,9 @@ function Opening({
   const [reversing, setReversing] = useState(false);
 
   const accountsById = new Map(accounts.map((account) => [account.id, account]));
-  // The save still takes the records' figures of Hub's agreement (rule 16): none, without Hub.
-  const input = { lines: recordLinesInput(rows, accountsById, ledgers), recordFigures: [] };
+  const input = { lines: recordLinesInput(rows, accountsById, ledgers) };
   const savedRows = recordRowsOf(view);
-  const savedInput = {
-    lines: recordLinesInput(savedRows, accountsById, ledgers),
-    recordFigures: [],
-  };
+  const savedInput = { lines: recordLinesInput(savedRows, accountsById, ledgers) };
   const typedRows = rows.filter((row) => !isBlankRecord(row));
   const dirty =
     JSON.stringify(input) !== JSON.stringify(savedInput) || typedRows.length !== input.lines.length;

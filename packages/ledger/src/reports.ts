@@ -702,73 +702,6 @@ export function balanceSheet(input: {
   };
 }
 
-// --- Contract position (rule 24) ---
-
-export interface ContractPositionRowValue {
-  readonly contractId: string;
-  readonly clientId: string | null;
-  readonly assets: bigint;
-  readonly liabilities: bigint;
-  readonly net: bigint;
-}
-
-/**
- * Each contract's balances on the contract-asset and contract-liability accounts at a date and
- * their net (rule 24), with totals that agree with the balance sheet's two lines: the contracts'
- * net debits and net credits, and what those lines hold without a contract.
- */
-export function contractPosition(input: {
-  readonly accounts: readonly ReportChartAccount[];
-  readonly balances: readonly PresentationBalance[];
-}): {
-  rows: ContractPositionRowValue[];
-  totals: {
-    contractAssets: bigint;
-    contractLiabilities: bigint;
-    withoutContractAssets: bigint;
-    withoutContractLiabilities: bigint;
-  };
-} {
-  const byId = new Map(input.accounts.map((account) => [account.id, account]));
-  const lineOf = (row: PresentationBalance) => byId.get(row.accountId)?.statementLine ?? null;
-  const rows = new Map<string, { clientId: string | null; assets: bigint; liabilities: bigint }>();
-  for (const row of input.balances) {
-    const line = lineOf(row);
-    if (row.contractId === null || line === null || !CONTRACT_LINES.has(line)) continue;
-    const entry = rows.get(row.contractId) ?? {
-      clientId: row.clientId,
-      assets: 0n,
-      liabilities: 0n,
-    };
-    if (line === 'bs.contract_assets') entry.assets += row.amount;
-    else entry.liabilities -= row.amount;
-    entry.clientId ??= row.clientId;
-    rows.set(row.contractId, entry);
-  }
-  const positions = [...rows.entries()]
-    .map(([contractId, entry]) => ({
-      contractId,
-      clientId: entry.clientId,
-      assets: entry.assets,
-      liabilities: entry.liabilities,
-      net: entry.assets - entry.liabilities,
-    }))
-    .filter((row) => row.assets !== 0n || row.liabilities !== 0n);
-  const presented = presentBalances(byId, input.balances);
-  const lineTotal = (line: string) => sum((presented.get(line) ?? []).map((part) => part.amount));
-  const contractAssets = sum(positions.filter((row) => row.net > 0n).map((row) => row.net));
-  const contractLiabilities = sum(positions.filter((row) => row.net < 0n).map((row) => -row.net));
-  return {
-    rows: positions,
-    totals: {
-      contractAssets,
-      contractLiabilities,
-      withoutContractAssets: lineTotal('bs.contract_assets') - contractAssets,
-      withoutContractLiabilities: lineTotal('bs.contract_liabilities') - contractLiabilities,
-    },
-  };
-}
-
 // --- Profitability (rules 20–23) ---
 
 /** A dated department of a service (rule 32). */
@@ -900,47 +833,6 @@ export function profitability(input: {
       current: figuresOf(total.revenue, total.costs),
       compare: input.compared ? figuresOf(total.compareRevenue, total.compareCosts) : null,
     },
-  };
-}
-
-// --- Revenue release schedule (rule 25) ---
-
-/** A part still to release: in a month, or at its done (`month` null, "عند الإنجاز"). */
-export interface ReleasePart {
-  readonly contractId: string | null;
-  readonly month: string | null;
-  readonly amount: bigint;
-}
-
-/** The releases still to post per contract and month, and in total (rule 25). */
-export function releaseSchedule(parts: readonly ReleasePart[]): {
-  months: string[];
-  rows: { contractId: string | null; months: Map<string, bigint>; atDone: bigint; total: bigint }[];
-  totals: { months: Map<string, bigint>; atDone: bigint; total: bigint };
-} {
-  const months = [
-    ...new Set(parts.flatMap((part) => (part.month === null ? [] : [part.month]))),
-  ].sort();
-  const rows = new Map<
-    string | null,
-    { months: Map<string, bigint>; atDone: bigint; total: bigint }
-  >();
-  const totals = { months: new Map<string, bigint>(), atDone: 0n, total: 0n };
-  for (const part of parts) {
-    const row = rows.get(part.contractId) ?? { months: new Map(), atDone: 0n, total: 0n };
-    rows.set(part.contractId, row);
-    for (const target of [row, totals]) {
-      if (part.month === null) target.atDone += part.amount;
-      else target.months.set(part.month, (target.months.get(part.month) ?? 0n) + part.amount);
-      target.total += part.amount;
-    }
-  }
-  return {
-    months,
-    rows: [...rows.entries()]
-      .filter(([, row]) => row.total !== 0n || row.atDone !== 0n || row.months.size > 0)
-      .map(([contractId, row]) => ({ contractId, ...row })),
-    totals,
   };
 }
 

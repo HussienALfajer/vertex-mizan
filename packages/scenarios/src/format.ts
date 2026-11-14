@@ -1,10 +1,8 @@
 import {
   accountClassOfCode,
   accountCodeLevel,
-  CHART_TEMPLATE_IDS,
   type CompanyLedgers,
   type CurrencyCode,
-  chartTemplate,
   companyLedgersSchema,
   currencyCodeSchema,
   exchangeRateSchema,
@@ -15,6 +13,7 @@ import {
   statementLineFits,
 } from '@vertex-mizan/contracts';
 import { z } from 'zod';
+import { bookChart } from './agency-chart.js';
 import {
   BOOKS_START_MARKS,
   expectedReportSchema,
@@ -70,17 +69,6 @@ const dimensionsSchema = z.record(
 const sourceSchema = z
   .string()
   .regex(/^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)*$/, 'Expected an event type, a job or manual');
-
-const eventTypeSchema = z
-  .string()
-  .regex(
-    /^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+$/,
-    'Expected an event type such as invoice.issued',
-  );
-
-const jobNameSchema = z
-  .string()
-  .regex(/^[a-z][a-z0-9_]*$/, 'Expected a job name such as revenue_release_month');
 
 /** The currency shapes of ADR 0007 and ADR 0008: the book and parallel currency of each. */
 export const SHAPES = {
@@ -192,13 +180,14 @@ function ledgersOf(company: RawCompany): CompanyLedgers {
  */
 function checkAddedAccounts(company: RawCompany, context: z.RefinementCtx): void {
   if (company.accounts.length === 0) return;
-  const templateId = CHART_TEMPLATE_IDS.find((id) => id === company.template);
-  if (templateId === undefined) {
+  const chart = bookChart(company.template);
+  if (chart === undefined) {
     const message = 'Accounts are added to a known chart template';
     context.addIssue({ code: 'custom', message, path: ['accounts'] });
     return;
   }
-  const template = chartTemplate(templateId).accounts;
+  const templateId = chart.id;
+  const template = chart.accounts;
   const issue = (index: number, message: string) =>
     context.addIssue({ code: 'custom', message, path: ['accounts', index] });
   for (const [index, account] of company.accounts.entries()) {
@@ -338,26 +327,17 @@ export type Outcome = z.output<typeof outcomeSchema>;
 const stepOutcome = { outcome: outcomeSchema.optional() };
 
 /**
- * A step is told apart by its one key: `event`, `manual`, `reversal`, `job` or `rate`, or one of
- * the accountant's actions on a held event (S05 rules 15–17): `retry`, `move`, `resolve`, `dismiss`;
- * S06's `recognise` and `split` (rule 16); S07's `revalue` (rules 10–18), `block` (S02 rule 5),
+ * A step is told apart by its one key: `manual`, `reversal` or `rate`; S07's `revalue` (rules
+ * 10–18), `block` (S02 rule 5),
  * `close` and `reopen` (rules 2–9), and a manual entry saved as a `draft` and its `discard` (S03
  * rules 4 and 11), which S07's checklist reads (`no_drafts`); and S09's `service_department`, a
  * manual service's dated department (rule 34); and S10's `opening` (rules 10–23) and its
  * `reverse_opening` (rule 25).
  */
 export const STEP_KINDS = [
-  'event',
   'manual',
   'reversal',
-  'job',
   'rate',
-  'retry',
-  'move',
-  'resolve',
-  'dismiss',
-  'recognise',
-  'split',
   'revalue',
   'block',
   'close',
@@ -370,22 +350,6 @@ export const STEP_KINDS = [
 ] as const;
 
 export type StepKind = (typeof STEP_KINDS)[number];
-
-const eventStepSchema = z
-  .strictObject({
-    kind: z.literal('event'),
-    event: eventTypeSchema,
-    accounting_date: dateSchema,
-    payload: payloadSchema,
-    ...stepOutcome,
-  })
-  .transform((step) => ({
-    kind: step.kind,
-    type: step.event,
-    accountingDate: step.accounting_date,
-    payload: step.payload,
-    outcome: step.outcome ?? null,
-  }));
 
 /** A manual entry: what it records, and the request as the manual-entry form sends it (S03). */
 const manualStepSchema = z
@@ -440,119 +404,8 @@ const rateStepSchema = z
       : z.NEVER;
   });
 
-const jobStepSchema = z
-  .strictObject({
-    kind: z.literal('job'),
-    job: jobNameSchema,
-    period: periodSchema,
-    ...stepOutcome,
-  })
-  .transform((step) => ({
-    kind: step.kind,
-    name: step.job,
-    period: step.period,
-    outcome: step.outcome ?? null,
-  }));
-
-/** The written reason an action keeps (S05 rules 15, 17). */
+/** The written reason an action keeps: a block, a close, a reopen, a discard. */
 const actionReasonSchema = z.string().trim().min(1).max(500);
-
-/** Retry a held event now, by its step number (S05 rule 15). */
-const retryStepSchema = z
-  .strictObject({ kind: z.literal('retry'), retry: countSchema(1), ...stepOutcome })
-  .transform((step) => ({ kind: step.kind, step: step.retry, outcome: step.outcome ?? null }));
-
-/**
- * Post an event held `PERIOD_CLOSED` on the first day of the first open period after its
- * accounting date, with a reason (S05 rule 15).
- */
-const moveStepSchema = z
-  .strictObject({
-    kind: z.literal('move'),
-    move: countSchema(1),
-    reason: actionReasonSchema,
-    ...stepOutcome,
-  })
-  .transform((step) => ({
-    kind: step.kind,
-    step: step.move,
-    reason: step.reason,
-    outcome: step.outcome ?? null,
-  }));
-
-/**
- * Resolve an event held `NEEDS_DECISION` by a posted manual entry of the case, by its number in
- * posting order, with a reason (S05 rule 15).
- */
-const resolveStepSchema = z
-  .strictObject({
-    kind: z.literal('resolve'),
-    resolve: z.strictObject({ step: countSchema(1), entry: countSchema(1) }),
-    reason: actionReasonSchema,
-    ...stepOutcome,
-  })
-  .transform((step) => ({
-    kind: step.kind,
-    step: step.resolve.step,
-    entry: step.resolve.entry,
-    reason: step.reason,
-    outcome: step.outcome ?? null,
-  }));
-
-/** Dismiss a held event, by the owner, with a reason: it never posts (S05 rule 17). */
-const dismissStepSchema = z
-  .strictObject({
-    kind: z.literal('dismiss'),
-    dismiss: countSchema(1),
-    reason: actionReasonSchema,
-    ...stepOutcome,
-  })
-  .transform((step) => ({
-    kind: step.kind,
-    step: step.dismiss,
-    reason: step.reason,
-    outcome: step.outcome ?? null,
-  }));
-
-/**
- * Recognise the elapsed parts of an event held `SERVICE_PERIOD_CLOSED` in the first open period
- * after them, each measured at its own month's rates, with a reason (S06 rule 16).
- */
-const recogniseStepSchema = z
-  .strictObject({
-    kind: z.literal('recognise'),
-    recognise: countSchema(1),
-    reason: actionReasonSchema,
-    ...stepOutcome,
-  })
-  .transform((step) => ({
-    kind: step.kind,
-    step: step.recognise,
-    reason: step.reason,
-    outcome: step.outcome ?? null,
-  }));
-
-/**
- * Split the remainder of a cancelled project held `NEEDS_DECISION` (`cancelled_project_remainder`,
- * or an invoice's `invoiced_after_cancellation`):
- * `revenue`, the transaction amount to revenue in the project's currency, and the rest to the
- * refund payable, with a reason (S06 rules 15–16). Any whole amount is read, so a case can state
- * the inbox's refusal of one outside zero to the remainder.
- */
-const splitStepSchema = z
-  .strictObject({
-    kind: z.literal('split'),
-    split: z.strictObject({ step: countSchema(1), revenue: amountSchema }),
-    reason: actionReasonSchema,
-    ...stepOutcome,
-  })
-  .transform((step) => ({
-    kind: step.kind,
-    step: step.split.step,
-    revenueMinor: step.split.revenue,
-    reason: step.reason,
-    outcome: step.outcome ?? null,
-  }));
 
 /**
  * The accountant's month-end revaluation of one ledger (S07 rules 10–18): the preview's
@@ -710,131 +563,23 @@ const openingLineSchema = z
   }));
 
 /**
- * The records' figure of a client and currency on one of Hub's slots (S10 rule 15), signed as the
- * account's natural balance: a receivable debit positive, client funds credit positive.
- */
-const recordFigureSchema = z.strictObject({
-  slot: z.enum(['receivable', 'ad_funds']),
-  client: z.string().min(1),
-  currency: currencyCodeSchema,
-  amount: amountSchema,
-});
-
-/** A list of the register whose documents are unique by their `key`. */
-const registerList = <Shape extends z.ZodRawShape>(key: keyof Shape & string, shape: Shape) =>
-  z
-    .array(z.strictObject(shape))
-    .refine(
-      (documents) =>
-        new Set(documents.map((document) => document[key as keyof typeof document])).size ===
-        documents.length,
-      `A document is listed twice by its ${key}`,
-    )
-    .default([]);
-
-const documentId = z.string().trim().min(1).max(100);
-
-/**
- * The snapshot's register of prior documents (S10 rules 5 and 28): every Hub document dated on or
- * before the eve, by type, with its date, and what a later event about it needs to be found (a
- * payment's receipt and invoice, a wallet entry's or spend update's client). An event that voids, changes,
- * archives or reopens one of them is held `NEEDS_DECISION` (`before_books_start`).
- */
-const priorDocumentsSchema = z.strictObject({
-  invoices: registerList('invoice', { invoice: documentId, issued_on: dateSchema }),
-  payments: registerList('payment', {
-    payment: documentId,
-    receipt: documentId,
-    invoice: documentId,
-    paid_on: dateSchema,
-  }),
-  wallet_entries: registerList('entry', {
-    entry: documentId,
-    client: z.string().min(1),
-    entered_on: dateSchema,
-  }),
-  spend_updates: registerList('update', {
-    update: documentId,
-    campaign: documentId,
-    client: z.string().min(1),
-    period_to: dateSchema,
-  }),
-  project_expenses: registerList('expense', { expense: documentId, spent_on: dateSchema }),
-  milestone_dones: registerList('milestone', { milestone: documentId, done_on: dateSchema }),
-});
-
-/** Each prior document's list and date, for the check that it is on or before the eve. */
-const priorDocumentDates = (register: z.infer<typeof priorDocumentsSchema>) =>
-  [
-    ...register.invoices.map((d) => ['invoices', d.issued_on] as const),
-    ...register.payments.map((d) => ['payments', d.paid_on] as const),
-    ...register.wallet_entries.map((d) => ['wallet_entries', d.entered_on] as const),
-    ...register.spend_updates.map((d) => ['spend_updates', d.period_to] as const),
-    ...register.project_expenses.map((d) => ['project_expenses', d.spent_on] as const),
-    ...register.milestone_dones.map((d) => ['milestone_dones', d.done_on] as const),
-  ] as const;
-
-/**
- * Hub's snapshot as of the eve of the books start (S10 rule 5), in the short form of the event
- * payloads: invoices with their total and outstanding, credit lines of invoices not in `invoices`,
- * milestones, each client's USD wallet balance (funds held positive) and the register of prior
- * documents. Its executor checks it against the snapshot's contract; here a decimal number is
- * refused, as in any payload.
- */
-const snapshotSchema = z.strictObject({
-  invoices: z.array(payloadSchema).default([]),
-  credits: z.array(payloadSchema).default([]),
-  milestones: z.array(payloadSchema).default([]),
-  wallets: z
-    .array(z.strictObject({ client: z.string().min(1), balance: amountSchema }))
-    .refine(
-      (wallets) => new Set(wallets.map((wallet) => wallet.client)).size === wallets.length,
-      'A wallet is stated twice',
-    )
-    .default([]),
-  prior_documents: priorDocumentsSchema.default({
-    invoices: [],
-    payments: [],
-    wallet_entries: [],
-    spend_updates: [],
-    project_expenses: [],
-    milestone_dones: [],
-  }),
-});
-
-/**
- * The owner's posting of the opening from its preview (S10 rules 10–23): the draft saved with the
- * step's snapshot (none: no Hub client holds `opening:write`), lines and figures, then posted with
- * the preview's fingerprint on the books start. A refused post (`OPENING_CHECKS_FAILED`, the failing
+ * The owner's posting of the opening from its preview (S10 rules 14–23): the draft saved with the
+ * step's lines, then posted with the preview's fingerprint on the books start. A refused post (`OPENING_CHECKS_FAILED`, the failing
  * checks in rule 21's order) leaves the draft saved.
  */
 const openingStepSchema = z
   .strictObject({
     kind: z.literal('opening'),
     opening: z.string().trim().min(1),
-    snapshot: snapshotSchema.optional(),
     records: z
-      .strictObject({
-        lines: z.array(openingLineSchema).default([]),
-        figures: z
-          .array(recordFigureSchema)
-          .refine(
-            (figures) =>
-              new Set(figures.map((f) => JSON.stringify([f.slot, f.client, f.currency]))).size ===
-              figures.length,
-            'A figure is stated twice for a slot, client and currency',
-          )
-          .default([]),
-      })
-      .default({ lines: [], figures: [] }),
+      .strictObject({ lines: z.array(openingLineSchema).default([]) })
+      .default({ lines: [] }),
     ...stepOutcome,
   })
   .transform((step) => ({
     kind: step.kind,
     description: step.opening,
-    snapshot: step.snapshot ?? null,
     lines: step.records.lines,
-    figures: step.records.figures,
     outcome: step.outcome ?? null,
   }));
 
@@ -860,17 +605,9 @@ const stepSchema = z.preprocess(
   z.discriminatedUnion(
     'kind',
     [
-      eventStepSchema,
       manualStepSchema,
       reversalStepSchema,
-      jobStepSchema,
       rateStepSchema,
-      retryStepSchema,
-      moveStepSchema,
-      resolveStepSchema,
-      dismissStepSchema,
-      recogniseStepSchema,
-      splitStepSchema,
       revalueStepSchema,
       blockStepSchema,
       closeStepSchema,
@@ -883,9 +620,8 @@ const stepSchema = z.preprocess(
     ],
     {
       error:
-        'Expected a step with one of the keys event, manual, reversal, job, rate, retry, move, ' +
-        'resolve, dismiss, recognise, split, revalue, block, close, reopen, draft, discard, ' +
-        'service_department, opening or reverse_opening',
+        'Expected a step with one of the keys manual, reversal, rate, revalue, block, close, ' +
+        'reopen, draft, discard, service_department, opening or reverse_opening',
     },
   ),
 );
@@ -1068,27 +804,6 @@ export const caseSchema = z
       if (step.kind === 'revalue' && step.ledger === 'parallel' && parallel === null) {
         issue('The company keeps no parallel ledger to revalue', ['steps', s, 'revalue']);
       }
-      // S05 rules 15–17, S06 rule 16: an action names an earlier event step, and a resolve an
-      // expected entry.
-      if (
-        step.kind === 'retry' ||
-        step.kind === 'move' ||
-        step.kind === 'resolve' ||
-        step.kind === 'dismiss' ||
-        step.kind === 'recognise' ||
-        step.kind === 'split'
-      ) {
-        const path =
-          step.kind === 'resolve' || step.kind === 'split'
-            ? ['steps', s, step.kind, 'step']
-            : ['steps', s, step.kind];
-        if (step.step > s || steps[step.step - 1]?.kind !== 'event') {
-          issue(`Step ${step.step} is not an earlier event step`, path);
-        }
-        if (step.kind === 'resolve' && step.entry > entries.length) {
-          issue(`Entry ${step.entry} is not an expected entry`, ['steps', s, 'resolve', 'entry']);
-        }
-      }
     }
     // S10 rules 1 and 3: an opening needs a books start, and a company with a books start posts
     // nothing until its opening posts.
@@ -1105,19 +820,6 @@ export const caseSchema = z
         issue(`An ${step.kind} step needs the company's books_start`, ['steps', s, step.kind]);
       }
       if (step.kind !== 'opening') continue;
-      // S10 rule 5: the register lists the documents dated on or before the eve.
-      if (booksStart !== null && step.snapshot !== null) {
-        const register = step.snapshot.prior_documents;
-        const listed = new Map<string, number>();
-        for (const [list, date] of priorDocumentDates(register)) {
-          const d = listed.get(list) ?? 0;
-          listed.set(list, d + 1);
-          if (date >= booksStart) {
-            const path = ['steps', s, 'snapshot', 'prior_documents', list, d];
-            issue(`A prior document is dated on or after the books start ${booksStart}`, path);
-          }
-        }
-      }
       for (const [l, line] of step.lines.entries()) {
         const path = ['steps', s, 'records', 'lines', l];
         if (line.parallel !== null && parallel === null) {

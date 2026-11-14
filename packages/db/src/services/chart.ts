@@ -8,9 +8,7 @@ import {
   checkAccountShape,
   DomainError,
   defaultNormalBalance,
-  type PostingSlot,
-  type SlotAccount,
-  slotAccountFits,
+  type TemplateAccount,
 } from '@vertex-mizan/contracts';
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
@@ -18,7 +16,6 @@ import { type AuditActor, writeCompanyAudit } from '../audit.js';
 import type { Transaction } from '../client.js';
 import { accountRequiredDimensions, accountRoles, chartAccounts } from '../schema/chart.js';
 import { dimensionTypes } from '../schema/dimensions.js';
-import { postingRuleAccounts } from '../schema/inbox.js';
 import { onUniqueViolation } from '../unique-violation.js';
 
 // The chart's writes that company creation, the API and the scenario book's setup share (S02
@@ -219,7 +216,28 @@ export async function applyChartTemplate(
   templateId: ChartTemplateId,
   actor: AuditActor,
 ): Promise<void> {
-  const template = chartTemplate(templateId);
+  await applyChart(tx, companyId, chartTemplate(templateId), actor);
+}
+
+/** A chart to apply: a template of contracts, or the scenario book's own chart (ADR 0021). */
+export interface ChartToApply {
+  readonly id: string;
+  readonly version: number;
+  readonly accounts: readonly TemplateAccount[];
+}
+
+/**
+ * Applies a chart's accounts to a chart that holds the five roots alone (`CHART_NOT_EMPTY`
+ * otherwise), with their required dimensions and roles, audited `chart.template_applied`. The
+ * scenario book applies its own chart through it, the service-agency chart its approved cases
+ * name, which the product no longer offers (ADR 0021).
+ */
+export async function applyChart(
+  tx: Transaction,
+  companyId: string,
+  template: ChartToApply,
+  actor: AuditActor,
+): Promise<void> {
   const roots = await tx
     .select({ id: chartAccounts.id, code: chartAccounts.code })
     .from(chartAccounts)
@@ -279,13 +297,6 @@ export async function applyChartTemplate(
       : [{ companyId, role: account.role, accountId: ids.get(account.code) as string }],
   );
   if (roles.length > 0) await tx.insert(accountRoles).values(roles);
-  // The template's posting-rule mapping (S05 "Mapping slots"); the general template has none.
-  const mapping = template.postingRules.map((rule) => {
-    const accountId = ids.get(rule.code);
-    if (accountId === undefined) throw new Error(`Template mapping ${rule.slot} has no account`);
-    return { companyId, slot: rule.slot, currency: rule.currency, accountId };
-  });
-  if (mapping.length > 0) await tx.insert(postingRuleAccounts).values(mapping);
   await writeCompanyAudit(tx, companyId, actor, {
     action: 'chart.template_applied',
     entityType: 'chart',
@@ -294,118 +305,16 @@ export async function applyChartTemplate(
       templateId: template.id,
       templateVersion: template.version,
       accountCount: added.length,
-      mappedSlotCount: mapping.length,
     },
   });
-}
-
-/**
- * The S06 default of a slot whose template default moved since (the templates' version 3 moved the
- * cancelled project's refund from other payables to the refund liabilities, `211005`).
- */
-const APPENDED_SLOT_FALLBACKS: Partial<Record<PostingSlot, string>> = {
-  cancelled_project_refund: '211003',
-};
-
-/** A slot's default code, then its S06 default when it moved. */
-const codesOf = (slot: PostingSlot, code: string) => {
-  const fallback = APPENDED_SLOT_FALLBACKS[slot];
-  return fallback === undefined ? [code] : [code, fallback];
-};
-
-/**
- * The service-agency template's default for each slot a later spec appended (S06 "Data": the four
- * recognition slots), mapped in the company in context when none of them is mapped yet and its chart
- * holds every code of them, each account fitting its slot (`slotAccountFits()`); a company of the
- * general template, or a chart of its own, stays unmapped and holds its events `NO_MAPPING` until
- * the accountant maps them. Runs at the worker's start after the deploy that appended the slots,
- * since a value added to the enum cannot be used in the migration's transaction. Safe to run twice:
- * a slot mapped already is left as it is. Answers how many slots it mapped. A company made before
- * S06 holds a chart of the templates' version 1, without the version 3 accounts: a slot whose
- * default moved since S06 (`APPENDED_SLOT_FALLBACKS`) takes its S06 default when the chart lacks the
- * current one.
- */
-export async function mapAppendedTemplateSlots(
-  tx: Transaction,
-  companyId: string,
-  slots: readonly PostingSlot[],
-  actor: AuditActor,
-): Promise<number> {
-  const rules = chartTemplate('service-agency').postingRules.filter((rule) =>
-    slots.includes(rule.slot),
-  );
-  if (rules.length === 0) return 0;
-  // A company with S05's template mapping, none of the appended slots mapped yet.
-  const mapped = await tx.select({ slot: postingRuleAccounts.slot }).from(postingRuleAccounts);
-  if (mapped.length === 0 || mapped.some((row) => slots.includes(row.slot))) return 0;
-  const accounts = await tx
-    .select()
-    .from(chartAccounts)
-    .where(
-      and(
-        inArray(
-          chartAccounts.code,
-          rules.flatMap((rule) => codesOf(rule.slot, rule.code)),
-        ),
-        isNull(chartAccounts.archivedAt),
-      ),
-    );
-  const rows = rules.flatMap((rule) => {
-    const account = codesOf(rule.slot, rule.code)
-      .map((code) => accounts.find((candidate) => candidate.code === code))
-      .find((candidate) => candidate !== undefined);
-    const fits =
-      account !== undefined &&
-      slotAccountFits(rule.slot, rule.currency, {
-        kind: account.kind as SlotAccount['kind'],
-        class: account.class as SlotAccount['class'],
-        isControl: account.isControl,
-        itemKind: account.itemKind as SlotAccount['itemKind'],
-        currency: account.currency,
-        isMonetary: account.isMonetary,
-      });
-    return fits
-      ? [
-          {
-            rule,
-            code: account.code,
-            row: { companyId, slot: rule.slot, currency: rule.currency, accountId: account.id },
-          },
-        ]
-      : [];
-  });
-  if (rows.length !== rules.length) return 0;
-  const inserted = await tx
-    .insert(postingRuleAccounts)
-    .values(rows.map(({ row }) => row))
-    // Two runs at once (the sweep and the release job at the worker's start): the second maps and
-    // audits nothing.
-    .onConflictDoNothing()
-    .returning({ id: postingRuleAccounts.id, slot: postingRuleAccounts.slot });
-  const made = rows.filter(({ rule }) => inserted.some((row) => row.slot === rule.slot));
-  for (const { rule, code, row } of made) {
-    await writeCompanyAudit(tx, companyId, actor, {
-      action: 'posting_rule.mapped',
-      entityType: 'posting_rule',
-      entityId: inserted.find((made) => made.slot === rule.slot)?.id ?? null,
-      before: null,
-      after: {
-        slot: rule.slot,
-        currency: rule.currency,
-        accountId: row.accountId,
-        accountCode: code,
-      },
-    });
-  }
-  return made.length;
 }
 
 /**
  * S10 ("Data"): the template's `312002` "نتيجة السنة قبل بدء الدفاتر" with the role
  * `pre_opening_result`, added to a company made before the templates' version 2 whose chart holds
  * the header `312` and no `312002`, when no account holds the role yet. Runs at the worker's start
- * after the deploy, as `mapAppendedTemplateSlots()` does, since a value appended to the role enum
- * cannot be used in the migration's transaction. Safe to run twice; answers whether it added it.
+ * after the deploy, since a value appended to the role enum cannot be used in the migration's
+ * transaction. Safe to run twice; answers whether it added it.
  */
 export async function appendPreOpeningResultAccount(
   tx: Transaction,
@@ -430,9 +339,7 @@ export async function appendPreOpeningResultAccount(
     .from(chartAccounts)
     .where(eq(chartAccounts.code, '312002'));
   if (taken !== undefined) return false;
-  const template = chartTemplate('service-agency').accounts.find(
-    (account) => account.code === '312002',
-  );
+  const template = chartTemplate('general').accounts.find((account) => account.code === '312002');
   if (template === undefined) throw new Error('The template has no 312002');
   const account = await createAccount(
     tx,

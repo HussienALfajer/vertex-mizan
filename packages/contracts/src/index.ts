@@ -1,6 +1,6 @@
 export * from './access.js';
-export * from './api-clients.js';
 export * from './audit.js';
+export * from './canonical.js';
 export * from './chart.js';
 export * from './chart-templates.js';
 export * from './companies.js';
@@ -8,10 +8,7 @@ export * from './dimensions.js';
 export * from './email.js';
 export * from './entries.js';
 export * from './errors.js';
-export * from './events.js';
 export * from './health.js';
-export * from './hub-examples.js';
-export * from './inbox.js';
 export * from './members.js';
 export * from './money.js';
 // The one rounding, for allocations and proportional releases in packages/ledger.
@@ -24,6 +21,4 @@ export * from './opening-view.js';
 export * from './people.js';
 export * from './periods.js';
 export * from './rates.js';
-export * from './reconciliation.js';
 export * from './reports.js';
-export * from './revenue.js';

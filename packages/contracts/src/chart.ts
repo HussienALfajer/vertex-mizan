@@ -616,7 +616,7 @@ export const accountRoleAssignmentSchema = z
 export type AccountRoleAssignment = z.infer<typeof accountRoleAssignmentSchema>;
 
 /** The chart templates (`chart-templates.ts`). */
-export const CHART_TEMPLATE_IDS = ['service-agency', 'general'] as const;
+export const CHART_TEMPLATE_IDS = ['general'] as const;
 
 export const chartTemplateIdSchema = z.enum(CHART_TEMPLATE_IDS).meta({ id: 'ChartTemplateId' });
 

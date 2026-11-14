@@ -62,9 +62,9 @@ export const roots: Account[] = ROOT_ACCOUNTS.map((root) => ({
   createdAt: created,
 }));
 
-const template = CHART_TEMPLATES.find((candidate) => candidate.id === 'service-agency');
+const template = CHART_TEMPLATES.find((candidate) => candidate.id === 'general');
 
-/** The roots with the service-agency template applied, as `GET /api/accounts` answers. */
+/** The roots with the general template applied, as `GET /api/accounts` answers. */
 export const chart: Account[] = [
   ...roots,
   // The template lists the roots too; the company has them already.

@@ -25,7 +25,7 @@ afterAll(async () => {
   await db.$client.end();
 });
 
-async function ownerWith(template: 'service-agency' | 'general' | null) {
+async function ownerWith(template: 'general' | null) {
   const owner = await signedInPerson(app, db);
   const company = await newCompany(owner.browser, { template });
   return { ...owner, company };
@@ -85,10 +85,10 @@ describe('the guard on every chart route', () => {
 });
 
 describe('templates (rule 1)', () => {
-  it('applies the service-agency template at creation, with all seven roles', async () => {
-    const owner = await ownerWith('service-agency');
+  it('applies the general template at creation, with all seven roles', async () => {
+    const owner = await ownerWith('general');
     const accounts = await tree(owner.browser);
-    const template = chartTemplate('service-agency');
+    const template = chartTemplate('general');
     expect(accounts.map((account) => account.code)).toEqual(
       template.accounts.map((account) => account.code),
     );
@@ -116,20 +116,19 @@ describe('templates (rule 1)', () => {
       '5',
     ]);
     const listed = await owner.browser.get('/api/chart/templates');
-    expect(listed.body).toEqual([
-      expect.objectContaining({ id: 'service-agency', version: 3 }),
-      expect.objectContaining({ id: 'general', version: 3 }),
-    ]);
+    // The service-agency template left with Hub (ADR 0021).
+    expect(listed.body).toEqual([expect.objectContaining({ id: 'general', version: 3 })]);
+    expect(
+      (await owner.browser.post('/api/chart/apply-template', { templateId: 'service-agency' })).body
+        .code,
+    ).toBe('VALIDATION_FAILED');
     const [first, second] = await Promise.all([
       owner.browser.post('/api/chart/apply-template', { templateId: 'general' }),
-      owner.browser.post('/api/chart/apply-template', { templateId: 'service-agency' }),
+      owner.browser.post('/api/chart/apply-template', { templateId: 'general' }),
     ]);
     const answers = [first, second].map((answer) => answer.body.code ?? answer.status).sort();
     expect(answers).toEqual([200, 'CHART_NOT_EMPTY']);
-    const counts = [chartTemplate('general'), chartTemplate('service-agency')].map(
-      (template) => template.accounts.length,
-    );
-    expect(counts).toContain((await tree(owner.browser)).length);
+    expect((await tree(owner.browser)).length).toBe(chartTemplate('general').accounts.length);
   });
 
   it('serves the statement-line catalogue', async () => {
@@ -141,7 +140,7 @@ describe('templates (rule 1)', () => {
 
 describe('POST /api/accounts (rule 2)', () => {
   it('adds an account under a header; a misfit or used code is refused', async () => {
-    const owner = await ownerWith('service-agency');
+    const owner = await ownerWith('general');
     const cash = byCode(await tree(owner.browser), '111');
     const created = await owner.browser.post('/api/accounts', euroBank(cash.id));
     expect(created.status, JSON.stringify(created.body)).toBe(201);
@@ -173,11 +172,12 @@ describe('POST /api/accounts (rule 2)', () => {
   });
 
   it('gives a control account its item kind, and only a control account one (S04)', async () => {
-    const owner = await ownerWith('service-agency');
+    const owner = await ownerWith('general');
     const accounts = await tree(owner.browser);
-    expect(
-      ['112001', '113001', '213001', '111004'].map((code) => byCode(accounts, code).itemKind),
-    ).toEqual(['document', 'document', 'running', null]);
+    expect(['112001', '111004'].map((code) => byCode(accounts, code).itemKind)).toEqual([
+      'document',
+      null,
+    ]);
     const receivables = byCode(accounts, '112');
     const account = (change: Record<string, unknown>) =>
       owner.browser.post('/api/accounts', {
@@ -246,8 +246,8 @@ describe('POST /api/accounts (rule 2)', () => {
   });
 
   it("answers another company's parent as unknown; one code at once for two accountants", async () => {
-    const owner = await ownerWith('service-agency');
-    const stranger = await ownerWith('service-agency');
+    const owner = await ownerWith('general');
+    const stranger = await ownerWith('general');
     const theirCash = byCode(await tree(stranger.browser), '111');
     const foreign = await owner.browser.post('/api/accounts', euroBank(theirCash.id));
     expect(foreign.body.code).toBe('NOT_FOUND');
@@ -267,7 +267,7 @@ describe('POST /api/accounts (rule 2)', () => {
 
 describe('PATCH /api/accounts/:id (rules 3–4)', () => {
   it('changes an unused leaf freely, moves it with its code, and locks it after first use', async () => {
-    const owner = await ownerWith('service-agency');
+    const owner = await ownerWith('general');
     const accounts = await tree(owner.browser);
     const created = await owner.browser.post('/api/accounts', euroBank(byCode(accounts, '111').id));
     const id = created.body.id as string;
@@ -315,7 +315,7 @@ describe('PATCH /api/accounts/:id (rules 3–4)', () => {
   });
 
   it('only renames a root; a header with children never becomes postable', async () => {
-    const owner = await ownerWith('service-agency');
+    const owner = await ownerWith('general');
     const accounts = await tree(owner.browser);
     const root = byCode(accounts, '1');
     expect((await owner.browser.patch(`/api/accounts/${root.id}`, { name: 'أصول' })).status).toBe(
@@ -334,7 +334,7 @@ describe('PATCH /api/accounts/:id (rules 3–4)', () => {
   });
 
   it('refuses a change that leaves a role on an account it no longer fits', async () => {
-    const owner = await ownerWith('service-agency');
+    const owner = await ownerWith('general');
     const roles = (await owner.browser.get('/api/account-roles')).body as {
       role: string;
       accountId: string;
@@ -389,7 +389,7 @@ describe('PATCH /api/accounts/:id (rules 3–4)', () => {
 
 describe('block, archive and restore (rules 5–6)', () => {
   it('blocks, archives with a reason, hides and restores an account', async () => {
-    const owner = await ownerWith('service-agency');
+    const owner = await ownerWith('general');
     const created = await owner.browser.post(
       '/api/accounts',
       euroBank(byCode(await tree(owner.browser), '111').id),
@@ -423,7 +423,7 @@ describe('block, archive and restore (rules 5–6)', () => {
   });
 
   it('refuses a header, a role account, an account with children and a root', async () => {
-    const owner = await ownerWith('service-agency');
+    const owner = await ownerWith('general');
     const accounts = await tree(owner.browser);
     const header = byCode(accounts, '111');
     expect(
@@ -447,8 +447,8 @@ describe('block, archive and restore (rules 5–6)', () => {
   });
 
   it("answers another company's account as unknown, and changes nothing", async () => {
-    const owner = await ownerWith('service-agency');
-    const stranger = await ownerWith('service-agency');
+    const owner = await ownerWith('general');
+    const stranger = await ownerWith('general');
     const theirs = byCode(await tree(stranger.browser), '111001');
     for (const action of ['block', 'archive']) {
       const answer = await owner.browser.post(`/api/accounts/${theirs.id}/${action}`, {
@@ -465,8 +465,8 @@ describe('block, archive and restore (rules 5–6)', () => {
 
 describe("another company's ids on every account route", () => {
   it('answer NOT_FOUND and change nothing', async () => {
-    const owner = await ownerWith('service-agency');
-    const stranger = await ownerWith('service-agency');
+    const owner = await ownerWith('general');
+    const stranger = await ownerWith('general');
     const theirs = await tree(stranger.browser);
     const theirAccount = byCode(theirs, '111001');
     const theirHeader = byCode(theirs, '112');
@@ -542,7 +542,7 @@ describe("another company's ids on every account route", () => {
 
 describe('account roles (rule 7)', () => {
   it('moves a role to a fitting account and refuses one that does not fit', async () => {
-    const owner = await ownerWith('service-agency');
+    const owner = await ownerWith('general');
     const accounts = await tree(owner.browser);
     const expense = accounts.find(
       (account) =>
@@ -593,7 +593,7 @@ describe('account roles (rule 7)', () => {
 
 describe('GET /api/chart/export', () => {
   it('answers an Arabic workbook of every account, audited, for every role', async () => {
-    const owner = await ownerWith('service-agency');
+    const owner = await ownerWith('general');
     const viewer = await joinCompany(app, db, owner.company.id, 'viewer');
     const file = await viewer.browser.download('/api/chart/export', { format: 'xlsx' });
     expect(file.status).toBe(200);

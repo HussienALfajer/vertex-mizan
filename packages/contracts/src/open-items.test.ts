@@ -120,21 +120,6 @@ describe('a draft line on a control account (S04 rules 6–7)', () => {
       }).success,
     ).toBe(false);
   });
-
-  it('clears an opening schedule on a line that names no item (S10 rule 28)', () => {
-    expect(draftLineInputSchema.parse({ ...line, scheduleId: ITEM })).toMatchObject({
-      scheduleId: ITEM,
-      openItemId: null,
-      newItem: null,
-    });
-    expect(
-      draftLineInputSchema.safeParse({ ...line, scheduleId: ITEM, openItemId: ITEM }).success,
-    ).toBe(false);
-    expect(
-      draftLineInputSchema.safeParse({ ...line, scheduleId: ITEM, newItem: { reference: 'M-1' } })
-        .success,
-    ).toBe(false);
-  });
 });
 
 // The output form is converted by `chart.test.ts`, which loads this module without `entries.ts`.

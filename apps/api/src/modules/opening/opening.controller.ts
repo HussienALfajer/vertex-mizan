@@ -54,7 +54,7 @@ export class OpeningController {
   @SerializeOptions({ schema: openingViewSchema })
   @ApiOkResponse({
     description:
-      "The opening: its state, Hub's snapshot and items, the records' lines and figures, the agreement, the entry it would post, the checks and the fingerprint",
+      "The opening: its state, the records' lines, the entry it would post, the checks and the fingerprint",
     standardSchema: openingViewSchema,
   })
   @ApiErrors(...COMPANY_READ_ERRORS, 'NO_BOOKS_START')
@@ -65,9 +65,7 @@ export class OpeningController {
   @Get('export')
   @ApiQueryFrom(openingExportQuerySchema)
   @CompanyRoute('opening.read')
-  @ApiOkProducesResponse("The opening's preview or its agreement with Hub as an Excel workbook", [
-    XLSX,
-  ])
+  @ApiOkProducesResponse("The opening's preview as an Excel workbook", [XLSX])
   @ApiErrors(...COMPANY_READ_ERRORS, 'NO_BOOKS_START', 'VALIDATION_FAILED')
   async export(
     @Access() access: RequestAccess,

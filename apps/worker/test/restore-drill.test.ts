@@ -86,7 +86,7 @@ async function seed(target: Database, amounts: readonly bigint[]): Promise<void>
         ledgers: SYP_USD,
         fiscalYearStartMonth: 1,
         policyNote: 'مذكرة سياسة تجريبية.',
-        template: 'service-agency',
+        template: 'general',
         createdByUserId: personId,
       },
       actor(),
@@ -235,7 +235,6 @@ describe('restoredBooksProblems', () => {
       periodBalances: [],
     },
     items: { controlAccounts: [], itemBalances: [] },
-    recognition: [],
     anchors: [{ anchoredOn: '2026-11-08', result: 'verified' }],
   };
 
@@ -281,7 +280,6 @@ describe('restoredBooksProblems', () => {
           controlAccounts: [{ accountId: 'account-112001', currency: 'USD', amount: 'book' }],
           itemBalances: [{ itemId: 'item-1', problem: 'missing' }],
         },
-        recognition: [{ contractValueId: 'contract-1', currency: 'USD', amount: 'transaction' }],
         anchors: [
           { anchoredOn: '2026-11-08', result: 'verified' },
           { anchoredOn: '2026-11-09', result: 'missing' },
@@ -296,7 +294,6 @@ describe('restoredBooksProblems', () => {
       'period balance 2026-11 account-111003 SYP: different',
       'control account account-112001 USD: its items differ in the book amount',
       'open item item-1 balance: missing',
-      'recognition contract-1 USD: schedules differ from the contract liability in the transaction amount',
       'anchor 2026-11-09: missing',
       'anchor 2026-11-10: mismatch',
     ]);

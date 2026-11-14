@@ -254,7 +254,6 @@ test.describe('the entry screen with open items', () => {
         amountMinor: '-60000',
         openItemId: m1.id,
         newItem: null,
-        scheduleId: null,
       },
     ]);
   });
@@ -309,7 +308,6 @@ test.describe('the entry screen with open items', () => {
       dimensionValueIds: [hubClient.id],
       openItemId: null,
       newItem: null,
-      scheduleId: null,
     });
   });
 
@@ -379,7 +377,6 @@ test.describe('the entry screen with open items', () => {
             memo: null,
             openItemId: null,
             newItem: null,
-            scheduleId: null,
           },
           {
             accountId: accountOf('112001').id,
@@ -389,7 +386,6 @@ test.describe('the entry screen with open items', () => {
             memo: null,
             openItemId: m1.id,
             newItem: null,
-            scheduleId: null,
           },
         ],
       },

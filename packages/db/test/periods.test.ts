@@ -1,4 +1,4 @@
-import { type CompanyLedgers, type CurrencyCode, DomainError } from '@vertex-mizan/contracts';
+import { type CompanyLedgers, type CurrencyCode, DomainError, RETIRED_CHECKLIST_ITEMS } from '@vertex-mizan/contracts';
 import { asc, eq, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -80,7 +80,7 @@ async function newBooks(ledgers: CompanyLedgers): Promise<Books> {
         ledgers,
         fiscalYearStartMonth: 1,
         policyNote: 'مذكرة سياسة تجريبية.',
-        template: 'service-agency',
+        template: 'general',
         createdByUserId: personId,
       },
       actor(),
@@ -218,12 +218,12 @@ describe('closePeriod (S07 rules 2, 5, 7–9)', () => {
       ['closing_rates_recorded', 'passed'],
       ['no_drafts', 'passed'],
       ['open_items_agree', 'passed'],
-      ['no_held_events', 'passed'],
-      ['releases_posted', 'passed'],
       ['revaluation_current', 'passed'],
-      // S08: a company without a Hub client reconciles no day.
-      ['reconciliation_clean', 'not_applicable'],
     ]);
+    // The items Hub's features fed left with Hub (ADR 0021).
+    for (const item of RETIRED_CHECKLIST_ITEMS) {
+      expect(november.checklist.map((row) => row.item)).not.toContain(item);
+    }
     await close(books, '2026-12');
     expect(await refused(close(books, '2026-12'))).toEqual({
       code: 'PERIOD_CLOSED',
@@ -375,11 +375,7 @@ describe('reopenPeriod and postings (S07 rules 1, 3, 4, 6)', () => {
       details: { period: '2026-12' },
     });
     const reopened = await reopen(books, '2026-11');
-    expect(reopened).toMatchObject({
-      queuedEvents: 0,
-      triggers: [{ kind: 'period', period: '2026-11' }],
-      period: { state: 'reopened' },
-    });
+    expect(reopened).toEqual({ period: expect.objectContaining({ state: 'reopened' }) });
     await expense(books, '2026-11-20');
     expect(await refused(reopen(books, '2026-11'))).toMatchObject({ code: 'PERIOD_NOT_CLOSED' });
     const again = await close(books, '2026-11');

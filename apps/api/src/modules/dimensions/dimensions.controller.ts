@@ -26,8 +26,6 @@ import {
   dimensionValueSchema,
   type IdParam,
   idParamSchema,
-  type LinkDimensionValue,
-  linkDimensionValueSchema,
   type ServiceDepartmentHistory,
   type SetServiceDepartment,
   serviceDepartmentHistorySchema,
@@ -173,29 +171,6 @@ export class DimensionValuesController {
     @Body({ schema: updateDimensionValueSchema }) body: UpdateDimensionValue,
   ): Promise<DimensionValue> {
     return this.dimensions.updateValue(inCompany(access), params.id, body);
-  }
-
-  @Post(':id/link')
-  @ApiParamsFrom(idParamSchema)
-  @HttpCode(200)
-  @CompanyRoute('dimensions.manage')
-  @SerializeOptions({ schema: dimensionValueSchema })
-  @ApiOkResponse({
-    description: 'The value, linked to its Hub ID',
-    standardSchema: dimensionValueSchema,
-  })
-  @ApiErrors(
-    ...COMPANY_WRITE_ERRORS,
-    'NOT_FOUND',
-    'DIMENSION_ALREADY_LINKED',
-    'DIMENSION_LINK_TAKEN',
-  )
-  async link(
-    @Access() access: RequestAccess,
-    @Param({ schema: idParamSchema }) params: IdParam,
-    @Body({ schema: linkDimensionValueSchema }) body: LinkDimensionValue,
-  ): Promise<DimensionValue> {
-    return this.dimensions.link(inCompany(access), params.id, body.externalId);
   }
 
   @Get(':id/departments')

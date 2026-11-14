@@ -4,8 +4,6 @@ import type {
   AccountStatementQuery,
   BalanceSheet,
   BalanceSheetQuery,
-  ContractPosition,
-  ContractPositionQuery,
   GeneralLedger,
   GeneralLedgerQuery,
   IncomeStatement,
@@ -16,8 +14,6 @@ import type {
   ProfitabilityQuery,
   ReportLines,
   ReportLinesQuery,
-  RevenueReleaseSchedule,
-  RevenueReleaseScheduleQuery,
   TrialBalance,
   TrialBalanceQuery,
 } from '@vertex-mizan/contracts';
@@ -25,13 +21,11 @@ import {
   type Database,
   readAccountStatement,
   readBalanceSheet,
-  readContractPosition,
   readGeneralLedger,
   readIncomeStatement,
   readJournal,
   readProfitability,
   readReportLines,
-  readRevenueReleaseSchedule,
   readTrialBalance,
   type Transaction,
   withCompany,
@@ -91,20 +85,6 @@ export class ReportsService {
 
   profitability(access: CompanyRouteAccess, query: ProfitabilityQuery): Promise<Profitability> {
     return this.#read(access, (tx, now) => readProfitability(tx, query, now));
-  }
-
-  contractPosition(
-    access: CompanyRouteAccess,
-    query: ContractPositionQuery,
-  ): Promise<ContractPosition> {
-    return this.#read(access, (tx, now) => readContractPosition(tx, query, now));
-  }
-
-  revenueSchedule(
-    access: CompanyRouteAccess,
-    query: RevenueReleaseScheduleQuery,
-  ): Promise<RevenueReleaseSchedule> {
-    return this.#read(access, (tx, now) => readRevenueReleaseSchedule(tx, query, now));
   }
 
   lines(access: CompanyRouteAccess, query: ReportLinesQuery): Promise<ReportLines> {

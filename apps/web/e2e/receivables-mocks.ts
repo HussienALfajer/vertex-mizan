@@ -94,7 +94,6 @@ export const m1Item: OpenItem = {
   ...m1,
   asOf: '2026-11-09',
   hubDocument: null,
-  hubEventId: null,
   openedByEntryId: entryId(3),
   bookCurrency: 'SYP',
   parallelCurrency: 'USD',
@@ -148,7 +147,6 @@ export const hubOpenItem: OpenItem = {
   ...hubItem,
   asOf: '2026-11-09',
   // A posted Hub invoice's event, kept on the item (ADR 0021: a Hub item stays readable).
-  hubEventId: '01900000-0000-7000-a000-000000000001',
   hubDocument: {
     type: 'invoice',
     id: '01900000-0000-7000-9000-000000000077',

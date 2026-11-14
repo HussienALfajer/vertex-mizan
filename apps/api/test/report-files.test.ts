@@ -1,5 +1,6 @@
 import type { INestApplication } from '@nestjs/common';
 import type { AuditEntry, JournalBookPrint, ReportFile } from '@vertex-mizan/contracts';
+import { RETIRED_REPORTS } from '@vertex-mizan/contracts';
 import {
   type Database,
   journalBookPrints,
@@ -109,8 +110,6 @@ describe('GET /api/reports/:report/export (rule 35)', () => {
       ['income_statement', { from, to }],
       ['balance_sheet', { asOf: to }],
       ['profitability', { by: 'client', from, to }],
-      ['contract_position', { asOf: to }],
-      ['revenue_schedule', { from: to.slice(0, 7) }],
     ] as const) {
       const answer = await browser.download(`/api/reports/${report}/export`, {
         format: 'xlsx',
@@ -124,6 +123,16 @@ describe('GET /api/reports/:report/export (rule 35)', () => {
       to,
     });
     expect((await workbookRows(journal.body as Buffer)).flat()).toContain('إيجار');
+    // The reports only Hub's events fed left with Hub (ADR 0021).
+    for (const report of RETIRED_REPORTS) {
+      const retired = await browser.get(`/api/reports/${report}/export`, {
+        format: 'xlsx',
+        asOf: to,
+      });
+      expect(retired.body.code, report).toBe('VALIDATION_FAILED');
+      const file = await browser.post('/api/reports/files', { report, params: {} });
+      expect(file.body.code, report).toBe('VALIDATION_FAILED');
+    }
   });
 
   it('refuses a bad query, an unknown report and another company’s account', async () => {

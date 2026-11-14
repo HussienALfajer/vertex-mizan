@@ -19,6 +19,7 @@ import {
   users,
   withCompany,
 } from '../src/index.js';
+import { addTestControlAccounts } from '../src/testing.js';
 import { connect } from './connections.js';
 
 // S04's properties of the posting function on the real database (ADR 0013, invariant 9): after any
@@ -85,8 +86,8 @@ interface Company {
 
 async function newCompany(rates: readonly (readonly [string, string])[]): Promise<Company> {
   const id = uuidv7();
-  await withCompany(app, id, (tx) =>
-    createCompanyBooks(
+  await withCompany(app, id, async (tx) => {
+    await createCompanyBooks(
       tx,
       id,
       {
@@ -95,12 +96,13 @@ async function newCompany(rates: readonly (readonly [string, string])[]): Promis
         ledgers: SYP_USD,
         fiscalYearStartMonth: 1,
         policyNote: 'مذكرة سياسة مولّدة.',
-        template: 'service-agency',
+        template: 'general',
         createdByUserId: personId,
       },
       actor(),
-    ),
-  );
+    );
+    await addTestControlAccounts(tx, id, actor());
+  });
   return withCompany(app, id, async (tx) => {
     for (const [index, on] of DAYS.entries()) {
       const [bulletin, market] = rates[index] as readonly [string, string];

@@ -67,6 +67,6 @@ export class PeriodsService {
       await lockCompanyForWrite(tx, companyId);
       return reopenPeriod(tx, { period, reason, today: todayInDamascus(), actor: actorOf(access) });
     });
-    return { period: reopened.period, queuedEvents: reopened.queuedEvents };
+    return { period: reopened.period };
   }
 }

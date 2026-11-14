@@ -8,7 +8,6 @@ import {
   type AuditActor,
   accountRequiredDimensions,
   accountRoles,
-  apiClients,
   auditEntries,
   bulletinHolidays,
   chainAnchors,
@@ -18,30 +17,19 @@ import {
   companySettings,
   dimensionTypes,
   dimensionValues,
-  documentSources,
   entryAttachments,
   entryDraftLines,
   entryDrafts,
   exchangeRates,
-  inboundEventActions,
-  inboundEventStates,
-  inboundEvents,
   journalBookPrints,
   journalEntries,
   openingLines,
-  openingRecordFigures,
-  openingSnapshots,
   openings,
   periods,
   post,
-  postingRuleAccounts,
   postRevaluation,
   previewRevaluation,
   ratePairs,
-  recognitionMovements,
-  recognitionSchedules,
-  reconciliationReportEvents,
-  reconciliationReports,
   reportFiles,
   serviceDepartments,
   type Transaction,
@@ -90,22 +78,11 @@ const COVERED = [
   'open_item_movements',
   'open_item_due_dates',
   'open_item_balances',
-  'posting_rule_accounts',
-  'inbound_events',
-  'inbound_event_states',
-  'inbound_event_actions',
-  'document_sources',
-  'recognition_schedules',
-  'recognition_movements',
-  'reconciliation_reports',
-  'reconciliation_report_events',
   'service_departments',
   'report_files',
   'journal_book_prints',
-  'opening_snapshots',
   'openings',
   'opening_lines',
-  'opening_record_figures',
 ];
 
 const auditRow = fc.record({
@@ -379,17 +356,14 @@ const POSTED = 7;
 
 /** The rows each S02, S03 and S04 table holds for a company seeded with `data`. */
 const expectedRows = (data: CompanyData): Record<string, number> => ({
-  // S06 adds a contract liability header, its parent and the account; S07 a monetary account and
-  // the unrealised gain and loss accounts.
+  // S07 a monetary account and the unrealised gain and loss accounts.
   // S10 adds two headers and a postable account under assets and under equity for the opening.
-  chart_accounts: 5 + data.headers.length + 3 + 4 + 3 + 3 + 3 + 6,
+  chart_accounts: 5 + data.headers.length + 3 + 4 + 3 + 3 + 6,
   account_required_dimensions: 1,
   account_roles: 3,
   dimension_types: 4,
-  // S06 adds a client and a service for its schedule.
-  // The clients, S04's value, S06's client and service, and S09's service and department.
-  // S10's client of the records' figure.
-  dimension_values: data.clients.length + 1 + 2 + 2 + 1,
+  // The clients, S04's value, and S09's service and department.
+  dimension_values: data.clients.length + 1 + 2,
   rate_pairs: data.bookCurrency === 'SYP' ? 1 : 2,
   exchange_rates: data.rates.length + 2,
   bulletin_holidays: data.holidays.length,
@@ -425,33 +399,21 @@ const expectedRows = (data: CompanyData): Record<string, number> => ({
   open_item_movements: 1,
   open_item_due_dates: 1,
   open_item_balances: 1,
-  posting_rule_accounts: 1,
-  // S05's held expense and S06's invoice.
-  inbound_events: 2,
-  inbound_event_states: 1,
-  inbound_event_actions: 2,
-  document_sources: 1,
-  recognition_schedules: 1,
-  recognition_movements: 1,
   revaluations: 1,
   period_events: 1,
-  reconciliation_reports: 1,
-  reconciliation_report_events: 1,
   service_departments: 1,
   // A draft PDF queued and November's official print, ready with its register row.
   report_files: 2,
   journal_book_prints: 1,
-  // S10: Hub's snapshot, the posted opening, its two lines and the records' figure.
-  opening_snapshots: 1,
+  // S10: the posted opening and its two lines.
   openings: 1,
   opening_lines: 2,
-  opening_record_figures: 1,
 });
 
 /**
- * S10's rows: the company's books start on 1 November, Hub's snapshot as of the eve, the opening's
- * draft at version 1 with two lines and a records' figure, and its entry posted through the posting
- * function as the company's first entry: a stated asset and a stated capital, in the book currency.
+ * S10's rows: the company's books start on 1 November, the opening's draft at version 1 with two
+ * lines, and its entry posted through the posting function as the company's first entry: a stated
+ * asset and a stated capital, in the book currency.
  */
 async function seedOpening(tx: Transaction, companyId: string, userId: string) {
   await addAccount(tx, companyId, '1', { code: '19' });
@@ -468,35 +430,11 @@ async function seedOpening(tx: Transaction, companyId: string, userId: string) {
     kind: 'postable',
     statementLine: 'bs.share_capital',
   });
-  const [client] = await tx
-    .select()
-    .from(dimensionTypes)
-    .where(and(eq(dimensionTypes.companyId, companyId), eq(dimensionTypes.code, 'client')));
-  const [value] = await tx
-    .insert(dimensionValues)
-    .values({ companyId, typeId: client?.id as string, code: 'C-OPEN', name: 'عميل الافتتاح' })
-    .returning({ id: dimensionValues.id });
-  const [snapshot] = await tx
-    .insert(openingSnapshots)
-    .values({
-      companyId,
-      apiClientId: uuidv7(),
-      snapshotKey: 'snapshot-generated',
-      asOf: '2026-10-31',
-      generatedAt: new Date('2026-11-01T08:00:00Z'),
-      payload: { as_of: '2026-10-31' },
-      payloadHash: 'b'.repeat(64),
-      invoiceCount: 0,
-      walletCount: 0,
-      milestoneCount: 0,
-      priorDocumentCount: 0,
-    })
-    .returning({ id: openingSnapshots.id });
   const [opening] = await tx
     .insert(openings)
     .values({ companyId, preparedByUserId: userId })
     .returning();
-  if (!opening || !snapshot || !value) throw new Error('no opening seeded');
+  if (!opening) throw new Error('no opening seeded');
   const settings = await tx.select().from(companySettings);
   const currency = settings[0]?.bookCurrency as 'SYP';
   await tx.insert(openingLines).values([
@@ -519,15 +457,6 @@ async function seedOpening(tx: Transaction, companyId: string, userId: string) {
       amountMinor: -1000n,
     },
   ]);
-  await tx.insert(openingRecordFigures).values({
-    companyId,
-    openingId: opening.id,
-    version: 1,
-    slot: 'receivable',
-    clientValueId: value.id,
-    currency,
-    amountMinor: 0n,
-  });
   const actor: AuditActor = {
     kind: 'person',
     userId,
@@ -559,7 +488,6 @@ async function seedOpening(tx: Transaction, companyId: string, userId: string) {
           currency,
           amountMinor: 1000n,
           memo: null,
-          fromHub: false,
           stated: { bookMinor: 1000n, parallelMinor: null },
         },
         {
@@ -568,7 +496,6 @@ async function seedOpening(tx: Transaction, companyId: string, userId: string) {
           currency,
           amountMinor: -1000n,
           memo: null,
-          fromHub: false,
           stated: { bookMinor: -1000n, parallelMinor: null },
         },
       ],
@@ -579,7 +506,6 @@ async function seedOpening(tx: Transaction, companyId: string, userId: string) {
     .set({
       state: 'posted',
       entryId: entry.id,
-      snapshotId: snapshot.id,
       postedByUserId: userId,
       postedAt: new Date(),
       fingerprint: 'c'.repeat(64),
@@ -688,162 +614,6 @@ async function seedRevaluation(
     actor,
   });
   if (!posted.posted) throw new Error('no revaluation posted');
-}
-
-/** S05's rows: a slot's account, and an event Hub sent, held, with its two actions. */
-async function seedInbox(tx: Transaction, companyId: string) {
-  const [account] = await tx
-    .select({ id: chartAccounts.id })
-    .from(chartAccounts)
-    .where(and(eq(chartAccounts.companyId, companyId), eq(chartAccounts.code, '591001')));
-  await tx
-    .insert(postingRuleAccounts)
-    .values({ companyId, slot: 'project_cost', accountId: account?.id as string });
-  const [event] = await tx
-    .insert(inboundEvents)
-    .values({
-      companyId,
-      apiClientId: uuidv7(),
-      eventId: uuidv7(),
-      type: 'project_expense.recorded',
-      version: 1,
-      occurredAt: new Date('2026-11-10T09:00:00Z'),
-      accountingDate: '2026-11-10',
-      payload: { expense: { id: uuidv7(), number: 'EXP-1' } },
-      payloadHash: 'b'.repeat(64),
-      documentType: 'project_expense',
-      documentId: uuidv7(),
-      documentNumber: 'EXP-1',
-      itemKey: 'project_expense:generated',
-      requestId: 'request-generated',
-    })
-    .returning({ id: inboundEvents.id });
-  const eventId = event?.id as string;
-  await tx
-    .insert(inboundEventStates)
-    .values({ companyId, eventId, state: 'held', holdReason: 'NO_MAPPING' });
-  await tx.insert(inboundEventActions).values([
-    { companyId, eventId, action: 'received', actorKind: 'system' },
-    { companyId, eventId, action: 'held', holdReason: 'NO_MAPPING', actorKind: 'system' },
-  ]);
-}
-
-/**
- * S06's rows: an invoice's schedule deferred to a contract liability account, with its `deferred`
- * movement describing an entry of this transaction (the guard of 0032).
- */
-async function seedRecognition(tx: Transaction, companyId: string) {
-  await addAccount(tx, companyId, '2', { code: '23' });
-  await addAccount(tx, companyId, '23', { code: '231' });
-  const liability = await addAccount(tx, companyId, '231', {
-    code: '231001',
-    kind: 'postable',
-    statementLine: 'bs.contract_liabilities',
-  });
-  const newValue = async (type: string) => {
-    const [found] = await tx
-      .select({ id: dimensionTypes.id })
-      .from(dimensionTypes)
-      .where(and(eq(dimensionTypes.companyId, companyId), eq(dimensionTypes.code, type)));
-    const [made] = await tx
-      .insert(dimensionValues)
-      .values({ companyId, typeId: found?.id as string, name: `قيمة ${type}` })
-      .returning({ id: dimensionValues.id });
-    return made?.id as string;
-  };
-  const [event] = await tx
-    .insert(inboundEvents)
-    .values({
-      companyId,
-      apiClientId: uuidv7(),
-      eventId: uuidv7(),
-      type: 'invoice.issued',
-      version: 1,
-      occurredAt: new Date('2026-11-10T09:00:00Z'),
-      accountingDate: '2026-11-10',
-      payload: { invoice: { id: uuidv7(), number: 'INV-1' } },
-      payloadHash: 'c'.repeat(64),
-      documentType: 'invoice',
-      documentId: uuidv7(),
-      documentNumber: 'INV-1',
-      itemKey: 'invoice:generated',
-      requestId: 'request-generated',
-    })
-    .returning({ id: inboundEvents.id });
-  const [schedule] = await tx
-    .insert(recognitionSchedules)
-    .values({
-      companyId,
-      eventId: event?.id as string,
-      invoiceDocumentId: uuidv7(),
-      invoiceNumber: 'INV-1',
-      lineId: uuidv7(),
-      pattern: 'over_time',
-      lineSource: 'manual',
-      serviceFrom: '2026-11-01',
-      serviceTo: '2026-11-30',
-      clientValueId: await newValue('client'),
-      serviceValueId: await newValue('service'),
-      liabilityAccountId: liability,
-      currency: 'USD',
-    })
-    .returning({ id: recognitionSchedules.id });
-  const [entry] = await tx.select({ id: journalEntries.id }).from(journalEntries).limit(1);
-  await tx.insert(recognitionMovements).values({
-    companyId,
-    scheduleId: schedule?.id as string,
-    kind: 'deferred',
-    entryId: entry?.id as string,
-    transactionMinor: 10_000n,
-    bookMinor: 10_000n,
-  });
-}
-
-/** S05's document source: the company's Hub client is the source of its invoices. */
-async function seedSources(tx: Transaction, companyId: string, userId: string) {
-  const [client] = await tx
-    .insert(apiClients)
-    .values({
-      scopeCompanyId: companyId,
-      name: 'Vertex Hub',
-      system: 'hub',
-      scopes: ['events:write'],
-      reconcileFrom: '2026-10-19',
-      createdByUserId: userId,
-    })
-    .returning({ id: apiClients.id });
-  await tx
-    .insert(documentSources)
-    .values({ companyId, documentType: 'invoice', apiClientId: client?.id as string });
-}
-
-/** S08's rows: a daily report of the Hub client listing one event, as the service stores one. */
-async function seedReconciliation(tx: Transaction, companyId: string) {
-  const [report] = await tx
-    .insert(reconciliationReports)
-    .values({
-      companyId,
-      apiClientId: uuidv7(),
-      reportId: uuidv7(),
-      reportDate: '2026-11-03',
-      generatedAt: new Date('2026-11-03T21:05:00Z'),
-      payload: { events: 1 },
-      payloadHash: 'a'.repeat(64),
-      eventCount: 1,
-      requestId: 'request-generated',
-      statusAtReceipt: 'differences',
-      gapsAtReceipt: 1,
-    })
-    .returning({ id: reconciliationReports.id });
-  await tx.insert(reconciliationReportEvents).values({
-    companyId,
-    reportId: report?.id as string,
-    eventId: uuidv7(),
-    type: 'invoice.issued',
-    currency: 'USD',
-    amountMinor: 50_000n,
-    delivery: 'delivered',
-  });
 }
 
 /** S09's row: a manual service's department from a date, set by the accountant. */
@@ -971,10 +741,6 @@ async function seed(userId: string, data: CompanyData): Promise<string> {
     await seedLedger(tx, row.id, userId, data);
     await seedRevaluation(tx, row.id, userId, data);
     await tx.insert(companyExports).values({ companyId: row.id, requestedByUserId: userId });
-    await seedInbox(tx, row.id);
-    await seedSources(tx, row.id, userId);
-    await seedRecognition(tx, row.id);
-    await seedReconciliation(tx, row.id);
     await seedServiceDepartment(tx, row.id, userId);
     // S07's period history: November closed, as the posting function writes a close.
     await writePeriodTransition(tx, {

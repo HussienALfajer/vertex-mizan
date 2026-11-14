@@ -2,8 +2,8 @@
 # deploy/provision.sh as /etc/nginx/sites-available/mizan.vertexmedia.pro; edit it in the
 # repository, never on the server.
 #
-# nginx is the only public gateway: the SPA build is served from the current release, /api and
-# Hub's /v1 are proxied to the API on loopback (127.0.0.1:3300).
+# nginx is the only public gateway: the SPA build is served from the current release, /api is
+# proxied to the API on loopback (127.0.0.1:3300). Hub's /v1 left with Hub (ADR 0021).
 
 server {
     listen 80;
@@ -84,32 +84,6 @@ server {
 
     # The API documentation is disabled in production; don't forward probes for it.
     location ^~ /api/docs { return 404; }
-
-    # --- Hub's API (/v1, ADR 0006) -------------------------------------------------------
-    # Its own zone instead of the site-wide one (mizan-limits.conf).
-    location /v1/ {
-        limit_req zone=mizanv1 burst=200 nodelay;
-        proxy_pass http://127.0.0.1:3300;
-        include snippets/mizan-proxy.conf;
-    }
-
-    # The opening snapshot (S10): up to 5 MB of JSON (OPENING_SNAPSHOT_MAX_BYTES), once per
-    # company, with time to send and post it. The proxy snippet sets its own read timeout, so its
-    # headers are repeated here.
-    location = /v1/opening/snapshot {
-        limit_req zone=mizanv1 burst=200 nodelay;
-        client_max_body_size 6m;
-        client_body_timeout 60s;
-        proxy_pass http://127.0.0.1:3300;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $remote_addr;
-        proxy_set_header X-Forwarded-Proto https;
-        proxy_set_header Connection "";
-        proxy_hide_header X-Powered-By;
-        proxy_read_timeout 120s;
-    }
 
     # --- Static files ----------------------------------------------------------------------
     # Hashed build assets never change: cache them for a year.

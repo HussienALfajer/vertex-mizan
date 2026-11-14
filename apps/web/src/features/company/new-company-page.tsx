@@ -53,8 +53,8 @@ export function NewCompanyPage() {
   const [nameLatin, setNameLatin] = useState('');
   const [policyNote, setPolicyNote] = useState('');
   const [ledgers, setLedgers] = useState<LedgerForm>(vertexMediaLedgers);
-  // The chart template (S02 rule 1): Vertex Media's service-agency chart by default.
-  const [template, setTemplate] = useState<ChartTemplateId | typeof noTemplate>('service-agency');
+  // The chart template (S02 rule 1): the general chart by default (ADR 0021).
+  const [template, setTemplate] = useState<ChartTemplateId | typeof noTemplate>('general');
   const [errors, setErrors] = useState<{
     name?: string | undefined;
     policyNote?: string | undefined;

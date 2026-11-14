@@ -22,7 +22,7 @@ afterAll(async () => {
   await db.$client.end();
 });
 
-async function owner(template: 'service-agency' | null = null) {
+async function owner(template: 'general' | null = null) {
   const person = await signedInPerson(app, db);
   const company = await newCompany(person.browser, { template });
   return { ...person, company };
@@ -54,7 +54,6 @@ describe('the guard on every dimension route', () => {
       { method: 'get', path: '/api/dimension-values', query: { typeId: id } },
       { method: 'post', path: '/api/dimension-values' },
       { method: 'patch', path: `/api/dimension-values/${id}` },
-      { method: 'post', path: `/api/dimension-values/${id}/link` },
       { method: 'post', path: `/api/dimension-values/${id}/archive` },
       { method: 'post', path: `/api/dimension-values/${id}/restore` },
     ]);
@@ -136,7 +135,7 @@ describe('dimension types (rule 9)', () => {
 });
 
 describe('dimension values (rules 10–13)', () => {
-  it('adds a manual client, links it to a Hub ID once, and a project under it', async () => {
+  it('adds a manual client and a project under it; the Hub link is gone (ADR 0021)', async () => {
     const { browser, company } = await owner();
     const client = await typeByCode(browser, 'client');
     const contract = await typeByCode(browser, 'contract');
@@ -147,23 +146,10 @@ describe('dimension values (rules 10–13)', () => {
     });
     expect(added.status).toBe(201);
     expect(added.body).toMatchObject({ externalSource: null, externalId: null });
-    const hubId = uuidv7();
-    const linked = await browser.post(`/api/dimension-values/${added.body.id}/link`, {
-      externalId: hubId,
-    });
-    expect(linked.body).toMatchObject({ externalSource: 'hub', externalId: hubId });
-    const again = await browser.post(`/api/dimension-values/${added.body.id}/link`, {
+    const link = await browser.post(`/api/dimension-values/${added.body.id}/link`, {
       externalId: uuidv7(),
     });
-    expect(again.body.code).toBe('DIMENSION_ALREADY_LINKED');
-    const other = await browser.post('/api/dimension-values', {
-      typeId: client.id,
-      name: 'عميل آخر',
-    });
-    expect(
-      (await browser.post(`/api/dimension-values/${other.body.id}/link`, { externalId: hubId }))
-        .body.code,
-    ).toBe('DIMENSION_LINK_TAKEN');
+    expect(link.status).toBe(404);
 
     const project = await browser.post('/api/dimension-values', {
       typeId: contract.id,
@@ -207,41 +193,6 @@ describe('dimension values (rules 10–13)', () => {
     ).toBe('DIMENSION_CODE_TAKEN');
     const log = await actions(company.id);
     expect(log).toContain('dimension_value.created');
-    expect(log).toContain('dimension_value.linked');
-  });
-
-  it('a manual contract without a client is linked only once it names one', async () => {
-    const { browser } = await owner();
-    const client = await typeByCode(browser, 'client');
-    const contract = await typeByCode(browser, 'contract');
-    const retainer = await browser.post('/api/dimension-values', {
-      typeId: contract.id,
-      name: 'اشتراك',
-      contractKind: 'retainer',
-    });
-    expect(
-      (
-        await browser.post(`/api/dimension-values/${retainer.body.id}/link`, {
-          externalId: uuidv7(),
-        })
-      ).body.code,
-    ).toBe('VALIDATION_FAILED');
-    const theClient = await browser.post('/api/dimension-values', {
-      typeId: client.id,
-      name: 'عميل الاشتراك',
-    });
-    const named = await browser.patch(`/api/dimension-values/${retainer.body.id}`, {
-      parentValueId: theClient.body.id,
-    });
-    expect(named.body.parentValueId).toBe(theClient.body.id);
-    const linked = await browser.post(`/api/dimension-values/${retainer.body.id}/link`, {
-      externalId: uuidv7(),
-    });
-    expect(linked.status).toBe(200);
-    expect(
-      (await browser.patch(`/api/dimension-values/${retainer.body.id}`, { parentValueId: null }))
-        .body.code,
-    ).toBe('VALIDATION_FAILED');
   });
 
   it('searches by code or name, pages, renames, archives and restores', async () => {
@@ -318,12 +269,8 @@ describe('dimension values (rules 10–13)', () => {
       (await mine.browser.post('/api/dimension-values', { typeId: theirClient.id, name: 'س' })).body
         .code,
     ).toBe('NOT_FOUND');
-    for (const action of ['archive', 'link']) {
-      const answer = await mine.browser.post(`/api/dimension-values/${value.body.id}/${action}`, {
-        externalId: uuidv7(),
-      });
-      expect(answer.body.code, action).toBe('NOT_FOUND');
-    }
+    const archive = await mine.browser.post(`/api/dimension-values/${value.body.id}/archive`);
+    expect(archive.body.code).toBe('NOT_FOUND');
     expect(
       (await mine.browser.patch(`/api/dimension-types/${theirClient.id}`, { name: 'س' })).body.code,
     ).toBe('NOT_FOUND');
@@ -370,23 +317,6 @@ describe('dimension values (rules 10–13)', () => {
     const after = await theirs.browser.get('/api/dimension-values', { typeId: theirClient.id });
     expect(after.body.values).toEqual([theirValue.body]);
     expect(myClient.id).not.toBe(theirClient.id);
-  });
-
-  it('gives one Hub ID to one value when two links claim it at once (edge case 2)', async () => {
-    const { browser } = await owner();
-    const client = await typeByCode(browser, 'client');
-    const values = await Promise.all(
-      ['أ', 'ب'].map((name) => browser.post('/api/dimension-values', { typeId: client.id, name })),
-    );
-    const hubId = uuidv7();
-    const answers = await Promise.all(
-      values.map((value) =>
-        browser.post(`/api/dimension-values/${value.body.id}/link`, { externalId: hubId }),
-      ),
-    );
-    expect(
-      answers.map((answer) => (answer.status === 200 ? 200 : answer.body.code)).sort(),
-    ).toEqual([200, 'DIMENSION_LINK_TAKEN']);
   });
 
   it('lets every role read and only the owner and accountant write', async () => {

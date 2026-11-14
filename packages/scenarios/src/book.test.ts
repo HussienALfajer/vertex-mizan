@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { parseCase, parseScenario, readBook, ScenarioFormatError, yamlBlocks } from './book.js';
 import { marginOf } from './report-format.js';
-import { CASE, CORRECTION, INBOX, REPORTS, SYP_ONLY } from './test-fixtures.js';
+import { CASE, CORRECTION, REPORTS, SYP_ONLY } from './test-fixtures.js';
 
 function file(status: string, ...cases: string[]) {
   return [
@@ -25,58 +25,6 @@ function problems(markdown: string): readonly string[] {
   }
   throw new Error('expected the scenario to be refused');
 }
-
-/** A late invoice held `SERVICE_PERIOD_CLOSED`, recognised in the first open period (S06 rule 16). */
-const RECOGNISE = `
-case: a late part recognised in the first open period
-company: { shape: syp, book: SYP, closed_periods: [2026-10], rate_policy: { book: bulletin } }
-steps:
-  - event: invoice.issued
-    accounting_date: 2026-11-05
-    payload: { invoice: INV-1, client: C1, currency: SYP,
-               lines: [{ amount: 62000, source: retainer_charge, kind: monthly,
-                         cycle_start: 2026-10-20, cycle_end: 2026-11-19, service: S1 }] }
-    outcome: { status: held, reason: SERVICE_PERIOD_CLOSED }
-  - recognise: 1
-    reason: "أُغلق تشرين الأول قبل وصول الفاتورة"
-expect:
-  entries:
-    - source: invoice.issued
-      date: 2026-11-01
-      lines:
-        - { account: "1130", dims: { client: C1 }, currency: SYP, amount: 24000, book: 24000 }
-        - { account: "4110", dims: { client: C1, service: S1 }, currency: SYP, amount: -24000, book: -24000 }
-`;
-
-/** A cancelled project's remainder split by the accountant (S06 rules 15–16). */
-const SPLIT = `
-case: a cancelled project's remainder split
-company: { shape: syp, book: SYP, rate_policy: { book: bulletin } }
-steps:
-  - event: invoice.issued
-    accounting_date: 2026-11-03
-    payload: { invoice: INV-1, client: C1, contract: { code: P1, kind: project, client: C1 },
-               currency: SYP, lines: [{ amount: 30000, source: deposit, milestone: MS-1, service: S1 }] }
-  - event: project.cancelled
-    accounting_date: 2026-12-10
-    payload: { project: { code: P1, kind: project, client: C1 }, client: C1, on: 2026-12-10 }
-    outcome: { status: held, reason: NEEDS_DECISION, detail: cancelled_project_remainder }
-  - split: { step: 2, revenue: 10000 }
-    reason: "ثلث الدفعة مستحق"
-expect:
-  entries:
-    - source: invoice.issued
-      date: 2026-11-03
-      lines:
-        - { account: "1120", dims: { client: C1 }, currency: SYP, amount: 30000, book: 30000 }
-        - { account: "2120", dims: { client: C1 }, currency: SYP, amount: -30000, book: -30000 }
-    - source: project.cancelled
-      date: 2026-12-10
-      lines:
-        - { account: "2120", dims: { client: C1 }, currency: SYP, amount: 30000, book: 30000 }
-        - { account: "4110", dims: { client: C1, service: S1 }, currency: SYP, amount: -10000, book: -10000 }
-        - { account: "2110", dims: { client: C1 }, currency: SYP, amount: -20000, book: -20000 }
-`;
 
 /** A month-end revaluation of each ledger, after an account is blocked (S07 rules 10–18). */
 const REVALUE = `
@@ -107,29 +55,18 @@ expect:
         - { account: "4212", currency: SYP, amount: -50000, book: -50000, parallel: 0 }
 `;
 
-/** S10: Hub's snapshot and the records posted as the opening, then its whole reversal. */
+/** S10: the records posted as the opening, refused first, then its whole reversal. */
 const OPENING = `
 case: an opening refused, posted and reversed
 company: { shape: syp-usd, book: SYP, parallel: USD, books_start: 2026-10-01,
            rate_policy: { book: bulletin, parallel: market } }
 steps:
   - opening: the opening
-    snapshot:
-      invoices:
-        - { invoice: INV-1, client: C1, currency: USD, syp_per_usd: "117.0000", issued_on: 2026-09-10,
-            total: 30000, outstanding: 30000, lines: [{ amount: 30000, source: extra_work, service: S1 }] }
-      wallets:
-        - { client: C1, balance: -12000 }
-      prior_documents:
-        invoices: [{ invoice: INV-1, issued_on: 2026-09-10 }]
-        payments: [{ payment: PAY-1, receipt: R-1, invoice: INV-1, paid_on: 2026-09-20 }]
     records:
       lines:
         - { account: "3110", currency: SYP, amount: -3450000, parallel: -30000 }
-      figures:
-        - { slot: receivable, client: C1, currency: USD, amount: 30000 }
-    outcome: { status: refused, reason: OPENING_CHECKS_FAILED, detail: "records_agree,rates" }
-  - opening: the opening without Hub
+    outcome: { status: refused, reason: OPENING_CHECKS_FAILED, detail: rates }
+  - opening: the opening again
     records:
       lines:
         - { account: "1111", currency: SYP, amount: 100, open_item: { ref: M-1 }, memo: a note }
@@ -228,7 +165,7 @@ describe('a scenario file', () => {
       },
     });
     expect(scenarioCase.rates[0]).toMatchObject({ effectiveOn: '2026-11-03', source: 'manual' });
-    expect(scenarioCase.steps[0]).toMatchObject({ kind: 'event', type: 'invoice.issued' });
+    expect(scenarioCase.steps[0]).toMatchObject({ kind: 'manual', description: 'a USD invoice' });
     expect(parseCase(SYP_ONLY).expect.entries[0]?.lines[0]?.parallel).toBeNull();
   });
 
@@ -323,20 +260,18 @@ describe('a case', () => {
     ],
     [
       'a step of no kind',
-      CASE.replace('  - event: invoice.issued', '  - what: invoice.issued'),
-      'event, manual, reversal, job, rate, retry, move, resolve, dismiss, recognise, split, revalue, block, close, reopen, draft, discard, service_department, opening or reverse_opening',
+      CASE.replace('  - manual: a USD invoice', '  - what: a USD invoice'),
+      'manual, reversal, rate, revalue, block, close, reopen, draft, discard, service_department, opening or reverse_opening',
     ],
     [
       'a step of two kinds',
-      CASE.replace('accounting_date: 2026-11-03\n', 'accounting_date: 2026-11-03\n    job: x\n'),
-      'job',
+      CASE.replace(
+        'accounting_date: 2026-11-03\n',
+        'accounting_date: 2026-11-03\n    reversal: 1\n',
+      ),
+      'reversal',
     ],
     ['no step', SYP_ONLY.replace(/steps:\n(?: {2}.*\n)+/, 'steps: []\n'), '1'],
-    [
-      'a job without its period',
-      SYP_ONLY.replace(/steps:\n(?: {2}.*\n)+/, 'steps:\n  - job: close_period\n'),
-      'period',
-    ],
     [
       'a transaction amount without its currency',
       CASE.replace(
@@ -509,68 +444,6 @@ describe('a case', () => {
     expect(refusal(CORRECTION.replace(from, to))).toContain(problem);
   });
 
-  it("reads the accountant's actions on held events (S05 rules 15–17)", () => {
-    const { steps } = parseCase(INBOX);
-    expect(steps.slice(1, 3)).toEqual([
-      {
-        kind: 'retry',
-        step: 1,
-        outcome: { status: 'held', reason: 'PERIOD_CLOSED', detail: null },
-      },
-      { kind: 'move', step: 1, reason: 'أُغلق تشرين الأول قبل وصول الفاتورة', outcome: null },
-    ]);
-    expect(steps[5]).toEqual({
-      kind: 'resolve',
-      step: 4,
-      entry: 2,
-      reason: 'الزيادة التزام للعميل',
-      outcome: null,
-    });
-    expect(steps[7]).toEqual({
-      kind: 'dismiss',
-      step: 7,
-      reason: 'سُجّلت في Hub خطأً',
-      outcome: null,
-    });
-  });
-
-  it('reads the recognition of a held late part in the first open period (S06 rule 16)', () => {
-    const { steps } = parseCase(RECOGNISE);
-    expect(steps[1]).toEqual({
-      kind: 'recognise',
-      step: 1,
-      reason: 'أُغلق تشرين الأول قبل وصول الفاتورة',
-      outcome: null,
-    });
-    expect(refusal(RECOGNISE.replace('recognise: 1', 'recognise: 2'))).toContain(
-      'Step 2 is not an earlier event step',
-    );
-    expect(
-      refusal(RECOGNISE.replace('    reason: "أُغلق تشرين الأول قبل وصول الفاتورة"\n', '')),
-    ).toContain('reason');
-  });
-
-  it("reads the split of a cancelled project's remainder (S06 rules 15–16)", () => {
-    const { steps } = parseCase(SPLIT);
-    expect(steps[2]).toEqual({
-      kind: 'split',
-      step: 2,
-      revenueMinor: 10000n,
-      reason: 'ثلث الدفعة مستحق',
-      outcome: null,
-    });
-    expect(refusal(SPLIT.replace('split: { step: 2,', 'split: { step: 3,'))).toContain(
-      'Step 3 is not an earlier event step',
-    );
-    expect(refusal(SPLIT.replace('    reason: "ثلث الدفعة مستحق"\n', ''))).toContain('reason');
-    expect(refusal(SPLIT.replace('revenue: 10000 }', 'revenue: 100.5 }'))).toContain(
-      'whole minor units',
-    );
-    expect(refusal(SPLIT.replace('revenue: 10000 }', 'revenue: 10000, kind: x }'))).toContain(
-      'kind',
-    );
-  });
-
   it('reads the month-end revaluation of a ledger and the blocking of an account (S07)', () => {
     const { steps } = parseCase(REVALUE);
     expect(steps.slice(1)).toEqual([
@@ -682,23 +555,6 @@ describe('a case', () => {
       'Expected a detail code',
     );
     expect(refusal(withDraft.replace('    reason: "أُلغي الاشتراك"\n', ''))).toContain('reason');
-  });
-
-  it.each([
-    ['a retry of a later step', ['retry: 1', 'retry: 4'], 'Step 4 is not an earlier event step'],
-    ['a move of a step that is no event', ['move: 1', 'move: 2'], 'Step 2 is not an earlier'],
-    ['a move with no reason', ['    reason: "أُغلق تشرين الأول قبل وصول الفاتورة"\n', ''], 'reason'],
-    ['a resolve of no event', ['{ step: 4, entry: 2 }', '{ step: 5, entry: 2 }'], 'Step 5 is not'],
-    [
-      'a resolve by an entry not expected',
-      ['{ step: 4, entry: 2 }', '{ step: 4, entry: 3 }'],
-      'Entry 3 is not',
-    ],
-    ['a resolve with no entry', ['{ step: 4, entry: 2 }', '{ step: 4 }'], 'entry'],
-    ['a dismissal of the step itself', ['dismiss: 7', 'dismiss: 8'], 'Step 8 is not an earlier'],
-    ['a dismissal with a blank reason', ['reason: "سُجّلت في Hub خطأً"', 'reason: " "'], 'reason'],
-  ] as const)('refuses %s', (_, [from, to], problem) => {
-    expect(refusal(INBOX.replace(from, to))).toContain(problem);
   });
 
   const TRY_CASH =
@@ -951,37 +807,12 @@ describe('a case', () => {
     expect(marginOf(0n, -55000n)).toBeNull();
   });
 
-  it("reads the books start, the opening's snapshot, lines and figures, and its reversal (S10)", () => {
+  it("reads the books start, the opening's lines, and its reversal (S10)", () => {
     const { company, steps } = parseCase(OPENING);
     expect(company.booksStart).toBe('2026-10-01');
     expect(steps[0]).toEqual({
       kind: 'opening',
       description: 'the opening',
-      snapshot: {
-        invoices: [
-          {
-            invoice: 'INV-1',
-            client: 'C1',
-            currency: 'USD',
-            syp_per_usd: '117.0000',
-            issued_on: '2026-09-10',
-            total: 30000n,
-            outstanding: 30000n,
-            lines: [{ amount: 30000n, source: 'extra_work', service: 'S1' }],
-          },
-        ],
-        credits: [],
-        milestones: [],
-        wallets: [{ client: 'C1', balance: -12000n }],
-        prior_documents: {
-          invoices: [{ invoice: 'INV-1', issued_on: '2026-09-10' }],
-          payments: [{ payment: 'PAY-1', receipt: 'R-1', invoice: 'INV-1', paid_on: '2026-09-20' }],
-          wallet_entries: [],
-          spend_updates: [],
-          project_expenses: [],
-          milestone_dones: [],
-        },
-      },
       lines: [
         {
           account: '3110',
@@ -994,18 +825,11 @@ describe('a case', () => {
           memo: null,
         },
       ],
-      figures: [{ slot: 'receivable', client: 'C1', currency: 'USD', amount: 30000n }],
-      outcome: {
-        status: 'refused',
-        reason: 'OPENING_CHECKS_FAILED',
-        detail: 'records_agree,rates',
-      },
+      outcome: { status: 'refused', reason: 'OPENING_CHECKS_FAILED', detail: 'rates' },
     });
     expect(steps[1]).toMatchObject({
       kind: 'opening',
-      snapshot: null,
       lines: [{ account: '1111', openItem: { ref: 'M-1', due: null }, memo: 'a note' }],
-      figures: [],
     });
     expect(steps[2]).toEqual({ kind: 'reverse_opening', reason: 'Mistyped', outcome: null });
 
@@ -1028,52 +852,26 @@ describe('a case', () => {
         ),
       ),
     ).toContain("the book amount is the line's amount");
-    expect(refusal(OPENING.replace('slot: receivable', 'slot: contract_asset'))).toContain(
-      'ad_funds',
-    );
+    // Hub's snapshot and the records' figures left with Hub (ADR 0021).
     expect(
       refusal(
         OPENING.replace(
-          '        - { slot: receivable, client: C1, currency: USD, amount: 30000 }\n',
-          '        - { slot: receivable, client: C1, currency: USD, amount: 30000 }\n'.repeat(2),
+          '  - opening: the opening\n',
+          '  - opening: the opening\n    snapshot: {}\n',
         ),
       ),
-    ).toContain('A figure is stated twice');
-    expect(refusal(OPENING.replace('balance: -12000 }', 'balance: -120.5 }'))).toContain(
-      'whole minor units',
-    );
-    expect(refusal(OPENING.replace('total: 30000', 'total: 300.5'))).toContain('A decimal number');
+    ).toContain('snapshot');
+    expect(
+      refusal(
+        OPENING.replace(
+          '    records:\n      lines:\n',
+          '    records:\n      figures: []\n      lines:\n',
+        ),
+      ),
+    ).toContain('figures');
     expect(
       refusal(OPENING.replace('reverse_opening: "Mistyped"', 'reverse_opening: ""')),
     ).toContain('reverse_opening');
-  });
-
-  it("reads the snapshot's register of prior documents, each dated on or before the eve (S10)", () => {
-    expect(refusal(OPENING.replace('paid_on: 2026-09-20', 'paid_on: 2026-10-01'))).toContain(
-      'A prior document is dated on or after the books start 2026-10-01',
-    );
-    expect(
-      refusal(
-        OPENING.replace(
-          'payments: [{ payment: PAY-1, receipt: R-1, invoice: INV-1, paid_on: 2026-09-20 }]',
-          'payments: [{ payment: PAY-1, receipt: R-1, invoice: INV-1, paid_on: 2026-09-20 }, { payment: PAY-1, receipt: R-2, invoice: INV-1, paid_on: 2026-09-21 }]',
-        ),
-      ),
-    ).toContain('A document is listed twice by its payment');
-    expect(refusal(OPENING.replace('PAY-1, receipt: R-1,', 'PAY-1,'))).toContain('receipt');
-    expect(
-      refusal(
-        OPENING.replace('{ invoice: INV-1, issued_on:', '{ invoice: INV-1, client: C1, issued_on:'),
-      ),
-    ).toContain('client');
-    expect(
-      refusal(
-        OPENING.replace(
-          '        invoices: [{ invoice: INV-1, issued_on',
-          '        receipts: [{ invoice: INV-1, issued_on',
-        ),
-      ),
-    ).toContain('receipts');
   });
 
   // S10 rules 31–33 on the reports fixture, in a company with a books start.

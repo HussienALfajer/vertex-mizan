@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { Readable } from 'node:stream';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
+  type ActiveReport,
   type CurrencyCode,
   canonicalPayload,
   errorStatus,
@@ -9,7 +10,6 @@ import {
   REPORT_FILE_QUERIES,
   REPORT_FILE_TTL_HOURS,
   REPORTS_RENDER_QUEUE,
-  type Report,
   reportsRenderJobSchema,
 } from '@vertex-mizan/contracts';
 import {
@@ -186,7 +186,7 @@ export class ReportsRenderJob implements QueueWorker {
           .select({ startMonth: companySettings.fiscalYearStartMonth })
           .from(companySettings);
         if (!company || !settings) throw new Error('A company without its settings');
-        const report = row.report as Report;
+        const report = row.report as ActiveReport;
         let pdf: Buffer;
         let print: OfficialPrint | null = null;
         if (report === 'journal_book') {

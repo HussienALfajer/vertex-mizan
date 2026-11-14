@@ -47,7 +47,7 @@ export interface CreateCompanyCommand {
 /**
  * `admin:create-company` arguments: the company, its ledgers and the first owner's email. Vertex
  * Media's shape is the default (S01 rule 10): SYP books at bulletin, USD parallel at market
- * accepting the transaction's rate, January, and the service-agency chart (S02 rule 1);
+ * accepting the transaction's rate, January, and the general chart (S02 rule 1, ADR 0021);
  * `--template none` keeps the five roots alone; `--books-start YYYY-MM-DD` (the first day of a
  * month) gives it a books start, so it posts nothing before its opening (S10 rules 1, 3).
  */
@@ -67,7 +67,7 @@ export function parseCreateCompany(argv: string[]): CreateCompanyCommand {
       'fiscal-year-start-month': { type: 'string', default: '1' },
       'policy-note': { type: 'string' },
       'owner-email': { type: 'string' },
-      template: { type: 'string', default: 'service-agency' },
+      template: { type: 'string', default: 'general' },
       'books-start': { type: 'string' },
     },
     strict: true,

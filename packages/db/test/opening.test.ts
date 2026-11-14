@@ -6,9 +6,6 @@ import {
   generalLedgerQuerySchema,
   incomeStatementQuerySchema,
   OPENING_STATES,
-  openingSnapshotSchema,
-  parseEventEnvelope,
-  REVENUE_MOVEMENT_KINDS,
   reportLinesQuerySchema,
   saveOpeningSchema,
   trialBalanceQuerySchema,
@@ -17,27 +14,22 @@ import { eq, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import { beforeAll, describe, expect, it } from 'vitest';
 import {
-  type AuditActor,
-  apiClients,
   chartAccounts,
   closePeriod,
   companySettings,
   createCompanyBooks,
   dimensionTypes,
   dimensionValues,
-  dismissEvent,
   journalEntries,
   journalLines,
   OPENING_ROW_STATES,
   openItems,
   openingLines,
-  openingSnapshots,
   openings,
   type PersonActor,
   periods,
   post,
   postOpening,
-  RECOGNITION_MOVEMENT_KINDS,
   readAccountStatement,
   readBalanceSheet,
   readGeneralLedger,
@@ -45,14 +37,7 @@ import {
   readOpening,
   readReportLines,
   readTrialBalance,
-  receiveEvent,
-  receiveOpeningSnapshot,
-  recognitionMovements,
-  recognitionSchedules,
   recordRate,
-  releaseMonth,
-  resolveEvent,
-  retryFreed,
   reverseOpening,
   saveOpening,
   type Transaction,
@@ -61,11 +46,10 @@ import {
 } from '../src/index.js';
 import { connect, refusal } from './connections.js';
 
-// S10's opening in the database (rules 2–25): the books start's lock, Hub's snapshot kept once per
-// key and as of the eve, the draft's versions, the checks, the posting through `post()` with its
-// schedules, the whole reversal while the opening is the only entry, nothing posted or closed
-// before the opening, and the guards against forged rows. The scenario book holds the numbers
-// (`opening/opening-entry.md`).
+// S10's opening in the database (rules 2–25, ADR 0019 as amended by ADR 0021): the books start's
+// lock, the draft's versions, the checks, the posting through `post()`, the whole reversal while
+// the opening is the only entry, nothing posted or closed before the opening, and the guards against
+// forged rows. The scenario book holds the numbers (`opening/opening-entry.md`).
 
 const { app, owner } = connect();
 
@@ -81,35 +65,15 @@ const person = (): PersonActor => ({
   userAgent: null,
 });
 
-const hubActor = (clientId: string): AuditActor => ({
-  kind: 'api_client',
-  clientId,
-  name: 'Vertex Hub',
-  requestId: 'request-opening-test',
-  ipAddress: null,
-  userAgent: null,
-});
-
 const SYP_USD: CompanyLedgers = {
   book: { currency: 'SYP', ratePolicy: { rateType: 'bulletin', acceptsTransactionRate: false } },
   parallel: { currency: 'USD', ratePolicy: { rateType: 'market', acceptsTransactionRate: true } },
 };
 
-const ids = (n: number) => `01934b6e-0000-7000-8000-${String(n).padStart(12, '0')}`;
-const C1 = { external_id: ids(9101), code: 'C1', name: 'عميل تجريبي' };
-const R1 = {
-  external_id: ids(9102),
-  code: 'R1',
-  name: 'عقد تجريبي',
-  kind: 'retainer' as const,
-  client_external_id: ids(9101),
-};
-const S1 = { external_id: ids(9103), code: 'S1', name: 'خدمة تجريبية' };
-
 const inCompany = <T>(companyId: string, work: (tx: Transaction) => Promise<T>) =>
   withCompany(app, companyId, work);
 
-/** A company with the service-agency chart, its books starting on 1 October 2026. */
+/** A company with the general chart, its books starting on 1 October 2026. */
 async function newCompany(booksStart: string | null = '2026-10-01') {
   const companyId = uuidv7();
   await withCompany(app, companyId, (tx) =>
@@ -122,7 +86,7 @@ async function newCompany(booksStart: string | null = '2026-10-01') {
         ledgers: SYP_USD,
         fiscalYearStartMonth: 1,
         policyNote: 'مذكرة سياسة تجريبية.',
-        template: 'service-agency',
+        template: 'general',
         createdByUserId: personId,
         booksStart,
       },
@@ -131,50 +95,6 @@ async function newCompany(booksStart: string | null = '2026-10-01') {
   );
   return companyId;
 }
-
-async function newHubClient(companyId: string) {
-  const [row] = await app
-    .insert(apiClients)
-    .values({
-      scopeCompanyId: companyId,
-      name: 'Vertex Hub',
-      system: 'hub',
-      scopes: ['opening:write'],
-      createdByUserId: personId,
-    })
-    .returning({ id: apiClients.id });
-  return row?.id as string;
-}
-
-const snapshot = (asOf = '2026-09-30') =>
-  openingSnapshotSchema.parse({
-    as_of: asOf,
-    generated_at: '2026-10-25T08:00:00+03:00',
-    invoices: [
-      {
-        invoice: { id: ids(1), number: 'INV-1' },
-        client: C1,
-        contract: R1,
-        currency: 'USD',
-        syp_per_usd: '117.0000',
-        issued_on: '2026-09-10',
-        due_on: '2026-09-25',
-        total: 30_000,
-        outstanding: 30_000,
-        lines: [
-          {
-            id: ids(2),
-            amount: 30_000,
-            service: S1,
-            source: 'retainer_charge',
-            charge_kind: 'monthly',
-            cycle_start: '2026-09-16',
-            cycle_end: '2026-10-15',
-          },
-        ],
-      },
-    ],
-  });
 
 async function recordRates(companyId: string) {
   await inCompany(companyId, async (tx) => {
@@ -200,17 +120,21 @@ async function accountId(tx: Transaction, code: string) {
   return row?.id as string;
 }
 
-async function clientValueId(tx: Transaction) {
-  const [row] = await tx
-    .select({ id: dimensionValues.id })
-    .from(dimensionValues)
-    .innerJoin(dimensionTypes, eq(dimensionTypes.id, dimensionValues.typeId))
+/** A client value of the company, made for a receivable line. */
+async function newClient(tx: Transaction, companyId: string) {
+  const [type] = await tx
+    .select({ id: dimensionTypes.id })
+    .from(dimensionTypes)
     .where(eq(dimensionTypes.code, 'client'));
+  const [row] = await tx
+    .insert(dimensionValues)
+    .values({ companyId, typeId: type?.id as string, code: 'C1', name: 'عميل تجريبي' })
+    .returning({ id: dimensionValues.id });
   return row?.id as string;
 }
 
 /** The records of the worked example: SYP cash, capital and the result before the books start. */
-async function save(tx: Transaction, version: number, withFigure = true) {
+async function save(tx: Transaction, version: number) {
   return saveOpening(
     tx,
     saveOpeningSchema.parse({
@@ -224,37 +148,17 @@ async function save(tx: Transaction, version: number, withFigure = true) {
           parallel: '-1000000',
         },
       ],
-      recordFigures: withFigure
-        ? [
-            {
-              slot: 'receivable',
-              clientValueId: await clientValueId(tx),
-              currency: 'USD',
-              amount: '30000',
-            },
-          ]
-        : [],
     }),
     person(),
   );
 }
 
-/** A company with its snapshot received, its rates recorded and its draft saved, ready to post. */
+/** A company with its rates recorded and its draft saved, ready to post. */
 async function readyCompany() {
   const companyId = await newCompany();
-  const clientId = await newHubClient(companyId);
-  await inCompany(companyId, (tx) =>
-    receiveOpeningSnapshot(tx, {
-      companyId,
-      apiClientId: clientId,
-      snapshotKey: 'snapshot-1',
-      snapshot: snapshot(),
-      actor: hubActor(clientId),
-    }),
-  );
   await recordRates(companyId);
   await inCompany(companyId, (tx) => save(tx, 0));
-  return { companyId, clientId };
+  return { companyId };
 }
 
 const manualEntry = async (tx: Transaction, on = '2026-10-05') =>
@@ -312,38 +216,11 @@ beforeAll(async () => {
 describe('the opening (S10)', () => {
   it('keeps its lists equal to the contracts', () => {
     expect([...OPENING_ROW_STATES]).toEqual([...OPENING_STATES]);
-    expect([...RECOGNITION_MOVEMENT_KINDS]).toEqual([...REVENUE_MOVEMENT_KINDS]);
   });
 
   it('refuses everything but the opening before it is posted (rule 3)', async () => {
     const companyId = await newCompany();
     expect(await codeOf(inCompany(companyId, (tx) => manualEntry(tx)))).toBe('OPENING_NOT_POSTED');
-    const clientId = await newHubClient(companyId);
-    const envelope = {
-      id: uuidv7(),
-      type: 'rate.changed',
-      version: 1,
-      occurred_at: '2026-10-05T12:00:00+03:00',
-      accounting_date: '2026-10-05',
-      payload: { effective_on: '2026-10-05', syp_per_usd: '118.0000' },
-    };
-    expect(
-      await inCompany(companyId, (tx) =>
-        codeOf(
-          receiveEvent(
-            tx,
-            companyId,
-            {
-              raw: envelope,
-              envelope: envelope as never,
-              apiClientId: clientId,
-              requestId: 'request-opening-test',
-            },
-            { actor: hubActor(clientId), today: '2026-10-05' },
-          ),
-        ),
-      ),
-    ).toBe('OPENING_NOT_POSTED');
     expect(
       await inCompany(companyId, (tx) =>
         codeOf(
@@ -363,7 +240,7 @@ describe('the opening (S10)', () => {
     expect(count?.n).toBe(0);
   });
 
-  it('locks the books start once a snapshot arrives, and never clears it (rule 2)', async () => {
+  it('locks the books start once an opening is saved, and never clears it (rule 2)', async () => {
     const companyId = await newCompany();
     await inCompany(companyId, (tx) =>
       tx.update(companySettings).set({ booksStart: '2026-11-01' }),
@@ -381,16 +258,7 @@ describe('the opening (S10)', () => {
     await inCompany(companyId, (tx) =>
       tx.update(companySettings).set({ booksStart: '2026-10-01' }),
     );
-    const clientId = await newHubClient(companyId);
-    await inCompany(companyId, (tx) =>
-      receiveOpeningSnapshot(tx, {
-        companyId,
-        apiClientId: clientId,
-        snapshotKey: 'snapshot-1',
-        snapshot: snapshot(),
-        actor: hubActor(clientId),
-      }),
-    );
+    await inCompany(companyId, (tx) => save(tx, 0));
     expect(
       await refusal(
         inCompany(companyId, (tx) => tx.update(companySettings).set({ booksStart: '2026-09-01' })),
@@ -398,109 +266,26 @@ describe('the opening (S10)', () => {
     ).toContain('BOOKS_START_LOCKED');
   });
 
-  it('stores a snapshot once per key, refuses another body and an eve that is not one', async () => {
-    const companyId = await newCompany();
-    const clientId = await newHubClient(companyId);
-    const send = (key: string, body = snapshot()) =>
-      inCompany(companyId, (tx) =>
-        receiveOpeningSnapshot(tx, {
-          companyId,
-          apiClientId: clientId,
-          snapshotKey: key,
-          snapshot: body,
-          actor: hubActor(clientId),
-        }),
-      );
-    const first = await send('key-1');
-    expect(first).toMatchObject({ replayed: false, as_of: '2026-09-30', counts: { invoices: 1 } });
-    expect(await send('key-1')).toMatchObject({ snapshot_id: first.snapshot_id, replayed: true });
-    expect(
-      await codeOf(send('key-1', { ...snapshot(), wallets: [{ client: C1, balance: 1 }] })),
-    ).toBe('IDEMPOTENCY_CONFLICT');
-    expect(
-      await codeOf(
-        send(
-          'key-2',
-          openingSnapshotSchema.parse({
-            as_of: '2026-08-31',
-            generated_at: '2026-10-25T08:00:00+03:00',
-          }),
-        ),
-      ),
-    ).toBe('VALIDATION_FAILED');
-    const without = await newCompany(null);
-    expect(
-      await inCompany(without, (tx) =>
-        codeOf(
-          receiveOpeningSnapshot(tx, {
-            companyId: without,
-            apiClientId: clientId,
-            snapshotKey: 'key-1',
-            snapshot: snapshot(),
-            actor: hubActor(clientId),
-          }),
-        ),
-      ),
-    ).toBe('NO_BOOKS_START');
-    // The guard holds the eve and the append-only rows for every role.
-    expect(
-      await refusal(
-        inCompany(companyId, (tx) =>
-          tx.insert(openingSnapshots).values({
-            companyId,
-            apiClientId: clientId,
-            snapshotKey: 'forged',
-            asOf: '2026-09-29',
-            generatedAt: new Date(),
-            payload: {},
-            payloadHash: 'a'.repeat(64),
-            invoiceCount: 0,
-            walletCount: 0,
-            milestoneCount: 0,
-            priorDocumentCount: 0,
-          }),
-        ),
-      ),
-    ).toContain('eve of the books start');
-    expect(
-      await refusal(
-        withCompany(owner, companyId, (tx) =>
-          tx.update(openingSnapshots).set({ snapshotKey: 'changed' }),
-        ),
-      ),
-    ).toContain('append-only');
-  });
-
   it('checks before posting, and refuses a stale version or fingerprint (rules 16, 21, 23)', async () => {
     const companyId = await newCompany();
-    const clientId = await newHubClient(companyId);
-    // A Hub client and no snapshot yet; no rate recorded.
-    await inCompany(companyId, (tx) => save(tx, 0, false));
-    const empty = await inCompany(companyId, readOpening);
-    expect(empty.checks.filter((check) => !check.passed).map((check) => check.check)).toEqual([
-      'snapshot',
-      'rates',
-    ]);
-    expect(await codeOf(inCompany(companyId, (tx) => save(tx, 0, false)))).toBe('OPENING_CHANGED');
-    await inCompany(companyId, (tx) =>
-      receiveOpeningSnapshot(tx, {
-        companyId,
-        apiClientId: clientId,
-        snapshotKey: 'snapshot-1',
-        snapshot: snapshot(),
-        actor: hubActor(clientId),
-      }),
-    );
-    await recordRates(companyId);
+    // No rate recorded yet.
+    await inCompany(companyId, (tx) => save(tx, 0));
     const view = await inCompany(companyId, readOpening);
     expect(view.checks.filter((check) => !check.passed).map((check) => check.check)).toEqual([
-      'records_agree',
+      'rates',
     ]);
+    expect(view.lines).toEqual([]);
+    expect(await codeOf(inCompany(companyId, (tx) => save(tx, 0)))).toBe('OPENING_CHANGED');
     expect(
       await inCompany(companyId, (tx) =>
         codeOf(postOpening(tx, { fingerprint: view.fingerprint, actor: person() })),
       ),
     ).toBe('OPENING_CHECKS_FAILED');
+    await recordRates(companyId);
+    const rated = await inCompany(companyId, readOpening);
+    expect(rated.checks.every((check) => check.passed)).toBe(true);
+    // A rate recorded changed the fingerprint: the earlier one is stale.
+    expect(rated.fingerprint).not.toBe(view.fingerprint);
     await inCompany(companyId, (tx) => save(tx, 1));
     // The save changed the version: the earlier fingerprint is stale.
     expect(
@@ -508,25 +293,17 @@ describe('the opening (S10)', () => {
         codeOf(postOpening(tx, { fingerprint: view.fingerprint, actor: person() })),
       ),
     ).toBe('OPENING_CHANGED');
-    // A line on Hub's receivable slot is refused while a Hub client stands (rule 12).
     expect(
-      await inCompany(companyId, async (tx) =>
-        codeOf(
-          saveOpening(
-            tx,
-            saveOpeningSchema.parse({
-              version: 2,
-              lines: [{ accountId: await accountId(tx, '112001'), currency: 'USD', amount: '100' }],
-              recordFigures: [],
-            }),
-            person(),
-          ),
-        ),
+      await inCompany(companyId, (tx) =>
+        codeOf(postOpening(tx, { fingerprint: rated.fingerprint, actor: person() })),
       ),
-    ).toBe('VALIDATION_FAILED');
+    ).toBe('OPENING_CHANGED');
+    // The balancing line on retained earnings closes each ledger (rules 18–19).
+    const ready = await inCompany(companyId, readOpening);
+    expect(ready.lines.map((line) => line.source)).toEqual(['records', 'records', 'balancing']);
   });
 
-  it('posts once, with its schedule, and reverses whole only while it is the only entry (rules 23, 25)', async () => {
+  it('posts once, and reverses whole only while it is the only entry (rules 23, 25)', async () => {
     const { companyId } = await readyCompany();
     const view = await inCompany(companyId, readOpening);
     expect(view.checks.every((check) => check.passed)).toBe(true);
@@ -544,15 +321,6 @@ describe('the opening (S10)', () => {
     expect(answers.sort()).toEqual(['OPENING_POSTED', 'posted']);
     const [entry] = await inCompany(companyId, (tx) => tx.select().from(journalEntries));
     expect(entry).toMatchObject({ source: 'opening', entryDate: '2026-10-01', number: 1 });
-    const kinds = await inCompany(companyId, (tx) =>
-      tx
-        .select({ kind: recognitionMovements.kind, month: recognitionMovements.month })
-        .from(recognitionMovements),
-    );
-    expect(kinds).toEqual([
-      { kind: 'deferred', month: null },
-      { kind: 'before_opening', month: '2026-09-01' },
-    ]);
     expect(await codeOf(inCompany(companyId, (tx) => save(tx, 1)))).toBe('OPENING_POSTED');
     // After posting, entries post; the whole reversal is refused once another entry stands.
     const reversed = await inCompany(companyId, (tx) =>
@@ -580,7 +348,7 @@ describe('the opening (S10)', () => {
     expect(states.map((row) => row.state)).toEqual(['reversed', 'posted']);
   });
 
-  it('refuses forged rows: states, versions, stated lines and schedules (guards)', async () => {
+  it('refuses forged rows: states, versions and stated lines (guards)', async () => {
     const { companyId } = await readyCompany();
     // A version skipped, and a line of a version that is not the save's.
     expect(
@@ -645,20 +413,6 @@ describe('the opening (S10)', () => {
         }),
       ),
     ).toContain('stated line is only on an opening entry');
-    // A schedule with neither an event nor an opening.
-    expect(
-      await refusal(
-        inCompany(companyId, async (tx) => {
-          const [schedule] = await tx.select().from(recognitionSchedules);
-          await tx.insert(recognitionSchedules).values({
-            ...(schedule as typeof recognitionSchedules.$inferInsert),
-            id: uuidv7(),
-            openingId: null,
-            eventId: null,
-          });
-        }),
-      ),
-    ).toContain('recognition_schedules_one_source');
     // Nothing is dated before the books start.
     expect(await codeOf(inCompany(companyId, (tx) => manualEntry(tx, '2026-09-30')))).toBe(
       'PERIOD_CLOSED',
@@ -672,7 +426,7 @@ describe('the opening (S10)', () => {
     expect(seen).toEqual([]);
     const view = await inCompany(other, readOpening);
     expect(view.opening).toBeNull();
-    expect(view.snapshot).toBeNull();
+    expect(view.recordLines).toEqual([]);
     void companyId;
   });
 });
@@ -739,29 +493,13 @@ describe('the opening guards against forged writes (S10)', () => {
     ).toContain('before the books start');
   });
 
-  it('refuses an opening entry without its opening, a stale snapshot, and a close or a period before it', async () => {
+  it('refuses an opening entry without its opening, and a close or a period before it', async () => {
     const { companyId } = await readyCompany();
     const view = await inCompany(companyId, readOpening);
     // The posting function's entry alone: the opening is not posted with it.
     expect(await refusal(inCompany(companyId, (tx) => postAlone(tx, view)))).toContain(
       'without its opening',
     );
-    // Posted with another snapshot than the latest.
-    expect(
-      await refusal(
-        inCompany(companyId, async (tx) => {
-          const entry = await postAlone(tx, view);
-          await tx.update(openings).set({
-            state: 'posted',
-            entryId: entry.id,
-            snapshotId: null,
-            postedByUserId: personId,
-            postedAt: new Date(),
-            fingerprint: 'a'.repeat(64),
-          });
-        }),
-      ),
-    ).toContain('with the latest snapshot');
     for (const database of [app, owner]) {
       expect(
         await refusal(
@@ -813,8 +551,34 @@ describe('the opening guards against forged writes (S10)', () => {
     ).toContain('OPENING_NOT_REVERSIBLE');
   });
 
-  it("refuses a reference the opening's standing item holds, and forged schedules and movements", async () => {
-    const { companyId } = await readyCompany();
+  it("refuses a reference the opening's standing item holds", async () => {
+    const companyId = await newCompany();
+    await recordRates(companyId);
+    // A receivable of the records, opening its document item (S04 rule 6).
+    await inCompany(companyId, async (tx) =>
+      saveOpening(
+        tx,
+        saveOpeningSchema.parse({
+          version: 0,
+          lines: [
+            {
+              accountId: await accountId(tx, '112001'),
+              dimensionValueIds: [await newClient(tx, companyId)],
+              currency: 'USD',
+              amount: '30000',
+              itemReference: 'OLD-1',
+            },
+            {
+              accountId: await accountId(tx, '311001'),
+              currency: 'SYP',
+              amount: '-100000000',
+              parallel: '-1000000',
+            },
+          ],
+        }),
+        person(),
+      ),
+    );
     const view = await inCompany(companyId, readOpening);
     await inCompany(companyId, (tx) =>
       postOpening(tx, { fingerprint: view.fingerprint, actor: person() }),
@@ -834,67 +598,19 @@ describe('the opening guards against forged writes (S10)', () => {
         ),
       ).toContain('stands on account');
     }
-    // A schedule on an opening that is no longer a draft.
-    expect(
-      await refusal(
-        inCompany(companyId, async (tx) => {
-          const [schedule] = await tx.select().from(recognitionSchedules);
-          await tx.insert(recognitionSchedules).values({
-            ...(schedule as typeof recognitionSchedules.$inferInsert),
-            id: uuidv7(),
-            lineId: uuidv7(),
-          });
-        }),
-      ),
-    ).toContain('opened by its opening being posted');
-    // A before_opening movement describing another entry than the opening's.
-    expect(
-      await refusal(
-        inCompany(companyId, async (tx) => {
-          const entry = await manualEntry(tx);
-          const [schedule] = await tx.select().from(recognitionSchedules);
-          await tx.insert(recognitionMovements).values({
-            companyId,
-            scheduleId: schedule?.id as string,
-            kind: 'before_opening',
-            month: '2026-08-01',
-            entryId: entry.id,
-            transactionMinor: -1n,
-            bookMinor: -1n,
-            parallelMinor: -1n,
-          });
-        }),
-      ),
-    ).toContain('on its opening entry');
   });
 });
 
 describe('the opening at once (S10 rules 7, 16)', () => {
-  it('answers two identical snapshots at once with one stored, and two first saves with one', async () => {
+  it('answers two first saves at once with one', async () => {
     const companyId = await newCompany();
-    const clientId = await newHubClient(companyId);
-    const send = () =>
-      inCompany(companyId, (tx) =>
-        receiveOpeningSnapshot(tx, {
-          companyId,
-          apiClientId: clientId,
-          snapshotKey: 'same-key',
-          snapshot: snapshot(),
-          actor: hubActor(clientId),
-        }),
-      );
-    const answers = await Promise.all([send(), send()]);
-    expect(answers.map((answer) => answer.replayed).sort()).toEqual([false, true]);
-    expect(answers[0]?.snapshot_id).toBe(answers[1]?.snapshot_id);
     const saves = await Promise.all(
-      [0, 1].map(() =>
-        codeOf(inCompany(companyId, (tx) => save(tx, 0, false))).then((code) => code),
-      ),
+      [0, 1].map(() => codeOf(inCompany(companyId, (tx) => save(tx, 0))).then((code) => code)),
     );
     expect(saves.sort()).toEqual(['OPENING_CHANGED', 'none']);
   });
 
-  it('refuses an income statement account on the opening, and a Hub slot line saved before Hub came', async () => {
+  it('refuses an income statement account on the opening', async () => {
     const companyId = await newCompany();
     await recordRates(companyId);
     expect(
@@ -907,37 +623,12 @@ describe('the opening at once (S10 rules 7, 16)', () => {
               lines: [
                 { accountId: await accountId(tx, '411001'), currency: 'SYP', amount: '-100' },
               ],
-              recordFigures: [],
             }),
             person(),
           ),
         ),
       ),
     ).toBe('VALIDATION_FAILED');
-    // No Hub client yet: a receivable line saves; once Hub's client stands, the check fails.
-    await inCompany(companyId, async (tx) =>
-      saveOpening(
-        tx,
-        saveOpeningSchema.parse({
-          version: 0,
-          lines: [
-            {
-              accountId: await accountId(tx, '112001'),
-              dimensionValueIds: [],
-              currency: 'SYP',
-              amount: '100',
-              itemReference: 'OLD-1',
-            },
-          ],
-          recordFigures: [],
-        }),
-        person(),
-      ),
-    );
-    await newHubClient(companyId);
-    const view = await inCompany(companyId, readOpening);
-    const lines = view.checks.find((check) => check.check === 'lines');
-    expect(lines?.failures).toEqual([{ lineNo: 1, code: 'VALIDATION_FAILED', reason: 'hub_slot' }]);
   });
 });
 
@@ -967,8 +658,8 @@ describe('the opening in the reports (S10 rules 31–33)', () => {
     for (const from of ['2026-10-01', '2026-09-01']) {
       const expectedMarks =
         from === '2026-10-01'
-          ? ['before_revaluation', 'opening_entry', 'period_open']
-          : ['before_books_start', 'before_revaluation', 'opening_entry', 'period_open'];
+          ? ['opening_entry', 'period_open']
+          : ['before_books_start', 'opening_entry', 'period_open'];
       const trial = await inCompany(companyId, (tx) =>
         readTrialBalance(
           tx,
@@ -1043,7 +734,8 @@ describe('the opening in the reports (S10 rules 31–33)', () => {
         NOW,
       ),
     );
-    expect(november.header.current.marks).toEqual(['period_open', 'before_revaluation']);
+    // No foreign balance in the book ledger: nothing to revalue (S09 rule 4).
+    expect(november.header.current.marks).toEqual(['period_open']);
     expect(november.rows.find((row) => row.account.id === cash)?.opening).toBe('199999800');
 
     // Every income statement of 2026 says the result before the books start is in equity.
@@ -1086,303 +778,5 @@ describe('the opening in the reports (S10 rules 31–33)', () => {
       ),
     );
     expect(income.header.current.marks).not.toContain('pre_opening_result_in_equity');
-  });
-});
-
-describe('documents before the books start (S10 rule 28)', () => {
-  const INV_9 = { id: ids(9201), number: 'INV-2026-9' };
-
-  /** A Hub event received as the snapshot's client, dated `on`, with the clock on `today`. */
-  async function receive(
-    companyId: string,
-    clientId: string,
-    type: string,
-    on: string,
-    payload: Record<string, unknown>,
-    today = on,
-  ) {
-    const raw = {
-      id: uuidv7(),
-      type,
-      version: 1,
-      occurred_at: `${on}T12:00:00+03:00`,
-      accounting_date: on,
-      payload,
-    };
-    return inCompany(companyId, async (tx) => {
-      const options = { actor: hubActor(clientId), today };
-      const result = await receiveEvent(
-        tx,
-        companyId,
-        {
-          raw,
-          envelope: parseEventEnvelope(raw),
-          apiClientId: clientId,
-          requestId: 'request-opening-test',
-        },
-        options,
-      );
-      await retryFreed(tx, result.triggers, options);
-      return result.event;
-    });
-  }
-
-  /** The company's revenue releases: their dates and contract liability lines. */
-  const releases = (companyId: string) =>
-    inCompany(companyId, (tx) =>
-      tx
-        .select({
-          date: journalEntries.entryDate,
-          amount: journalLines.amountMinor,
-          book: journalLines.bookMinor,
-        })
-        .from(journalEntries)
-        .innerJoin(journalLines, eq(journalLines.entryId, journalEntries.id))
-        .innerJoin(chartAccounts, eq(chartAccounts.id, journalLines.accountId))
-        .where(
-          sql`${journalEntries.source} = 'revenue_release' and ${chartAccounts.code} = '212001'`,
-        )
-        .orderBy(journalEntries.sequence),
-    );
-
-  it('freezes a held void’s schedule; a resolution naming no schedule releases each missed month on its last day', async () => {
-    // The seventh case's INV-2026-9: 910.00 USD over 1 September to 30 November at 114, paid.
-    const companyId = await newCompany();
-    const clientId = await newHubClient(companyId);
-    await inCompany(companyId, (tx) =>
-      receiveOpeningSnapshot(tx, {
-        companyId,
-        apiClientId: clientId,
-        snapshotKey: 'snapshot-9',
-        snapshot: openingSnapshotSchema.parse({
-          as_of: '2026-09-30',
-          generated_at: '2026-10-25T08:00:00+03:00',
-          invoices: [
-            {
-              invoice: INV_9,
-              client: C1,
-              contract: { ...R1, kind: 'project' },
-              currency: 'USD',
-              syp_per_usd: '117.0000',
-              issued_on: '2026-09-01',
-              due_on: '2026-09-15',
-              total: 91_000,
-              outstanding: 0,
-              lines: [
-                {
-                  id: ids(9202),
-                  amount: 91_000,
-                  service: S1,
-                  source: 'manual',
-                  deferred: true,
-                  cycle_start: '2026-09-01',
-                  cycle_end: '2026-11-30',
-                },
-              ],
-            },
-          ],
-          prior_documents: { invoices: [{ invoice: INV_9, issued_on: '2026-09-01' }] },
-        }),
-        actor: hubActor(clientId),
-      }),
-    );
-    await inCompany(companyId, (tx) =>
-      recordRate(tx, companyId, person(), {
-        effectiveOn: '2026-09-01',
-        base: 'USD',
-        quote: 'SYP',
-        rate: '114.0000',
-        type: 'bulletin',
-        source: 'manual',
-      }),
-    );
-    await recordRates(companyId);
-    await inCompany(companyId, async (tx) =>
-      saveOpening(
-        tx,
-        saveOpeningSchema.parse({
-          version: 0,
-          lines: [
-            { accountId: await accountId(tx, '111001'), currency: 'SYP', amount: '60000000' },
-            {
-              accountId: await accountId(tx, '311001'),
-              currency: 'SYP',
-              amount: '-50000000',
-              parallel: '-450000',
-            },
-          ],
-          recordFigures: [],
-        }),
-        person(),
-      ),
-    );
-    const view = await inCompany(companyId, readOpening);
-    expect(view.checks.filter((check) => !check.passed)).toEqual([]);
-    await inCompany(companyId, (tx) =>
-      postOpening(tx, { fingerprint: view.fingerprint, actor: person() }),
-    );
-
-    const voided = await receive(companyId, clientId, 'invoice.voided', '2026-10-20', {
-      invoice: INV_9,
-      voided_on: '2026-10-20',
-      reason: 'أُلغيت في Hub',
-    });
-    expect(voided).toMatchObject({ reason: 'NEEDS_DECISION', detail: 'before_books_start' });
-    // October's and November's jobs release nothing of the frozen schedule.
-    for (const [month, today] of [
-      ['2026-10', '2026-11-01'],
-      ['2026-11', '2026-12-01'],
-    ] as const) {
-      const job = await inCompany(companyId, (tx) => releaseMonth(tx, month, today, person()));
-      expect(job).toEqual({ posted: 0, refused: [] });
-    }
-    expect(await releases(companyId)).toEqual([]);
-    // Resolved by an entry that names no schedule: the schedule stands, so each month it missed is
-    // released at once, on its own last day.
-    const entry = await inCompany(companyId, (tx) => manualEntry(tx, '2026-11-30'));
-    await inCompany(companyId, (tx) =>
-      resolveEvent(tx, voided.inboxId, entry.id, 'خطأ في Hub؛ الخدمة قُدّمت', {
-        actor: person(),
-        today: '2026-12-01',
-      }),
-    );
-    expect(await releases(companyId)).toEqual([
-      { date: '2026-10-31', amount: 31_000n, book: 3_534_000n },
-      { date: '2026-11-30', amount: 30_000n, book: 3_420_000n },
-    ]);
-    // A replay of the months posts nothing more.
-    const again = await inCompany(companyId, (tx) =>
-      releaseMonth(tx, '2026-11', '2026-12-01', person()),
-    );
-    expect(again.posted).toBe(0);
-  });
-
-  it('holds the void of an opening invoice a replayed payment settled OPEN_ITEM_HAS_SETTLEMENTS first, then before_books_start; a dismissal releases what it froze', async () => {
-    const companyId = await newCompany();
-    const clientId = await newHubClient(companyId);
-    const INV_1 = { id: ids(1), number: 'INV-1' };
-    await inCompany(companyId, (tx) =>
-      receiveOpeningSnapshot(tx, {
-        companyId,
-        apiClientId: clientId,
-        snapshotKey: 'snapshot-1',
-        snapshot: openingSnapshotSchema.parse({
-          ...snapshot(),
-          prior_documents: { invoices: [{ invoice: INV_1, issued_on: '2026-09-10' }] },
-        }),
-        actor: hubActor(clientId),
-      }),
-    );
-    await recordRates(companyId);
-    await inCompany(companyId, (tx) => save(tx, 0));
-    const view = await inCompany(companyId, readOpening);
-    await inCompany(companyId, (tx) =>
-      postOpening(tx, { fingerprint: view.fingerprint, actor: person() }),
-    );
-    await inCompany(companyId, async (tx) => {
-      for (const [type, rate] of [
-        ['bulletin', '116.0000'],
-        ['market', '119.0000'],
-      ] as const) {
-        await recordRate(tx, companyId, person(), {
-          effectiveOn: '2026-10-05',
-          base: 'USD',
-          quote: 'SYP',
-          rate,
-          type,
-          source: 'manual',
-        });
-      }
-    });
-    const payment = { id: ids(9301), number: 'R-1' };
-    const paid = await receive(companyId, clientId, 'payment.recorded', '2026-10-05', {
-      payment,
-      invoice: INV_1,
-      paid_on: '2026-10-05',
-      method: 'bank_transfer',
-      currency: 'USD',
-      amount: 10_000,
-      syp_per_usd: '117.0000',
-      applied_amount: 10_000,
-      invoice_currency: 'USD',
-    });
-    expect(paid.state).toBe('posted');
-    const voided = await receive(companyId, clientId, 'invoice.voided', '2026-10-08', {
-      invoice: INV_1,
-      voided_on: '2026-10-08',
-      reason: 'أُلغيت في Hub',
-    });
-    expect(voided).toMatchObject({ reason: 'OPEN_ITEM_HAS_SETTLEMENTS' });
-    // The payment's void posts and frees the invoice's, which is now the accountant's.
-    await receive(companyId, clientId, 'payment.voided', '2026-10-09', {
-      payment,
-      invoice: INV_1,
-      voided_on: '2026-10-09',
-      reason: 'أعادها المصرف',
-    });
-    const [state] = await inCompany(companyId, (tx) =>
-      tx.execute<{ reason: string; detail: string }>(sql`
-        select hold_reason as reason, hold_detail as detail from inbound_event_states
-        where event_id = ${voided.inboxId}`),
-    ).then((result) => result.rows);
-    expect(state).toEqual({ reason: 'NEEDS_DECISION', detail: 'before_books_start' });
-    // Frozen: October's job releases nothing of INV-1's schedule; the dismissal releases it.
-    expect(
-      (await inCompany(companyId, (tx) => releaseMonth(tx, '2026-10', '2026-11-01', person())))
-        .posted,
-    ).toBe(0);
-    await inCompany(companyId, (tx) =>
-      dismissEvent(tx, voided.inboxId, 'أُلغيت الفاتورة الخطأ في Hub', {
-        actor: person(),
-        today: '2026-11-02',
-      }),
-    );
-    expect(await releases(companyId)).toEqual([
-      { date: '2026-10-31', amount: 15_000n, book: 1_710_000n },
-    ]);
-    // Another company never finds the schedule: its line names an unknown one.
-    const [schedule] = await inCompany(companyId, (tx) =>
-      tx.select({ id: recognitionSchedules.id }).from(recognitionSchedules),
-    );
-    const otherId = await newCompany(null);
-    expect(
-      await codeOf(
-        inCompany(otherId, async (tx) =>
-          post(tx, {
-            client: 'manual',
-            idempotencyKey: uuidv7(),
-            entryDate: '2026-10-08',
-            description: 'جدول شركة أخرى',
-            reference: null,
-            draftId: null,
-            preparedByUserId: personId,
-            approvedByUserId: null,
-            actor: person(),
-            content: {
-              kind: 'manual',
-              today: '2026-10-08',
-              dealtRates: [],
-              lines: [
-                {
-                  accountId: await accountId(tx, '212001'),
-                  dimensionValueIds: [],
-                  currency: 'USD',
-                  amountMinor: 15_000n,
-                  memo: null,
-                  scheduleId: schedule?.id as string,
-                },
-                {
-                  accountId: await accountId(tx, '111004'),
-                  dimensionValueIds: [],
-                  currency: 'USD',
-                  amountMinor: -15_000n,
-                  memo: null,
-                },
-              ],
-            },
-          }),
-        ),
-      ),
-    ).toBe('NOT_FOUND');
   });
 });

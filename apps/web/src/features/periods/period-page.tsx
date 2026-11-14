@@ -236,11 +236,7 @@ function PeriodView({ data }: { data: PeriodDetail }) {
             body: { reason },
             schema: periodReopenResultSchema,
           });
-          setNotice(
-            result.queuedEvents > 0
-              ? `${t.reopen.done} ${t.reopen.queued}: ${result.queuedEvents}`
-              : t.reopen.done,
-          );
+          setNotice(t.reopen.done);
           await refresh(result.period);
         }}
       />

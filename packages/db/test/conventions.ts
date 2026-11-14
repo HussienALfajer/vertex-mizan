@@ -1944,293 +1944,6 @@ END
 `,
     },
     {
-      name: 'inbound_event_state_rules',
-      arguments: '',
-      returns: 'trigger',
-      language: 'plpgsql',
-      volatility: 'v',
-      parallel: 'u',
-      strict: false,
-      leakproof: false,
-      definer: false,
-      config: null,
-      owner: OWNER_ROLE,
-      source: `
-BEGIN
-  IF TG_OP = 'INSERT' THEN
-    IF NEW.state NOT IN ('held', 'posted', 'recorded') OR NEW.attempts <> 1 THEN
-      RAISE EXCEPTION 'inbound_event_states: an event is stored held, posted or recorded'
-        USING ERRCODE = 'restrict_violation';
-    END IF;
-  ELSE
-    IF OLD.state <> 'held' THEN
-      RAISE EXCEPTION 'inbound_event_states: event % is % and no longer changes', OLD.event_id,
-        OLD.state
-        USING ERRCODE = 'restrict_violation';
-    END IF;
-    IF NEW.company_id IS DISTINCT FROM OLD.company_id OR NEW.event_id IS DISTINCT FROM OLD.event_id
-      OR NEW.id IS DISTINCT FROM OLD.id OR NEW.created_at IS DISTINCT FROM OLD.created_at
-      OR NEW.attempts < OLD.attempts THEN
-      RAISE EXCEPTION 'inbound_event_states: an event''s state changes, not its event'
-        USING ERRCODE = 'restrict_violation';
-    END IF;
-  END IF;
-  IF NEW.state = 'resolved' AND NOT EXISTS (
-    SELECT 1 FROM public.journal_entries e
-    WHERE e.company_id = NEW.company_id AND e.id = NEW.resolved_by_entry_id
-      AND e.source = 'manual'
-  ) THEN
-    RAISE EXCEPTION 'inbound_event_states: an event is resolved by a posted manual entry'
-      USING ERRCODE = 'restrict_violation';
-  END IF;
-  RETURN NEW;
-END
-`,
-    },
-    {
-      name: 'api_client_rules',
-      arguments: '',
-      returns: 'trigger',
-      language: 'plpgsql',
-      volatility: 'v',
-      parallel: 'u',
-      strict: false,
-      leakproof: false,
-      definer: false,
-      config: null,
-      owner: OWNER_ROLE,
-      source: `
-BEGIN
-  IF (NEW.id, NEW.scope_company_id, NEW.system, NEW.created_by_user_id, NEW.created_at)
-    IS DISTINCT FROM (OLD.id, OLD.scope_company_id, OLD.system, OLD.created_by_user_id,
-      OLD.created_at) THEN
-    RAISE EXCEPTION 'api_clients: a client never moves to another company or system'
-      USING ERRCODE = 'restrict_violation';
-  END IF;
-  RETURN NEW;
-END
-`,
-    },
-    {
-      name: 'api_client_key_rules',
-      arguments: '',
-      returns: 'trigger',
-      language: 'plpgsql',
-      volatility: 'v',
-      parallel: 'u',
-      strict: false,
-      leakproof: false,
-      definer: false,
-      config: null,
-      owner: OWNER_ROLE,
-      source: `
-DECLARE
-  client record;
-BEGIN
-  IF TG_OP = 'UPDATE' THEN
-    IF (NEW.id, NEW.api_client_id, NEW.scope_company_id, NEW.prefix, NEW.secret_hash,
-        NEW.created_by_user_id, NEW.created_at)
-      IS DISTINCT FROM (OLD.id, OLD.api_client_id, OLD.scope_company_id, OLD.prefix,
-        OLD.secret_hash, OLD.created_by_user_id, OLD.created_at) THEN
-      RAISE EXCEPTION 'api_client_keys: a key changes only by its use and its revocation'
-        USING ERRCODE = 'restrict_violation';
-    END IF;
-    IF OLD.revoked_at IS NOT NULL
-      AND (NEW.revoked_at, NEW.revoked_by_user_id, NEW.revoke_reason, NEW.last_used_at,
-        NEW.last_used_ip, NEW.archived_at)
-      IS DISTINCT FROM (OLD.revoked_at, OLD.revoked_by_user_id, OLD.revoke_reason,
-        OLD.last_used_at, OLD.last_used_ip, OLD.archived_at) THEN
-      RAISE EXCEPTION 'api_client_keys: key % is revoked and never changes again', OLD.prefix
-        USING ERRCODE = 'restrict_violation';
-    END IF;
-    RETURN NEW;
-  END IF;
-  IF NEW.revoked_at IS NOT NULL OR NEW.last_used_at IS NOT NULL THEN
-    RAISE EXCEPTION 'api_client_keys: a key is created active and unused'
-      USING ERRCODE = 'restrict_violation';
-  END IF;
-  -- The client's row first, so two keys created at once count each other.
-  SELECT c.archived_at, co.archived_at AS company_archived_at INTO client
-  FROM public.api_clients c
-  JOIN public.companies co ON co.id = c.scope_company_id
-  WHERE c.id = NEW.api_client_id AND c.scope_company_id = NEW.scope_company_id
-  FOR UPDATE OF c;
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'api_client_keys: a key belongs to a client of its company'
-      USING ERRCODE = 'foreign_key_violation';
-  END IF;
-  IF client.archived_at IS NOT NULL OR client.company_archived_at IS NOT NULL THEN
-    RAISE EXCEPTION 'api_client_keys: an archived client or company gets no key'
-      USING ERRCODE = 'restrict_violation';
-  END IF;
-  IF (SELECT count(*) FROM public.api_client_keys k
-      WHERE k.scope_company_id = NEW.scope_company_id AND k.api_client_id = NEW.api_client_id
-        AND k.revoked_at IS NULL) >= 2 THEN
-    RAISE EXCEPTION 'api_client_keys: a client has at most two active keys'
-      USING ERRCODE = 'restrict_violation', HINT = 'API_KEY_LIMIT';
-  END IF;
-  RETURN NEW;
-END
-`,
-    },
-    {
-      name: 'document_source_rules',
-      arguments: '',
-      returns: 'trigger',
-      language: 'plpgsql',
-      volatility: 'v',
-      parallel: 'u',
-      strict: false,
-      leakproof: false,
-      definer: false,
-      config: null,
-      owner: OWNER_ROLE,
-      source: `
-DECLARE
-  client record;
-BEGIN
-  IF TG_OP = 'UPDATE'
-    AND (NEW.id, NEW.company_id, NEW.document_type, NEW.created_at)
-      IS DISTINCT FROM (OLD.id, OLD.company_id, OLD.document_type, OLD.created_at) THEN
-    RAISE EXCEPTION 'document_sources: a source moves to another client, not to another type'
-      USING ERRCODE = 'restrict_violation';
-  END IF;
-  SELECT c.archived_at INTO client
-  FROM public.api_clients c
-  WHERE c.id = NEW.api_client_id AND c.scope_company_id = NEW.company_id;
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'document_sources: a source is a client of its company'
-      USING ERRCODE = 'foreign_key_violation';
-  END IF;
-  IF NEW.archived_at IS NULL AND client.archived_at IS NOT NULL THEN
-    RAISE EXCEPTION 'document_sources: an archived client is no source'
-      USING ERRCODE = 'restrict_violation';
-  END IF;
-  RETURN NEW;
-END
-`,
-    },
-    {
-      name: 'recognition_schedule_rules',
-      arguments: '',
-      returns: 'trigger',
-      language: 'plpgsql',
-      volatility: 'v',
-      parallel: 'u',
-      strict: false,
-      leakproof: false,
-      definer: false,
-      config: null,
-      owner: OWNER_ROLE,
-      source: `
-DECLARE
-  account record;
-BEGIN
-  IF NEW.event_id IS NOT NULL AND NOT EXISTS (
-    SELECT 1 FROM public.inbound_events e
-    WHERE e.company_id = NEW.company_id AND e.id = NEW.event_id AND e.type = 'invoice.issued'
-  ) THEN
-    RAISE EXCEPTION 'recognition_schedules: a schedule is opened by an invoice.issued event'
-      USING ERRCODE = 'restrict_violation';
-  END IF;
-  IF NEW.opening_id IS NOT NULL AND NOT EXISTS (
-    SELECT 1 FROM public.openings o
-    WHERE o.company_id = NEW.company_id AND o.id = NEW.opening_id AND o.state = 'draft'
-  ) THEN
-    RAISE EXCEPTION 'recognition_schedules: a schedule is opened by its opening being posted'
-      USING ERRCODE = 'restrict_violation';
-  END IF;
-  SELECT a.kind, a.class, a.is_control INTO account
-  FROM public.chart_accounts a
-  WHERE a.company_id = NEW.company_id AND a.id = NEW.liability_account_id
-  FOR SHARE;
-  IF NOT FOUND OR account.kind <> 'postable' OR account.class <> 'liability' OR account.is_control THEN
-    RAISE EXCEPTION 'recognition_schedules: a schedule is deferred to a postable liability account'
-      USING ERRCODE = 'restrict_violation';
-  END IF;
-  RETURN NEW;
-END
-`,
-    },
-    {
-      name: 'recognition_movement_rules',
-      arguments: '',
-      returns: 'trigger',
-      language: 'plpgsql',
-      volatility: 'v',
-      parallel: 'u',
-      strict: false,
-      leakproof: false,
-      definer: false,
-      config: null,
-      owner: OWNER_ROLE,
-      source: `
-DECLARE
-  earlier integer;
-BEGIN
-  IF NEW.entry_id IS NOT NULL AND NOT EXISTS (
-    SELECT 1 FROM public.journal_entries e
-    WHERE e.company_id = NEW.company_id AND e.id = NEW.entry_id AND e.created_at = now()
-  ) THEN
-    RAISE EXCEPTION 'recognition_movements: a movement describes an entry of its transaction'
-      USING ERRCODE = 'restrict_violation';
-  END IF;
-  SELECT count(*) INTO earlier
-  FROM public.recognition_movements m
-  WHERE m.company_id = NEW.company_id AND m.schedule_id = NEW.schedule_id;
-  IF (earlier = 0) <> (NEW.kind = 'deferred') THEN
-    RAISE EXCEPTION 'recognition_movements: a schedule opens with its one deferred movement'
-      USING ERRCODE = 'restrict_violation';
-  END IF;
-  IF NEW.kind = 'before_opening' AND NOT EXISTS (
-    SELECT 1 FROM public.recognition_schedules s
-    JOIN public.journal_entries e ON e.company_id = s.company_id AND e.id = NEW.entry_id
-    WHERE s.company_id = NEW.company_id AND s.id = NEW.schedule_id AND s.opening_id IS NOT NULL
-      AND e.source = 'opening' AND e.reverses_entry_id IS NULL
-  ) THEN
-    RAISE EXCEPTION 'recognition_movements: a before_opening movement is on an opening schedule, on its opening entry'
-      USING ERRCODE = 'restrict_violation';
-  END IF;
-  RETURN NEW;
-END
-`,
-    },
-    {
-      name: 'recognition_schedule_remaining',
-      arguments: '',
-      returns: 'trigger',
-      language: 'plpgsql',
-      volatility: 'v',
-      parallel: 'u',
-      strict: false,
-      leakproof: false,
-      definer: false,
-      config: null,
-      owner: OWNER_ROLE,
-      source: `
-DECLARE
-  remaining record;
-BEGIN
-  SELECT sum(m.transaction_minor) AS transaction_minor, sum(m.book_minor) AS book_minor,
-    sum(m.parallel_minor) AS parallel_minor, count(m.parallel_minor) AS parallel_count,
-    count(*) AS movement_count
-  INTO remaining
-  FROM public.recognition_movements m
-  WHERE m.company_id = NEW.company_id AND m.schedule_id = NEW.schedule_id;
-  IF remaining.parallel_count NOT IN (0, remaining.movement_count) THEN
-    RAISE EXCEPTION 'recognition schedule %: a parallel amount on some movements only', NEW.schedule_id
-      USING ERRCODE = 'check_violation';
-  END IF;
-  IF remaining.transaction_minor < 0 OR (remaining.transaction_minor = 0
-    AND (remaining.book_minor <> 0 OR coalesce(remaining.parallel_minor, 0) <> 0)) THEN
-    RAISE EXCEPTION 'recognition schedule %: RELEASE_EXCEEDS_BALANCE', NEW.schedule_id
-      USING ERRCODE = 'check_violation';
-  END IF;
-  RETURN NULL;
-END
-`,
-    },
-    {
       name: 'revaluation_rules',
       arguments: '',
       returns: 'trigger',
@@ -2408,66 +2121,6 @@ END
 `,
     },
     // S08: a report holds exactly the events it counts; a start date is never cleared.
-    {
-      name: 'reconciliation_report_complete',
-      arguments: '',
-      returns: 'trigger',
-      language: 'plpgsql',
-      volatility: 'v',
-      parallel: 'u',
-      strict: false,
-      leakproof: false,
-      definer: false,
-      config: null,
-      owner: OWNER_ROLE,
-      source: `
-DECLARE
-  report_row_id uuid;
-  expected integer;
-  listed integer;
-BEGIN
-  IF TG_TABLE_NAME = 'reconciliation_reports' THEN
-    report_row_id := NEW.id;
-  ELSE
-    report_row_id := NEW.report_id;
-  END IF;
-  SELECT r.event_count INTO expected
-  FROM public.reconciliation_reports r
-  WHERE r.company_id = NEW.company_id AND r.id = report_row_id;
-  SELECT count(*) INTO listed
-  FROM public.reconciliation_report_events e
-  WHERE e.company_id = NEW.company_id AND e.report_id = report_row_id;
-  IF expected IS NULL OR listed <> expected THEN
-    RAISE EXCEPTION 'reconciliation report % lists % events, not the % it counts',
-      report_row_id, listed, coalesce(expected::text, 'unknown')
-      USING ERRCODE = 'check_violation';
-  END IF;
-  RETURN NULL;
-END
-`,
-    },
-    {
-      name: 'api_client_reconcile_from_rules',
-      arguments: '',
-      returns: 'trigger',
-      language: 'plpgsql',
-      volatility: 'v',
-      parallel: 'u',
-      strict: false,
-      leakproof: false,
-      definer: false,
-      config: null,
-      owner: OWNER_ROLE,
-      source: `
-BEGIN
-  IF OLD.reconcile_from IS NOT NULL AND NEW.reconcile_from IS NULL THEN
-    RAISE EXCEPTION 'api_clients: a reconciliation start date is never cleared'
-      USING ERRCODE = 'restrict_violation';
-  END IF;
-  RETURN NEW;
-END
-`,
-    },
     // S09: a service's department is a service value's, of a department, from Hub for a Hub
     // service, in an open month.
     {
@@ -2718,7 +2371,8 @@ BEGIN
 END;
 `,
     },
-    // S10: the books start, locked once the company has an entry, a snapshot or an opening.
+    // S10: the books start, locked once the company has an entry or an opening (ADR 0021 took the
+    // snapshot out).
     {
       name: 'company_settings_books_start',
       arguments: '',
@@ -2737,50 +2391,11 @@ BEGIN
     NEW.books_start IS NULL
     OR OLD.books_started_at IS NOT NULL
     OR EXISTS (
-      SELECT 1 FROM public.opening_snapshots s WHERE s.company_id = OLD.company_id
-    )
-    OR EXISTS (
       SELECT 1 FROM public.openings o WHERE o.company_id = OLD.company_id
     )
   ) THEN
     RAISE EXCEPTION 'company_settings: the books start of company % is locked: BOOKS_START_LOCKED',
       OLD.company_id
-      USING ERRCODE = 'restrict_violation';
-  END IF;
-  RETURN NEW;
-END
-`,
-    },
-    // S10: a snapshot as of the eve of the books start, none once the opening is posted.
-    {
-      name: 'opening_snapshot_rules',
-      arguments: '',
-      returns: 'trigger',
-      language: 'plpgsql',
-      volatility: 'v',
-      parallel: 'u',
-      strict: false,
-      leakproof: false,
-      definer: false,
-      config: null,
-      owner: OWNER_ROLE,
-      source: `
-DECLARE
-  books_start date;
-BEGIN
-  SELECT s.books_start INTO books_start
-  FROM public.company_settings s
-  WHERE s.company_id = NEW.company_id
-  FOR SHARE;
-  IF books_start IS NULL OR NEW.as_of <> books_start - 1 THEN
-    RAISE EXCEPTION 'opening_snapshots: a snapshot is as of the eve of the books start'
-      USING ERRCODE = 'restrict_violation';
-  END IF;
-  IF EXISTS (
-    SELECT 1 FROM public.openings o
-    WHERE o.company_id = NEW.company_id AND o.state = 'posted'
-  ) THEN
-    RAISE EXCEPTION 'opening_snapshots: no snapshot once the opening is posted: OPENING_POSTED'
       USING ERRCODE = 'restrict_violation';
   END IF;
   RETURN NEW;
@@ -2804,7 +2419,6 @@ END
 DECLARE
   books_start date;
   entry record;
-  latest uuid;
 BEGIN
   SELECT s.books_start INTO books_start
   FROM public.company_settings s
@@ -2816,7 +2430,7 @@ BEGIN
   END IF;
   NEW.updated_at := now();
   IF TG_OP = 'INSERT' THEN
-    IF NEW.state <> 'draft' OR NEW.version <> 1 OR NEW.snapshot_id IS NOT NULL THEN
+    IF NEW.state <> 'draft' OR NEW.version <> 1 THEN
       RAISE EXCEPTION 'openings: an opening is made a draft at its first version'
         USING ERRCODE = 'restrict_violation';
     END IF;
@@ -2842,16 +2456,10 @@ BEGIN
       RAISE EXCEPTION 'openings: opening % is posted with its entry', OLD.id
         USING ERRCODE = 'restrict_violation';
     END IF;
-    SELECT s.id INTO latest
-    FROM public.opening_snapshots s
-    WHERE s.company_id = NEW.company_id
-    ORDER BY s.received_at DESC, s.id DESC
-    LIMIT 1;
     IF NEW.version <> OLD.version OR NEW.prepared_by_user_id <> OLD.prepared_by_user_id
       OR entry.source IS DISTINCT FROM 'opening' OR entry.reverses_entry_id IS NOT NULL
-      OR entry.entry_date <> books_start OR entry.created_at <> now()
-      OR NEW.snapshot_id IS DISTINCT FROM latest THEN
-      RAISE EXCEPTION 'openings: opening % is posted as the opening entry of this transaction, with the latest snapshot',
+      OR entry.entry_date <> books_start OR entry.created_at <> now() THEN
+      RAISE EXCEPTION 'openings: opening % is posted as the opening entry of this transaction',
         OLD.id
         USING ERRCODE = 'restrict_violation';
     END IF;
@@ -2862,10 +2470,10 @@ BEGIN
     FROM public.journal_entries e
     WHERE e.company_id = NEW.company_id AND e.id = NEW.reversal_entry_id;
     IF NOT FOUND
-      OR (NEW.version, NEW.snapshot_id, NEW.entry_id, NEW.prepared_by_user_id, NEW.posted_by_user_id,
-        NEW.posted_at, NEW.fingerprint)
-        IS DISTINCT FROM (OLD.version, OLD.snapshot_id, OLD.entry_id, OLD.prepared_by_user_id,
-          OLD.posted_by_user_id, OLD.posted_at, OLD.fingerprint)
+      OR (NEW.version, NEW.entry_id, NEW.prepared_by_user_id, NEW.posted_by_user_id, NEW.posted_at,
+        NEW.fingerprint)
+        IS DISTINCT FROM (OLD.version, OLD.entry_id, OLD.prepared_by_user_id, OLD.posted_by_user_id,
+          OLD.posted_at, OLD.fingerprint)
       OR entry.reverses_entry_id IS DISTINCT FROM OLD.entry_id OR entry.created_at <> now()
       OR EXISTS (
         SELECT 1 FROM public.journal_entries e
@@ -3686,186 +3294,11 @@ END
     },
     // S05's inbox (0025): the events and their actions append-only, the states and the mapping never
     // deleted, and only a held event's state changes.
-    {
-      table: 'posting_rule_accounts',
-      name: 'posting_rule_accounts_refuse_delete',
-      function: 'refuse_delete',
-      deferred: false,
-      on: ['DELETE'],
-    },
-    {
-      table: 'posting_rule_accounts',
-      name: 'posting_rule_accounts_refuse_truncate',
-      function: 'refuse_delete',
-      deferred: false,
-      on: ['TRUNCATE'],
-    },
-    {
-      table: 'inbound_events',
-      name: 'inbound_events_refuse_change',
-      function: 'refuse_change',
-      deferred: false,
-      on: ['UPDATE', 'DELETE'],
-    },
-    {
-      table: 'inbound_events',
-      name: 'inbound_events_refuse_truncate',
-      function: 'refuse_change',
-      deferred: false,
-      on: ['TRUNCATE'],
-    },
-    {
-      table: 'inbound_event_actions',
-      name: 'inbound_event_actions_refuse_change',
-      function: 'refuse_change',
-      deferred: false,
-      on: ['UPDATE', 'DELETE'],
-    },
-    {
-      table: 'inbound_event_actions',
-      name: 'inbound_event_actions_refuse_truncate',
-      function: 'refuse_change',
-      deferred: false,
-      on: ['TRUNCATE'],
-    },
-    {
-      table: 'inbound_event_states',
-      name: 'inbound_event_states_refuse_delete',
-      function: 'refuse_delete',
-      deferred: false,
-      on: ['DELETE'],
-    },
-    {
-      table: 'inbound_event_states',
-      name: 'inbound_event_states_refuse_truncate',
-      function: 'refuse_delete',
-      deferred: false,
-      on: ['TRUNCATE'],
-    },
-    {
-      table: 'inbound_event_states',
-      name: 'inbound_event_state_rules',
-      function: 'inbound_event_state_rules',
-      deferred: false,
-      on: ['INSERT', 'UPDATE'],
-    },
     // S05's API clients (0027): clients, keys and sources never deleted; a client never moves; a
     // key created active within the limit and never changed once revoked; a source names a client
     // of its company.
-    {
-      table: 'api_clients',
-      name: 'api_clients_refuse_delete',
-      function: 'refuse_delete',
-      deferred: false,
-      on: ['DELETE'],
-    },
-    {
-      table: 'api_clients',
-      name: 'api_clients_refuse_truncate',
-      function: 'refuse_delete',
-      deferred: false,
-      on: ['TRUNCATE'],
-    },
-    {
-      table: 'api_client_keys',
-      name: 'api_client_keys_refuse_delete',
-      function: 'refuse_delete',
-      deferred: false,
-      on: ['DELETE'],
-    },
-    {
-      table: 'api_client_keys',
-      name: 'api_client_keys_refuse_truncate',
-      function: 'refuse_delete',
-      deferred: false,
-      on: ['TRUNCATE'],
-    },
-    {
-      table: 'document_sources',
-      name: 'document_sources_refuse_delete',
-      function: 'refuse_delete',
-      deferred: false,
-      on: ['DELETE'],
-    },
-    {
-      table: 'document_sources',
-      name: 'document_sources_refuse_truncate',
-      function: 'refuse_delete',
-      deferred: false,
-      on: ['TRUNCATE'],
-    },
-    {
-      table: 'api_clients',
-      name: 'api_client_rules',
-      function: 'api_client_rules',
-      deferred: false,
-      on: ['UPDATE'],
-    },
-    {
-      table: 'api_client_keys',
-      name: 'api_client_key_rules',
-      function: 'api_client_key_rules',
-      deferred: false,
-      on: ['INSERT', 'UPDATE'],
-    },
-    {
-      table: 'document_sources',
-      name: 'document_source_rules',
-      function: 'document_source_rules',
-      deferred: false,
-      on: ['INSERT', 'UPDATE'],
-    },
     // S06's recognition (0032): schedules and movements append-only; a schedule from an invoice
     // to a liability account; a movement of its transaction's entry; the remaining at commit.
-    {
-      table: 'recognition_schedules',
-      name: 'recognition_schedules_refuse_change',
-      function: 'refuse_change',
-      deferred: false,
-      on: ['UPDATE', 'DELETE'],
-    },
-    {
-      table: 'recognition_schedules',
-      name: 'recognition_schedules_refuse_truncate',
-      function: 'refuse_change',
-      deferred: false,
-      on: ['TRUNCATE'],
-    },
-    {
-      table: 'recognition_movements',
-      name: 'recognition_movements_refuse_change',
-      function: 'refuse_change',
-      deferred: false,
-      on: ['UPDATE', 'DELETE'],
-    },
-    {
-      table: 'recognition_movements',
-      name: 'recognition_movements_refuse_truncate',
-      function: 'refuse_change',
-      deferred: false,
-      on: ['TRUNCATE'],
-    },
-    {
-      table: 'recognition_schedules',
-      name: 'recognition_schedule_rules',
-      function: 'recognition_schedule_rules',
-      deferred: false,
-      on: ['INSERT'],
-    },
-    {
-      table: 'recognition_movements',
-      name: 'recognition_movement_rules',
-      function: 'recognition_movement_rules',
-      deferred: false,
-      on: ['INSERT'],
-    },
-    {
-      table: 'recognition_movements',
-      name: 'recognition_movements_remaining',
-      function: 'recognition_schedule_remaining',
-      deferred: true,
-      on: ['INSERT'],
-    },
     {
       table: 'revaluations',
       name: 'revaluations_refuse_change',
@@ -3930,55 +3363,6 @@ END
       on: ['INSERT'],
     },
     // S08's reconciliation reports and the start date.
-    {
-      table: 'reconciliation_reports',
-      name: 'reconciliation_reports_refuse_change',
-      function: 'refuse_change',
-      deferred: false,
-      on: ['UPDATE', 'DELETE'],
-    },
-    {
-      table: 'reconciliation_reports',
-      name: 'reconciliation_reports_refuse_truncate',
-      function: 'refuse_change',
-      deferred: false,
-      on: ['TRUNCATE'],
-    },
-    {
-      table: 'reconciliation_reports',
-      name: 'reconciliation_reports_complete',
-      function: 'reconciliation_report_complete',
-      deferred: true,
-      on: ['INSERT'],
-    },
-    {
-      table: 'reconciliation_report_events',
-      name: 'reconciliation_report_events_refuse_change',
-      function: 'refuse_change',
-      deferred: false,
-      on: ['UPDATE', 'DELETE'],
-    },
-    {
-      table: 'reconciliation_report_events',
-      name: 'reconciliation_report_events_refuse_truncate',
-      function: 'refuse_change',
-      deferred: false,
-      on: ['TRUNCATE'],
-    },
-    {
-      table: 'reconciliation_report_events',
-      name: 'reconciliation_report_events_complete',
-      function: 'reconciliation_report_complete',
-      deferred: true,
-      on: ['INSERT'],
-    },
-    {
-      table: 'api_clients',
-      name: 'api_client_reconcile_from_rules',
-      function: 'api_client_reconcile_from_rules',
-      deferred: false,
-      on: ['UPDATE'],
-    },
     {
       table: 'service_departments',
       name: 'service_departments_refuse_change',
@@ -4052,20 +3436,6 @@ END
       on: ['UPDATE'],
     },
     {
-      table: 'opening_snapshots',
-      name: 'opening_snapshots_refuse_change',
-      function: 'refuse_change',
-      deferred: false,
-      on: ['UPDATE', 'DELETE'],
-    },
-    {
-      table: 'opening_snapshots',
-      name: 'opening_snapshots_refuse_truncate',
-      function: 'refuse_change',
-      deferred: false,
-      on: ['TRUNCATE'],
-    },
-    {
       table: 'opening_lines',
       name: 'opening_lines_refuse_change',
       function: 'refuse_change',
@@ -4075,20 +3445,6 @@ END
     {
       table: 'opening_lines',
       name: 'opening_lines_refuse_truncate',
-      function: 'refuse_change',
-      deferred: false,
-      on: ['TRUNCATE'],
-    },
-    {
-      table: 'opening_record_figures',
-      name: 'opening_record_figures_refuse_change',
-      function: 'refuse_change',
-      deferred: false,
-      on: ['UPDATE', 'DELETE'],
-    },
-    {
-      table: 'opening_record_figures',
-      name: 'opening_record_figures_refuse_truncate',
       function: 'refuse_change',
       deferred: false,
       on: ['TRUNCATE'],
@@ -4108,13 +3464,6 @@ END
       on: ['TRUNCATE'],
     },
     {
-      table: 'opening_snapshots',
-      name: 'opening_snapshot_rules',
-      function: 'opening_snapshot_rules',
-      deferred: false,
-      on: ['INSERT'],
-    },
-    {
       table: 'openings',
       name: 'opening_rules',
       function: 'opening_rules',
@@ -4124,13 +3473,6 @@ END
     {
       table: 'opening_lines',
       name: 'opening_lines_version',
-      function: 'opening_version_rules',
-      deferred: false,
-      on: ['INSERT'],
-    },
-    {
-      table: 'opening_record_figures',
-      name: 'opening_record_figures_version',
       function: 'opening_version_rules',
       deferred: false,
       on: ['INSERT'],
@@ -4181,8 +3523,6 @@ END
         privilege: 'SELECT',
         columns: ['company_id', 'id', 'state', 'expires_at'],
       },
-      // The inbox's retry sweep and daily email (S05 "Jobs") find the companies with held events.
-      { table: 'inbound_event_states', privilege: 'SELECT', columns: ['company_id', 'state'] },
       // The report files' hourly job (S09 "Jobs") finds the files to expire and those left queued.
       {
         table: 'report_files',
@@ -4217,13 +3557,6 @@ END
         name: 'jobs_find_exports',
         command: 'r',
         using: 'true',
-        check: null,
-      },
-      {
-        table: 'inbound_event_states',
-        name: 'jobs_find_held_events',
-        command: 'r',
-        using: "(state = 'held'::text)",
         check: null,
       },
       {

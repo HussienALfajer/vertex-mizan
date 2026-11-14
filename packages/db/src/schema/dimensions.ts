@@ -15,7 +15,6 @@ import {
 } from 'drizzle-orm/pg-core';
 import { archivedAt, companyId, createdAt, id, idIsUuidV7, updatedAt } from './columns.js';
 import { companies } from './companies.js';
-import { inboundEvents } from './inbox.js';
 
 // The dimensions module (S02, ADR 0011): dimension types and their values, company tables under
 // forced RLS. The built-in types (client, contract under client, department, service) are made
@@ -159,6 +158,10 @@ export const serviceDepartments = pgTable(
     departmentValueId: uuid().notNull(),
     effectiveFrom: date().notNull(),
     source: text().notNull(),
+    /**
+     * The Hub event that sent a `hub` row: its inbox id, kept without a key since the inbox left
+     * with Hub (ADR 0021).
+     */
     inboundEventId: uuid(),
     // A person is a platform id, kept without a foreign key as the audit log does.
     recordedByUserId: uuid(),
@@ -178,11 +181,6 @@ export const serviceDepartments = pgTable(
       columns: [t.companyId, t.departmentValueId],
       foreignColumns: [dimensionValues.companyId, dimensionValues.id],
     }),
-    foreignKey({
-      name: 'service_departments_inbound_event_fk',
-      columns: [t.companyId, t.inboundEventId],
-      foreignColumns: [inboundEvents.companyId, inboundEvents.id],
-    }),
     index('service_departments_company_service_idx').on(
       t.companyId,
       t.serviceValueId,
@@ -190,7 +188,6 @@ export const serviceDepartments = pgTable(
       t.createdAt,
     ),
     index('service_departments_company_department_idx').on(t.companyId, t.departmentValueId),
-    index('service_departments_company_inbound_event_idx').on(t.companyId, t.inboundEventId),
     check('service_departments_source', sql`${t.source} in (${listed(DEPARTMENT_SOURCES)})`),
     check(
       'service_departments_source_actor',

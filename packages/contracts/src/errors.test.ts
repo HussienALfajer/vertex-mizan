@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  RETIRED_ERROR_CODES,
   DomainError,
   errorCodeSchema,
   errorCodes,
@@ -8,6 +9,11 @@ import {
 } from './errors.js';
 
 describe('error codes', () => {
+  it('keep the codes of the features removed with Hub, retired and still published (ADR 0021)', () => {
+    for (const code of RETIRED_ERROR_CODES) expect(errorCodes, code).toContain(code);
+    expect(new Set(RETIRED_ERROR_CODES).size).toBe(RETIRED_ERROR_CODES.length);
+  });
+
   it('are upper snake case and unique', () => {
     for (const code of errorCodes) expect(code).toMatch(/^[A-Z]+(_[A-Z]+)*$/);
     expect(new Set(errorCodes).size).toBe(errorCodes.length);

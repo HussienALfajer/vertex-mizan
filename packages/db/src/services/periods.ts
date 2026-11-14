@@ -20,7 +20,6 @@ import { openingIsPosted, writePeriodTransition } from '../posting/post.js';
 import { users } from '../schema/access.js';
 import { companySettings } from '../schema/companies.js';
 import { entryDrafts } from '../schema/drafts.js';
-import { inboundEventStates, inboundEvents } from '../schema/inbox.js';
 import {
   journalEntries,
   journalLines,
@@ -29,14 +28,11 @@ import {
   periods,
 } from '../schema/ledger.js';
 import { ledgersOf } from './companies.js';
-import { countFreedByPeriod, type RetryTrigger } from './inbox.js';
-import { reconciliationCheck } from './reconciliation.js';
 import { missingBulletinDays, revaluationCheck } from './revaluation.js';
-import { readRevenueMonths } from './revenue-reads.js';
 
 // Periods and the close (S07 rules 1–9, ADR 0016): the pre-close checklist computed on read and
 // inside the close, the close in order with its checklist stored, the reopen of the latest closed
-// month with its held events queued for retry after the commit, and the reads of /api/periods.
+// month, and the reads of /api/periods. The items of Hub's features left with Hub (ADR 0021).
 
 type Person = Extract<AuditActor, { kind: 'person' }>;
 
@@ -121,26 +117,6 @@ async function draftsOf(tx: Transaction, period: string): Promise<number> {
   return row?.count ?? 0;
 }
 
-async function heldEventsOf(tx: Transaction, period: string): Promise<number> {
-  const [row] = await tx
-    .select({ count: sql<number>`count(*)::int` })
-    .from(inboundEvents)
-    .innerJoin(
-      inboundEventStates,
-      and(
-        eq(inboundEventStates.companyId, inboundEvents.companyId),
-        eq(inboundEventStates.eventId, inboundEvents.id),
-      ),
-    )
-    .where(
-      and(
-        eq(inboundEventStates.state, 'held'),
-        sql`${inboundEvents.accountingDate} between ${`${period}-01`} and ${lastDayOfMonth(`${period}-01`)}`,
-      ),
-    );
-  return row?.count ?? 0;
-}
-
 function item(
   name: ChecklistItemName,
   failures: readonly { readonly ledger: Ledger | null; readonly count: number }[],
@@ -156,15 +132,11 @@ function item(
 }
 
 /**
- * The pre-close checklist of `period` as the books stand now (S07 rule 8), in its order. `today`
- * is the date in Asia/Damascus, which the releases read. A company without a parallel ledger has
- * no parallel side; the bulletin item is not applicable without a ledger at the bulletin.
+ * The pre-close checklist of `period` as the books stand now (S07 rule 8), in its order, without
+ * the items retired with Hub (`RETIRED_CHECKLIST_ITEMS`, ADR 0021). A company without a parallel
+ * ledger has no parallel side; the bulletin item is not applicable without a ledger at the bulletin.
  */
-export async function periodChecklist(
-  tx: Transaction,
-  period: string,
-  today: string,
-): Promise<ChecklistItem[]> {
+export async function periodChecklist(tx: Transaction, period: string): Promise<ChecklistItem[]> {
   const ledgers = await companyLedgerNames(tx);
   const revaluations = new Map<Ledger, Awaited<ReturnType<typeof revaluationCheck>>>();
   for (const ledger of ledgers)
@@ -187,8 +159,6 @@ export async function periodChecklist(
       count: (await missingBulletinDays(tx, period, ledger, currencies)).length,
     });
   }
-  const [month] = await readRevenueMonths(tx, [period], today);
-  const reconciliation = await reconciliationCheck(tx, period);
   return [
     item('bulletins_recorded', bulletins, atBulletin.length > 0),
     item(
@@ -197,20 +167,12 @@ export async function periodChecklist(
     ),
     item('no_drafts', [{ ledger: null, count: await draftsOf(tx, period) }]),
     item('open_items_agree', [{ ledger: null, count: await controlAccountsDiffering(tx, period) }]),
-    item('no_held_events', [{ ledger: null, count: await heldEventsOf(tx, period) }]),
-    item('releases_posted', [{ ledger: null, count: month?.missing.length ?? 0 }]),
     item(
       'revaluation_current',
       ledgers.map((ledger) => ({
         ledger,
         count: revaluations.get(ledger)?.state === 'current' ? 0 : 1,
       })),
-    ),
-    // S08 rule 12: every day of the month matched or not required for every client, no override.
-    item(
-      'reconciliation_clean',
-      [{ ledger: null, count: reconciliation.uncleanDays }],
-      reconciliation.applicable,
     ),
   ];
 }
@@ -289,7 +251,7 @@ export async function readPeriod(
   } else if (state === 'closed') {
     checklist = [];
   } else {
-    checklist = await periodChecklist(tx, period, today);
+    checklist = await periodChecklist(tx, period);
   }
   return {
     period,
@@ -352,9 +314,7 @@ export async function readPeriods(
       ended,
       lastEvent: (row && history.get(row.id)?.at(-1)) ?? null,
       failingItems:
-        ended && state !== 'closed'
-          ? failingItems(await periodChecklist(tx, month, input.today)).length
-          : null,
+        ended && state !== 'closed' ? failingItems(await periodChecklist(tx, month)).length : null,
     });
   }
   return summaries;
@@ -415,7 +375,7 @@ export async function closePeriod(
       throw new DomainError('PERIOD_ORDER', `Close ${open} before ${period}`, { period: open });
     }
   }
-  const checklist = await periodChecklist(tx, period, today);
+  const checklist = await periodChecklist(tx, period);
   const failing = failingItems(checklist);
   if (failing.length > 0) {
     throw new DomainError('CHECKLIST_FAILED', 'An item of the checklist fails', {
@@ -444,8 +404,7 @@ export async function closePeriod(
  * Reopens `period` with a reason (S07 rules 3, 5, 6), inside `withCompany`, in the close's lock
  * order. Refused `PERIOD_NOT_CLOSED` (not closed) and `PERIOD_ORDER` (a later month is closed: the
  * latest closed month). Writes the `period_events` row, the state `reopened` and the
- * `period.reopened` audit row with the count of events it frees; returns the trigger that retries
- * them, to queue after the commit.
+ * `period.reopened` audit row.
  */
 export async function reopenPeriod(
   tx: Transaction,
@@ -455,11 +414,7 @@ export async function reopenPeriod(
     readonly today: string;
     readonly actor: Person;
   },
-): Promise<{
-  readonly period: PeriodDetail;
-  readonly queuedEvents: number;
-  readonly triggers: RetryTrigger[];
-}> {
+): Promise<{ readonly period: PeriodDetail }> {
   const { period, reason, today, actor } = input;
   const head = await lockHead(tx);
   const row = await lockPeriod(tx, period);
@@ -477,7 +432,6 @@ export async function reopenPeriod(
       period: latest.period,
     });
   }
-  const queuedEvents = await countFreedByPeriod(tx, period);
   await writePeriodTransition(tx, {
     companyId: head.companyId,
     period,
@@ -491,11 +445,7 @@ export async function reopenPeriod(
     entityType: 'period',
     entityId: row.id,
     reason,
-    after: { period, queuedEvents },
+    after: { period },
   });
-  return {
-    period: await readPeriod(tx, period, today),
-    queuedEvents,
-    triggers: [{ kind: 'period', period }],
-  };
+  return { period: await readPeriod(tx, period, today) };
 }

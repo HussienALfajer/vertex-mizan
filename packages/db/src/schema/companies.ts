@@ -1,6 +1,5 @@
 import { sql } from 'drizzle-orm';
 import {
-  bigint,
   boolean,
   check,
   date,
@@ -101,13 +100,6 @@ export const companySettings = pgTable(
      */
     manualEntryApproval: boolean().notNull().default(false),
     /**
-     * The payments' tolerance per invoice currency, in minor units (S05 rule 9; owner,
-     * 2026-11-06): 1.00 SYP and 1.00 USD by default. Not part of the settings lock: it decides how
-     * a future event is treated, never a posted amount.
-     */
-    paymentToleranceSypMinor: bigint({ mode: 'bigint' }).notNull().default(sql`100`),
-    paymentToleranceUsdMinor: bigint({ mode: 'bigint' }).notNull().default(sql`100`),
-    /**
      * The books start (S10 rule 1, ADR 0019): the first day of a month, from which the company keeps
      * its books in Mizan, its opening entry dated on it; null for a company that starts without an
      * opening. Locked once the company has an entry, a snapshot or an opening (rule 2); never
@@ -151,10 +143,6 @@ export const companySettings = pgTable(
       sql`${t.fiscalYearStartMonth} between 1 and 12`,
     ),
     // Weekdays 1–7; six at most, so one weekday at least is a publication day.
-    check(
-      'company_settings_payment_tolerance',
-      sql`${t.paymentToleranceSypMinor} >= 0 and ${t.paymentToleranceUsdMinor} >= 0`,
-    ),
     check(
       'company_settings_bulletin_days_off',
       sql`${t.bulletinDaysOff} <@ '{1,2,3,4,5,6,7}'::smallint[]

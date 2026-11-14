@@ -1,5 +1,11 @@
 import type { INestApplication } from '@nestjs/common';
-import type { Account, CreateCompany, DraftLineInput, Role } from '@vertex-mizan/contracts';
+import type {
+  Account,
+  CreateCompany,
+  DimensionType,
+  DraftLineInput,
+  Role,
+} from '@vertex-mizan/contracts';
 import type { Database } from '@vertex-mizan/db';
 import { expect } from 'vitest';
 import { todayInDamascus } from '../src/core/clock/today.js';
@@ -7,8 +13,8 @@ import type { Browser } from './browser.js';
 import { joinCompany, newCompany, signedInPerson, type TestPerson } from './people.js';
 
 // A company with books for the entry and draft tests (S03): Vertex Media's ledgers (SYP books at
-// the bulletin, a USD parallel ledger at market accepting the dealt rate), the service-agency
-// chart, a bulletin of 121.5000 and a market rate of 122.0000 SYP per USD for today, every day a
+// the bulletin, a USD parallel ledger at market accepting the dealt rate), the general chart, a
+// bulletin of 121.5000 and a market rate of 122.0000 SYP per USD for today, every day a
 // publication day so today needs its own bulletin. Entries are dated today, by the API's clock.
 // Every value is synthetic.
 
@@ -30,7 +36,7 @@ export async function books(
   values: Partial<CreateCompany> = {},
 ): Promise<Books> {
   const owner = await signedInPerson(app, db);
-  const company = await newCompany(owner.browser, { template: 'service-agency', ...values });
+  const company = await newCompany(owner.browser, { template: 'general', ...values });
   const calendar = await owner.browser.put('/api/rate-calendar', { daysOff: [] });
   expect(calendar.status, JSON.stringify(calendar.body)).toBe(200);
   const rates = { bulletin: '', market: '' };
@@ -60,6 +66,39 @@ export async function books(
   };
 }
 
+/**
+ * Client money held (`213001`, a running control account in USD requiring the client, under its
+ * header `213`), as the service-agency chart held it before ADR 0021 removed it: added through
+ * `POST /api/accounts` for the tests of running items (S04), and into `book.accounts`.
+ */
+export async function withClientMoney(book: Books): Promise<Books> {
+  const types = (await book.owner.browser.get('/api/dimension-types')).body as DimensionType[];
+  const client = types.find((type) => type.code === 'client')?.id as string;
+  const header = await book.owner.browser.post('/api/accounts', {
+    parentId: book.accounts.get('21'),
+    code: '213',
+    kind: 'header',
+    name: 'أمانات العملاء',
+  });
+  expect(header.status, JSON.stringify(header.body)).toBe(201);
+  const funds = await book.owner.browser.post('/api/accounts', {
+    parentId: header.body.id,
+    code: '213001',
+    kind: 'postable',
+    name: 'أمانات إعلانات العملاء',
+    statementLine: 'bs.client_money',
+    currency: 'USD',
+    isControl: true,
+    itemKind: 'running',
+    isMonetary: true,
+    requiredDimensionTypeIds: [client],
+  });
+  expect(funds.status, JSON.stringify(funds.body)).toBe(201);
+  book.accounts.set('213', header.body.id);
+  book.accounts.set('213001', funds.body.id);
+  return book;
+}
+
 /** A typed line: the account by code, the amount in minor units as text. */
 export const line = (
   book: Books,
@@ -75,7 +114,6 @@ export const line = (
   memo,
   openItemId: null,
   newItem: null,
-  scheduleId: null,
 });
 
 /**

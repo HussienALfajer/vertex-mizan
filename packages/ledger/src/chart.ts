@@ -37,8 +37,6 @@ export interface LineDimensionValue {
 /**
  * A line as the chart sees it, by `origin`:
  * - `manual`: a line the accountant typed, or the rounding or difference line of a manual entry;
- * - `hub`: a line a Hub event's posting rule built (S05): Hub is the source of its records, so an
- *   archived value it names is still accepted (rule 13);
  * - `reversal`: a line that negates a posted line exactly (S03 rule 9, ADR 0005 invariant 3). Its
  *   currency, dimensions and account are the original's, which the chart accepted then: a
  *   required dimension added since applies to postings from then on (S02 rule 4) and an archived
@@ -54,7 +52,7 @@ export interface ChartLine {
   /** The line's transaction currency; a difference line keeps its item's (ADR 0007). */
   readonly currency: CurrencyCode;
   readonly dimensions: readonly LineDimensionValue[];
-  readonly origin: 'manual' | 'hub' | 'reversal' | 'revaluation';
+  readonly origin: 'manual' | 'reversal' | 'revaluation';
   /**
    * The open item the line names (S04 rules 5–9): a new document item it opens, or an existing
    * item; undefined when it names none, as a line on a running account, whose item is the client's.

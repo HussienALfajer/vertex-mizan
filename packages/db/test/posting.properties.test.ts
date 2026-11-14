@@ -115,7 +115,7 @@ async function newCompany(): Promise<{ company: string; ids: Map<string, string>
         ledgers: SYP_USD,
         fiscalYearStartMonth: 1,
         policyNote: 'مذكرة مولّدة.',
-        template: 'service-agency',
+        template: 'general',
         createdByUserId: personId,
       },
       actor(),

@@ -157,9 +157,8 @@ describe('/api/periods', () => {
     ).toBe('FORBIDDEN');
     const reopened = await owner.post(`/api/periods/${last}/reopen`, reason('فاتورة متأخرة'));
     expect(reopened.status, JSON.stringify(reopened.body)).toBe(200);
-    expect(reopened.body).toMatchObject({
-      queuedEvents: 0,
-      period: { period: last, state: 'reopened' },
+    expect(reopened.body).toEqual({
+      period: expect.objectContaining({ period: last, state: 'reopened' }),
     });
     await posted(owner, expense(book, `${last}-28`));
 

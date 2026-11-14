@@ -94,7 +94,7 @@ const inCompany = <T>(
   db: Database = app,
 ) => withCompany(db, companyId, work);
 
-/** A company with the service-agency chart, through the shared company service. */
+/** A company with the general chart, through the shared company service. */
 async function newCompany(ledgers = SYP_USD, fiscalYearStartMonth = 1): Promise<string> {
   const id = uuidv7();
   await withCompany(app, id, (tx) =>
@@ -107,7 +107,7 @@ async function newCompany(ledgers = SYP_USD, fiscalYearStartMonth = 1): Promise<
         ledgers,
         fiscalYearStartMonth,
         policyNote: 'مذكرة سياسة تجريبية.',
-        template: 'service-agency',
+        template: 'general',
         createdByUserId: personId,
       },
       actor(),
@@ -1177,7 +1177,7 @@ describe('forged entries, refused by the database (ADR 0005 invariants 1–8)', 
       await refusal(forge(company, { lines: [DEBIT, { ...CREDIT, code: '111004' }] })),
     ).toMatch(/takes USD lines, not SYP/);
     expect(
-      await refusal(forge(company, { lines: [{ ...DEBIT, code: '521001' }, CREDIT] })),
+      await refusal(forge(company, { lines: [{ ...DEBIT, code: '411001' }, CREDIT] })),
     ).toMatch(/every dimension its account/);
     expect(await refusal(forge(company, { on: '2025-12-31', lines: [DEBIT, CREDIT] }))).toMatch(
       /no SYP amount is dated before 2026-01-01/,

@@ -24,6 +24,7 @@ import {
   users,
   withCompany,
 } from '../src/index.js';
+import { addTestControlAccounts } from '../src/testing.js';
 import { connect } from './connections.js';
 
 // The reads of the open items (S04 "Reports") on the migrated database: items at a date, their
@@ -61,8 +62,8 @@ const inCompany = <T>(books: Books, work: (tx: Transaction) => Promise<T>) =>
 /** Vertex Media's ledgers, the service-agency chart, clients C1 and C2, service S1, the rates. */
 async function newBooks(): Promise<Books> {
   const id = uuidv7();
-  await withCompany(app, id, (tx) =>
-    createCompanyBooks(
+  await withCompany(app, id, async (tx) => {
+    await createCompanyBooks(
       tx,
       id,
       {
@@ -71,12 +72,13 @@ async function newBooks(): Promise<Books> {
         ledgers: SYP_USD,
         fiscalYearStartMonth: 1,
         policyNote: 'مذكرة سياسة تجريبية.',
-        template: 'service-agency',
+        template: 'general',
         createdByUserId: personId,
       },
       actor(),
-    ),
-  );
+    );
+    await addTestControlAccounts(tx, id, actor());
+  });
   for (const [on, type, value] of [
     ['2026-11-03', 'bulletin', '120.0000'],
     ['2026-11-19', 'bulletin', '123.0000'],

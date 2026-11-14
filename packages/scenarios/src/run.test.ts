@@ -9,8 +9,8 @@ import type {
   ScenarioHarness,
   StepResult,
 } from './harness.js';
-import { eventValues, namedDimensionValues, runCase, ScenarioFailure } from './run.js';
-import { CASE, CORRECTION, INBOX, REPORTS } from './test-fixtures.js';
+import { namedDimensionValues, runCase, ScenarioFailure } from './run.js';
+import { CASE, CORRECTION, REPORTS } from './test-fixtures.js';
 
 // The runner against a fake harness: what the S03, S05 and S07 parts will hand it, built here from
 // the case itself so each test can break one thing. The book runs on a real database
@@ -43,8 +43,8 @@ function harness(
       return 'company-1';
     },
     executors: {
-      event: async (_, step) => {
-        calls.push(step.type);
+      manual: async (_, step) => {
+        calls.push(step.description);
         return results.shift() ?? { status: 'done' };
       },
     },
@@ -85,34 +85,17 @@ describe('runCase', () => {
   it('passes when the ledger holds exactly the expected entries, the lines in any order', async () => {
     const { fake, calls } = harness(asPosted(usdInvoice));
     await runCase(usdInvoice, fake, database);
-    expect(calls).toEqual(['setUp', 'invoice.issued']);
+    expect(calls).toEqual(['setUp', 'a USD invoice']);
   });
 
   it('fails an approved step with no executor before anything runs', async () => {
     const { fake, calls } = harness(asPosted(usdInvoice));
     const found = await differences(runCase(usdInvoice, { ...fake, executors: {} }, database));
     expect(found).toEqual([
-      'step 1 (event invoice.issued on 2026-11-03): no executor for event steps; ' +
-        'Hub events arrive with S05',
+      'step 1 (manual entry "a USD invoice" on 2026-11-03): no executor for manual steps; ' +
+        'manual entries arrive with S03',
     ]);
     expect(calls).toEqual([]);
-  });
-
-  it('names the inbox actions that have no executor (S05)', async () => {
-    const inbox = parseCase(INBOX);
-    const { fake } = harness([]);
-    const done = async () => ({ status: 'done' as const });
-    const found = await differences(
-      runCase(inbox, { ...fake, executors: { event: done, manual: done } }, database),
-    );
-    expect(found).toEqual([
-      'step 2 (retry of step 1): no executor for retry steps; inbox actions arrive with S05',
-      'step 3 (move of step 1 to the next open period): no executor for move steps; ' +
-        'inbox actions arrive with S05',
-      'step 6 (resolution of step 4 by entry 2): no executor for resolve steps; ' +
-        'inbox actions arrive with S05',
-      'step 8 (dismissal of step 7): no executor for dismiss steps; inbox actions arrive with S05',
-    ]);
   });
 
   it('fails a case stating reports without a report reader, and a department step without its executor (S09)', async () => {
@@ -144,9 +127,9 @@ describe('runCase', () => {
     }));
     const { fake } = harness(posted);
     expect(await differences(runCase(usdInvoice, fake, database))).toEqual([
-      'entry 1 (invoice.issued, 2026-11-03): missing line 1210 {client: C1} USD: ' +
+      'entry 1 (manual, 2026-11-03): missing line 1210 {client: C1} USD: ' +
         'amount 10000, book 1200000, parallel 10000',
-      'entry 1 (invoice.issued, 2026-11-03): extra line 1210 {client: C1} USD: ' +
+      'entry 1 (manual, 2026-11-03): extra line 1210 {client: C1} USD: ' +
         'amount 10000, book 1200000, parallel 10001',
     ]);
   });
@@ -173,12 +156,12 @@ describe('runCase', () => {
     const [entry] = asPosted(usdInvoice) as [PostedEntry];
     const twice = harness([entry, entry]).fake;
     expect(await differences(runCase(usdInvoice, twice, database))).toEqual([
-      expect.stringMatching(/^entry 2 \(invoice\.issued, 2026-11-03\): posted, not expected: /),
+      expect.stringMatching(/^entry 2 \(manual, 2026-11-03\): posted, not expected: /),
     ]);
 
-    const other = harness([{ ...entry, source: 'manual', date: '2026-11-04' }]).fake;
+    const other = harness([{ ...entry, source: 'revaluation', date: '2026-11-04' }]).fake;
     expect(await differences(runCase(usdInvoice, other, database))).toEqual([
-      'entry 1: source manual, expected invoice.issued',
+      'entry 1: source revaluation, expected manual',
       'entry 1: date 2026-11-04, expected 2026-11-03',
     ]);
   });
@@ -186,14 +169,14 @@ describe('runCase', () => {
   it('fails when an expected entry was not posted', async () => {
     const { fake } = harness([]);
     expect(await differences(runCase(usdInvoice, fake, database))).toEqual([
-      'entry 1 (invoice.issued, 2026-11-03): not posted',
+      'entry 1 (manual, 2026-11-03): not posted',
     ]);
   });
 
   it.each([0, 2])('fails a posting with %i audit rows', async (auditRows) => {
     const { fake } = harness(withLine(asPosted(usdInvoice), (entry) => ({ ...entry, auditRows })));
     expect(await differences(runCase(usdInvoice, fake, database))).toEqual([
-      `entry 1 (invoice.issued, 2026-11-03): ${auditRows} audit rows, expected one`,
+      `entry 1 (manual, 2026-11-03): ${auditRows} audit rows, expected one`,
     ]);
   });
 
@@ -262,25 +245,25 @@ describe('runCase with an outcome', () => {
     const twoSteps = parseCase(
       CASE.replace(
         'steps:\n',
-        'steps:\n  - event: rate.recorded\n    accounting_date: 2026-11-02\n    payload: {}\n',
+        'steps:\n  - manual: a first entry\n    accounting_date: 2026-11-02\n    payload: {}\n',
       ),
     );
     const { fake } = harness(asPosted(twoSteps), {
       results: [{ status: 'held', reason: 'NO_MAPPING' }],
     });
     expect(await differences(runCase(twoSteps, fake, database))).toEqual([
-      'step 1 (event rate.recorded on 2026-11-02): held NO_MAPPING, expected done',
+      'step 1 (manual entry "a first entry" on 2026-11-02): held NO_MAPPING, expected done',
     ]);
   });
 });
 
 describe('runCase with an outcome on a step', () => {
-  // A payment held at receipt, freed by the invoice that follows it: its entry posts after the
-  // invoice's, so the ledger holds both and the first step answered held (S05 rule 11).
+  // A step held at receipt that a later step frees: its entry posts after the later one's, so
+  // the ledger holds both and the first step answered held.
   const freed = parseCase(
     CASE.replace(
       'steps:\n',
-      'steps:\n  - event: payment.recorded\n    accounting_date: 2026-11-03\n' +
+      'steps:\n  - manual: a payment\n    accounting_date: 2026-11-03\n' +
         '    payload: { invoice: INV-1 }\n' +
         '    outcome: { status: held, reason: UNKNOWN_REFERENCE }\n',
     ),
@@ -291,7 +274,7 @@ describe('runCase with an outcome on a step', () => {
       results: [{ status: 'held', reason: 'UNKNOWN_REFERENCE' }, { status: 'done' }],
     });
     await runCase(freed, fake, database);
-    expect(calls).toEqual(['setUp', 'payment.recorded', 'invoice.issued']);
+    expect(calls).toEqual(['setUp', 'a payment', 'a USD invoice']);
   });
 
   it('fails the step when it was done instead', async () => {
@@ -299,7 +282,7 @@ describe('runCase with an outcome on a step', () => {
       results: [{ status: 'done' }, { status: 'done' }],
     });
     expect(await differences(runCase(freed, fake, database))).toEqual([
-      'step 1 (event payment.recorded on 2026-11-03): done, expected held UNKNOWN_REFERENCE',
+      'step 1 (manual entry "a payment" on 2026-11-03): done, expected held UNKNOWN_REFERENCE',
     ]);
   });
 
@@ -323,7 +306,7 @@ describe('runCase with an outcome on a step', () => {
       results: [{ status: 'held', reason: 'NEEDS_DECISION', detail: 'payment_exceeds_open' }],
     });
     expect(await differences(runCase(decided, other.fake, database))).toEqual([
-      'step 1 (event invoice.issued on 2026-11-03): held NEEDS_DECISION (payment_exceeds_open), ' +
+      'step 1 (manual entry "a USD invoice" on 2026-11-03): held NEEDS_DECISION (payment_exceeds_open), ' +
         'expected held NEEDS_DECISION (amount_above_applied)',
     ]);
   });
@@ -442,92 +425,16 @@ expect:
     expect(namedDimensionValues(parseCase(CORRECTION))).toEqual([]);
   });
 
-  it('leaves out the values a Hub event brings, which the event makes by its Hub id (S05 rule 23)', () => {
-    const named = parseCase(`
-case: an invoice from Hub with its contract
-company: { shape: syp, book: SYP, template: service-agency, rate_policy: { book: bulletin } }
-steps:
-  - event: invoice.issued
-    accounting_date: 2026-11-03
-    payload: { invoice: INV-2026-1, client: C1, contract: { code: R1, kind: retainer, client: C1 },
-               currency: SYP, syp_per_usd: "122.0000", issued_on: 2026-11-03, due_on: 2026-12-03,
-               lines: [{ line: L1, amount: 100, source: extra_work, service: S1 }] }
-expect:
-  entries:
-    - source: invoice.issued
-      date: 2026-11-03
-      lines:
-        - { account: "112001", dims: { client: C1, contract: R1 }, currency: SYP, amount: 100, book: 100 }
-        - { account: "411001", dims: { client: C1, contract: R1, service: S1 }, currency: SYP, amount: -100, book: -100 }
-  balances:
-    - { account: "411001", dims: { service: S2 }, book: 0 }
-`);
-    expect(eventValues(named)).toEqual([
-      { type: 'client', code: 'C1' },
-      { type: 'contract', code: 'R1' },
-      { type: 'client', code: 'C1' },
-      { type: 'service', code: 'S1' },
-    ]);
-    expect(namedDimensionValues(named)).toEqual([{ type: 'service', code: 'S2' }]);
-  });
-
-  it('makes and links a value a manual step names before a Hub event brings it (S02 rule 11)', () => {
-    const named = parseCase(`
-case: a manual invoice, then a deposit from Hub for the same client
-company: { shape: syp, book: SYP, template: service-agency, rate_policy: { book: bulletin } }
-steps:
-  - manual: an invoice
-    accounting_date: 2026-11-03
-    payload: { lines: [{ account: "112001", dims: { client: C1 }, currency: SYP, amount: 100,
-                         open_item: { ref: M-1 } },
-                       { account: "411001", dims: { client: C1, service: S1 }, currency: SYP, amount: -100 }] }
-  - event: ad_wallet.deposited
-    accounting_date: 2026-11-04
-    payload: { entry: W-1, client: C1, entered_on: 2026-11-04, method: bank_transfer,
-               currency: SYP, amount: 50, syp_per_usd: "124.0000", usd_amount: 1 }
-expect:
-  entries:
-    - source: manual
-      date: 2026-11-03
-      lines:
-        - { account: "112001", dims: { client: C1 }, currency: SYP, amount: 100, book: 100 }
-        - { account: "411001", dims: { client: C1, service: S1 }, currency: SYP, amount: -100, book: -100 }
-    - source: ad_wallet.deposited
-      date: 2026-11-04
-      lines:
-        - { account: "111003", currency: SYP, amount: 50, book: 50 }
-        - { account: "213001", dims: { client: C1 }, currency: SYP, amount: -50, book: -50 }
-`);
-    expect(namedDimensionValues(named)).toEqual([
-      { type: 'client', code: 'C1', hub: true },
-      { type: 'service', code: 'S1' },
-    ]);
-  });
-
-  it("takes a service's department from Hub's service reference and a department step's values (S09)", () => {
+  it("takes a department step's values (S09)", () => {
     const withDepartment = parseCase(`
-case: a Hub service with its department, and a manual service's department
+case: a manual service's department
 company: { shape: syp, book: SYP, template: service-agency, rate_policy: { book: bulletin } }
 steps:
-  - event: invoice.issued
-    accounting_date: 2026-12-03
-    payload: { invoice: INV-1, client: C1, currency: SYP, syp_per_usd: "121.0000",
-               lines: [{ line: L1, amount: 100, source: extra_work, service: { code: S1, department: design } }] }
   - service_department: { service: S3, department: video, effective_from: 2026-12-01 }
     reason: "خدمة يدوية"
 expect:
-  entries:
-    - source: invoice.issued
-      date: 2026-12-03
-      lines:
-        - { account: "112001", dims: { client: C1 }, currency: SYP, amount: 100, book: 100 }
-        - { account: "411001", dims: { client: C1, service: S1 }, currency: SYP, amount: -100, book: -100 }
+  entries: []
 `);
-    expect(eventValues(withDepartment)).toEqual([
-      { type: 'client', code: 'C1' },
-      { type: 'service', code: 'S1' },
-      { type: 'department', code: 'design' },
-    ]);
     expect(namedDimensionValues(withDepartment)).toEqual([
       { type: 'service', code: 'S3' },
       { type: 'department', code: 'video' },
