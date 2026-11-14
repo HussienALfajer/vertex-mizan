@@ -16,6 +16,7 @@ export const AREAS = [
   'manual',
   'inbox',
   'reports',
+  'cash',
 ] as const;
 
 /** `Proposed` cases are skipped and reported; only `Approved` ones run and count (ADR 0008). */

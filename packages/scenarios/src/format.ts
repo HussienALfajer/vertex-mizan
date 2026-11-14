@@ -332,7 +332,8 @@ const stepOutcome = { outcome: outcomeSchema.optional() };
  * `close` and `reopen` (rules 2–9), and a manual entry saved as a `draft` and its `discard` (S03
  * rules 4 and 11), which S07's checklist reads (`no_drafts`); and S09's `service_department`, a
  * manual service's dated department (rule 34); and S10's `opening` (rules 10–23) and its
- * `reverse_opening` (rule 25).
+ * `reverse_opening` (rule 25); and S11's `voucher` (rules 9–14), a cash voucher posted from its
+ * draft.
  */
 export const STEP_KINDS = [
   'manual',
@@ -347,6 +348,7 @@ export const STEP_KINDS = [
   'service_department',
   'opening',
   'reverse_opening',
+  'voucher',
 ] as const;
 
 export type StepKind = (typeof STEP_KINDS)[number];
@@ -494,6 +496,28 @@ const draftStepSchema = z
     outcome: step.outcome ?? null,
   }));
 
+/**
+ * A cash voucher (S11 rules 9–14): what it records, its date and the request as the voucher form
+ * sends it, a draft with its voucher header (`voucher: { kind, cash_account, counter_cash_account?,
+ * party_name?, counted? }`) and its lines, posted from that draft. A transfer's dealt rate is the
+ * system's to derive from its amounts (rule 12), so its payload states none.
+ */
+const voucherStepSchema = z
+  .strictObject({
+    kind: z.literal('voucher'),
+    voucher: z.string().trim().min(1),
+    accounting_date: dateSchema,
+    payload: payloadSchema,
+    ...stepOutcome,
+  })
+  .transform((step) => ({
+    kind: step.kind,
+    description: step.voucher,
+    accountingDate: step.accounting_date,
+    payload: step.payload,
+    outcome: step.outcome ?? null,
+  }));
+
 /** Discard a draft the case saved, by its step number, with a reason (S03 rule 11). */
 const discardStepSchema = z
   .strictObject({
@@ -617,11 +641,12 @@ const stepSchema = z.preprocess(
       serviceDepartmentStepSchema,
       openingStepSchema,
       reverseOpeningStepSchema,
+      voucherStepSchema,
     ],
     {
       error:
         'Expected a step with one of the keys manual, reversal, rate, revalue, block, close, ' +
-        'reopen, draft, discard, service_department, opening or reverse_opening',
+        'reopen, draft, discard, service_department, opening, reverse_opening or voucher',
     },
   ),
 );
