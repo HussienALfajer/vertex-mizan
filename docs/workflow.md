@@ -82,7 +82,7 @@ Claude Code cloud sessions run in the shared cloud environment `vertex`, which t
 | Task | Model | Effort |
 |---|---|---|
 | The ledger data model and its invariants | Opus 5.5 | `xhigh` |
-| Money, posting rules, recognition, revaluation, periods, isolation and access, the Hub API, specs, scenarios | Opus 5.5 | `high` |
+| Money, posting rules, recognition, revaluation, periods, isolation and access, specs, scenarios | Opus 5.5 | `high` |
 | A clearly specified feature outside those areas, screens | Opus 5.5 | `medium` |
 | Deploys, mechanical edits | Opus 5.5 | `low` |
 | Searching code, docs, standards or the web | `explorer` (Sonnet 5.5) | — |

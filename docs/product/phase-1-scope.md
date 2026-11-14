@@ -1,98 +1,76 @@
-# Phase 1 scope: the core and the posting API
+# Phase 1 scope: the core for a contracting client
 
-- **Date:** 2026-10-20 · **Status:** approved by the owner (2026-10-20); revised the same day after the foundation audit (`docs/audits/2026-10-foundation-audit.md`); revised on 2026-11-13 by ADR 0021, a stand-alone system without Hub (§0)
-- **Decisions:** ADR 0001, ADRs 0007, 0008 and 0011 (the chart, the contract dimension and the bulletin rate, which refine F02–F04 below); the owner's answers to `docs/product/phase-1-analysis.md` §6 and to the audit, recorded in §10 below.
+- **Date:** 2026-10-20 · **Status:** approved by the owner (2026-10-20); revised the same day after the foundation audit (`docs/audits/2026-10-foundation-audit.md`); revised on 2026-11-13 by ADR 0021, a stand-alone system without Hub.
+- **Decisions:** ADR 0001 and ADR 0021, ADRs 0007, 0008 and 0011 (the chart, the contract dimension and the bulletin rate, which refine F02–F04 below); the owner's answers to `docs/product/phase-1-analysis.md` §6 and to the audit, recorded in §10 below.
 - **Labels:** Syrian legal or tax facts carry CONFIRMED, REPORTED or UNVERIFIED (`docs/research/market-syria.md`).
-
-## 0. Revision: a stand-alone system (ADR 0021, owner, 2026-11-13)
-
-The owner cancelled the integration with Vertex Hub. This revision takes precedence over the sections below wherever they differ.
-
-- **Goal:** a contracting client's books are kept in Mizan, one company per business, entered in Mizan itself. Nothing posts from another system.
-- **Withdrawn:**
-  - F07 revenue recognition, F10 the posting API, F11 the daily reconciliation;
-  - Hub's snapshot and the replay in F12;
-  - the reports that only Hub's events fed in F13;
-  - §6 and §7;
-  - the API client role in §3;
-  - Vertex Media's policies in §4, as Vertex Media's company is archived with its data kept.
-- **Kept:** F01–F06, F08, F09, F12 (manual), F13 and F14, without their Hub parts. F06 serves manual items: suppliers', contractors' and workers' balances.
-- **Added**, each specified with the owner before it is built:
-  - **N1 Cash boxes:** receipts and payments in any currency.
-  - **N2 Expenses by project.**
-  - **N3 Wages** of workers and craftsmen.
-  - **N4 Materials** with quantities.
-  - **N5 A contracting chart template.**
-- **Done when** (proposed, settled with the specs):
-  1. the client's first company is created with its chart;
-  2. N1–N4 are in use on it;
-  3. a real month is closed;
-  4. the client keeps the full export (F14);
-  5. the ledger invariants, tenant isolation and the scenario book pass in CI.
-- **Out of scope:** an installed desktop version and work without a connection.
-- **Open:** the client's book currency, and whether they need statutory books in Syrian pounds.
+- **History:** the Hub integration (F07, F10, F11, §6, §7 and Hub's parts of the other sections) was withdrawn by ADR 0021. The text that the superseded ADRs 0006, 0014, 0015 and 0017 and the specs S05, S06 and S08 cite is in git history at commit `1a0ee40` (`git show 1a0ee40:docs/product/phase-1-scope.md`).
 
 ## 1. Goal
 
-Superseded by §0. Was: Vertex Media's books are kept in Mizan, fed by Vertex Hub, on a core that serves any number of companies.
+A contracting client's books are kept in Mizan, one company per business, entered in Mizan itself (owner, 2026-11-13). Nothing posts from another system. The core serves any number of companies.
+
+The client's first needs, from the owner's notes (ADR 0021):
+- the income and the expenses of a construction project, in detail;
+- the wages of workers and craftsmen;
+- the materials, item by item;
+- amounts in US dollars and in Turkish lira;
+- several businesses, each kept apart from the others;
+- a copy of the data the client keeps on a USB drive (the full export, F14).
 
 ## 2. Done when
 
-1. Hub posts its financial events to Mizan in production, including the replay of its history from the books start, 2026-10-01 (S10).
-2. The daily reconciliation between Hub and Mizan shows no gap for seven consecutive days.
-3. Vertex Media's opening balances on 2026-10-01 are posted and agree with Hub's open invoices and ad wallet balances.
-4. A real month is closed in Mizan:
-   - revenue is deferred and released under IFRS 15;
-   - both ledgers (SYP books, USD parallel) are revalued;
-   - the trial balance, income statement, balance sheet and profitability reports are read by the owner;
-   - Hub refuses a change dated in that month.
-5. The ledger invariants, tenant isolation and the scenario book pass in CI.
+Proposed, settled with the specs:
+1. the client's first company is created with its chart (N5);
+2. N1–N4 are in use on it;
+3. a real month is closed in Mizan, both ledgers revalued, and the trial balance, income statement and balance sheet read by the owner;
+4. the client keeps the full export (F14);
+5. the ledger invariants, tenant isolation and the scenario book pass in CI.
 
 ## 3. Users and companies
 
-- **Companies:** Vertex Media (company 1) and test companies. Any number of companies under one login, each fully isolated.
+- **Companies:** one per business of the client, and test companies. Any number of companies under one login, each fully isolated. Vertex Media's production company is archived with its data kept (ADR 0021).
 - **People:** the owner, an internal accountant, an external accountant or office, and management readers. One person can belong to several companies, with a role in each.
 
 | Role | Can |
 |---|---|
-| Owner | Everything in the company, including users, settings, periods, posting rules and API clients |
-| Accountant | Chart of accounts, entries (draft, post, reverse), rates, the event inbox, revaluation, close and reopen periods if the owner allows |
+| Owner | Everything in the company, including users, settings and periods |
+| Accountant | Chart of accounts, entries (draft, post, reverse), rates, revaluation, close and reopen periods if the owner allows |
 | Approver | Approve manual entries when approval is switched on (F05) |
 | Viewer | Read reports |
 | Auditor | Read everything, including the audit log and the integrity check; change nothing |
-| API client | A machine identity per integration (Hub), limited to its scopes |
 
-## 4. Accounting policies decided for Vertex Media
+## 4. Accounting policies
+
+Each company chooses its own currencies, rate policies and books start when it is created (ADR 0021 §4). The rest holds for every company.
 
 | Policy | Decision |
 |---|---|
-| Book currency | **SYP** (the new Syrian pound): the statutory books, journal, statements and tax return (ADR 0007). |
-| Parallel currency | **USD**: a full parallel ledger for management and profitability, with its own exchange differences and revaluation (ADR 0007). |
-| Rate policy | Book ledger at the **Central Bank bulletin** rate of the accounting date; parallel ledger at the **market rate the company deals at**, Hub's own rate accepted (IAS 21.26). The reasoning is recorded as the company's policy note. |
+| Book currency | Chosen per company (`--book-currency`); SYP (the new Syrian pound) by default, for statutory books, journal, statements and tax return (ADR 0007). The client's book currency is open (ADR 0021 "Open"). |
+| Parallel currency | Optional per company: a full parallel ledger with its own exchange differences and revaluation (ADR 0007), or none (`--no-parallel`). |
+| Rate policy | Per ledger (ADR 0007): the **Central Bank bulletin** rate of the accounting date, or the **market rate the company deals at**, which may accept the rate a manual entry was dealt at (IAS 21.21–22, 21.26). The reasoning is recorded as the company's policy note. |
 | Fiscal year and periods | The calendar year (Income Tax Law 24/2003, CONFIRMED), with monthly periods. |
-| Start of the books | Opening balances on **2026-10-01**, Hub's open documents taken from its snapshot; manual entries for 1–18 October for what Hub does not hold; every Hub event dated from 2026-10-01 replayed through the API (owner, 2026-11-12, S10 and ADR 0019, replacing the replay from 2026-10-19). |
-| Revenue | **IFRS 15**: revenue is recognised as the service is delivered and dated when it is delivered (§6). Work done and not yet invoiced is a contract asset (IFRS 15.107). |
-| Ad budget | **Client money held**, a liability; never revenue. |
-| Month-end revaluation | In each ledger, monetary balances in other currencies are revalued at month end (IAS 21.23) at that ledger's policy rate: USD items in the SYP books at the bulletin, SYP items in the USD ledger at the market rate. Each entry reverses on the first day of the next month. |
+| Start of the books | The first day of a month, chosen per company, with manual opening balances (F12, S10, ADR 0019 as amended by ADR 0021). |
+| Month-end revaluation | In each ledger, monetary balances in other currencies are revalued at month end (IAS 21.23) at that ledger's policy rate. Each entry reverses on the first day of the next month. |
 | Exchange differences on settlement | Realised gains and losses in each ledger when a receivable or payable is settled (IAS 21.28), as difference lines carrying an amount in that ledger only. |
 | Chart of accounts | Numbered and hierarchical, four levels: 1 assets, 2 liabilities, 3 equity, 4 revenue, 5 expenses. Classified for IFRS presentation, with Arabic and English names. |
-| Approval of manual entries | Optional per company (F05); entries posted from Hub are never held for approval. |
-| Tax | No tax posting rules in phase 1 (Hub has none today). The contract accepts optional tax lines on invoices and the templates carry tax accounts, ready for the reform the Ministry of Finance is preparing for the start of 2027 (CONFIRMED, SANA, 2026-10-11). |
+| Approval of manual entries | Optional per company (F05). |
+| Tax | No tax posting rules in phase 1. The templates carry tax accounts, ready for the reform the Ministry of Finance is preparing for the start of 2027 (CONFIRMED, SANA, 2026-10-11). |
 | Journal order | Gapless numbers in posting order; the journal book printed by accounting date then number, in Arabic (Commercial Code arts. 16–19, REPORTED; ADR 0008). |
 | Hyperinflation | IAS 29 is out of scope (Syria is on watch lists, not on the hyperinflation lists; REPORTED). |
 
-**Open (UNVERIFIED):** whether the tax authority requires the bulletin rate for the statutory books, and whether Decrees 5 and 6 of 2024 on foreign-currency dealing affect USD invoicing (open question Q1). A Syrian certified auditor confirms the SYP-book, bulletin-rate policy before the 2026 tax return.
+**Open (UNVERIFIED):** whether the tax authority requires the bulletin rate for the statutory books, and whether Decrees 5 and 6 of 2024 on foreign-currency dealing affect foreign-currency invoicing (open question Q1). A Syrian certified auditor confirms a company's SYP-book, bulletin-rate policy before its tax return; whether the client needs statutory books in SYP is open (ADR 0021 "Open").
 
 ## 5. Features
 
-IDs are referred to by specs, the roadmap and the scenario book.
+IDs are referred to by specs, the roadmap and the scenario book. A withdrawn ID is never reused.
 
 ### F01 Companies, users and access
-- Companies with their book currency (default SYP), optional parallel currency, the rate policy of each ledger, the policy note, the fiscal year start and enabled modules (all optional modules are off in phase 1).
+- Companies with their book currency, optional parallel currency, the rate policy of each ledger, the policy note, the fiscal year start and enabled modules (all optional modules are off in phase 1).
 - Users with membership in several companies; a company switcher; the roles in §3.
 - Sign-in with two-factor authentication required for every role (owner, 2026-10-26; S01).
 - Isolation enforced by the database (forced row-level security); every endpoint tested with a user of another company.
 - An audit log that can only be appended to, showing who did what, when and from where, with before and after values.
+- A company is archived, never deleted: read-only, its data kept (S01 rule 12).
 
 ### F02 Chart of accounts
 - Headers and postable accounts in a numbered tree of up to four levels; Arabic and English names.
@@ -103,17 +81,15 @@ IDs are referred to by specs, the roadmap and the scenario book.
   - monetary or non-monetary, which decides revaluation;
   - required dimensions.
 - Accounts are blocked or archived, never deleted once used.
-- A service-agency template (used by Vertex Media) and a general template.
+- A general template; a contracting template (N5).
 
 ### F03 Dimensions
-- Dimension types per company: client, contract (a project or a retainer, ADR 0011), department and service for Vertex Media.
-- Values are created on the fly from Hub events with their Hub ID and name, and renamed when Hub sends a new name. The accountant can also add values by hand.
-- Required-dimension rules per account; for example, revenue requires client and service, and direct project costs require contract.
+- Dimension types per company: client, contract (a project or a retainer, ADR 0011), department and service; the accountant adds values by hand.
+- Required-dimension rules per account; for example, direct project costs require contract.
 
 ### F04 Currencies and rates
 - ISO 4217 currencies; integer minor units; exact decimal rates.
-- A dated rate table per company and currency pair, with the rate type (market, Central Bank bulletin) and source (Hub, manual).
-- Hub's rate is received with each event and with each Hub rate change (type `market`). The accountant enters the bulletin rate by hand. A bulletin rate is in force on a date only if it is effective on or after the latest publication day on or before that date (ADR 0011): a working day needs its own bulletin, and a day off takes the bulletin of the last publication day before it. When that publication day has no bulletin, the rate is missing and the event is held (`RATE_MISSING`).
+- A dated rate table per company and currency pair, with the rate type (market, Central Bank bulletin), entered by the accountant. A bulletin rate is in force on a date only if it is effective on or after the latest publication day on or before that date (ADR 0011): a working day needs its own bulletin, and a day off takes the bulletin of the last publication day before it. When that publication day has no bulletin, the rate is missing (`RATE_MISSING`).
 - The rate policy per ledger (ADR 0007).
 - SYP is the new Syrian pound and is labelled "الليرة السورية الجديدة" on printed reports.
 
@@ -122,182 +98,90 @@ IDs are referred to by specs, the roadmap and the scenario book.
 - Each line has:
   - the account and its dimensions;
   - the transaction currency and amount;
-  - the book (SYP) amount and the parallel (USD) amount, each with the quoted rate used;
+  - the book amount and the parallel amount, each with the quoted rate used;
   - a memo.
 - Every entry balances in both ledgers. A conversion rounding difference goes to the rounding account, and exchange differences post as difference lines (ADR 0007).
 - Gapless numbers per company and fiscal year, given at posting; the accounting date and the posting time are both stored (ADR 0008).
-- The source is stored on every entry: manual, Hub event, opening, revaluation or revenue release. Hub entries link back to the Hub document.
+- The source is stored on every entry: manual, opening or revaluation. Entries posted from Hub before ADR 0021 keep their source and stay readable.
 - Attachments on entries, stored per company (ADR 0008).
 - Optional approval per company: a manual entry is posted only after another user with the Approver role approves it.
 - A posted entry is never changed or deleted. A correction is a reversal that references the original.
 
 ### F06 Open items (subledgers)
-- Receivables open per Hub invoice, and client ad funds open per client.
-- Settlement by payment events, with the realised exchange difference in each ledger.
-- Contract assets per project milestone (work done, not yet invoiced).
-- Receivables by client and invoice, with ageing.
+- Open items on control accounts for manual entries: suppliers', contractors' and workers' balances, and receivables (ADR 0021 §3).
+- Settlement by manual entries, with the realised exchange difference in each ledger.
+- Balances by counterparty and document, with ageing.
 
-### F07 Revenue recognition (IFRS 15)
-The rules are in §6.
-- Recognition schedules are created from Hub invoice lines; milestone revenue is recognised when Hub reports the milestone done.
-- Release entries are posted automatically at month end, dated in the month they belong to.
-- A list of items needing the accountant's decision: late invoices whose service period is closed, the deposit left over on a cancelled project, and lines whose pattern is unclear.
+### F07 Revenue recognition — withdrawn (ADR 0021)
 
 ### F08 Month-end revaluation
-- In each ledger, monetary balances (accounts and open items, contract assets included) in other currencies are revalued at that ledger's policy rate for the month end (ADR 0007).
+- In each ledger, monetary balances (accounts and open items) in other currencies are revalued at that ledger's policy rate for the month end (ADR 0007).
 - The accountant previews each ledger's entry and posts it; it reverses on the first day of the next month.
-- Non-monetary items, such as contract liabilities, are not revalued.
+- Non-monetary items are not revalued.
 
 ### F09 Periods and close
 - Monthly periods with the states open, closed and reopened. Close and reopen need a reason and are written to the audit log.
 - A checklist must pass before close:
-  - the reconciliation is clean;
-  - no held events;
   - no drafts or unapproved entries;
-  - the revenue releases are posted;
   - the bulletin and market rates of the month are entered;
   - both ledgers' revaluations are posted and current (no stale revaluation, ADR 0007).
-- The period status is served to Hub through the API, so Hub refuses changes dated inside a closed period.
 - Year-end close is phase 2.
 
-### F10 Posting API for Hub
-Details in the Hub API contract ADR (step 4).
-- A versioned API `/v1`: one events endpoint with a typed contract per event type and version, published as an OpenAPI document (ADR 0006).
-- **Exactly once:** an idempotency key from the Hub event. The same key with the same payload returns the first result; the same key with a different payload returns `409`.
-- **Posting rules owned by Mizan.** For each event type, the accounts are mapped in a screen the accountant maintains, and each rule has its scenario in the scenario book.
-- **Event inbox** with the states received, posted and held, and the reason for each hold (ADR 0008: `PERIOD_CLOSED`, `SERVICE_PERIOD_CLOSED`, `UNKNOWN_REFERENCE`, `NO_MAPPING`, `RATE_MISSING`, `NEEDS_DECISION`). A held event is retried once its reason is fixed.
-- **Closed period:** an event dated inside a closed period is held (`202`, `PERIOD_CLOSED`). The accountant posts it on the first day of the next open period or reopens the period.
-- **Optional tax lines** on invoice lines (ADR 0008); no tax posting rule until the law applies.
-- **History replay:** Hub's events dated from the books start (2026-10-01) go through the same endpoints (S10, ADR 0019).
-- **API clients** per company with scoped keys, rotation and the date each key was last used.
+### F10 Posting API for Hub — withdrawn (ADR 0021)
 
-### F11 Daily reconciliation
-- Every day, Hub sends its counts and totals per event type and day.
-- Mizan compares them with what it received and posted, and lists every difference down to the event.
-- The pre-close checklist uses the result.
+### F11 Daily reconciliation — withdrawn (ADR 0021)
 
 ### F12 Opening balances
-- A wizard for 2026-10-01: account balances, open receivables per Hub invoice, client ad funds per client, and equity as the balancing figure, each with its SYP book amount and its USD parallel amount.
-- Summarised manual entries for 1–18 October 2026 from the existing records, for what Hub does not hold (S10).
-- Checked against Hub's open invoices and wallet balances, per client and currency, from Hub's snapshot (S10).
+- A wizard for the books start: account balances, open items per counterparty and document, and equity as the balancing figure, each with its book amount and its parallel amount (S10).
 
 ### F13 Reports
-Every report can be exported to Excel and PDF, and every figure drills down to its entries and to the Hub document.
-- **Trial balance:** by level, for any period, comparative, in the SYP books and in the USD parallel ledger, read from the period balances (ADR 0008).
+Every report can be exported to Excel and PDF, and every figure drills down to its entries.
+- **Trial balance:** by level, for any period, comparative, in the book ledger and in the parallel ledger, read from the period balances (ADR 0008).
 - **General ledger and account statement,** in the account's currency too.
 - **Journal book (دفتر اليومية)** in Arabic, printed by accounting date then number, with sequential page numbers. The Commercial Code requires a chronological journal in Arabic, numbered and certified (arts. 16–19, REPORTED).
-- **Basic income statement and balance sheet** from the statement lines, with a comparative period; contract assets and liabilities netted per contract (project or retainer).
-- **Profitability by client, contract (project or retainer), department and service.** Ad funds are outside revenue, and pass-through items are outside service profit.
-- **Receivables and ageing** (F06).
-- **Contract liabilities, contract assets and the revenue release schedule** (F07), with the contract position netted per contract, a project or a retainer (IFRS 15.105).
+- **Basic income statement and balance sheet** from the statement lines, with a comparative period.
+- **Profitability by client, contract (project or retainer), department and service.**
+- **Open items and ageing** (F06).
 
 ### F14 Trust and data
 - **Integrity chain:** each posted entry stores a hash of its content and of the previous posted entry of the company. The "integrity check" report recomputes the chain and shows any break.
 - **Daily anchor:** every day the owner receives by email each company's chain head, entry count and date; the integrity check compares the chain with these anchors (ADR 0008).
-- **Full export of a company's data** that the owner can keep.
-- **Scenario book:** every posting rule, recognition rule and revaluation rule has a solved example in `docs/scenarios/` that runs as an automated test.
+- **Full export of a company's data** that the owner can keep; the client keeps it on a USB drive (ADR 0021 §8).
+- **Scenario book:** every posting rule and revaluation rule has a solved example in `docs/scenarios/` that runs as an automated test.
 
-## 6. Accounting treatment of Hub events
+### Added by ADR 0021
+Each is specified with the owner (`/spec`) before it is built, and each posting rule has its scenario approved by the owner (`/posting-rule`).
+- **N1 Cash boxes:** receipts and payments in any currency.
+- **N2 Expenses by project.**
+- **N3 Wages** of workers and craftsmen.
+- **N4 Materials** with quantities.
+- **N5 A contracting chart template.**
 
-Accounts named here are template accounts; the accountant can remap them (F10). Each rule becomes a scenario in the scenario book before it is implemented.
+## 6. Accounting treatment of Hub events — withdrawn (ADR 0021)
 
-### Invoices
-- **Retainer cycle charges** (invoice lines from monthly, addition or credit charges):
-  - **At issue:** Dr Trade receivables / Cr Contract liabilities (deferred revenue).
-  - **Release:** recognised **evenly over the days of the cycle** (`cycle_start` to the cycle end). At each month end, the days of that month are released: Dr Contract liabilities / Cr Service revenue, dated in that month.
-  - **Late issue:** when part of the cycle has already passed, the elapsed days are recognised in the months they belong to, as long as those months are open. Because no invoice existed then, those releases post Dr Contract assets / Cr Service revenue. The issue entry then credits that contract asset for the elapsed part and contract liabilities for the rest. If any of those months is closed, the invoice is held (`SERVICE_PERIOD_CLOSED`) for the accountant's decision.
-  - **Releases carry the amounts booked at issue** in both ledgers, split with cumulative rounding; they are never converted again (ADR 0007).
-  - **Credit lines** relate to a cycle. For the part of that cycle already recognised, revenue is reduced on the credit's date (cumulative catch-up, IFRS 15.88). The rest reduces the part of the schedule not yet released. Parts already released are never rewritten.
-- **Termination fee:** revenue at issue (no service is left to deliver).
-- **Project deposit** (the invoice drafted at quote acceptance, before any work; in Hub, the first milestone's installment):
-  - **At issue:** Dr Trade receivables / Cr Contract liabilities.
-  - **Release** (owner, 2026-11-10, S06 and ADR 0015, replacing the proportional release): the deposit follows its milestone. When Hub reports that milestone done, the deposit is released to revenue at its carried amounts, dated on the done date. Any other milestone invoiced before it is done is treated the same way.
-  - **Completed project:** any remainder is released.
-  - **Cancelled project:** the remainder goes to the accountant's decision list (refund liability or revenue).
-- **Milestone done** (`milestone.done`): revenue for the milestone's installment, dated on the done date: Dr Contract assets / Cr Service revenue (IFRS 15.107).
-- **Milestone invoice issued:** Dr Trade receivables / Cr Contract assets for the invoice line's amount, up to the milestone's open contract asset in its currency (the project's currency is fixed in Hub).
-  - **Differences in that currency** (the invoice differs from the installment) are a change in the transaction price (IFRS 15.87–88). The invoice is held (`NEEDS_DECISION`) for the accountant.
-  - **Differences in a ledger** that remain once the contract asset is fully cleared post as exchange differences.
-  - **Contract assets are monetary** (a fixed amount of currency still to be invoiced, IAS 21.16) and are revalued.
-- **Extra work** and **manual invoices:** revenue at issue, since the work is delivered. A manual line can be marked as deferred, with a service period.
-- **Invoice voided:** the reversal of the issue entry and of any release already posted, dated on the void date.
-- **Service changed on a line:** a reclassification entry for the revenue already recognised, dated on the change date; the part not yet released follows the new service prospectively.
-
-### Payments
-- **Payment recorded:** Dr the account of the payment method in the payment's currency (cash, bank transfer, e-wallet) / Cr Trade receivables (the invoice's open item). In each ledger, any difference between the open item's carrying amount and the payment's amount in that ledger posts to realised exchange gain or loss (ADR 0007).
-- **Payment voided:** the reversal; the open item reopens.
-
-### Expenses
-- **Project expense:** Dr Direct project costs (project, client and department dimensions) / Cr "Project expenses awaiting payment source", which the accountant settles by a manual entry.
-- **Expense edited:** the reversal of the previous entry and a new entry.
-- **Expense archived:** the reversal.
-
-### Ad budget
-- **Wallet deposit:** Dr the account of the payment method / Cr Client ad funds held (client open item, USD). A deposit paid in SYP for a USD credit leaves a residual in a ledger, which posts as a realised exchange difference (ADR 0007).
-- **Refunds and spend** clear the client's funds at their average carrying amount. A voided deposit posts its exact reversal and an exchange-difference entry that restores the carrying amount (ADR 0007).
-- **A negative wallet** (spend beyond deposits, or a deposit voided after spend) is allowed: the client's funds account turns into a debit balance, the client owes the agency, and the balance sheet shows it as a receivable from that client (ADR 0007). Scenarios: a void after spend, and a spend that crosses zero.
-- **Refund:** the opposite entry.
-- **Void:** the reversal.
-- **Spend** (only for campaigns funded from the wallet): Dr Client ad funds held / Cr Ad platforms payable, which the accountant settles when the platform is paid. An edit or an archive becomes a reversal and a new entry. Campaigns the client pays directly post nothing.
-
-### Events that post nothing
-- **Due date changed:** updates the open item's due date for ageing.
-- **Retainer charge settled outside, and quotes:** nothing.
-
-## 7. What Hub must send
-
-Hub's side is built in Hub's own sessions (Hub ADR 0035, F18). Phase 1 needs:
-
-1. The outbox and worker, the versioned calls with the event ID as the idempotency key, and the retry.
-2. The events in §6, each with:
-   - the company;
-   - the event date (the accounting date);
-   - the currency, minor units and rate;
-   - optional tax lines on invoice lines (ADR 0008);
-   - the dimensions: client, project or retainer, department code, service;
-   - the Hub document ID and number.
-3. For invoice lines, the recognition facts:
-   - the line source (retainer charge with its kind, its cycle start and end, deposit milestone, milestone, extra work, manual);
-   - for project lines, the project ID, the milestone ID and installment, and the project's non-deposit total;
-   - for retainer credit lines, the cycle they relate to.
-4. New events: `milestone.done` (the milestone ID, the installment amount and currency, and the done date, the milestone's revenue date) and `project.completed` / `project.cancelled`.
-5. A rate event when Hub's SYP/USD rate changes.
-6. The daily reconciliation call (counts and totals per event type and day).
-7. Before any change dated in the past, a period-status check, and handling of `202 held` responses.
-8. The opening snapshot as of 2026-09-30, then the replay of every event dated from 2026-10-01 (S10, ADR 0019).
+## 7. What Hub must send — withdrawn (ADR 0021)
 
 ## 8. Not in phase 1
 
-- Cash boxes, banks, transfers and exchange; suppliers and payables; general and recurring expenses (phase 2).
+- Banks, transfers and exchange beyond the cash boxes (N1); recurring expenses (phase 2).
 - Year-end close, cash-flow statement and notes (phase 2).
 - Consolidation across companies (later).
 - Tax posting rules, e-invoicing and the tax authority's QR linkage (when the law applies; the inquiry about program approval opens in phase 1).
-- Sales, purchases, inventory, installments (phase 3).
+- Sales, purchases, inventory valuation, installments (phase 3).
 - Recurring and auto-reversing manual entries; import from Excel or Al-Ameen (later).
-- A read API for Hub screens and webhooks to Hub (with Hub F18).
+- An integration with another system, an installed desktop version and work without a connection (ADR 0021).
 - An English interface. The interface is Arabic, with every text in translation files; account names are in Arabic and English.
-- Old-pound history and redenomination tools (phase 4 onboarding; Vertex Media's books start after 2026-01-01).
-- Payroll, purchases for clients and employee advances. They post when Hub V2 sends them, each with its own scenario.
+- Old-pound history and redenomination tools (phase 4 onboarding).
 - An IAS 21.39 presentation translation report (later); IAS 29 hyperinflation accounting.
 
 ## 9. Delivery
 
-- **Address:** `mizan.vertexmedia.pro`, on the existing Vertex server. Register `vertexmizan.com` before selling (phase 3).
-- **Build order:** fixed in the roadmap after the technical ADRs. Expected order:
-  1. data model and invariants;
-  2. tenancy and access;
-  3. chart, dimensions and rates;
-  4. entries;
-  5. API and inbox;
-  6. revenue recognition and revaluation;
-  7. periods and reconciliation;
-  8. reports;
-  9. opening balances and replay;
-  10. production.
+- **Address:** `mizan.vertexmedia.pro`, on the existing Vertex server (ADR 0020). Register `vertexmizan.com` before selling (phase 3).
+- **Order:** the roadmap's "Phase 1, revised" section: the removal of Hub, the contracting template (N5), then N1–N4, then the client's first company in production.
 
 ## 10. The owner's answers (2026-10-20)
 
-Other files cite these as "scope Q<n>" and "scope A<n>"; a bare `Q<n>` is a question of `docs/open-questions.md`.
+Other files cite these as "scope Q<n>" and "scope A<n>"; a bare `Q<n>` is a question of `docs/open-questions.md`. They are kept as the record of the decisions; the answers about Hub (Q2's replay, Q3–Q8, Q11, A5 and A6's contract) were withdrawn with it by ADR 0021.
 
 | # | Question | Answer |
 |---|---|---|
