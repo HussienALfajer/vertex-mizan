@@ -5,6 +5,7 @@ import type {
   ExpectedBalance,
   ExpectedLine,
   ExpectedOpenItem,
+  ExpectedVoucher,
   Step,
   StepKind,
 } from './format.js';
@@ -116,7 +117,15 @@ export type ScenarioHarness = {
    * figures (S09); a case that states a report needs it.
    */
   reports?: (context: CaseContext, report: ExpectedReport) => Promise<readonly string[]>;
+  /**
+   * Reads every cash voucher the company holds (S11 rules 9–14), its entry and its cancelling
+   * reversal by their place in posting order; a case that states its vouchers needs it.
+   */
+  vouchers?: (context: CaseContext) => Promise<ObservedVoucher[]>;
 };
+
+/** A cash voucher as the company holds it: the fields a case states (`ExpectedVoucher`). */
+export type ObservedVoucher = ExpectedVoucher;
 
 /**
  * The harness the book runs with: S03's company setup, ledger reader and `manual`, `reversal` and

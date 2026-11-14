@@ -1,4 +1,10 @@
-import { balanceQuery, compareBalance, compareEntries, compareOpenItem } from './compare.js';
+import {
+  balanceQuery,
+  compareBalance,
+  compareEntries,
+  compareOpenItem,
+  compareVouchers,
+} from './compare.js';
 import type { Outcome, ScenarioCase, Step, StepKind } from './format.js';
 import type { CaseContext, ScenarioDatabase, ScenarioHarness, StepResult } from './harness.js';
 
@@ -183,8 +189,9 @@ function sameResult(result: StepResult, expected: StepResult | Outcome): boolean
  * must be held or refused with that reason, and that detail when stated. A held step a later step
  * frees posts then, so its entry is expected where it posts. Then
  * the ledger must hold exactly the expected entries (`compareEntries`), the stated balances and
- * the stated open items, each stated correction's answer must list exactly its entries, and each
- * stated report must present its figures (S09).
+ * the stated open items, each stated correction's answer must list exactly its entries, the
+ * stated vouchers must be exactly the company's (S11), and each stated report must present its
+ * figures (S09).
  */
 export async function runCase(
   scenarioCase: ScenarioCase,
@@ -210,6 +217,11 @@ export async function runCase(
   if (scenarioCase.expect.reports.length > 0 && !harness.reports) {
     missing.push(
       'No report reader is registered (packages/scenarios/src/harness.ts); reports arrive with S09',
+    );
+  }
+  if (scenarioCase.expect.vouchers !== null && !harness.vouchers) {
+    missing.push(
+      'No voucher reader is registered (packages/scenarios/src/harness.ts); vouchers arrive with S11',
     );
   }
   if (!harness.setUp || !harness.ledger || missing.length > 0) throw new ScenarioFailure(missing);
@@ -258,6 +270,10 @@ export async function runCase(
   for (const openItem of expect.openItems) {
     const query = { item: openItem.item, account: openItem.account };
     differences.push(...compareOpenItem(openItem, await harness.ledger.openItem(context, query)));
+  }
+  if (expect.vouchers !== null) {
+    const observed = (await harness.vouchers?.(context)) ?? [];
+    differences.push(...compareVouchers(expect.vouchers, observed));
   }
   for (const report of expect.reports) {
     differences.push(...((await harness.reports?.(context, report)) ?? []));

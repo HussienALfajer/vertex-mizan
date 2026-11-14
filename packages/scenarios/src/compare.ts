@@ -1,8 +1,14 @@
-import type { ExpectedBalance, ExpectedEntry, ExpectedOpenItem } from './format.js';
+import type {
+  ExpectedBalance,
+  ExpectedEntry,
+  ExpectedOpenItem,
+  ExpectedVoucher,
+} from './format.js';
 import type {
   BalanceQuery,
   ObservedBalance,
   ObservedOpenItem,
+  ObservedVoucher,
   PostedEntry,
   PostedLine,
 } from './harness.js';
@@ -123,4 +129,29 @@ export function compareOpenItem(
   const found = { ...observed, account: expected.account };
   if (lineKey(found) === lineKey(expected)) return [];
   return [`${label}: ${describeLine(found)}, expected ${describeLine(expected)}`];
+}
+
+function describeVoucher(voucher: ExpectedVoucher): string {
+  const count =
+    voucher.expected === null ? '' : `, expected ${voucher.expected}, counted ${voucher.counted}`;
+  const cancelled = voucher.cancelledBy === null ? '' : `, cancelled by ${voucher.cancelledBy}`;
+  return (
+    `${voucher.kind} ${voucher.number} of ${voucher.date} on ${voucher.cashAccount}: ` +
+    `entry ${voucher.entry ?? 'none'}${count}${cancelled}`
+  );
+}
+
+/** The exact set of vouchers (S11): a missing or an extra one, every field equal, in any order. */
+export function compareVouchers(
+  expected: readonly ExpectedVoucher[],
+  observed: readonly ObservedVoucher[],
+): string[] {
+  const left = observed.map(describeVoucher);
+  const differences: string[] = [];
+  for (const voucher of expected.map(describeVoucher)) {
+    const found = left.indexOf(voucher);
+    if (found === -1) differences.push(`missing voucher: ${voucher}`);
+    else left.splice(found, 1);
+  }
+  return [...differences, ...left.map((voucher) => `unexpected voucher: ${voucher}`)];
 }

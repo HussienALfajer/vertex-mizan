@@ -111,6 +111,39 @@ describe('runCase', () => {
     ]);
   });
 
+  it('compares the stated vouchers as an exact set, and needs a voucher reader for them (S11)', async () => {
+    const stated = parseCase(
+      `${CASE}  vouchers:\n` +
+        '    - { kind: receipt, number: 1, date: 2026-11-03, cash_account: "111002", entry: 1 }\n',
+    );
+    const { fake } = harness(asPosted(stated));
+    expect(await differences(runCase(stated, fake, database))).toEqual([
+      'No voucher reader is registered (packages/scenarios/src/harness.ts); vouchers arrive with S11',
+    ]);
+    const [receipt] = stated.expect.vouchers ?? [];
+    if (!receipt) throw new Error('expected a voucher');
+    await runCase(stated, { ...fake, vouchers: async () => [receipt] }, database);
+    const count = {
+      ...receipt,
+      kind: 'count' as const,
+      entry: null,
+      expected: 10000n,
+      counted: 10000n,
+    };
+    const found = await differences(
+      runCase(
+        stated,
+        { ...fake, vouchers: async () => [{ ...receipt, number: 2 }, count] },
+        database,
+      ),
+    );
+    expect(found).toEqual([
+      'missing voucher: receipt 1 of 2026-11-03 on 111002: entry 1',
+      'unexpected voucher: receipt 2 of 2026-11-03 on 111002: entry 1',
+      'unexpected voucher: count 1 of 2026-11-03 on 111002: entry none, expected 10000, counted 10000',
+    ]);
+  });
+
   it('fails without a company setup or a ledger reader', async () => {
     const found = await differences(runCase(usdInvoice, { executors: {} }, database));
     expect(found).toHaveLength(3);
