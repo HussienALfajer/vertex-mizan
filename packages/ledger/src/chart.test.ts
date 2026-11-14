@@ -5,6 +5,7 @@ import {
   type ChartAccount,
   type ChartLine,
   checkLineAgainstChart,
+  counterpartyOf,
   type LineDimensionValue,
 } from './chart.js';
 
@@ -45,6 +46,7 @@ const clientFunds: ChartAccount = {
   archived: false,
   isControl: false,
   itemKind: null,
+  counterpartyType: null,
   requiredDimensionTypeIds: [CLIENT_TYPE],
 };
 
@@ -91,14 +93,24 @@ describe('checkLineAgainstChart (S02 rule 8)', () => {
   });
 
   it('requires an item on a document control account (S04 rule 5)', () => {
-    const receivables = { ...clientFunds, isControl: true, itemKind: 'document' as const };
+    const receivables = {
+      ...clientFunds,
+      isControl: true,
+      itemKind: 'document' as const,
+      counterpartyType: 'client' as const,
+    };
     expect(refusal(line({ account: receivables }))).toBe('OPEN_ITEM_REQUIRED');
     expect(refusal(line({ account: receivables, item: 'new' }))).toBe('accepted');
     expect(refusal(line({ account: receivables, item: 'existing' }))).toBe('accepted');
   });
 
   it("finds a running account's item by the client, so the line names none (S04 rule 9)", () => {
-    const funds = { ...clientFunds, isControl: true, itemKind: 'running' as const };
+    const funds = {
+      ...clientFunds,
+      isControl: true,
+      itemKind: 'running' as const,
+      counterpartyType: 'client' as const,
+    };
     expect(refusal(line({ account: funds }))).toBe('accepted');
     expect(refusal(line({ account: funds, item: 'existing' }))).toBe('VALIDATION_FAILED');
     expect(refusal(line({ account: funds, item: 'new' }))).toBe('VALIDATION_FAILED');
@@ -117,7 +129,12 @@ describe('checkLineAgainstChart (S02 rule 8)', () => {
     expect(
       refusal(
         line({
-          account: { ...clientFunds, isControl: true, itemKind: 'document' },
+          account: {
+            ...clientFunds,
+            isControl: true,
+            itemKind: 'document',
+            counterpartyType: 'client',
+          },
           origin: 'reversal',
         }),
       ),
@@ -166,6 +183,57 @@ describe('checkLineAgainstChart (S02 rule 8)', () => {
   });
 });
 
+describe('counterparties on control accounts (S11 rule 4, ADR 0022)', () => {
+  const SUPPLIER_TYPE = 'type-supplier';
+  const supplier: LineDimensionValue = {
+    id: 'supplier-1',
+    typeId: SUPPLIER_TYPE,
+    typeCode: 'supplier',
+    parentValueId: null,
+    archived: false,
+  };
+  const worker: LineDimensionValue = { ...supplier, id: 'worker-1', typeId: 'type-worker', typeCode: 'worker' };
+  const manualContract: LineDimensionValue = { ...contract, parentValueId: null };
+  /** Like 211001 (suppliers): a running account requiring the supplier. */
+  const suppliers: ChartAccount = {
+    ...clientFunds,
+    id: 'account-211001',
+    currency: null,
+    isControl: true,
+    itemKind: 'running',
+    counterpartyType: 'supplier',
+    requiredDimensionTypeIds: [SUPPLIER_TYPE],
+  };
+
+  it("refuses a counterparty of another type and none of the account's (edge case 19)", () => {
+    expect(refusal(line({ account: suppliers, dimensions: [client] }))).toBe('OPEN_ITEM_MISMATCH');
+    expect(refusal(line({ account: suppliers, dimensions: [worker] }))).toBe('OPEN_ITEM_MISMATCH');
+    expect(refusal(line({ account: suppliers, dimensions: [] }))).toBe('DIMENSION_REQUIRED');
+    expect(refusal(line({ account: suppliers, dimensions: [supplier] }))).toBe('accepted');
+  });
+
+  it('lets a running line carry a contract beside its counterparty (rule 3)', () => {
+    const withContract = { ...suppliers, requiredDimensionTypeIds: [SUPPLIER_TYPE, CONTRACT_TYPE] };
+    expect(
+      refusal(line({ account: withContract, dimensions: [supplier, manualContract] })),
+    ).toBe('accepted');
+    expect(counterpartyOf(withContract, [manualContract, supplier])).toBe(supplier);
+  });
+
+  it("finds the line's counterparty of the account's type", () => {
+    expect(counterpartyOf(suppliers, [supplier])).toBe(supplier);
+    const advances = { ...suppliers, counterpartyType: 'client' as const };
+    expect(counterpartyOf(advances, [contract, client])).toBe(client);
+    expect(() => counterpartyOf(suppliers, [client])).toThrow(
+      expect.objectContaining({ code: 'OPEN_ITEM_MISMATCH' }),
+    );
+    expect(() => counterpartyOf(suppliers, [manualContract])).toThrow(
+      expect.objectContaining({ code: 'DIMENSION_REQUIRED' }),
+    );
+    expect(() => counterpartyOf(clientFunds, [client])).toThrow(TypeError);
+  });
+});
+
 describe('checkLineAgainstChart properties', () => {
   const types = ['type-a', 'type-b', 'type-c', 'type-d', 'type-e'];
   const accounts = fc.record({
@@ -176,6 +244,7 @@ describe('checkLineAgainstChart properties', () => {
     archived: fc.constant(false),
     isControl: fc.constant(false),
     itemKind: fc.constant(null),
+    counterpartyType: fc.constant(null),
     requiredDimensionTypeIds: fc.subarray(types),
   });
   const liveValue = (typeId: string, archived = false): LineDimensionValue => ({
