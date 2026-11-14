@@ -1442,7 +1442,7 @@ async function openingLines(
     const lineNo = index + 1;
     const account = chart.get(spec.accountId);
     const named = spec.dimensionValueIds.map((id) => values.get(id) as LineDimensionValue);
-    let dimensions = Object.fromEntries(
+    const dimensions = Object.fromEntries(
       named.map((value) => [value.typeId, value.id]),
     ) as Dimensions;
     const origin = 'manual';
@@ -1510,8 +1510,9 @@ async function openingLines(
         balance: emptyBalance(spec.currency, keepsParallel),
       };
     } else if (account?.itemKind === 'running') {
+      // The item is the counterparty's alone; the line keeps every dimension it names (S11 rule 3).
       const counterparty = onLine(lineNo, () => counterpartyOf(account, named));
-      dimensions = { [counterparty.typeId]: counterparty.id };
+      const itemDimensions = { [counterparty.typeId]: counterparty.id };
       const existing = await runningItemOf(tx, spec.accountId, counterparty.id, spec.currency);
       if (existing !== null) {
         const stored = (await itemsOf(tx, [existing], lock)).get(existing);
@@ -1533,7 +1534,7 @@ async function openingLines(
           accountId: spec.accountId,
           kind: 'running',
           reference: code?.code ?? counterparty.id,
-          dimensions,
+          dimensions: itemDimensions,
           counterpartyValueId: counterparty.id,
           currency: spec.currency,
           dueOn: null,

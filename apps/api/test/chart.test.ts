@@ -347,6 +347,34 @@ describe('counterparty types and cash kinds (S11 rules 5, 7; ADR 0022)', () => {
     });
   });
 
+  it("changes an unused control account's counterparty type, and turns control off", async () => {
+    const owner = await ownerWith('contracting');
+    const accounts = await tree(owner.browser);
+    const workers = byCode(accounts, '211007');
+    const supplier = await typeIdOf(owner.browser, 'supplier');
+    // The old counterparty's dimension goes after the account changes its type (rule 5).
+    const changed = await owner.browser.patch(`/api/accounts/${workers.id}`, {
+      counterpartyType: 'supplier',
+      requiredDimensionTypeIds: [supplier],
+    });
+    expect(changed.status, JSON.stringify(changed.body)).toBe(200);
+    expect(changed.body).toMatchObject({
+      counterpartyType: 'supplier',
+      requiredDimensionTypeIds: [supplier],
+    });
+    const plain = await owner.browser.patch(`/api/accounts/${workers.id}`, {
+      isControl: false,
+      itemKind: null,
+      requiredDimensionTypeIds: [],
+    });
+    expect(plain.status, JSON.stringify(plain.body)).toBe(200);
+    expect(plain.body).toMatchObject({
+      isControl: false,
+      counterpartyType: null,
+      requiredDimensionTypeIds: [],
+    });
+  });
+
   it('keeps the cash kind, the counterparty type and its dimension after first use', async () => {
     const owner = await ownerWith('contracting');
     const accounts = await tree(owner.browser);

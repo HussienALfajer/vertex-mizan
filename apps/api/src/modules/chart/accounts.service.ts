@@ -183,10 +183,13 @@ export class AccountsService {
         throw error;
       }
       const before = auditedAccountOf(row, required);
-      // Dropped dimensions go before the account changes and added ones after it: the database
-      // allows a required dimension on a postable account only, so a postable account that turns
-      // into a header lets its dimensions go first, and a header that turns postable gains them last.
-      await this.dropDimensions(tx, id, required, next.requiredDimensionTypeIds);
+      // The database allows a required dimension on a postable account only, so a postable account
+      // that turns into a header lets its dimensions go first, and a header that turns postable
+      // gains them last. Otherwise dropped dimensions go after the account changes: a control
+      // account keeps its counterparty's dimension until it changes its type or stops being one
+      // (S11 rule 5), and the deferred check reads the result at commit.
+      const dropFirst = next.kind === 'header';
+      if (dropFirst) await this.dropDimensions(tx, id, required, next.requiredDimensionTypeIds);
       const [updated] = await onUniqueViolation(
         () =>
           tx
@@ -213,6 +216,7 @@ export class AccountsService {
         ACCOUNT_CODE_TAKEN,
       );
       if (!updated) throw new CodedException('NOT_FOUND', 'No such account');
+      if (!dropFirst) await this.dropDimensions(tx, id, required, next.requiredDimensionTypeIds);
       await addRequiredDimensions(tx, companyId, id, required, next.requiredDimensionTypeIds);
       const diff = changedFields(before, auditedAccountOf(updated, next.requiredDimensionTypeIds));
       if (diff) {

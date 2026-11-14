@@ -1,13 +1,20 @@
 -- S11 PR 1 (ADR 0022): counterparties and cash kinds, between the columns (0062) and the
 -- counterparty type's check (0064).
 --
--- 1. A company that already holds a custom dimension type coded `supplier` or `worker` cannot get
---    the built-in one of that code (`dimension_types_company_id_code_key`): the migration refuses
---    to run, naming the company, so the type is renamed first (synthetic data only so far).
+-- 1. The migration refuses to run, naming the company, while a company holds what step 2 could not
+--    take, so it is fixed first (synthetic data only so far):
+--    - a custom dimension type coded `supplier` or `worker`, which the built-in one of that code
+--      would collide with (`dimension_types_company_id_code_key`);
+--    - more than four active custom dimension types, which the two built-in ones would take past
+--      the limit of ten (S11 "Dimensions");
+--    - an open item with no counterparty on a control account, which could never be moved once its
+--      account requires the client (S11 rule 5).
 DO $$
 DECLARE
   company record;
   taken text;
+  custom integer;
+  orphan text;
 BEGIN
   FOR company IN SELECT c.id FROM public.companies c LOOP
     PERFORM set_config('app.company_id', company.id::text, true);
@@ -17,6 +24,23 @@ BEGIN
     IF taken IS NOT NULL THEN
       RAISE EXCEPTION 'S11: company % has custom dimension types coded %; rename them first',
         company.id, taken
+        USING ERRCODE = 'restrict_violation';
+    END IF;
+    SELECT count(*) INTO custom
+    FROM public.dimension_types t
+    WHERE t.company_id = company.id AND NOT t.builtin AND t.archived_at IS NULL;
+    IF custom > 4 THEN
+      RAISE EXCEPTION 'S11: company % has % active custom dimension types; archive all but four first',
+        company.id, custom
+        USING ERRCODE = 'restrict_violation';
+    END IF;
+    SELECT string_agg(DISTINCT a.code, ', ' ORDER BY a.code) INTO orphan
+    FROM public.open_items i
+    JOIN public.chart_accounts a ON a.company_id = i.company_id AND a.id = i.account_id
+    WHERE i.company_id = company.id AND i.counterparty_value_id IS NULL;
+    IF orphan IS NOT NULL THEN
+      RAISE EXCEPTION 'S11: company % has open items with no client on accounts %',
+        company.id, orphan
         USING ERRCODE = 'restrict_violation';
     END IF;
   END LOOP;
