@@ -131,7 +131,21 @@ One name per concept. Code, contracts and tables use the English term; the Arabi
 | بصمة القيد | entry hash | The SHA-256 of an entry with the previous entry's hash; shown by its first 12 characters, copied whole |
 | شرح السطر | line memo | An optional note on one line of an entry, beside the entry's description |
 | مجاميع القيد | entry totals | Debits, credits and the difference of each transaction currency while an entry is typed |
-| سند | voucher | A receipt or payment document that produces an entry (phase 2) |
+| سند | voucher | A receipt, payment, transfer or cash count prepared as a draft that posts one entry, numbered per kind and fiscal year (S11, ADR 0022) |
+| سند قبض / سند صرف / سند تحويل | receipt voucher / payment voucher / transfer voucher | Cash into a cash account, cash out of it, cash moved between two cash accounts (S11) |
+| صرف عملة | currency exchange | A transfer between cash accounts of two currencies, measured at the rate derived from its two amounts; its residual is realised (S11) |
+| محضر جرد | cash count | A count of a box against its expected balance; a difference posts as a cash shortage or overage (S11) |
+| عجز الصناديق / زيادة الصناديق | cash shortage / cash overage | The difference a cash count finds below or above the expected balance (S11) |
+| حساب نقدية | cash account | A postable asset account under `111` restricted to one currency and marked a box or a bank (S11) |
+| صندوق | box | A cash account of cash on hand; it never goes below zero (S11) |
+| الطرف | counterparty | Who an open item is owed by or to: a client, a supplier or a worker (ADR 0022) |
+| نوع الطرف | counterparty type | The dimension type a control account keys its open items by: `client`, `supplier` or `worker` (ADR 0022) |
+| المورّد | supplier | A built-in dimension type for suppliers and subcontractors (ADR 0022) |
+| العامل | worker | A built-in dimension type for workers and craftsmen (ADR 0022) |
+| مقاول الباطن | subcontractor | A contractor who carries out part of a project for the company; a supplier value on `211002` (S11) |
+| المستخلص | progress billing | A client's bill for work done on a project; a document item on `112001` (S11) |
+| المحتجزات | retention | Part of a billing held back until completion: receivable from clients, payable to subcontractors (S11) |
+| دفعة مقدمة من عميل | advance from a client | Cash received before the work, a non-monetary contract liability on `212002` (IFRS 15.106; IAS 21.16) |
 | شيك / شيك مؤجل | cheque / post-dated cheque | A cheque, or one dated in the future (phase 2 or later) |
 | أوراق قبض / أوراق دفع | notes receivable / notes payable | Cheques and bills held or issued until due (phase 2 or later) |
 | مركز كلفة | cost centre | A dimension used to analyse costs |

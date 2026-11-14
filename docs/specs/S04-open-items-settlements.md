@@ -1,6 +1,6 @@
 # S04 — Open items and settlements
 
-Status: Approved (owner, 2026-10-28), amended by ADR 0021 (2026-11-13: Hub's events, client ad funds and contract assets removed; they are in git history at commit `1a0ee40`) · Date: 2026-10-28 · Features: `docs/product/phase-1-scope.md` F06 · ADRs: 0003, 0005, 0007, 0008, 0011, 0012, 0013, 0021
+Status: Approved (owner, 2026-10-28), amended by ADR 0021 (2026-11-13: Hub's events, client ad funds and contract assets removed; they are in git history at commit `1a0ee40`), and by S11 (2026-11-14: an item's counterparty is a client, supplier or worker by the account's counterparty type, so "client" in its rules reads "counterparty"; ADR 0022) · Date: 2026-10-28 · Features: `docs/product/phase-1-scope.md` F06 · ADRs: 0003, 0005, 0007, 0008, 0011, 0012, 0013, 0021
 
 ## Summary
 S03 posts entries, but refuses every manual line on a control account (`ACCOUNT_IS_CONTROL`), because nothing yet says which document or counterparty a balance belongs to.

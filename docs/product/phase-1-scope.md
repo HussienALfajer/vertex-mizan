@@ -45,7 +45,7 @@ Each company chooses its own currencies, rate policies and books start when it i
 
 | Policy | Decision |
 |---|---|
-| Book currency | Chosen per company (`--book-currency`); SYP (the new Syrian pound) by default, for statutory books, journal, statements and tax return (ADR 0007). The client's book currency is open (ADR 0021 "Open"). |
+| Book currency | Chosen per company (`--book-currency`); SYP (the new Syrian pound) by default, for statutory books, journal, statements and tax return (ADR 0007). The contracting client's books are in USD at the market rate accepting dealt rates, with a parallel SYP ledger at the bulletin (owner, 2026-11-14; S11). |
 | Parallel currency | Optional per company: a full parallel ledger with its own exchange differences and revaluation (ADR 0007), or none (`--no-parallel`). |
 | Rate policy | Per ledger (ADR 0007): the **Central Bank bulletin** rate of the accounting date, or the **market rate the company deals at**, which may accept the rate a manual entry was dealt at (IAS 21.21–22, 21.26). The reasoning is recorded as the company's policy note. |
 | Fiscal year and periods | The calendar year (Income Tax Law 24/2003, CONFIRMED), with monthly periods. |
