@@ -425,6 +425,27 @@ expect:
     expect(namedDimensionValues(parseCase(CORRECTION))).toEqual([]);
   });
 
+  it("takes a voucher's line values (S11)", () => {
+    const withVoucher = parseCase(`
+case: a site cost paid from the box
+company: { shape: syp, book: SYP, rate_policy: { book: bulletin } }
+steps:
+  - voucher: a site cost
+    accounting_date: 2026-11-03
+    payload: { voucher: { kind: payment, cash_account: "111001" },
+               lines: [{ account: "511001", dims: { contract: P7 }, currency: SYP, amount: 100 },
+                       { account: "111001", currency: SYP, amount: -100 }] }
+expect:
+  entries:
+    - source: manual
+      date: 2026-11-03
+      lines:
+        - { account: "511001", dims: { contract: P7 }, currency: SYP, amount: 100, book: 100 }
+        - { account: "111001", currency: SYP, amount: -100, book: -100 }
+`);
+    expect(namedDimensionValues(withVoucher)).toEqual([{ type: 'contract', code: 'P7' }]);
+  });
+
   it("takes a department step's values (S09)", () => {
     const withDepartment = parseCase(`
 case: a manual service's department

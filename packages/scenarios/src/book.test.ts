@@ -261,7 +261,7 @@ describe('a case', () => {
     [
       'a step of no kind',
       CASE.replace('  - manual: a USD invoice', '  - what: a USD invoice'),
-      'manual, reversal, rate, revalue, block, close, reopen, draft, discard, service_department, opening or reverse_opening',
+      'manual, reversal, rate, revalue, block, close, reopen, draft, discard, service_department, opening, reverse_opening or voucher',
     ],
     [
       'a step of two kinds',
@@ -555,6 +555,48 @@ describe('a case', () => {
       'Expected a detail code',
     );
     expect(refusal(withDraft.replace('    reason: "أُلغي الاشتراك"\n', ''))).toContain('reason');
+  });
+
+  it('reads a cash voucher with its header and lines, and a refusal as its outcome (S11)', () => {
+    const voucher = CASE.replace(
+      '  - manual: a USD invoice\n    accounting_date: 2026-11-03\n' +
+        '    payload: { invoice: INV-1, client: C1, currency: USD, lines: [{ amount: 10000, service: S1 }] }\n',
+      '  - voucher: USD moved from the box to the bank\n    accounting_date: 2026-11-03\n' +
+        '    payload: { voucher: { kind: transfer, cash_account: "111002", counter_cash_account: "111004" },\n' +
+        '               lines: [{ account: "111002", currency: USD, amount: -10000 },\n' +
+        '                       { account: "111004", currency: USD, amount: 10000, dims: { client: C1 } }] }\n',
+    );
+    const [step] = parseCase(voucher).steps;
+    expect(step).toEqual({
+      kind: 'voucher',
+      description: 'USD moved from the box to the bank',
+      accountingDate: '2026-11-03',
+      payload: {
+        voucher: { kind: 'transfer', cash_account: '111002', counter_cash_account: '111004' },
+        lines: [
+          { account: '111002', currency: 'USD', amount: -10000n },
+          { account: '111004', currency: 'USD', amount: 10000n, dims: { client: 'C1' } },
+        ],
+      },
+      outcome: null,
+    });
+    const refused = voucher.replace(
+      'amount: 10000, dims: { client: C1 } }] }\n',
+      'amount: 10000, dims: { client: C1 } }] }\n' +
+        '    outcome: { status: refused, reason: CASH_BOX_NEGATIVE }\n',
+    );
+    expect(parseCase(refused).steps[0]).toMatchObject({
+      kind: 'voucher',
+      outcome: { status: 'refused', reason: 'CASH_BOX_NEGATIVE', detail: null },
+    });
+    expect(
+      refusal(
+        voucher.replace(
+          'accounting_date: 2026-11-03\n    payload: { voucher',
+          'payload: { voucher',
+        ),
+      ),
+    ).toContain('accounting_date');
   });
 
   const TRY_CASH =

@@ -13,6 +13,7 @@ Scenarios are written through `/posting-rule`, before the rule's code.
 - `opening`;
 - `manual`;
 - `reports` (S09: what the reports present, read after the steps).
+- `cash` (S11: cash vouchers, transfers and currency exchanges between cash accounts, cash counts).
 
 Hub's areas (`revenue`, `ad-funds`, `expenses`, `inbox`, `receivables/hub-payment.md`, `opening/before-books-start.md`) and the cases of other files that ran Hub's events left with the integration (ADR 0021); they stay in git history. Most cases keep `template: service-agency`: the book holds that chart as its own (`packages/scenarios/src/agency-chart.ts`), frozen, since their approved entries name its accounts; the product no longer offers it.
 
@@ -106,6 +107,14 @@ steps:                              # in order; a manual entry, a reversal, a ra
                                     #   line (non-monetary or equity) also gives book and parallel,
                                     #   except the one in its ledger's own currency (S10 rule 17)
   - reverse_opening: "<reason>"     # the owner's whole reversal of the opening (S10 rule 25)
+  - voucher: <what it records>      # a cash voucher (S11 rules 9–14) prepared as a voucher draft and
+    accounting_date: 2026-12-01     #   posted from it; its entry has the source manual. payload: the
+    payload: { voucher: { kind: transfer, cash_account: "111002", counter_cash_account: "111005" },
+               lines: [ ... ] }     #   voucher header { kind (receipt, payment, transfer, count),
+                                    #   cash_account, counter_cash_account? (a transfer's destination),
+                                    #   party_name?, counted? } and the lines as a manual entry's; a
+                                    #   transfer states no dealt_rates: the system derives the rate
+                                    #   from its amounts (rule 12)
 expect:
   entries:                          # the exact set posted, in posting order; every line of every entry
     - source: <manual | opening | revaluation | reversal>
