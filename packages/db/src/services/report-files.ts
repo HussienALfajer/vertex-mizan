@@ -4,7 +4,7 @@ import {
   type ActiveReport,
   type AgeingReport,
   type BalanceSheet,
-  type ClientStatement,
+  type CounterpartyStatement,
   type CurrencyCode,
   DomainError,
   type GeneralLedger,
@@ -24,7 +24,7 @@ import { periods } from '../schema/ledger.js';
 import { journalBookPrints, reportFiles } from '../schema/reports.js';
 import { readChartAccounts } from './chart-reads.js';
 import { ledgersOf } from './companies.js';
-import { readAgeingReport, readClientStatementReport } from './receivables-reads.js';
+import { readAgeingReport, readCounterpartyStatementReport } from './receivables-reads.js';
 import {
   readAccountStatement,
   readBalanceSheet,
@@ -53,7 +53,7 @@ export type ReportAnswer =
   | { readonly report: 'ageing'; readonly data: AgeingReport; readonly producedAt: string }
   | {
       readonly report: 'client_statement';
-      readonly data: ClientStatement;
+      readonly data: CounterpartyStatement;
       readonly producedAt: string;
     }
   | {
@@ -105,7 +105,7 @@ export async function readReportAnswer(
       const { client, ...rest } = query(report, params);
       return {
         report,
-        data: await readClientStatementReport(tx, client, rest, today),
+        data: await readCounterpartyStatementReport(tx, client, rest, today),
         producedAt: now.toISOString(),
       };
     }

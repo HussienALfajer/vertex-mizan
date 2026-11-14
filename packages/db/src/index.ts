@@ -27,13 +27,13 @@ export {
 export { describeForLog } from './describe-for-log.js';
 export {
   accountHasOpenItems,
-  type ClientStatementRows,
+  type CounterpartyStatementRows,
   type ItemAtDate,
   type ItemDueDate,
   type ItemFilter,
   type ItemMovementRow,
   type OpenItemState,
-  readClientStatement,
+  readCounterpartyStatement,
   readDueDates,
   readItemBalances,
   readItemMovements,

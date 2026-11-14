@@ -1,0 +1,1 @@
+ALTER TABLE "chart_accounts" ADD CONSTRAINT "chart_accounts_counterparty_type" CHECK ("chart_accounts"."is_control" = ("chart_accounts"."counterparty_type" is not null));

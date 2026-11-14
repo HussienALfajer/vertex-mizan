@@ -29,6 +29,8 @@ export function accountOf(
     currency: row.currency as CurrencyCode | null,
     isControl: row.isControl,
     itemKind: row.itemKind as Account['itemKind'],
+    counterpartyType: row.counterpartyType,
+    cashKind: row.cashKind,
     isMonetary: row.isMonetary,
     requiredDimensionTypeIds: [...requiredDimensionTypeIds],
     roles: [...roles],

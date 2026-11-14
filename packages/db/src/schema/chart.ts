@@ -41,6 +41,12 @@ export const accountRole = pgEnum('account_role', [
   'pre_opening_result',
 ]);
 
+/** `COUNTERPARTY_TYPES` of `@vertex-mizan/contracts` (S11, ADR 0022); values are never renamed. */
+export const counterpartyType = pgEnum('counterparty_type', ['client', 'supplier', 'worker']);
+
+/** `CASH_KINDS` of `@vertex-mizan/contracts` (S11 rule 7); values are never renamed. */
+export const cashKind = pgEnum('cash_kind', ['box', 'bank']);
+
 /**
  * The statement-line codes of `STATEMENT_LINES` in `@vertex-mizan/contracts`, by statement; a test
  * keeps them equal. A new line extends the check in a migration of its own.
@@ -105,6 +111,13 @@ export const chartAccounts = pgTable(
     isControl: boolean().notNull().default(false),
     /** The kind of a control account's open items (S04, ADR 0013): `document` or `running`. */
     itemKind: text(),
+    /**
+     * The counterparty type of a control account (S11, ADR 0022): the built-in dimension type
+     * that names a line's counterparty and keys its items; set exactly on a control account.
+     */
+    counterpartyType: counterpartyType(),
+    /** A cash account's kind (S11 rule 7): a box, which never goes below zero, or a bank. */
+    cashKind: cashKind(),
     isMonetary: boolean().notNull().default(false),
     blockedAt: timestamptz(),
     blockedReason: text(),
@@ -169,6 +182,20 @@ export const chartAccounts = pgTable(
       'chart_accounts_item_kind',
       sql`(${t.isControl} = (${t.itemKind} is not null))
         and (${t.itemKind} is null or ${t.itemKind} in ('document', 'running'))`,
+    ),
+    // S11 rule 5 (ADR 0022): a control account, and only a control account, has a counterparty
+    // type; `chart_account_counterparty_required()` holds its dimension required.
+    check(
+      'chart_accounts_counterparty_type',
+      sql`${t.isControl} = (${t.counterpartyType} is not null)`,
+    ),
+    // S11 "Data": a cash kind only on a postable, monetary asset under 111 in one currency on
+    // bs.cash, not a control account.
+    check(
+      'chart_accounts_cash_kind',
+      sql`${t.cashKind} is null or (${t.kind} = 'postable' and ${t.class} = 'asset'
+        and ${t.level} = 4 and left(${t.code}, 3) = '111' and ${t.currency} is not null
+        and ${t.isMonetary} and not ${t.isControl} and ${t.statementLine} = 'bs.cash')`,
     ),
     check(
       'chart_accounts_currency',

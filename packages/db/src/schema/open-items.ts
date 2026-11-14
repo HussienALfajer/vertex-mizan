@@ -52,7 +52,8 @@ const listed = (values: readonly string[]) =>
 
 /**
  * An open item (S04 "Data"): one per document on a `document` control account, by its reference;
- * one per client and currency on a `running` account. Its kind is its account's, its dimension set
+ * one per counterparty and currency on a `running` account (S11, ADR 0022: the counterparty is the
+ * value of the account's counterparty type). Its kind is its account's, its dimension set
  * and currency every line of it carries; `opened_by_entry_id` is the entry of its first line.
  */
 export const openItems = pgTable(
@@ -62,14 +63,17 @@ export const openItems = pgTable(
     companyId: companyId().references(() => companies.id),
     accountId: uuid().notNull(),
     kind: text().notNull(),
-    /** A manual document's reference, Hub's document number, or a running item's client code. */
+    /** A manual document's reference, Hub's document number, or a running item's counterparty code. */
     reference: text().notNull(),
     source: text().notNull(),
     /** Hub's document (type, id and number) for an item from Hub (S05). */
     hubDocument: jsonb(),
     dimensionSetId: uuid().notNull(),
-    /** The client of the item's dimension set; a running item always has one. */
-    clientValueId: uuid(),
+    /**
+     * The counterparty of the item's dimension set, its value of the account's counterparty type
+     * (renamed from `client_value_id`, S11); a running item always has one.
+     */
+    counterpartyValueId: uuid(),
     currency: text().notNull(),
     documentDate: date().notNull(),
     openedByEntryId: uuid().notNull(),
@@ -89,8 +93,8 @@ export const openItems = pgTable(
       foreignColumns: [dimensionSets.companyId, dimensionSets.id],
     }),
     foreignKey({
-      name: 'open_items_client_fk',
-      columns: [t.companyId, t.clientValueId],
+      name: 'open_items_counterparty_fk',
+      columns: [t.companyId, t.counterpartyValueId],
       foreignColumns: [dimensionValues.companyId, dimensionValues.id],
     }),
     foreignKey({
@@ -108,7 +112,7 @@ export const openItems = pgTable(
       .on(t.companyId, t.accountId, t.reference, t.openedByEntryId)
       .where(sql`${t.kind} = 'document' and ${t.source} = 'opening'`),
     uniqueIndex('open_items_running_key')
-      .on(t.companyId, t.accountId, t.clientValueId, t.currency)
+      .on(t.companyId, t.accountId, t.counterpartyValueId, t.currency)
       .where(sql`${t.kind} = 'running'`),
     uniqueIndex('open_items_hub_document_key')
       .on(
@@ -119,10 +123,10 @@ export const openItems = pgTable(
         t.reference,
       )
       .where(sql`${t.hubDocument} is not null and ${t.source} <> 'opening'`),
-    // The items of an account, by client: the ageing and the statements (S04 "Volume").
-    index('open_items_company_account_idx').on(t.companyId, t.accountId, t.clientValueId),
+    // The items of an account, by counterparty: the ageing and the statements (S04 "Volume").
+    index('open_items_company_account_idx').on(t.companyId, t.accountId, t.counterpartyValueId),
     index('open_items_company_dimension_set_idx').on(t.companyId, t.dimensionSetId),
-    index('open_items_company_client_idx').on(t.companyId, t.clientValueId),
+    index('open_items_company_counterparty_idx').on(t.companyId, t.counterpartyValueId),
     index('open_items_company_opened_by_entry_idx').on(t.companyId, t.openedByEntryId),
     // A Hub document's items, the opening's included (S10 rule 30).
     index('open_items_company_hub_document_idx')
@@ -133,8 +137,8 @@ export const openItems = pgTable(
     check('open_items_reference_length', sql`char_length(${t.reference}) between 1 and 100`),
     check('open_items_currency', sql`${t.currency} in (${listed(SETTINGS_CURRENCY_CODES)})`),
     check(
-      'open_items_running_client',
-      sql`${t.kind} = 'document' or ${t.clientValueId} is not null`,
+      'open_items_running_counterparty',
+      sql`${t.kind} = 'document' or ${t.counterpartyValueId} is not null`,
     ),
     check(
       'open_items_hub_document',

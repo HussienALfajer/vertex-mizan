@@ -67,7 +67,7 @@ export const dimensionTypes = pgTable(
     check('dimension_types_custom_no_parent', sql`${t.builtin} or ${t.parentTypeId} is null`),
     check(
       'dimension_types_builtin_codes',
-      sql`not ${t.builtin} or ${t.code} in ('client', 'contract', 'department', 'service')`,
+      sql`not ${t.builtin} or ${t.code} in ('client', 'contract', 'department', 'service', 'supplier', 'worker')`,
     ),
     check('dimension_types_builtin_active', sql`not ${t.builtin} or ${t.archivedAt} is null`),
   ],

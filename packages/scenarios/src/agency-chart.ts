@@ -26,6 +26,8 @@ const h = (code: string, name: string, nameLatin: string): TemplateAccount => ({
   isMonetary: false,
   isControl: false,
   itemKind: null,
+  counterpartyType: null,
+  cashKind: null,
   currency: null,
   requiredDimensions: [],
   statementLine: null,
@@ -58,6 +60,9 @@ const p = (
   isMonetary: options.monetary ?? false,
   isControl: options.control !== undefined,
   itemKind: options.control ?? null,
+  // Every control account of the agency names a client (ADR 0022); no cash kind (S11).
+  counterpartyType: options.control === undefined ? null : 'client',
+  cashKind: null,
   currency: options.currency ?? null,
   requiredDimensions: options.dims ?? [],
   statementLine,
@@ -326,7 +331,7 @@ export const SERVICE_AGENCY_ACCOUNTS: readonly TemplateAccount[] = [
 ];
 
 /** The book's charts by id: contracts' templates, and the frozen service-agency chart. */
-export const BOOK_CHART_IDS = ['service-agency', 'general'] as const;
+export const BOOK_CHART_IDS = ['service-agency', 'general', 'contracting'] as const;
 
 export type BookChartId = (typeof BOOK_CHART_IDS)[number];
 
@@ -343,6 +348,6 @@ export function bookChart(
   | { readonly id: string; readonly version: number; readonly accounts: readonly TemplateAccount[] }
   | undefined {
   if (id === 'service-agency') return SERVICE_AGENCY_CHART;
-  if (id === 'general') return chartTemplate('general');
+  if (id === 'general' || id === 'contracting') return chartTemplate(id);
   return undefined;
 }

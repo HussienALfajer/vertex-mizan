@@ -307,7 +307,22 @@ async function seedLedger(tx: Transaction, companyId: string, userId: string, da
     statementLine: 'bs.trade_receivables',
     isControl: true,
     itemKind: 'document',
+    counterpartyType: 'client',
   });
+  // A control account requires its counterparty, so the invoice names a client (S11 rule 5).
+  const [clientType] = await tx
+    .select({ id: dimensionTypes.id })
+    .from(dimensionTypes)
+    .where(and(eq(dimensionTypes.companyId, companyId), eq(dimensionTypes.code, 'client')));
+  await tx.insert(accountRequiredDimensions).values({
+    companyId,
+    accountId: receivables,
+    dimensionTypeId: clientType?.id as string,
+  });
+  const [billed] = await tx
+    .insert(dimensionValues)
+    .values({ companyId, typeId: clientType?.id as string, name: 'عميل مولّد' })
+    .returning({ id: dimensionValues.id });
   await post(tx, {
     ...common,
     idempotencyKey: `generated-item-${companyId}`,
@@ -319,7 +334,7 @@ async function seedLedger(tx: Transaction, companyId: string, userId: string, da
       lines: [
         {
           accountId: receivables,
-          dimensionValueIds: [],
+          dimensionValueIds: [billed?.id as string],
           currency: data.bookCurrency,
           amountMinor: 1_000n,
           memo: null,
@@ -359,11 +374,12 @@ const expectedRows = (data: CompanyData): Record<string, number> => ({
   // S07 a monetary account and the unrealised gain and loss accounts.
   // S10 adds two headers and a postable account under assets and under equity for the opening.
   chart_accounts: 5 + data.headers.length + 3 + 4 + 3 + 3 + 6,
-  account_required_dimensions: 1,
+  // S11: the receivable control account requires its client.
+  account_required_dimensions: 2,
   account_roles: 3,
-  dimension_types: 4,
-  // The clients, S04's value, and S09's service and department.
-  dimension_values: data.clients.length + 1 + 2,
+  dimension_types: 6,
+  // The clients, S04's value, S09's service and department, and the invoice's client (S11).
+  dimension_values: data.clients.length + 1 + 2 + 1,
   rate_pairs: data.bookCurrency === 'SYP' ? 1 : 2,
   exchange_rates: data.rates.length + 2,
   bulletin_holidays: data.holidays.length,
@@ -374,8 +390,8 @@ const expectedRows = (data: CompanyData): Record<string, number> => ({
   // The expense's and S07's cash entry's two lines convert into the book currency; the reversal
   // carries its amounts, the invoice is in the book currency and a revaluation converts nothing.
   line_conversions: 4,
-  dimension_sets: 2,
-  dimension_set_values: 1,
+  dimension_sets: 3,
+  dimension_set_values: 2,
   ledger_heads: 1,
   // The revaluation's reversal falls in the next fiscal year when it starts in December.
   entry_number_counters:

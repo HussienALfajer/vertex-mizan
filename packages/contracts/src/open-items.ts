@@ -55,7 +55,7 @@ export type DueDateSetter = (typeof DUE_DATE_SETTERS)[number];
 export const itemReferenceSchema = z.string().trim().min(1).max(100);
 
 // The schemas of the receivables API (S04 "API"): items, their movements and due dates, the
-// ageing, client funds and the client statement. Amounts are `MinorUnits` strings (S03).
+// ageing, running balances and the counterparty statement. Amounts are `MinorUnits` strings (S03).
 
 /** An item's state (rule 1): open while its open transaction amount is not zero, settled at zero. */
 export const OPEN_ITEM_STATES = ['open', 'settled'] as const;
@@ -70,12 +70,20 @@ export const movementKindSchema = z.enum(MOVEMENT_KINDS).meta({ id: 'MovementKin
 
 export const dueDateSetterSchema = z.enum(DUE_DATE_SETTERS).meta({ id: 'DueDateSetter' });
 
-/** A client as the receivables screens name it: the dimension value, its code and name. */
-export const clientRefSchema = z
-  .object({ id: z.uuid(), code: z.string().nullable(), name: z.string() })
-  .meta({ id: 'ClientRef' });
+/**
+ * A counterparty as the receivables screens name it (S11, ADR 0022): the dimension value, its
+ * code and name, and its type (a client, supplier or worker).
+ */
+export const counterpartyRefSchema = z
+  .object({
+    id: z.uuid(),
+    type: counterpartyTypeSchema,
+    code: z.string().nullable(),
+    name: z.string(),
+  })
+  .meta({ id: 'CounterpartyRef' });
 
-export type ClientRef = z.infer<typeof clientRefSchema>;
+export type CounterpartyRef = z.infer<typeof counterpartyRefSchema>;
 
 /** An account as the receivables screens name it. */
 export const accountRefSchema = z
@@ -118,13 +126,14 @@ const idListSchema = z
   .optional();
 
 /**
- * `GET /api/open-items`: items by account, client, state and reference text, as of a date (default
- * today in Damascus); pages of 100 by reference.
+ * `GET /api/open-items`: items by account, counterparty or counterparty type, state and reference
+ * text, as of a date (default today in Damascus); pages of 100 by reference.
  */
 export const openItemQuerySchema = z
   .object({
     account: z.uuid().optional(),
-    client: z.uuid().optional(),
+    counterparty: z.uuid().optional(),
+    counterpartyType: counterpartyTypeSchema.optional(),
     state: z.enum([...OPEN_ITEM_STATES, 'all']).default('open'),
     text: z.string().trim().min(1).max(100).optional(),
     asOf: isoDate().optional(),
@@ -142,7 +151,7 @@ export const openItemSummarySchema = z
     kind: itemKindSchema,
     reference: z.string(),
     source: itemSourceSchema,
-    client: clientRefSchema.nullable(),
+    counterparty: counterpartyRefSchema.nullable(),
     currency: currencyCodeSchema,
     documentDate: isoDate(),
     /** The due date in force at the date (rule 14); null for a running item, which has none. */
@@ -273,14 +282,16 @@ export type BucketAmounts = z.infer<typeof bucketAmountsSchema>;
 /**
  * `GET /api/receivables/ageing` and its export: as of a date (default today in Damascus), in the
  * book or the parallel ledger, on the chosen asset control accounts (default: the document
- * accounts on `bs.trade_receivables`), optionally for one client.
+ * accounts on `bs.trade_receivables`), optionally for one counterparty or one counterparty type
+ * (S11 rule 6).
  */
 export const ageingQuerySchema = z
   .object({
     asOf: isoDate().optional(),
     ledger: ledgerSchema.default('book'),
     accounts: idListSchema,
-    client: z.uuid().optional(),
+    counterparty: z.uuid().optional(),
+    counterpartyType: counterpartyTypeSchema.optional(),
   })
   .meta({ id: 'AgeingQuery' });
 
@@ -314,17 +325,17 @@ export const ageingItemSchema = z
 
 export type AgeingItem = z.infer<typeof ageingItemSchema>;
 
-/** A client's row: the buckets and total in the ledger's currency, and its items. */
-export const ageingClientSchema = z
+/** A counterparty's row: the buckets and total in the ledger's currency, and its items. */
+export const ageingCounterpartySchema = z
   .object({
-    client: clientRefSchema.nullable(),
+    counterparty: counterpartyRefSchema.nullable(),
     buckets: bucketAmountsSchema,
     totalMinor: minorUnitsSchema,
     items: z.array(ageingItemSchema),
   })
-  .meta({ id: 'AgeingClient' });
+  .meta({ id: 'AgeingCounterparty' });
 
-export type AgeingClient = z.infer<typeof ageingClientSchema>;
+export type AgeingCounterparty = z.infer<typeof ageingCounterpartySchema>;
 
 /** The totals of the items in one transaction currency, by bucket. */
 export const ageingCurrencyTotalSchema = z
@@ -344,7 +355,7 @@ export const ageingReportSchema = z
     ledger: ledgerSchema,
     ledgerCurrency: currencyCodeSchema,
     accounts: z.array(accountRefSchema),
-    clients: z.array(ageingClientSchema),
+    counterparties: z.array(ageingCounterpartySchema),
     buckets: bucketAmountsSchema,
     totalMinor: minorUnitsSchema,
     currencyTotals: z.array(ageingCurrencyTotalSchema),
@@ -353,48 +364,58 @@ export const ageingReportSchema = z
 
 export type AgeingReport = z.infer<typeof ageingReportSchema>;
 
-/** `GET /api/client-funds`: as of a date, the totals in the selected ledger. */
-export const clientFundsQuerySchema = z
-  .object({ asOf: isoDate().optional(), ledger: ledgerSchema.default('book') })
-  .meta({ id: 'ClientFundsQuery' });
+/**
+ * `GET /api/running-balances` (S04 rule 17, S11 rule 6): as of a date, the totals in the selected
+ * ledger, optionally of one counterparty type.
+ */
+export const runningBalancesQuerySchema = z
+  .object({
+    asOf: isoDate().optional(),
+    ledger: ledgerSchema.default('book'),
+    counterpartyType: counterpartyTypeSchema.optional(),
+  })
+  .meta({ id: 'RunningBalancesQuery' });
 
-export type ClientFundsQuery = z.infer<typeof clientFundsQuerySchema>;
+export type RunningBalancesQuery = z.infer<typeof runningBalancesQuerySchema>;
 
 /**
- * A running item at the date (rule 17): the balance and both ledgers' carrying amounts. A debit
- * balance is a receivable from the client ("مستحق من العميل"), never netted against other clients.
+ * A running item at the date (S04 rule 17): the balance and both ledgers' carrying amounts, kept
+ * per counterparty and never netted against another. `debit` marks a debit balance: on a client's
+ * funds a receivable ("مستحق من العميل"), on a payable an advance paid beyond the balance.
  */
-export const clientFundSchema = z
+export const runningBalanceSchema = z
   .object({
     itemId: z.uuid(),
     account: accountRefSchema,
-    client: clientRefSchema,
+    counterparty: counterpartyRefSchema,
     currency: currencyCodeSchema,
     amounts: itemAmountsSchema,
-    receivable: z.boolean(),
+    debit: z.boolean(),
   })
-  .meta({ id: 'ClientFund' });
+  .meta({ id: 'RunningBalance' });
 
-export type ClientFund = z.infer<typeof clientFundSchema>;
+export type RunningBalance = z.infer<typeof runningBalanceSchema>;
 
-/** The client funds as of a date, with the totals of each ledger. */
-export const clientFundsSchema = z
+/** The running balances as of a date, with the totals of the selected ledger. */
+export const runningBalancesSchema = z
   .object({
     asOf: isoDate(),
     ledger: ledgerSchema,
     bookCurrency: currencyCodeSchema,
     parallelCurrency: currencyCodeSchema.nullable(),
-    funds: z.array(clientFundSchema),
-    /** The credit balances (funds held) and the debit balances (receivables) apart. */
-    heldMinor: minorUnitsSchema,
-    receivableMinor: minorUnitsSchema,
+    balances: z.array(runningBalanceSchema),
+    /** The credit balances and the debit balances apart, in the selected ledger. */
+    creditMinor: minorUnitsSchema,
+    debitMinor: minorUnitsSchema,
   })
-  .meta({ id: 'ClientFunds' });
+  .meta({ id: 'RunningBalances' });
 
-export type ClientFunds = z.infer<typeof clientFundsSchema>;
+export type RunningBalances = z.infer<typeof runningBalancesSchema>;
 
-/** `GET /api/clients/:valueId/statement` and its export: a date range, a ledger, a currency. */
-export const clientStatementQuerySchema = z
+/**
+ * `GET /api/counterparties/:valueId/statement` and its export: a date range, a ledger, a currency.
+ */
+export const counterpartyStatementQuerySchema = z
   .object({
     from: isoDate().optional(),
     to: isoDate().optional(),
@@ -405,9 +426,9 @@ export const clientStatementQuerySchema = z
     message: 'The range ends before it starts',
     path: ['to'],
   })
-  .meta({ id: 'ClientStatementQuery' });
+  .meta({ id: 'CounterpartyStatementQuery' });
 
-export type ClientStatementQuery = z.infer<typeof clientStatementQuerySchema>;
+export type CounterpartyStatementQuery = z.infer<typeof counterpartyStatementQuerySchema>;
 
 /** A balance in one item currency, with its amount in the selected ledger. */
 export const statementBalanceSchema = z
@@ -420,8 +441,8 @@ export const statementBalanceSchema = z
 
 export type StatementBalance = z.infer<typeof statementBalanceSchema>;
 
-/** A movement of the client's items with its entry and the running balances after it. */
-export const clientStatementLineSchema = z
+/** A movement of the counterparty's items with its entry and the running balances after it. */
+export const counterpartyStatementLineSchema = z
   .object({
     movementId: z.uuid(),
     entryId: z.uuid(),
@@ -439,23 +460,23 @@ export const clientStatementLineSchema = z
     amountMinor: minorUnitsSchema,
     /** The movement in the selected ledger's currency. */
     ledgerMinor: minorUnitsSchema,
-    /** The client's balance in the movement's currency after it. */
+    /** The counterparty's balance in the movement's currency after it. */
     balanceMinor: minorUnitsSchema,
-    /** The client's balance in the selected ledger after it, every currency together. */
+    /** The counterparty's balance in the selected ledger after it, every currency together. */
     ledgerBalanceMinor: minorUnitsSchema,
   })
-  .meta({ id: 'ClientStatementLine' });
+  .meta({ id: 'CounterpartyStatementLine' });
 
-export type ClientStatementLine = z.infer<typeof clientStatementLineSchema>;
+export type CounterpartyStatementLine = z.infer<typeof counterpartyStatementLineSchema>;
 
 /**
- * A client's statement: the client's items on every control account, the opening balance per item
- * currency, every movement in the range by date then entry number, and the closing balance;
- * opening plus movements equals closing (S04 "Reports").
+ * A counterparty's statement (S04 "Reports", S11 rule 6): its items on every control account of
+ * its type, the opening balance per item currency, every movement in the range by date then entry
+ * number, and the closing balance; opening plus movements equals closing.
  */
-export const clientStatementSchema = z
+export const counterpartyStatementSchema = z
   .object({
-    client: clientRefSchema,
+    counterparty: counterpartyRefSchema,
     from: isoDate().nullable(),
     to: isoDate(),
     ledger: ledgerSchema,
@@ -463,13 +484,15 @@ export const clientStatementSchema = z
     currency: currencyCodeSchema.nullable(),
     opening: z.array(statementBalanceSchema),
     openingLedgerMinor: minorUnitsSchema,
-    lines: z.array(clientStatementLineSchema),
+    lines: z.array(counterpartyStatementLineSchema),
     closing: z.array(statementBalanceSchema),
     closingLedgerMinor: minorUnitsSchema,
   })
-  .meta({ id: 'ClientStatement' });
+  .meta({ id: 'CounterpartyStatement' });
 
-export type ClientStatement = z.infer<typeof clientStatementSchema>;
+export type CounterpartyStatement = z.infer<typeof counterpartyStatementSchema>;
 
-/** `/api/clients/:valueId/statement`. */
-export const clientParamsSchema = z.object({ valueId: z.uuid() }).meta({ id: 'ClientParams' });
+/** `/api/counterparties/:valueId/statement`. */
+export const counterpartyParamsSchema = z
+  .object({ valueId: z.uuid() })
+  .meta({ id: 'CounterpartyParams' });

@@ -12,7 +12,7 @@ import {
   openItems,
   type PersonActor,
   post,
-  readClientStatement,
+  readCounterpartyStatement,
   readDueDates,
   readItemBalances,
   readItemMovements,
@@ -214,7 +214,8 @@ describe('readItemsAt', () => {
       accountCode: '112001',
       kind: 'document',
       source: 'manual',
-      clientCode: 'C1',
+      counterpartyCode: 'C1',
+      counterpartyType: 'client',
       currency: 'USD',
       documentDate: '2026-11-03',
       adjusted: false,
@@ -229,7 +230,7 @@ describe('readItemsAt', () => {
     ]);
     expect(await at('2026-11-30', { text: 'm-' })).toHaveLength(1);
     expect(await at('2026-11-30', { text: '%' })).toEqual([]);
-    expect(await at('2026-11-30', { clientValueId: client(books, 'C2') })).toEqual([]);
+    expect(await at('2026-11-30', { counterpartyValueId: client(books, 'C2') })).toEqual([]);
     expect(await at('2026-11-30', { kind: 'running' })).toEqual([]);
     expect(await at('2026-11-30', { accountIds: [account(books, '113001')] })).toEqual([]);
     expect(await at('2026-11-30', { itemIds: [] })).toEqual([]);
@@ -284,14 +285,14 @@ describe('an item’s movements, due dates and balance row', () => {
   });
 });
 
-describe('readClientStatement', () => {
+describe('readCounterpartyStatement', () => {
   it('lists the client’s movements with running balances, and opening plus movements is closing', async () => {
     const books = await newBooks();
     await example(books);
     const statement = (from: string | null, to: string, ledger: 'book' | 'parallel' = 'book') =>
       inCompany(books, (tx) =>
-        readClientStatement(tx, {
-          clientValueId: client(books, 'C1'),
+        readCounterpartyStatement(tx, {
+          counterpartyValueId: client(books, 'C1'),
           from,
           to,
           ledger,
@@ -319,8 +320,8 @@ describe('readClientStatement', () => {
     ]);
     expect(late.closingLedgerMinor).toBe(0n);
     const other = await inCompany(books, (tx) =>
-      readClientStatement(tx, {
-        clientValueId: client(books, 'C2'),
+      readCounterpartyStatement(tx, {
+        counterpartyValueId: client(books, 'C2'),
         from: null,
         to: '2026-11-30',
         ledger: 'book',
@@ -340,12 +341,12 @@ describe('another company’s ids', () => {
     const reads = await inCompany(books, async (tx) => ({
       byId: await readItemsAt(tx, { asOf, itemIds: [theirs], includeUnopened: true }),
       byAccount: await readItemsAt(tx, { asOf, accountIds: [account(other, '112001')] }),
-      byClient: await readItemsAt(tx, { asOf, clientValueId: client(other, 'C1') }),
+      byClient: await readItemsAt(tx, { asOf, counterpartyValueId: client(other, 'C1') }),
       movements: await readItemMovements(tx, theirs, asOf),
       dueDates: await readDueDates(tx, [theirs]),
       balances: await readItemBalances(tx, [theirs]),
-      statement: await readClientStatement(tx, {
-        clientValueId: client(other, 'C1'),
+      statement: await readCounterpartyStatement(tx, {
+        counterpartyValueId: client(other, 'C1'),
         from: null,
         to: asOf,
         ledger: 'book',
