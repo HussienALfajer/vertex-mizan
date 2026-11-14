@@ -15,17 +15,13 @@ import {
   type AgeingReport,
   ageingQuerySchema,
   ageingReportSchema,
+  type CounterpartyStatement,
+  type CounterpartyStatementQuery,
   type ChangeDueDate,
-  type ClientFunds,
-  type ClientFundsQuery,
-  type ClientStatement,
-  type ClientStatementQuery,
   changeDueDateSchema,
-  clientFundsQuerySchema,
-  clientFundsSchema,
-  clientParamsSchema,
-  clientStatementQuerySchema,
-  clientStatementSchema,
+  counterpartyParamsSchema,
+  counterpartyStatementQuerySchema,
+  counterpartyStatementSchema,
   type IdParam,
   idParamSchema,
   type OpenItem,
@@ -36,6 +32,10 @@ import {
   openItemQueryAsOfSchema,
   openItemQuerySchema,
   openItemSchema,
+  type RunningBalances,
+  type RunningBalancesQuery,
+  runningBalancesQuerySchema,
+  runningBalancesSchema,
 } from '@vertex-mizan/contracts';
 import type { z } from 'zod';
 import { Access, CompanyRoute, inCompany, type RequestAccess } from '../../core/access/access.js';
@@ -125,7 +125,7 @@ export class ReceivablesController {
   @ApiQueryFrom(ageingQuerySchema)
   @CompanyRoute('open_items.read')
   @SerializeOptions({ schema: ageingReportSchema })
-  @ApiOkResponse({ description: 'The ageing by client', standardSchema: ageingReportSchema })
+  @ApiOkResponse({ description: 'The ageing by counterparty', standardSchema: ageingReportSchema })
   @ApiErrors(...COMPANY_READ_ERRORS, 'VALIDATION_FAILED')
   async ageing(
     @Access() access: RequestAccess,
@@ -147,57 +147,69 @@ export class ReceivablesController {
   }
 }
 
-/** `/api/client-funds`: the clients' running items, debit balances marked (S04 rule 17). */
+/**
+ * `/api/running-balances`: the running items of every counterparty, or of one type, debit balances
+ * marked (S04 rule 17, S11 rule 6).
+ */
 @ApiTags('open-items')
-@Controller('client-funds')
-export class ClientFundsController {
+@Controller('running-balances')
+export class RunningBalancesController {
   constructor(@Inject(OpenItemsService) private readonly items: OpenItemsService) {}
 
   @Get()
-  @ApiQueryFrom(clientFundsQuerySchema)
+  @ApiQueryFrom(runningBalancesQuerySchema)
   @CompanyRoute('open_items.read')
-  @SerializeOptions({ schema: clientFundsSchema })
-  @ApiOkResponse({ description: 'The client funds at the date', standardSchema: clientFundsSchema })
+  @SerializeOptions({ schema: runningBalancesSchema })
+  @ApiOkResponse({
+    description: 'The running balances at the date',
+    standardSchema: runningBalancesSchema,
+  })
   @ApiErrors(...COMPANY_READ_ERRORS, 'VALIDATION_FAILED')
   async list(
     @Access() access: RequestAccess,
-    @Query({ schema: clientFundsQuerySchema }) query: ClientFundsQuery,
-  ): Promise<ClientFunds> {
-    return this.items.clientFunds(inCompany(access), query);
+    @Query({ schema: runningBalancesQuerySchema }) query: RunningBalancesQuery,
+  ): Promise<RunningBalances> {
+    return this.items.runningBalances(inCompany(access), query);
   }
 }
 
-/** `/api/clients/:valueId/statement`: a client's statement and its export (S04 "Reports"). */
+/**
+ * `/api/counterparties/:valueId/statement`: a client's, supplier's or worker's statement and its
+ * export (S04 "Reports", S11 rule 6).
+ */
 @ApiTags('open-items')
-@Controller('clients')
-export class ClientsController {
+@Controller('counterparties')
+export class CounterpartiesController {
   constructor(@Inject(OpenItemsService) private readonly items: OpenItemsService) {}
 
   @Get(':valueId/statement')
-  @ApiParamsFrom(clientParamsSchema)
-  @ApiQueryFrom(clientStatementQuerySchema)
+  @ApiParamsFrom(counterpartyParamsSchema)
+  @ApiQueryFrom(counterpartyStatementQuerySchema)
   @CompanyRoute('open_items.read')
-  @SerializeOptions({ schema: clientStatementSchema })
-  @ApiOkResponse({ description: 'The client statement', standardSchema: clientStatementSchema })
+  @SerializeOptions({ schema: counterpartyStatementSchema })
+  @ApiOkResponse({
+    description: 'The counterparty statement',
+    standardSchema: counterpartyStatementSchema,
+  })
   @ApiErrors(...COMPANY_READ_ERRORS, 'VALIDATION_FAILED', 'NOT_FOUND')
   async statement(
     @Access() access: RequestAccess,
-    @Param({ schema: clientParamsSchema }) params: z.infer<typeof clientParamsSchema>,
-    @Query({ schema: clientStatementQuerySchema }) query: ClientStatementQuery,
-  ): Promise<ClientStatement> {
+    @Param({ schema: counterpartyParamsSchema }) params: z.infer<typeof counterpartyParamsSchema>,
+    @Query({ schema: counterpartyStatementQuerySchema }) query: CounterpartyStatementQuery,
+  ): Promise<CounterpartyStatement> {
     return this.items.statement(inCompany(access), params.valueId, query);
   }
 
   @Get(':valueId/statement/export')
-  @ApiParamsFrom(clientParamsSchema)
-  @ApiQueryFrom(clientStatementQuerySchema)
+  @ApiParamsFrom(counterpartyParamsSchema)
+  @ApiQueryFrom(counterpartyStatementQuerySchema)
   @CompanyRoute('open_items.read')
-  @ApiOkProducesResponse('The client statement as an Excel workbook', [XLSX])
+  @ApiOkProducesResponse('The counterparty statement as an Excel workbook', [XLSX])
   @ApiErrors(...COMPANY_READ_ERRORS, 'VALIDATION_FAILED', 'NOT_FOUND')
   async statementExport(
     @Access() access: RequestAccess,
-    @Param({ schema: clientParamsSchema }) params: z.infer<typeof clientParamsSchema>,
-    @Query({ schema: clientStatementQuerySchema }) query: ClientStatementQuery,
+    @Param({ schema: counterpartyParamsSchema }) params: z.infer<typeof counterpartyParamsSchema>,
+    @Query({ schema: counterpartyStatementQuerySchema }) query: CounterpartyStatementQuery,
   ): Promise<StreamableFile> {
     return fileOf(await this.items.statementExport(inCompany(access), params.valueId, query));
   }

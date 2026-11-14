@@ -68,6 +68,7 @@ export class AccountsController {
     'ACCOUNT_NOT_HEADER',
     'ACCOUNT_ARCHIVED',
     'STATEMENT_LINE_INVALID',
+    'CASH_ACCOUNT_INVALID',
   )
   async create(
     @Access() access: RequestAccess,
@@ -92,6 +93,7 @@ export class AccountsController {
     'ACCOUNT_HAS_CHILDREN',
     'ACCOUNT_ROLE_INVALID',
     'STATEMENT_LINE_INVALID',
+    'CASH_ACCOUNT_INVALID',
   )
   async update(
     @Access() access: RequestAccess,

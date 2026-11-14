@@ -25,7 +25,7 @@ afterAll(async () => {
   await db.$client.end();
 });
 
-async function ownerWith(template: 'general' | null) {
+async function ownerWith(template: 'general' | 'contracting' | null) {
   const owner = await signedInPerson(app, db);
   const company = await newCompany(owner.browser, { template });
   return { ...owner, company };
@@ -51,6 +51,14 @@ async function actions(companyId: string): Promise<string[]> {
     tx.select({ action: auditEntries.action }).from(auditEntries),
   );
   return rows.map((row) => row.action);
+}
+
+/** A built-in dimension type's id. */
+async function typeIdOf(browser: Browser, code: string): Promise<string> {
+  const types = (await browser.get('/api/dimension-types')).body as { id: string; code: string }[];
+  const found = types.find((type) => type.code === code);
+  if (!found) throw new Error(`No dimension type ${code}`);
+  return found.id;
 }
 
 const euroBank = (parentId: string) => ({
@@ -117,7 +125,10 @@ describe('templates (rule 1)', () => {
     ]);
     const listed = await owner.browser.get('/api/chart/templates');
     // The service-agency template left with Hub (ADR 0021).
-    expect(listed.body).toEqual([expect.objectContaining({ id: 'general', version: 3 })]);
+    expect(listed.body).toEqual([
+      expect.objectContaining({ id: 'general', version: 3 }),
+      expect.objectContaining({ id: 'contracting', version: 1, accountCount: 128 }),
+    ]);
     expect(
       (await owner.browser.post('/api/chart/apply-template', { templateId: 'service-agency' })).body
         .code,
@@ -189,16 +200,36 @@ describe('POST /api/accounts (rule 2)', () => {
         isMonetary: true,
         ...change,
       });
+    const client = await typeIdOf(owner.browser, 'client');
     expect((await account({ isControl: true })).body.code).toBe('VALIDATION_FAILED');
     expect((await account({ itemKind: 'document' })).body.code).toBe('VALIDATION_FAILED');
-    const created = await account({ isControl: true, itemKind: 'running' });
+    // S11 rule 5: a control account names its counterparty type and requires its dimension.
+    expect((await account({ isControl: true, itemKind: 'running' })).body.code).toBe(
+      'VALIDATION_FAILED',
+    );
+    expect(
+      (await account({ isControl: true, itemKind: 'running', counterpartyType: 'client' })).body,
+    ).toMatchObject({
+      code: 'VALIDATION_FAILED',
+      issues: [expect.objectContaining({ path: ['requiredDimensionTypeIds'] })],
+    });
+    const created = await account({
+      isControl: true,
+      itemKind: 'running',
+      counterpartyType: 'client',
+      requiredDimensionTypeIds: [client],
+    });
     expect(created.status, JSON.stringify(created.body)).toBe(201);
-    expect(created.body).toMatchObject({ isControl: true, itemKind: 'running' });
+    expect(created.body).toMatchObject({
+      isControl: true,
+      itemKind: 'running',
+      counterpartyType: 'client',
+    });
     // No longer a control account, it drops its item kind.
     const plain = await owner.browser.patch(`/api/accounts/${created.body.id}`, {
       isControl: false,
     });
-    expect(plain.body).toMatchObject({ isControl: false, itemKind: null });
+    expect(plain.body).toMatchObject({ isControl: false, itemKind: null, counterpartyType: null });
   });
 
   it('refuses a child of a postable account, a misfit statement line and a header with flags', async () => {
@@ -265,6 +296,94 @@ describe('POST /api/accounts (rule 2)', () => {
   });
 });
 
+describe('counterparty types and cash kinds (S11 rules 5, 7; ADR 0022)', () => {
+  it('applies contracting@1 at creation with its boxes, banks and counterparties', async () => {
+    const owner = await ownerWith('contracting');
+    const accounts = await tree(owner.browser);
+    expect(accounts).toHaveLength(chartTemplate('contracting').accounts.length);
+    expect(
+      accounts
+        .filter((account) => account.cashKind !== null)
+        .map((account) => [account.code, account.cashKind]),
+    ).toEqual([
+      ['111001', 'box'],
+      ['111002', 'box'],
+      ['111003', 'bank'],
+      ['111004', 'bank'],
+      ['111005', 'box'],
+    ]);
+    const supplier = await typeIdOf(owner.browser, 'supplier');
+    expect(byCode(accounts, '211001')).toMatchObject({
+      isControl: true,
+      itemKind: 'running',
+      counterpartyType: 'supplier',
+      requiredDimensionTypeIds: [supplier],
+    });
+    expect((await owner.browser.get('/api/account-roles')).body).toHaveLength(7);
+  });
+
+  it('marks a cash account, refuses a cash kind an account cannot carry, and audits the change', async () => {
+    const owner = await ownerWith('general');
+    const accounts = await tree(owner.browser);
+    const created = await owner.browser.post('/api/accounts', {
+      ...euroBank(byCode(accounts, '111').id),
+      cashKind: 'bank',
+    });
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
+    expect(created.body.cashKind).toBe('bank');
+    const box = await owner.browser.patch(`/api/accounts/${created.body.id}`, { cashKind: 'box' });
+    expect(box.body.cashKind).toBe('box');
+    const misfit = await owner.browser.patch(`/api/accounts/${byCode(accounts, '112002').id}`, {
+      cashKind: 'box',
+    });
+    expect(misfit.status).toBe(422);
+    expect(misfit.body.code).toBe('CASH_ACCOUNT_INVALID');
+    const audit = await withCompany(db, owner.company.id, (tx) =>
+      tx.select().from(auditEntries).where(eq(auditEntries.entityId, created.body.id)),
+    );
+    expect(audit.find((row) => row.action === 'account.updated')).toMatchObject({
+      before: { cashKind: 'bank' },
+      after: { cashKind: 'box' },
+    });
+  });
+
+  it('keeps the cash kind, the counterparty type and its dimension after first use', async () => {
+    const owner = await ownerWith('contracting');
+    const accounts = await tree(owner.browser);
+    const box = byCode(accounts, '111002');
+    const suppliers = byCode(accounts, '211001');
+    // Before first use the counterparty dimension is still required: VALIDATION_FAILED.
+    expect(
+      (
+        await owner.browser.patch(`/api/accounts/${suppliers.id}`, {
+          requiredDimensionTypeIds: [],
+        })
+      ).body.code,
+    ).toBe('VALIDATION_FAILED');
+    await withCompany(db, owner.company.id, (tx) =>
+      tx
+        .update(chartAccounts)
+        .set({ firstPostedAt: new Date() })
+        .where(eq(chartAccounts.code, '111002')),
+    );
+    await withCompany(db, owner.company.id, (tx) =>
+      tx
+        .update(chartAccounts)
+        .set({ firstPostedAt: new Date() })
+        .where(eq(chartAccounts.code, '211001')),
+    );
+    for (const [id, change] of [
+      [box.id, { cashKind: 'bank' }],
+      [box.id, { cashKind: null }],
+      [suppliers.id, { counterpartyType: 'worker' }],
+      [suppliers.id, { requiredDimensionTypeIds: [] }],
+    ] as const) {
+      const answer = await owner.browser.patch(`/api/accounts/${id}`, change);
+      expect(answer.body.code, JSON.stringify(change)).toBe('ACCOUNT_LOCKED');
+    }
+  });
+});
+
 describe('PATCH /api/accounts/:id (rules 3–4)', () => {
   it('changes an unused leaf freely, moves it with its code, and locks it after first use', async () => {
     const owner = await ownerWith('general');
@@ -279,6 +398,8 @@ describe('PATCH /api/accounts/:id (rules 3–4)', () => {
       name: 'المصرف — يورو',
       isControl: true,
       itemKind: 'document',
+      counterpartyType: 'client',
+      requiredDimensionTypeIds: [await typeIdOf(owner.browser, 'client')],
     });
     expect(renamed.body).toMatchObject({
       name: 'المصرف — يورو',

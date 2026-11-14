@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import {
-  ClientFundsController,
-  ClientsController,
+  RunningBalancesController,
+  CounterpartiesController,
   OpenItemsController,
   ReceivablesController,
 } from './open-items.controller.js';
@@ -12,8 +12,8 @@ import { OpenItemsService } from './open-items.service.js';
   controllers: [
     OpenItemsController,
     ReceivablesController,
-    ClientFundsController,
-    ClientsController,
+    RunningBalancesController,
+    CounterpartiesController,
   ],
   providers: [OpenItemsService],
 })
