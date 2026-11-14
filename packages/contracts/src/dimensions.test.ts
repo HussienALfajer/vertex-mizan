@@ -6,7 +6,6 @@ import {
   createDimensionValueSchema,
   DIMENSION_TYPE_LIMIT,
   dimensionValueQuerySchema,
-  linkDimensionValueSchema,
   updateDimensionTypeSchema,
   updateDimensionValueSchema,
 } from './dimensions.js';
@@ -55,12 +54,10 @@ describe('the dimension schemas', () => {
     ).toBe(false);
   });
 
-  it('refuse an empty change and an empty Hub ID', () => {
+  it('refuse an empty change', () => {
     expect(updateDimensionTypeSchema.safeParse({}).success).toBe(false);
     expect(updateDimensionValueSchema.safeParse({}).success).toBe(false);
     expect(updateDimensionValueSchema.safeParse({ code: null }).success).toBe(true);
-    expect(linkDimensionValueSchema.safeParse({ externalId: '  ' }).success).toBe(false);
-    expect(linkDimensionValueSchema.safeParse({ externalId: 'design' }).success).toBe(true);
   });
 
   it('need the type of the values listed', () => {
@@ -81,7 +78,6 @@ describe('the dimension schemas', () => {
         'DimensionValue',
         'CreateDimensionValue',
         'UpdateDimensionValue',
-        'LinkDimensionValue',
         'DimensionValueQuery',
         'DimensionValuePage',
       ]),

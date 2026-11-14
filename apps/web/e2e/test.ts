@@ -68,8 +68,6 @@ export const defaultCompany: Company = {
   booksStart: null,
   openingState: null,
   manualEntryApproval: false,
-  paymentToleranceSyp: '100',
-  paymentToleranceUsd: '100',
   archived: null,
   createdAt: '2026-10-20T08:00:00.000Z',
 };

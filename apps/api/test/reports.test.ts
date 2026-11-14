@@ -117,12 +117,9 @@ describe('/api/reports', () => {
     ).body as Profitability;
     expect(profitability.header.ledger).toBe('parallel');
     expect(profitability.rows).toEqual([]);
-    for (const [path, query] of [
-      ['/api/reports/contract-position', { asOf: to }],
-      ['/api/reports/revenue-schedule', { from: to.slice(0, 7) }],
-    ] as const) {
-      const read = await browser.get(path, query);
-      expect(read.status, `${path} ${JSON.stringify(read.body)}`).toBe(200);
+    // The reports only Hub's events fed left with Hub (ADR 0021).
+    for (const path of ['/api/reports/contract-position', '/api/reports/revenue-schedule']) {
+      expect((await browser.get(path, { asOf: to })).status, path).toBe(404);
     }
   });
 
@@ -160,8 +157,6 @@ describe('/api/reports', () => {
       { method: 'get', path: '/api/reports/income-statement', query: { from, to } },
       { method: 'get', path: '/api/reports/balance-sheet', query: { asOf: to } },
       { method: 'get', path: '/api/reports/profitability', query: { by: 'client', from, to } },
-      { method: 'get', path: '/api/reports/contract-position', query: { asOf: to } },
-      { method: 'get', path: '/api/reports/revenue-schedule', query: { from: to.slice(0, 7) } },
       { method: 'get', path: '/api/reports/lines', query: { to, account: id } },
       { method: 'get', path: `/api/dimension-values/${id}/departments` },
       { method: 'post', path: `/api/dimension-values/${id}/departments` },
@@ -218,20 +213,15 @@ describe('/api/dimension-values/:id/departments (S09 rules 32–34)', () => {
     expect(audit.status, JSON.stringify(audit.body)).toBe(200);
   });
 
-  it("refuses a Hub service's department by hand and a closed month", async () => {
+  it('refuses a department dated in a closed month', async () => {
     const book = await books(app, db);
-    const { service, hubService, department } = await values(book);
-    const linked = await book.owner.browser.post(`/api/dimension-values/${hubService}/link`, {
-      externalId: 'hub-service-2',
-    });
-    expect(linked.status, JSON.stringify(linked.body)).toBe(200);
+    const { service, department } = await values(book);
     const set = (id: string, effectiveFrom: string) =>
       book.owner.browser.post(`/api/dimension-values/${id}/departments`, {
         departmentValueId: department,
         effectiveFrom,
         reason: 'سبب تجريبي',
       });
-    expect((await set(hubService, today())).body.code).toBe('DIMENSION_FROM_HUB');
     // Today's month holds an entry and is closed by hand: its department date is refused.
     await posted(book.owner.browser, {
       entryDate: today(),

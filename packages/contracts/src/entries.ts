@@ -149,24 +149,11 @@ export const draftLineInputSchema = z
     openItemId: z.uuid().nullable().default(null),
     /** The manual document item the line opens (S04 rule 6). */
     newItem: newItemSchema.nullable().default(null),
-    /**
-     * The opening schedule a contract liability line clears (S10 rule 28): its id, as
-     * `/api/revenue`'s opening schedules list it with Hub's invoice and line. The line takes the
-     * schedule's dimensions and must be for exactly what it still carries.
-     */
-    scheduleId: z.uuid().nullable().default(null),
   })
   .refine((line) => line.openItemId === null || line.newItem === null, {
     message: 'A line moves an item or opens one, not both',
     path: ['newItem'],
   })
-  .refine(
-    (line) => line.scheduleId === null || (line.openItemId === null && line.newItem === null),
-    {
-      message: 'A line clears a schedule or names an item, not both',
-      path: ['scheduleId'],
-    },
-  )
   .meta({ id: 'DraftLineInput' });
 
 export type DraftLineInput = z.infer<typeof draftLineInputSchema>;
@@ -214,8 +201,6 @@ export const draftLineSchema = z
     memo: z.string().nullable(),
     openItemId: z.uuid().nullable(),
     newItem: newItemSchema.nullable(),
-    /** The opening schedule the line clears (S10 rule 28). */
-    scheduleId: z.uuid().nullable(),
   })
   .meta({ id: 'DraftLine' });
 
@@ -665,8 +650,7 @@ export const CONTROL_ACCOUNT_AMOUNTS = ['transaction', 'book', 'parallel'] as co
  * The integrity check's report (S03 rule 19): the chain recomputed from the first entry, the
  * numbers per fiscal year, each entry's balance in both ledgers, the period balances against the
  * lines, the ledger head, every stored anchor and the pasted one; each control account against
- * its items and each item's balance row against its movements (S04); each contract's
- * recognition schedules against its contract liability lines (S06). `ok` only when all hold.
+ * its items and each item's balance row against its movements (S04). `ok` only when all hold.
  */
 export const integrityReportSchema = z
   .object({
@@ -731,17 +715,6 @@ export const integrityReportSchema = z
     /** An item's balance row that disagrees with its movements, or one missing (S04). */
     openItemBalances: z.array(
       z.object({ itemId: z.uuid(), problem: z.enum(PERIOD_BALANCE_PROBLEMS) }),
-    ),
-    /**
-     * A contract whose recognition schedules' movements disagree with the contract liability
-     * lines of the entries they describe, in a currency (S06 "Data"): which amount differs.
-     */
-    recognition: z.array(
-      z.object({
-        contractValueId: z.uuid().nullable(),
-        currency: currencyCodeSchema,
-        amount: z.enum(CONTROL_ACCOUNT_AMOUNTS),
-      }),
     ),
     anchors: z.array(
       z.object({

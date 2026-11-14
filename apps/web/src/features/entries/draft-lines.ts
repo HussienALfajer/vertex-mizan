@@ -30,8 +30,6 @@ export interface EditLine {
    */
   readonly openItemId: string | null;
   readonly newItem: { readonly reference: string; readonly dueOn: string | null } | null;
-  /** The opening schedule a contract liability line clears (S10 rule 28), kept as saved. */
-  readonly scheduleId: string | null;
 }
 
 /** A dealt rate as typed, for a pair the entry has (rule 13): `null` when none is given. */
@@ -67,7 +65,6 @@ export function emptyLine(): EditLine {
     memo: '',
     openItemId: null,
     newItem: null,
-    scheduleId: null,
   };
 }
 
@@ -108,7 +105,6 @@ export function editDraftOf(draft: Draft): EditDraft {
             memo: line.memo ?? '',
             openItemId: line.openItemId,
             newItem: line.newItem,
-            scheduleId: line.scheduleId,
           })),
   };
 }
@@ -122,8 +118,7 @@ export function isBlankLine(line: EditLine): boolean {
     line.amountMinor === null &&
     line.memo.trim() === '' &&
     line.openItemId === null &&
-    line.newItem === null &&
-    line.scheduleId === null
+    line.newItem === null
   );
 }
 
@@ -174,7 +169,6 @@ export function draftInputOf(
             memo: text(line.memo),
             openItemId: line.openItemId,
             newItem: line.newItem,
-            scheduleId: line.scheduleId,
           })),
   };
 }

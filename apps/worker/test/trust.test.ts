@@ -73,7 +73,7 @@ async function company(name: string, owners: string[], entries: number): Promise
         ledgers: SYP_USD,
         fiscalYearStartMonth: 1,
         policyNote: 'مذكرة سياسة تجريبية.',
-        template: 'service-agency',
+        template: 'general',
         createdByUserId: people.first,
       },
       actor(),

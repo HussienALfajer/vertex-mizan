@@ -217,7 +217,6 @@ export function draftOf(input: DraftInput, fields: Partial<Draft> & Pick<Draft, 
       memo: line.memo,
       openItemId: line.openItemId,
       newItem: line.newItem,
-      scheduleId: line.scheduleId,
     })),
     preparedBy: ownerRef,
     submitted: null,
@@ -246,7 +245,6 @@ export const purchaseInput: DraftInput = {
       memo: null,
       openItemId: null,
       newItem: null,
-      scheduleId: null,
     },
     {
       accountId: sypBank.id,
@@ -256,7 +254,6 @@ export const purchaseInput: DraftInput = {
       memo: null,
       openItemId: null,
       newItem: null,
-      scheduleId: null,
     },
   ],
 };

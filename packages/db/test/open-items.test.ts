@@ -48,6 +48,7 @@ import {
   users,
   withCompany,
 } from '../src/index.js';
+import { addTestControlAccounts } from '../src/testing.js';
 import { connect, refusal } from './connections.js';
 
 // S04's open items on the migrated database (0019–0022): the posting function's item lines (manual
@@ -102,8 +103,8 @@ interface Books {
  */
 async function newBooks(): Promise<Books> {
   const id = uuidv7();
-  await withCompany(app, id, (tx) =>
-    createCompanyBooks(
+  await withCompany(app, id, async (tx) => {
+    await createCompanyBooks(
       tx,
       id,
       {
@@ -112,12 +113,13 @@ async function newBooks(): Promise<Books> {
         ledgers: SYP_USD,
         fiscalYearStartMonth: 1,
         policyNote: 'مذكرة سياسة تجريبية.',
-        template: 'service-agency',
+        template: 'general',
         createdByUserId: personId,
       },
       actor(),
-    ),
-  );
+    );
+    await addTestControlAccounts(tx, id, actor());
+  });
   for (const [on, type, value] of [
     ['2026-11-03', 'bulletin', '120.0000'],
     ['2026-11-10', 'bulletin', '122.0000'],

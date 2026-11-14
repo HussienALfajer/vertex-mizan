@@ -1,6 +1,5 @@
 import {
   type CurrencyCode,
-  chartTemplateIdSchema,
   createAccountSchema,
   createDimensionValueSchema,
   currencyCodeSchema,
@@ -10,6 +9,7 @@ import {
 } from '@vertex-mizan/contracts';
 import {
   addBulletinHoliday,
+  applyChart,
   auditEntries,
   blockAccount,
   chartAccounts,
@@ -22,12 +22,10 @@ import {
   dimensionValues,
   discardDraft,
   entriesUsingRate,
-  inboundEvents,
   insertDraft,
   journalEntries,
   journalLines,
   ledgerHeads,
-  linkDimensionValue,
   lockedAccount,
   openItemBalances,
   openItems,
@@ -35,7 +33,6 @@ import {
   post,
   postRevaluation,
   previewRevaluation,
-  recognitionSchedules,
   recordRate,
   reopenPeriod,
   setBulletinDaysOff,
@@ -43,9 +40,11 @@ import {
   users,
   withCompany,
 } from '@vertex-mizan/db';
-import { and, asc, desc, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import { z } from 'zod';
+import { bookChart } from './agency-chart.js';
+import { advanceClock, caseToday, dayAfterMonth } from './clock.js';
 import type { CaseCompany, Step } from './format.js';
 import type {
   BalanceQuery,
@@ -58,24 +57,12 @@ import type {
   ScenarioDatabase,
   StepResult,
 } from './harness.js';
-import {
-  advanceClock,
-  caseToday,
-  dayAfterMonth,
-  hubInvoiceLine,
-  hubValueId,
-  inboxActions,
-  runRetries,
-} from './hub.js';
 import type { NamedValue } from './run.js';
 
 // The parts of the book that run through the system itself (S03): the case's company made by the
 // company, chart and rate services the API and the server commands use, the manual, reversal and
 // rate steps through the posting function and the rate service, and the ledger read from the
 // database as the reports read it, never from an executor's answer.
-
-/** The accountant's inbox actions (S05), as the case's bookkeeper. */
-export const actions = inboxActions((companyId) => bookkeeperOf(companyId));
 
 /** Each case company's bookkeeper: the person who records its rates and posts its entries. */
 const bookkeepers = new Map<string, PersonActor>();
@@ -109,7 +96,7 @@ async function accountIdsByCode(tx: Transaction): Promise<Map<string, string>> {
  * ledgers and chart template (`createCompanyBooks`); the accounts the case adds, under their
  * template headers (`createAccount`); the dimension values it names, of the company's types, each
  * named by its code (`createDimensionValue`, S04); its bulletin calendar; and its rate rows, in
- * order (`recordRate`). Closed periods arrive with S07's close, Hub's rate rows with S05.
+ * order (`recordRate`). Closed periods arrive with S07's close.
  */
 export async function setUp(
   database: ScenarioDatabase,
@@ -142,12 +129,18 @@ export async function setUp(
         ledgers: company.ledgers,
         fiscalYearStartMonth: 1,
         policyNote: 'سياسة الشركة في كتاب السيناريوهات.',
-        template: company.template === null ? null : chartTemplateIdSchema.parse(company.template),
+        template: null,
         createdByUserId: person.id,
         booksStart: company.booksStart,
       },
       actor,
     );
+    // The case's chart: a template of contracts, or the book's frozen service-agency chart.
+    if (company.template !== null) {
+      const chart = bookChart(company.template);
+      if (chart === undefined) throw new Error(`No chart ${company.template} in the book`);
+      await applyChart(tx, companyId, chart, actor);
+    }
     const accounts = await accountIdsByCode(tx);
     for (const account of company.accounts) {
       await createAccount(
@@ -199,23 +192,14 @@ export async function setUp(
         actor,
       );
       made.set(`${value.type}:${value.code}`, value_.id);
-      // A value a manual step names before Hub's event brings it: linked to its Hub ID (S02 rule 11).
-      if (value.hub === true) {
-        await linkDimensionValue(
-          tx,
-          companyId,
-          actor,
-          value_,
-          hubValueId(companyId, value.type, value.code),
-        );
-      }
     }
     await setBulletinDaysOff(tx, companyId, actor, company.calendar.daysOff);
     for (const on of company.calendar.holidays) {
       await addBulletinHoliday(tx, companyId, actor, { on, note: 'عطلة في السيناريو' });
     }
     for (const rate of rates) {
-      if (rate.source !== 'manual') throw new Error(`A ${rate.source} rate row arrives with S05`);
+      if (rate.source !== 'manual')
+        throw new Error(`A ${rate.source} rate row: the book records manual rows`);
       await recordRate(tx, companyId, actor, { ...rate, source: 'manual' });
     }
   });
@@ -262,11 +246,6 @@ const manualPayloadSchema = z.strictObject({
           })
           .optional(),
         item: z.string().trim().min(1).max(100).optional(),
-        // S10 rule 28: the opening schedule a contract liability line clears, `<invoice>/<line>`.
-        schedule: z
-          .string()
-          .regex(/^[^/\s]+\/[^/\s]+$/)
-          .optional(),
       }),
     )
     .min(1),
@@ -316,38 +295,8 @@ async function dimensionValueIds(
   return ids;
 }
 
-/**
- * The id of the opening schedule of an invoice line, named `<invoice number>/<line>`: the latest
- * opening's, since a reversed opening's schedule stands no more (S10 rule 25).
- */
-async function scheduleIdOf(
-  tx: Transaction,
-  companyId: string,
-  named: string,
-): Promise<string | null> {
-  const [number, line] = named.split('/') as [string, string];
-  const { invoiceId, lineId } = hubInvoiceLine(companyId, number, line);
-  const [found] = await tx
-    .select({ id: recognitionSchedules.id })
-    .from(recognitionSchedules)
-    .where(
-      and(
-        eq(recognitionSchedules.invoiceDocumentId, invoiceId),
-        eq(recognitionSchedules.lineId, lineId),
-        sql`${recognitionSchedules.openingId} is not null`,
-      ),
-    )
-    .orderBy(desc(recognitionSchedules.createdAt))
-    .limit(1);
-  return found?.id ?? null;
-}
-
 /** A manual payload's lines as the manual-entry form sends them, accounts and items by id. */
-async function manualLines(
-  tx: Transaction,
-  companyId: string,
-  payload: z.infer<typeof manualPayloadSchema>,
-) {
+async function manualLines(tx: Transaction, payload: z.infer<typeof manualPayloadSchema>) {
   const accounts = await accountIdsByCode(tx);
   const lines = [];
   for (const line of payload.lines) {
@@ -365,10 +314,6 @@ async function manualLines(
       // An unknown reference is the posting function's to refuse (`NOT_FOUND`).
       ...(line.item !== undefined && {
         openItemId: (await itemIdOf(tx, accountId, line.item)) ?? uuidv7(),
-      }),
-      // An unknown schedule is the posting function's to refuse (`NOT_FOUND`).
-      ...(line.schedule !== undefined && {
-        scheduleId: (await scheduleIdOf(tx, companyId, line.schedule)) ?? uuidv7(),
       }),
     });
   }
@@ -388,7 +333,7 @@ export function manual(
   advanceClock(context.companyId, step.accountingDate);
   return outcomeOf(
     withCompany(context.database.app, context.companyId, async (tx) => {
-      const lines = await manualLines(tx, context.companyId, payload);
+      const lines = await manualLines(tx, payload);
       await post(tx, {
         client: 'manual',
         idempotencyKey: uuidv7(),
@@ -493,7 +438,7 @@ export function draft(
   advanceClock(context.companyId, step.accountingDate);
   return outcomeOf(
     withCompany(context.database.app, context.companyId, async (tx) => {
-      const lines = await manualLines(tx, context.companyId, payload);
+      const lines = await manualLines(tx, payload);
       const id = await insertDraft(
         tx,
         context.companyId,
@@ -511,7 +456,6 @@ export function draft(
             memo: line.memo,
             openItemId: line.openItemId ?? null,
             newItem: line.newItem ?? null,
-            scheduleId: line.scheduleId ?? null,
           })),
         }),
       );
@@ -570,17 +514,14 @@ export async function close(
   }
 }
 
-/**
- * The latest closed month reopened with a reason (S07 rules 3, 6); the events it frees are retried
- * after the commit, as the worker's `events.retry` does.
- */
+/** The latest closed month reopened with a reason (S07 rules 3, 6). */
 export async function reopen(
   context: CaseContext,
   step: Extract<Step, { kind: 'reopen' }>,
 ): Promise<StepResult> {
   const actor = bookkeeperOf(context.companyId);
   try {
-    const { triggers } = await withCompany(context.database.app, context.companyId, (tx) =>
+    await withCompany(context.database.app, context.companyId, (tx) =>
       reopenPeriod(tx, {
         period: step.period,
         reason: step.reason,
@@ -588,7 +529,6 @@ export async function reopen(
         actor,
       }),
     );
-    await runRetries(context.database, context.companyId, triggers);
     return { status: 'done' };
   } catch (error) {
     return periodOutcome(error);
@@ -638,10 +578,6 @@ export async function rate(
       const usedBy = await entriesUsingRate(tx, recorded.supersededId);
       return { status: 'done' as const, usedBy: usedBy.map((entry) => Number(entry.sequence)) };
     });
-    // The held events of that date and after are retried, as the worker does after the commit.
-    await runRetries(context.database, context.companyId, [
-      { kind: 'rate', on: step.rate.effectiveOn },
-    ]);
     return result;
   } catch (error) {
     if (error instanceof DomainError) return { status: 'refused', reason: error.code };
@@ -662,16 +598,8 @@ export const ledger: LedgerReader = {
   entries: (context) =>
     withCompany(context.database.app, context.companyId, async (tx) => {
       const entries = await tx.select().from(journalEntries).orderBy(asc(journalEntries.sequence));
-      // A Hub entry's source is its event's type, its reversals' too (S05 rule 14).
-      const events = await tx
-        .select({ id: inboundEvents.id, type: inboundEvents.type })
-        .from(inboundEvents);
       const sourceOf = (entry: (typeof entries)[number]) =>
-        entry.source === 'hub_event'
-          ? (events.find((event) => event.id === entry.sourceRef)?.type ?? 'hub_event')
-          : entry.reversesEntryId === null
-            ? entry.source
-            : 'reversal';
+        entry.reversesEntryId === null ? entry.source : 'reversal';
       const lines = await tx
         .select({ line: journalLines, code: chartAccounts.code })
         .from(journalLines)

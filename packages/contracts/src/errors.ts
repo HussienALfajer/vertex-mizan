@@ -1,8 +1,9 @@
 import { z } from 'zod';
 
 /**
- * Stable error codes (ADR 0006), with the HTTP status the API answers with. A code is never
- * renamed, removed or reused: Hub and other integrators read it. New codes go at the end, with a
+ * Stable error codes (ADR 0006, whose rule on codes outlives it: ADR 0021), with the HTTP status
+ * the API answers with. A code is never renamed, removed or reused: a removed feature's codes stay,
+ * retired (`RETIRED_ERROR_CODES`). New codes go at the end, with a
  * line in the list in `errors.test.ts`; each feature adds the codes of its rules. Front ends show
  * the Arabic text of the code through i18n; `message` is English and for logs only.
  */
@@ -121,9 +122,9 @@ export const errorStatus = {
   DIMENSION_TYPE_IN_USE: 409,
   /** The dimension type or value code is used. */
   DIMENSION_CODE_TAKEN: 409,
-  /** The dimension value already has a Hub ID; the link never changes. */
+  /** Retired (ADR 0021): the dimension value already has a Hub ID; the link never changes. */
   DIMENSION_ALREADY_LINKED: 409,
-  /** Another value of the type holds the Hub ID. */
+  /** Retired (ADR 0021): another value of the type holds the Hub ID. */
   DIMENSION_LINK_TAKEN: 409,
   /** The pair is held the other way round (ADR 0011). */
   RATE_ORIENTATION: 422,
@@ -195,7 +196,7 @@ export const errorStatus = {
   /** A change Mizan leaves to Hub, such as a Hub item's due date (S04 rule 15). */
   OPEN_ITEM_FROM_HUB: 409,
 
-  // The posting API and the event inbox (S05, ADR 0014).
+  // The posting API and the event inbox (S05, ADR 0014): retired with Hub (ADR 0021).
   /** The company assigned the event's document type to another API client, or to none (rule 3). */
   SOURCE_NOT_ALLOWED: 409,
   /** An API client has two active keys already: revoke one first (S05 rule 19). */
@@ -221,7 +222,7 @@ export const errorStatus = {
   /** An item of the pre-close checklist fails (S07 rules 2, 8; details: items). */
   CHECKLIST_FAILED: 409,
 
-  // Daily reconciliation (S08, ADR 0017).
+  // Daily reconciliation (S08, ADR 0017): retired with Hub (ADR 0021).
   /** The start date moves later only while no month it would release is closed (S08 rule 13). */
   RECONCILIATION_START_LOCKED: 409,
 
@@ -249,6 +250,24 @@ export const errorStatus = {
 } as const satisfies Record<string, number>;
 
 export type ErrorCode = keyof typeof errorStatus;
+
+/**
+ * The codes of features removed with Hub (ADR 0021): a dimension value's Hub link (S02), the posting
+ * API, its keys and the inbox's actions (S05) and the reconciliation's start date (S08). They stay
+ * in `errorStatus`, in their place and with their status (`pnpm check:error-codes`), and nothing
+ * raises them or reuses them.
+ */
+export const RETIRED_ERROR_CODES = [
+  'DIMENSION_ALREADY_LINKED',
+  'DIMENSION_LINK_TAKEN',
+  'SOURCE_NOT_ALLOWED',
+  'API_KEY_LIMIT',
+  'EVENT_NOT_HELD',
+  'EVENT_ACTION_NOT_ALLOWED',
+  'ENTRY_ALREADY_LINKED',
+  'MAPPING_ACCOUNT_INVALID',
+  'RECONCILIATION_START_LOCKED',
+] as const satisfies readonly ErrorCode[];
 
 export const errorCodes = Object.keys(errorStatus) as [ErrorCode, ...ErrorCode[]];
 

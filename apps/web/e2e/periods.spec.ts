@@ -173,7 +173,7 @@ test.describe('the periods', () => {
     await answer(page, 'GET', '/periods/2026-10', { status: 200, json: closedOctober });
     const reopens = await answer(page, 'POST', '/periods/2026-10/reopen', {
       status: 200,
-      json: { period: reopenedOctober, queuedEvents: 2 },
+      json: { period: reopenedOctober },
     });
     await page.goto('/periods/2026-10');
     await expect(page.getByRole('button', { name: t.close.action })).toHaveCount(0);
@@ -184,9 +184,7 @@ test.describe('the periods', () => {
     await dialog.getByRole('button', { name: t.reopen.confirm }).click();
     await expect(dialog).toBeHidden();
     expect(reopens[0]?.postDataJSON()).toEqual({ reason: 'دفعة متأخرة من عميل' });
-    await expect(
-      page.getByRole('status').filter({ hasText: `${t.reopen.queued}: 2` }),
-    ).toBeVisible();
+    await expect(page.getByRole('status').filter({ hasText: t.reopen.done })).toBeVisible();
   });
 
   test('keeps the close off while an earlier month is open (rule 2)', async ({ page }) => {
@@ -241,7 +239,7 @@ test.describe('the revaluation', () => {
     await expect(item).toContainText('120,000.00');
     await expect(item).toContainText('125,000.00');
     await expect(item).toContainText('5,000.00');
-    await expect(balances.getByRole('row').filter({ hasText: '211002' })).toContainText(
+    await expect(balances.getByRole('row').filter({ hasText: '211003' })).toContainText(
       r.balances.blocked,
     );
     await expect(page.getByText(r.gain).locator('..')).toContainText('5,500.00');

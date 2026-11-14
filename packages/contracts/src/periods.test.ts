@@ -4,6 +4,7 @@ import { MOVEMENT_KINDS } from './open-items.js';
 import {
   CHECKLIST_ITEMS,
   failingItems,
+  monthsOf,
   PERIOD_STATES,
   periodReasonSchema,
   periodSchema,
@@ -137,5 +138,18 @@ describe('the period schemas (S07 rules 1–9, "API")', () => {
     });
     expect(periodsQuerySchema.safeParse({ from: '2026-12', to: '2026-10' }).success).toBe(false);
     expect(periodsQuerySchema.parse({})).toEqual({});
+  });
+});
+
+describe('monthsOf', () => {
+  it('lists the months of a range in order, across a year', () => {
+    expect(monthsOf({ from: '2026-11', to: '2027-02' })).toEqual([
+      '2026-11',
+      '2026-12',
+      '2027-01',
+      '2027-02',
+    ]);
+    expect(monthsOf({ from: '2025-02', to: '2027-01' })).toHaveLength(24);
+    expect(monthsOf({ from: '2026-05', to: '2026-04' })).toEqual([]);
   });
 });

@@ -3237,98 +3237,6 @@
         ]
       }
     },
-    "/api/dimension-values/{id}/link": {
-      "post": {
-        "operationId": "DimensionValuesController_link",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/LinkDimensionValue"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "The value, linked to its Hub ID",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DimensionValue"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "UNAUTHENTICATED",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "TWO_FACTOR_REQUIRED, FORBIDDEN",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "NOT_FOUND",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "COMPANY_NOT_SELECTED, COMPANY_SWITCHED, COMPANY_ARCHIVED, DIMENSION_ALREADY_LINKED, DIMENSION_LINK_TAKEN",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "VALIDATION_FAILED",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "dimensions"
-        ]
-      }
-    },
     "/api/dimension-values/{id}/departments": {
       "get": {
         "operationId": "DimensionValuesController_departments",
@@ -8069,7 +7977,7 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": "The opening: its state, Hub's snapshot and items, the records' lines and figures, the agreement, the entry it would post, the checks and the fingerprint",
+            "description": "The opening: its state, the records' lines, the entry it would post, the checks and the fingerprint",
             "content": {
               "application/json": {
                 "schema": {
@@ -8194,15 +8102,14 @@
             "schema": {
               "type": "string",
               "enum": [
-                "preview",
-                "agreement"
+                "preview"
               ]
             }
           }
         ],
         "responses": {
           "200": {
-            "description": "The opening's preview or its agreement with Hub as an Excel workbook",
+            "description": "The opening's preview as an Excel workbook",
             "content": {
               "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {
                 "schema": {
@@ -9322,195 +9229,6 @@
         ]
       }
     },
-    "/api/reports/contract-position": {
-      "get": {
-        "operationId": "ReportsController_contractPosition",
-        "parameters": [
-          {
-            "name": "asOf",
-            "required": true,
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "format": "date",
-              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
-            }
-          },
-          {
-            "name": "ledger",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "default": "book",
-              "type": "string",
-              "enum": [
-                "book",
-                "parallel"
-              ]
-            }
-          },
-          {
-            "name": "client",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Each contract’s gross positions and net, with totals agreeing with the balance sheet",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ContractPosition"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "UNAUTHENTICATED",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "TWO_FACTOR_REQUIRED, FORBIDDEN",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "COMPANY_NOT_SELECTED, COMPANY_SWITCHED",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "VALIDATION_FAILED",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "reports"
-        ]
-      }
-    },
-    "/api/reports/revenue-schedule": {
-      "get": {
-        "operationId": "ReportsController_revenueSchedule",
-        "parameters": [
-          {
-            "name": "from",
-            "required": true,
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "pattern": "^\\d{4}-(0[1-9]|1[0-2])$"
-            }
-          },
-          {
-            "name": "ledger",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "default": "book",
-              "type": "string",
-              "enum": [
-                "book",
-                "parallel"
-              ]
-            }
-          },
-          {
-            "name": "contract",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "The revenue releases still to post per month and contract, and what waits for a done",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RevenueReleaseSchedule"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "UNAUTHENTICATED",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "TWO_FACTOR_REQUIRED, FORBIDDEN",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "COMPANY_NOT_SELECTED, COMPANY_SWITCHED",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "VALIDATION_FAILED",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "reports"
-        ]
-      }
-    },
     "/api/reports/lines": {
       "get": {
         "operationId": "ReportsController_lines",
@@ -10142,9 +9860,7 @@
                 "journal_book",
                 "income_statement",
                 "balance_sheet",
-                "profitability",
-                "contract_position",
-                "revenue_schedule"
+                "profitability"
               ]
             }
           }
@@ -10884,17 +10600,8 @@
           "company.export",
           "open_items.read",
           "open_items.manage",
-          "events.read",
-          "events.manage",
-          "events.dismiss",
-          "posting_rules.read",
-          "posting_rules.manage",
-          "api_clients.read",
-          "api_clients.manage",
-          "recognition.read",
           "periods.read",
           "revaluation.post",
-          "reconciliation.read",
           "reports.read",
           "opening.read",
           "opening.prepare",
@@ -11324,7 +11031,6 @@
       "ChartTemplateId": {
         "type": "string",
         "enum": [
-          "service-agency",
           "general"
         ]
       },
@@ -11374,12 +11080,6 @@
           "manualEntryApproval": {
             "type": "boolean"
           },
-          "paymentToleranceSyp": {
-            "$ref": "#/components/schemas/MinorUnits"
-          },
-          "paymentToleranceUsd": {
-            "$ref": "#/components/schemas/MinorUnits"
-          },
           "archived": {
             "nullable": true,
             "type": "object",
@@ -11416,8 +11116,6 @@
           "booksStart",
           "openingState",
           "manualEntryApproval",
-          "paymentToleranceSyp",
-          "paymentToleranceUsd",
           "archived",
           "createdAt"
         ],
@@ -11435,11 +11133,6 @@
           "posted",
           "reversed"
         ]
-      },
-      "MinorUnits": {
-        "type": "string",
-        "pattern": "^(0|-?[1-9]\\d{0,18})$",
-        "description": "An integer amount in minor units of its currency, as a decimal string"
       },
       "UpdateCompanyProfile": {
         "type": "object",
@@ -11464,20 +11157,6 @@
           },
           "manualEntryApproval": {
             "type": "boolean"
-          },
-          "paymentToleranceSyp": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/MinorUnits"
-              }
-            ]
-          },
-          "paymentToleranceUsd": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/MinorUnits"
-              }
-            ]
           }
         }
       },
@@ -12861,22 +12540,6 @@
           }
         }
       },
-      "LinkDimensionValue": {
-        "type": "object",
-        "properties": {
-          "externalId": {
-            "$ref": "#/components/schemas/ExternalId"
-          }
-        },
-        "required": [
-          "externalId"
-        ]
-      },
-      "ExternalId": {
-        "type": "string",
-        "minLength": 1,
-        "maxLength": 100
-      },
       "ServiceDepartmentHistory": {
         "type": "object",
         "properties": {
@@ -13664,6 +13327,11 @@
         ],
         "additionalProperties": false
       },
+      "MinorUnits": {
+        "type": "string",
+        "pattern": "^(0|-?[1-9]\\d{0,18})$",
+        "description": "An integer amount in minor units of its currency, as a decimal string"
+      },
       "Entry": {
         "type": "object",
         "properties": {
@@ -14437,12 +14105,6 @@
                 "$ref": "#/components/schemas/NewItem"
               }
             ]
-          },
-          "scheduleId": {
-            "nullable": true,
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
           }
         },
         "required": [
@@ -14453,8 +14115,7 @@
           "amountMinor",
           "memo",
           "openItemId",
-          "newItem",
-          "scheduleId"
+          "newItem"
         ],
         "additionalProperties": false
       },
@@ -14896,13 +14557,6 @@
                 "$ref": "#/components/schemas/NewItem"
               }
             ]
-          },
-          "scheduleId": {
-            "default": null,
-            "nullable": true,
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
           }
         },
         "required": [
@@ -15454,37 +15108,6 @@
               "additionalProperties": false
             }
           },
-          "recognition": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "contractValueId": {
-                  "nullable": true,
-                  "type": "string",
-                  "format": "uuid",
-                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-                },
-                "currency": {
-                  "$ref": "#/components/schemas/CurrencyCode"
-                },
-                "amount": {
-                  "type": "string",
-                  "enum": [
-                    "transaction",
-                    "book",
-                    "parallel"
-                  ]
-                }
-              },
-              "required": [
-                "contractValueId",
-                "currency",
-                "amount"
-              ],
-              "additionalProperties": false
-            }
-          },
           "anchors": {
             "type": "array",
             "items": {
@@ -15555,7 +15178,6 @@
           "periodBalances",
           "controlAccounts",
           "openItemBalances",
-          "recognition",
           "anchors",
           "pasted"
         ],
@@ -15922,12 +15544,6 @@
               }
             ]
           },
-          "hubEventId": {
-            "nullable": true,
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
           "openedByEntryId": {
             "type": "string",
             "format": "uuid",
@@ -15972,7 +15588,6 @@
           "adjusted",
           "asOf",
           "hubDocument",
-          "hubEventId",
           "openedByEntryId",
           "bookCurrency",
           "parallelCurrency",
@@ -16927,16 +16542,10 @@
         "properties": {
           "period": {
             "$ref": "#/components/schemas/PeriodDetail"
-          },
-          "queuedEvents": {
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 9007199254740991
           }
         },
         "required": [
-          "period",
-          "queuedEvents"
+          "period"
         ],
         "additionalProperties": false
       },
@@ -17382,9 +16991,6 @@
             "format": "date",
             "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
           },
-          "hubClient": {
-            "type": "boolean"
-          },
           "state": {
             "nullable": true,
             "allOf": [
@@ -17398,65 +17004,10 @@
             "minimum": 0,
             "maximum": 9007199254740991
           },
-          "snapshot": {
-            "nullable": true,
-            "type": "object",
-            "properties": {
-              "id": {
-                "type": "string",
-                "format": "uuid",
-                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-              },
-              "receivedAt": {
-                "type": "string",
-                "format": "date-time",
-                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
-              },
-              "result": {
-                "$ref": "#/components/schemas/OpeningSnapshotResult"
-              }
-            },
-            "required": [
-              "id",
-              "receivedAt",
-              "result"
-            ],
-            "additionalProperties": false
-          },
-          "hubItems": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/OpeningHubItem"
-            }
-          },
-          "schedules": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/OpeningSchedule"
-            }
-          },
           "recordLines": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/OpeningRecordLine"
-            }
-          },
-          "recordFigures": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/OpeningRecordFigure"
-            }
-          },
-          "differences": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/OpeningDifference"
-            }
-          },
-          "agreement": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/OpeningDifference"
             }
           },
           "lines": {
@@ -17531,488 +17082,14 @@
         "required": [
           "booksStart",
           "asOf",
-          "hubClient",
           "state",
           "version",
-          "snapshot",
-          "hubItems",
-          "schedules",
           "recordLines",
-          "recordFigures",
-          "differences",
-          "agreement",
           "lines",
           "checks",
           "fingerprint",
           "posted",
           "reversed"
-        ],
-        "additionalProperties": false
-      },
-      "OpeningSnapshotResult": {
-        "type": "object",
-        "properties": {
-          "snapshot_id": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "as_of": {
-            "type": "string",
-            "format": "date",
-            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
-          },
-          "received_at": {
-            "type": "string",
-            "format": "date-time",
-            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
-          },
-          "replayed": {
-            "type": "boolean"
-          },
-          "counts": {
-            "type": "object",
-            "properties": {
-              "invoices": {
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 9007199254740991
-              },
-              "credits": {
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 9007199254740991
-              },
-              "milestones": {
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 9007199254740991
-              },
-              "wallets": {
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 9007199254740991
-              },
-              "prior_documents": {
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 9007199254740991
-              }
-            },
-            "required": [
-              "invoices",
-              "credits",
-              "milestones",
-              "wallets",
-              "prior_documents"
-            ],
-            "additionalProperties": false
-          },
-          "totals": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "list": {
-                  "type": "string",
-                  "enum": [
-                    "invoices",
-                    "credits",
-                    "contract_assets",
-                    "wallets"
-                  ]
-                },
-                "currency": {
-                  "$ref": "#/components/schemas/HubCurrency"
-                },
-                "amount": {
-                  "type": "integer",
-                  "minimum": -9007199254740991,
-                  "maximum": 9007199254740991
-                }
-              },
-              "required": [
-                "list",
-                "currency",
-                "amount"
-              ],
-              "additionalProperties": false
-            }
-          }
-        },
-        "required": [
-          "snapshot_id",
-          "as_of",
-          "received_at",
-          "replayed",
-          "counts",
-          "totals"
-        ],
-        "additionalProperties": false
-      },
-      "HubCurrency": {
-        "type": "string",
-        "enum": [
-          "SYP",
-          "USD"
-        ]
-      },
-      "OpeningHubItem": {
-        "type": "object",
-        "properties": {
-          "slot": {
-            "type": "string",
-            "enum": [
-              "receivable",
-              "contract_asset",
-              "ad_funds"
-            ]
-          },
-          "reference": {
-            "type": "string"
-          },
-          "document": {
-            "nullable": true,
-            "type": "object",
-            "properties": {
-              "type": {
-                "type": "string",
-                "enum": [
-                  "invoice",
-                  "milestone"
-                ]
-              },
-              "id": {
-                "type": "string"
-              },
-              "number": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "type",
-              "id",
-              "number"
-            ],
-            "additionalProperties": false
-          },
-          "client": {
-            "type": "object",
-            "properties": {
-              "externalId": {
-                "type": "string"
-              },
-              "code": {
-                "nullable": true,
-                "type": "string"
-              },
-              "name": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "externalId",
-              "code",
-              "name"
-            ],
-            "additionalProperties": false
-          },
-          "contract": {
-            "nullable": true,
-            "type": "object",
-            "properties": {
-              "externalId": {
-                "type": "string"
-              },
-              "code": {
-                "nullable": true,
-                "type": "string"
-              },
-              "name": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "externalId",
-              "code",
-              "name"
-            ],
-            "additionalProperties": false
-          },
-          "dueOn": {
-            "nullable": true,
-            "type": "string",
-            "format": "date",
-            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
-          },
-          "documentDate": {
-            "type": "string",
-            "format": "date",
-            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
-          },
-          "amounts": {
-            "type": "object",
-            "properties": {
-              "transactionMinor": {
-                "$ref": "#/components/schemas/MinorUnits"
-              },
-              "bookMinor": {
-                "$ref": "#/components/schemas/MinorUnits"
-              },
-              "parallelMinor": {
-                "nullable": true,
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/MinorUnits"
-                  }
-                ]
-              }
-            },
-            "required": [
-              "transactionMinor",
-              "bookMinor",
-              "parallelMinor"
-            ],
-            "additionalProperties": false
-          },
-          "currency": {
-            "$ref": "#/components/schemas/CurrencyCode"
-          }
-        },
-        "required": [
-          "slot",
-          "reference",
-          "document",
-          "client",
-          "contract",
-          "dueOn",
-          "documentDate",
-          "amounts",
-          "currency"
-        ],
-        "additionalProperties": false
-      },
-      "OpeningSchedule": {
-        "type": "object",
-        "properties": {
-          "invoice": {
-            "type": "object",
-            "properties": {
-              "id": {
-                "type": "string"
-              },
-              "number": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "id",
-              "number"
-            ],
-            "additionalProperties": false
-          },
-          "issuedOn": {
-            "type": "string",
-            "format": "date",
-            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
-          },
-          "lineId": {
-            "type": "string"
-          },
-          "position": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 9007199254740991
-          },
-          "pattern": {
-            "type": "string",
-            "enum": [
-              "over_time",
-              "point_in_time"
-            ]
-          },
-          "serviceFrom": {
-            "nullable": true,
-            "type": "string",
-            "format": "date",
-            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
-          },
-          "serviceTo": {
-            "nullable": true,
-            "type": "string",
-            "format": "date",
-            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
-          },
-          "milestoneId": {
-            "nullable": true,
-            "type": "string"
-          },
-          "client": {
-            "type": "object",
-            "properties": {
-              "externalId": {
-                "type": "string"
-              },
-              "code": {
-                "nullable": true,
-                "type": "string"
-              },
-              "name": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "externalId",
-              "code",
-              "name"
-            ],
-            "additionalProperties": false
-          },
-          "contract": {
-            "nullable": true,
-            "type": "object",
-            "properties": {
-              "externalId": {
-                "type": "string"
-              },
-              "code": {
-                "nullable": true,
-                "type": "string"
-              },
-              "name": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "externalId",
-              "code",
-              "name"
-            ],
-            "additionalProperties": false
-          },
-          "service": {
-            "type": "object",
-            "properties": {
-              "externalId": {
-                "type": "string"
-              },
-              "code": {
-                "nullable": true,
-                "type": "string"
-              },
-              "name": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "externalId",
-              "code",
-              "name"
-            ],
-            "additionalProperties": false
-          },
-          "currency": {
-            "$ref": "#/components/schemas/CurrencyCode"
-          },
-          "deferred": {
-            "type": "object",
-            "properties": {
-              "transactionMinor": {
-                "$ref": "#/components/schemas/MinorUnits"
-              },
-              "bookMinor": {
-                "$ref": "#/components/schemas/MinorUnits"
-              },
-              "parallelMinor": {
-                "nullable": true,
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/MinorUnits"
-                  }
-                ]
-              }
-            },
-            "required": [
-              "transactionMinor",
-              "bookMinor",
-              "parallelMinor"
-            ],
-            "additionalProperties": false
-          },
-          "beforeOpening": {
-            "type": "object",
-            "properties": {
-              "transactionMinor": {
-                "$ref": "#/components/schemas/MinorUnits"
-              },
-              "bookMinor": {
-                "$ref": "#/components/schemas/MinorUnits"
-              },
-              "parallelMinor": {
-                "nullable": true,
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/MinorUnits"
-                  }
-                ]
-              }
-            },
-            "required": [
-              "transactionMinor",
-              "bookMinor",
-              "parallelMinor"
-            ],
-            "additionalProperties": false
-          },
-          "remaining": {
-            "type": "object",
-            "properties": {
-              "transactionMinor": {
-                "$ref": "#/components/schemas/MinorUnits"
-              },
-              "bookMinor": {
-                "$ref": "#/components/schemas/MinorUnits"
-              },
-              "parallelMinor": {
-                "nullable": true,
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/MinorUnits"
-                  }
-                ]
-              }
-            },
-            "required": [
-              "transactionMinor",
-              "bookMinor",
-              "parallelMinor"
-            ],
-            "additionalProperties": false
-          },
-          "releasedMonths": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          }
-        },
-        "required": [
-          "invoice",
-          "issuedOn",
-          "lineId",
-          "position",
-          "pattern",
-          "serviceFrom",
-          "serviceTo",
-          "milestoneId",
-          "client",
-          "contract",
-          "service",
-          "currency",
-          "deferred",
-          "beforeOpening",
-          "remaining",
-          "releasedMonths"
         ],
         "additionalProperties": false
       },
@@ -18088,81 +17165,6 @@
         ],
         "additionalProperties": false
       },
-      "OpeningRecordFigure": {
-        "type": "object",
-        "properties": {
-          "slot": {
-            "$ref": "#/components/schemas/OpeningFigureSlot"
-          },
-          "clientValueId": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "currency": {
-            "$ref": "#/components/schemas/CurrencyCode"
-          },
-          "amountMinor": {
-            "$ref": "#/components/schemas/MinorUnits"
-          }
-        },
-        "required": [
-          "slot",
-          "clientValueId",
-          "currency",
-          "amountMinor"
-        ],
-        "additionalProperties": false
-      },
-      "OpeningFigureSlot": {
-        "type": "string",
-        "enum": [
-          "receivable",
-          "ad_funds"
-        ]
-      },
-      "OpeningDifference": {
-        "type": "object",
-        "properties": {
-          "slot": {
-            "$ref": "#/components/schemas/OpeningFigureSlot"
-          },
-          "client": {
-            "type": "string"
-          },
-          "currency": {
-            "$ref": "#/components/schemas/CurrencyCode"
-          },
-          "hubMinor": {
-            "$ref": "#/components/schemas/MinorUnits"
-          },
-          "recordsMinor": {
-            "nullable": true,
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/MinorUnits"
-              }
-            ]
-          },
-          "differenceMinor": {
-            "nullable": true,
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/MinorUnits"
-              }
-            ]
-          }
-        },
-        "required": [
-          "slot",
-          "client",
-          "currency",
-          "hubMinor",
-          "recordsMinor",
-          "differenceMinor"
-        ],
-        "additionalProperties": false
-      },
       "OpeningPreviewLine": {
         "type": "object",
         "properties": {
@@ -18174,8 +17176,6 @@
           "source": {
             "type": "string",
             "enum": [
-              "hub",
-              "schedule",
               "records",
               "balancing"
             ]
@@ -18321,11 +17321,8 @@
       "OpeningCheck": {
         "type": "string",
         "enum": [
-          "snapshot",
-          "records_agree",
           "rates",
           "mappings",
-          "schedules",
           "lines"
         ]
       },
@@ -18367,8 +17364,7 @@
           "part": {
             "type": "string",
             "enum": [
-              "preview",
-              "agreement"
+              "preview"
             ]
           }
         },
@@ -18390,19 +17386,11 @@
             "items": {
               "$ref": "#/components/schemas/OpeningLineInput"
             }
-          },
-          "recordFigures": {
-            "maxItems": 1000,
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/OpeningFigureInput"
-            }
           }
         },
         "required": [
           "version",
-          "lines",
-          "recordFigures"
+          "lines"
         ]
       },
       "OpeningLineInput": {
@@ -18475,31 +17463,6 @@
         },
         "required": [
           "accountId",
-          "currency",
-          "amount"
-        ]
-      },
-      "OpeningFigureInput": {
-        "type": "object",
-        "properties": {
-          "slot": {
-            "$ref": "#/components/schemas/OpeningFigureSlot"
-          },
-          "clientValueId": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "currency": {
-            "$ref": "#/components/schemas/CurrencyCode"
-          },
-          "amount": {
-            "$ref": "#/components/schemas/MinorUnits"
-          }
-        },
-        "required": [
-          "slot",
-          "clientValueId",
           "currency",
           "amount"
         ]
@@ -19922,266 +18885,6 @@
         ],
         "additionalProperties": false
       },
-      "ContractPositionQuery": {
-        "type": "object",
-        "properties": {
-          "asOf": {
-            "type": "string",
-            "format": "date",
-            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
-          },
-          "ledger": {
-            "default": "book",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/Ledger"
-              }
-            ]
-          },
-          "client": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          }
-        },
-        "required": [
-          "asOf"
-        ]
-      },
-      "ContractPosition": {
-        "type": "object",
-        "properties": {
-          "header": {
-            "$ref": "#/components/schemas/ReportHeader"
-          },
-          "rows": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/ContractPositionRow"
-            }
-          },
-          "totals": {
-            "$ref": "#/components/schemas/ContractPositionTotals"
-          }
-        },
-        "required": [
-          "header",
-          "rows",
-          "totals"
-        ],
-        "additionalProperties": false
-      },
-      "ContractPositionRow": {
-        "type": "object",
-        "properties": {
-          "contract": {
-            "$ref": "#/components/schemas/ReportValue"
-          },
-          "client": {
-            "nullable": true,
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/ReportValue"
-              }
-            ]
-          },
-          "kind": {
-            "nullable": true,
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/ContractKind"
-              }
-            ]
-          },
-          "assets": {
-            "$ref": "#/components/schemas/MinorUnits"
-          },
-          "liabilities": {
-            "$ref": "#/components/schemas/MinorUnits"
-          },
-          "net": {
-            "$ref": "#/components/schemas/MinorUnits"
-          }
-        },
-        "required": [
-          "contract",
-          "client",
-          "kind",
-          "assets",
-          "liabilities",
-          "net"
-        ],
-        "additionalProperties": false
-      },
-      "ContractPositionTotals": {
-        "type": "object",
-        "properties": {
-          "contractAssets": {
-            "$ref": "#/components/schemas/MinorUnits"
-          },
-          "contractLiabilities": {
-            "$ref": "#/components/schemas/MinorUnits"
-          },
-          "withoutContractAssets": {
-            "$ref": "#/components/schemas/MinorUnits"
-          },
-          "withoutContractLiabilities": {
-            "$ref": "#/components/schemas/MinorUnits"
-          }
-        },
-        "required": [
-          "contractAssets",
-          "contractLiabilities",
-          "withoutContractAssets",
-          "withoutContractLiabilities"
-        ],
-        "additionalProperties": false
-      },
-      "RevenueReleaseScheduleQuery": {
-        "type": "object",
-        "properties": {
-          "from": {
-            "type": "string",
-            "pattern": "^\\d{4}-(0[1-9]|1[0-2])$"
-          },
-          "ledger": {
-            "default": "book",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/Ledger"
-              }
-            ]
-          },
-          "contract": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          }
-        },
-        "required": [
-          "from"
-        ]
-      },
-      "RevenueReleaseSchedule": {
-        "type": "object",
-        "properties": {
-          "header": {
-            "$ref": "#/components/schemas/ReportHeader"
-          },
-          "months": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "pattern": "^\\d{4}-(0[1-9]|1[0-2])$"
-            }
-          },
-          "rows": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/RevenueReleaseRow"
-            }
-          },
-          "totals": {
-            "type": "object",
-            "properties": {
-              "months": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "properties": {
-                    "month": {
-                      "type": "string",
-                      "pattern": "^\\d{4}-(0[1-9]|1[0-2])$"
-                    },
-                    "amount": {
-                      "$ref": "#/components/schemas/MinorUnits"
-                    }
-                  },
-                  "required": [
-                    "month",
-                    "amount"
-                  ],
-                  "additionalProperties": false
-                }
-              },
-              "atDone": {
-                "$ref": "#/components/schemas/MinorUnits"
-              },
-              "total": {
-                "$ref": "#/components/schemas/MinorUnits"
-              }
-            },
-            "required": [
-              "months",
-              "atDone",
-              "total"
-            ],
-            "additionalProperties": false
-          }
-        },
-        "required": [
-          "header",
-          "months",
-          "rows",
-          "totals"
-        ],
-        "additionalProperties": false
-      },
-      "RevenueReleaseRow": {
-        "type": "object",
-        "properties": {
-          "contract": {
-            "nullable": true,
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/ReportValue"
-              }
-            ]
-          },
-          "client": {
-            "nullable": true,
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/ReportValue"
-              }
-            ]
-          },
-          "months": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "month": {
-                  "type": "string",
-                  "pattern": "^\\d{4}-(0[1-9]|1[0-2])$"
-                },
-                "amount": {
-                  "$ref": "#/components/schemas/MinorUnits"
-                }
-              },
-              "required": [
-                "month",
-                "amount"
-              ],
-              "additionalProperties": false
-            }
-          },
-          "atDone": {
-            "$ref": "#/components/schemas/MinorUnits"
-          },
-          "total": {
-            "$ref": "#/components/schemas/MinorUnits"
-          }
-        },
-        "required": [
-          "contract",
-          "client",
-          "months",
-          "atDone",
-          "total"
-        ],
-        "additionalProperties": false
-      },
       "ReportLinesQuery": {
         "type": "object",
         "properties": {
@@ -20500,7 +19203,7 @@
         "type": "object",
         "properties": {
           "report": {
-            "$ref": "#/components/schemas/Report"
+            "$ref": "#/components/schemas/ActiveReport"
           },
           "params": {
             "default": {},
@@ -20514,6 +19217,21 @@
         },
         "required": [
           "report"
+        ]
+      },
+      "ActiveReport": {
+        "type": "string",
+        "enum": [
+          "trial_balance",
+          "general_ledger",
+          "account_statement",
+          "journal_book",
+          "income_statement",
+          "balance_sheet",
+          "profitability",
+          "ageing",
+          "client_statement",
+          "chart"
         ]
       },
       "JournalBookPrintsQuery": {
@@ -20654,9 +19372,7 @@
           "journal_book",
           "income_statement",
           "balance_sheet",
-          "profitability",
-          "contract_position",
-          "revenue_schedule"
+          "profitability"
         ]
       },
       "ReportExportQuery": {

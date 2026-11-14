@@ -7,14 +7,6 @@ export const STEPS_ARRIVE_WITH = {
   manual: 'manual entries arrive with S03',
   reversal: 'reversals arrive with S03',
   rate: 'rate steps arrive with S03, on the S02 rate table',
-  event: 'Hub events arrive with S05',
-  job: 'jobs arrive with S07',
-  retry: 'inbox actions arrive with S05',
-  move: 'inbox actions arrive with S05',
-  resolve: 'inbox actions arrive with S05',
-  dismiss: 'inbox actions arrive with S05',
-  recognise: 'recognising in the first open period arrives with S06',
-  split: "splitting a cancelled project's remainder arrives with S06",
   revalue: 'the month-end revaluation arrives with S07',
   block: 'blocking an account in the book arrives with S07',
   close: 'closing a period arrives with S07',
@@ -36,135 +28,49 @@ export class ScenarioFailure extends Error {
 
 type Run = (context: CaseContext) => Promise<StepResult>;
 
-/**
- * A dimension value a case names: its type's code and its own code (`client: C1`). `hub` marks a
- * value a manual step names before a Hub event of the case brings it: the setup makes it and links
- * it to the Hub ID the case's events use (S02 rule 11), as a client typed in Mizan and linked later.
- */
-export type NamedValue = { readonly type: string; readonly code: string; readonly hub?: true };
+/** A dimension value a case names: its type's code and its own code (`client: C1`). */
+export type NamedValue = { readonly type: string; readonly code: string };
 
 /**
  * Every dimension value a case names, in the order first named: in its manual steps' lines, its
  * expected lines, balances and open items. The setup makes each one, so a case states its values by
- * code and never creates them in a step (S04); those Hub's events bring first are theirs (S05).
+ * code and never creates them in a step (S04).
  */
 export function namedDimensionValues(scenarioCase: ScenarioCase): NamedValue[] {
   const named = new Map<string, NamedValue>();
   const keyOf = (type: string, code: string) => JSON.stringify([type, code]);
-  // The step at which a Hub event first brings each value.
-  const fromHub = new Map<string, number>();
-  for (const [index, step] of scenarioCase.steps.entries()) {
-    for (const value of stepEventValues(step)) {
-      const key = keyOf(value.type, value.code);
-      if (!fromHub.has(key)) fromHub.set(key, index);
-    }
-  }
-  const add = (dims: unknown, index: number | null) => {
+  const add = (dims: unknown) => {
     if (typeof dims !== 'object' || dims === null) return;
     for (const [type, code] of Object.entries(dims)) {
       if (typeof code !== 'string') continue;
       const key = keyOf(type, code);
-      const hubAt = fromHub.get(key);
-      if (named.has(key) || (hubAt !== undefined && (index === null || index > hubAt))) continue;
-      named.set(key, { type, code, ...(hubAt !== undefined && { hub: true as const }) });
+      if (!named.has(key)) named.set(key, { type, code });
     }
   };
-  for (const [index, step] of scenarioCase.steps.entries()) {
+  for (const step of scenarioCase.steps) {
     if (step.kind === 'service_department') {
-      add({ service: step.service, department: step.department }, index);
+      add({ service: step.service, department: step.department });
     }
-    // The accountant's opening lines and figures (S10 rules 14–15), named after the snapshot of the
-    // same step, which brings Hub's values first.
+    // The accountant's opening lines (S10 rule 14).
     if (step.kind === 'opening') {
-      for (const line of step.lines) add(line.dims, index + 0.5);
-      for (const figure of step.figures) add({ client: figure.client }, index + 0.5);
+      for (const line of step.lines) add(line.dims);
       continue;
     }
     if (step.kind !== 'manual' && step.kind !== 'draft') continue;
     const lines = (step.payload as { lines?: unknown }).lines;
     if (Array.isArray(lines)) {
-      for (const line of lines) add((line as { dims?: unknown }).dims, index);
+      for (const line of lines) add((line as { dims?: unknown }).dims);
     }
   }
   const { expect } = scenarioCase;
-  for (const entry of expect.entries) for (const line of entry.lines) add(line.dims, null);
-  for (const balance of expect.balances) add(balance.dims, null);
-  for (const item of expect.openItems) add(item.dims, null);
+  for (const entry of expect.entries) for (const line of entry.lines) add(line.dims);
+  for (const balance of expect.balances) add(balance.dims);
+  for (const item of expect.openItems) add(item.dims);
   return [...named.values()];
-}
-
-/**
- * The values a case's Hub events bring by their references (S05 rule 23): Hub's events make them,
- * with the code the case names, so the setup leaves them out.
- */
-export function eventValues(scenarioCase: ScenarioCase): NamedValue[] {
-  return scenarioCase.steps.flatMap(stepEventValues);
-}
-
-/** The values one step brings from Hub: an event's references, none for any other step. */
-function stepEventValues(step: Step): NamedValue[] {
-  const values: NamedValue[] = [];
-  const add = (type: string, code: unknown) => {
-    if (typeof code === 'string') values.push({ type, code });
-  };
-  // Hub's snapshot brings the values its documents name, as their events would (S10 rule 7).
-  if (step.kind === 'opening' && step.snapshot !== null) {
-    const { invoices, credits, milestones, wallets } = step.snapshot;
-    for (const payload of [...invoices, ...credits, ...milestones]) {
-      values.push(...payloadValues(payload as Record<string, unknown>));
-    }
-    for (const wallet of wallets) add('client', wallet.client);
-    return values;
-  }
-  if (step.kind !== 'event') return values;
-  return payloadValues(step.payload as Record<string, unknown>);
-}
-
-/** The values a short-form payload names (S05 rule 2). */
-function payloadValues(payload: Record<string, unknown>): NamedValue[] {
-  const values: NamedValue[] = [];
-  const add = (type: string, code: unknown) => {
-    if (typeof code === 'string') values.push({ type, code });
-  };
-  add('client', payload.client);
-  add('department', payload.department);
-  add('service', payload.old_service);
-  add('service', payload.new_service);
-  // A milestone's done names its service (S06 rule 11).
-  add('service', payload.service);
-  // A project's events name it as `project` (S06), an invoice or an expense as `contract`.
-  const contract = (payload.contract ?? payload.project) as
-    | { code?: unknown; client?: unknown }
-    | undefined;
-  if (contract !== undefined) {
-    add('contract', contract.code);
-    add('client', contract.client);
-  }
-  // A snapshot's credit is its line, with its service (S10 rule 5).
-  if (payload.lines === undefined && payload.line !== undefined && payload.invoice !== undefined) {
-    add('service', payload.service);
-  }
-  const lines = payload.lines;
-  if (Array.isArray(lines)) {
-    for (const line of lines) {
-      // A service as `S1`, or with its department as `{ code: S1, department: design }` (S09).
-      const service = (line as { service?: unknown }).service;
-      if (typeof service === 'object' && service !== null) {
-        const { code, department } = service as { code?: unknown; department?: unknown };
-        add('service', code);
-        add('department', department);
-      } else add('service', service);
-    }
-  }
-  return values;
 }
 
 function executorFor(harness: ScenarioHarness, step: Step): Run | undefined {
   switch (step.kind) {
-    case 'event': {
-      const execute = harness.executors.event;
-      return execute && ((context) => execute(context, step));
-    }
     case 'manual': {
       const execute = harness.executors.manual;
       return execute && ((context) => execute(context, step));
@@ -173,36 +79,8 @@ function executorFor(harness: ScenarioHarness, step: Step): Run | undefined {
       const execute = harness.executors.reversal;
       return execute && ((context) => execute(context, step));
     }
-    case 'job': {
-      const execute = harness.executors.job;
-      return execute && ((context) => execute(context, step));
-    }
     case 'rate': {
       const execute = harness.executors.rate;
-      return execute && ((context) => execute(context, step));
-    }
-    case 'retry': {
-      const execute = harness.executors.retry;
-      return execute && ((context) => execute(context, step));
-    }
-    case 'move': {
-      const execute = harness.executors.move;
-      return execute && ((context) => execute(context, step));
-    }
-    case 'resolve': {
-      const execute = harness.executors.resolve;
-      return execute && ((context) => execute(context, step));
-    }
-    case 'dismiss': {
-      const execute = harness.executors.dismiss;
-      return execute && ((context) => execute(context, step));
-    }
-    case 'recognise': {
-      const execute = harness.executors.recognise;
-      return execute && ((context) => execute(context, step));
-    }
-    case 'split': {
-      const execute = harness.executors.split;
       return execute && ((context) => execute(context, step));
     }
     case 'revalue': {
@@ -246,31 +124,15 @@ function executorFor(harness: ScenarioHarness, step: Step): Run | undefined {
 
 function describeStep(step: Step): string {
   switch (step.kind) {
-    case 'event':
-      return `event ${step.type} on ${step.accountingDate}`;
     case 'manual':
       return `manual entry "${step.description}" on ${step.accountingDate}`;
     case 'reversal':
       return `reversal of entry ${step.entry} on ${step.accountingDate}`;
-    case 'job':
-      return `job ${step.name} for ${step.period}`;
     case 'rate': {
       const { type, base, quote, rate, effectiveOn } = step.rate;
       const what = step.reason === null ? 'rate' : 'rate correction';
       return `${what} ${type} ${base}/${quote} ${rate} on ${effectiveOn}`;
     }
-    case 'retry':
-      return `retry of step ${step.step}`;
-    case 'move':
-      return `move of step ${step.step} to the next open period`;
-    case 'resolve':
-      return `resolution of step ${step.step} by entry ${step.entry}`;
-    case 'dismiss':
-      return `dismissal of step ${step.step}`;
-    case 'recognise':
-      return `recognition of step ${step.step} in the first open period`;
-    case 'split':
-      return `split of step ${step.step}'s remainder with ${step.revenueMinor} to revenue`;
     case 'revalue':
       return `revaluation of the ${step.ledger} ledger for ${step.period}`;
     case 'block':

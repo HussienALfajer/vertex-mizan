@@ -57,7 +57,7 @@ async function company(): Promise<string> {
         ledgers: SYP,
         fiscalYearStartMonth: 1,
         policyNote: 'مذكرة سياسة تجريبية.',
-        template: 'service-agency',
+        template: 'general',
         createdByUserId: person,
       },
       actor(),

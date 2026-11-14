@@ -134,7 +134,6 @@ describe('/api/opening (S10 rules 10–26)', () => {
     expect(first).toMatchObject({
       booksStart: BOOKS_START,
       asOf: '2026-09-30',
-      hubClient: false,
       state: null,
       version: 0,
       lines: [],
@@ -149,7 +148,6 @@ describe('/api/opening (S10 rules 10–26)', () => {
         recordLine(book, '311001', 'SYP', '-100000000', { parallel: '-1000000' }),
         recordLine(book, '312002', 'SYP', '-30000000', { parallel: '-260000' }),
       ],
-      recordFigures: [],
     };
     // The accountant prepares; the auditor reads; neither posts.
     const accountant = await book.join('accountant');
@@ -187,7 +185,7 @@ describe('/api/opening (S10 rules 10–26)', () => {
     expect(balancing?.slice(2, 3)).toEqual(['312001']);
     expect(balancing?.slice(6, 10)).toEqual(['الليرة السورية الجديدة', -700000, -700000, -4349.15]);
     expect(
-      (await accountant.browser.get('/api/opening/export', { part: 'snapshot' })).body.code,
+      (await accountant.browser.get('/api/opening/export', { part: 'agreement' })).body.code,
     ).toBe('VALIDATION_FAILED');
     const audit = await book.owner.browser.get('/api/audit', { action: 'export.opening' });
     expect(audit.status, JSON.stringify(audit.body)).toBe(200);
@@ -285,7 +283,6 @@ describe('/api/opening (S10 rules 10–26)', () => {
         recordLine(book, '111001', 'SYP', '200000000'),
         recordLine(book, '311001', 'SYP', '-100000000', { parallel: '-1000000' }),
       ],
-      recordFigures: [],
     };
     const saved = await book.owner.browser.put('/api/opening', draft);
     expect(saved.status, JSON.stringify(saved.body)).toBe(200);
@@ -337,7 +334,6 @@ describe('/api/opening (S10 rules 10–26)', () => {
     const saved = await mine.owner.browser.put('/api/opening', {
       version: 0,
       lines: [recordLine(mine, '111001', 'SYP', '123456700')],
-      recordFigures: [],
     });
     expect(saved.status, JSON.stringify(saved.body)).toBe(200);
     const theirs = await books(app, db);

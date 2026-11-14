@@ -94,6 +94,8 @@ ssh vertex "mizan-deploy <ref>"    # another branch, tag or commit
 
 Five releases are kept. Migrations are backward compatible (expand, then contract: `packages/db/CLAUDE.md`), so the previous release runs on the migrated database.
 
+**One exception, the removal of Hub (ADR 0021, owner 2026-11-13):** migrations `0058`–`0061` drop Hub's tables (refusing to run while any holds a row), Hub's columns of the remaining tables and their guard functions in one release. The release before it reads those tables and columns, so it does not run on the migrated database: if that deploy fails after its migrations ran, restore the database to before the deploy (below) and then roll back.
+
 ## Roll back
 
 ```bash

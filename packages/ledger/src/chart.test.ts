@@ -88,18 +88,13 @@ describe('checkLineAgainstChart (S02 rule 8)', () => {
   it('refuses an archived account, and a blocked one', () => {
     expect(refusal(line({ account: { ...clientFunds, archived: true } }))).toBe('ACCOUNT_ARCHIVED');
     expect(refusal(line({ account: { ...clientFunds, blocked: true } }))).toBe('ACCOUNT_BLOCKED');
-    expect(refusal(line({ account: { ...clientFunds, blocked: true }, origin: 'hub' }))).toBe(
-      'ACCOUNT_BLOCKED',
-    );
   });
 
-  it('requires an item on a document control account, from a manual line or a Hub one (S04 rule 5)', () => {
+  it('requires an item on a document control account (S04 rule 5)', () => {
     const receivables = { ...clientFunds, isControl: true, itemKind: 'document' as const };
-    for (const origin of ['manual', 'hub'] as const) {
-      expect(refusal(line({ account: receivables, origin }))).toBe('OPEN_ITEM_REQUIRED');
-      expect(refusal(line({ account: receivables, origin, item: 'new' }))).toBe('accepted');
-      expect(refusal(line({ account: receivables, origin, item: 'existing' }))).toBe('accepted');
-    }
+    expect(refusal(line({ account: receivables }))).toBe('OPEN_ITEM_REQUIRED');
+    expect(refusal(line({ account: receivables, item: 'new' }))).toBe('accepted');
+    expect(refusal(line({ account: receivables, item: 'existing' }))).toBe('accepted');
   });
 
   it("finds a running account's item by the client, so the line names none (S04 rule 9)", () => {
@@ -111,7 +106,7 @@ describe('checkLineAgainstChart (S02 rule 8)', () => {
 
   it('refuses an item on an account that is not a control account (ACCOUNT_NOT_CONTROL)', () => {
     expect(refusal(line({ item: 'existing' }))).toBe('ACCOUNT_NOT_CONTROL');
-    expect(refusal(line({ item: 'new', origin: 'hub' }))).toBe('ACCOUNT_NOT_CONTROL');
+    expect(refusal(line({ item: 'new' }))).toBe('ACCOUNT_NOT_CONTROL');
   });
 
   it("accepts a reversal's line as posted, and refuses it on an account now blocked or archived", () => {
@@ -152,17 +147,13 @@ describe('checkLineAgainstChart (S02 rule 8)', () => {
     expect(refusal(line({ dimensions: [service] }))).toBe('DIMENSION_REQUIRED');
   });
 
-  it('refuses an archived value on a manual line and accepts it on a Hub line (rule 13)', () => {
+  it('refuses an archived value on a manual line', () => {
     const archived = { ...client, archived: true };
     expect(refusal(line({ dimensions: [archived] }))).toBe('DIMENSION_VALUE_ARCHIVED');
-    expect(refusal(line({ dimensions: [archived], origin: 'hub' }))).toBe('accepted');
   });
 
   it("refuses a contract of another client than the line's", () => {
     expect(refusal(line({ dimensions: [otherClient, contract] }))).toBe(
-      'DIMENSION_PARENT_MISMATCH',
-    );
-    expect(refusal(line({ dimensions: [otherClient, contract], origin: 'hub' }))).toBe(
       'DIMENSION_PARENT_MISMATCH',
     );
   });
@@ -242,7 +233,7 @@ describe('checkLineAgainstChart properties', () => {
       fc.property(
         accounts,
         fc.constantFrom('blocked', 'archived', 'header'),
-        fc.constantFrom('manual' as const, 'hub' as const, 'reversal' as const),
+        fc.constantFrom('manual' as const, 'reversal' as const),
         (account, state, origin) => {
           const broken: ChartAccount =
             state === 'header' ? { ...account, kind: 'header' } : { ...account, [state]: true };

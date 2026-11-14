@@ -22,9 +22,8 @@ function ledgerName(ledger: unknown): string {
 }
 
 /**
- * One failing item of a check in words (S10 rule 21). The checks Hub's snapshot fed (`snapshot`,
- * `records_agree`, `schedules`, a posting slot or a Hub value of `mappings`) have no screen left
- * (ADR 0021) and read as an unknown problem until the API drops them.
+ * One failing item of a check in words (S10 rule 21); a failure the screen does not know reads as
+ * an unknown problem.
  */
 function FailureText({
   check,

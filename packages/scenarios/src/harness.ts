@@ -8,13 +8,11 @@ import type {
   Step,
   StepKind,
 } from './format.js';
-import { event, job } from './hub.js';
 import { opening, reverse as reverseOpening } from './opening.js';
 import type { ExpectedReport } from './report-format.js';
 import { reports, serviceDepartment } from './reports.js';
 import type { NamedValue } from './run.js';
 import {
-  actions,
   block,
   close,
   discard,
@@ -35,10 +33,7 @@ import {
  */
 export type ScenarioDatabase = { app: Database; jobs: Database };
 
-/**
- * One case's company in the run's database, and the number of the step that runs (1-based), by
- * which an inbox action names its event (S05).
- */
+/** One case's company in the run's database, and the number of the step that runs (1-based). */
 export type CaseContext = {
   database: ScenarioDatabase;
   companyId: string;
@@ -47,8 +42,8 @@ export type CaseContext = {
 };
 
 /**
- * What a step did when it was received: posted (or ran) everything it had to, or was held or
- * refused with a code and, for a hold, its detail (S05 rule 9). A rate correction's answer also
+ * What a step did when it was received: posted (or ran) everything it had to, or was refused with
+ * a code and its detail. A rate correction's answer also
  * lists the entries that converted at the superseded row, by their number in the company's posting
  * order (S02 rule 15).
  */
@@ -101,8 +96,7 @@ export type LedgerReader = {
 /**
  * What runs a case. Each part plugs in with the feature that brings it: the company setup, the
  * ledger reader, manual entries and reversals with the posting function (S03), rate steps with the
- * rate table (S02, registered with S03's setup), Hub events with the event inbox (S05), jobs with
- * month-end and close (S07). An `Approved` case that needs a part not yet here fails (`run.ts`).
+ * rate table (S02, registered with S03's setup), month-end and close (S07). An `Approved` case that needs a part not yet here fails (`run.ts`).
  */
 export type ScenarioHarness = {
   /**
@@ -127,7 +121,7 @@ export type ScenarioHarness = {
 /**
  * The harness the book runs with: S03's company setup, ledger reader and `manual`, `reversal` and
  * `rate` executors (`system.ts`), with S04's dimension values, item lines and open-item reader;
- * `event` and the inbox actions join with S05; `job` with S06's release job; S07's `revalue` and
+ * S07's `revalue` and
  * `block` (its first PR), then `close`, `reopen`, `draft` and `discard` and the setup's closed
  * periods through the close service (its second); S09's `service_department` and the `reports`
  * reader (`reports.ts`).
@@ -138,8 +132,6 @@ export const bookHarness: ScenarioHarness = {
     manual,
     reversal,
     rate,
-    event,
-    job,
     revalue,
     block,
     close,
@@ -149,7 +141,6 @@ export const bookHarness: ScenarioHarness = {
     service_department: serviceDepartment,
     opening,
     reverse_opening: reverseOpening,
-    ...actions,
   },
   ledger,
   reports,

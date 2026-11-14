@@ -23,6 +23,7 @@ import {
   REPORT_FILE_QUERIES,
   REPORT_MARKS,
   REPORTS,
+  RETIRED_REPORTS,
   reportFileRequestSchema,
   reportFileSchema,
   reportLinesQuerySchema,
@@ -196,10 +197,18 @@ describe('the JSON Schema of the reports', () => {
 });
 
 describe('the exports and files', () => {
-  it('names a query for every report: Excel for nine, PDF for all twelve', () => {
-    expect(Object.keys(REPORT_FILE_QUERIES)).toEqual([...REPORTS]);
+  it('names a query for every report still asked: Excel for seven, PDF for all ten', () => {
+    expect(Object.keys(REPORT_FILE_QUERIES)).toEqual(
+      REPORTS.filter((report) => !(RETIRED_REPORTS as readonly string[]).includes(report)),
+    );
     expect(Object.keys(EXCEL_REPORT_QUERIES)).toEqual([...EXCEL_REPORTS]);
     expect(EXCEL_REPORTS).not.toContain('ageing');
+    // The reports removed with Hub (ADR 0021) stay named for the files that carry them.
+    expect(RETIRED_REPORTS).toEqual(['contract_position', 'revenue_schedule']);
+    for (const report of RETIRED_REPORTS) {
+      expect(reportFileRequestSchema.safeParse({ report }).success, report).toBe(false);
+      expect(reportFileSchema.shape.report.safeParse(report).success, report).toBe(true);
+    }
   });
 
   it('keeps an official print for the journal book alone', () => {

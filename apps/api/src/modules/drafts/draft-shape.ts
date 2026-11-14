@@ -49,7 +49,6 @@ function lineOf(row: LineRow): DraftLine {
       row.newItemReference === null
         ? null
         : { reference: row.newItemReference, dueOn: row.newItemDueOn },
-    scheduleId: row.scheduleId,
   };
 }
 

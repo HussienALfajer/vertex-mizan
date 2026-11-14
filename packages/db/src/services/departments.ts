@@ -4,16 +4,11 @@ import {
   type ServiceDepartmentHistory,
   type SetServiceDepartment,
 } from '@vertex-mizan/contracts';
-import {
-  departmentInForce,
-  firstOpenDayAfter,
-  periodOf,
-  type ServiceDepartmentRow,
-} from '@vertex-mizan/ledger';
+import { departmentInForce, periodOf, type ServiceDepartmentRow } from '@vertex-mizan/ledger';
 import { and, asc, eq, inArray } from 'drizzle-orm';
 import { type AuditActor, writeCompanyAudit } from '../audit.js';
 import type { Transaction } from '../client.js';
-import { closedPeriodList, isClosedPeriod, readClosedPeriods } from '../posting/periods.js';
+import { isClosedPeriod, readClosedPeriods } from '../posting/periods.js';
 import { users } from '../schema/access.js';
 import { dimensionTypes, dimensionValues, serviceDepartments } from '../schema/dimensions.js';
 
@@ -191,59 +186,4 @@ async function companyOf(tx: Transaction, valueId: string): Promise<string> {
     .where(eq(dimensionValues.id, valueId));
   if (!found) throw new Error('A value read back without its company');
   return found.companyId;
-}
-
-/**
- * Rule 33: each service of a Hub event that carries a department other than the one in force on
- * the event's accounting date starts a row from that date, or from the first day of the earliest
- * open month after it when its month is closed, so a closed month's profitability never changes.
- * Called in the posting transaction of the event, with the values its lines name.
- */
-export async function recordHubDepartments(
-  tx: Transaction,
-  input: {
-    readonly companyId: string;
-    readonly inboundEventId: string;
-    readonly accountingDate: string;
-    readonly services: readonly { readonly serviceId: string; readonly departmentId: string }[];
-    readonly actor: AuditActor;
-  },
-): Promise<void> {
-  const seen = new Set<string>();
-  let closed: string[] | null = null;
-  for (const { serviceId, departmentId } of input.services) {
-    if (seen.has(serviceId)) continue;
-    seen.add(serviceId);
-    const before = await inForce(tx, serviceId, input.accountingDate);
-    if (before === departmentId) continue;
-    closed ??= await closedPeriodList(tx);
-    const effectiveFrom = closed.includes(periodOf(input.accountingDate))
-      ? firstOpenDayAfter(input.accountingDate, closed)
-      : input.accountingDate;
-    const [row] = await tx
-      .insert(serviceDepartments)
-      .values({
-        companyId: input.companyId,
-        serviceValueId: serviceId,
-        departmentValueId: departmentId,
-        effectiveFrom,
-        source: 'hub',
-        inboundEventId: input.inboundEventId,
-      })
-      .returning({ id: serviceDepartments.id });
-    if (!row) throw new Error('The department row was not stored');
-    await writeCompanyAudit(tx, input.companyId, input.actor, {
-      action: 'service_department.set',
-      entityType: 'service_department',
-      entityId: row.id,
-      before: { serviceValueId: serviceId, departmentValueId: before },
-      after: {
-        serviceValueId: serviceId,
-        departmentValueId: departmentId,
-        effectiveFrom,
-        source: 'hub',
-        inboundEventId: input.inboundEventId,
-      },
-    });
-  }
 }

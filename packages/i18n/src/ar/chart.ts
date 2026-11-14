@@ -192,7 +192,6 @@ export const chart = {
     pre_opening_result: 'نتيجة السنة قبل بدء الدفاتر',
   } satisfies Record<AccountRole, string>,
   templates: {
-    'service-agency': 'وكالة خدمات',
     general: 'عام',
   } satisfies Record<ChartTemplateId, string>,
   /** The columns of the chart export (`GET /api/chart/export`), in order. */

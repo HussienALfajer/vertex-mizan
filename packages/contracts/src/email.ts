@@ -1,6 +1,5 @@
 import { z } from 'zod';
 import { roleSchema } from './access.js';
-import { holdReasonSchema } from './events.js';
 
 /**
  * The emails Mizan sends (S01): written to the outbox in the transaction of the change that sends
@@ -14,8 +13,6 @@ export const EMAIL_KINDS = [
   // S03: the daily anchor and the full export.
   'daily_anchor',
   'export_ready',
-  // S05: the daily digest of held events.
-  'held_digest',
 ] as const;
 
 export const emailKindSchema = z.enum(EMAIL_KINDS);
@@ -67,46 +64,6 @@ export const emailDataSchemas = {
     companyName: z.string().min(1),
     link: linkSchema,
     expiresAt: z.iso.datetime({ offset: true }),
-  }),
-  /**
-   * The held events of a company (S05 "Jobs"), to its owners and accountants at 08:00 in Damascus
-   * on a day with any: those held since the last digest, and all held, by reason; and (S07 "Jobs")
-   * each ended month not closed with its count of failing checklist items (none in a row queued
-   * before S07); and (S08 rule 16) the days on or after a client's start date that are `missing` or
-   * `differences`, the latest first, up to 31. Sent when any section has content.
-   */
-  held_digest: z.object({
-    companyName: z.string().min(1),
-    day: z.iso.date(),
-    newlyHeld: z.int().min(0),
-    held: z.array(z.object({ reason: holdReasonSchema, count: z.int().min(1) })),
-    unclosedMonths: z
-      .array(
-        z.object({
-          period: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),
-          failingItems: z.int().min(0),
-        }),
-      )
-      .default([]),
-    reconciliation: z
-      .array(
-        z.object({
-          date: z.iso.date(),
-          state: z.enum(['missing', 'differences']),
-          gaps: z.int().min(0),
-          afterClose: z.boolean(),
-        }),
-      )
-      .max(31)
-      .default([]),
-    link: linkSchema,
-    /** S08: the link to `/reconciliation`, with the reconciliation section. */
-    reconciliationLink: linkSchema.optional(),
-    /**
-     * S10 "Jobs": the company waits for its opening since Hub's snapshot arrived, with the link to
-     * `/opening`; absent otherwise.
-     */
-    openingLink: linkSchema.optional(),
   }),
 } as const satisfies Record<EmailKind, z.ZodType>;
 

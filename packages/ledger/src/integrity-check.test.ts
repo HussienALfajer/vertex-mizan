@@ -10,7 +10,6 @@ import {
   openItemProblems,
   periodBalanceProblems,
   periodTotalsOf,
-  recognitionProblems,
   type StoredEntry,
   unbalancedEntries,
 } from './integrity-check.js';
@@ -616,44 +615,5 @@ describe('openItemProblems (S04 "Reports")', () => {
         },
       ),
     );
-  });
-});
-
-describe('recognitionProblems (S06 "Data")', () => {
-  const amount = (
-    contractValueId: string | null,
-    amountMinor: bigint,
-    bookMinor: bigint,
-    parallelMinor: bigint | null,
-  ) => ({ contractValueId, currency: 'USD' as const, amountMinor, bookMinor, parallelMinor });
-
-  it('proves each contract’s liability lines equal its schedules’ movements, in every ledger', () => {
-    // The 900.00 USD cycle at 121 deferred, November released, then a 42.00 USD credit to it.
-    const movements = [
-      amount('R1', 90_000n, 10_890_000n, 90_000n),
-      amount('R1', -48_000n, -5_808_000n, -48_000n),
-      amount('R1', -4_200n, -508_200n, -4_200n),
-    ];
-    const liabilityLines = [
-      amount('R1', -90_000n, -10_890_000n, -90_000n),
-      amount('R1', 48_000n, 5_808_000n, 48_000n),
-      amount('R1', 4_200n, 508_200n, 4_200n),
-    ];
-    expect(recognitionProblems({ movements, liabilityLines })).toEqual([]);
-    // A book amount off by one, and a line of another contract.
-    expect(
-      recognitionProblems({
-        movements,
-        liabilityLines: [
-          ...liabilityLines.slice(0, 2),
-          amount('R1', 4_200n, 508_201n, 4_200n),
-          amount(null, -1n, -121n, null),
-        ],
-      }),
-    ).toEqual([
-      { contractValueId: 'R1', currency: 'USD', amount: 'book' },
-      { contractValueId: null, currency: 'USD', amount: 'transaction' },
-      { contractValueId: null, currency: 'USD', amount: 'book' },
-    ]);
   });
 });

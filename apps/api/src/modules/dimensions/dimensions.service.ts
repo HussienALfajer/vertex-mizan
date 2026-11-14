@@ -19,7 +19,6 @@ import {
   type Database,
   dimensionTypes,
   dimensionValues,
-  linkDimensionValue,
   readServiceDepartments,
   setServiceDepartment,
   type Transaction,
@@ -325,17 +324,6 @@ export class DimensionsService {
         ...diff,
       });
     });
-  }
-
-  /**
-   * `POST /api/dimension-values/:id/link` (rule 11): a manual value to its Hub ID, once
-   * (`DIMENSION_ALREADY_LINKED`); an ID another value of the type holds is refused
-   * (`DIMENSION_LINK_TAKEN`), also when a Hub event claims it at the same time (edge case 2).
-   */
-  async link(access: CompanyRouteAccess, id: string, externalId: string): Promise<DimensionValue> {
-    return this.changeValue(access, id, (tx, row, actor) =>
-      linkDimensionValue(tx, access.company.id, actor, row, externalId),
-    );
   }
 
   /** `GET /api/dimension-values/:id/departments` (S09 rule 32): a service's history. */

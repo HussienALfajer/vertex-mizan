@@ -8,8 +8,6 @@ import {
   attachmentSchema,
   type CurrencyCode,
   type DimensionValue,
-  DOCUMENT_TYPES,
-  type DocumentType,
   type EntryLine,
   type EntryLineItem,
   type EntryNumber,
@@ -100,9 +98,7 @@ export function HubDocumentText({
 }: {
   document: { type: string; number: string | null };
 }) {
-  const type = (DOCUMENT_TYPES as readonly string[]).includes(document.type)
-    ? ar.entries.hubDocument.types[document.type as DocumentType]
-    : null;
+  const type = ar.entries.hubDocument.types[document.type] ?? null;
   return (
     <span className="inline-flex flex-wrap items-baseline gap-x-2">
       {type && <span>{type}</span>}

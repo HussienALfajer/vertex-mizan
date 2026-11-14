@@ -1,5 +1,15 @@
 # TASKS
 
+## ADR 0021 removal, the ledger, the database and the contracts (branch `refactor/remove-hub-ledger-db-contracts`)
+
+- [x] packages/contracts: Hub modules removed; codes, permissions, audit actions, reports and checklist items retired; the service-agency template, the dimension link, the tolerance, `held_digest`, the opening's Hub parts
+- [x] packages/ledger: `hub.ts`, `recognition.ts`, `reconciliation.ts`, the Hub parts of `opening.ts`, the two reports, the recognition proof
+- [x] packages/db: the Hub posting contents and services; migrations 0058–0061 (the tables dropped only while empty), `test/hub-removal.test.ts`, the pinned guards
+- [x] apps/api, apps/worker, apps/web, packages/ui, packages/i18n: the leftovers; nginx's `/v1`
+- [x] packages/scenarios and docs/scenarios: the runner's Hub steps and the book's Hub cases; the frozen service-agency chart of the book
+- [x] Docs: CLAUDE.md files, AGENTS.md, ROADMAP, deployment (the rollback exception), ADR 0021 (the migration guard's exception)
+- [x] verify --e2e-all, reviewers, PR with auto-merge
+
 ## ADR 0021 removal, the API and the worker (branch `refactor/remove-hub-api-worker`)
 
 - [x] apps/api: `/v1`, API clients and keys, inbox, posting rules, revenue, reconciliation; tolerance no longer written; `JobQueue` without event retries

@@ -2,15 +2,13 @@ import type {
   OPENING_EXPORT_PARTS,
   OPENING_LINE_SOURCES,
   OpeningCheck,
-  OpeningFigureSlot,
   OpeningState,
 } from '@vertex-mizan/contracts';
 
 /**
  * The opening balances (S10 "Screens", "Arabic strings", without Hub: ADR 0021): `/opening` in its
  * two steps, its states, the line sources, the checks and what fails them, the dialogs, and the
- * Excel of the preview and of the agreement (the API's workbook reads the agreement's columns until
- * the API drops it). Terms from `docs/glossary.md` (الأرصدة الافتتاحية، تاريخ بدء الدفاتر، قيد
+ * Excel of the preview. Terms from `docs/glossary.md` (الأرصدة الافتتاحية، تاريخ بدء الدفاتر، قيد
  * الأرصدة الافتتاحية، لقطة Hub الافتتاحية، الرقم الموازن، مبلغ منقول).
  */
 export const opening = {
@@ -76,23 +74,6 @@ export const opening = {
     memoLength: 'البيان 300 حرف على الأكثر',
     readOnly: 'المسودة للقراءة فقط.',
   },
-  /** The agreement's columns, read by the API's workbook (`opening-workbook.ts`). */
-  agreement: {
-    slot: 'الحساب',
-    client: 'العميل',
-    currency: 'العملة',
-    records: 'السجلات',
-    hub: 'Hub',
-    difference: 'الفرق',
-    status: 'الحالة',
-    agrees: 'متطابق',
-    differs: 'فرق',
-    missing: 'لم يُدخل',
-    slots: {
-      receivable: 'الذمم المدينة',
-      ad_funds: 'أموال إعلانات العملاء',
-    } satisfies Record<OpeningFigureSlot, string>,
-  },
   review: {
     description:
       'القيد كما سيُرحَّل الآن، والرقم الموازن على الأرباح المحتجزة في كل دفتر، والفحوص التي يجب أن تنجح كلها.',
@@ -102,11 +83,8 @@ export const opening = {
     failed: 'غير ناجح',
     failures: '{count} مشكلة',
     checkNames: {
-      snapshot: 'لقطة Hub مستلمة',
-      records_agree: 'السجلات تطابق Hub',
       rates: 'الأسعار مسجلة',
       mappings: 'الحسابات والقيم مربوطة',
-      schedules: 'جداول الإيراد محسوبة',
       lines: 'أسطر السجلات صحيحة',
     } satisfies Record<OpeningCheck, string>,
     links: {
@@ -124,14 +102,11 @@ export const opening = {
         NOT_FOUND: 'الحساب غير موجود',
         STATED_AMOUNT_MISSING: 'ينقصه مبلغ {ledger}',
         income_statement_account: 'لا رصيد افتتاحي على حساب إيراد أو مصروف',
-        hub_slot: 'حسابات Hub تأخذ أرصدتها من لقطته وحدها',
       } as Record<string, string>,
     },
     preview: 'معاينة القيد',
     previewEmpty: 'تظهر معاينة القيد بعد نجاح الفحوص التي تسبق الأسطر.',
     sources: {
-      hub: 'من Hub',
-      schedule: 'من Hub',
       records: 'من السجلات',
       balancing: 'الرقم الموازن',
     } satisfies Record<(typeof OPENING_LINE_SOURCES)[number], string>,
@@ -193,13 +168,11 @@ export const opening = {
   export: {
     sheets: {
       preview: 'معاينة القيد',
-      agreement: 'المطابقة مع Hub',
     } satisfies Record<(typeof OPENING_EXPORT_PARTS)[number], string>,
     booksStart: 'تاريخ بدء الدفاتر',
     asOf: 'الأرصدة كما في',
     state: 'الحالة',
     previewEmpty: 'لا معاينة ما دامت هذه الفحوص غير ناجحة:',
-    noClient: 'بلا عميل',
   },
   /** On `/entries/:id` (S10 "Screens"). */
   entry: {

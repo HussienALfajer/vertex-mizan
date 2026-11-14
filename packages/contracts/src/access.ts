@@ -42,7 +42,23 @@ export const PERMISSIONS = [
   // S04: open items, the ageing, client funds and statements.
   'open_items.read',
   'open_items.manage',
-  // S05: the event inbox, the posting-rule mapping and the API clients.
+  // S07: the periods, their checklist and the revaluation preview; posting a revaluation.
+  'periods.read',
+  'revaluation.post',
+  // S09: every report, its drill-down, exports and the journal book's print register.
+  'reports.read',
+  // S10: the opening balances (read, prepare, post and reverse).
+  'opening.read',
+  'opening.prepare',
+  'opening.post',
+] as const;
+
+/**
+ * The permissions of features removed with Hub (ADR 0021): the event inbox, the posting-rule
+ * mapping and the API clients (S05), revenue recognition (S06) and the daily reconciliation (S08).
+ * No role holds them and no route requires them; a key is never reused for another meaning.
+ */
+export const RETIRED_PERMISSIONS = [
   'events.read',
   'events.manage',
   'events.dismiss',
@@ -50,19 +66,8 @@ export const PERMISSIONS = [
   'posting_rules.manage',
   'api_clients.read',
   'api_clients.manage',
-  // S06: revenue recognition schedules, releases and the month summary.
   'recognition.read',
-  // S07: the periods, their checklist and the revaluation preview; posting a revaluation.
-  'periods.read',
-  'revaluation.post',
-  // S08: the daily reconciliation with Hub.
   'reconciliation.read',
-  // S09: every report, its drill-down, exports and the journal book's print register.
-  'reports.read',
-  // S10: the opening balances (read, prepare, post and reverse).
-  'opening.read',
-  'opening.prepare',
-  'opening.post',
 ] as const;
 
 export const permissionSchema = z.enum(PERMISSIONS).meta({ id: 'Permission' });
@@ -90,14 +95,8 @@ export const rolePermissions: Readonly<Record<Role, readonly Permission[]>> = {
     'entries.attach',
     'open_items.read',
     'open_items.manage',
-    'events.read',
-    'events.manage',
-    'posting_rules.read',
-    'posting_rules.manage',
-    'recognition.read',
     'periods.read',
     'revaluation.post',
-    'reconciliation.read',
     'reports.read',
     'opening.read',
     'opening.prepare',
@@ -133,12 +132,7 @@ export const rolePermissions: Readonly<Record<Role, readonly Permission[]>> = {
     'drafts.read',
     'integrity.read',
     'open_items.read',
-    'events.read',
-    'posting_rules.read',
-    'api_clients.read',
-    'recognition.read',
     'periods.read',
-    'reconciliation.read',
     'reports.read',
     'opening.read',
   ],

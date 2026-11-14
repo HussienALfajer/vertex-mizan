@@ -3,8 +3,6 @@ import {
   type AccountStatementQuery,
   type BalanceSheet,
   type BalanceSheetQuery,
-  type ContractPosition,
-  type ContractPositionQuery,
   type CurrencyCode,
   DomainError,
   type GeneralLedger,
@@ -26,8 +24,6 @@ import {
   type ReportLines,
   type ReportLinesQuery,
   type ReportValue,
-  type RevenueReleaseSchedule,
-  type RevenueReleaseScheduleQuery,
   STATEMENT_LINES,
   type TrialBalance,
   type TrialBalanceQuery,
@@ -36,7 +32,6 @@ import {
   balanceSheet,
   balanceSheetComparative,
   booksStartMarks,
-  contractPosition,
   dayAfter,
   dayBefore,
   departmentInForce,
@@ -50,12 +45,9 @@ import {
   periodOf,
   previousPeriod,
   profitability,
-  type ReleasePart,
   type ReportChartAccount,
-  releaseSchedule,
   reportMarks,
   sumAmounts,
-  sumCarried,
   trialBalance,
   withOpeningEntry,
 } from '@vertex-mizan/ledger';
@@ -66,10 +58,8 @@ import { accountRoles, chartAccounts } from '../schema/chart.js';
 import { companySettings } from '../schema/companies.js';
 import { dimensionTypes, dimensionValues } from '../schema/dimensions.js';
 import { dimensionSetValues, journalEntries, journalLines, periods } from '../schema/ledger.js';
-import { recognitionSchedules } from '../schema/recognition.js';
 import { ledgersOf } from './companies.js';
 import { readServiceDepartmentRows } from './departments.js';
-import { amountsOf, movementsOf, overTimeStates } from './recognition.js';
 import { revaluationCheck } from './revaluation.js';
 
 /**
@@ -1362,169 +1352,6 @@ export async function readProfitability(
     totals: {
       current: figures(report.totals.current),
       compare: report.totals.compare === null ? null : figures(report.totals.compare),
-    },
-  };
-}
-
-// --- Contract position and release schedule (rules 24, 25) ---
-
-/** `GET /api/reports/contract-position`. */
-export async function readContractPosition(
-  tx: Transaction,
-  query: ContractPositionQuery,
-  now: Date,
-): Promise<ContractPosition> {
-  const context = await contextOf(tx, query.ledger);
-  const chart = await readChart(tx);
-  const column = await balanceColumn(tx, context, chart, query.asOf);
-  const balances = column.balances.filter(
-    (row) => query.client === undefined || row.clientId === query.client,
-  );
-  const position = contractPosition({ accounts: chart, balances });
-  const values = await valuesById(
-    tx,
-    position.rows.flatMap((row) => [
-      row.contractId,
-      ...(row.clientId === null ? [] : [row.clientId]),
-    ]),
-  );
-  const ref = (id: string | null): ReportValue | null => {
-    const value = id === null ? undefined : values.get(id);
-    if (value === undefined) return null;
-    return {
-      id: value.id,
-      typeCode: value.typeCode,
-      code: value.code,
-      name: value.name,
-      archived: value.archived,
-    };
-  };
-  return {
-    header: await headerOf(tx, context, { from: null, to: query.asOf }, null, now),
-    rows: position.rows
-      .map((row) => ({
-        contract: ref(row.contractId) as ReportValue,
-        client: ref(row.clientId),
-        kind: (values.get(row.contractId)?.contractKind ??
-          null) as ContractPosition['rows'][number]['kind'],
-        assets: text(row.assets),
-        liabilities: text(row.liabilities),
-        net: text(row.net),
-      }))
-      .sort((a, b) =>
-        (a.contract.code ?? a.contract.name) < (b.contract.code ?? b.contract.name) ? -1 : 1,
-      ),
-    totals: {
-      contractAssets: text(position.totals.contractAssets),
-      contractLiabilities: text(position.totals.contractLiabilities),
-      withoutContractAssets: text(position.totals.withoutContractAssets),
-      withoutContractLiabilities: text(position.totals.withoutContractLiabilities),
-    },
-  };
-}
-
-/**
- * `GET /api/reports/revenue-schedule` (rule 25): each over-time schedule's months from `from` not
- * released yet at their planned parts, and each point-in-time schedule's remaining under "عند
- * الإنجاز", in the report's ledger, per contract.
- */
-export async function readRevenueReleaseSchedule(
-  tx: Transaction,
-  query: RevenueReleaseScheduleQuery,
-  now: Date,
-): Promise<RevenueReleaseSchedule> {
-  const context = await contextOf(tx, query.ledger);
-  const [settings] = await tx.select().from(companySettings);
-  if (!settings) throw new Error('A company without its settings');
-  const ledgers = ledgersOf(settings);
-  const schedules = await tx
-    .select()
-    .from(recognitionSchedules)
-    .where(
-      query.contract === undefined
-        ? undefined
-        : eq(recognitionSchedules.contractValueId, query.contract),
-    )
-    .orderBy(asc(recognitionSchedules.createdAt), asc(recognitionSchedules.id));
-  const amountIn = (amounts: { bookMinor: bigint; parallelMinor: bigint | null }) =>
-    context.ledger === 'book' ? amounts.bookMinor : (amounts.parallelMinor ?? 0n);
-  const parts: ReleasePart[] = [];
-  const overTime = schedules.filter((schedule) => schedule.pattern === 'over_time');
-  for (const state of await overTimeStates(tx, overTime, ledgers)) {
-    if (state.voided) continue;
-    for (const [month, part] of state.parts) {
-      if (month < query.from || state.released.has(month)) continue;
-      if (part.transaction.amountMinor === 0n) continue;
-      parts.push({ contractId: state.schedule.contractValueId, month, amount: amountIn(part) });
-    }
-  }
-  const pointInTime = schedules.filter((schedule) => schedule.pattern !== 'over_time');
-  const movements = await movementsOf(
-    tx,
-    pointInTime.map((schedule) => schedule.id),
-  );
-  for (const schedule of pointInTime) {
-    const currency = schedule.currency as CurrencyCode;
-    const remaining = sumCarried(
-      (movements.get(schedule.id) ?? []).map((movement) => amountsOf(movement, currency)),
-      currency,
-      ledgers.parallel !== null,
-    );
-    if (remaining.transaction.amountMinor === 0n) continue;
-    parts.push({ contractId: schedule.contractValueId, month: null, amount: amountIn(remaining) });
-  }
-  const schedule = releaseSchedule(parts);
-  const values = await valuesById(
-    tx,
-    schedule.rows.flatMap((row) => (row.contractId === null ? [] : [row.contractId])),
-  );
-  const contractIds = [...values.keys()];
-  const clients =
-    contractIds.length === 0
-      ? []
-      : await tx
-          .select({ id: dimensionValues.id, parent: dimensionValues.parentValueId })
-          .from(dimensionValues)
-          .where(inArray(dimensionValues.id, contractIds));
-  const clientValues = await valuesById(
-    tx,
-    clients.flatMap((row) => (row.parent === null ? [] : [row.parent])),
-  );
-  const ref = (value: (ReportValue & { contractKind: string | null }) | undefined) =>
-    value === undefined
-      ? null
-      : {
-          id: value.id,
-          typeCode: value.typeCode,
-          code: value.code,
-          name: value.name,
-          archived: value.archived,
-        };
-  const monthsOf = (map: ReadonlyMap<string, bigint>) =>
-    schedule.months.map((month) => ({ month, amount: text(map.get(month) ?? 0n) }));
-  return {
-    header: await headerOf(
-      tx,
-      context,
-      { from: `${query.from}-01`, to: lastDayOfMonth(`${query.from}-01`) },
-      null,
-      now,
-    ),
-    months: schedule.months,
-    rows: schedule.rows.map((row) => {
-      const parent = clients.find((client) => client.id === row.contractId)?.parent ?? null;
-      return {
-        contract: ref(row.contractId === null ? undefined : values.get(row.contractId)),
-        client: ref(parent === null ? undefined : clientValues.get(parent)),
-        months: monthsOf(row.months),
-        atDone: text(row.atDone),
-        total: text(row.total),
-      };
-    }),
-    totals: {
-      months: monthsOf(schedule.totals.months),
-      atDone: text(schedule.totals.atDone),
-      total: text(schedule.totals.total),
     },
   };
 }

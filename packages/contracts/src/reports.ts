@@ -1,7 +1,6 @@
 import { z } from 'zod';
 import { cursorSchema } from './audit.js';
 import { STATEMENT_LINES } from './chart.js';
-import { contractKindSchema } from './dimensions.js';
 import { entryHubDocumentSchema } from './entries.js';
 import { currencyCodeSchema, ledgerSchema } from './money.js';
 import { ageingQuerySchema, clientStatementQuerySchema } from './open-items.js';
@@ -35,6 +34,23 @@ export const reportSchema = z.enum(REPORTS).meta({ id: 'Report' });
 export type Report = z.infer<typeof reportSchema>;
 
 /**
+ * The reports removed with Hub (ADR 0021): the contract position and the revenue release schedule,
+ * which only Hub's events fed. They stay in `REPORTS`, since stored files name them, and are never
+ * asked again or reused.
+ */
+export const RETIRED_REPORTS = [
+  'contract_position',
+  'revenue_schedule',
+] as const satisfies readonly Report[];
+
+/** A report that can still be asked for. */
+export type ActiveReport = Exclude<Report, (typeof RETIRED_REPORTS)[number]>;
+
+export const activeReportSchema = reportSchema
+  .exclude([...RETIRED_REPORTS])
+  .meta({ id: 'ActiveReport' });
+
+/**
  * A PDF file's states (S09 rule 36): `queued` when asked, then `ready` with its file or `failed`
  * with an error code; a ready file that is not an official print `expired` after 24 hours.
  */
@@ -45,13 +61,13 @@ export const reportFileStateSchema = z.enum(REPORT_FILE_STATES).meta({ id: 'Repo
 export type ReportFileState = z.infer<typeof reportFileStateSchema>;
 
 /**
- * Rule 4's marks: `period_open` ("غير نهائية: الفترة مفتوحة") when a month the report reads is
- * open or reopened; `before_revaluation` ("قبل إعادة التقييم") when its end is not a month's last
- * day, or that month's revaluation in the report's ledger is not `current`. S10 rules 32–33
- * (appended): `opening_entry` ("الرصيد الافتتاحي من قيد الافتتاح") on a trial balance, general
+ * Rule 4's marks: `period_open` ("ط؛ظٹط± ظ†ظ‡ط§ط¦ظٹط©: ط§ظ„ظپطھط±ط© ظ…ظپطھظˆط­ط©") when a month the report reads is
+ * open or reopened; `before_revaluation` ("ظ‚ط¨ظ„ ط¥ط¹ط§ط¯ط© ط§ظ„طھظ‚ظٹظٹظ…") when its end is not a month's last
+ * day, or that month's revaluation in the report's ledger is not `current`. S10 rules 32â€“33
+ * (appended): `opening_entry` ("ط§ظ„ط±طµظٹط¯ ط§ظ„ط§ظپطھطھط§ط­ظٹ ظ…ظ† ظ‚ظٹط¯ ط§ظ„ط§ظپطھطھط§ط­") on a trial balance, general
  * ledger or account statement whose range holds the opening entry, read as its opening balance;
- * `before_books_start` ("تبدأ الدفاتر في <date>") on a range that starts before the books start,
- * read from it; `pre_opening_result_in_equity` ("نتيجة ما قبل بدء الدفاتر ضمن حقوق الملكية") on an
+ * `before_books_start` ("طھط¨ط¯ط£ ط§ظ„ط¯ظپط§طھط± ظپظٹ <date>") on a range that starts before the books start,
+ * read from it; `pre_opening_result_in_equity` ("ظ†طھظٹط¬ط© ظ…ط§ ظ‚ط¨ظ„ ط¨ط¯ط، ط§ظ„ط¯ظپط§طھط± ط¶ظ…ظ† ط­ظ‚ظˆظ‚ ط§ظ„ظ…ظ„ظƒظٹط©") on an
  * income statement of the books start's fiscal year.
  */
 export const REPORT_MARKS = [
@@ -147,7 +163,7 @@ export const reportColumnSchema = z
     from: dateSchema.nullable(),
     to: dateSchema,
     marks: z.array(reportMarkSchema),
-    /** Whether any posted line is in the column (a comparative with none shows "—", rule 5). */
+    /** Whether any posted line is in the column (a comparative with none shows "â€”", rule 5). */
     hasLines: z.boolean(),
   })
   .meta({ id: 'ReportColumn' });
@@ -457,7 +473,7 @@ export const incomeStatementLineSchema = z
   .meta({ id: 'IncomeStatementLine' });
 
 /**
- * Rule 14's subtotals by the lines' IFRS 18 categories; "الربح قبل التمويل وضرائب الدخل" only when
+ * Rule 14's subtotals by the lines' IFRS 18 categories; "ط§ظ„ط±ط¨ط­ ظ‚ط¨ظ„ ط§ظ„طھظ…ظˆظٹظ„ ظˆط¶ط±ط§ط¦ط¨ ط§ظ„ط¯ط®ظ„" only when
  * an investing line has an amount.
  */
 export const incomeSubtotalsSchema = z
@@ -482,7 +498,7 @@ export const incomeStatementSchema = z
 
 export type IncomeStatement = z.infer<typeof incomeStatementSchema>;
 
-// --- Balance sheet (rules 15–19) ---
+// --- Balance sheet (rules 15â€“19) ---
 
 /** The comparative defaults to the end of the previous fiscal year (rule 5). */
 export const balanceSheetQuerySchema = z
@@ -522,7 +538,7 @@ export const balanceSheetLineSchema = z
     line: z.string(),
     amount: minorUnitsSchema,
     compare: minorUnitsSchema.nullable(),
-    /** The sum of the parts moved here by rule 18 ("أعيد تبويب للعرض"). */
+    /** The sum of the parts moved here by rule 18 ("ط£ط¹ظٹط¯ طھط¨ظˆظٹط¨ ظ„ظ„ط¹ط±ط¶"). */
     reclassified: minorUnitsSchema,
     /** Earlier fiscal years not yet closed, in `bs.retained_earnings` (rule 16). */
     unclosedYears: minorUnitsSchema.nullable(),
@@ -548,13 +564,13 @@ export const balanceSheetSchema = z
   .object({
     header: reportHeaderSchema,
     lines: z.array(balanceSheetLineSchema),
-    /** "ربح (خسارة) السنة الحالية": classes 4–5 from the fiscal year's start (rule 16). */
+    /** "ط±ط¨ط­ (ط®ط³ط§ط±ط©) ط§ظ„ط³ظ†ط© ط§ظ„ط­ط§ظ„ظٹط©": classes 4â€“5 from the fiscal year's start (rule 16). */
     yearResult: minorUnitsSchema,
     compareYearResult: minorUnitsSchema.nullable(),
     /**
      * S10 rule 31: the balance of the result before the books start (`pre_opening_result`) that
-     * the year's result includes, in the books start's fiscal year ("تشمل نتيجة ما قبل بدء
-     * الدفاتر" when not zero); zero in a later year, where it is in retained earnings.
+     * the year's result includes, in the books start's fiscal year ("طھط´ظ…ظ„ ظ†طھظٹط¬ط© ظ…ط§ ظ‚ط¨ظ„ ط¨ط¯ط،
+     * ط§ظ„ط¯ظپط§طھط±" when not zero); zero in a later year, where it is in retained earnings.
      */
     yearResultPreOpening: minorUnitsSchema,
     compareYearResultPreOpening: minorUnitsSchema.nullable(),
@@ -565,7 +581,7 @@ export const balanceSheetSchema = z
 
 export type BalanceSheet = z.infer<typeof balanceSheetSchema>;
 
-// --- Profitability (rules 20–23) ---
+// --- Profitability (rules 20â€“23) ---
 
 /** The ledger defaults to the parallel when the company keeps one, else the book (rule 23). */
 export const profitabilityQuerySchema = z
@@ -589,7 +605,7 @@ export const profitabilityFiguresSchema = z
     revenue: minorUnitsSchema,
     directCosts: minorUnitsSchema,
     contribution: minorUnitsSchema,
-    /** A percentage with one decimal ("68.8"), null ("—") when revenue is zero. */
+    /** A percentage with one decimal ("68.8"), null ("â€”") when revenue is zero. */
     margin: z
       .string()
       .regex(/^-?\d+\.\d$/)
@@ -599,7 +615,7 @@ export const profitabilityFiguresSchema = z
 
 export type ProfitabilityFigures = z.infer<typeof profitabilityFiguresSchema>;
 
-/** A value's row; `value` null is "غير موزع". */
+/** A value's row; `value` null is "ط؛ظٹط± ظ…ظˆط²ط¹". */
 export const profitabilityRowSchema = z
   .object({
     value: reportValueSchema.nullable(),
@@ -624,100 +640,13 @@ export const profitabilitySchema = z
 
 export type Profitability = z.infer<typeof profitabilitySchema>;
 
-// --- Contract position and revenue release schedule (rules 24, 25) ---
-
-export const contractPositionQuerySchema = z
-  .object({ asOf: dateSchema, ledger: ledgerSchema.default('book'), client: z.uuid().optional() })
-  .meta({ id: 'ContractPositionQuery' });
-
-export type ContractPositionQuery = z.infer<typeof contractPositionQuerySchema>;
-
-/** A contract's gross positions and their net, presented on its side (rule 17). */
-export const contractPositionRowSchema = z
-  .object({
-    contract: reportValueSchema,
-    client: reportValueSchema.nullable(),
-    kind: contractKindSchema.nullable(),
-    /** The debit balances on the contract-asset accounts, positive. */
-    assets: minorUnitsSchema,
-    /** The credit balances on the contract-liability accounts, positive. */
-    liabilities: minorUnitsSchema,
-    /** `assets − liabilities`: a debit is a contract asset, a credit a contract liability. */
-    net: minorUnitsSchema,
-  })
-  .meta({ id: 'ContractPositionRow' });
-
-export type ContractPositionRow = z.infer<typeof contractPositionRowSchema>;
-
-/**
- * The totals as the balance sheet presents them: the contracts' net debits and net credits, and
- * the balances that carry no contract, each on its own line.
- */
-export const contractPositionTotalsSchema = z
-  .object({
-    contractAssets: minorUnitsSchema,
-    contractLiabilities: minorUnitsSchema,
-    withoutContractAssets: minorUnitsSchema,
-    withoutContractLiabilities: minorUnitsSchema,
-  })
-  .meta({ id: 'ContractPositionTotals' });
-
-export const contractPositionSchema = z
-  .object({
-    header: reportHeaderSchema,
-    rows: z.array(contractPositionRowSchema),
-    totals: contractPositionTotalsSchema,
-  })
-  .meta({ id: 'ContractPosition' });
-
-export type ContractPosition = z.infer<typeof contractPositionSchema>;
-
-export const revenueReleaseScheduleQuerySchema = z
-  .object({
-    from: monthSchema,
-    ledger: ledgerSchema.default('book'),
-    contract: z.uuid().optional(),
-  })
-  .meta({ id: 'RevenueReleaseScheduleQuery' });
-
-export type RevenueReleaseScheduleQuery = z.infer<typeof revenueReleaseScheduleQuerySchema>;
-
-/** A contract's releases still to post per month, and what waits for a done ("عند الإنجاز"). */
-export const revenueReleaseRowSchema = z
-  .object({
-    contract: reportValueSchema.nullable(),
-    client: reportValueSchema.nullable(),
-    months: z.array(z.object({ month: monthSchema, amount: minorUnitsSchema })),
-    atDone: minorUnitsSchema,
-    total: minorUnitsSchema,
-  })
-  .meta({ id: 'RevenueReleaseRow' });
-
-export type RevenueReleaseRow = z.infer<typeof revenueReleaseRowSchema>;
-
-export const revenueReleaseScheduleSchema = z
-  .object({
-    header: reportHeaderSchema,
-    /** Every month with a release still to post, from `from`, in order. */
-    months: z.array(monthSchema),
-    rows: z.array(revenueReleaseRowSchema),
-    totals: z.object({
-      months: z.array(z.object({ month: monthSchema, amount: minorUnitsSchema })),
-      atDone: minorUnitsSchema,
-      total: minorUnitsSchema,
-    }),
-  })
-  .meta({ id: 'RevenueReleaseSchedule' });
-
-export type RevenueReleaseSchedule = z.infer<typeof revenueReleaseScheduleSchema>;
-
 // --- The lines behind a figure (rule 6) ---
 
 /**
  * `GET /api/reports/lines`: one account (and its subtree) or one statement line, optionally a
  * side, a client, a contract, values every line carries, or a profitability value; `from` absent
  * reads from the start of the books (a balance). `profitabilityBy` with no `profitabilityValue`
- * is "غير موزع".
+ * is "ط؛ظٹط± ظ…ظˆط²ط¹".
  */
 export const reportLinesQuerySchema = z
   .object({
@@ -812,8 +741,8 @@ export const JOURNAL_BOOK_COLUMNS = {
 
 /**
  * A row of the journal book (rule 31's canonical rows): an entry's header, a continuation of its
- * description or reference, a line, a continuation of a line's name or memo, or the "تابع القيد
- * رقم n" row that opens a page an entry continues on. Amounts are the book ledger's.
+ * description or reference, a line, a continuation of a line's name or memo, or the "طھط§ط¨ط¹ ط§ظ„ظ‚ظٹط¯
+ * ط±ظ‚ظ… n" row that opens a page an entry continues on. Amounts are the book ledger's.
  */
 export const journalBookRowSchema = z
   .discriminatedUnion('kind', [
@@ -857,7 +786,7 @@ export const debitsAndCreditsSchema = z
 
 /**
  * A page: its number in the fiscal year, its month, its rows, its totals, those brought forward
- * from the year's earlier pages ("ما قبله") and the cumulative totals ("المجموع حتى هذه الصفحة").
+ * from the year's earlier pages ("ظ…ط§ ظ‚ط¨ظ„ظ‡") and the cumulative totals ("ط§ظ„ظ…ط¬ظ…ظˆط¹ ط­طھظ‰ ظ‡ط°ظ‡ ط§ظ„طµظپط­ط©").
  */
 export const journalBookPageSchema = z
   .object({
@@ -900,7 +829,7 @@ export const journalBookSchema = z
 
 export type JournalBook = z.infer<typeof journalBookSchema>;
 
-// --- Exports and files (rules 28–30, 35–37) ---
+// --- Exports and files (rules 28â€“30, 35â€“37) ---
 
 /** An Excel export holds at most this many rows (rule 35): `REPORT_TOO_LARGE` beyond. */
 export const REPORT_EXCEL_ROW_LIMIT = 100_000;
@@ -917,7 +846,7 @@ export const REPORT_FILE_LOST_AFTER_HOURS = 1;
 /**
  * The reports `GET /api/reports/:report/export` writes to Excel (rule 35); the ageing, the client
  * statement and the chart keep their own Excel routes (S04, S02). The journal book's Excel is the
- * journal of `/reports/journal` (rule 12); its PDF is the printed book (rules 26–31).
+ * journal of `/reports/journal` (rule 12); its PDF is the printed book (rules 26â€“31).
  */
 export const EXCEL_REPORTS = [
   'trial_balance',
@@ -927,9 +856,7 @@ export const EXCEL_REPORTS = [
   'income_statement',
   'balance_sheet',
   'profitability',
-  'contract_position',
-  'revenue_schedule',
-] as const satisfies readonly Report[];
+] as const satisfies readonly ActiveReport[];
 
 export type ExcelReport = (typeof EXCEL_REPORTS)[number];
 
@@ -961,8 +888,6 @@ export const EXCEL_REPORT_QUERIES = {
   income_statement: incomeStatementQuerySchema,
   balance_sheet: balanceSheetQuerySchema,
   profitability: profitabilityQuerySchema,
-  contract_position: contractPositionQuerySchema,
-  revenue_schedule: revenueReleaseScheduleQuerySchema,
 } as const satisfies Record<ExcelReport, z.ZodType>;
 
 /** The parameters of each report's PDF, as stored with its file and read again by the worker. */
@@ -974,14 +899,12 @@ export const REPORT_FILE_QUERIES = {
   income_statement: incomeStatementQuerySchema,
   balance_sheet: balanceSheetQuerySchema,
   profitability: profitabilityQuerySchema,
-  contract_position: contractPositionQuerySchema,
-  revenue_schedule: revenueReleaseScheduleQuerySchema,
   ageing: ageingQuerySchema,
   client_statement: clientStatementFileQuerySchema,
   chart: chartFileQuerySchema,
-} as const satisfies Record<Report, z.ZodType>;
+} as const satisfies Record<ActiveReport, z.ZodType>;
 
-export type ReportFileQuery<R extends Report> = z.output<(typeof REPORT_FILE_QUERIES)[R]>;
+export type ReportFileQuery<R extends ActiveReport> = z.output<(typeof REPORT_FILE_QUERIES)[R]>;
 
 /**
  * `GET /api/reports/:report/export`: the format, beside the report's own query
@@ -1006,7 +929,7 @@ export type ReportExportParams = z.infer<typeof reportExportParamsSchema>;
  */
 export const reportFileRequestSchema = z
   .object({
-    report: reportSchema,
+    report: activeReportSchema,
     params: z.record(z.string(), z.unknown()).default({}),
     official: z.boolean().default(false),
   })

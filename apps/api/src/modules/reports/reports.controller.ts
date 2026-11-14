@@ -9,10 +9,6 @@ import {
   type BalanceSheetQuery,
   balanceSheetQuerySchema,
   balanceSheetSchema,
-  type ContractPosition,
-  type ContractPositionQuery,
-  contractPositionQuerySchema,
-  contractPositionSchema,
   type GeneralLedger,
   type GeneralLedgerQuery,
   generalLedgerQuerySchema,
@@ -33,12 +29,8 @@ import {
   profitabilitySchema,
   type ReportLines,
   type ReportLinesQuery,
-  type RevenueReleaseSchedule,
-  type RevenueReleaseScheduleQuery,
   reportLinesQuerySchema,
   reportLinesSchema,
-  revenueReleaseScheduleQuerySchema,
-  revenueReleaseScheduleSchema,
   type TrialBalance,
   type TrialBalanceQuery,
   trialBalanceQuerySchema,
@@ -175,40 +167,6 @@ export class ReportsController {
     @Query({ schema: profitabilityQuerySchema }) query: ProfitabilityQuery,
   ): Promise<Profitability> {
     return this.reports.profitability(inCompany(access), query);
-  }
-
-  @Get('contract-position')
-  @ApiQueryFrom(contractPositionQuerySchema)
-  @CompanyRoute('reports.read')
-  @SerializeOptions({ schema: contractPositionSchema })
-  @ApiOkResponse({
-    description:
-      'Each contract’s gross positions and net, with totals agreeing with the balance sheet',
-    standardSchema: contractPositionSchema,
-  })
-  @ApiErrors(...COMPANY_READ_ERRORS, 'VALIDATION_FAILED')
-  async contractPosition(
-    @Access() access: RequestAccess,
-    @Query({ schema: contractPositionQuerySchema }) query: ContractPositionQuery,
-  ): Promise<ContractPosition> {
-    return this.reports.contractPosition(inCompany(access), query);
-  }
-
-  @Get('revenue-schedule')
-  @ApiQueryFrom(revenueReleaseScheduleQuerySchema)
-  @CompanyRoute('reports.read')
-  @SerializeOptions({ schema: revenueReleaseScheduleSchema })
-  @ApiOkResponse({
-    description:
-      'The revenue releases still to post per month and contract, and what waits for a done',
-    standardSchema: revenueReleaseScheduleSchema,
-  })
-  @ApiErrors(...COMPANY_READ_ERRORS, 'VALIDATION_FAILED')
-  async revenueSchedule(
-    @Access() access: RequestAccess,
-    @Query({ schema: revenueReleaseScheduleQuerySchema }) query: RevenueReleaseScheduleQuery,
-  ): Promise<RevenueReleaseSchedule> {
-    return this.reports.revenueSchedule(inCompany(access), query);
   }
 
   @Get('lines')

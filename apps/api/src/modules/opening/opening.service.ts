@@ -30,44 +30,8 @@ import { openingWorkbook } from './opening-workbook.js';
 
 const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
-type Amounts = {
-  readonly transaction: { readonly amountMinor: bigint };
-  readonly bookMinor: bigint;
-  readonly parallelMinor: bigint | null;
-};
-
-type HubParty = {
-  readonly external_id: string;
-  readonly code?: string | undefined;
-  readonly name: string;
-};
-
 const text = (minor: bigint) => minor.toString();
 const textOrNull = (minor: bigint | null) => (minor === null ? null : minor.toString());
-
-const amountsOf = (amounts: Amounts) => ({
-  transactionMinor: text(amounts.transaction.amountMinor),
-  bookMinor: text(amounts.bookMinor),
-  parallelMinor: textOrNull(amounts.parallelMinor),
-});
-
-const partyOf = (party: HubParty) => ({
-  externalId: party.external_id,
-  code: party.code ?? null,
-  name: party.name,
-});
-
-/** A client and currency of the records' comparison, amounts as text. */
-function differenceOf(pair: OpeningView['differences'][number]) {
-  return {
-    slot: pair.slot,
-    client: pair.client,
-    currency: pair.currency,
-    hubMinor: text(pair.hubMinor),
-    recordsMinor: textOrNull(pair.recordsMinor),
-    differenceMinor: textOrNull(pair.differenceMinor),
-  };
-}
 
 /** A check's failing item as plain values: amounts as text, anything nested as JSON. */
 function failureOf(failure: Record<string, unknown>) {
@@ -126,53 +90,8 @@ async function answerOf(tx: Transaction, view: OpeningView): Promise<OpeningView
   return {
     booksStart: view.booksStart,
     asOf: view.asOf,
-    hubClient: view.hubClient,
     state: (live?.state ?? null) as OpeningViewAnswer['state'],
     version: view.version,
-    snapshot:
-      view.snapshot === null
-        ? null
-        : {
-            id: view.snapshot.id,
-            receivedAt: view.snapshot.receivedAt.toISOString(),
-            result: view.snapshot.result,
-          },
-    hubItems: view.hubItems.map((item) => ({
-      slot: item.slot,
-      reference: item.reference,
-      document:
-        item.document === null
-          ? null
-          : { type: item.document.type, id: item.document.id.id, number: item.document.id.number },
-      client: partyOf(item.client),
-      contract: item.contract === undefined ? null : partyOf(item.contract),
-      dueOn: item.dueOn,
-      documentDate: item.documentDate,
-      currency: item.amount.currency,
-      amounts: {
-        transactionMinor: text(item.amount.amountMinor),
-        bookMinor: text(item.bookMinor),
-        parallelMinor: textOrNull(item.parallelMinor),
-      },
-    })),
-    schedules: view.schedules.map((schedule) => ({
-      invoice: { id: schedule.invoice.id, number: schedule.invoice.number },
-      issuedOn: schedule.issuedOn,
-      lineId: schedule.line.id,
-      position: schedule.position,
-      pattern: schedule.pattern,
-      serviceFrom: schedule.serviceFrom,
-      serviceTo: schedule.serviceTo,
-      milestoneId: schedule.milestoneId,
-      client: partyOf(schedule.client),
-      contract: schedule.contract === undefined ? null : partyOf(schedule.contract),
-      service: partyOf(schedule.service),
-      currency: schedule.deferred.transaction.currency,
-      deferred: amountsOf(schedule.deferred),
-      beforeOpening: amountsOf(schedule.beforeOpening),
-      remaining: amountsOf(schedule.remaining),
-      releasedMonths: [...schedule.releasedMonths],
-    })),
     recordLines: view.recordLines.map((line) => ({
       lineNo: line.lineNo,
       accountId: line.accountId,
@@ -185,14 +104,6 @@ async function answerOf(tx: Transaction, view: OpeningView): Promise<OpeningView
       itemDueOn: line.itemDueOn,
       memo: line.memo,
     })),
-    recordFigures: view.recordFigures.map((figure) => ({
-      slot: figure.slot as OpeningViewAnswer['recordFigures'][number]['slot'],
-      clientValueId: figure.clientValueId,
-      currency: figure.currency as OpeningViewAnswer['recordFigures'][number]['currency'],
-      amountMinor: text(figure.amountMinor),
-    })),
-    differences: view.differences.map(differenceOf),
-    agreement: view.agreement.map(differenceOf),
     lines: view.lines.map((line) => ({
       lineNo: line.lineNo,
       source: line.source,
@@ -256,8 +167,8 @@ export class OpeningService {
   }
 
   /**
-   * `GET /api/opening/export?part=`: the preview or the agreement as an Arabic workbook, read in
-   * one repeatable-read snapshot and audited `export.opening` (S10 "Screens", Export).
+   * `GET /api/opening/export?part=preview`: the preview as an Arabic workbook, read in one
+   * repeatable-read snapshot and audited `export.opening` (S10 "Screens", Export).
    */
   async export(access: CompanyRouteAccess, query: OpeningExportQuery): Promise<ExportFile> {
     const companyId = access.company.id;

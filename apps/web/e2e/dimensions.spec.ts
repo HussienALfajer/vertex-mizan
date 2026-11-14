@@ -32,27 +32,17 @@ const reader: Me = { ...viewer, permissions: ['company.read', 'dimensions.read']
 test.describe('dimensions', () => {
   test.use({ me: owner, api: dimensionReads });
 
-  test('adds a manual client, links it to a Hub ID once, and adds a contract under it (step 4)', async ({
+  test('adds a manual client, with no Hub link, and adds a contract under it (step 4)', async ({
     page,
   }) => {
     const create = recorder((request) => ({
       status: 201,
       json: { ...manualClient, ...request.postDataJSON() },
     }));
-    let links = 0;
-    const link = recorder(() => {
-      links += 1;
-      return links === 1
-        ? { status: 200, json: { ...manualClient, externalSource: 'hub', externalId: 'x' } }
-        : refusal(409, 'DIMENSION_ALREADY_LINKED');
-    });
     await page.route('**/api/dimension-values', (route) =>
       route.request().method() === 'POST'
         ? route.fulfill(create.mock(route.request()))
         : route.fallback(),
-    );
-    await page.route('**/api/dimension-values/*/link', (route) =>
-      route.fulfill(link.mock(route.request())),
     );
     await page.goto('/dimensions');
     await expect(page.getByRole('heading', { level: 1 })).toHaveText(t.title);
@@ -76,20 +66,11 @@ test.describe('dimensions', () => {
     });
     expect(create.seen[0]?.headers()['x-mizan-company']).toBe(companyId);
 
-    // Its Hub link, then a second attempt the API refuses (the list here is still unlinked).
-    for (const attempt of [1, 2]) {
-      await valueAction(page, 'عميل تجريبي', t.actions.link);
-      dialog = page.getByRole('dialog', { name: `${t.link.title}: عميل تجريبي` });
-      await dialog.getByLabel(t.link.externalId).fill('01900000-0000-7000-9000-000000000009');
-      await dialog.getByRole('button', { name: t.link.submit }).click();
-      if (attempt === 1) await expect(dialog).toHaveCount(0);
-    }
-    await expect(dialog.getByText(ar.errors.DIMENSION_ALREADY_LINKED)).toBeVisible();
-    expect(link.seen.map((request) => request.postDataJSON())).toEqual([
-      { externalId: '01900000-0000-7000-9000-000000000009' },
-      { externalId: '01900000-0000-7000-9000-000000000009' },
-    ]);
-    await dialog.getByRole('button', { name: ar.common.cancel }).click();
+    // The Hub link left with Hub (ADR 0021): the value's menu offers none.
+    await page.getByRole('button', { name: `${t.table.menu}: عميل تجريبي` }).click();
+    await expect(page.getByRole('menuitem', { name: t.actions.edit })).toBeVisible();
+    await expect(page.getByRole('menuitem')).toHaveCount(2);
+    await page.keyboard.press('Escape');
 
     // A project under the client.
     await page.getByRole('tab', { name: typeOf('contract').name }).click();

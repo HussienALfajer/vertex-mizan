@@ -1,10 +1,10 @@
 import {
   type Account,
   type AccountStatement,
+  type ActiveReport,
   type AgeingReport,
   type BalanceSheet,
   type ClientStatement,
-  type ContractPosition,
   type CurrencyCode,
   DomainError,
   type GeneralLedger,
@@ -13,9 +13,7 @@ import {
   type JournalQuery,
   type Profitability,
   REPORT_FILE_QUERIES,
-  type Report,
   type ReportFileQuery,
-  type RevenueReleaseSchedule,
   type TrialBalance,
 } from '@vertex-mizan/contracts';
 import { and, asc, desc, eq, gte, inArray, lte, sql } from 'drizzle-orm';
@@ -30,12 +28,10 @@ import { readAgeingReport, readClientStatementReport } from './receivables-reads
 import {
   readAccountStatement,
   readBalanceSheet,
-  readContractPosition,
   readGeneralLedger,
   readIncomeStatement,
   readJournal,
   readProfitability,
-  readRevenueReleaseSchedule,
   readTrialBalance,
 } from './reports.js';
 
@@ -54,8 +50,6 @@ export type ReportAnswer =
   | { readonly report: 'income_statement'; readonly data: IncomeStatement }
   | { readonly report: 'balance_sheet'; readonly data: BalanceSheet }
   | { readonly report: 'profitability'; readonly data: Profitability }
-  | { readonly report: 'contract_position'; readonly data: ContractPosition }
-  | { readonly report: 'revenue_schedule'; readonly data: RevenueReleaseSchedule }
   | { readonly report: 'ageing'; readonly data: AgeingReport; readonly producedAt: string }
   | {
       readonly report: 'client_statement';
@@ -70,7 +64,7 @@ export type ReportAnswer =
     };
 
 /** The reports a sheet is read for: every one but the journal book's print, and the journal. */
-export type SheetReport = Exclude<Report, 'journal_book'> | 'journal';
+export type SheetReport = Exclude<ActiveReport, 'journal_book'> | 'journal';
 
 /**
  * Reads a report whole in the transaction's snapshot: the general ledger, the account statement
@@ -101,10 +95,6 @@ export async function readReportAnswer(
       return { report, data: await readBalanceSheet(tx, query(report, params), now) };
     case 'profitability':
       return { report, data: await readProfitability(tx, query(report, params), now) };
-    case 'contract_position':
-      return { report, data: await readContractPosition(tx, query(report, params), now) };
-    case 'revenue_schedule':
-      return { report, data: await readRevenueReleaseSchedule(tx, query(report, params), now) };
     case 'ageing':
       return {
         report,
@@ -133,7 +123,7 @@ export async function readReportAnswer(
 }
 
 /** Params already validated by the report's schema, typed as its output. */
-const query = <R extends Report>(_report: R, params: unknown) => params as ReportFileQuery<R>;
+const query = <R extends ActiveReport>(_report: R, params: unknown) => params as ReportFileQuery<R>;
 
 async function wholeGeneralLedger(
   tx: Transaction,
@@ -198,7 +188,7 @@ async function wholeJournal(tx: Transaction, first: JournalQuery, now: Date): Pr
 
 /** A report's PDF parameters, validated by its schema (`VALIDATION_FAILED` with the issues). */
 export function parseReportFileParams(
-  report: Report,
+  report: ActiveReport,
   params: Record<string, unknown>,
 ): { readonly stored: Record<string, unknown>; readonly parsed: Record<string, unknown> } {
   // A cursor is dropped: the file carries every page.

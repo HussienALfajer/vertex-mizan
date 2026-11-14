@@ -4,6 +4,7 @@ import {
   acceptsPeriodPermission,
   effectivePermissions,
   PERMISSIONS,
+  RETIRED_PERMISSIONS,
   ROLES,
   rolePermissions,
   roleSchema,
@@ -36,17 +37,8 @@ describe('the permission map', () => {
         'company.export',
         'open_items.read',
         'open_items.manage',
-        'events.read',
-        'events.manage',
-        'events.dismiss',
-        'posting_rules.read',
-        'posting_rules.manage',
-        'api_clients.read',
-        'api_clients.manage',
-        'recognition.read',
         'periods.read',
         'revaluation.post',
-        'reconciliation.read',
         'reports.read',
         'opening.read',
         'opening.prepare',
@@ -67,14 +59,8 @@ describe('the permission map', () => {
         'entries.attach',
         'open_items.read',
         'open_items.manage',
-        'events.read',
-        'events.manage',
-        'posting_rules.read',
-        'posting_rules.manage',
-        'recognition.read',
         'periods.read',
         'revaluation.post',
-        'reconciliation.read',
         'reports.read',
         'opening.read',
         'opening.prepare',
@@ -110,12 +96,7 @@ describe('the permission map', () => {
         'drafts.read',
         'integrity.read',
         'open_items.read',
-        'events.read',
-        'posting_rules.read',
-        'api_clients.read',
-        'recognition.read',
         'periods.read',
-        'reconciliation.read',
         'reports.read',
         'opening.read',
       ],
@@ -142,22 +123,13 @@ describe('the permission map', () => {
     expect(holders('open_items.manage')).toEqual(['owner', 'accountant']);
   });
 
-  it('gives the inbox, the mapping and the API clients to the roles of S05 "Access"', () => {
-    const holders = (key: (typeof PERMISSIONS)[number]) =>
-      ROLES.filter((role) => rolePermissions[role].includes(key));
-    expect(holders('events.read')).toEqual(['owner', 'accountant', 'auditor']);
-    expect(holders('events.manage')).toEqual(['owner', 'accountant']);
-    expect(holders('events.dismiss')).toEqual(['owner']);
-    expect(holders('posting_rules.read')).toEqual(['owner', 'accountant', 'auditor']);
-    expect(holders('posting_rules.manage')).toEqual(['owner', 'accountant']);
-    expect(holders('api_clients.read')).toEqual(['owner', 'auditor']);
-    expect(holders('api_clients.manage')).toEqual(['owner']);
-  });
-
-  it('gives the recognition schedules to the roles of S06 "Access"', () => {
-    const holders = (key: (typeof PERMISSIONS)[number]) =>
-      ROLES.filter((role) => rolePermissions[role].includes(key));
-    expect(holders('recognition.read')).toEqual(['owner', 'accountant', 'auditor']);
+  it('retires the permissions of the features removed with Hub (ADR 0021)', () => {
+    for (const key of RETIRED_PERMISSIONS) {
+      expect(PERMISSIONS as readonly string[], key).not.toContain(key);
+      for (const role of ROLES) {
+        expect(rolePermissions[role] as readonly string[], `${role} ${key}`).not.toContain(key);
+      }
+    }
   });
 
   it('gives the periods and the revaluation to the roles of S07 "Access"', () => {
@@ -165,12 +137,6 @@ describe('the permission map', () => {
       ROLES.filter((role) => rolePermissions[role].includes(key));
     expect(holders('periods.read')).toEqual(['owner', 'accountant', 'auditor']);
     expect(holders('revaluation.post')).toEqual(['owner', 'accountant']);
-  });
-
-  it('gives the reconciliation to the roles of S08 "Access"', () => {
-    const holders = (key: (typeof PERMISSIONS)[number]) =>
-      ROLES.filter((role) => rolePermissions[role].includes(key));
-    expect(holders('reconciliation.read')).toEqual(['owner', 'accountant', 'auditor']);
   });
 
   it('lets every role read the reports (S09 "Access")', () => {

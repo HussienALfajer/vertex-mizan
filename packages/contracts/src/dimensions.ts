@@ -5,8 +5,8 @@ import { personRefSchema } from './wire.js';
 /**
  * Dimensions (S02, ADR 0011): analysis tags a journal line carries. Four built-in types every
  * company has (client, contract under client, department, service), custom types up to
- * `DIMENSION_TYPE_LIMIT` active ones, and values fed by Hub (matched by Hub ID only) or added by
- * hand and linked to a Hub ID later.
+ * `DIMENSION_TYPE_LIMIT` active ones, and values added by hand. Values Hub fed before its removal
+ * (ADR 0021) keep their Hub ID, read only.
  */
 
 /** The built-in types: codes never change; posting rules (S05) and reports (S09) know them. */
@@ -47,9 +47,6 @@ const valueNameSchema = z.string().trim().min(1).max(200);
 
 /** The accountant's short code of a value. */
 const valueCodeSchema = z.string().trim().min(1).max(40);
-
-/** A Hub UUID for clients, contracts and services; Hub's fixed code for departments. */
-export const externalIdSchema = z.string().trim().min(1).max(100).meta({ id: 'ExternalId' });
 
 const timestampSchema = z.iso.datetime({ offset: true });
 
@@ -145,13 +142,6 @@ export const updateDimensionValueSchema = z
   .meta({ id: 'UpdateDimensionValue' });
 
 export type UpdateDimensionValue = z.infer<typeof updateDimensionValueSchema>;
-
-/** `POST /api/dimension-values/:id/link`: a manual value to its Hub ID, once (S02 rule 11). */
-export const linkDimensionValueSchema = z
-  .object({ externalId: externalIdSchema })
-  .meta({ id: 'LinkDimensionValue' });
-
-export type LinkDimensionValue = z.infer<typeof linkDimensionValueSchema>;
 
 /** `GET /api/dimension-values`: one type's values, searched by code or name. */
 export const dimensionValueQuerySchema = z

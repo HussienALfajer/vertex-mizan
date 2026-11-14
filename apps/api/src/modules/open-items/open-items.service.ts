@@ -22,7 +22,6 @@ import {
   type Database,
   type ItemAtDate,
   type ItemDueDate,
-  journalEntries,
   openItemBalances,
   openItemDueDates,
   readAgeingReport,
@@ -35,7 +34,7 @@ import {
 } from '@vertex-mizan/db';
 import { ar } from '@vertex-mizan/i18n';
 import { dueDateInForce, fundTotals } from '@vertex-mizan/ledger';
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import ExcelJS from 'exceljs';
 import { v7 as uuidv7 } from 'uuid';
 import { actorOf, type CompanyRouteAccess } from '../../core/access/access.js';
@@ -343,23 +342,10 @@ async function readOpenItem(tx: Transaction, id: string, asOf: string): Promise<
     tx,
     dueDates.map((row) => row.userId),
   );
-  const [opening] =
-    item.source === 'hub_event'
-      ? await tx
-          .select({ sourceRef: journalEntries.sourceRef })
-          .from(journalEntries)
-          .where(
-            and(
-              eq(journalEntries.id, item.openedByEntryId),
-              eq(journalEntries.source, 'hub_event'),
-            ),
-          )
-      : [];
   return {
     ...summaryOf(item, dueDates, asOf),
     asOf,
     hubDocument: item.hubDocument,
-    hubEventId: opening?.sourceRef ?? null,
     openedByEntryId: item.openedByEntryId,
     bookCurrency: currencies.book,
     parallelCurrency: currencies.parallel,

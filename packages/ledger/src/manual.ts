@@ -4,19 +4,11 @@ import {
   type EntrySource,
   type ExchangeRate,
   type Money,
-  money,
 } from '@vertex-mizan/contracts';
 import { type RealisedTargets, realisedDifferenceLines } from './balance.js';
 import { reverseLines } from './carried.js';
 import { type ItemState, moveItem } from './items.js';
-import {
-  type CarriedAmounts,
-  carriedLine,
-  type Dimensions,
-  keptLedgers,
-  type Line,
-  negate,
-} from './lines.js';
+import { type Dimensions, keptLedgers, type Line } from './lines.js';
 import { type MeasureContext, measuredLine } from './measure.js';
 import { lastDayOfMonth, periodOf } from './periods.js';
 import { quotesPair } from './rates.js';
@@ -32,19 +24,6 @@ export interface ManualLine {
    * or new. Two lines may move one item: the second moves it from where the first left it.
    */
   readonly item?: ItemState;
-  /**
-   * A line that carries the negation of the entry's lines on items in its currency, in every
-   * ledger, instead of a new measurement: an ad spend's payable takes what the client's funds gave
-   * up at their carrying amount (`ad-funds/running-balance`, S05). Its transaction amount must be
-   * that negation. A Hub rule's only; the accountant's lines never carry it.
-   */
-  readonly carriesItems?: true;
-  /**
-   * A line that carries amounts recognition holds instead of a new measurement: a schedule's
-   * contract liability cleared and its revenue at its carried share (S06 rules 11, 14, 15; ADR
-   * 0007, IAS 21.23(b)). Its transaction amount must be the carried one. A Hub rule's only.
-   */
-  readonly carried?: CarriedAmounts;
 }
 
 /** A manual entry's lines and the rates it was dealt at, one per currency pair (S03 rule 13). */
@@ -54,7 +33,7 @@ export interface ManualEntry {
   /**
    * The account with the `retained_earnings` role (S10 rule 28; IAS 8.42): in an entry with a line
    * on it whose residual is a realised difference, the residual posts to it instead, and every other
-   * line must be carried (an item cleared, a schedule's line). A manual entry's only.
+   * line must be carried (an item cleared). A manual entry's only.
    */
   readonly retainedEarnings?: string;
 }
@@ -99,20 +78,6 @@ export interface ManualEntryLines {
   readonly typed: readonly (number | null)[];
 }
 
-/** The sum of the lines on items in a currency, in every ledger. */
-function carriedOfItems(lines: readonly Line[], currency: CurrencyCode): CarriedAmounts {
-  let transaction = 0n;
-  let book = 0n;
-  let parallel: bigint | null = null;
-  for (const line of lines) {
-    if (line.item === undefined || line.transaction.currency !== currency) continue;
-    transaction += line.transaction.amountMinor;
-    book += line.bookMinor;
-    if (line.parallelMinor !== null) parallel = (parallel ?? 0n) + line.parallelMinor;
-  }
-  return { transaction: money(transaction, currency), bookMinor: book, parallelMinor: parallel };
-}
-
 /** Names the manual line (1-based, `details.lineNo`) in a refusal of what it does to its item. */
 function onLine<T>(lineNo: number, work: () => T): T {
   try {
@@ -149,32 +114,7 @@ export function manualEntry(
   const items = new Map<string, ItemState>();
   const lines: Line[] = [];
   const typed: (number | null)[] = [];
-  const carrying: { at: number; index: number }[] = [];
   for (const [index, line] of entry.lines.entries()) {
-    if (line.carriesItems === true) {
-      if (line.item !== undefined) throw new TypeError('A carrying line is on no item');
-      carrying.push({ at: lines.length, index });
-      continue;
-    }
-    if (line.carried !== undefined) {
-      const { transaction } = line.carried;
-      if (
-        line.item !== undefined ||
-        transaction.currency !== line.amount.currency ||
-        transaction.amountMinor !== line.amount.amountMinor
-      ) {
-        throw new TypeError('A carried line is off any item and carries its own amount');
-      }
-      lines.push(
-        carriedLine({
-          account: line.account,
-          dimensions: line.dimensions ?? {},
-          amounts: line.carried,
-        }),
-      );
-      typed.push(index);
-      continue;
-    }
     if (line.item === undefined) {
       lines.push(measuredLine(line, at));
       typed.push(index);
@@ -187,24 +127,6 @@ export function manualEntry(
     items.set(item.id, moved.after);
     lines.push(...moved.lines);
     typed.push(...moved.lines.map(() => index));
-  }
-  // Inserted from the last, so each earlier place still names where its line was typed.
-  for (const { at, index } of carrying.reverse()) {
-    const line = entry.lines[index] as ManualLine;
-    const carried = carriedOfItems(lines, line.amount.currency);
-    if (carried.transaction.amountMinor !== -line.amount.amountMinor) {
-      throw new TypeError('A carrying line is not the negation of the item lines');
-    }
-    lines.splice(
-      at,
-      0,
-      carriedLine({
-        account: line.account,
-        dimensions: line.dimensions ?? {},
-        amounts: negate(carried),
-      }),
-    );
-    typed.splice(at, 0, index);
   }
   const currencies = new Set(lines.map((line) => line.transaction.currency));
   if (currencies.size < 2 && lines.every((line) => line.kind === 'measured')) {
@@ -222,9 +144,9 @@ export function manualEntry(
  * A correction against retained earnings (S10 rule 28, IAS 8.42; owner, 2026-11-12): in an entry
  * with a line on the `retained_earnings` account, each ledger's residual posts to that account, so
  * the correction takes exactly what the items it clears carried and the year's profit is untouched.
- * Only a correction on its own: another line that is not carried (an item cleared or a schedule's
- * line) is refused `VALIDATION_FAILED`, since its real exchange difference would reach equity
- * (IAS 21.28). Null when the entry has no line on that account.
+ * Only a correction on its own: another line that is not carried (an item cleared) is refused
+ * `VALIDATION_FAILED`, since its real exchange difference would reach equity (IAS 21.28). Null
+ * when the entry has no line on that account.
  */
 function correctionTargets(
   retainedEarnings: string | undefined,
@@ -239,7 +161,7 @@ function correctionTargets(
   if (measured >= 0) {
     throw new DomainError(
       'VALIDATION_FAILED',
-      'A correction against retained earnings clears items or schedules only: post another line as an entry of its own',
+      'A correction against retained earnings clears items only: post another line as an entry of its own',
       { lineNo: (typed[measured] ?? 0) + 1 },
     );
   }

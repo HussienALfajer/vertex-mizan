@@ -245,8 +245,8 @@ test.describe('a new company', () => {
       },
       fiscalYearStartMonth: 1,
       policyNote: 'أساس العملة الوظيفية (مثال).',
-      // Vertex Media's service-agency chart unless another is chosen (S02 rule 1).
-      template: 'service-agency',
+      // The general chart unless another is chosen (S02 rule 1, ADR 0021).
+      template: 'general',
     });
     expect(switched.seen[0]?.postDataJSON()).toEqual({ companyId: secondCompanyId });
   });

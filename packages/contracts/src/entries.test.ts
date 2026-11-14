@@ -47,7 +47,6 @@ describe('draftLineInputSchema', () => {
       memo: null,
       openItemId: null,
       newItem: null,
-      scheduleId: null,
     });
   });
 

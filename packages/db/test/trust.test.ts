@@ -54,7 +54,7 @@ async function companyWith(entries: number): Promise<string> {
         ledgers: SYP_USD,
         fiscalYearStartMonth: 1,
         policyNote: 'مذكرة سياسة تجريبية.',
-        template: 'service-agency',
+        template: 'general',
         createdByUserId: person,
       },
       actor(),

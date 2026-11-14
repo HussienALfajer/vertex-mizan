@@ -4,7 +4,6 @@ import {
   DomainError,
   SERVICE_DEPARTMENT_SOURCES,
 } from '@vertex-mizan/contracts';
-import { departmentInForce } from '@vertex-mizan/ledger';
 import { and, eq } from 'drizzle-orm';
 import fc from 'fast-check';
 import { v7 as uuidv7 } from 'uuid';
@@ -17,7 +16,6 @@ import {
   DEPARTMENT_SOURCES,
   dimensionTypes,
   dimensionValues,
-  inboundEvents,
   type PersonActor,
   post,
   readAccountStatement,
@@ -28,10 +26,8 @@ import {
   readJournalBook,
   readProfitability,
   readReportLines,
-  readServiceDepartmentRows,
   readServiceDepartments,
   readTrialBalance,
-  recordHubDepartments,
   serviceDepartments,
   setServiceDepartment,
   type Transaction,
@@ -79,7 +75,7 @@ interface Books {
 const inCompany = <T>(companyId: string, work: (tx: Transaction) => Promise<T>) =>
   withCompany(app, companyId, work);
 
-/** An SYP company with the service-agency chart, services S1 (by hand) and S2 (from Hub). */
+/** An SYP company with the general chart, services S1 (by hand) and S2 (from Hub). */
 async function newBooks(): Promise<Books> {
   const id = uuidv7();
   await withCompany(app, id, (tx) =>
@@ -92,7 +88,7 @@ async function newBooks(): Promise<Books> {
         ledgers: SYP_ONLY,
         fiscalYearStartMonth: 1,
         policyNote: 'مذكرة سياسة تجريبية.',
-        template: 'service-agency',
+        template: 'general',
         createdByUserId: personId,
       },
       actor(),
@@ -314,88 +310,6 @@ describe('the dated department of a service (rules 32–34)', () => {
       readServiceDepartments(tx, books.values.get('S1') as string),
     );
     expect(read.fromHub).toBe(false);
-  });
-
-  it("starts Hub's row from the first open day when the event's month is closed, and only on a change", async () => {
-    const books = await newBooks();
-    await manual(books, '2026-11-10', [
-      ['111003', 1_000n],
-      ['311001', -1_000n],
-    ]);
-    await closeMonthByHand(app, books.id, '2026-11');
-    const [event] = await inCompany(books.id, (tx) =>
-      tx
-        .insert(inboundEvents)
-        .values({
-          companyId: books.id,
-          apiClientId: uuidv7(),
-          eventId: uuidv7(),
-          type: 'invoice.issued',
-          version: 1,
-          occurredAt: new Date('2026-11-20T09:00:00Z'),
-          accountingDate: '2026-11-20',
-          payload: { invoice: { id: uuidv7(), number: 'INV-1' } },
-          payloadHash: 'd'.repeat(64),
-          documentType: 'invoice',
-          documentId: uuidv7(),
-          documentNumber: 'INV-1',
-          itemKey: 'invoice:departments',
-          requestId: 'request-departments',
-        })
-        .returning({ id: inboundEvents.id }),
-    );
-    const record = (department: string, on: string) =>
-      inCompany(books.id, (tx) =>
-        recordHubDepartments(tx, {
-          companyId: books.id,
-          inboundEventId: event?.id as string,
-          accountingDate: on,
-          services: [
-            {
-              serviceId: books.values.get('S2') as string,
-              departmentId: books.values.get(department) as string,
-            },
-          ],
-          actor: actor(),
-        }),
-      );
-    // Two rows of one service and date in one transaction (a retry posting two held invoices):
-    // the later row wins, read in any order (rule 32).
-    await inCompany(books.id, async (tx) => {
-      for (const department of ['video', 'design']) {
-        await recordHubDepartments(tx, {
-          companyId: books.id,
-          inboundEventId: event?.id as string,
-          accountingDate: '2026-12-20',
-          services: [
-            {
-              serviceId: books.values.get('S1') as string,
-              departmentId: books.values.get(department) as string,
-            },
-          ],
-          actor: actor(),
-        });
-      }
-    });
-    const rows = await inCompany(books.id, (tx) => readServiceDepartmentRows(tx));
-    const s1 = books.values.get('S1') as string;
-    expect(departmentInForce(rows, s1, '2026-12-20')).toBe(books.values.get('design'));
-    expect(departmentInForce([...rows].reverse(), s1, '2026-12-20')).toBe(
-      books.values.get('design'),
-    );
-    await record('design', '2026-11-20');
-    await record('design', '2026-12-03');
-    await record('video', '2026-12-15');
-    const history = await inCompany(books.id, (tx) =>
-      readServiceDepartments(tx, books.values.get('S2') as string),
-    );
-    expect(history.fromHub).toBe(true);
-    expect(history.rows.map((row) => [row.department.code, row.effectiveFrom, row.source])).toEqual(
-      [
-        ['design', '2026-12-01', 'hub'],
-        ['video', '2026-12-15', 'hub'],
-      ],
-    );
   });
 });
 

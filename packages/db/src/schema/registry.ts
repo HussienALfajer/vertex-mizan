@@ -5,8 +5,8 @@
  * Scope:
  * - `company`: a company's data; `company_id`, forced RLS with the one `company_isolation`
  *   policy, and foreign keys to other company tables carry `company_id`.
- * - `platform`: data with no company scope (people, sessions, companies, memberships, API client
- *   keys, the platform audit log); no `company_id` column, reached only through its module.
+ * - `platform`: data with no company scope (people, sessions, companies, memberships, the
+ *   platform audit log); no `company_id` column, reached only through its module.
  *
  * Kind:
  * - `business`: `created_at`, `updated_at`, `archived_at`; archived, never deleted.
@@ -94,30 +94,12 @@ export const tableRegistry = {
   open_item_movements: { module: 'open-items', scope: 'company', kind: 'append-only' },
   open_item_due_dates: { module: 'open-items', scope: 'company', kind: 'append-only' },
   open_item_balances: { module: 'open-items', scope: 'company', kind: 'ledger-state' },
-  // posting-rules and inbox (S05, ADR 0014): the slots' accounts, and the event inbox: the events
-  // as received and their actions append-only, each event's state a queue.
-  posting_rule_accounts: { module: 'posting-rules', scope: 'company', kind: 'business' },
-  inbound_events: { module: 'inbox', scope: 'company', kind: 'append-only' },
-  inbound_event_states: { module: 'inbox', scope: 'company', kind: 'queue' },
-  inbound_event_actions: { module: 'inbox', scope: 'company', kind: 'append-only' },
-  recognition_schedules: { module: 'recognition', scope: 'company', kind: 'append-only' },
-  recognition_movements: { module: 'recognition', scope: 'company', kind: 'append-only' },
-  // api-clients (S05, ADR 0003): the systems that post and their keys (platform: a key is looked
-  // up before any company context exists), and each document type's client (company).
-  api_clients: { module: 'api-clients', scope: 'platform', kind: 'business' },
-  api_client_keys: { module: 'api-clients', scope: 'platform', kind: 'business' },
-  document_sources: { module: 'api-clients', scope: 'company', kind: 'business' },
-  // reconciliation (S08, ADR 0017): Hub's daily reports as received and the events they list.
-  reconciliation_reports: { module: 'reconciliation', scope: 'company', kind: 'append-only' },
-  reconciliation_report_events: { module: 'reconciliation', scope: 'company', kind: 'append-only' },
   // reports (S09 rules 28–31, 36): the PDF files the worker renders and the journal book's register.
   report_files: { module: 'reports', scope: 'company', kind: 'queue' },
   journal_book_prints: { module: 'reports', scope: 'company', kind: 'append-only' },
-  // opening (S10, ADR 0019): Hub's snapshots, the opening and each version's lines and figures.
-  opening_snapshots: { module: 'opening', scope: 'company', kind: 'append-only' },
+  // opening (S10, ADR 0019 as amended by ADR 0021): the opening and each version's lines.
   openings: { module: 'opening', scope: 'company', kind: 'draft' },
   opening_lines: { module: 'opening', scope: 'company', kind: 'append-only' },
-  opening_record_figures: { module: 'opening', scope: 'company', kind: 'append-only' },
 } as const satisfies Record<string, TableInfo>;
 
 export type TableScope = 'company' | 'platform';

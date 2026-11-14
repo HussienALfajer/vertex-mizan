@@ -23,8 +23,6 @@ export function companyOf(
     booksStart: settings.booksStart,
     openingState,
     manualEntryApproval: settings.manualEntryApproval,
-    paymentToleranceSyp: settings.paymentToleranceSypMinor.toString(),
-    paymentToleranceUsd: settings.paymentToleranceUsdMinor.toString(),
     archived:
       company.archivedAt && company.archivedReason
         ? { at: company.archivedAt.toISOString(), reason: company.archivedReason }

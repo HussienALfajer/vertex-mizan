@@ -3,7 +3,7 @@ import { mkdtemp, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
-import type { CompanyLedgers, Report } from '@vertex-mizan/contracts';
+import type { ActiveReport, CompanyLedgers } from '@vertex-mizan/contracts';
 import {
   auditEntries,
   chartAccounts,
@@ -98,7 +98,7 @@ async function company(): Promise<string> {
         ledgers: SYP,
         fiscalYearStartMonth: 1,
         policyNote: 'مذكرة سياسة تجريبية.',
-        template: 'service-agency',
+        template: 'general',
         createdByUserId: person,
       },
       actor(),
@@ -384,19 +384,20 @@ describe('reports.render', () => {
       income_statement: { from: '2026-10-01', to: '2026-10-31', compare: 'false' },
       balance_sheet: { asOf: '2026-10-31' },
       profitability: { by: 'client', from: '2026-10-01', to: '2026-10-31' },
-      contract_position: { asOf: '2026-10-31' },
-      revenue_schedule: { from: '2026-10' },
       ageing: { asOf: '2026-10-31' },
       client_statement: { client, from: '2026-10-01', to: '2026-10-31' },
       chart: {},
-    } satisfies Record<Report, Record<string, string>>;
-    for (const [report, input] of Object.entries(asked) as [Report, Record<string, string>][]) {
+    } satisfies Record<ActiveReport, Record<string, string>>;
+    for (const [report, input] of Object.entries(asked) as [
+      ActiveReport,
+      Record<string, string>,
+    ][]) {
       const file = await ask(id, { report, params: parseReportFileParams(report, input).stored });
       expect(await job.work({ companyId: id, fileId: file.id }), report).toEqual({
         state: 'ready',
       });
     }
-    expect(printer.printed).toHaveLength(12);
+    expect(printer.printed).toHaveLength(10);
   });
 });
 

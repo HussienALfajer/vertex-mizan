@@ -1,15 +1,19 @@
 import { randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { monthsOf } from '@vertex-mizan/contracts';
-import { asc } from 'drizzle-orm';
+import { asc, inArray } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import pg from 'pg';
 import { v7 as uuidv7 } from 'uuid';
-import type { Database } from './client.js';
+import type { AuditActor } from './audit.js';
+import type { Database, Transaction } from './client.js';
 import { withCompany } from './company-context.js';
 import { writePeriodTransition } from './posting/post.js';
+import { chartAccounts } from './schema/chart.js';
+import { dimensionTypes } from './schema/dimensions.js';
 import { ledgerHeads, periods } from './schema/ledger.js';
+import { createAccount } from './services/chart.js';
 
 /** A migrated throwaway database: its name, the URLs of the four roles for it, and how to drop it. */
 export type TestDatabase = {
@@ -159,4 +163,98 @@ export async function closeMonthByHand(
       await hold.until;
     }
   });
+}
+
+/**
+ * The two control accounts S04's tests post to beyond the general chart, as the service-agency
+ * chart held them before ADR 0021 removed it: `113001` contract assets (a document item each, client
+ * and contract required) and `213001` client money held (a running item per client, in USD, client
+ * required), each under its header. Made through `createAccount()` in the company in context, the
+ * general template applied; answers every account's id by code. For this package's and the apps'
+ * tests only.
+ */
+export async function addTestControlAccounts(
+  tx: Transaction,
+  companyId: string,
+  actor: AuditActor,
+): Promise<Map<string, string>> {
+  const types = new Map(
+    (
+      await tx
+        .select({ id: dimensionTypes.id, code: dimensionTypes.code })
+        .from(dimensionTypes)
+        .where(inArray(dimensionTypes.code, ['client', 'contract']))
+    ).map((row) => [row.code, row.id]),
+  );
+  const parents = new Map(
+    (
+      await tx
+        .select({ id: chartAccounts.id, code: chartAccounts.code })
+        .from(chartAccounts)
+        .where(inArray(chartAccounts.code, ['11', '21']))
+    ).map((row) => [row.code, row.id]),
+  );
+  const typeId = (code: string) => types.get(code) as string;
+  const header = (parentCode: string, code: string, name: string) =>
+    createAccount(
+      tx,
+      companyId,
+      {
+        parentId: parents.get(parentCode) as string,
+        code,
+        kind: 'header',
+        name,
+        nameLatin: null,
+        statementLine: null,
+        currency: null,
+        isControl: false,
+        itemKind: null,
+        isMonetary: false,
+        requiredDimensionTypeIds: [],
+      },
+      actor,
+    );
+  const assets = await header('11', '113', 'أصول العقود');
+  const funds = await header('21', '213', 'أمانات العملاء');
+  await createAccount(
+    tx,
+    companyId,
+    {
+      parentId: assets.id,
+      code: '113001',
+      kind: 'postable',
+      name: 'أصول العقود',
+      nameLatin: 'Contract assets',
+      statementLine: 'bs.contract_assets',
+      currency: null,
+      isControl: true,
+      itemKind: 'document',
+      isMonetary: true,
+      requiredDimensionTypeIds: [typeId('client'), typeId('contract')],
+    },
+    actor,
+  );
+  await createAccount(
+    tx,
+    companyId,
+    {
+      parentId: funds.id,
+      code: '213001',
+      kind: 'postable',
+      name: 'أمانات إعلانات العملاء',
+      nameLatin: 'Client ad funds held',
+      statementLine: 'bs.client_money',
+      currency: 'USD',
+      isControl: true,
+      itemKind: 'running',
+      isMonetary: true,
+      requiredDimensionTypeIds: [typeId('client')],
+    },
+    actor,
+  );
+  return new Map(
+    (await tx.select({ id: chartAccounts.id, code: chartAccounts.code }).from(chartAccounts)).map(
+      (row) => [row.code, row.id],
+    ),
+  );
 }

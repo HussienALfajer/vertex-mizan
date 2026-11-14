@@ -1,4 +1,4 @@
-import type { DocumentType, EntrySource, LineKind } from '@vertex-mizan/contracts';
+import type { EntrySource, LineKind } from '@vertex-mizan/contracts';
 
 /**
  * Journal entries (S03): the journal, an entry's page, the keyboard entry screen with its preview
@@ -161,7 +161,10 @@ export const entries = {
     empty: 'لم يستخدم أي قيد هذا السعر.',
   },
   ledgerSwitch: 'الدفتر المعروض',
-  /** The Hub document an entry, a line or an item came from, kept readable (ADR 0021). */
+  /**
+   * The Hub document an entry, a line or an item came from, kept readable (ADR 0021): the types
+   * Hub sent, stored with the rows; no new one comes.
+   */
   hubDocument: {
     label: 'مستند Hub',
     types: {
@@ -173,6 +176,6 @@ export const entries = {
       milestone: 'مرحلة',
       project: 'مشروع',
       rate: 'سعر',
-    } satisfies Record<DocumentType, string>,
+    } as Readonly<Record<string, string>>,
   },
 };

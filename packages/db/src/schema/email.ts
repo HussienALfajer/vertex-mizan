@@ -17,8 +17,6 @@ export const OUTBOX_EMAIL_KINDS = [
   // S03: the daily anchor and the full export.
   'daily_anchor',
   'export_ready',
-  // S05: the daily digest of held events.
-  'held_digest',
 ] as const;
 
 const listed = (values: readonly string[]) =>

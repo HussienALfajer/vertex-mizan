@@ -5,7 +5,6 @@ import {
   type AgeingReport,
   type BalanceSheet,
   type ClientStatement,
-  type ContractPosition,
   type CurrencyCode,
   type GeneralLedger,
   type IncomeStatement,
@@ -16,7 +15,6 @@ import {
   type ReportHeader,
   type ReportMark,
   type ReportValue,
-  type RevenueReleaseSchedule,
   STATEMENT_LINES,
   type TrialBalance,
 } from '@vertex-mizan/contracts';
@@ -51,8 +49,6 @@ export type SheetInput =
   | { readonly report: 'income_statement'; readonly data: IncomeStatement }
   | { readonly report: 'balance_sheet'; readonly data: BalanceSheet }
   | { readonly report: 'profitability'; readonly data: Profitability }
-  | { readonly report: 'contract_position'; readonly data: ContractPosition }
-  | { readonly report: 'revenue_schedule'; readonly data: RevenueReleaseSchedule }
   | { readonly report: 'ageing'; readonly data: AgeingReport; readonly producedAt: string }
   | {
       readonly report: 'client_statement';
@@ -83,10 +79,6 @@ export function reportSheet(input: SheetInput, context: SheetContext): ReportShe
       return balanceSheetSheet(input.data, context);
     case 'profitability':
       return profitabilitySheet(input.data, context);
-    case 'contract_position':
-      return contractPositionSheet(input.data, context);
-    case 'revenue_schedule':
-      return revenueScheduleSheet(input.data, context);
     case 'ageing':
       return ageingSheet(input.data, input.producedAt, context);
     case 'client_statement':
@@ -707,101 +699,6 @@ function profitabilitySheet(data: Profitability, context: SheetContext): ReportS
     ...headerParts(data.header, context, [
       { label: t.header.by, value: t.profitability.by[data.by] },
     ]),
-    columns,
-    rows,
-  };
-}
-
-// --- Contract position and release schedule (rules 24, 25) ---
-
-function contractPositionSheet(data: ContractPosition, context: SheetContext): ReportSheet {
-  const t = context.text.reports;
-  const c = t.columns;
-  const rows: SheetRow[] = data.rows.map((row) => ({
-    cells: {
-      contract: valueName(row.contract, context.text),
-      client: row.client === null ? undefined : valueName(row.client, context.text),
-      kind: row.kind === null ? undefined : t.contractKinds[row.kind],
-      assets: row.assets,
-      liabilities: row.liabilities,
-      net: row.net,
-      side:
-        row.net === '0'
-          ? undefined
-          : row.net.startsWith('-')
-            ? t.sides.liabilities
-            : t.sides.assets,
-    },
-  }));
-  rows.push(
-    {
-      emphasis: 'subtotal',
-      cells: {
-        contract: t.totals.withoutContract,
-        assets: data.totals.withoutContractAssets,
-        liabilities: data.totals.withoutContractLiabilities,
-      },
-    },
-    {
-      emphasis: 'total',
-      cells: {
-        contract: t.totals.total,
-        assets: data.totals.contractAssets,
-        liabilities: data.totals.contractLiabilities,
-      },
-    },
-  );
-  return {
-    report: 'contract_position',
-    title: t.names.contract_position,
-    ...headerParts(data.header, context),
-    columns: [
-      text('contract', c.contract, 30),
-      text('client', c.client, 26),
-      text('kind', c.kind, 12),
-      amount('assets', c.contractAssets),
-      amount('liabilities', c.contractLiabilities),
-      amount('net', c.net),
-      text('side', c.side, 16),
-    ],
-    rows,
-  };
-}
-
-function revenueScheduleSheet(data: RevenueReleaseSchedule, context: SheetContext): ReportSheet {
-  const t = context.text.reports;
-  const c = t.columns;
-  const columns: SheetColumn[] = [
-    text('contract', c.contract, 28),
-    text('client', c.client, 24),
-    ...data.months.map((month) => amount(`m:${month}`, month, 16)),
-    amount('atDone', c.atDone),
-    amount('total', c.total),
-  ];
-  const months = (list: readonly { month: string; amount: string }[]) =>
-    Object.fromEntries(list.map((entry) => [`m:${entry.month}`, entry.amount]));
-  const rows: SheetRow[] = data.rows.map((row) => ({
-    cells: {
-      contract: valueName(row.contract, context.text),
-      client: row.client === null ? undefined : valueName(row.client, context.text),
-      ...months(row.months),
-      atDone: row.atDone,
-      total: row.total,
-    },
-  }));
-  rows.push({
-    emphasis: 'total',
-    cells: {
-      contract: t.totals.total,
-      ...months(data.totals.months),
-      atDone: data.totals.atDone,
-      total: data.totals.total,
-    },
-  });
-  return {
-    report: 'revenue_schedule',
-    title: t.names.revenue_schedule,
-    ...headerParts(data.header, context),
     columns,
     rows,
   };

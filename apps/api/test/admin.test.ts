@@ -64,7 +64,7 @@ describe('admin:create-company', () => {
         },
         fiscalYearStartMonth: 1,
         policyNote: 'العملة الوظيفية الليرة السورية.',
-        template: 'service-agency',
+        template: 'general',
       },
       ownerEmail: 'first.owner@example.test',
       booksStart: null,
@@ -117,14 +117,14 @@ describe('admin:create-company', () => {
       tx.select({ booksStart: companySettings.booksStart }).from(companySettings),
     );
     expect(settings?.booksStart).toBe('2026-10-01');
-    // The service-agency chart in the creation transaction (S02 rule 1), audited as the system.
+    // The general chart in the creation transaction (S02 rule 1), audited as the system.
     const chart = await withCompany(db, created.companyId, async (tx) => ({
       accounts: await tx.select({ code: chartAccounts.code }).from(chartAccounts),
       audit: await tx
         .select({ action: auditEntries.action, actorKind: auditEntries.actorKind })
         .from(auditEntries),
     }));
-    expect(chart.accounts).toHaveLength(chartTemplate('service-agency').accounts.length);
+    expect(chart.accounts).toHaveLength(chartTemplate('general').accounts.length);
     expect(chart.audit).toContainEqual({ action: 'chart.template_applied', actorKind: 'system' });
     const [invitation] = await db
       .select()

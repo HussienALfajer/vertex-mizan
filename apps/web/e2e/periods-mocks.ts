@@ -129,7 +129,7 @@ export const november: PeriodDetail = {
 };
 
 const receivable = accountOf('112001');
-const clearing = accountOf('211002');
+const clearing = accountOf('211003');
 const sypBank = accountOf('111003');
 
 const bulletinRow = {

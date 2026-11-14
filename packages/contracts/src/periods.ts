@@ -218,6 +218,17 @@ export const checklistItemNameSchema = z.enum(CHECKLIST_ITEMS).meta({ id: 'Check
 
 export type ChecklistItemName = z.infer<typeof checklistItemNameSchema>;
 
+/**
+ * The items of features removed with Hub (ADR 0021): held events (S05), the revenue releases
+ * (S06) and the daily reconciliation (S08). A close's stored checklist may name them; a new
+ * checklist does not.
+ */
+export const RETIRED_CHECKLIST_ITEMS = [
+  'no_held_events',
+  'releases_posted',
+  'reconciliation_clean',
+] as const satisfies readonly ChecklistItemName[];
+
 /** What an item answers (S07 rule 8). */
 export const CHECKLIST_RESULTS = ['passed', 'failed', 'not_applicable'] as const;
 
@@ -315,9 +326,22 @@ export const periodDetailSchema = z
 
 export type PeriodDetail = z.infer<typeof periodDetailSchema>;
 
-/** `POST /api/periods/:period/reopen`'s answer: the month and the events queued for retry. */
+/** `POST /api/periods/:period/reopen`'s answer: the month reopened. */
 export const periodReopenResultSchema = z
-  .object({ period: periodDetailSchema, queuedEvents: z.int().min(0) })
+  .object({ period: periodDetailSchema })
   .meta({ id: 'PeriodReopenResult' });
 
 export type PeriodReopenResult = z.infer<typeof periodReopenResultSchema>;
+
+const monthIndex = (month: string) => Number(month.slice(0, 4)) * 12 + Number(month.slice(5, 7));
+
+/** The months of a range in order, `YYYY-MM` (from `events.ts`, which left with Hub, ADR 0021). */
+export function monthsOf(range: { readonly from: string; readonly to: string }): string[] {
+  const months: string[] = [];
+  for (let index = monthIndex(range.from); index <= monthIndex(range.to); index += 1) {
+    const year = Math.floor((index - 1) / 12);
+    const month = index - year * 12;
+    months.push(`${year}-${String(month).padStart(2, '0')}`);
+  }
+  return months;
+}
