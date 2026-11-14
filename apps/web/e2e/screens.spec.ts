@@ -718,7 +718,7 @@ for (const colorScheme of ['light', 'dark'] as const) {
             await expect(
               page.getByRole('navigation', { name: ar.opening.steps.label }),
             ).toBeVisible();
-            await expect(page.locator('#review [data-slot="checklist-item"]')).toHaveCount(6);
+            await expect(page.locator('#review [data-slot="checklist-item"]')).toHaveCount(3);
             await expectNoPageOverflow(page);
             await screenshot(page, testInfo, `${name}-${colorScheme}-${width}`);
           });

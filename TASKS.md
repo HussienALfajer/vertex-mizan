@@ -8,7 +8,7 @@
 - [x] apps/api, apps/worker, apps/web, packages/ui, packages/i18n: the leftovers; nginx's `/v1`
 - [x] packages/scenarios and docs/scenarios: the runner's Hub steps and the book's Hub cases; the frozen service-agency chart of the book
 - [x] Docs: CLAUDE.md files, AGENTS.md, ROADMAP, deployment (the rollback exception), ADR 0021 (the migration guard's exception)
-- [ ] verify --e2e-all, reviewers, PR with auto-merge
+- [x] verify --e2e-all, reviewers, PR with auto-merge
 
 ## ADR 0021 removal, the API and the worker (branch `refactor/remove-hub-api-worker`)
 

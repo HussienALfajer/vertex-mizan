@@ -239,7 +239,7 @@ test.describe('the revaluation', () => {
     await expect(item).toContainText('120,000.00');
     await expect(item).toContainText('125,000.00');
     await expect(item).toContainText('5,000.00');
-    await expect(balances.getByRole('row').filter({ hasText: '211002' })).toContainText(
+    await expect(balances.getByRole('row').filter({ hasText: '211003' })).toContainText(
       r.balances.blocked,
     );
     await expect(page.getByText(r.gain).locator('..')).toContainText('5,500.00');

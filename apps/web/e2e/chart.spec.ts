@@ -74,8 +74,8 @@ test.describe('the chart', () => {
     const bank = accountOf('111');
     const added: Account = {
       ...accountOf('111001'),
-      id: '01900000-0000-7000-8002-000000111007',
-      code: '111007',
+      id: '01900000-0000-7000-8002-000000111005',
+      code: '111005',
       name: 'الحساب المصرفي — يورو',
       currency: 'EUR',
     };
@@ -89,21 +89,21 @@ test.describe('the chart', () => {
     await rowAction(page, '111', t.actions.addChild);
     const sheet = page.getByRole('dialog', { name: s.createTitle });
     // The next free code under the header is offered.
-    await expect(sheet.getByLabel(s.code)).toHaveValue('111007');
-    await sheet.getByLabel(s.code).fill('1110071');
+    await expect(sheet.getByLabel(s.code)).toHaveValue('111005');
+    await sheet.getByLabel(s.code).fill('1110051');
     await sheet.getByLabel(s.name).fill('الحساب المصرفي — يورو');
     await choose(page, s.statementLine, 'النقد وما يعادله');
     await sheet.getByRole('button', { name: s.create }).click();
     await expect(fieldError(sheet, ar.errors.ACCOUNT_CODE_INVALID)).toBeVisible();
     expect(create.seen).toHaveLength(0);
 
-    await sheet.getByLabel(s.code).fill('111007');
+    await sheet.getByLabel(s.code).fill('111005');
     await choose(page, s.currency, `${ar.accounting.currencies.EUR} (EUR)`);
     await sheet.getByRole('button', { name: s.create }).click();
     await expect(sheet).toHaveCount(0);
     expect(create.seen[0]?.postDataJSON()).toEqual({
       parentId: bank.id,
-      code: '111007',
+      code: '111005',
       kind: 'postable',
       name: 'الحساب المصرفي — يورو',
       nameLatin: null,
@@ -321,7 +321,7 @@ test.describe('the chart', () => {
       t.normalBalances.debit,
     );
     await choose(page, s.parent, `21 ${accountOf('21').name}`);
-    await expect(sheet.getByLabel(s.code)).toHaveValue('217');
+    await expect(sheet.getByLabel(s.code)).toHaveValue('213');
     await expect(sheet.getByRole('combobox', { name: s.kind })).toHaveText(t.kinds.postable);
     await expect(sheet.getByRole('combobox', { name: s.normalBalance })).toHaveText(
       t.normalBalances.credit,
@@ -332,7 +332,7 @@ test.describe('the chart', () => {
     await expect(sheet).toHaveCount(0);
     expect(create.seen[0]?.postDataJSON()).toMatchObject({
       parentId: accountOf('21').id,
-      code: '217',
+      code: '213',
       kind: 'postable',
       normalBalance: 'credit',
       statementLine: 'bs.client_money',
@@ -354,8 +354,8 @@ test.describe('archived accounts', () => {
           ),
           {
             ...accountOf('111001'),
-            id: '01900000-0000-7000-8002-000000111007',
-            code: '111007',
+            id: '01900000-0000-7000-8002-000000111005',
+            code: '111005',
             archived,
           },
         ],
@@ -367,7 +367,7 @@ test.describe('archived accounts', () => {
     await page.goto('/chart');
     await rowAction(page, '111', t.actions.addChild);
     let sheet = page.getByRole('dialog', { name: s.createTitle });
-    await expect(sheet.getByLabel(s.code)).toHaveValue('111008');
+    await expect(sheet.getByLabel(s.code)).toHaveValue('111006');
     await page.keyboard.press('Escape');
     await rowAction(page, '122', t.actions.edit);
     sheet = page.getByRole('dialog', { name: s.editTitle });

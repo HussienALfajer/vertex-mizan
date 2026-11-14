@@ -117,9 +117,9 @@ describe('/api/reports', () => {
     ).body as Profitability;
     expect(profitability.header.ledger).toBe('parallel');
     expect(profitability.rows).toEqual([]);
-    for (const [path, query] of [] as const) {
-      const read = await browser.get(path, query);
-      expect(read.status, `${path} ${JSON.stringify(read.body)}`).toBe(200);
+    // The reports only Hub's events fed left with Hub (ADR 0021).
+    for (const path of ['/api/reports/contract-position', '/api/reports/revenue-schedule']) {
+      expect((await browser.get(path, { asOf: to })).status, path).toBe(404);
     }
   });
 

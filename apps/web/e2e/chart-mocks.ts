@@ -96,8 +96,45 @@ export const chart: Account[] = [
     ),
 ];
 
+/**
+ * Contract assets and client money held: two control accounts the reports' mocks present, which the
+ * general chart lacks since ADR 0021 removed the service-agency template. Not in `chart`.
+ */
+const reportedControls: Account[] = [
+  {
+    code: '113001',
+    name: 'أصول العقود',
+    nameLatin: 'Contract assets',
+    item: 'document',
+    line: 'bs.contract_assets',
+    currency: null,
+  },
+  {
+    code: '213001',
+    name: 'أمانات إعلانات العملاء',
+    nameLatin: 'Client ad funds held',
+    item: 'running',
+    line: 'bs.client_money',
+    currency: 'USD',
+  },
+].map(
+  ({ code, name, nameLatin, item, line, currency }): Account => ({
+    ...(chart.find((account) => account.code === '112001') as Account),
+    id: idOf(code),
+    code,
+    parentId: idOf(code.slice(0, 3)),
+    class: accountClassOfCode(code),
+    name,
+    nameLatin,
+    normalBalance: code.startsWith('2') ? 'credit' : 'debit',
+    statementLine: line,
+    currency: currency as Account['currency'],
+    itemKind: item as Account['itemKind'],
+  }),
+);
+
 export const accountOf = (code: string): Account => {
-  const found = chart.find((account) => account.code === code);
+  const found = [...chart, ...reportedControls].find((account) => account.code === code);
   if (!found) throw new Error(`No account ${code} in the mock chart`);
   return found;
 };

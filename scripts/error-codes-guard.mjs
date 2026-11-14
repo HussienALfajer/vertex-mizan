@@ -3,13 +3,15 @@
 // the pull request's base) and fails unless the base's codes are still there, first, in the same
 // order and with the same HTTP status. New codes may only be appended. The append-only lists of the
 // event inbox (S05, ADR 0014: the hold reasons and their details, the event states and actions,
-// the posting slots and the document types, in `packages/contracts/src/events.ts`) are guarded the
-// same way: each published value still there, first, in order. Run by CI
+// the posting slots and the document types, retired with the inbox in
+// `packages/contracts/src/retired-lists.ts`, ADR 0021) are guarded the same way: each published value
+// still there, first, in order. A base without that file is read from `events.ts`, their home before
+// ADR 0021. Run by CI
 // (`pnpm check:error-codes --base <ref>`); tested by `packages/config/test/error-codes-guard.test.ts`.
 //
 // Options: `--base <ref>` (default `origin/main`), `--repo <dir>` (default this repository),
 // `--file <path in the repository>` (default the registry above) and `--lists-file <path>`
-// (default the event contracts above).
+// (default the retired lists above).
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -137,7 +139,7 @@ function main(args) {
   const repo = resolve(option(args, '--repo', root));
   const base = option(args, '--base', 'origin/main');
   const file = option(args, '--file', 'packages/contracts/src/errors.ts');
-  const listsFile = option(args, '--lists-file', 'packages/contracts/src/events.ts');
+  const listsFile = option(args, '--lists-file', 'packages/contracts/src/retired-lists.ts');
   const git = (...gitArgs) =>
     execFileSync('git', ['-C', repo, ...gitArgs], {
       encoding: 'utf8',
@@ -158,7 +160,10 @@ function main(args) {
     }
   };
   const baseSource = published(file);
-  const baseLists = published(listsFile);
+  // Before ADR 0021 the lists lived in the event contracts.
+  const baseLists =
+    published(listsFile) ??
+    (listsFile.endsWith('retired-lists.ts') ? published('packages/contracts/src/events.ts') : null);
   try {
     const problems =
       baseSource === null

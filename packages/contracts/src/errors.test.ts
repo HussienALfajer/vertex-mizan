@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
-  RETIRED_ERROR_CODES,
   DomainError,
   errorCodeSchema,
   errorCodes,
   errorResponseSchema,
   errorStatus,
+  RETIRED_ERROR_CODES,
 } from './errors.js';
 
 describe('error codes', () => {
