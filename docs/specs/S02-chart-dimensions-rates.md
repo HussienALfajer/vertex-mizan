@@ -1,6 +1,6 @@
 # S02 — Chart of accounts, dimensions and rates
 
-Status: Approved (owner, 2026-10-27), amended by ADR 0021 (2026-11-13: Hub's values, rates and the service-agency template removed; they are in git history at commit `1a0ee40`) · Date: 2026-10-27 · Features: `docs/product/phase-1-scope.md` F02, F03, F04 · ADRs: 0003, 0005, 0007, 0008, 0010, 0011, 0021
+Status: Approved (owner, 2026-10-27), amended by ADR 0021 (2026-11-13: Hub's values, rates and the service-agency template removed; they are in git history at commit `1a0ee40`), and by S11 (2026-11-14: the `contracting@1` template, the built-in types `supplier` and `worker`, an account's counterparty type and cash kind; ADR 0022) · Date: 2026-10-27 · Features: `docs/product/phase-1-scope.md` F02, F03, F04 · ADRs: 0003, 0005, 0007, 0008, 0010, 0011, 0021
 
 ## Summary
 Every later posting needs three things this spec delivers: the accounts a line posts to, the analysis tags it carries, and the exchange rates its book and parallel amounts are converted at. S02 gives each company a numbered four-level chart of accounts with IFRS statement lines (applied from the general template), dimension types and values added by hand, and a dated, append-only rate table with the Central Bank bulletin rule decided by the owner. It posts nothing; S03 enforces its rules at posting.

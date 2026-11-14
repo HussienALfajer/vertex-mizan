@@ -59,4 +59,4 @@ The owner chose to build this inside Mizan, keep only what the client needs, and
 - The client's business data is never written to this public repository: the scenarios use synthetic data only.
 
 ## Open
-- The client's book currency and whether they need statutory books in Syrian pounds. This is asked before their first company is created.
+- ~~The client's book currency and whether they need statutory books in Syrian pounds.~~ Answered by the owner on 2026-11-14 (S11, "The client's currencies"): the book in USD at the market rate accepting dealt rates, and a parallel ledger in SYP at the bulletin kept as a precaution, since whether statutory books in SYP are required is not known (Q1 stays open).
