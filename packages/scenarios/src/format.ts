@@ -499,7 +499,7 @@ const draftStepSchema = z
 /**
  * A cash voucher (S11 rules 9–14): what it records, its date and the request as the voucher form
  * sends it, a draft with its voucher header (`voucher: { kind, cash_account, counter_cash_account?,
- * party_name?, counted? }`) and its lines, posted from that draft. A transfer's dealt rate is the
+ * party_name?, counted?, expected? }`) and its lines (none on a count), posted from that draft. A transfer's dealt rate is the
  * system's to derive from its amounts (rule 12), so its payload states none.
  */
 const voucherStepSchema = z
@@ -734,7 +734,7 @@ export type ExpectedCorrection = z.output<typeof correctionSchema>;
 
 /**
  * A cash voucher the company holds (S11 rules 9–14): its kind and its number in that kind and its
- * fiscal year, its date and cash account, the entry it posted (posting order; `null` only for a
+ * fiscal year, its date and cash account, a transfer's destination, the entry it posted (posting order; `null` only for a
  * count that matched), a count's expected and counted amounts, and the reversal that cancelled it.
  */
 const voucherSchema = z
@@ -743,6 +743,7 @@ const voucherSchema = z
     number: countSchema(1),
     date: dateSchema,
     cash_account: accountSchema,
+    counter_cash_account: accountSchema.optional(),
     entry: countSchema(1).nullable(),
     expected: amountSchema.optional(),
     counted: amountSchema.optional(),
@@ -752,6 +753,15 @@ const voucherSchema = z
     const issue = (message: string, path: PropertyKey[]) =>
       context.addIssue({ code: 'custom', message, path });
     const count = voucher.kind === 'count';
+    const transfer = voucher.kind === 'transfer';
+    if ((voucher.counter_cash_account !== undefined) !== transfer) {
+      const message = transfer
+        ? 'A transfer states its destination, counter_cash_account'
+        : 'Only a transfer has counter_cash_account';
+      issue(message, ['counter_cash_account']);
+    } else if (transfer && voucher.counter_cash_account === voucher.cash_account) {
+      issue('A transfer moves cash between two cash accounts', ['counter_cash_account']);
+    }
     for (const field of ['expected', 'counted'] as const) {
       const amount = voucher[field];
       if ((amount !== undefined) !== count) {
@@ -771,9 +781,10 @@ const voucherSchema = z
       issue('A voucher with no entry cannot be cancelled', ['cancelled_by']);
     }
   })
-  .transform(({ cash_account, cancelled_by, ...voucher }) => ({
+  .transform(({ cash_account, counter_cash_account, cancelled_by, ...voucher }) => ({
     ...voucher,
     cashAccount: cash_account,
+    counterCashAccount: counter_cash_account ?? null,
     expected: voucher.expected ?? null,
     counted: voucher.counted ?? null,
     cancelledBy: cancelled_by ?? null,

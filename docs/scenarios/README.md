@@ -138,7 +138,8 @@ expect:
     - { kind: count, number: 1, date: 2026-12-03, cash_account: "111005", entry: 3,
         expected: 3450000, counted: 3445000, cancelled_by: 4 }
                                     # kind, its number in its kind and fiscal year, date, cash
-                                    #   account, the entry it posted (posting order; null only for a
+                                    #   account, a transfer's destination (counter_cash_account,
+                                    #   only on a transfer), the entry it posted (posting order; null only for a
                                     #   count that matched), a count's expected and counted amounts,
                                     #   and the reversal that cancelled it (rule 14); [] states none
   outcome:                          # optional: the last step's refusal, when the step does not

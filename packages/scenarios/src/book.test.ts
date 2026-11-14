@@ -573,6 +573,7 @@ describe('a case', () => {
         number: 1,
         date: '2026-11-03',
         cashAccount: '111002',
+        counterCashAccount: null,
         entry: 1,
         expected: null,
         counted: null,
@@ -583,6 +584,7 @@ describe('a case', () => {
         number: 1,
         date: '2026-11-03',
         cashAccount: '111002',
+        counterCashAccount: null,
         entry: null,
         expected: 10000n,
         counted: 10000n,
@@ -593,6 +595,19 @@ describe('a case', () => {
     expect(refused(matched.replace(', counted: 10000', ''))).toContain(
       'A count states its counted amount',
     );
+    const transfer = receipt.replace('kind: receipt', 'kind: transfer');
+    expect(
+      parseCase(
+        withVouchers(transfer.replace('entry: 1', 'counter_cash_account: "111004", entry: 1')),
+      ).expect.vouchers?.[0]?.counterCashAccount,
+    ).toBe('111004');
+    expect(refused(transfer)).toContain('A transfer states its destination, counter_cash_account');
+    expect(
+      refused(transfer.replace('entry: 1', 'counter_cash_account: "111002", entry: 1')),
+    ).toContain('A transfer moves cash between two cash accounts');
+    expect(
+      refused(receipt.replace('entry: 1', 'counter_cash_account: "111004", entry: 1')),
+    ).toContain('Only a transfer has counter_cash_account');
     expect(refused(receipt.replace('entry: 1', 'entry: 1, expected: 10000'))).toContain(
       'Only a count has expected',
     );

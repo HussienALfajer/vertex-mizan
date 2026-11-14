@@ -133,13 +133,19 @@ describe('runCase', () => {
     const found = await differences(
       runCase(
         stated,
-        { ...fake, vouchers: async () => [{ ...receipt, number: 2 }, count] },
+        {
+          ...fake,
+          vouchers: async () => [
+            { ...receipt, kind: 'transfer' as const, counterCashAccount: '111005' },
+            count,
+          ],
+        },
         database,
       ),
     );
     expect(found).toEqual([
       'missing voucher: receipt 1 of 2026-11-03 on 111002: entry 1',
-      'unexpected voucher: receipt 2 of 2026-11-03 on 111002: entry 1',
+      'unexpected voucher: transfer 1 of 2026-11-03 on 111002 to 111005: entry 1',
       'unexpected voucher: count 1 of 2026-11-03 on 111002: entry none, expected 10000, counted 10000',
     ]);
   });

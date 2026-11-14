@@ -21,7 +21,7 @@ The company is the contracting client's shape: `usd-syp`, the USD book at `marke
 
 Each case first puts cash into the box it counts, by a receipt voucher from the owner's current account; the TRY box receives its TRY by S11's example exchange (`cash/transfer-and-exchange.md`), as the owner's acceptance check does (S11 "Acceptance", steps 4 and 6).
 
-A count's payload is the voucher draft as the form sends it: the reason as its `description`, and the header `{ kind: count, cash_account, counted, expected }` with no lines, since the posting function builds them from the difference (rule 13). `counted` is the cash counted, in minor units of the box's currency; `expected` is the expected balance the accountant's preview showed, which the post carries and the function compares with its own. A case's `vouchers` are the exact set of vouchers the company holds after the steps: each with its kind, its number in its kind and fiscal year, its date, its cash account, the entry it posted (posting order, or `null` for a count that matched), a count's expected and counted amounts, and `cancelled_by`, the reversal that cancelled it.
+A count's payload is the voucher draft as the form sends it: the reason as its `description`, and the header `{ kind: count, cash_account, counted, expected }` with no lines, since the posting function builds them from the difference (rule 13). `counted` is the cash counted, in minor units of the box's currency; `expected` is the expected balance the accountant's preview showed, which the post carries and the function compares with its own. A case's `vouchers` are the exact set of vouchers the company holds after the steps: each with its kind, its number in its kind and fiscal year, its date, its cash account, a transfer's destination (`counter_cash_account`), the entry it posted (posting order, or `null` for a count that matched), a count's expected and counted amounts, and `cancelled_by`, the reversal that cancelled it.
 
 The cases leave out what other scenarios own: a count dated in a closed period, refused as any posting there (`periods/close-and-reopen.md`); the month-end revaluation of the boxes (`currency/month-end-revaluation.md`). A count's entry is in the box's currency and its two lines are equal, so it is the same in every currency shape and leaves no residual: the shapes are not repeated here. A count with no entry has nothing to reverse and cannot be cancelled (rule 14): a case cannot state it, since a `reversal` names an entry.
 
@@ -83,7 +83,8 @@ expect:
     - { account: "532007", book: 147, parallel: 17500 }
   vouchers:
     - { kind: receipt, number: 1, date: 2026-12-01, cash_account: "111002", entry: 1 }
-    - { kind: transfer, number: 1, date: 2026-12-01, cash_account: "111002", entry: 2 }
+    - { kind: transfer, number: 1, date: 2026-12-01, cash_account: "111002",
+        counter_cash_account: "111005", entry: 2 }
     - { kind: count, number: 1, date: 2026-12-03, cash_account: "111005", entry: 3,
         expected: 3450000, counted: 3445000 }
 ```
@@ -294,7 +295,8 @@ expect:
     - { account: "532007", book: 0, parallel: 0 }
   vouchers:
     - { kind: receipt, number: 1, date: 2026-12-01, cash_account: "111002", entry: 1 }
-    - { kind: transfer, number: 1, date: 2026-12-01, cash_account: "111002", entry: 2 }
+    - { kind: transfer, number: 1, date: 2026-12-01, cash_account: "111002",
+        counter_cash_account: "111005", entry: 2 }
     - { kind: count, number: 1, date: 2026-12-03, cash_account: "111005", entry: 3,
         expected: 3450000, counted: 3445000, cancelled_by: 4 }
 ```

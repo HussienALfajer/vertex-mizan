@@ -133,10 +133,13 @@ export function compareOpenItem(
 
 function describeVoucher(voucher: ExpectedVoucher): string {
   const count =
-    voucher.expected === null ? '' : `, expected ${voucher.expected}, counted ${voucher.counted}`;
+    voucher.expected === null && voucher.counted === null
+      ? ''
+      : `, expected ${voucher.expected ?? 'none'}, counted ${voucher.counted ?? 'none'}`;
   const cancelled = voucher.cancelledBy === null ? '' : `, cancelled by ${voucher.cancelledBy}`;
+  const to = voucher.counterCashAccount === null ? '' : ` to ${voucher.counterCashAccount}`;
   return (
-    `${voucher.kind} ${voucher.number} of ${voucher.date} on ${voucher.cashAccount}: ` +
+    `${voucher.kind} ${voucher.number} of ${voucher.date} on ${voucher.cashAccount}${to}: ` +
     `entry ${voucher.entry ?? 'none'}${count}${cancelled}`
   );
 }
