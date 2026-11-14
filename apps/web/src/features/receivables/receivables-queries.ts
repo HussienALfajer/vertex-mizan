@@ -2,8 +2,8 @@ import { queryOptions } from '@tanstack/react-query';
 import {
   type AgeingQuery,
   ageingReportSchema,
-  type ClientStatementQuery,
-  clientStatementSchema,
+  type CounterpartyStatementQuery,
+  counterpartyStatementSchema,
   type OpenItemQuery,
   openItemPageSchema,
   openItemSchema,
@@ -53,18 +53,18 @@ export function openItemQuery(companyId: string, id: string) {
   });
 }
 
-/** `GET /api/clients/:valueId/statement`: a client's statement (S04 "Reports"). */
-export function clientStatementQuery(
+/** `GET /api/counterparties/:valueId/statement`: a counterparty's statement (S04, S11 rule 6). */
+export function counterpartyStatementQuery(
   companyId: string,
   valueId: string,
-  query: Partial<ClientStatementQuery>,
+  query: Partial<CounterpartyStatementQuery>,
 ) {
   return queryOptions({
     queryKey: ['receivables', companyId, 'statement', valueId, query],
     queryFn: () =>
-      api('GET', `/clients/${valueId}/statement${searchOf(query)}`, {
+      api('GET', `/counterparties/${valueId}/statement${searchOf(query)}`, {
         company: companyId,
-        schema: clientStatementSchema,
+        schema: counterpartyStatementSchema,
       }),
     retry: false,
   });

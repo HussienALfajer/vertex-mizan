@@ -46,7 +46,7 @@ One name per concept. Code, contracts and tables use the English term; the Arabi
 | تسوية / تسوية جزئية | settlement / partial settlement | A movement that clears an open item at its carrying amount, in proportion to what remains open; the last clears everything left (ADR 0013) |
 | أعمار الذمم | receivables ageing | Open receivable items by days past their due date, in six buckets: not yet due, 1–30, 31–60, 61–90, 91–180, over 180 |
 | تاريخ الاستحقاق / أيام التأخير | due date / days past due | When an item is due (its document date when none is set) / the report date minus the due date in force on it |
-| كشف حساب عميل | client statement | A client's items and movements on the control accounts, with opening, running and closing balances |
+| كشف حساب طرف | counterparty statement | A client's, supplier's or worker's items and movements on the control accounts, with opening, running and closing balances (S04, S11; the client statement before S11) |
 | شطب دين | write-off | Clearing an uncollectible item at its carrying amount to an expense measured on the write-off date (IFRS 9.5.4.4) |
 | معدّل في ميزان | adjusted in Mizan | A manual movement on an item from the opening balances, shown on the item |
 | حساب نقدي / غير نقدي | monetary / non-monetary account | Whether foreign-currency balances are revalued (IAS 21) |

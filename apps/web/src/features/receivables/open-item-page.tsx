@@ -44,7 +44,7 @@ import {
   HubDocumentText,
   useFiscalYearStartMonth,
 } from '../entries/entry-parts';
-import { AdjustedBadge, ClientName, ReceivablesBackLink } from './receivables-parts';
+import { AdjustedBadge, CounterpartyName, ReceivablesBackLink } from './receivables-parts';
 import { openItemQuery } from './receivables-queries';
 
 const t = ar.openItems.item;
@@ -123,16 +123,16 @@ export function OpenItemPage() {
             <AccountLabel code={data.account.code} name={data.account.name} />
           </Fact>
           <Fact label={t.client}>
-            {data.client ? (
+            {data.counterparty ? (
               <Link
-                to="/receivables/clients/$valueId"
-                params={{ valueId: data.client.id }}
+                to="/counterparties/$valueId"
+                params={{ valueId: data.counterparty.id }}
                 className="underline-offset-4 hover:underline"
               >
-                <ClientName client={data.client} />
+                <CounterpartyName counterparty={data.counterparty} />
               </Link>
             ) : (
-              <ClientName client={null} />
+              <CounterpartyName counterparty={null} />
             )}
           </Fact>
           <Fact label={t.currency}>

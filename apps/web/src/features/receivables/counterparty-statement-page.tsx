@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { getRouteApi, Link } from '@tanstack/react-router';
 import {
-  type ClientStatement,
+  type CounterpartyStatement,
   CURRENCY_CODES,
   type CurrencyCode,
   type Ledger,
@@ -39,15 +39,15 @@ import { ReportExport } from '../reports/report-parts';
 import { paramsOf } from '../reports/reports-queries';
 import {
   AdjustedBadge,
-  ClientName,
+  CounterpartyName,
   ItemLink,
   ReceivablesBackLink,
   ReportLedgerSwitch,
 } from './receivables-parts';
-import { clientStatementQuery, searchOf } from './receivables-queries';
+import { counterpartyStatementQuery, searchOf } from './receivables-queries';
 
 const t = ar.openItems.statement;
-const route = getRouteApi('/_app/_company/receivables/clients/$valueId');
+const route = getRouteApi('/_app/_company/counterparties/$valueId');
 
 const currencyOptions = [
   { value: 'any', label: t.anyCurrency },
@@ -55,12 +55,12 @@ const currencyOptions = [
 ];
 
 /**
- * `/receivables/clients/:valueId` (S04 "Screens"): the client's items on every control account,
- * the opening balance per item currency, every movement in date then entry-number order with its
- * entry, item, memo and running balances, and the closing balance; the Excel export, and a new
- * receipt with the client's open items ready to pick.
+ * `/counterparties/:valueId` (S04 "Screens", S11 rule 6): a client's, supplier's or worker's items
+ * on every control account, the opening balance per item currency, every movement in date then
+ * entry-number order with its entry, item, memo and running balances, and the closing balance; the
+ * Excel export, and for a client a new receipt with its open items ready to pick.
  */
-export function ClientStatementPage() {
+export function CounterpartyStatementPage() {
   const { valueId } = route.useParams();
   const { companyId, me, membership } = useCompany();
   const startMonth = useFiscalYearStartMonth(companyId);
@@ -74,7 +74,7 @@ export function ClientStatementPage() {
     currency: currency === 'any' ? undefined : currency,
   };
   const statement = useQuery({
-    ...clientStatementQuery(companyId, valueId, query),
+    ...counterpartyStatementQuery(companyId, valueId, query),
     enabled: isDateRangeOrdered(range),
   });
   const data = statement.data;
@@ -87,7 +87,10 @@ export function ClientStatementPage() {
       </>
     );
   }
-  const receipt = !membership.company.archived && can(me, 'drafts.manage');
+  const receipt =
+    !membership.company.archived &&
+    can(me, 'drafts.manage') &&
+    data?.counterparty.type === 'client';
   return (
     <>
       <PageHeader
@@ -95,7 +98,7 @@ export function ClientStatementPage() {
         title={
           <span className="flex flex-wrap items-center gap-x-3">
             {t.title}
-            {data && <ClientName client={data.client} />}
+            {data && <CounterpartyName counterparty={data.counterparty} />}
           </span>
         }
         description={t.description}
@@ -112,7 +115,7 @@ export function ClientStatementPage() {
             )}
             <ReportExport
               disabled={!data}
-              excelPath={`/clients/${valueId}/statement/export${searchOf(query)}`}
+              excelPath={`/counterparties/${valueId}/statement/export${searchOf(query)}`}
               pdf={{ report: 'client_statement', params: paramsOf({ ...query, client: valueId }) }}
             />
           </div>
@@ -193,7 +196,7 @@ function StatementTable({
   statement,
   startMonth,
 }: {
-  statement: ClientStatement;
+  statement: CounterpartyStatement;
   startMonth: number;
 }) {
   const currency = statement.ledgerCurrency;

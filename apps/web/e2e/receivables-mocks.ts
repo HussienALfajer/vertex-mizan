@@ -1,7 +1,7 @@
 import type {
   AgeingReport,
-  ClientRef,
-  ClientStatement,
+  CounterpartyRef,
+  CounterpartyStatement,
   OpenItem,
   OpenItemSummary,
 } from '@vertex-mizan/contracts';
@@ -23,12 +23,18 @@ const movementId = (n: number) => `01900000-0000-7000-800d-${String(n).padStart(
 const receivables = accountOf('112001');
 const receivablesRef = { id: receivables.id, code: receivables.code, name: receivables.name };
 
-export const client: ClientRef = {
+export const client: CounterpartyRef = {
   id: manualClient.id,
+  type: 'client',
   code: manualClient.code,
   name: manualClient.name,
 };
-const otherClient: ClientRef = { id: hubClient.id, code: null, name: hubClient.name };
+const otherClient: CounterpartyRef = {
+  id: hubClient.id,
+  type: 'client',
+  code: null,
+  name: hubClient.name,
+};
 
 const summary = (
   n: number,
@@ -38,7 +44,7 @@ const summary = (
   account: receivablesRef,
   kind: 'document',
   source: 'manual',
-  client,
+  counterparty: client,
   currency: 'USD',
   documentDate: '2026-11-03',
   dueOn: '2026-12-03',
@@ -65,7 +71,7 @@ export const m0 = summary(2, {
 export const hubItem = summary(3, {
   reference: 'INV-2026-077',
   source: 'hub_event',
-  client: otherClient,
+  counterparty: otherClient,
   currency: 'SYP',
   documentDate: '2026-09-20',
   dueOn: '2026-10-20',
@@ -222,15 +228,15 @@ export const ageing: AgeingReport = {
   ledger: 'book',
   ledgerCurrency: 'SYP',
   accounts: [receivablesRef],
-  clients: [
+  counterparties: [
     {
-      client,
+      counterparty: client,
       buckets: buckets({ not_due: '7200000', days_61_90: '3000000' }),
       totalMinor: '10200000',
       items: [ageingItem(m0, 69), ageingItem(m1, -24)],
     },
     {
-      client: otherClient,
+      counterparty: otherClient,
       buckets: buckets({ days_1_30: '5000000' }),
       totalMinor: '5000000',
       items: [ageingItem(hubItem, 20)],
@@ -255,7 +261,7 @@ export const ageing: AgeingReport = {
 /** The ageing as of a date with nothing open. */
 export const emptyAgeing: AgeingReport = {
   ...ageing,
-  clients: [],
+  counterparties: [],
   buckets: buckets({}),
   totalMinor: '0',
   currencyTotals: [],
@@ -265,10 +271,10 @@ const statementLine = (
   n: number,
   item: OpenItemSummary,
   fields: Pick<
-    ClientStatement['lines'][number],
+    CounterpartyStatement['lines'][number],
     'kind' | 'entryDate' | 'amountMinor' | 'ledgerMinor' | 'balanceMinor' | 'ledgerBalanceMinor'
   > & { number: number },
-): ClientStatement['lines'][number] => ({
+): CounterpartyStatement['lines'][number] => ({
   movementId: movementId(10 + n),
   entryId: entryId(fields.number),
   fiscalYear: 2026,
@@ -284,8 +290,8 @@ const statementLine = (
 });
 
 /** The first client's statement over every date: M-0, then M-1 opened and partly received. */
-export const statement: ClientStatement = {
-  client,
+export const statement: CounterpartyStatement = {
+  counterparty: client,
   from: null,
   to: '2026-11-09',
   ledger: 'book',
@@ -332,7 +338,7 @@ export function itemsPage(url: URL) {
   const items = [m0, m1, hubItem].filter(
     (item) =>
       (!params.get('account') || item.account.id === params.get('account')) &&
-      (!params.get('client') || item.client?.id === params.get('client')) &&
+      (!params.get('counterparty') || item.counterparty?.id === params.get('counterparty')) &&
       (!params.get('text') || item.reference.includes(params.get('text') ?? '')),
   );
   return { items, nextCursor: null };
@@ -348,5 +354,5 @@ export const receivablesReads = {
   }),
   [`GET /api/open-items/${m1.id}`]: { status: 200, json: m1Item },
   [`GET /api/open-items/${hubItem.id}`]: { status: 200, json: hubOpenItem },
-  [`GET /api/clients/${client.id}/statement`]: { status: 200, json: statement },
+  [`GET /api/counterparties/${client.id}/statement`]: { status: 200, json: statement },
 };

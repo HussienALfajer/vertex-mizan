@@ -1,8 +1,8 @@
-import { createFileRoute } from '@tanstack/react-router';
-import { ClientStatementPage } from '../../../../../features/receivables/client-statement-page';
-import { requirePermission } from '../../../../../lib/session';
+import { createFileRoute, redirect } from '@tanstack/react-router';
 
+/** S04's client statement moved to `/counterparties/:valueId` (S11 "Screens"): old links still work. */
 export const Route = createFileRoute('/_app/_company/receivables/clients/$valueId')({
-  beforeLoad: ({ context }) => requirePermission(context.me, 'open_items.read'),
-  component: ClientStatementPage,
+  beforeLoad: ({ params }) => {
+    throw redirect({ to: '/counterparties/$valueId', params, replace: true });
+  },
 });

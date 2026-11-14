@@ -3,6 +3,7 @@ import type { Account } from '@vertex-mizan/contracts';
 import { ar } from '@vertex-mizan/i18n';
 import { accountOf, chart, chartReads, roles, roots, templates, usedChart } from './chart-mocks';
 import { companyId, owner, viewer } from './company-mocks';
+import { typeOf } from './dimension-mocks';
 import { type ApiReply, expect, fieldError, refusal, test } from './test';
 
 const t = ar.chart;
@@ -99,6 +100,8 @@ test.describe('the chart', () => {
 
     await sheet.getByLabel(s.code).fill('111005');
     await choose(page, s.currency, `${ar.accounting.currencies.EUR} (EUR)`);
+    // S11 rule 7: a postable, monetary asset under 111 in one currency may be a box or a bank.
+    await choose(page, s.cashKind, t.cashKinds.bank);
     await sheet.getByRole('button', { name: s.create }).click();
     await expect(sheet).toHaveCount(0);
     expect(create.seen[0]?.postDataJSON()).toEqual({
@@ -112,6 +115,8 @@ test.describe('the chart', () => {
       currency: 'EUR',
       isControl: false,
       itemKind: null,
+      counterpartyType: null,
+      cashKind: 'bank',
       // Q12: a currency restriction turns the monetary flag on.
       isMonetary: true,
       requiredDimensionTypeIds: [],
@@ -119,7 +124,9 @@ test.describe('the chart', () => {
     expect(create.seen[0]?.headers()['x-mizan-company']).toBe(companyId);
   });
 
-  test('asks for the item kind of a new control account (S04)', async ({ page }) => {
+  test('asks for the item kind and counterparty type of a new control account (S04, S11)', async ({
+    page,
+  }) => {
     const receivables = accountOf('112');
     const added: Account = {
       ...accountOf('112001'),
@@ -144,8 +151,13 @@ test.describe('the chart', () => {
     await sheet.getByRole('switch', { name: s.control }).click();
     await sheet.getByRole('button', { name: s.create }).click();
     await expect(fieldError(sheet, t.validation.itemKind)).toBeVisible();
+    await expect(fieldError(sheet, t.validation.counterpartyType)).toBeVisible();
     expect(create.seen).toHaveLength(0);
     await choose(page, s.itemKind, t.itemKinds.document);
+    // The counterparty's dimension is required with its type, and stays required (rule 5).
+    await choose(page, s.counterpartyType, t.counterpartyTypes.client);
+    await expect(sheet.getByRole('switch', { name: typeOf('client').name })).toBeChecked();
+    await expect(sheet.getByRole('switch', { name: typeOf('client').name })).toBeDisabled();
     await sheet.getByRole('button', { name: s.create }).click();
     await expect(sheet).toHaveCount(0);
     expect(create.seen[0]?.postDataJSON()).toMatchObject({
@@ -154,6 +166,9 @@ test.describe('the chart', () => {
       statementLine: 'bs.trade_receivables',
       isControl: true,
       itemKind: 'document',
+      counterpartyType: 'client',
+      requiredDimensionTypeIds: [typeOf('client').id],
+      cashKind: null,
     });
   });
 

@@ -138,7 +138,11 @@ The owner cancelled the integration with Hub on 2026-11-13 (`docs/product/phase-
     - [x] `cash/transfer-and-exchange`: eight cases, numbers approved by the owner on 2026-11-14, `Proposed` until the slice brings their executors; the book gains the area `cash` and the step `voucher` (`docs/cash-transfer-and-exchange-scenario`)
     - [x] `cash/receipt-and-payment`: eleven cases, numbers approved by the owner on 2026-11-14, `Proposed` until the slice brings their executors (`docs/cash-receipt-and-payment-scenario`)
     - [x] `cash/cash-count`: five cases, numbers approved by the owner on 2026-11-14, `Proposed` until the slice brings their executors; the book gains the count's header (`counted`, `expected`) and the expectation `vouchers`, compared through the harness's voucher reader (`docs/cash-count-scenario`)
-  - [ ] Slice (`/feature-slice S11`)
+  - [ ] Slice (`/feature-slice S11`), four PRs (`TASKS.md`)
+    - [x] PR 1 (`feat/s11-counterparties-template`): `contracting@1`, the built-in types `supplier` and `worker`, a control account's counterparty type and a cash account's kind (migrations `0062`–`0064`, the rename of `open_items.client_value_id` under ADR 0022's exception, a running item's lines carrying a contract, owner 2026-11-14), `/api/running-balances` and `/counterparties/:valueId` for any counterparty, the account sheet's two fields, `admin:create-company --template contracting`
+    - [ ] PR 2: vouchers, the box rule and the cash reads, with the three `cash/` files approved and run
+    - [ ] PR 3: the cash screens, the voucher's print and the exports
+    - [ ] PR 4: the scenario book moved to `contracting@1`
   - [ ] Before the client's first company: the TRY bulletin's schedule checked (Q10)
 - [ ] S12 Project costs: N2 expenses by project, N3 wages of workers and craftsmen, N4 materials with quantities (spec, scenarios, slice); N4 becomes a spec of its own if materials go through a store (Q19); with the application of advances at their carrying amount (IFRIC 22, owner 2026-11-14) and contract revenue's recognition (Q20)
 - [ ] The client's first company in production; a real month closed; the client keeps the full export

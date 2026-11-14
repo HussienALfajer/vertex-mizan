@@ -136,7 +136,7 @@ test.describe('the receivables ageing', () => {
     const finder = page.getByRole('dialog', { name: t.find.clientTitle });
     await finder.getByRole('combobox', { name: t.ageing.client }).fill('C-001');
     await page.getByRole('option', { name: /C-001/ }).click();
-    await expect(page).toHaveURL(new RegExp(`/receivables/clients/${client.id}$`));
+    await expect(page).toHaveURL(new RegExp(`/counterparties/${client.id}$`));
 
     await page.keyboard.press('Control+k');
     await search.fill('الانتقال إلى بند');
@@ -149,14 +149,16 @@ test.describe('the receivables ageing', () => {
   });
 });
 
-test.describe('the client statement', () => {
+test.describe('the counterparty statement', () => {
   test('lists every movement with its balances, exports and starts a receipt', async ({ page }) => {
     const exported = await answerFile(
       page,
-      `/clients/${client.id}/statement/export`,
+      `/counterparties/${client.id}/statement/export`,
       'client-statement.xlsx',
     );
+    // S04's address still opens it (S11 "Screens").
     await page.goto(`/receivables/clients/${client.id}`);
+    await expect(page).toHaveURL(new RegExp(`/counterparties/${client.id}$`));
     await expect(page.getByRole('heading', { level: 1 })).toContainText(t.statement.title);
     await expect(page.getByRole('heading', { level: 1 })).toContainText(client.name);
     const table = page.getByRole('table', { name: t.statement.label });
@@ -185,7 +187,7 @@ test.describe('a viewer', () => {
   test.use({ me: { ...viewer, permissions: [...rolePermissions.viewer] } });
 
   test('reads the statement and an item, with no receipt or due-date change', async ({ page }) => {
-    await page.goto(`/receivables/clients/${client.id}`);
+    await page.goto(`/counterparties/${client.id}`);
     await expect(page.getByRole('table', { name: t.statement.label })).toBeVisible();
     await expect(page.getByRole('link', { name: t.statement.newReceipt })).toHaveCount(0);
     await page.goto(`/open-items/${m1.id}`);

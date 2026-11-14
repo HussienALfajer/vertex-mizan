@@ -8,8 +8,13 @@ import {
   accountClassOfCode,
   accountCodeLevel,
   accountSchema,
+  CASH_KINDS,
+  type CashKind,
+  COUNTERPARTY_TYPES,
+  type CounterpartyType,
   CURRENCY_CODES,
   type CurrencyCode,
+  canBeCashAccount,
   checkAccountCode,
   createAccountSchema,
   defaultNormalBalance,
@@ -67,6 +72,10 @@ interface AccountForm {
   isControl: boolean;
   /** A control account's item kind (S04), asked for when "control" is ticked. */
   itemKind: ItemKind | null;
+  /** A control account's counterparty type (S11 rule 5), asked for when "control" is ticked. */
+  counterpartyType: CounterpartyType | null;
+  /** A cash account's kind (S11 rule 7), offered on an account that can carry it. */
+  cashKind: CashKind | null;
   isMonetary: boolean;
   requiredDimensionTypeIds: string[];
 }
@@ -98,6 +107,8 @@ function formOf(mode: AccountSheetMode, accounts: readonly Account[]): AccountFo
       currency: null,
       isControl: false,
       itemKind: null,
+      counterpartyType: null,
+      cashKind: null,
       isMonetary: false,
       requiredDimensionTypeIds: [],
     };
@@ -116,6 +127,8 @@ function formOf(mode: AccountSheetMode, accounts: readonly Account[]): AccountFo
     currency: account.currency,
     isControl: account.isControl,
     itemKind: account.itemKind,
+    counterpartyType: account.counterpartyType,
+    cashKind: account.cashKind,
     isMonetary: account.isMonetary,
     requiredDimensionTypeIds: account.requiredDimensionTypeIds,
   };
@@ -138,6 +151,21 @@ function classOf(code: string, fallback: AccountClass): AccountClass {
   return accountCodeLevel(code) === null ? fallback : accountClassOfCode(code);
 }
 
+/** Whether the form's account can carry a cash kind (S11 "Data"). */
+function cashKindFits(form: ResolvedForm, accountClass: AccountClass): boolean {
+  const postable = form.kind === 'postable';
+  const flags = postable && (accountClass === 'asset' || accountClass === 'liability');
+  return canBeCashAccount({
+    code: form.code,
+    kind: form.kind,
+    class: accountClass,
+    currency: postable ? form.currency : null,
+    isMonetary: flags && form.isMonetary,
+    isControl: flags && form.isControl,
+    statementLine: postable ? form.statementLine : null,
+  });
+}
+
 /** The fields a postable account sends, emptied on a header (S02 check 4). */
 function shaped(form: ResolvedForm, accountClass: AccountClass) {
   const postable = form.kind === 'postable';
@@ -147,6 +175,8 @@ function shaped(form: ResolvedForm, accountClass: AccountClass) {
     currency: postable ? form.currency : null,
     isControl: flags && form.isControl,
     itemKind: flags && form.isControl ? form.itemKind : null,
+    counterpartyType: flags && form.isControl ? form.counterpartyType : null,
+    cashKind: cashKindFits(form, accountClass) ? form.cashKind : null,
     isMonetary: flags && form.isMonetary,
     requiredDimensionTypeIds: postable ? form.requiredDimensionTypeIds : [],
   };
@@ -166,6 +196,10 @@ function changes(account: Account, form: ResolvedForm, accountClass: AccountClas
   if (next.currency !== account.currency) change.currency = next.currency;
   if (next.isControl !== account.isControl) change.isControl = next.isControl;
   if (next.itemKind !== account.itemKind) change.itemKind = next.itemKind;
+  if (next.counterpartyType !== account.counterpartyType) {
+    change.counterpartyType = next.counterpartyType;
+  }
+  if (next.cashKind !== account.cashKind) change.cashKind = next.cashKind;
   if (next.isMonetary !== account.isMonetary) change.isMonetary = next.isMonetary;
   const before = [...account.requiredDimensionTypeIds].sort().join();
   if ([...next.requiredDimensionTypeIds].sort().join() !== before) {
@@ -183,6 +217,15 @@ const balanceOptions = NORMAL_BALANCES.map((balance) => ({
   label: t.normalBalances[balance],
 }));
 const itemKindOptions = ITEM_KINDS.map((kind) => ({ value: kind, label: t.itemKinds[kind] }));
+const counterpartyTypeOptions = COUNTERPARTY_TYPES.map((type) => ({
+  value: type,
+  label: t.counterpartyTypes[type],
+}));
+const noCashKind = 'none';
+const cashKindOptions = [
+  { value: noCashKind, label: s.cashKindNone },
+  ...CASH_KINDS.map((kind) => ({ value: kind, label: t.cashKinds[kind] })),
+];
 const noCurrency = 'none';
 const currencyOptions = [
   { value: noCurrency, label: s.anyCurrency },
@@ -217,6 +260,7 @@ export function AccountSheet({
     name?: string;
     line?: string;
     itemKind?: string;
+    counterpartyType?: string;
   }>({});
   const [attempt, setAttempt] = useState(0);
   const [unchanged, setUnchanged] = useState(false);
@@ -280,6 +324,9 @@ export function AccountSheet({
     if (shaped(resolved, accountClass).isControl && form.itemKind === null) {
       found.itemKind = t.validation.itemKind;
     }
+    if (shaped(resolved, accountClass).isControl && form.counterpartyType === null) {
+      found.counterpartyType = t.validation.counterpartyType;
+    }
     setErrors(found);
     if (Object.keys(found).length > 0) {
       setAttempt((count) => count + 1);
@@ -317,6 +364,14 @@ export function AccountSheet({
     (a, b) => a.order - b.order,
   );
   const flagsFit = accountClass === 'asset' || accountClass === 'liability';
+  /** A built-in dimension type's id by code. */
+  const typeIdOf = (code: string) =>
+    types.data?.find((type) => type.builtin && type.code === code)?.id;
+  // The counterparty's dimension stays required while the account is a control account (rule 5).
+  const counterpartyTypeId =
+    shaped(resolved, accountClass).isControl && form.counterpartyType !== null
+      ? typeIdOf(form.counterpartyType)
+      : undefined;
   const title = !account ? s.createTitle : readOnly ? s.viewTitle : s.editTitle;
 
   return (
@@ -372,6 +427,7 @@ export function AccountSheet({
             ['account-name', errors.name],
             ['account-statement-line', errors.line],
             ['account-item-kind', errors.itemKind],
+            ['account-counterparty-type', errors.counterpartyType],
           ]}
         />
         <fieldset disabled={readOnly} className="flex min-w-0 flex-col gap-5">
@@ -507,6 +563,33 @@ export function AccountSheet({
                       onValueChange={(value) => set('itemKind', value as ItemKind)}
                     />
                   )}
+                  {form.isControl && (
+                    <SelectField
+                      id="account-counterparty-type"
+                      label={s.counterpartyType}
+                      value={form.counterpartyType}
+                      placeholder={s.choose}
+                      options={counterpartyTypeOptions}
+                      description={s.counterpartyTypeHint}
+                      error={errors.counterpartyType}
+                      disabled={readOnly || used}
+                      onValueChange={(value) => {
+                        const type = value as CounterpartyType;
+                        const typeId = typeIdOf(type);
+                        setUnchanged(false);
+                        // S11 rule 5: the counterparty's dimension is required with the type.
+                        setForm((current) => ({
+                          ...current,
+                          counterpartyType: type,
+                          requiredDimensionTypeIds:
+                            typeId === undefined ||
+                            current.requiredDimensionTypeIds.includes(typeId)
+                              ? current.requiredDimensionTypeIds
+                              : [...current.requiredDimensionTypeIds, typeId],
+                        }));
+                      }}
+                    />
+                  )}
                   <SwitchField
                     label={s.monetary}
                     description={s.monetaryHint}
@@ -515,6 +598,18 @@ export function AccountSheet({
                     onCheckedChange={(checked) => set('isMonetary', checked)}
                   />
                 </>
+              )}
+              {cashKindFits(resolved, accountClass) && (
+                <SelectField
+                  label={s.cashKind}
+                  value={form.cashKind ?? noCashKind}
+                  options={cashKindOptions}
+                  description={s.cashKindHint}
+                  disabled={readOnly || used}
+                  onValueChange={(value) =>
+                    set('cashKind', value === noCashKind ? null : (value as CashKind))
+                  }
+                />
               )}
               <fieldset className="flex flex-col gap-3">
                 <legend className="mb-1 text-control font-medium">{s.dimensions}</legend>
@@ -529,7 +624,10 @@ export function AccountSheet({
                     <SwitchField
                       key={type.id}
                       label={type.name}
-                      disabled={readOnly}
+                      description={
+                        counterpartyTypeId === type.id ? s.counterpartyDimension : undefined
+                      }
+                      disabled={readOnly || counterpartyTypeId === type.id}
                       checked={form.requiredDimensionTypeIds.includes(type.id)}
                       onCheckedChange={(checked) =>
                         set(
