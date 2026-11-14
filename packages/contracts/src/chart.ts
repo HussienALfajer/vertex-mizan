@@ -1,7 +1,12 @@
 import { z } from 'zod';
 import { DomainError } from './errors.js';
 import { type CurrencyCode, currencyCodeSchema } from './money.js';
-import { type ItemKind, itemKindSchema } from './open-items.js';
+import {
+  type CounterpartyType,
+  counterpartyTypeSchema,
+  type ItemKind,
+  itemKindSchema,
+} from './open-items.js';
 
 /**
  * The chart of accounts (S02, ADR 0011): four levels with codes of 1, 2, 3 and 6 digits, the class
@@ -417,8 +422,26 @@ export function statementLineFits(code: string, accountClass: AccountClass): boo
   return found.statement === (balanceSheet ? 'balance_sheet' : 'income_statement');
 }
 
+/**
+ * The kind of a cash account (S11 rule 7): a box (صندوق), which never goes below zero (rule 8), or
+ * a bank account (حساب مصرفي), which may (an overdraft is a borrowing, Q17). Stored in the
+ * `cash_kind` enum: a value is never renamed.
+ */
+export const CASH_KINDS = ['box', 'bank'] as const;
+
+export const cashKindSchema = z.enum(CASH_KINDS).meta({ id: 'CashKind' });
+
+export type CashKind = z.infer<typeof cashKindSchema>;
+
+/** The header every cash account sits under (S11 "Data"). */
+export const CASH_HEADER_CODE = '111';
+
+/** The statement line of a cash account (S11 "Data"). */
+export const CASH_STATEMENT_LINE = 'bs.cash';
+
 /** The fields of an account that S02's rules 2–4 hold together. */
 export interface AccountShape {
+  readonly code: string;
   readonly level: AccountLevel;
   readonly kind: AccountKind;
   readonly class: AccountClass;
@@ -427,6 +450,10 @@ export interface AccountShape {
   readonly isControl: boolean;
   /** Set exactly on a control account (S04, ADR 0013). */
   readonly itemKind: ItemKind | null;
+  /** Set exactly on a control account (S11 rule 5, ADR 0022). */
+  readonly counterpartyType: CounterpartyType | null;
+  /** Only on an account that can be a cash account (S11 "Data"). */
+  readonly cashKind: CashKind | null;
   readonly isMonetary: boolean;
   readonly requiredDimensionCount: number;
 }
@@ -435,8 +462,11 @@ export interface AccountShape {
  * Checks S02 checks 2–4 on an account: levels 1 and 2 are headers; a statement line exactly on a
  * postable account, from the catalogue and fitting the class (`STATEMENT_LINE_INVALID`); headers
  * carry no flag, currency or required dimension, only assets and liabilities are monetary or
- * control accounts, and a control account and only a control account has an item kind (S04;
- * `VALIDATION_FAILED`). Whether a postable account is a leaf is the chart's.
+ * control accounts, and a control account and only a control account has an item kind (S04) and
+ * a counterparty type (S11 rule 5; `VALIDATION_FAILED`); a cash kind only on a postable asset
+ * account under `111` with a currency, monetary, not a control account and on `bs.cash` (S11
+ * "Data"; `CASH_ACCOUNT_INVALID`). Whether a postable account is a leaf is the chart's, and whether
+ * the counterparty type's dimension is required is the caller's, which knows the type ids.
  */
 export function checkAccountShape(account: AccountShape): void {
   const invalid = (message: string): never => {
@@ -453,6 +483,8 @@ export function checkAccountShape(account: AccountShape): void {
       account.currency !== null ||
       account.isControl ||
       account.itemKind !== null ||
+      account.counterpartyType !== null ||
+      account.cashKind !== null ||
       account.isMonetary ||
       account.requiredDimensionCount > 0
     ) {
@@ -476,6 +508,38 @@ export function checkAccountShape(account: AccountShape): void {
   if (account.isControl !== (account.itemKind !== null)) {
     invalid('A control account, and only a control account, has an item kind');
   }
+  if (account.isControl !== (account.counterpartyType !== null)) {
+    invalid('A control account, and only a control account, has a counterparty type');
+  }
+  if (account.cashKind !== null && !canBeCashAccount(account)) {
+    throw new DomainError(
+      'CASH_ACCOUNT_INVALID',
+      'A cash account is a postable, monetary asset under 111 in one currency on bs.cash, not a control account',
+      { cashKind: account.cashKind },
+    );
+  }
+}
+
+/**
+ * Whether an account can carry a cash kind (S11 "Data"): postable, an asset under `111`, restricted
+ * to one currency, monetary, not a control account, on the statement line `bs.cash`.
+ */
+export function canBeCashAccount(
+  account: Pick<
+    AccountShape,
+    'code' | 'kind' | 'class' | 'currency' | 'isMonetary' | 'isControl' | 'statementLine'
+  >,
+): boolean {
+  return (
+    account.kind === 'postable' &&
+    account.class === 'asset' &&
+    account.code.startsWith(CASH_HEADER_CODE) &&
+    account.code !== CASH_HEADER_CODE &&
+    account.currency !== null &&
+    account.isMonetary &&
+    !account.isControl &&
+    account.statementLine === CASH_STATEMENT_LINE
+  );
 }
 
 /**
@@ -526,6 +590,10 @@ export const accountSchema = z
     isControl: z.boolean(),
     /** The kind of the open items behind a control account (S04); null on any other account. */
     itemKind: itemKindSchema.nullable(),
+    /** The counterparty type of a control account (S11, ADR 0022); null on any other account. */
+    counterpartyType: counterpartyTypeSchema.nullable(),
+    /** A cash account's kind (S11 rule 7); null on any other account. */
+    cashKind: cashKindSchema.nullable(),
     isMonetary: z.boolean(),
     requiredDimensionTypeIds: z.array(z.uuid()),
     roles: z.array(accountRoleSchema),
@@ -554,7 +622,7 @@ const requiredDimensionTypeIdsSchema = z
 /**
  * `POST /api/accounts`: a new account under a header. The normal balance defaults by class; the
  * flags, currency and required dimensions are for postable accounts only, and a control account
- * names its item kind (S04).
+ * names its item kind (S04) and its counterparty type (S11); a cash account its cash kind (S11).
  */
 export const createAccountSchema = z
   .object({
@@ -568,6 +636,8 @@ export const createAccountSchema = z
     currency: currencyCodeSchema.nullable().default(null),
     isControl: z.boolean().default(false),
     itemKind: itemKindSchema.nullable().default(null),
+    counterpartyType: counterpartyTypeSchema.nullable().default(null),
+    cashKind: cashKindSchema.nullable().default(null),
     isMonetary: z.boolean().default(false),
     requiredDimensionTypeIds: requiredDimensionTypeIdsSchema.default([]),
   })
@@ -591,6 +661,8 @@ export const updateAccountSchema = z
     currency: currencyCodeSchema.nullable().optional(),
     isControl: z.boolean().optional(),
     itemKind: itemKindSchema.nullable().optional(),
+    counterpartyType: counterpartyTypeSchema.nullable().optional(),
+    cashKind: cashKindSchema.nullable().optional(),
     isMonetary: z.boolean().optional(),
     requiredDimensionTypeIds: requiredDimensionTypeIdsSchema.optional(),
   })
@@ -616,7 +688,7 @@ export const accountRoleAssignmentSchema = z
 export type AccountRoleAssignment = z.infer<typeof accountRoleAssignmentSchema>;
 
 /** The chart templates (`chart-templates.ts`). */
-export const CHART_TEMPLATE_IDS = ['general'] as const;
+export const CHART_TEMPLATE_IDS = ['general', 'contracting'] as const;
 
 export const chartTemplateIdSchema = z.enum(CHART_TEMPLATE_IDS).meta({ id: 'ChartTemplateId' });
 

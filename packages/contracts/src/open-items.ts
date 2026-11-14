@@ -20,6 +20,17 @@ export const itemKindSchema = z.enum(ITEM_KINDS).meta({ id: 'ItemKind' });
 
 export type ItemKind = z.infer<typeof itemKindSchema>;
 
+/**
+ * The counterparty type of a control account (S11, ADR 0022): the built-in dimension type whose
+ * value names a line's counterparty and keys its open items. Stored in the `counterparty_type`
+ * enum: a value is never renamed, a new one is appended.
+ */
+export const COUNTERPARTY_TYPES = ['client', 'supplier', 'worker'] as const;
+
+export const counterpartyTypeSchema = z.enum(COUNTERPARTY_TYPES).meta({ id: 'CounterpartyType' });
+
+export type CounterpartyType = z.infer<typeof counterpartyTypeSchema>;
+
 /** Where an item comes from: a manual line, a Hub event (S05) or the opening balances (S10). */
 export const ITEM_SOURCES = ['manual', 'hub_event', 'opening'] as const;
 

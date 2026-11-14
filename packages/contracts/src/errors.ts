@@ -247,6 +247,13 @@ export const errorStatus = {
   NO_BOOKS_START: 409,
   /** The books start changes only before any entry, snapshot or opening draft (S10 rule 2). */
   BOOKS_START_LOCKED: 409,
+  // S11 (cash accounts and vouchers):
+  /** An entry would take a box below zero at its date or a later one (S11 rule 8; details: account, date, shortfall). */
+  CASH_BOX_NEGATIVE: 409,
+  /** A box's expected balance changed between a count's preview and its posting (S11 rule 13; details: expected). */
+  CASH_COUNT_STALE: 409,
+  /** Not a cash account, a transfer to itself, a voucher's lines breaking rules 10–13, or a cash kind an account cannot carry (S11). */
+  CASH_ACCOUNT_INVALID: 422,
 } as const satisfies Record<string, number>;
 
 export type ErrorCode = keyof typeof errorStatus;

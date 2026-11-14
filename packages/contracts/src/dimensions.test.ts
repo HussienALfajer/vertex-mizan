@@ -13,13 +13,16 @@ import {
 const typeId = '01900000-0000-7000-8000-000000000001';
 
 describe('the built-in dimension types', () => {
-  it('are client, contract under client, department and service (ADR 0011)', () => {
+  it('are client, contract under client, department, service, supplier and worker (ADR 0011, 0022)', () => {
     expect(BUILTIN_DIMENSION_TYPES.map((type) => [type.code, type.parentCode])).toEqual([
       ['client', null],
       ['contract', 'client'],
       ['department', null],
       ['service', null],
+      ['supplier', null],
+      ['worker', null],
     ]);
+    expect(BUILTIN_DIMENSION_TYPES.map((type) => type.position)).toEqual([1, 2, 3, 4, 5, 6]);
     for (const type of BUILTIN_DIMENSION_TYPES) {
       expect(
         createDimensionTypeSchema.safeParse({ code: type.code, name: type.name }).success,

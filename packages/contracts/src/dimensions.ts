@@ -3,8 +3,9 @@ import { cursorSchema } from './audit.js';
 import { personRefSchema } from './wire.js';
 
 /**
- * Dimensions (S02, ADR 0011): analysis tags a journal line carries. Four built-in types every
- * company has (client, contract under client, department, service), custom types up to
+ * Dimensions (S02, ADR 0011): analysis tags a journal line carries. Six built-in types every
+ * company has (client, contract under client, department, service, and S11's supplier and worker,
+ * ADR 0022), custom types up to
  * `DIMENSION_TYPE_LIMIT` active ones, and values added by hand. Values Hub fed before its removal
  * (ADR 0021) keep their Hub ID, read only.
  */
@@ -15,6 +16,9 @@ export const BUILTIN_DIMENSION_TYPES = [
   { code: 'contract', name: 'العقد', nameLatin: 'Contract', parentCode: 'client', position: 2 },
   { code: 'department', name: 'القسم', nameLatin: 'Department', parentCode: null, position: 3 },
   { code: 'service', name: 'الخدمة', nameLatin: 'Service', parentCode: null, position: 4 },
+  // S11 (ADR 0022): the counterparties of the contracting chart's payables.
+  { code: 'supplier', name: 'المورّد', nameLatin: 'Supplier', parentCode: null, position: 5 },
+  { code: 'worker', name: 'العامل', nameLatin: 'Worker', parentCode: null, position: 6 },
 ] as const;
 
 export type BuiltinDimensionType = (typeof BUILTIN_DIMENSION_TYPES)[number]['code'];

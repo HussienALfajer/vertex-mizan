@@ -193,6 +193,7 @@ export const chart = {
   } satisfies Record<AccountRole, string>,
   templates: {
     general: 'عام',
+    contracting: 'مقاولات',
   } satisfies Record<ChartTemplateId, string>,
   /** The columns of the chart export (`GET /api/chart/export`), in order. */
   export: {
