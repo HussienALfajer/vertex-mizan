@@ -499,7 +499,7 @@ const draftStepSchema = z
 /**
  * A cash voucher (S11 rules 9–14): what it records, its date and the request as the voucher form
  * sends it, a draft with its voucher header (`voucher: { kind, cash_account, counter_cash_account?,
- * party_name?, counted? }`) and its lines, posted from that draft. A transfer's dealt rate is the
+ * party_name?, counted?, expected? }`) and its lines (none on a count), posted from that draft. A transfer's dealt rate is the
  * system's to derive from its amounts (rule 12), so its payload states none.
  */
 const voucherStepSchema = z
@@ -732,18 +732,80 @@ const correctionSchema = z
 
 export type ExpectedCorrection = z.output<typeof correctionSchema>;
 
+/**
+ * A cash voucher the company holds (S11 rules 9–14): its kind and its number in that kind and its
+ * fiscal year, its date and cash account, a transfer's destination, the entry it posted (posting order; `null` only for a
+ * count that matched), a count's expected and counted amounts, and the reversal that cancelled it.
+ */
+const voucherSchema = z
+  .strictObject({
+    kind: z.enum(['receipt', 'payment', 'transfer', 'count']),
+    number: countSchema(1),
+    date: dateSchema,
+    cash_account: accountSchema,
+    counter_cash_account: accountSchema.optional(),
+    entry: countSchema(1).nullable(),
+    expected: amountSchema.optional(),
+    counted: amountSchema.optional(),
+    cancelled_by: countSchema(1).optional(),
+  })
+  .superRefine((voucher, context) => {
+    const issue = (message: string, path: PropertyKey[]) =>
+      context.addIssue({ code: 'custom', message, path });
+    const count = voucher.kind === 'count';
+    const transfer = voucher.kind === 'transfer';
+    if ((voucher.counter_cash_account !== undefined) !== transfer) {
+      const message = transfer
+        ? 'A transfer states its destination, counter_cash_account'
+        : 'Only a transfer has counter_cash_account';
+      issue(message, ['counter_cash_account']);
+    } else if (transfer && voucher.counter_cash_account === voucher.cash_account) {
+      issue('A transfer moves cash between two cash accounts', ['counter_cash_account']);
+    }
+    for (const field of ['expected', 'counted'] as const) {
+      const amount = voucher[field];
+      if ((amount !== undefined) !== count) {
+        issue(count ? `A count states its ${field} amount` : `Only a count has ${field}`, [field]);
+      } else if (amount !== undefined && amount < 0n) {
+        issue('A box is never below zero, nor is the cash counted in it', [field]);
+      }
+    }
+    // Rule 13: a count posts an entry exactly when it finds a difference; every other voucher posts.
+    const matches = count && voucher.expected === voucher.counted;
+    if (matches && voucher.entry !== null) issue('A count that matches posts no entry', ['entry']);
+    if (!matches && voucher.entry === null) {
+      issue('Only a count that matches has no entry', ['entry']);
+    }
+    // Rule 14: a voucher is cancelled by reversing its entry, so one without an entry cannot be.
+    if (voucher.cancelled_by !== undefined && voucher.entry === null) {
+      issue('A voucher with no entry cannot be cancelled', ['cancelled_by']);
+    }
+  })
+  .transform(({ cash_account, counter_cash_account, cancelled_by, ...voucher }) => ({
+    ...voucher,
+    cashAccount: cash_account,
+    counterCashAccount: counter_cash_account ?? null,
+    expected: voucher.expected ?? null,
+    counted: voucher.counted ?? null,
+    cancelledBy: cancelled_by ?? null,
+  }));
+
+export type ExpectedVoucher = z.output<typeof voucherSchema>;
+
 const expectSchema = z
   .strictObject({
     entries: z.array(entrySchema),
     balances: z.array(balanceSchema).default([]),
     open_items: z.array(openItemSchema).default([]),
     corrections: z.array(correctionSchema).default([]),
+    vouchers: z.array(voucherSchema).optional(),
     reports: z.array(expectedReportSchema).default([]),
     outcome: outcomeSchema.optional(),
   })
   .transform(({ open_items, ...expect }) => ({
     ...expect,
     openItems: open_items,
+    vouchers: expect.vouchers ?? null,
     outcome: expect.outcome ?? null,
   }));
 
@@ -886,6 +948,33 @@ export const caseSchema = z
       for (const [u, entry] of correction.usedBy.entries()) {
         if (entry > entries.length) {
           issue(`Entry ${entry} is not an expected entry`, [...path, 'used_by', u]);
+        }
+      }
+    }
+
+    const numbered = new Set<string>();
+    const posted = new Set<number>();
+    for (const [v, voucher] of (scenarioCase.expect.vouchers ?? []).entries()) {
+      const path = ['expect', 'vouchers', v];
+      const key = JSON.stringify([voucher.kind, voucher.date.slice(0, 4), voucher.number]);
+      if (numbered.has(key)) issue(`${voucher.kind} ${voucher.number} is stated twice`, path);
+      numbered.add(key);
+      if (voucher.entry !== null) {
+        if (voucher.entry > entries.length) {
+          issue(`Entry ${voucher.entry} is not an expected entry`, [...path, 'entry']);
+        } else if (entries[voucher.entry - 1]?.date !== voucher.date) {
+          issue(`Entry ${voucher.entry} is not dated ${voucher.date}`, [...path, 'entry']);
+        }
+        if (posted.has(voucher.entry)) {
+          issue(`Entry ${voucher.entry} is another voucher's`, [...path, 'entry']);
+        }
+        posted.add(voucher.entry);
+      }
+      const { cancelledBy } = voucher;
+      if (cancelledBy !== null) {
+        const reversal = entries[cancelledBy - 1];
+        if (reversal?.source !== 'reversal' || cancelledBy <= (voucher.entry ?? 0)) {
+          issue(`Entry ${cancelledBy} is not a later expected reversal`, [...path, 'cancelled_by']);
         }
       }
     }

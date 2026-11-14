@@ -557,6 +557,90 @@ describe('a case', () => {
     expect(refusal(withDraft.replace('    reason: "أُلغي الاشتراك"\n', ''))).toContain('reason');
   });
 
+  it('reads the vouchers a case states and refuses one that cannot be (S11)', () => {
+    const withVouchers = (...rows: string[]) =>
+      `${CASE}  vouchers:\n${rows.map((row) => `    - ${row}\n`).join('')}`;
+    const receipt =
+      '{ kind: receipt, number: 1, date: 2026-11-03, cash_account: "111002", entry: 1 }';
+    const matched =
+      '{ kind: count, number: 1, date: 2026-11-03, cash_account: "111002", entry: null, ' +
+      'expected: 10000, counted: 10000 }';
+    expect(parseCase(CASE).expect.vouchers).toBeNull();
+    expect(parseCase(`${CASE}  vouchers: []\n`).expect.vouchers).toEqual([]);
+    expect(parseCase(withVouchers(receipt, matched)).expect.vouchers).toEqual([
+      {
+        kind: 'receipt',
+        number: 1,
+        date: '2026-11-03',
+        cashAccount: '111002',
+        counterCashAccount: null,
+        entry: 1,
+        expected: null,
+        counted: null,
+        cancelledBy: null,
+      },
+      {
+        kind: 'count',
+        number: 1,
+        date: '2026-11-03',
+        cashAccount: '111002',
+        counterCashAccount: null,
+        entry: null,
+        expected: 10000n,
+        counted: 10000n,
+        cancelledBy: null,
+      },
+    ]);
+    const refused = (...rows: string[]) => refusal(withVouchers(...rows));
+    expect(refused(matched.replace(', counted: 10000', ''))).toContain(
+      'A count states its counted amount',
+    );
+    const transfer = receipt.replace('kind: receipt', 'kind: transfer');
+    expect(
+      parseCase(
+        withVouchers(transfer.replace('entry: 1', 'counter_cash_account: "111004", entry: 1')),
+      ).expect.vouchers?.[0]?.counterCashAccount,
+    ).toBe('111004');
+    expect(refused(transfer)).toContain('A transfer states its destination, counter_cash_account');
+    expect(
+      refused(transfer.replace('entry: 1', 'counter_cash_account: "111002", entry: 1')),
+    ).toContain('A transfer moves cash between two cash accounts');
+    expect(
+      refused(receipt.replace('entry: 1', 'counter_cash_account: "111004", entry: 1')),
+    ).toContain('Only a transfer has counter_cash_account');
+    expect(refused(receipt.replace('entry: 1', 'entry: 1, expected: 10000'))).toContain(
+      'Only a count has expected',
+    );
+    expect(refused(matched.replace('expected: 10000', 'expected: -1'))).toContain(
+      'A box is never below zero',
+    );
+    expect(refused(matched.replace('entry: null', 'entry: 1'))).toContain(
+      'A count that matches posts no entry',
+    );
+    expect(refused(matched.replace('counted: 10000', 'counted: 9000'))).toContain(
+      'Only a count that matches has no entry',
+    );
+    expect(refused(receipt.replace('entry: 1', 'entry: null'))).toContain(
+      'Only a count that matches has no entry',
+    );
+    expect(refused(matched.replace('}', ', cancelled_by: 1 }'))).toContain(
+      'A voucher with no entry cannot be cancelled',
+    );
+    expect(refused(receipt.replace('entry: 1', 'entry: 2'))).toContain(
+      'Entry 2 is not an expected entry',
+    );
+    expect(refused(receipt.replace('2026-11-03', '2026-11-04'))).toContain(
+      'Entry 1 is not dated 2026-11-04',
+    );
+    expect(refused(receipt, receipt)).toContain('receipt 1 is stated twice');
+    expect(refused(receipt, receipt.replace('number: 1', 'number: 2'))).toContain(
+      "Entry 1 is another voucher's",
+    );
+    expect(refused(receipt.replace('}', ', cancelled_by: 1 }'))).toContain(
+      'Entry 1 is not a later expected reversal',
+    );
+  });
+
   it('reads a cash voucher with its header and lines, and a refusal as its outcome (S11)', () => {
     const voucher = CASE.replace(
       '  - manual: a USD invoice\n    accounting_date: 2026-11-03\n' +
