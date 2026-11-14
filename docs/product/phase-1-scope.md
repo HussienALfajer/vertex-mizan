@@ -150,12 +150,14 @@ Every report can be exported to Excel and PDF, and every figure drills down to i
 - **Scenario book:** every posting rule and revaluation rule has a solved example in `docs/scenarios/` that runs as an automated test.
 
 ### Added by ADR 0021
-Each is specified with the owner (`/spec`) before it is built, and each posting rule has its scenario approved by the owner (`/posting-rule`).
-- **N1 Cash boxes:** receipts and payments in any currency.
-- **N2 Expenses by project.**
-- **N3 Wages** of workers and craftsmen.
-- **N4 Materials** with quantities.
-- **N5 A contracting chart template.**
+Specified with the owner (`/spec`) before they are built, in two specs (owner, 2026-11-14), and each posting rule has its own scenario approved by the owner (`/posting-rule`). The IDs N1–N5 stay the features' names inside the specs.
+- **S11 The contracting chart and cash boxes:**
+  - **N5 A contracting chart template.**
+  - **N1 Cash boxes:** receipts and payments in any currency.
+- **S12 Project costs:**
+  - **N2 Expenses by project.**
+  - **N3 Wages** of workers and craftsmen.
+  - **N4 Materials** with quantities, as lines of a project cost when materials go straight to the project. If the client keeps materials in a store and issues them later, N4 is inventory (IAS 2) and gets a spec of its own (Q19).
 
 ## 6. Accounting treatment of Hub events — withdrawn (ADR 0021)
 
@@ -177,7 +179,7 @@ Each is specified with the owner (`/spec`) before it is built, and each posting 
 ## 9. Delivery
 
 - **Address:** `mizan.vertexmedia.pro`, on the existing Vertex server (ADR 0020). Register `vertexmizan.com` before selling (phase 3).
-- **Order:** the roadmap's "Phase 1, revised" section: the removal of Hub, the contracting template (N5), then N1–N4, then the client's first company in production.
+- **Order:** the roadmap's "Phase 1, revised" section: the removal of Hub, S11 (N5 and N1), S12 (N2–N4), then the client's first company in production.
 
 ## 10. The owner's answers (2026-10-20)
 
