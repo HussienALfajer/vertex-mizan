@@ -2,7 +2,7 @@
 
 - **Date:** 2026-10-20 · **Status:** approved by the owner (2026-10-20). The order of phases 2 and 3 is reviewed when phase 2 is detailed (open question Q6).
 - **Decisions:** ADR 0001. **Evidence:** `docs/research/market-syria.md`.
-- **Revised by ADR 0021 (owner, 2026-11-13):** the integration with Vertex Hub is cancelled and Mizan is a stand-alone system; its first user is a contracting client, not Vertex Media (`docs/product/phase-1-scope.md` §0). Where this document speaks of Hub, Vertex Media or the posting API, ADR 0021 prevails.
+- **Revised by ADR 0021 (owner, 2026-11-13):** the integration with Vertex Hub is cancelled and Mizan is a stand-alone system; its first user is a contracting client, not Vertex Media (`docs/product/phase-1-scope.md` §1). Where this document speaks of Hub, Vertex Media or the posting API, ADR 0021 prevails.
 
 ## 1. Vision
 
@@ -45,13 +45,13 @@ For each company and each document type there is one source of truth. If a conne
 
 Only the next phase is detailed. Each is built, tested and used by Vertex Media before the next one is detailed.
 
-### Phase 1 — The core and the posting API
-**Goal:** Vertex Media's books are kept in Mizan, fed by Vertex Hub.
-- The permanent core for any number of companies: statutory books with an optional parallel currency ledger, IFRS 15 revenue recognition and month-end revaluation in each ledger.
-- The versioned posting API with idempotency and closed-period refusal, and the daily reconciliation with Hub.
-- What Vertex Media's accountant needs to use the core: chart of accounts, manual entries, trial balance and ledgers.
+### Phase 1 — The core for a contracting client (revised by ADR 0021)
+**Goal:** a contracting client's books are kept in Mizan, one company per business, entered in Mizan itself.
+- The permanent core for any number of companies: statutory books with an optional parallel currency ledger and month-end revaluation in each ledger.
+- What the accountant needs to use the core: chart of accounts, manual entries, open items, periods and close, trial balance, ledgers and statements.
+- The client's modules: cash boxes, expenses by project, wages of workers and craftsmen, materials with quantities, and a contracting chart template.
 - **Scope:** `docs/product/phase-1-scope.md`.
-- **Done when:** Hub posts its financial events to Mizan in production, the reconciliation is clean, and Vertex Media's accountant closes a real month in Mizan.
+- **Done when:** the client's first company runs on these modules in production, a real month is closed in Mizan, and the client keeps the full export.
 
 ### Phase 2 — Cash, expenses, suppliers, statements, close
 **Goal:** Mizan covers everything Vertex Media does with money that is not a client document in Hub.

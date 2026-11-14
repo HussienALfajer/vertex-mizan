@@ -2,7 +2,7 @@
 
 A professional multi-company accounting system by Vertex, Arabic-first. A permanent double-entry core (chart of accounts, journal entries, currencies with stored rates, dimensions, period close, statements), and optional business modules per company. Mizan is a stand-alone system: the integration with Vertex Hub was cancelled on 2026-11-13 (ADR 0021), and its Hub parts are being removed.
 
-Phase 1 goal: a contracting client's books are kept in Mizan, one company per business (`docs/product/phase-1-scope.md` §0). **Accuracy comes before everything: this is an accounting system.**
+Phase 1 goal: a contracting client's books are kept in Mizan, one company per business (`docs/product/phase-1-scope.md` §1). **Accuracy comes before everything: this is an accounting system.**
 
 Standing read-only references (owner, 2026-10-20), **read, never edit**: `D:\vertex-hub` (the integration counterpart, Hub ADRs 0006 and 0035, and the stack), `D:\vertex-food` and `D:\vertex-shifa` (tenancy, workflow and code patterns), `D:\vertex-digital` (its ledger pattern). Copy and adapt; never import across repositories.
 

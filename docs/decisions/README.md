@@ -25,3 +25,5 @@ Short records of decisions that shape the system. Each has a status: **Accepted*
 | [0019](0019-opening-balances-and-history-replay.md) | Opening balances and the history replay: a books start, Hub's snapshot, one opening entry, the replay by accounting date | Accepted (amends 0006, 0007, 0017, phase 1 scope §4; Hub's snapshot and the replay removed by 0021) |
 | [0020](0020-deployment-and-backups.md) | Deployment and backups: the shared server, a PostgreSQL cluster of Mizan's own, point-in-time recovery and encrypted off-server copies | Accepted |
 | [0021](0021-stand-alone-without-hub.md) | A stand-alone accounting system: the Hub integration removed, a contracting client first | Accepted |
+
+The specs S05, S06 and S08, and the Hub parts of the phase 1 scope and of S10, which the superseded ADRs 0006, 0014, 0015 and 0017 and ADR 0019 cite, were removed by ADR 0021; they are in git history at commit `1a0ee40`.

@@ -1,26 +1,25 @@
 # S09 — Reports
 
-Status: Approved (owner, 2026-11-12) · Date: 2026-11-12 · Features: `docs/product/phase-1-scope.md` F13 (and the printing S02, S04 and S07 left to S09) · ADRs: 0003, 0005, 0006, 0007, 0008, 0009, 0010, 0011, 0015, 0016, 0018
+Status: Approved (owner, 2026-11-12), amended by ADR 0021 (2026-11-13: the contract position, the revenue release schedule and Hub's departments removed; they are in git history at commit `1a0ee40`) · Date: 2026-11-12 · Features: `docs/product/phase-1-scope.md` F13 (and the printing S02, S04 and S07 left to S09) · ADRs: 0003, 0005, 0007, 0008, 0009, 0010, 0011, 0016, 0018, 0021
 
 ## Summary
-Mizan keeps Vertex Media's books (S03–S08), but the owner cannot yet read them as an accountant does: no trial balance, no statements, no profitability, and no printed journal book, which the Commercial Code requires (arts. 16–19, REPORTED). The scope's "Done when" needs the trial balance, income statement, balance sheet and profitability read by the owner for a closed month.
+Mizan keeps a company's books (S03, S04, S07), but the owner cannot yet read them as an accountant does: no trial balance, no statements, no profitability, and no printed journal book, which the Commercial Code requires (arts. 16–19, REPORTED). The scope's "Done when" needs the trial balance, income statement, balance sheet and profitability read by the owner for a closed month.
 
 S09 brings:
 - **the trial balance, the general ledger, the account statement and the journal**, in the book ledger and the parallel ledger, read from the period balances (ADR 0008);
 - **the basic income statement and balance sheet** from the statement-line catalogue (S02), with a comparative period, contract positions netted per contract (IFRS 15.105), each counterparty's balance on its own side (IAS 1.32) and the current year's result computed in equity;
 - **profitability** by client, contract, department and service, as a direct contribution margin;
-- **the contract position and the revenue release schedule** (F07);
 - **the printed journal book** in Arabic with pages numbered through the fiscal year, an official copy of closed months only, and its print register;
 - **exports**: every report to Excel and PDF (PDF rendered by the worker's Chromium, ADR 0002), including the receivables ageing and the client statement of S04 and the chart of S02;
-- **drill-down** from every figure to its lines, its entries and the Hub document.
+- **drill-down** from every figure to its lines and its entries.
 
-S09 posts nothing. It adds one piece of data: the department of each service, dated, which Hub sends with the service (rule 32).
+S09 posts nothing. It adds one piece of data: the department of each service, dated (rule 32).
 
 ## In scope / out of scope
 - In:
   - the reports of F13 above, their screens, exports and drill-down;
   - the permission `reports.read`;
-  - the service's department history (`service_departments`) and the optional `department` on Hub's service reference (`/v1`, additive);
+  - the service's department history (`service_departments`);
   - `report_files` (the PDF queue) and `journal_book_prints` (the register of official prints);
   - the print layout in `packages/ui` that the worker renders to PDF, reused by the chart (S02), the ageing and the client statement (S04);
   - the scenario `reports/statement-presentation` (see "Scenarios").
@@ -29,21 +28,20 @@ S09 posts nothing. It adds one piece of data: the department of each service, da
   - **Cash-flow statement and notes** (phase 2, scope §8); **IFRS 18 statements** (periods from 2027-01-01), with the split of exchange differences by category (Q11).
   - **The IAS 21.39 presentation translation** and IAS 29 (scope §8).
   - **Allocation of overheads** to clients, contracts, departments or services (owner, 2026-11-12): profitability is a direct contribution margin.
-  - **Consolidation** across companies (later); **a read API for Hub** (with Hub F18, scope Q11).
+  - **Consolidation** across companies (later).
   - **Saved report layouts, scheduled report emails, custom report builders** (later).
   - **Rounding to thousands** for presentation (IAS 1.51(e)): figures are exact in minor units.
 
 ## Access
 | Action | Surface | Who (role or permission) |
 |---|---|---|
-| Read every report of S09 (trial balance, general ledger, account statement, journal, income statement, balance sheet, profitability, contract position, revenue release schedule, the print register) | Web `/reports/*` | Every role (`reports.read`, new; owner, 2026-11-12) |
+| Read every report of S09 (trial balance, general ledger, account statement, journal, income statement, balance sheet, profitability, the print register) | Web `/reports/*` | Every role (`reports.read`, new; owner, 2026-11-12) |
 | Drill down to lines and entries | Web | `reports.read` for the lines; `entries.read` (every role) for the entry |
 | Export a report to Excel or PDF | Web | `reports.read`; audited (S01 rule 24) |
 | Print the official journal book of closed months | Web | `reports.read`; audited, and registered (rule 28) |
 | Export the ageing and the client statement to PDF | Web | `open_items.read` (S04); audited |
 | Export the chart to PDF | Web | `accounts.read` (S02); audited |
 | Set the department of a manual service | Web `/dimensions` | Owner, accountant (`dimensions.manage`, S02) |
-| Send a service's department | API `/v1/events` | API client with `events:write` (S05) |
 
 `reports.read` is appended to `PERMISSIONS` and held by every role: owner, accountant, approver, viewer, auditor. Every route is a company route (`X-Mizan-Company`); an archived company's reports stay readable and exportable (S01 rule 12: reads are allowed).
 
@@ -52,7 +50,7 @@ No ledger table changes. Reports read `period_balances` for whole months and `jo
 
 | Table | Kind | Fields | Keys and checks |
 |---|---|---|---|
-| `service_departments` | append-only | `id`, `company_id`, `service_value_id` → dimension_values, `department_value_id` → dimension_values, `effective_from` (date), `source` (`hub` · `manual`), `inbound_event_id` (null) → inbound_events, `recorded_by_user_id` (uuid, null, no FK), `reason` (null, 1–500), `created_at` | composite FKs `(company_id, …)`; the service value is of type `service` and the department value of type `department` (trigger); exactly one of `inbound_event_id` and `recorded_by_user_id` set, matching `source`; `effective_from` not in a closed period at insert (trigger, as the period guard); index `(company_id, service_value_id, effective_from, created_at)` |
+| `service_departments` | append-only | `id`, `company_id`, `service_value_id` → dimension_values, `department_value_id` → dimension_values, `effective_from` (date), `source` (`manual`; `hub` on rows Hub sent before ADR 0021), `inbound_event_id` (null; set on Hub's rows), `recorded_by_user_id` (uuid, null, no FK), `reason` (null, 1–500), `created_at` | composite FKs `(company_id, …)`; the service value is of type `service` and the department value of type `department` (trigger); exactly one of `inbound_event_id` and `recorded_by_user_id` set, matching `source`; `effective_from` not in a closed period at insert (trigger, as the period guard); index `(company_id, service_value_id, effective_from, created_at)` |
 | `report_files` | queue (as `company_exports`, S03) | `id`, `company_id`, `report` (enum of rule 37), `params` (jsonb, the report's validated query), `format` (`pdf`), `official` (bool), `state` (`queued` · `ready` · `failed` · `expired`), `storage_key` (null), `size_bytes` (null), `sha256` (null), `error` (null, an error code), `requested_by_user_id`, `created_at`, `ready_at` (null), `expires_at` (null) | index `(company_id, requested_by_user_id, created_at)`; index `(state, created_at)` for the worker; `official` only with `report = journal_book` |
 | `journal_book_prints` | append-only | `id`, `company_id`, `report_file_id` → report_files, `fiscal_year` (smallint), `from_period_id`, `to_period_id` → periods, `first_page`, `last_page` (int ≥ 1), `entry_count`, `line_count` (int), `debit_total_minor`, `credit_total_minor` (bigint, book ledger), `content_sha256` (the canonical rows, rule 31), `file_sha256`, `printed_by_user_id`, `created_at` | composite FKs; `from_period ≤ to_period`, both in `fiscal_year`; `first_page ≤ last_page`; `debit_total_minor = credit_total_minor` |
 
@@ -64,14 +62,14 @@ No ledger table changes. Reports read `period_balances` for whole months and `jo
 
 ### Common to every report
 1. **Ledger:** every report reads one ledger, `book` (default) or `parallel`, and presents amounts in that ledger's currency (ADR 0007 "Reporting"). A company without a parallel ledger has no switch. The account statement and the general ledger also show each line's transaction amount and currency (rule 11).
-2. **Dates** are accounting dates (`entry_date`) in Asia/Damascus. A period is `from`–`to` of whole days; a balance is as of a date's end. Reports read only posted entries; drafts and held events are never in a figure.
+2. **Dates** are accounting dates (`entry_date`) in Asia/Damascus. A period is `from`–`to` of whole days; a balance is as of a date's end. Reports read only posted entries; drafts are never in a figure.
 3. **Exact figures:** every amount is the exact sum of ledger amounts in minor units, formatted by the money module (Latin digits, every decimal). Nothing is rounded except a percentage (rule 21). Every figure is shown through `Amount` (negative with its minus sign and colour).
 4. **Status marks** (owner, 2026-11-12): any date or period may be read. The header, the Excel file and the PDF carry:
    - **"غير نهائية: الفترة مفتوحة"** when any month the report reads (from its `from`, or the start of the books for a balance, to its `to`) is open or reopened;
    - **"قبل إعادة التقييم"** when the report's end date is not the last day of a month, or that month's revaluation in the report's ledger is not `current` (S07 `REVALUATION_STATES`), so monetary balances are at their carrying amounts, not at the closing rate (IAS 21.23);
    - the time it was produced and the latest entry number it includes.
 5. **Comparative period** (owner, 2026-11-12): the trial balance and the income statement default to the previous period of the same number of days ending the day before `from`; the balance sheet to the end of the previous fiscal year (IAS 1.38), or the day before the company's first period when that is later. The reader changes it to any period or date, or removes it. A comparative period with no posted line shows "—", never zero. The marks of rule 4 are given for each column.
-6. **Drill-down:** every figure opens the lines behind it (`/reports/lines`: the account or statement line, the counterparty or contract, the dimensions, the dates and the ledger), each line opening its entry (`/entries/:id`), and an entry from Hub its event and document (`hubDocument`, S05 PR 4). The lines of a figure always sum to it; a test checks it for every report.
+6. **Drill-down:** every figure opens the lines behind it (`/reports/lines`: the account or statement line, the counterparty or contract, the dimensions, the dates and the ledger), each line opening its entry (`/entries/:id`); an entry Hub posted before ADR 0021 shows its Hub document. The lines of a figure always sum to it; a test checks it for every report.
 7. **Archived** accounts and dimension values appear wherever they have a balance or a movement in the period, marked archived. Blocked accounts are marked.
 8. **Every report agrees with the ledger:** the totals of the trial balance equal the sums of `period_balances` and the lines it reads; the income statement's result equals the trial balance's classes 4–5; the balance sheet balances; profitability's totals equal the income statement's revenue and direct costs. Each is a test, and the integrity check (S03) already proves the period balances equal the lines.
 
@@ -87,18 +85,18 @@ No ledger table changes. Reports read `period_balances` for whole months and `jo
 15. **Balance sheet** as of a date: current and non-current assets, current liabilities, equity, by their catalogue sections, with totals of assets and of liabilities and equity, which are equal.
 16. **The year's result** (owner, 2026-11-12): equity shows a computed line **"ربح (خسارة) السنة الحالية"**, the net of classes 4–5 from the start of the fiscal year of the balance sheet's date to that date. The net of classes 4–5 of earlier fiscal years, not yet closed by a year-end entry (phase 2), is added to `bs.retained_earnings`, and the line says so ("تشمل نتائج سنوات غير مقفلة"). Nothing is posted (IAS 1.54(r), 1.106(d)).
 17. **Contract positions net per contract** (IFRS 15.105; ADR 0007): the balances of every account on `bs.contract_assets` and `bs.contract_liabilities` are summed per `contract` dimension value in the report's ledger. A net debit is presented in contract assets, a net credit in contract liabilities. A balance with no contract value stays on its own line, not netted. The ledger accounts stay gross.
-18. **No offsetting between counterparties** (IAS 1.32; owner, 2026-11-12, extending ADR 0007's rule for client ad funds to every control account): after rule 17, each control account's balance is read per `client` dimension value (a balance with no client is one counterparty per account). A counterparty's balance on the account's normal side stays on the account's line; one on the other side is presented on the opposite side: a debit on a liability line in `bs.trade_receivables`, a credit on an asset line in `bs.trade_payables`. The statement shows each reclassified amount in a note under its line ("أعيد تبويب للعرض: …") with its drill-down to the counterparties. Non-control accounts are presented net on their line (a credit balance on an asset line shows negative and is flagged; open question Q17).
+18. **No offsetting between counterparties** (IAS 1.32; owner, 2026-11-12, extending ADR 0007's rule to every control account): after rule 17, each control account's balance is read per `client` dimension value (a balance with no client is one counterparty per account). A counterparty's balance on the account's normal side stays on the account's line; one on the other side is presented on the opposite side: a debit on a liability line in `bs.trade_receivables`, a credit on an asset line in `bs.trade_payables`. The statement shows each reclassified amount in a note under its line ("أعيد تبويب للعرض: …") with its drill-down to the counterparties. Non-control accounts are presented net on their line (a credit balance on an asset line shows negative and is flagged; open question Q17).
 19. **Both columns** of a statement apply rules 16–18 at their own date or period.
 
 ### Profitability
-20. **By client, contract, department or service** for a period (owner, 2026-11-12): each value's **revenue** (the lines of accounts on `is.revenue`), **direct costs** (accounts on `is.direct_costs`), **contribution** (revenue less direct costs) and **margin** (contribution over revenue). No other income-statement line enters: other income and expenses, exchange differences, finance costs and tax are outside. Client ad funds are a liability and never reach the income statement (scope §4). Pass-through purchases (Hub V2, scope §8) will come with their own statement line, outside these two, and so outside service profit.
+20. **By client, contract, department or service** for a period (owner, 2026-11-12): each value's **revenue** (the lines of accounts on `is.revenue`), **direct costs** (accounts on `is.direct_costs`), **contribution** (revenue less direct costs) and **margin** (contribution over revenue). No other income-statement line enters: other income and expenses, exchange differences, finance costs and tax are outside.
 21. The margin is a percentage with one decimal, rounded half away from zero (the money module's `divideHalfAwayFromZero`); "—" when revenue is zero.
-22. **A line's value** is its own dimension value of the chosen type. For **department**, a revenue line without a department takes the department in force for its service on its `entry_date` (rule 32); a line with neither shows under **"غير موزع"**, and so does any line without the chosen dimension. Direct costs from Hub carry their department, client and contract (S05); revenue carries the client and the service and, when invoiced under one, the contract. Costs carry no service, so profitability by service shows costs only from manual lines tagged with a service, the rest under "غير موزع".
+22. **A line's value** is its own dimension value of the chosen type. For **department**, a revenue line without a department takes the department in force for its service on its `entry_date` (rule 32); a line with neither shows under **"غير موزع"**, and so does any line without the chosen dimension. Costs carry no service, so profitability by service shows costs only from manual lines tagged with a service, the rest under "غير موزع".
 23. **Totals** equal the income statement's revenue and direct-cost lines for the period, "غير موزع" included. Default ledger: the parallel ledger (management, ADR 0007) when the company keeps one, else the book. A comparative period as rule 5.
 
-### Contract position and revenue release schedule (F07)
-24. **Contract position** as of a date: per contract, its contract assets and contract liabilities (gross, from rule 17's accounts), the net and the side it is presented on, its client and kind (project or retainer); totals agree with the balance sheet's two lines. Each row opens the contract's schedules (`/revenue`, S06).
-25. **Revenue release schedule** from a date: per month ahead, the over-time releases still to post in the report's ledger at their carried amounts, by S06's plan with cumulative rounding (ADR 0007), per contract and in total; milestone and deposit lines still deferred show in a column **"عند الإنجاز"**, since their release date is their done (S06). The total equals what the schedules still have to recognise, which S06's integrity proof ties to the contract liabilities.
+### Contract position and revenue release schedule (withdrawn)
+24. Withdrawn (ADR 0021): the contract position report.
+25. Withdrawn (ADR 0021): the revenue release schedule.
 
 ### The journal book (دفتر اليومية)
 26. **Content** (ADR 0008; Commercial Code arts. 16–19, REPORTED): the book ledger's posted entries of a fiscal year in `(entry_date, number)` order. Each entry: its date, number, Arabic description and reference, then its lines with account code, Arabic account name, memo, debit and credit in the book currency. Each page's header: the company's legal name, "دفتر اليومية", the fiscal year, the page number; its footer: the page's debit and credit totals, the totals brought forward from earlier pages of the year ("ما قبله") and the cumulative totals ("المجموع حتى هذه الصفحة"), and the rule "مرتب حسب تاريخ القيد ثم رقمه". The book currency is labelled "الليرة السورية الجديدة" when it is SYP.
@@ -110,7 +108,7 @@ No ledger table changes. Reports read `period_balances` for whole months and `jo
 
 ### The service's department
 32. **Dated department of a service** (owner, 2026-11-12): the department in force for a service on a date is its `service_departments` row with the latest `effective_from` on or before the date, the latest `created_at` among equals. Before its first row, a service has none.
-33. **From Hub:** Hub's service reference on revenue lines gains an optional `department` (Hub's fixed department code; each catalogue service in Hub has one performing department). When an event's service carries a department other than the one in force on its accounting date, the posting transaction adds a row effective from the accounting date, or from the first day of the earliest open month when the date is in a closed month, so a closed month's profitability never changes. An unknown department code makes its value, as S05 rule 23 makes values.
+33. Withdrawn (ADR 0021): Hub's departments sent with its services.
 34. **Manual:** for a service not linked to Hub, the owner or accountant adds a row with an effective date in an open month and a reason (`PERIOD_CLOSED` for a closed month). A Hub service's department comes only from Hub (`DIMENSION_FROM_HUB`).
 
 ### Exports and files
@@ -127,7 +125,7 @@ None: S09 posts nothing. The presentation rules it introduces, each with its bas
 - profitability as a direct contribution margin, no allocation (rule 20; management reporting, outside IFRS);
 - the department of revenue from the service's dated department (rules 22, 32).
 
-**Worked example** (synthetic; SYP books, one fiscal year, balances as of 31 December, all months revalued):
+**Worked example** (synthetic; SYP books, one fiscal year, balances as of 31 December, all months revalued; on the service-agency chart that the scenario book keeps frozen until its move to the contracting template, N5, ADR 0021):
 
 | Account | Balance per counterparty (book) | Presented |
 |---|---|---|
@@ -141,8 +139,8 @@ So trade receivables 602,400.00, trade payables 50,000.00, client money 120,000.
 
 ## Currencies, rates and rounding
 - Reports convert nothing: each amount is a stored ledger amount (book or parallel) or a transaction amount (rule 11), summed exactly. No rate is read, except the closing rates shown beside the "قبل إعادة التقييم" mark's link to `/revaluation` (S07).
-- Every currency shape: `syp` (one ledger, no switch), `syp-usd` (Vertex Media), `usd-syp` (USD books, SYP parallel), `third` (TRY or EUR lines: the account statement shows the TRY transaction column; statements show ledger amounts only).
-- The only rounding is the margin percentage (rule 21). The revenue release schedule's future months use S06's cumulative rounding of carried amounts, so the months sum exactly to what remains.
+- Every currency shape: `syp` (one ledger, no switch), `syp-usd`, `usd-syp` (USD books, SYP parallel), `third` (TRY or EUR lines: the account statement shows the TRY transaction column; statements show ledger amounts only).
+- The only rounding is the margin percentage (rule 21).
 
 ## Periods
 - Reports read open, closed and reopened months alike and mark the open ones (rule 4). Months before the first period read as closed (S07).
@@ -162,24 +160,20 @@ All under the internal `/api`, `reports.read` unless stated, company context fro
 | `GET /api/reports/income-statement` | `reports.read` | `from`, `to`, `ledger`, `compareFrom`, `compareTo` | lines, subtotals, both columns, marks | as above |
 | `GET /api/reports/balance-sheet` | `reports.read` | `asOf`, `ledger`, `compareAsOf` | sections, lines, reclassification notes, the year's result, totals, marks | as above |
 | `GET /api/reports/profitability` | `reports.read` | `by` (`client` · `contract` · `department` · `service`), `from`, `to`, `ledger`, `compareFrom`, `compareTo` | rows (value or unassigned, revenue, direct costs, contribution, margin), totals | as above |
-| `GET /api/reports/contract-position` | `reports.read` | `asOf`, `ledger`, `client` | rows per contract, totals | as above |
-| `GET /api/reports/revenue-schedule` | `reports.read` | `from`, `ledger`, `contract` | months ahead per contract, "at done", totals | as above |
-| `GET /api/reports/lines` | `reports.read` | `ledger`, `from`, `to`, one of `account` · `statementLine`, `counterparty`, `contract`, `dims`, `profitability` (`by`, `value`), `cursor` | the lines behind a figure, with entry and Hub document, and their sum | as above |
+| `GET /api/reports/lines` | `reports.read` | `ledger`, `from`, `to`, one of `account` · `statementLine`, `counterparty`, `contract`, `dims`, `profitability` (`by`, `value`), `cursor` | the lines behind a figure, with their entry, and their sum | as above |
 | `GET /api/reports/:report/export` | `reports.read` (`open_items.read` for `ageing`, `client_statement`; `accounts.read` for `chart`) | the report's query, `format=xlsx` | the file | as above, `REPORT_TOO_LARGE` |
 | `POST /api/reports/files` | as the report | `{ report, params, official? }` (`format` is `pdf`) | the file row | as above, `PERIOD_NOT_CLOSED`, `RATE_LIMITED` |
 | `GET /api/reports/files` · `GET /api/reports/files/:id` · `GET /api/reports/files/:id/download` | the requester; the register's files for `reports.read` | — | rows (own, newest first); one row; the PDF | `NOT_FOUND`, `LINK_INVALID` (expired) |
 | `GET /api/reports/journal-book/prints` | `reports.read` | `fiscalYear` | the register, with `superseded` | as above |
 | `GET /api/dimensions/values/:id/departments` · `POST …/departments` | `dimensions.read` · `dimensions.manage` | `{ departmentValueId, effectiveFrom, reason }` | the service's history | `DIMENSION_FROM_HUB`, `PERIOD_CLOSED`, `VALIDATION_FAILED`, `NOT_FOUND` |
-| `POST /v1/events` | API client `events:write` | the service reference gains `department` (optional, Hub's code) | unchanged | unchanged |
 
 - New error codes, appended: `REPORT_TOO_LARGE` (422, detail: the row count), `DIMENSION_FROM_HUB` (409).
-- `/v1`: one optional field, additive (ADR 0006); the OpenAPI guard sees no breaking change; the JSON Schema export and the examples carry it.
 - Reads are idempotent; `POST /api/reports/files` makes a new file per request (a double click makes two, both counted by the limit of rule 36).
 
 ## Jobs and events
 - **`reports.render`** (pg-boss, sent by the API after the `report_files` insert commits): the worker, as `mizan_jobs` in the file's company context, reads the report in one `REPEATABLE READ` snapshot, renders, writes the file and marks the row `ready` (or `failed` with the code). Retried twice on a crash; safe to run twice because a `ready` or `failed` row is skipped and the official print's register row is unique per `report_file_id`.
 - **`reports.files-expire`** (hourly): rows `ready` for 24 hours and not official turn `expired` and their files are deleted.
-- **Events:** `invoice.issued` and the other revenue-line events read the service's `department` (rule 33). No new event type.
+- **Events:** none.
 
 ## Screens
 Design-system components only (ADR 0010). New general components in `packages/ui`, first, each tested and on the design-system page:
@@ -192,13 +186,12 @@ Design-system components only (ADR 0010). New general components in `packages/ui
 |---|---|---|---|---|---|
 | `/reports` | The reports by group, each with its last parameters (kept per viewer in the browser) | — | — | — | `reports.read` |
 | `/reports/trial-balance` | Rule 9: period, comparative, level, code range, non-zero; ledger switch; totals with a mark if unequal (never expected; a failure is an incident) | figure → lines | Excel, PDF | loading (skeleton), empty ("لا قيود في هذه الفترة"), error | every role |
-| `/reports/general-ledger` · `/reports/accounts/:id` | Rules 10, 11; the account picker; the currency view | line → entry → Hub event | Excel, PDF | as above | every role |
+| `/reports/general-ledger` · `/reports/accounts/:id` | Rules 10, 11; the account picker; the currency view | line → entry | Excel, PDF | as above | every role |
 | `/reports/journal` | Rule 12; print the journal book: official (closed months) or draft | entry | Excel, PDF (rules 27–30) | as above; an official print refused names the first open month | every role |
 | `/reports/journal-book/prints` | Rule 29: the register, superseded prints marked; download a print | — | the stored PDF | empty, error | every role |
 | `/reports/income-statement` | Rule 14 with comparative; ledger switch | line → its accounts → lines | Excel, PDF | as above | every role |
 | `/reports/balance-sheet` | Rules 15–19; the reclassification notes; the year's result line | line → accounts → counterparties or contracts → lines | Excel, PDF | as above | every role |
 | `/reports/profitability` | Rule 20 by the chosen dimension; sort by contribution or margin | figure → lines | Excel, PDF | as above | every role |
-| `/reports/contract-position` · `/reports/revenue-schedule` | Rules 24, 25 | contract → `/revenue` schedules | Excel, PDF | as above | every role |
 | `/reports/lines` | The lines behind a figure, their sum equal to it, with the figure's parameters | entry | Excel | as above | every role |
 | `/dimensions` (service sheet) | The department history; add a dated row for a manual service | — | — | — | `dimensions.manage` to add |
 
@@ -211,7 +204,6 @@ Each report and how it reconciles to the ledger:
 - income statement's result = the trial balance's classes 4–5 net for the period;
 - balance sheet: assets = liabilities + equity, with rule 16's line; the reclassifications of rules 17–18 change both sides by the same amounts; the gross accounts equal the trial balance;
 - profitability's totals = the income statement's revenue and direct costs;
-- contract position's totals = the balance sheet's contract lines; the revenue schedule's total = the schedules' remaining;
 - the journal book's totals for a range = the trial balance's period debits and credits for the same dates in the book ledger;
 - the receivables ageing (S04) = the receivable accounts' balance in the trial balance at the same date.
 
@@ -221,15 +213,14 @@ Each report and how it reconciles to the ledger:
 - Amounts in words: none.
 
 ## Volume and performance
-- Vertex Media: a few hundred to 2,000 entries a month; the largest company served: 100,000 entries and 500,000 lines a year (S03), 2,000 accounts, 50,000 dimension sets.
+- A company: a few hundred to 2,000 entries a month; the largest company served: 100,000 entries and 500,000 lines a year (S03), 2,000 accounts, 50,000 dimension sets.
 - The trial balance, the income statement and the balance sheet read `period_balances` for whole months and the lines of at most two partial months (index `(company_id, entry_date)` on the lines, S03): ≤ 1 s for a year. Profitability by department reads the period balances per month and dimension set and, for a service whose department changed inside a month, that service's lines of the month: ≤ 2 s.
 - The general ledger, the account statement and the journal page by cursor, 200 rows a page: ≤ 500 ms a page.
 - PDF: ≤ 60 s for 2,000 pages; the journal book of a year of the largest company (≈ 15,000 pages) ≤ 10 minutes in the worker. Excel: ≤ 30 s for 100,000 rows.
 
 ## Migration and compatibility
 - New schema module `reports` in `packages/db` (`report_files`, `journal_book_prints`) and `service_departments` in the `dimensions` module, with RLS, grants, guards and registry entries (`/db-migration`). Expand only.
-- `packages/contracts`: `reports.ts` (the queries, rows, marks, `REPORTS`, the journal book's pagination constants and canonical row shape), `PERMISSIONS` gains `reports.read` for every role, the error codes and audit actions appended, `events.ts`' service reference gains the optional `department`.
-- **Hub must send** (Q5, added): the service's department code on each revenue line's service reference. Until then, departments of Hub services are absent and revenue by department shows "غير موزع"; history replayed through S10 carries the department Hub knows at replay.
+- `packages/contracts`: `reports.ts` (the queries, rows, marks, `REPORTS`, the journal book's pagination constants and canonical row shape), `PERMISSIONS` gains `reports.read` for every role, the error codes and audit actions appended.
 - `apps/worker` gains Chromium through the pinned Playwright already used by the E2E suite (ADR 0002), installed on the server by the deployment ADR (Q2's record).
 - No existing data changes; S02's chart export and S04's exports gain PDF without changing Excel.
 
@@ -252,8 +243,7 @@ Reading reports is not logged (S01 rule 24).
 - **A leaked file link:** files only through the authenticated API, by the requester (the register's prints by `reports.read`), 24 hours, audited downloads.
 - **A forged or altered printed journal:** the register's `content_sha256` and `file_sha256`; a reprint of the same closed range has the same content hash; the integrity chain (S03) proves the entries.
 - **A race with a close or reopen:** the worker's snapshot (rule 28); a report read during a close is consistent, as it reads one snapshot per request.
-- **A stolen Hub key:** it can only add a department row from a later open date (rule 33), audited with the event; no report is reachable with an API key.
-- **Hub down or out of order:** reports read only what posted; an older-dated event arriving later adds its row at its own date, so the history stays dated (rule 32).
+- **Back-dated entries:** reports read only what posted; an entry dated in an open month changes that month's figures, never a closed one's.
 - **Double submit:** a second PDF request makes a second file (no harm, counted by the limit).
 
 ## Edge cases
@@ -268,14 +258,14 @@ Reading reports is not logged (S01 rule 24).
 9. **A missing revaluation** at a month end (`rate_missing` or `to_post`): the mark links to `/revaluation`.
 10. **Archived account or value** with a balance: shown and marked; with none in the period, hidden by "non-zero".
 11. **A changed statement line:** every period re-presented (S02 rule 4); the comparative too.
-12. **A void after a release** (S06): the void's entries are in their month; the contract position nets the reversed schedule; profitability shows the revenue reversed in the void's month.
+12. Withdrawn (ADR 0021).
 13. **A reopened month:** its reports turn "غير نهائية"; its official prints superseded; a re-close and a new print take the same first page.
 14. **A contract with assets and liabilities in two currencies:** netted in the ledger's amounts, which are in one currency.
-15. **A client in debit on ad funds and with a receivable:** each account split separately (rule 18), never netted across accounts. A client cannot be in credit on a document account such as receivables (ADR 0013, invariant 9): an advance is posted to a liability.
+15. **A client in debit on a running liability account and with a receivable:** each account split separately (rule 18), never netted across accounts. A client cannot be in credit on a document account such as receivables (ADR 0013, invariant 9): an advance is posted to a liability.
 16. **A balance with no client on a control account** (a manual line): one counterparty for the account.
-17. **A service's department changed mid-month by Hub:** lines before the change date keep the old department, after it the new.
+17. **A service's department changed mid-month:** lines before the change date keep the old department, after it the new.
 18. **A department event dated in a closed month:** effective from the first open day (rule 33).
-19. **The first fiscal year:** the balance sheet's default comparative is the day before the first period (2026-09-30 for Vertex Media), showing "—".
+19. **The first fiscal year:** the balance sheet's default comparative is the day before the first period (the eve of the books start), showing "—".
 20. **A year's change:** a trial balance from 2027-01-01 opens classes 4–5 with 2026's result; the balance sheet shows it in retained earnings with its note.
 21. **A long description** in the journal book: continuation rows; an entry of 500 lines spans pages with "تابع القيد".
 22. **Leap day:** 29 February 2028 is a day like any other; the comparative period's length is counted in days.
@@ -289,22 +279,21 @@ No posting, recognition, revaluation or settlement rule changes.
 ## Open questions
 - **Q11** (open): exchange differences by IFRS 18 category; S09 keeps one line (rule 14) until IFRS 18 statements (2027).
 - **Q17** (new): a non-control account presented on the opposite side (a bank account in credit, an overdraft). Recommendation: a new statement line `bs.borrowings` ("القروض والسلف قصيرة الأجل", IAS 1.54(m)) and the balance presented there; until then shown negative and flagged (rule 18). Needed before the first real balance sheet with an overdraft.
-- **Q5** (open): Hub's side gains the service's department (Migration).
 
 ## Acceptance
-- **The owner's end-to-end check** (a test company with the service-agency template, `syp-usd`, after `post:hub-examples` and a closed month):
-  1. `/reports/trial-balance` for the closed month: six columns, debits equal credits in each pair; switch to the parallel ledger: balanced too. Open a receivables figure: its lines sum to it; open one line's entry and its Hub event.
+- **The owner's end-to-end check** (a test company with the general template, `syp-usd`, manual entries and a closed month):
+  1. `/reports/trial-balance` for the closed month: six columns, debits equal credits in each pair; switch to the parallel ledger: balanced too. Open a receivables figure: its lines sum to it; open one line's entry.
   2. Change the level to 2: header sums; add the comparative: the previous month's closing balances.
   3. `/reports/income-statement` for the month: revenue, direct costs, "الربح التشغيلي", "ربح (خسارة) الفترة", equal to the trial balance's classes 4–5.
-  4. `/reports/balance-sheet` at the month end: no mark; assets equal liabilities and equity; "ربح (خسارة) السنة الحالية" equals the year's income statement; a client in debit on ad funds appears in trade receivables with its note; a project's deposit and its done milestone netted to one contract liability.
+  4. `/reports/balance-sheet` at the month end: no mark; assets equal liabilities and equity; "ربح (خسارة) السنة الحالية" equals the year's income statement; a client in debit on a liability control account appears in trade receivables with its note.
   5. The same at a mid-month date of the open month: both marks.
   6. `/reports/profitability` by department in USD: each department's revenue and direct costs; totals equal the income statement's; by service: costs "غير موزع".
-  7. `/reports/contract-position` and `/reports/revenue-schedule`: totals equal the balance sheet's contract lines and the schedules' remaining.
+  7. Withdrawn (ADR 0021).
   8. `/reports/journal`: print the closed month as official; the PDF in Arabic, pages from 1, page totals and "ما قبله"; the register lists it with its hashes. Try the open month: refused naming it; print it as a draft: marked "مسودة — غير رسمية". Reopen the closed month: the register marks the print superseded.
   9. Export each report to Excel and PDF; the audit log shows each export.
   10. As a viewer: every report reads and exports; no write action.
 - **Tests:**
-  - API: per endpoint success, 401, 403 (a role without the permission, none for `reports.read`), another company's ids `NOT_FOUND`, the files' requester rule, `REPORT_TOO_LARGE`, `PERIOD_NOT_CLOSED`, `DIMENSION_FROM_HUB`;
+  - API: per endpoint success, 401, 403 (a role without the permission, none for `reports.read`), another company's ids `NOT_FOUND`, the files' requester rule, `REPORT_TOO_LARGE`, `PERIOD_NOT_CLOSED`;
   - unit and property tests: every report's agreement of rule 8 over random posted books in every currency shape (trial balance equals the lines; balance sheet balances after reclassifications; profitability totals; the journal book's pagination is the same for a month alone and within the year, and every page's totals carry forward);
   - the scenario book with `reports/statement-presentation`;
   - invariant tests for `service_departments` and `journal_book_prints` (append-only, RLS, composite keys, the closed-period guard) and `report_files` (state updates only);

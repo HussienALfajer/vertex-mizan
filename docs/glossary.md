@@ -6,7 +6,6 @@ One name per concept. Code, contracts and tables use the English term; the Arabi
 |---|---|---|
 | الشركة | company | A legal entity with its own books; the tenant (`company_id`) |
 | العضوية | membership | A person's role in one company |
-| عميل الربط | API client | A machine identity of a connected system in one company, with scoped keys |
 | الدعوة | invitation | An emailed, single-use link that adds a person to a company with a role |
 | الدور | role | What a membership may do: owner, accountant, approver, viewer, auditor |
 | الصلاحية | permission | One action key in the permission map (`members.manage`); roles hold permissions |
@@ -36,28 +35,26 @@ One name per concept. Code, contracts and tables use the English term; the Arabi
 | القروض | borrowings | Loans and bank overdrafts the company owes |
 | جاري الشركاء | partners' current accounts | Partners' withdrawable balances in a company with legal personality: a monetary liability, not equity (IAS 32.11, 32.16) |
 | الاحتياطي القانوني | legal reserve | Profit set aside in equity as company law requires |
-| حساب مراقبة | control account | An account whose balance is the sum of its open items (receivables, client ad funds) |
-| بند مفتوح | open item | One document's outstanding balance in a control account (an invoice, a client's ad funds) |
+| حساب مراقبة | control account | An account whose balance is the sum of its open items (receivables, payables, workers' balances) |
+| بند مفتوح | open item | One document's outstanding balance in a control account (an invoice, a counterparty's running balance) |
 | المبلغ الدفتري | carrying amount | An item's amount in a ledger: what it was measured at, less what was cleared before; month-end revaluations reverse and are not part of it (ADR 0007) |
 | قياس جديد | new measurement | A line converted at its ledger's policy rate on the entry date: revenue, a new receivable, cash received, an expense |
 | مبلغ محمول | carried amount | A line that releases, clears, settles or reverses a balance at that balance's own amounts; never converted again |
-| رصيد جارٍ | running balance | An item kept per counterparty (client ad funds), cleared at its average carrying amount; it may cross zero |
-| نوع البند / بند مستند | item kind / document item | A control account's kind of open item: one per document (an invoice, a milestone's contract asset), opened once and cleared toward zero; or a running balance per client (ADR 0013) |
+| رصيد جارٍ | running balance | An item kept per counterparty, cleared at its average carrying amount; it may cross zero (ADR 0013) |
+| نوع البند / بند مستند | item kind / document item | A control account's kind of open item: one per document (an invoice), opened once and cleared toward zero; or a running balance per counterparty (ADR 0013) |
 | حركة البند | item movement | The one movement of an item each line on a control account makes, with that line's three amounts: an opening, an addition, a clearing or a void's exchange difference |
 | تسوية / تسوية جزئية | settlement / partial settlement | A movement that clears an open item at its carrying amount, in proportion to what remains open; the last clears everything left (ADR 0013) |
 | أعمار الذمم | receivables ageing | Open receivable items by days past their due date, in six buckets: not yet due, 1–30, 31–60, 61–90, 91–180, over 180 |
 | تاريخ الاستحقاق / أيام التأخير | due date / days past due | When an item is due (its document date when none is set) / the report date minus the due date in force on it |
 | كشف حساب عميل | client statement | A client's items and movements on the control accounts, with opening, running and closing balances |
 | شطب دين | write-off | Clearing an uncollectible item at its carrying amount to an expense measured on the write-off date (IFRS 9.5.4.4) |
-| مقاصة مع الأمانات | offset against client funds | Clearing a client's receivable from the client's ad funds held, on the client's instruction |
-| معدّل في ميزان | adjusted in Mizan | A manual movement on an item from Hub or opening balances, shown on the item and in the reconciliation |
+| معدّل في ميزان | adjusted in Mizan | A manual movement on an item from the opening balances, shown on the item |
 | حساب نقدي / غير نقدي | monetary / non-monetary account | Whether foreign-currency balances are revalued (IAS 21) |
 | بُعد تحليلي | dimension | An analysis tag on a line; the built-in types are client, contract (a project or a retainer), department and service (ADR 0011) |
 | نوع البعد | dimension type | A kind of dimension: the built-in client, contract, department and service, or a custom one |
 | قيمة البعد | dimension value | One client, contract, department or service |
 | العقد | contract | A project or a retainer, as one dimension with its kind and client; contract positions are netted per contract (IFRS 15.105) |
 | مشروع / عقد دوري | project / retainer | The two kinds of a contract value (`contract_kind`): work delivered once, or a service billed in cycles |
-| الربط بـ Hub | Hub link | A dimension value's Hub ID; Hub's events find the value by it, never by name |
 | قيد يومية | journal entry | A dated set of balanced lines |
 | سطر القيد | journal line | One account, its dimensions and its amounts |
 | مدين / دائن | debit / credit | Positive / negative line amount |
@@ -76,10 +73,10 @@ One name per concept. Code, contracts and tables use the English term; the Arabi
 | الميزانية العمومية / قائمة المركز المالي | balance sheet | Assets, liabilities and equity at a date |
 | فترة المقارنة | comparative period | The second column of a report: by default the previous period of the same length, or for the balance sheet the end of the previous fiscal year (S09 rule 5) |
 | ربح (خسارة) السنة الحالية | year's result | Computed in the balance sheet's equity: revenue less expenses from the fiscal year's start to the date, until the year-end close (ADR 0018) |
-| أعيد تبويب للعرض | reclassified for presentation | An amount a statement shows on another line than its account's, such as a client's debit on client ad funds shown in receivables; the account is unchanged (IAS 1.32) |
+| أعيد تبويب للعرض | reclassified for presentation | An amount a statement shows on another line than its account's, such as a counterparty's debit on a payables account shown in receivables; the account is unchanged (IAS 1.32) |
 | هامش المساهمة | contribution margin | Revenue less direct costs of a client, contract, department or service, with no overhead allocated |
 | غير موزع | unassigned | The part of a profitability total whose lines carry no value of the chosen dimension |
-| قسم الخدمة | service department | The department a service belongs to, dated, from Hub or set for a manual service (S09 rule 32) |
+| قسم الخدمة | service department | The department a service belongs to, dated, set on the service (S09 rule 32) |
 | ما قبله | brought forward | The journal book's totals of the year's earlier pages, at the foot of each page |
 | الطبعة الرسمية / سجل الطبعات | official print / print register | A journal book printed for closed months, registered with its pages and hashes; superseded when one of its months is reopened |
 | السنة المالية | fiscal year | The calendar year by default |
@@ -103,54 +100,21 @@ One name per concept. Code, contracts and tables use the English term; the Arabi
 | زوج العملات | rate pair | Two currencies with the orientation every rate between them uses (base and quote) |
 | تقويم النشرة / يوم عدم نشر | publication calendar / day off | The weekly days and holidays without a bulletin; a working day needs its own bulletin (ADR 0011) |
 | تصحيح السعر | rate correction | A newer rate row with a reason that supersedes one of the same date; posted entries never change |
-| يقبل سعر العملية | accepts the transaction's rate | A market-rate ledger that takes the rate a connected system dealt at instead of the day's rate (`acceptsTransactionRate`, ADR 0007) |
+| يقبل سعر العملية | accepts the transaction's rate | A market-rate ledger that takes the rate an entry was dealt at instead of the day's rate (`acceptsTransactionRate`, ADR 0007) |
 | الليرة السورية الجديدة | new Syrian pound | `SYP` since 2026-01-01 (100 old = 1 new) |
 | فرق صرف محقق | realised exchange difference | Gain or loss when a foreign-currency item is settled (IAS 21.28) |
 | فرق صرف غير محقق / إعادة التقييم | unrealised exchange difference / revaluation | Month-end remeasurement of monetary foreign-currency balances (IAS 21.23) |
 | سطر التقريب | rounding line | A line to the conversion-rounding account that balances conversion rounding |
 | التوزيع | allocation | Splitting an amount into parts that sum exactly (cumulative rounding) |
-| إيراد مؤجل / التزامات عقود | deferred revenue / contract liabilities | Amounts invoiced before the service is delivered (IFRS 15) |
+| إيراد مؤجل / التزامات عقود | deferred revenue / contract liabilities | Amounts invoiced before the goods or services are delivered (IFRS 15.106) |
 | أصل عقد | contract asset | Revenue earned for work done and not yet invoiced (IFRS 15.107) |
-| جدول الاعتراف بالإيراد | recognition schedule | How a deferred amount is released to revenue over time |
-| تحرير الإيراد | revenue release | The entry moving deferred revenue to revenue |
-| العربون | project deposit | The invoice drafted at quote acceptance, before work starts: the first milestone's installment, recognised with that milestone (ADR 0015) |
-| حركة جدول الاعتراف | recognition movement | One change to what a schedule still has to recognise: deferred, elapsed, released, credited, reclassified, reversed, remainder released or refunded (ADR 0015) |
-| موزع على المدة / عند إنجاز المرحلة | over time / at a point in time | The two recognition patterns: evenly over a service period's days, or on a milestone's done date (IFRS 15.35, 15.38) |
-| الجزء المنقضي | elapsed part | The days of a service period in months that ended before its invoice was issued; recognised through a contract asset (A5) |
-| فترة خدمة مغلقة | service period closed | A late invoice whose elapsed part falls in a closed month (`SERVICE_PERIOD_CLOSED`) |
-| إعادة إصدار | re-issue | An invoice for a cycle or milestone whose earlier invoice was voided; it recognises what the void took back on its own date |
-| المتبقي في مشروع ملغى | cancelled project remainder | What a cancelled project still holds in contract liabilities, split by the accountant between revenue and a refund payable |
-| الدورة | retainer cycle | A retainer's billing period, anchored on its start date (Hub) |
-| أمانات إعلانات العملاء | client ad funds held | Client money held for ad spend; a liability |
-| ذمم منصات الإعلان | ad platforms payable | What is owed to ad platforms for client spend |
-| مصاريف بانتظار مصدر الدفع | project expenses awaiting payment source | Clearing account for Hub expenses with no payment source |
-| حدث | event | A business event sent by a connected system (`invoice.issued`) |
-| مفتاح منع التكرار | idempotency key | The event ID that makes a resend post nothing new |
-| صندوق الوارد / حدث معلّق | event inbox / held event | Received events; one that could not post yet, with its reason |
-| سبب التعليق / تفصيل التعليق | hold reason / hold detail | Why an event is held (`NO_MAPPING`, `RATE_MISSING`, …), and what exactly it waits for (`slot_unmapped:project_cost`, `tax_lines`, …) |
-| قاعدة الترحيل | posting rule | How an event type becomes entry lines; accounts mapped by the accountant |
-| ربط الحسابات / خانة الربط | posting-rule mapping / mapping slot | The account a posting rule reads for one purpose (`receivable`, `payment_method.cash` in SYP, …), maintained by the owner and the accountant |
-| مفتاح الربط | API key | A secret that authenticates an API client; shown once, stored as a hash, at most two active per client |
-| حدث مسجّل | recorded event | An event that changed data (a due date, a rate, a name) and posted no entry |
-| بانتظار حدث سابق | waiting for an earlier event | Held because an earlier event on the same item is held; posts after it in Hub's order |
-| مفتاح البند | item key | What orders a connected system's events: the invoice, the client's ad funds, or the document |
-| حُلّ بقيد يدوي | resolved by a manual entry | A held event the accountant handled with a linked manual entry; it never posts itself |
-| إسقاط الحدث | dismiss an event | The owner's decision that a held event never posts, with a reason |
-| الترحيل في أول فترة مفتوحة | post in the next open period | Posting an event held for a closed period on the first day of the first open period after it |
-| هامش فرق السداد | payment tolerance | The gap, in the invoice's currency, between Hub's applied amount and the amount at Hub's rate that posts as an exchange difference; beyond it the event is held |
-| المطابقة اليومية | daily reconciliation | Comparing a connected system's daily counts and totals with what Mizan posted |
-| تقرير المطابقة | reconciliation report | A connected system's list of the events of one accounting date, with their counts and totals; the latest one of a date counts |
-| فرق المطابقة | reconciliation gap | An event missing on one side, or differing in date, type or amount, between a connected system's report and Mizan |
-| تاريخ بدء المطابقة | reconciliation start date | The first accounting date a connected system's reports must cover |
+| قاعدة الترحيل | posting rule | How a kind of operation becomes entry lines, implemented only after its scenario is approved (`/posting-rule`) |
 | الأرصدة الافتتاحية | opening balances | Balances on the first day of the books |
 | تاريخ بدء الدفاتر | books start | The first day of a company's books in Mizan, the first day of a month; earlier months are closed (S10) |
 | قيد الأرصدة الافتتاحية | opening entry | The one entry, source `opening`, dated on the books start, that posts the opening balances (S10) |
-| لقطة Hub الافتتاحية | opening snapshot | Hub's open invoices, wallet balances, unfinished milestones and register of earlier documents as of the eve of the books start (S10) |
 | الرقم الموازن | balancing figure | The retained-earnings line that balances the opening entry in each ledger (S10) |
 | مبلغ منقول | stated amount | A book or parallel amount taken from the old records, with no conversion; only on the opening entry (`stated` line, ADR 0019) |
-| وثائق سابقة لبدء الدفاتر | prior documents | Hub documents dated before the books start, carried only by the opening; an event about one is held `before_books_start` (S10) |
 | نتيجة السنة قبل بدء الدفاتر | result of the year before the books start | The fiscal year's profit or loss before the books start, one figure on `312002`, added to the year's result (S10) |
-| مصدر المستند | document source | Which system issues a document type for a company |
 | كتاب السيناريوهات | scenario book | Solved examples of every accounting rule, run as tests |
 | شكل العملات | currency shape | A scenario's book and parallel currencies (`syp`, `syp-usd`, `usd-syp`, `third`) |
 | أرصدة الفترات | period balances | Totals per period, account, dimensions and currency, kept by the posting function |
@@ -158,7 +122,7 @@ One name per concept. Code, contracts and tables use the English term; the Arabi
 | سعر الصفقة | dealt rate | The rate a manual entry was actually dealt at; used only by a market ledger that accepts a transaction's rate (ADR 0012) |
 | إرسال للاعتماد / اعتماد / رفض / سحب | submit / approve / reject / withdraw | The approval steps of a manual entry when the company switches approval on; the approver is never the preparer |
 | معاينة الترحيل | posting preview | The lines as they would post, in both ledgers, with rounding and difference lines, before posting |
-| طلب الترحيل | posting request | The idempotency record every posting starts with: client and key (a draft id, an event id) |
+| طلب الترحيل | posting request | The idempotency record every posting starts with: its client and key (a draft id), so a resend posts nothing new |
 | مجموعة الأبعاد | dimension set | One combination of dimension values that lines and period balances share |
 | رأس السلسلة | chain head | The company's last posted entry hash and entry count |
 | فحص السلامة | integrity check | Recomputing the chain, numbers, balances and period balances, and comparing them with the anchors |

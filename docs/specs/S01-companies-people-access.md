@@ -1,6 +1,6 @@
 # S01 — Companies, people and access
 
-Status: Approved (owner, 2026-10-26) · Date: 2026-10-26 · Features: `docs/product/phase-1-scope.md` F01 (§3 users and roles, §4 book and parallel currency, rate policies, fiscal year) · ADRs: 0002 (Better Auth), 0003, 0005 (audit log, retention), 0007 (ledgers and rate policies), 0008 (owner role never at runtime), 0009, 0010
+Status: Approved (owner, 2026-10-26), amended by ADR 0021 (2026-11-13: API clients and document sources removed) · Date: 2026-10-26 · Features: `docs/product/phase-1-scope.md` F01 (§3 users and roles, §4 book and parallel currency, rate policies, fiscal year) · ADRs: 0002 (Better Auth), 0003, 0005 (audit log, retention), 0007 (ledgers and rate policies), 0008 (owner role never at runtime), 0009, 0010
 
 ## Summary
 Mizan serves many companies under one login, each fully isolated. This spec delivers the people side of that: sign-in with a password and a required authenticator code, invitations by email, memberships with one role per company, a company switcher, companies with their ledger settings (book and parallel currency, a rate policy per ledger, the fiscal year start and the IAS 21 policy note), archiving, the permission map shared by the API and the web app, and the company audit log that every later feature writes to.
@@ -15,8 +15,8 @@ Mizan serves many companies under one login, each fully isolated. This spec deli
   - the company audit log and the platform audit log, with their screens;
   - the screens listed below, in Arabic RTL.
 - Out:
-  - **API clients and keys** (F10): S05, with the posting API they serve. This spec's access guard and audit model already provide for a machine actor.
-  - **Module switches and document sources** (ADR 0001, ADR 0003): S05, where the posting API checks them (`SOURCE_NOT_ALLOWED`). Every optional module is off in phase 1 and nothing in S01 reads them.
+  - **API clients and keys**, and **document sources**: removed with Hub (ADR 0021); the guard refuses any `Authorization` header. The audit model keeps `api_client` as an actor kind for the rows written before.
+  - **Module switches** (ADR 0001, ADR 0003): every optional module is off in phase 1 and nothing in S01 reads them.
   - Exporting the audit log to Excel or PDF: with the report exports (F13).
   - Public sign-up, a platform super-user, Vertex support access (phase 4, ADR 0003).
   - Changing a person's email, archiving a person, and signing in with another provider: a server command only, if ever needed in phase 1.
@@ -29,8 +29,8 @@ One role per membership (owner, 2026-10-26).
 
 | Role | Arabic | Intent (later specs grant their permissions by it) |
 |---|---|---|
-| `owner` | المالك | Everything in the company: settings, members, periods, posting rules, API clients |
-| `accountant` | المحاسب | Accounting work: accounts, entries, rates, the inbox, revaluation; periods only with the period permission |
+| `owner` | المالك | Everything in the company: settings, members, periods |
+| `accountant` | المحاسب | Accounting work: accounts, entries, rates, revaluation; periods only with the period permission |
 | `approver` | المعتمِد | Approves manual entries when approval is on (F05) |
 | `viewer` | القارئ | Reads reports |
 | `auditor` | المدقق | Reads everything, including the audit log and the integrity check; changes nothing |
@@ -55,7 +55,7 @@ One role per membership (owner, 2026-10-26).
 | Create the first person and company | Server command | Vertex, on the server |
 
 ### Rules of the guard
-- A global guard in `apps/api` fails closed: every route declares exactly one access decorator — `@Public()`, `@SignedIn()` (a person, no company), or `@CompanyRoute(...permissions)` (a person in their active company). S05 adds `@ApiClientRoute(...scopes)`. An architecture test fails on a route without one.
+- A global guard in `apps/api` fails closed: every route declares exactly one access decorator — `@Public()`, `@SignedIn()` (a person, no company), or `@CompanyRoute(...permissions)` (a person in their active company). An architecture test fails on a route without one.
 - `@CompanyRoute` resolves the session's active company, checks the membership is active and holds every permission, and runs the handler inside `withCompany(db, activeCompanyId, …)`. The company never comes from the request.
 - Sensitive actions also declare `@Reauthenticated()`: a fresh authenticator or backup code within the last 5 minutes (`REAUTHENTICATION_REQUIRED` otherwise). They are: changing ledger settings, archiving or restoring, inviting, changing a role or the period permission, removing a member, resetting a member's two-factor, regenerating one's own backup codes, changing one's password, signing out of one's other sessions.
 
@@ -89,7 +89,7 @@ A platform table that points at a company names the column `scope_company_id` (t
 | Table | Kind | Fields | Keys and indexes |
 |---|---|---|---|
 | `company_settings` | business | `id`, `company_id` (also → `companies.id`), `book_currency` (text, a currency code), `book_rate_type` (`market` · `bulletin`), `book_accepts_transaction_rate` (bool), `parallel_currency` (null), `parallel_rate_type` (null), `parallel_accepts_transaction_rate` (null), `fiscal_year_start_month` (smallint 1–12, default 1), `policy_note` (text, 1–4,000), `books_started_at` (timestamptz, null), `created_at`, `updated_at`, `archived_at` (null) | unique `company_id`; unique `(company_id, id)`; checks below |
-| `audit_entries` | append-only | `id`, `company_id`, `created_at` (the time of the change, same transaction), `actor_kind` (`person` · `api_client` · `system`), `actor_user_id` (uuid, null, no FK: a platform id), `actor_api_client_id` (uuid, null, no FK; S05), `actor_name` (text; a snapshot), `session_id` (uuid, null, no FK), `request_id`, `ip_address` (inet, null), `user_agent` (null), `action` (`<entity>.<verb>`), `entity_type`, `entity_id` (uuid, null), `reason` (null), `before` (jsonb, null), `after` (jsonb, null) | index `(company_id, created_at)`, `(company_id, entity_type, entity_id)`, `(company_id, actor_user_id, created_at)` |
+| `audit_entries` | append-only | `id`, `company_id`, `created_at` (the time of the change, same transaction), `actor_kind` (`person` · `api_client` · `system`), `actor_user_id` (uuid, null, no FK: a platform id), `actor_api_client_id` (uuid, null, no FK; on rows written by Hub's API clients before ADR 0021), `actor_name` (text; a snapshot), `session_id` (uuid, null, no FK), `request_id`, `ip_address` (inet, null), `user_agent` (null), `action` (`<entity>.<verb>`), `entity_type`, `entity_id` (uuid, null), `reason` (null), `before` (jsonb, null), `after` (jsonb, null) | index `(company_id, created_at)`, `(company_id, entity_type, entity_id)`, `(company_id, actor_user_id, created_at)` |
 
 `company_settings` checks:
 1. The currencies are codes of the money module's currency table (a check against the list, extended with the table).
@@ -117,7 +117,7 @@ The `audit_entries` table follows ADR 0005 invariant 10: the app role has `SELEC
 9. **Creation** (owner, 2026-10-26): there is no public sign-up. The server command `pnpm --filter @vertex-mizan/api admin:create-company` creates a company and invites its first owner by email (Vertex Media and the first person). After that, any signed-in person with two-factor enrolled creates a company in the web app and becomes its owner.
 10. A new company needs a name, its book currency (default SYP) with its rate policy, the optional parallel currency with its policy, the fiscal year start month (default January: Income Tax Law 24/2003, calendar year, CONFIRMED) and the policy note (the IAS 21.9–12 basis of the book currency; ADR 0007). The form pre-fills Vertex Media's shape: book SYP at `bulletin`; parallel USD at `market`, accepting the transaction's rate.
 11. **The settings lock** (owner, 2026-10-26): the owner edits the currencies, rate policies and fiscal year start freely until the company's first posted entry; from then on they never change (`COMPANY_SETTINGS_LOCKED`). Basis: a change of functional currency applies prospectively under its own procedure (IAS 21.35–37), and a parallel ledger cannot be filled backwards because posted entries never change (ADR 0005). The policy note stays editable, with before and after in the audit log.
-12. **Archive** (owner, 2026-10-26): an owner archives with a written reason. An archived company is read-only: every write is refused (`COMPANY_ARCHIVED`), pending invitations are revoked, and (from S05) its API keys are revoked. Members keep reading and exporting. An owner restores it with a reason; revoked keys and invitations stay revoked.
+12. **Archive** (owner, 2026-10-26): an owner archives with a written reason. An archived company is read-only: every write is refused (`COMPANY_ARCHIVED`), pending invitations are revoked. Members keep reading and exporting. An owner restores it with a reason; revoked invitations stay revoked.
 13. Companies are never deleted (ADR 0005 retention).
 
 ### Memberships and invitations
@@ -140,7 +140,7 @@ The `audit_entries` table follows ADR 0005 invariant 10: the app role has `SELEC
 ### Audit (owner, 2026-10-26)
 23. Every change to company data writes one `audit_entries` row in the same transaction, with before and after values of the changed fields: company profile, settings and policy note, archive and restore, invitations, memberships, roles, the period permission, two-factor resets, and (later specs) every business change.
 24. Reads written to the audit logs: successful and failed sign-ins, sign-outs, password resets, two-factor enrolment, backup-code use (platform log); entering a company (`session.company_entered`), opening the company audit log, running the integrity check (F14), every export to Excel or PDF and the full company export (company log). Reading reports and screens is not logged.
-25. Each audit row records who (person, API client or system, with the name as it was), when, from where (IP address and user agent), the request ID and the session.
+25. Each audit row records who (person or system, with the name as it was; an API client on rows before ADR 0021), when, from where (IP address and user agent), the request ID and the session.
 26. A person reads their own platform entries (their sign-ins) on their security page. The company audit log is read by owners and auditors.
 
 ## Accounting treatment
@@ -153,7 +153,7 @@ No amounts. The settings hold the currency codes and rate policies only, validat
 No periods yet (S07). The settings lock starts at the first posted entry, whatever its period. `fiscal_year_start_month` is read by S03 (entry numbering per fiscal year) and S07 (periods); it is locked with the rest.
 
 ## API
-Internal web API under `/api` (not `/v1`, which is the integration contract of ADR 0006; it is still in `openapi.json` and checked by `pnpm check:openapi`). Better Auth's routes are mounted at `/api/auth/*`, with every route the spec does not use switched off (Hub's pattern). Every request has a request ID; every answer of an error carries an error code.
+Internal web API under `/api` (the `/v1` integration API was removed by ADR 0021). Better Auth's routes are mounted at `/api/auth/*`, with every route the spec does not use switched off (Hub's pattern). Every request has a request ID; every answer of an error carries an error code.
 
 | Method and path | Access | Request | Response | Error codes |
 |---|---|---|---|---|
@@ -245,7 +245,7 @@ Tens of people and companies in phase 1; an accounting office later holds dozens
 
 ## Migration and compatibility
 - The first real tables: `packages/db` gets the `access`, `companies` and `audit` schema modules, their registry entries, the `ephemeral` kind with its convention rules, the `company_settings` lock trigger in `GUARDS`, and a custom migration with RLS, grants and triggers.
-- No existing data or API clients. `openapi.json` gains the `/api` routes above (additive).
+- No existing data. `openapi.json` gains the `/api` routes above (additive).
 - `packages/contracts` gains `access.ts` (the permission map) and the error codes, appended.
 
 ## Arabic strings and number formats
@@ -290,8 +290,7 @@ Rules 23–26. Platform actions: `user.signed_in`, `user.sign_in_failed`, `user.
 None: S01 introduces no posting, recognition, revaluation or settlement rule. The scenario book's setup (S03) reads company ledgers in the `companyLedgersSchema` shape this spec stores.
 
 ## Open questions
-None blocking. For later specs (`docs/open-questions.md`):
-- **Q9, posting-rule mapping permission (S05):** phase 1 scope §3 gives posting rules to the owner, while F10 says the accountant maintains the account mapping. S05 asks the owner which role holds `posting-rules.manage`. Recommendation: owner and accountant, every change audited with before and after.
+None. (Q9, the posting-rule mapping permission, went with Hub's posting rules, ADR 0021.)
 
 ## Acceptance
 - **The owner's end-to-end check, step by step:**

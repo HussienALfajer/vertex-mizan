@@ -15,12 +15,12 @@ Two or three sentences: the problem this solves for the company, its accountant 
 | Action | Surface | Who (role or permission) |
 |---|---|---|
 | Post a manual entry | Web | Accountant (`entries.post`); Approver when approval is on |
-| Post a Hub event | API `/v1/events` | API client with `events:write` |
+| Close a period | Web | Owner; accountant with the period permission (`periods.close`) |
 
 ## Data
 For each entity, give:
 - the table and its fields (name, type, required, constraints);
-- relations, indexes and unique keys (idempotency keys, external references, numbers);
+- relations, indexes and unique keys (idempotency keys, references, numbers);
 - company or platform scope and RLS;
 - its kind: business (archived), append-only (ledger, audit), draft, queue, or ephemeral (deleted once handled, like the email outbox).
 
@@ -34,7 +34,7 @@ For every operation:
 - the entry it posts (accounts by template code, dimensions, signs);
 - its basis (standard paragraph, company policy, Syrian rule with its label);
 - its reversal or correction;
-- its effect on open items, recognition schedules and revaluation.
+- its effect on open items and revaluation.
 
 "None" if the feature posts nothing.
 
@@ -45,14 +45,14 @@ For every amount:
 - exchange-difference and rounding lines, and allocations (ADR 0007).
 
 ## Periods
-How the feature behaves at month boundaries, in closed periods (refuse, hold) and at close (checklist items it adds).
+How the feature behaves at month boundaries, in closed periods (refused) and at close (checklist items it adds).
 
 ## API
 | Method and path | Access | Request | Response | Error codes |
 |---|---|---|---|---|
-| `POST /v1/events` | API client `events:write` | `eventEnvelopeSchema` | `postingResultSchema` | `PERIOD_CLOSED`, `IDEMPOTENCY_CONFLICT`, `SOURCE_NOT_ALLOWED` |
+| `POST /api/drafts/:id/post` | `entries.post` | — | the posted entry | `PERIOD_CLOSED`, `IDEMPOTENCY_CONFLICT`, `DRAFT_CHANGED` |
 
-Idempotency, versioning and held-event behaviour per ADR 0006.
+Idempotency per invariant 5 (ADR 0005); error codes appended to the registry, never reused.
 
 ## Jobs and events
 Worker jobs: the queue, the trigger, retries, and why each is safe to run twice. Events received or emitted, with versions.
@@ -76,7 +76,7 @@ Documents and books the feature prints (journal book, vouchers, statements): con
 Expected rows per company per month and the largest company served; which queries read period balances and which read lines; indexes; how long the slowest screen or report may take.
 
 ## Migration and compatibility
-What existing data, scenarios or API clients the change affects; expand-then-contract steps; `/v1` compatibility.
+What existing data and scenarios the change affects; expand-then-contract steps.
 
 ## Arabic strings and number formats
 New i18n keys, Arabic terms from the glossary, number and date formats (Latin digits), currency labels.
@@ -90,9 +90,8 @@ How the feature can be abused or fail, and the control for each:
 - double submits;
 - races with a close;
 - cross-company access;
-- a stolen API key;
-- Hub down;
-- out-of-order events.
+- a stolen session;
+- back-dated entries.
 
 ## Edge cases
 A numbered list:
@@ -102,9 +101,9 @@ A numbered list:
 - a missing policy rate;
 - rate changes mid-month;
 - archived accounts or dimensions;
-- a void after a release;
+- a reversal after a settlement;
 - a change after a close;
-- leap days and cycles that cross months.
+- leap days and periods that cross months.
 
 ## Scenarios
 Every accounting rule this spec introduces or changes, as `docs/scenarios/<area>/<rule>.md`, each written and approved through `/posting-rule` before its code.
