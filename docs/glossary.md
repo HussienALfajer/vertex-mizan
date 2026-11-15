@@ -147,6 +147,24 @@ One name per concept. Code, contracts and tables use the English term; the Arabi
 | المستخلص | progress billing | A client's bill for work done on a project; a document item on `112001` (S11) |
 | المحتجزات | retention | Part of a billing held back until completion: receivable from clients, payable to subcontractors (S11) |
 | دفعة مقدمة من عميل | advance from a client | Cash received before the work, a non-monetary contract liability on `212002` (IFRS 15.106; IAS 21.16) |
+| مستند مشروع | project document | A numbered manual entry for a project: purchase invoice, wage sheet, progress billing, subcontract billing or retention release (S12, ADR 0023) |
+| فاتورة مشتريات المشروع | project purchase invoice | A supplier's invoice charged to a project's cost accounts, credited to the supplier's running balance (S12) |
+| كشف أجور | wage sheet | Workers' wages of one project and period within a month, accrued to each worker's running balance (S12) |
+| الأجر اليومي | daily rate | A worker's wage for one day; a wage sheet line is days × the daily rate (S12) |
+| مقطوعية | piece work | A lump sum for a defined job, a wage sheet line without days (S12) |
+| المستخلص التراكمي | cumulative billing | A billing stating the certified value of work to date; the period's value is it less the previous billing's (S12) |
+| قيمة الفترة | period's value | A billing's cumulative less the previous cumulative: the period's revenue or subcontract cost (S12) |
+| استرداد الدفعة المقدمة | advance recovery | The part of a billing settled by an advance, cleared at its carrying amount (S12, IFRIC 22) |
+| تطبيق الدفعة المقدمة / الجزء المغطى | advance application / covered part | The part of a revenue or cost line paid by an advance, measured at the advance's carrying amount (IFRIC 22.8; ADR 0023) |
+| الإفراج عن المحتجزات | retention release | Moving a retention to the ordinary receivable or payable when it becomes unconditional (S12; IFRS 15.108) |
+| عقد مقاول باطن | subcontract | A project and a supplier with the subcontract's currency, value and rates (S12) |
+| دليل المواد | materials catalogue | The company's materials with their codes and units (S12) |
+| الكمية / سعر الوحدة | quantity / unit price | A cost line's quantity (3 decimals) and price (4 decimals); the amount is their rounded product (S12) |
+| تعديل سعر | price adjustment | A line naming a material with no quantity: a discount or extra charge (S12) |
+| شروط المشروع | project terms | A project's contract currency, contract value, retention and advance-recovery rates (S12) |
+| قيمة العقد | contract value | The agreed price of a project, in its contract currency (S12) |
+| موازنة المشروع | project budget | The estimated cost per direct-cost account, compared with the actuals; no accounting effect (S12) |
+| طريقة المخرجات | output method | Revenue over time measured by the work performed, here each certified billing (IFRS 15.B15; S12) |
 | شيك / شيك مؤجل | cheque / post-dated cheque | A cheque, or one dated in the future (phase 2 or later) |
 | أوراق قبض / أوراق دفع | notes receivable / notes payable | Cheques and bills held or issued until due (phase 2 or later) |
 | مركز كلفة | cost centre | A dimension used to analyse costs |
