@@ -14,12 +14,14 @@ import { and, asc, eq, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import { beforeAll, describe, expect, it } from 'vitest';
 import {
+  accountRequiredDimensions,
   auditEntries,
   chartAccounts,
   companySettings,
   createCompanyBooks,
   type Database,
   dimensionSets,
+  dimensionSetValues,
   dimensionTypes,
   dimensionValues,
   entriesUsingRate,
@@ -41,7 +43,9 @@ import {
   periods,
   post,
   postingRequests,
+  postRevaluation,
   previewPosting,
+  previewRevaluation,
   readChain,
   recordRate,
   type Transaction,
@@ -340,7 +344,7 @@ describe('post(): manual document items (S04 rules 2, 4, 6, 7, 10)', () => {
       accountId: books.accounts.get('112001'),
       kind: 'document',
       source: 'manual',
-      clientValueId: books.values.get('C1'),
+      counterpartyValueId: books.values.get('C1'),
       currency: 'USD',
       documentDate: '2026-11-03',
       openedByEntryId: posted.id,
@@ -539,12 +543,6 @@ describe('post(): manual document items (S04 rules 2, 4, 6, 7, 10)', () => {
           },
         ]),
       ),
-      runningMore: await refused(
-        manual(books, '2026-11-19', [
-          cash,
-          { code: '213001', currency: 'USD', amount: -10_000n, dims: ['C1', 'S1'] },
-        ]),
-      ),
     };
     expect(
       Object.fromEntries(Object.entries(refusals).map(([key, value]) => [key, value.code])),
@@ -564,7 +562,6 @@ describe('post(): manual document items (S04 rules 2, 4, 6, 7, 10)', () => {
       runningItem: 'VALIDATION_FAILED',
       // An advance is a liability, never a credit item on a receivable account (ADR 0013).
       advance: 'OPEN_ITEM_DIRECTION',
-      runningMore: 'VALIDATION_FAILED',
     });
     for (const [key, value] of Object.entries(refusals)) {
       expect(value.details, key).toMatchObject({
@@ -677,7 +674,7 @@ describe('post(): running items (S04 rules 3, 9, 12, 13)', () => {
       { code: '213001', currency: 'USD', amount: -30_000n, dims: ['C1'] },
     ]);
     const { item } = await itemByReference(books, 'C1');
-    expect(item).toMatchObject({ kind: 'running', clientValueId: books.values.get('C1') });
+    expect(item).toMatchObject({ kind: 'running', counterpartyValueId: books.values.get('C1') });
     const offset = await manual(books, '2026-11-19', [
       { code: '213001', currency: 'USD', amount: 40_000n, dims: ['C1'] },
       { code: '112001', currency: 'USD', amount: -40_000n, item: m1 },
@@ -788,6 +785,247 @@ describe('post(): running items (S04 rules 3, 9, 12, 13)', () => {
     await reverse(books, refund.id, '2026-11-19');
     expect((await count(books)).entries).toBe(before + 1);
     expect(await balanceOf(books, 'C1')).toEqual([-100_000n, -12_000_000n, -100_000n]);
+  });
+});
+
+describe('counterparties of the items (S11 rules 3–4, ADR 0022)', () => {
+  /** A contract `P1` of client `C1` in the books. */
+  async function contractOf(books: Books): Promise<string> {
+    return inCompany(books.id, async (tx) => {
+      const [type] = await tx
+        .select({ id: dimensionTypes.id })
+        .from(dimensionTypes)
+        .where(eq(dimensionTypes.code, 'contract'));
+      const [row] = await tx
+        .insert(dimensionValues)
+        .values({
+          companyId: books.id,
+          typeId: type?.id as string,
+          code: 'P1',
+          name: 'مشروع تجريبي',
+          contractKind: 'project',
+          parentValueId: books.values.get('C1') as string,
+        })
+        .returning({ id: dimensionValues.id });
+      return row?.id as string;
+    });
+  }
+
+  /** The value ids of a dimension set. */
+  const valuesOfSet = (books: Books, setId: string) =>
+    inCompany(books.id, async (tx) =>
+      (
+        await tx
+          .select({ valueId: dimensionSetValues.valueId })
+          .from(dimensionSetValues)
+          .where(eq(dimensionSetValues.setId, setId))
+      )
+        .map((row) => row.valueId)
+        .sort(),
+    );
+
+  it('keys a running item by its counterparty alone, while its lines keep the contract they carry', async () => {
+    const books = await newBooks();
+    const contract = await contractOf(books);
+    books.values.set('P1', contract);
+    const deposit = await manual(books, '2026-11-10', [
+      { code: '111004', currency: 'USD', amount: 30_000n },
+      { code: '213001', currency: 'USD', amount: -30_000n, dims: ['C1', 'P1'] },
+    ]);
+    await manual(books, '2026-11-19', [
+      { code: '111004', currency: 'USD', amount: 10_000n },
+      { code: '213001', currency: 'USD', amount: -10_000n, dims: ['C1'] },
+    ]);
+    const { item } = await itemByReference(books, 'C1');
+    expect(item).toMatchObject({ kind: 'running', counterpartyValueId: books.values.get('C1') });
+    expect(await valuesOfSet(books, item.dimensionSetId)).toEqual([books.values.get('C1')]);
+    const [line] = await inCompany(books.id, (tx) =>
+      tx
+        .select({ setId: journalLines.dimensionSetId })
+        .from(journalLines)
+        .where(
+          and(
+            eq(journalLines.entryId, deposit.id),
+            eq(journalLines.accountId, books.accounts.get('213001') as string),
+          ),
+        ),
+    );
+    expect(await valuesOfSet(books, line?.setId as string)).toEqual(
+      [books.values.get('C1') as string, contract].sort(),
+    );
+    expect(await balanceOf(books, 'C1')).toEqual([-40_000n, -4_890_000n, -40_000n]);
+    expect((await count(books)).items).toBe(1);
+  });
+
+  it('remeasures a running item whose account requires the contract on the counterparty alone (owner, 2026-11-14)', async () => {
+    const books = await newBooks();
+    books.values.set('P1', await contractOf(books));
+    // 213001 requires the contract beside the client, as 211006 and 212002 do (S11 "Templates").
+    await inCompany(books.id, async (tx) => {
+      const [type] = await tx
+        .select({ id: dimensionTypes.id })
+        .from(dimensionTypes)
+        .where(eq(dimensionTypes.code, 'contract'));
+      await tx.insert(accountRequiredDimensions).values({
+        companyId: books.id,
+        accountId: books.accounts.get('213001') as string,
+        dimensionTypeId: type?.id as string,
+      });
+    });
+    const deposit = await manual(books, '2026-11-03', [
+      { code: '111004', currency: 'USD', amount: 100_000n },
+      { code: '213001', currency: 'USD', amount: -100_000n, dims: ['C1', 'P1'] },
+    ]);
+    await manual(books, '2026-11-10', [
+      { code: '213001', currency: 'USD', amount: 30_000n, dims: ['C1', 'P1'] },
+      { code: '211001', currency: 'USD', amount: -30_000n, dims: ['C1'] },
+    ]);
+    // A line the accountant types still carries the contract.
+    expect(
+      (
+        await refused(
+          manual(books, '2026-11-12', [
+            { code: '111004', currency: 'USD', amount: 1_000n },
+            { code: '213001', currency: 'USD', amount: -1_000n, dims: ['C1'] },
+          ]),
+        )
+      ).code,
+    ).toBe('DIMENSION_REQUIRED');
+    // The deposit's reversal takes the item across zero; its difference entry posts on {C1}.
+    await reverse(books, deposit.id, '2026-11-19');
+    const [difference] = await inCompany(books.id, (tx) =>
+      tx
+        .select({ id: journalEntries.id })
+        .from(journalEntries)
+        .innerJoin(postingRequests, eq(postingRequests.id, journalEntries.requestId))
+        .where(eq(postingRequests.idempotencyKey, `reversal:${deposit.id}:difference`)),
+    );
+    expect(await rowsOf(books, difference?.id as string)).toEqual([
+      ['213001', 'USD', -30_000n, -3_600_000n, -30_000n, 'clear'],
+      ['213001', 'USD', 30_000n, 3_690_000n, 30_000n, 'add'],
+      ['421001', 'SYP', -90_000n, -90_000n, 0n, null],
+    ]);
+    // The month-end revaluation of the book ledger remeasures the item at 125 on {C1}.
+    await inCompany(books.id, (tx) =>
+      recordRate(tx, books.id, actor(), {
+        effectiveOn: '2026-11-30',
+        base: 'USD',
+        quote: 'SYP',
+        rate: '125.0000',
+        type: 'bulletin',
+        source: 'manual',
+      }),
+    );
+    const { fingerprint } = await inCompany(books.id, (tx) =>
+      previewRevaluation(tx, { period: '2026-11', ledger: 'book', today: '2026-12-01' }),
+    );
+    const result = await inCompany(books.id, (tx) =>
+      postRevaluation(tx, {
+        period: '2026-11',
+        ledger: 'book',
+        fingerprint,
+        today: '2026-12-01',
+        actor: actor(),
+      }),
+    );
+    expect(result.posted).toBe(true);
+    const revaluation = (await rowsOf(books, result.entryId as string)).filter(
+      (row) => row[0] === '213001',
+    );
+    // 300.00 USD carried at 3,690,000: the target at 125 is 3,750,000, a difference of 60,000.
+    expect(revaluation).toEqual([['213001', 'USD', 0n, 60_000n, 0n, 'revaluation']]);
+  });
+
+  it('refuses a line on a running account that names a counterparty of another type, or none', async () => {
+    const books = await newBooks();
+    expect(
+      (
+        await refused(
+          manual(books, '2026-11-10', [
+            { code: '111004', currency: 'USD', amount: 30_000n },
+            { code: '213001', currency: 'USD', amount: -30_000n, dims: ['S1'] },
+          ]),
+        )
+      ).code,
+    ).toBe('DIMENSION_REQUIRED');
+  });
+
+  it("refuses an item whose counterparty is not its set's value of the account's type, and a running movement from a line without the item's counterparty", async () => {
+    const books = await newBooks();
+    const sale = await invoice(books);
+    for (const client of ['C1', 'C2']) {
+      await manual(books, '2026-11-10', [
+        { code: '111004', currency: 'USD', amount: 30_000n },
+        { code: '213001', currency: 'USD', amount: -30_000n, dims: [client] },
+      ]);
+    }
+    const { item } = await itemByReference(books, 'M-1');
+    const running = (await itemByReference(books, 'C1')).item;
+    const other = (await itemByReference(books, 'C2')).item;
+    expect(
+      await refusal(
+        inCompany(books.id, (tx) =>
+          tx.insert(openItems).values({
+            companyId: books.id,
+            accountId: item.accountId,
+            kind: 'document',
+            reference: 'M-OTHER-TYPE',
+            source: 'manual',
+            dimensionSetId: item.dimensionSetId,
+            counterpartyValueId: books.values.get('S1') as string,
+            currency: 'USD',
+            documentDate: item.documentDate,
+            openedByEntryId: item.openedByEntryId,
+          }),
+        ),
+      ),
+    ).toMatch(/counterparty is its dimension set's value of its account's counterparty type/);
+    // A movement on C1's running item from a line that carries C2, not C1.
+    expect(
+      await refusal(
+        forge(books, [
+          { code: '111004', currency: 'USD', amount: 10_000n, book: 1_230_000n, parallel: 10_000n },
+          {
+            code: '213001',
+            currency: 'USD',
+            amount: -10_000n,
+            book: -1_230_000n,
+            parallel: -10_000n,
+            setId: other.dimensionSetId,
+            movement: { itemId: running.id, kind: 'add' },
+          },
+        ]),
+      ),
+    ).toMatch(/a movement is its line's/);
+    // A document item's line still carries the item's set exactly: not C1 with a service.
+    const [revenueLine] = await inCompany(books.id, (tx) =>
+      tx
+        .select({ setId: journalLines.dimensionSetId })
+        .from(journalLines)
+        .where(
+          and(
+            eq(journalLines.entryId, sale.id),
+            eq(journalLines.accountId, books.accounts.get('411001') as string),
+          ),
+        ),
+    );
+    expect(
+      await refusal(
+        forge(books, [
+          { code: '111004', currency: 'USD', amount: 10_000n, book: 1_200_000n, parallel: 10_000n },
+          {
+            code: '112001',
+            currency: 'USD',
+            amount: -10_000n,
+            book: -1_200_000n,
+            parallel: -10_000n,
+            kind: 'carried',
+            setId: revenueLine?.setId as string,
+            movement: { itemId: item.id, kind: 'clear' },
+          },
+        ]),
+      ),
+    ).toMatch(/a movement is its line's/);
   });
 });
 
@@ -1141,7 +1379,7 @@ describe('the open-item guards, against writes the posting function never makes'
           reference: 'M-FORGED',
           source: 'manual',
           dimensionSetId: item.dimensionSetId,
-          clientValueId: item.clientValueId,
+          counterpartyValueId: item.counterpartyValueId,
           currency: 'USD',
           documentDate: item.documentDate,
           openedByEntryId: item.openedByEntryId,
@@ -1194,7 +1432,7 @@ describe('the open-item guards, against writes the posting function never makes'
                 reference: 'ADV-1',
                 source: 'manual',
                 dimensionSetId: item.dimensionSetId,
-                clientValueId: item.clientValueId,
+                counterpartyValueId: item.counterpartyValueId,
                 currency: 'USD',
                 documentDate: '2026-11-20',
                 openedByEntryId: entryId,

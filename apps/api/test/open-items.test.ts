@@ -1,14 +1,14 @@
 import type { INestApplication } from '@nestjs/common';
 import type {
   AgeingReport,
-  ClientFunds,
-  ClientStatement,
+  CounterpartyStatement,
   DimensionType,
   Entry,
   EntryPreview,
   IntegrityReport,
   OpenItem,
   OpenItemPage,
+  RunningBalances,
 } from '@vertex-mizan/contracts';
 import { auditEntries, type Database, withCompany } from '@vertex-mizan/db';
 import { ar } from '@vertex-mizan/i18n';
@@ -170,9 +170,9 @@ describe('the guard on every receivables route', () => {
       { method: 'put', path: `/api/open-items/${id}/due-date` },
       { method: 'get', path: '/api/receivables/ageing' },
       { method: 'get', path: '/api/receivables/ageing/export' },
-      { method: 'get', path: '/api/client-funds' },
-      { method: 'get', path: `/api/clients/${id}/statement` },
-      { method: 'get', path: `/api/clients/${id}/statement/export` },
+      { method: 'get', path: '/api/running-balances' },
+      { method: 'get', path: `/api/counterparties/${id}/statement` },
+      { method: 'get', path: `/api/counterparties/${id}/statement/export` },
     ]);
   });
 
@@ -187,8 +187,8 @@ describe('the guard on every receivables route', () => {
         '/api/open-items',
         `/api/open-items/${m1.id}`,
         '/api/receivables/ageing',
-        '/api/client-funds',
-        `/api/clients/${book.values.get('C1')}/statement`,
+        '/api/running-balances',
+        `/api/counterparties/${book.values.get('C1')}/statement`,
       ]) {
         expect((await member.browser.get(path)).status, `${role} ${path}`).toBe(200);
       }
@@ -249,7 +249,7 @@ describe('an invoice and its receipts through drafts (S04 acceptance steps 2–6
       currency: 'USD',
       documentDate: today(),
       dueOn: inDays(30),
-      client: { id: book.values.get('C1'), code: 'C1' },
+      counterparty: { id: book.values.get('C1'), type: 'client', code: 'C1' },
       amounts: { openMinor: '100000', bookMinor: '12150000', parallelMinor: '100000' },
       openedByEntryId: entry.id,
       bookCurrency: 'SYP',
@@ -373,12 +373,12 @@ describe('an invoice and its receipts through drafts (S04 acceptance steps 2–6
         })
       ).body.code,
     ).toBe('NOT_FOUND');
-    expect((await browser.get(`/api/clients/${other.values.get('C1')}/statement`)).body.code).toBe(
-      'NOT_FOUND',
-    );
-    expect((await browser.get(`/api/clients/${book.values.get('S1')}/statement`)).body.code).toBe(
-      'NOT_FOUND',
-    );
+    expect(
+      (await browser.get(`/api/counterparties/${other.values.get('C1')}/statement`)).body.code,
+    ).toBe('NOT_FOUND');
+    expect(
+      (await browser.get(`/api/counterparties/${book.values.get('S1')}/statement`)).body.code,
+    ).toBe('NOT_FOUND');
     expect((await browser.post('/api/drafts', receipt(book, theirs.id, '10000'))).body.code).toBe(
       'VALIDATION_FAILED',
     );
@@ -392,11 +392,11 @@ describe('an invoice and its receipts through drafts (S04 acceptance steps 2–6
       ).body.code,
     ).toBe('VALIDATION_FAILED');
     const ageing = await browser.get('/api/receivables/ageing', {
-      client: other.values.get('C1') as string,
+      counterparty: other.values.get('C1') as string,
     });
-    expect((ageing.body as AgeingReport).clients).toEqual([]);
+    expect((ageing.body as AgeingReport).counterparties).toEqual([]);
     const exported = await browser.download('/api/receivables/ageing/export', {
-      client: other.values.get('C1') as string,
+      counterparty: other.values.get('C1') as string,
     });
     expect(exported.status).toBe(200);
     expect((await rowsOf(exported.body)).some((row) => row.includes('M-1'))).toBe(false);
@@ -410,9 +410,11 @@ describe('an invoice and its receipts through drafts (S04 acceptance steps 2–6
         { ...line(other, '213001', 'USD', '-30000'), dimensionValueIds: dims(other, 'C1') },
       ],
     });
-    expect(((await browser.get('/api/client-funds')).body as ClientFunds).funds).toEqual([]);
+    expect(((await browser.get('/api/running-balances')).body as RunningBalances).balances).toEqual(
+      [],
+    );
     const theirExport = await browser.get(
-      `/api/clients/${other.values.get('C1')}/statement/export`,
+      `/api/counterparties/${other.values.get('C1')}/statement/export`,
     );
     expect(theirExport.body.code).toBe('NOT_FOUND');
   });
@@ -532,9 +534,9 @@ describe('the ageing (S04 rule 16, acceptance step 3)', () => {
     const onDue = await ageing({ asOf: inDays(30) });
     expect(onDue).toMatchObject({ asOf: inDays(30), ledger: 'book', ledgerCurrency: 'SYP' });
     expect(onDue.accounts.map((account) => account.code)).toEqual(['112001']);
-    expect(onDue.clients).toHaveLength(1);
+    expect(onDue.counterparties).toHaveLength(1);
     expect(
-      onDue.clients[0]?.items.map((item) => [item.reference, item.daysPastDue, item.bucket]),
+      onDue.counterparties[0]?.items.map((item) => [item.reference, item.daysPastDue, item.bucket]),
     ).toEqual([
       ['M-2', 30, 'days_1_30'],
       ['M-1', 0, 'not_due'],
@@ -546,12 +548,16 @@ describe('the ageing (S04 rule 16, acceptance step 3)', () => {
     ]);
     const later = await ageing({ asOf: inDays(37), ledger: 'parallel' });
     expect(later.ledgerCurrency).toBe('USD');
-    expect(later.clients[0]?.items.map((item) => [item.bucket, item.carryingMinor])).toEqual([
-      ['days_31_60', '20000'],
-      ['days_1_30', '100000'],
-    ]);
-    expect((await ageing({ asOf: inDays(-1) })).clients).toEqual([]);
-    expect((await ageing({ client: book.values.get('C2') as string })).clients).toEqual([]);
+    expect(later.counterparties[0]?.items.map((item) => [item.bucket, item.carryingMinor])).toEqual(
+      [
+        ['days_31_60', '20000'],
+        ['days_1_30', '100000'],
+      ],
+    );
+    expect((await ageing({ asOf: inDays(-1) })).counterparties).toEqual([]);
+    expect(
+      (await ageing({ counterparty: book.values.get('C2') as string })).counterparties,
+    ).toEqual([]);
     expect(
       (
         await browser.get('/api/receivables/ageing', {
@@ -620,14 +626,21 @@ describe('client funds and the client statement (S04 rule 17, acceptance step 7)
     });
     await posted(browser, funds('-30000', 'C1'));
     await posted(browser, funds('10000', 'C2'));
-    const answer = (await browser.get('/api/client-funds')).body as ClientFunds;
+    const answer = (await browser.get('/api/running-balances')).body as RunningBalances;
     expect(
-      answer.funds.map((fund) => [fund.client.code, fund.amounts.openMinor, fund.receivable]),
+      answer.balances.map((row) => [row.counterparty.code, row.amounts.openMinor, row.debit]),
     ).toEqual([
       ['C1', '-30000', false],
       ['C2', '10000', true],
     ]);
-    expect(answer).toMatchObject({ heldMinor: '-3645000', receivableMinor: '1215000' });
+    expect(answer).toMatchObject({ creditMinor: '-3645000', debitMinor: '1215000' });
+    // S11 rule 6: by counterparty type; the general chart's running account names clients.
+    const clients = (await browser.get('/api/running-balances', { counterpartyType: 'client' }))
+      .body as RunningBalances;
+    expect(clients.balances).toHaveLength(answer.balances.length);
+    const suppliers = (await browser.get('/api/running-balances', { counterpartyType: 'supplier' }))
+      .body as RunningBalances;
+    expect(suppliers).toMatchObject({ balances: [], creditMinor: '0', debitMinor: '0' });
     // The account nets to a credit, but an item is not zero: archiving is refused (edge case 13).
     const archive = await browser.post(`/api/accounts/${book.accounts.get('213001')}/archive`, {
       reason: 'لا حاجة',
@@ -642,10 +655,10 @@ describe('client funds and the client statement (S04 rule 17, acceptance step 7)
     const m1 = await itemOf(browser, 'M-1');
     await posted(browser, receipt(book, m1.id, '40000'));
     const client = book.values.get('C1') as string;
-    const statement = (await browser.get(`/api/clients/${client}/statement`))
-      .body as ClientStatement;
+    const statement = (await browser.get(`/api/counterparties/${client}/statement`))
+      .body as CounterpartyStatement;
     expect(statement).toMatchObject({
-      client: { id: client, code: 'C1' },
+      counterparty: { id: client, type: 'client', code: 'C1' },
       from: null,
       to: today(),
       ledger: 'book',
@@ -668,20 +681,27 @@ describe('client funds and the client statement (S04 rule 17, acceptance step 7)
       ['clear', 'M-1', '-40000', '60000', '7290000'],
     ]);
     const tomorrow = (
-      await browser.get(`/api/clients/${client}/statement`, { from: inDays(1), to: inDays(1) })
-    ).body as ClientStatement;
+      await browser.get(`/api/counterparties/${client}/statement`, {
+        from: inDays(1),
+        to: inDays(1),
+      })
+    ).body as CounterpartyStatement;
     expect(tomorrow.lines).toEqual([]);
     expect(tomorrow.opening).toEqual(statement.closing);
     expect(tomorrow.closing).toEqual(statement.closing);
     expect(
-      (await browser.get(`/api/clients/${client}/statement`, { from: inDays(1), to: inDays(0) }))
-        .body.code,
+      (
+        await browser.get(`/api/counterparties/${client}/statement`, {
+          from: inDays(1),
+          to: inDays(0),
+        })
+      ).body.code,
     ).toBe('VALIDATION_FAILED');
 
-    const exported = await browser.download(`/api/clients/${client}/statement/export`);
+    const exported = await browser.download(`/api/counterparties/${client}/statement/export`);
     expect(exported.status).toBe(200);
     expect(exported.headers['content-disposition']).toBe(
-      `attachment; filename="client-statement-${client}-${today()}.xlsx"`,
+      `attachment; filename="counterparty-statement-${client}-${today()}.xlsx"`,
     );
     const { rows, formats } = await sheetOf(exported.body);
     const clearedAt = rows.findIndex((row) => row[6] === ar.openItems.movements.clear);
@@ -706,7 +726,7 @@ describe('client funds and the client statement (S04 rule 17, acceptance step 7)
       name: 'عميل بترميز عربي',
     });
     expect(arabic.status, JSON.stringify(arabic.body)).toBe(201);
-    const theirs = await browser.download(`/api/clients/${arabic.body.id}/statement/export`);
+    const theirs = await browser.download(`/api/counterparties/${arabic.body.id}/statement/export`);
     expect(theirs.status).toBe(200);
     expect(theirs.headers['content-disposition']).toContain(arabic.body.id);
   });

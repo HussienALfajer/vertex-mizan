@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
-import { AGEING_BUCKETS, type AgeingBucket, type ClientRef } from '@vertex-mizan/contracts';
+import { AGEING_BUCKETS, type AgeingBucket, type CounterpartyRef } from '@vertex-mizan/contracts';
 import { ar } from '@vertex-mizan/i18n';
 import { Badge, Button, LedgerSwitch } from '@vertex-mizan/ui';
 import { ArrowRightIcon } from 'lucide-react';
@@ -31,17 +31,20 @@ export const ageingBuckets = AGEING_BUCKETS.map((bucket) => ({
   label: bucketLabel(bucket),
 }));
 
-/** A client as the receivables screens name it: its code first when it has one. */
-export function ClientName({ client }: { client: ClientRef | null }) {
-  if (!client) return <span className="text-muted-foreground">{t.labels.noClient}</span>;
+/**
+ * A counterparty (a client, supplier or worker, S11) as the receivables screens name it: its code
+ * first when it has one.
+ */
+export function CounterpartyName({ counterparty }: { counterparty: CounterpartyRef | null }) {
+  if (!counterparty) return <span className="text-muted-foreground">{t.labels.noClient}</span>;
   return (
     <span className="inline-flex flex-wrap items-baseline gap-x-2">
-      {client.code && (
+      {counterparty.code && (
         <bdi dir="ltr" className="font-medium tabular-nums">
-          {client.code}
+          {counterparty.code}
         </bdi>
       )}
-      <bdi>{client.name}</bdi>
+      <bdi>{counterparty.name}</bdi>
     </span>
   );
 }

@@ -61,10 +61,17 @@ describe('the guard on every dimension route', () => {
 });
 
 describe('dimension types (rule 9)', () => {
-  it('lists the four built-in types, adds custom ones up to ten, and archives them', async () => {
+  it('lists the six built-in types, adds custom ones up to ten, and archives them', async () => {
     const { browser, company } = await owner();
     const types = (await browser.get('/api/dimension-types')).body as DimensionType[];
-    expect(types.map((type) => type.code)).toEqual(['client', 'contract', 'department', 'service']);
+    expect(types.map((type) => type.code)).toEqual([
+      'client',
+      'contract',
+      'department',
+      'service',
+      'supplier',
+      'worker',
+    ]);
     const client = types[0] as DimensionType;
     expect(types[1]?.parentTypeId).toBe(client.id);
 
@@ -73,11 +80,12 @@ describe('dimension types (rule 9)', () => {
       name: 'مركز التكلفة',
     });
     expect(created.status).toBe(201);
-    expect(created.body).toMatchObject({ builtin: false, position: 5, parentTypeId: null });
+    expect(created.body).toMatchObject({ builtin: false, position: 7, parentTypeId: null });
     expect(
       (await browser.post('/api/dimension-types', { code: 'cost_centre', name: 'مكرر' })).body.code,
     ).toBe('DIMENSION_CODE_TAKEN');
-    for (const code of ['extra_a', 'extra_b', 'extra_c', 'extra_d', 'extra_e']) {
+    // Six built-in types leave four custom ones (S11 "Dimensions").
+    for (const code of ['extra_a', 'extra_b', 'extra_c']) {
       expect((await browser.post('/api/dimension-types', { code, name: 'نوع' })).status).toBe(201);
     }
     const eleventh = await browser.post('/api/dimension-types', { code: 'extra_f', name: 'نوع' });

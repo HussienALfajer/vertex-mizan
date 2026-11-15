@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { getRouteApi, Link, useNavigate } from '@tanstack/react-router';
 import {
   AGEING_BUCKETS,
-  type AgeingClient,
+  type AgeingCounterparty,
   type AgeingCurrencyTotal,
   type BucketAmounts,
   type Ledger,
@@ -48,7 +48,7 @@ import {
   AdjustedBadge,
   ageingBuckets,
   bucketLabel,
-  ClientName,
+  CounterpartyName,
   ItemLink,
   ReportLedgerSwitch,
   useClients,
@@ -150,7 +150,7 @@ export function ReceivablesPage() {
         </div>
       ) : ageing.isError ? (
         <FormError error={ageing.error} />
-      ) : report && report.clients.length === 0 ? (
+      ) : report && report.counterparties.length === 0 ? (
         <EmptyState
           icon={<ReceiptTextIcon />}
           title={t.ageing.emptyTitle}
@@ -161,7 +161,7 @@ export function ReceivablesPage() {
           <AgeingTable
             caption={`${t.ageing.caption} ${formatDay(report.asOf)}`}
             buckets={ageingBuckets}
-            rows={report.clients.map((row) => clientRow(row, report.ledgerCurrency))}
+            rows={report.counterparties.map((row) => counterpartyRow(row, report.ledgerCurrency))}
             totals={{ amounts: amountsOf(report.buckets), totalMinor: BigInt(report.totalMinor) }}
             currency={report.ledgerCurrency}
             labels={t.ageingTable}
@@ -174,7 +174,7 @@ export function ReceivablesPage() {
         clients={pickerValues(clients.values)}
         onClose={closeFinder}
         onChoose={(valueId) =>
-          void navigate({ to: '/receivables/clients/$valueId', params: { valueId } })
+          void navigate({ to: '/counterparties/$valueId', params: { valueId } })
         }
       />
       <ItemFinder
@@ -187,20 +187,23 @@ export function ReceivablesPage() {
   );
 }
 
-/** A client's row: its name with a link to its statement, its buckets, its items below. */
-function clientRow(row: AgeingClient, currency: AgeingCurrencyTotal['currency']): AgeingTableRow {
+/** A counterparty's row: its name with a link to its statement, its buckets, its items below. */
+function counterpartyRow(
+  row: AgeingCounterparty,
+  currency: AgeingCurrencyTotal['currency'],
+): AgeingTableRow {
   return {
-    key: row.client?.id ?? 'none',
-    label: row.client ? (
+    key: row.counterparty?.id ?? 'none',
+    label: row.counterparty ? (
       <Link
-        to="/receivables/clients/$valueId"
-        params={{ valueId: row.client.id }}
+        to="/counterparties/$valueId"
+        params={{ valueId: row.counterparty.id }}
         className="underline-offset-4 hover:underline"
       >
-        <ClientName client={row.client} />
+        <CounterpartyName counterparty={row.counterparty} />
       </Link>
     ) : (
-      <ClientName client={null} />
+      <CounterpartyName counterparty={null} />
     ),
     amounts: amountsOf(row.buckets),
     totalMinor: BigInt(row.totalMinor),
@@ -213,7 +216,7 @@ function ClientItems({
   row,
   currency,
 }: {
-  row: AgeingClient;
+  row: AgeingCounterparty;
   currency: AgeingCurrencyTotal['currency'];
 }) {
   return (
@@ -399,7 +402,7 @@ function ItemFinder({
                     <span className="flex flex-col items-start">
                       <bdi className="font-medium">{item.reference}</bdi>
                       <span className="text-xs text-muted-foreground">
-                        <ClientName client={item.client} />
+                        <CounterpartyName counterparty={item.counterparty} />
                         {` · ${t.states[item.state]}`}
                       </span>
                     </span>

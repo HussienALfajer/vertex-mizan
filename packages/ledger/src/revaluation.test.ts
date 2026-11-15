@@ -361,6 +361,7 @@ describe('a revaluation line and the chart (S07 rule 10)', () => {
       archived: false,
       isControl: false,
       itemKind: null,
+      counterpartyType: null,
       requiredDimensionTypeIds: [],
     };
     const line = {

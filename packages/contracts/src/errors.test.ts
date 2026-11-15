@@ -140,6 +140,9 @@ describe('error codes', () => {
       ['OPENING_NOT_REVERSIBLE', 409],
       ['NO_BOOKS_START', 409],
       ['BOOKS_START_LOCKED', 409],
+      ['CASH_BOX_NEGATIVE', 409],
+      ['CASH_COUNT_STALE', 409],
+      ['CASH_ACCOUNT_INVALID', 422],
     ]);
   });
 

@@ -100,11 +100,11 @@ export const openItems = {
     noMatch: 'لا بند بهذا المرجع.',
     searching: 'جارٍ البحث…',
   },
-  /** `/receivables/clients/:valueId`: the client statement. */
+  /** `/counterparties/:valueId` (S11 rule 6): a client's, supplier's or worker's statement. */
   statement: {
-    title: 'كشف حساب عميل',
+    title: 'كشف حساب طرف',
     description:
-      'حركات بنود العميل على كل حسابات المراقبة حسب التاريخ ثم رقم القيد، مع الرصيد الجاري بعملة البند وبالدفتر المختار.',
+      'حركات بنود الطرف (عميل أو مورّد أو عامل) على كل حسابات المراقبة حسب التاريخ ثم رقم القيد، مع الرصيد الجاري بعملة البند وبالدفتر المختار.',
     filters: 'تصفية الكشف',
     range: 'الفترة',
     from: 'من',
@@ -136,7 +136,7 @@ export const openItems = {
     notFound: 'لا بند بهذا الرقم في هذه الشركة.',
     account: 'الحساب',
     reference: 'المرجع',
-    client: 'العميل',
+    client: 'الطرف',
     currency: 'العملة',
     kind: 'نوع البند',
     source: 'المصدر',
@@ -240,10 +240,10 @@ export const openItems = {
     carryingAmount: 'المبلغ الدفتري',
     adjusted: 'معدّل في ميزان',
   },
-  /** The client statement export's sheet: the opening, every movement, the closing. */
+  /** The counterparty statement export's sheet: the opening, every movement, the closing. */
   statementExport: {
-    sheet: 'كشف حساب عميل',
-    client: 'العميل',
+    sheet: 'كشف حساب طرف',
+    client: 'الطرف',
     from: 'من تاريخ',
     to: 'إلى تاريخ',
     ledger: 'الدفتر',

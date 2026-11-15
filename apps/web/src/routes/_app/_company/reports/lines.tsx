@@ -22,6 +22,7 @@ export const Route = createFileRoute('/_app/_company/reports/lines')({
     side: search.side === 'debit' || search.side === 'credit' ? search.side : undefined,
     client: uuidParam(search.client),
     contract: uuidParam(search.contract),
+    dims: uuidParam(search.dims),
     profitabilityBy: byParam(search.profitabilityBy),
     profitabilityValue: uuidParam(search.profitabilityValue),
     openingEntry:

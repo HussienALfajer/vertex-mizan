@@ -315,13 +315,13 @@ describe("the templates' version 3 lines in the statements", () => {
 
   it('places intangible assets, borrowings, other taxes and reserves in their sections', () => {
     const balances: PresentationBalance[] = [
-      { accountId: id('111003'), clientId: null, contractId: null, amount: 100_000n },
-      { accountId: id('122001'), clientId: null, contractId: null, amount: 30_000n },
-      { accountId: id('122002'), clientId: null, contractId: null, amount: -5_000n },
-      { accountId: id('214002'), clientId: null, contractId: null, amount: -7_000n },
-      { accountId: id('216001'), clientId: null, contractId: null, amount: -40_000n },
-      { accountId: id('311001'), clientId: null, contractId: null, amount: -60_000n },
-      { accountId: id('314001'), clientId: null, contractId: null, amount: -18_000n },
+      { accountId: id('111003'), counterpartyId: null, contractId: null, amount: 100_000n },
+      { accountId: id('122001'), counterpartyId: null, contractId: null, amount: 30_000n },
+      { accountId: id('122002'), counterpartyId: null, contractId: null, amount: -5_000n },
+      { accountId: id('214002'), counterpartyId: null, contractId: null, amount: -7_000n },
+      { accountId: id('216001'), counterpartyId: null, contractId: null, amount: -40_000n },
+      { accountId: id('311001'), counterpartyId: null, contractId: null, amount: -60_000n },
+      { accountId: id('314001'), counterpartyId: null, contractId: null, amount: -18_000n },
     ];
     const sheet = balanceSheet({
       accounts: chart,
@@ -345,15 +345,15 @@ describe("the templates' version 3 lines in the statements", () => {
 describe('the balance sheet (rules 15–19)', () => {
   // S09's worked example in the book ledger, per counterparty and contract.
   const balances: PresentationBalance[] = [
-    { accountId: id('111003'), clientId: null, contractId: null, amount: 125_000_000n },
-    { accountId: id('111004'), clientId: null, contractId: null, amount: 11_760_000n },
-    { accountId: id('112001'), clientId: 'C1', contractId: null, amount: 60_000_000n },
-    { accountId: id('113001'), clientId: 'C1', contractId: 'P1', amount: 50_000_000n },
-    { accountId: id('113001'), clientId: 'C3', contractId: 'R1', amount: 30_000_000n },
-    { accountId: id('211003'), clientId: null, contractId: null, amount: -5_000_000n },
-    { accountId: id('212001'), clientId: 'C1', contractId: 'P1', amount: -120_000_000n },
-    { accountId: id('213001'), clientId: 'C1', contractId: null, amount: -12_000_000n },
-    { accountId: id('213001'), clientId: 'C3', contractId: null, amount: 240_000n },
+    { accountId: id('111003'), counterpartyId: null, contractId: null, amount: 125_000_000n },
+    { accountId: id('111004'), counterpartyId: null, contractId: null, amount: 11_760_000n },
+    { accountId: id('112001'), counterpartyId: 'C1', contractId: null, amount: 60_000_000n },
+    { accountId: id('113001'), counterpartyId: 'C1', contractId: 'P1', amount: 50_000_000n },
+    { accountId: id('113001'), counterpartyId: 'C3', contractId: 'R1', amount: 30_000_000n },
+    { accountId: id('211003'), counterpartyId: null, contractId: null, amount: -5_000_000n },
+    { accountId: id('212001'), counterpartyId: 'C1', contractId: 'P1', amount: -120_000_000n },
+    { accountId: id('213001'), counterpartyId: 'C1', contractId: null, amount: -12_000_000n },
+    { accountId: id('213001'), counterpartyId: 'C3', contractId: null, amount: 240_000n },
   ];
 
   it('reclassifies a client in debit on ad funds and nets each contract', () => {
@@ -389,16 +389,50 @@ describe('the balance sheet (rules 15–19)', () => {
     });
   });
 
+  it('never nets one counterparty against another on a control account (rule 18, S11 rule 6)', () => {
+    fc.assert(
+      fc.property(
+        fc.array(fc.tuple(fc.constantFrom('S1', 'S2', 'W1', 'W2', null), ledgerAmount), {
+          maxLength: 12,
+        }),
+        (rows) => {
+          const balances: PresentationBalance[] = rows.map(([counterpartyId, amount]) => ({
+            accountId: id('213001'),
+            counterpartyId,
+            contractId: null,
+            amount,
+          }));
+          const sheet = balanceSheet({
+            accounts: CHART,
+            current: { balances, yearNet: 0n, unclosedNet: 0n },
+            compare: null,
+          });
+          // Each counterparty's net, a credit on its own line and a debit in receivables.
+          const nets = new Map<string | null, bigint>();
+          for (const [counterparty, amount] of rows) {
+            nets.set(counterparty, (nets.get(counterparty) ?? 0n) + amount);
+          }
+          const credits = [...nets.values()].filter((net) => net < 0n);
+          const debits = [...nets.values()].filter((net) => net > 0n);
+          const amountOf = (code: string) =>
+            sheet.lines.find((line) => line.line === code)?.amount ?? 0n;
+          expect(amountOf('bs.client_money')).toBe(-credits.reduce((a, b) => a + b, 0n));
+          expect(amountOf('bs.trade_receivables')).toBe(debits.reduce((a, b) => a + b, 0n));
+        },
+      ),
+    );
+  });
+
   it('shows earlier unclosed years in retained earnings and flags a non-control account in credit', () => {
     const sheet = balanceSheet({
       accounts: CHART,
       current: {
         balances: [
-          { accountId: id('111003'), clientId: null, contractId: null, amount: -1_000n },
-          { accountId: id('112001'), clientId: 'C1', contractId: null, amount: 44_000n },
-          { accountId: id('121001'), clientId: null, contractId: null, amount: 10_000n },
-          { accountId: id('121003'), clientId: null, contractId: null, amount: -4_000n },
-          { accountId: id('311001'), clientId: null, contractId: null, amount: -6_000n },
+          { accountId: id('111003'), counterpartyId: null, contractId: null, amount: -1_000n },
+          { accountId: id('112001'), counterpartyId: 'C1', contractId: null, amount: 44_000n },
+          { accountId: id('121001'), counterpartyId: null, contractId: null, amount: 10_000n },
+          { accountId: id('121003'), counterpartyId: null, contractId: null, amount: -4_000n },
+          { accountId: id('311001'), counterpartyId: null, contractId: null, amount: -6_000n },
         ],
         yearNet: -18_000n,
         unclosedNet: -25_000n,
@@ -536,9 +570,9 @@ describe('the opening in the reports (S10 rules 31–33, `reports/opening-presen
   });
 
   it("adds the result before the books start to its year's result, and to retained earnings later", () => {
-    const row = (code: string, amount: bigint, clientId: string | null = null) => ({
+    const row = (code: string, amount: bigint, counterpartyId: string | null = null) => ({
       accountId: id(code),
-      clientId,
+      counterpartyId,
       contractId: null,
       amount,
     });
@@ -773,14 +807,14 @@ const entryArbitrary = fc
     const lines = accounts.map((accountId, index) => ({
       accountId,
       amount: amounts[index] ?? 0n,
-      clientId: clients[index] ?? null,
+      counterpartyId: clients[index] ?? null,
       contractId: contracts[index] ?? null,
     }));
     const residual = lines.reduce((total, line) => total + line.amount, 0n);
     lines.push({
       accountId: id('111003'),
       amount: -residual,
-      clientId: clients[5] ?? null,
+      counterpartyId: clients[5] ?? null,
       contractId: contracts[5] ?? null,
     });
     return { date: addDays('2026-11-01', day), lines };
@@ -841,11 +875,11 @@ describe('properties of the reports (rule 8)', () => {
               else yearNet += line.amount;
               continue;
             }
-            const key = `${line.accountId}|${line.clientId}|${line.contractId}`;
+            const key = `${line.accountId}|${line.counterpartyId}|${line.contractId}`;
             const before = balances.get(key);
             balances.set(key, {
               accountId: line.accountId,
-              clientId: line.clientId,
+              counterpartyId: line.counterpartyId,
               contractId: line.contractId,
               amount: (before?.amount ?? 0n) + line.amount,
             });

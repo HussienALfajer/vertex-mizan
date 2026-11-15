@@ -8,6 +8,8 @@ import {
   accountClassOfCode,
   accountCodeLevel,
   accountRoleFits,
+  CASH_KINDS,
+  canBeCashAccount,
   chartExportQuerySchema,
   checkAccountCode,
   checkAccountShape,
@@ -20,6 +22,7 @@ import {
   updateAccountSchema,
 } from './chart.js';
 import { DomainError, type ErrorCode } from './errors.js';
+import { COUNTERPARTY_TYPES } from './open-items.js';
 
 function codeOf(work: () => unknown): ErrorCode | 'none' {
   try {
@@ -165,6 +168,7 @@ describe('the statement-line catalogue', () => {
 
 describe('checkAccountShape (S02 checks 2–4)', () => {
   const postable: AccountShape = {
+    code: '111009',
     level: 4,
     kind: 'postable',
     class: 'asset',
@@ -172,6 +176,8 @@ describe('checkAccountShape (S02 checks 2–4)', () => {
     currency: 'USD',
     isControl: false,
     itemKind: null,
+    counterpartyType: null,
+    cashKind: null,
     isMonetary: true,
     requiredDimensionCount: 0,
   };
@@ -210,6 +216,8 @@ describe('checkAccountShape (S02 checks 2–4)', () => {
       { currency: 'USD' },
       { isControl: true },
       { itemKind: 'document' },
+      { counterpartyType: 'client' },
+      { cashKind: 'box' },
       { isMonetary: true },
       { requiredDimensionCount: 1 },
     ] as const) {
@@ -236,6 +244,7 @@ describe('checkAccountShape (S02 checks 2–4)', () => {
           statementLine: 'bs.client_money',
           isControl: true,
           itemKind: 'running',
+          counterpartyType: 'client',
         }),
       ),
     ).toBe('none');
@@ -249,8 +258,57 @@ describe('checkAccountShape (S02 checks 2–4)', () => {
       'VALIDATION_FAILED',
     );
     expect(
-      codeOf(() => checkAccountShape({ ...postable, isControl: true, itemKind: 'document' })),
+      codeOf(() =>
+        checkAccountShape({
+          ...postable,
+          isControl: true,
+          itemKind: 'document',
+          counterpartyType: 'client',
+        }),
+      ),
     ).toBe('none');
+  });
+
+  it('gives a control account, and only a control account, a counterparty type (S11 rule 5)', () => {
+    expect(
+      codeOf(() => checkAccountShape({ ...postable, isControl: true, itemKind: 'document' })),
+    ).toBe('VALIDATION_FAILED');
+    for (const counterpartyType of COUNTERPARTY_TYPES) {
+      expect(codeOf(() => checkAccountShape({ ...postable, counterpartyType }))).toBe(
+        'VALIDATION_FAILED',
+      );
+      expect(
+        codeOf(() =>
+          checkAccountShape({
+            ...postable,
+            isControl: true,
+            itemKind: 'running',
+            counterpartyType,
+          }),
+        ),
+      ).toBe('none');
+    }
+  });
+
+  it('puts a cash kind only on a postable, monetary asset under 111 in one currency on bs.cash (S11)', () => {
+    for (const cashKind of CASH_KINDS) {
+      expect(codeOf(() => checkAccountShape({ ...postable, cashKind }))).toBe('none');
+      for (const change of [
+        { code: '112009' },
+        { currency: null },
+        { isMonetary: false },
+        { isControl: true, itemKind: 'running', counterpartyType: 'client' },
+        { statementLine: 'bs.trade_receivables' },
+      ] as const) {
+        expect(
+          codeOf(() => checkAccountShape({ ...postable, ...change, cashKind })),
+          JSON.stringify(change),
+        ).toBe('CASH_ACCOUNT_INVALID');
+      }
+    }
+    expect(canBeCashAccount({ ...postable, class: 'liability', statementLine: 'bs.cash' })).toBe(
+      false,
+    );
   });
 });
 
@@ -297,6 +355,8 @@ describe('the account schemas', () => {
       currency: null,
       isControl: false,
       itemKind: null,
+      counterpartyType: null,
+      cashKind: null,
       isMonetary: false,
       requiredDimensionTypeIds: [],
     });

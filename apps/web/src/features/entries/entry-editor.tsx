@@ -222,7 +222,7 @@ export function EntryEditor({
   const itemPages = useQueries({
     queries: itemKeys.map((key) => {
       const [account, client] = key.split(':');
-      return openItemsQuery(companyId, { account, client, state: 'open' });
+      return openItemsQuery(companyId, { account, counterparty: client, state: 'open' });
     }),
   });
   const itemsOf = (line: EditLine): readonly OpenItemSummary[] => {

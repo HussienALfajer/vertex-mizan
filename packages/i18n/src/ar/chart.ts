@@ -2,7 +2,9 @@ import type {
   AccountClass,
   AccountKind,
   AccountRole,
+  CashKind,
   ChartTemplateId,
+  CounterpartyType,
   ItemKind,
   NormalBalance,
 } from '@vertex-mizan/contracts';
@@ -102,18 +104,24 @@ export const chart = {
     anyCurrency: 'أي عملة',
     currencyHint: 'تقيّد سطور الحساب بعملة واحدة.',
     control: 'حساب مراقبة',
-    controlHint: 'رصيده مجموع بنود مفتوحة لكل عميل أو مورد.',
+    controlHint: 'رصيده مجموع بنود مفتوحة لكل عميل أو مورّد أو عامل.',
+    counterpartyType: 'نوع الطرف',
+    counterpartyTypeHint: 'يسمّي كل سطر على الحساب طرفه من بُعد هذا النوع، ويبقى البُعد مطلوبًا.',
     itemKind: 'نوع البند',
     itemKindHint:
       'بند مستند: بند لكل فاتورة أو مستند يُسدَّد حتى الصفر. رصيد جارٍ: رصيد واحد لكل عميل وعملة، قد يتجاوز الصفر.',
     monetary: 'حساب نقدي',
     monetaryHint: 'يُعاد تقييمه بسعر نهاية الشهر.',
+    cashKind: 'نوع حساب النقدية',
+    cashKindHint: 'الصندوق لا يصبح رصيده سالبًا أبدًا؛ الحساب المصرفي لا يُفحص.',
+    cashKindNone: 'ليس حساب نقدية',
+    counterpartyDimension: 'بُعد الطرف مطلوب ما دام الحساب حساب مراقبة.',
     dimensions: 'الأبعاد المطلوبة',
     dimensionsHint: 'لا يُقبل سطر على الحساب دون قيمة لكل بُعد منها.',
     roles: 'أدوار الحساب',
     lockedTitle: 'رُحِّل إلى الحساب قيد',
     lockedDescription:
-      'لا يتغير بعد الآن الرمز ولا الأب ولا النوع ولا الفئة ولا الطبيعة ولا العملة ولا خاصيتا المراقبة والنقد ولا نوع البند. يبقى تعديل الاسمين وبند القائمة والأبعاد المطلوبة.',
+      'لا يتغير بعد الآن الرمز ولا الأب ولا النوع ولا الفئة ولا الطبيعة ولا العملة ولا خاصيتا المراقبة والنقد ولا نوع البند ولا نوع الطرف ولا نوع حساب النقدية. يبقى تعديل الاسمين وبند القائمة والأبعاد المطلوبة، وبُعد الطرف يبقى مطلوبًا.',
     headerLockedTitle: 'تحت الحساب حسابات',
     headerLockedDescription:
       'لا يتغير رمز الحساب الرئيسي ولا موضعه ولا نوعه ما دام تحته حسابات. يبقى تعديل الاسمين.',
@@ -129,6 +137,7 @@ export const chart = {
     nameLength: 'الاسم من 1 إلى 200 حرف.',
     statementLine: 'اختر بند القائمة.',
     itemKind: 'اختر نوع البند.',
+    counterpartyType: 'اختر نوع الطرف.',
   },
   roleSettings: {
     title: 'أدوار الحسابات',
@@ -178,6 +187,17 @@ export const chart = {
     document: 'بند مستند',
     running: 'رصيد جارٍ',
   } satisfies Record<ItemKind, string>,
+  /** The counterparty type of a control account (S11, ADR 0022). */
+  counterpartyTypes: {
+    client: 'عميل',
+    supplier: 'مورّد',
+    worker: 'عامل',
+  } satisfies Record<CounterpartyType, string>,
+  /** The kind of a cash account (S11 rule 7). */
+  cashKinds: {
+    box: 'صندوق',
+    bank: 'حساب مصرفي',
+  } satisfies Record<CashKind, string>,
   normalBalances: {
     debit: 'مدين',
     credit: 'دائن',
@@ -193,6 +213,7 @@ export const chart = {
   } satisfies Record<AccountRole, string>,
   templates: {
     general: 'عام',
+    contracting: 'مقاولات',
   } satisfies Record<ChartTemplateId, string>,
   /** The columns of the chart export (`GET /api/chart/export`), in order. */
   export: {

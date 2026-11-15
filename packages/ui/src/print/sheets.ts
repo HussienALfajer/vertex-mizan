@@ -4,7 +4,7 @@ import {
   AGEING_BUCKETS,
   type AgeingReport,
   type BalanceSheet,
-  type ClientStatement,
+  type CounterpartyStatement,
   type CurrencyCode,
   type GeneralLedger,
   type IncomeStatement,
@@ -52,7 +52,7 @@ export type SheetInput =
   | { readonly report: 'ageing'; readonly data: AgeingReport; readonly producedAt: string }
   | {
       readonly report: 'client_statement';
-      readonly data: ClientStatement;
+      readonly data: CounterpartyStatement;
       readonly producedAt: string;
     }
   | {
@@ -739,11 +739,11 @@ function ageingSheet(data: AgeingReport, producedAt: string, context: SheetConte
     amount('total', c.total),
   ];
   const rows: SheetRow[] = [];
-  for (const client of data.clients) {
+  for (const client of data.counterparties) {
     rows.push({
       emphasis: 'subtotal',
       cells: {
-        client: client.client === null ? t.ageing.noClient : client.client.name,
+        client: client.counterparty === null ? t.ageing.noClient : client.counterparty.name,
         ...client.buckets,
         total: client.totalMinor,
       },
@@ -789,7 +789,7 @@ function ageingSheet(data: AgeingReport, producedAt: string, context: SheetConte
 }
 
 function clientStatementSheet(
-  data: ClientStatement,
+  data: CounterpartyStatement,
   producedAt: string,
   context: SheetContext,
 ): ReportSheet {
@@ -844,12 +844,12 @@ function clientStatementSheet(
   });
   return {
     report: 'client_statement',
-    title: `${t.names.client_statement}: ${data.client.name}`,
+    title: `${t.names.client_statement}: ${data.counterparty.name}`,
     ...plainHeader(
       producedAt,
       data.ledgerCurrency,
       [
-        { label: t.header.client, value: data.client.name },
+        { label: t.header.client, value: data.counterparty.name },
         { label: t.header.period, value: range(data.from, data.to, context.text) },
         { label: t.header.ledger, value: ledgerName(data.ledger, context.text) },
         {

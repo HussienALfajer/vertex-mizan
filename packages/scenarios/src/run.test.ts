@@ -464,6 +464,30 @@ expect:
     expect(namedDimensionValues(parseCase(CORRECTION))).toEqual([]);
   });
 
+  it("adds a named contract's client, which no line names (S11)", () => {
+    const costOnly = parseCase(`
+case: a cost on a contract
+company: { shape: syp, book: SYP, rate_policy: { book: bulletin },
+           contracts: [{ code: P1, kind: project, client: C1 }, { code: P2, kind: project, client: C2 }] }
+steps:
+  - manual: a cost
+    accounting_date: 2026-11-03
+    payload: { lines: [{ account: "511001", dims: { contract: P1 }, currency: SYP, amount: 100 },
+                       { account: "111001", currency: SYP, amount: -100 }] }
+expect:
+  entries:
+    - source: manual
+      date: 2026-11-03
+      lines:
+        - { account: "511001", dims: { contract: P1 }, currency: SYP, amount: 100, book: 100 }
+        - { account: "111001", currency: SYP, amount: -100, book: -100 }
+`);
+    expect(namedDimensionValues(costOnly)).toEqual([
+      { type: 'contract', code: 'P1' },
+      { type: 'client', code: 'C1' },
+    ]);
+  });
+
   it("takes a voucher's line values (S11)", () => {
     const withVoucher = parseCase(`
 case: a site cost paid from the box

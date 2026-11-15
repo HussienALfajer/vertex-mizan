@@ -23,6 +23,7 @@ import {
   journalEntries,
   journalLines,
   OPENING_ROW_STATES,
+  openItemBalances,
   openItems,
   openingLines,
   openings,
@@ -73,8 +74,11 @@ const SYP_USD: CompanyLedgers = {
 const inCompany = <T>(companyId: string, work: (tx: Transaction) => Promise<T>) =>
   withCompany(app, companyId, work);
 
-/** A company with the general chart, its books starting on 1 October 2026. */
-async function newCompany(booksStart: string | null = '2026-10-01') {
+/** A company with the general chart (or another), its books starting on 1 October 2026. */
+async function newCompany(
+  booksStart: string | null = '2026-10-01',
+  template: 'general' | 'contracting' = 'general',
+) {
   const companyId = uuidv7();
   await withCompany(app, companyId, (tx) =>
     createCompanyBooks(
@@ -86,7 +90,7 @@ async function newCompany(booksStart: string | null = '2026-10-01') {
         ledgers: SYP_USD,
         fiscalYearStartMonth: 1,
         policyNote: 'مذكرة سياسة تجريبية.',
-        template: 'general',
+        template,
         createdByUserId: personId,
         booksStart,
       },
@@ -346,6 +350,84 @@ describe('the opening (S10)', () => {
       tx.select({ state: openings.state }).from(openings).orderBy(openings.createdAt),
     );
     expect(states.map((row) => row.state)).toEqual(['reversed', 'posted']);
+  });
+
+  it("opens a non-monetary running item at the records' amounts, and reverses it whole (S11)", async () => {
+    // `opening/opening-entry.md`, "advances opened as non-monetary running items" (owner, 2026-11-15).
+    const companyId = await newCompany('2026-10-01', 'contracting');
+    await recordRates(companyId);
+    const advance = await inCompany(companyId, async (tx) => {
+      const client = await newClient(tx, companyId);
+      const [type] = await tx
+        .select({ id: dimensionTypes.id })
+        .from(dimensionTypes)
+        .where(eq(dimensionTypes.code, 'contract'));
+      const [contract] = await tx
+        .insert(dimensionValues)
+        .values({
+          companyId,
+          typeId: type?.id as string,
+          code: 'P1',
+          name: 'مشروع تجريبي',
+          contractKind: 'project',
+          parentValueId: client,
+        })
+        .returning({ id: dimensionValues.id });
+      return { accountId: await accountId(tx, '212002'), values: [client, contract?.id as string] };
+    });
+    const saveAdvance = (version: number) =>
+      inCompany(companyId, async (tx) =>
+        saveOpening(
+          tx,
+          saveOpeningSchema.parse({
+            version,
+            lines: [
+              { accountId: await accountId(tx, '111001'), currency: 'SYP', amount: '11000000' },
+              {
+                accountId: advance.accountId,
+                dimensionValueIds: advance.values,
+                currency: 'USD',
+                amount: '-100000',
+                book: '-11000000',
+              },
+            ],
+          }),
+          person(),
+        ),
+      );
+    const postIt = async () => {
+      const view = await inCompany(companyId, readOpening);
+      expect(
+        view.checks.every((check) => check.passed),
+        JSON.stringify(view.checks),
+      ).toBe(true);
+      await inCompany(companyId, (tx) =>
+        postOpening(tx, { fingerprint: view.fingerprint, actor: person() }),
+      );
+    };
+    const balance = () =>
+      inCompany(companyId, (tx) =>
+        tx
+          .select({
+            open: openItemBalances.openMinor,
+            book: openItemBalances.bookMinor,
+            parallel: openItemBalances.parallelMinor,
+          })
+          .from(openItemBalances),
+      );
+    await saveAdvance(0);
+    await postIt();
+    // The stated amounts are the item's carrying amounts, never measured at the eve's rates.
+    expect(await balance()).toEqual([{ open: -100000n, book: -11000000n, parallel: -100000n }]);
+    await inCompany(companyId, (tx) =>
+      reverseOpening(tx, { reason: 'تصحيح تجريبي', actor: person() }),
+    );
+    expect(await balance()).toEqual([{ open: 0n, book: 0n, parallel: 0n }]);
+    // Posted again, the client's item at zero opens again: one item, never a second.
+    await saveAdvance(0);
+    await postIt();
+    expect(await balance()).toEqual([{ open: -100000n, book: -11000000n, parallel: -100000n }]);
+    expect(await inCompany(companyId, (tx) => tx.select().from(openItems))).toHaveLength(1);
   });
 
   it('refuses forged rows: states, versions and stated lines (guards)', async () => {

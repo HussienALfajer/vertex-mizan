@@ -3,7 +3,7 @@ import { cursorSchema } from './audit.js';
 import { STATEMENT_LINES } from './chart.js';
 import { entryHubDocumentSchema } from './entries.js';
 import { currencyCodeSchema, ledgerSchema } from './money.js';
-import { ageingQuerySchema, clientStatementQuerySchema } from './open-items.js';
+import { ageingQuerySchema, counterpartyStatementQuerySchema } from './open-items.js';
 import { entryNumberSchema, minorUnitsSchema, personRefSchema } from './wire.js';
 
 /**
@@ -513,7 +513,7 @@ export const balanceSheetQuerySchema = z
 export type BalanceSheetQuery = z.infer<typeof balanceSheetQuerySchema>;
 
 /**
- * A balance a line is made of: an account's, per contract where rule 17 nets it, per client
+ * A balance a line is made of: an account's, per contract where rule 17 nets it, per counterparty
  * where rule 18 reads it, signed as it adds to the line. `reclassified` marks a counterparty's
  * balance rule 18 moved to the opposite side; `oppositeSide` a non-control account's balance
  * against its normal balance, such as a bank account in credit, flagged (Q17); a contra account
@@ -522,7 +522,8 @@ export type BalanceSheetQuery = z.infer<typeof balanceSheetQuerySchema>;
 export const balanceSheetPartSchema = z
   .object({
     account: reportAccountSchema,
-    client: reportValueSchema.nullable(),
+    /** A client, a supplier or a worker: the value of a control account's counterparty type. */
+    counterparty: reportValueSchema.nullable(),
     contract: reportValueSchema.nullable(),
     amount: minorUnitsSchema,
     reclassified: z.boolean(),
@@ -869,9 +870,9 @@ export const accountStatementFileQuerySchema = z
 
 export type AccountStatementFileQuery = z.infer<typeof accountStatementFileQuerySchema>;
 
-/** A client statement's file names its client, as its route does (S04). */
+/** A counterparty statement's file names its counterparty under the key `client` its stored rows keep (S04, S11). */
 export const clientStatementFileQuerySchema = z
-  .intersection(z.object({ client: z.uuid() }), clientStatementQuerySchema)
+  .intersection(z.object({ client: z.uuid() }), counterpartyStatementQuerySchema)
   .meta({ id: 'ClientStatementFileQuery' });
 
 export type ClientStatementFileQuery = z.infer<typeof clientStatementFileQuerySchema>;

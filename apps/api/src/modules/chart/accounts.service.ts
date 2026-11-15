@@ -10,6 +10,7 @@ import {
   type CurrencyCode,
   checkAccountCode,
   checkAccountShape,
+  DomainError,
   type SetAccountRole,
   type UpdateAccount,
 } from '@vertex-mizan/contracts';
@@ -23,6 +24,7 @@ import {
   auditedAccountOf,
   blockAccount,
   chartAccounts,
+  checkCounterpartyRequired,
   checkDimensionTypes,
   createAccount,
   type Database,
@@ -69,7 +71,9 @@ export class AccountsService {
    * `PATCH /api/accounts/:id` (rules 3–4): before first use every field, the code only with a valid
    * parent (moving an unused leaf); after first use, and on a header with children, the names, the
    * statement line and the required dimensions only (`ACCOUNT_LOCKED`). A root is only renamed. A
-   * header with children never becomes postable (`ACCOUNT_HAS_CHILDREN`).
+   * header with children never becomes postable (`ACCOUNT_HAS_CHILDREN`). A control account names
+   * its counterparty type and requires its dimension (S11 rule 5: `VALIDATION_FAILED` before first
+   * use, `ACCOUNT_LOCKED` after); the counterparty type and the cash kind are locked after first use.
    */
   async update(access: CompanyRouteAccess, id: string, change: UpdateAccount): Promise<Account> {
     const companyId = access.company.id;
@@ -92,6 +96,14 @@ export class AccountsService {
             : (change.isControl ?? row.isControl)
               ? (row.itemKind as Account['itemKind'])
               : null,
+        // And its counterparty type (S11).
+        counterpartyType:
+          change.counterpartyType !== undefined
+            ? change.counterpartyType
+            : (change.isControl ?? row.isControl)
+              ? row.counterpartyType
+              : null,
+        cashKind: change.cashKind === undefined ? row.cashKind : change.cashKind,
         isMonetary: change.isMonetary ?? row.isMonetary,
         name: change.name ?? row.name,
         nameLatin: change.nameLatin === undefined ? row.nameLatin : change.nameLatin,
@@ -107,6 +119,8 @@ export class AccountsService {
         next.currency !== row.currency ||
         next.isControl !== row.isControl ||
         next.itemKind !== row.itemKind ||
+        next.counterpartyType !== row.counterpartyType ||
+        next.cashKind !== row.cashKind ||
         next.isMonetary !== row.isMonetary;
       if (
         row.level === 1 &&
@@ -140,6 +154,7 @@ export class AccountsService {
       const accountClass = accountClassOfCode(next.code);
       if (row.level > 1) {
         checkAccountShape({
+          code: next.code,
           level,
           kind: next.kind,
           class: accountClass,
@@ -147,17 +162,42 @@ export class AccountsService {
           currency: next.currency as CurrencyCode | null,
           isControl: next.isControl,
           itemKind: next.itemKind,
+          counterpartyType: next.counterpartyType,
+          cashKind: next.cashKind,
           isMonetary: next.isMonetary,
           requiredDimensionCount: next.requiredDimensionTypeIds.length,
         });
       }
       await this.checkRolesStillFit(tx, id, next.kind, accountClass);
       await checkDimensionTypes(tx, next.requiredDimensionTypeIds);
+      try {
+        await checkCounterpartyRequired(tx, next.counterpartyType, next.requiredDimensionTypeIds);
+      } catch (error) {
+        // A used control account keeps its counterparty dimension (S11 rule 5).
+        if (error instanceof DomainError && (row.firstPostedAt !== null || hasChildren)) {
+          throw new CodedException(
+            'ACCOUNT_LOCKED',
+            'A used control account keeps its counterparty dimension',
+          );
+        }
+        throw error;
+      }
       const before = auditedAccountOf(row, required);
-      // Dropped dimensions go before the account changes and added ones after it: the database
-      // allows a required dimension on a postable account only, so a postable account that turns
-      // into a header lets its dimensions go first, and a header that turns postable gains them last.
-      await this.dropDimensions(tx, id, required, next.requiredDimensionTypeIds);
+      // The database allows a required dimension on a postable account only, so a postable account
+      // that turns into a header lets its dimensions go first, and a header that turns postable
+      // gains them last. Otherwise dropped dimensions go after the account changes: a control
+      // account keeps its counterparty's dimension until it changes its type or stops being one
+      // (S11 rule 5), and the deferred check reads the result at commit.
+      // A control account that turns into a header stops being one first, while still postable,
+      // since the database keeps a control account's counterparty dimension until then.
+      const dropFirst = next.kind === 'header';
+      if (dropFirst && row.isControl) {
+        await tx
+          .update(chartAccounts)
+          .set({ isControl: false, itemKind: null, counterpartyType: null })
+          .where(eq(chartAccounts.id, id));
+      }
+      if (dropFirst) await this.dropDimensions(tx, id, required, next.requiredDimensionTypeIds);
       const [updated] = await onUniqueViolation(
         () =>
           tx
@@ -175,6 +215,8 @@ export class AccountsService {
               currency: next.currency,
               isControl: next.isControl,
               itemKind: next.itemKind,
+              counterpartyType: next.counterpartyType,
+              cashKind: next.cashKind,
               isMonetary: next.isMonetary,
             })
             .where(eq(chartAccounts.id, id))
@@ -182,6 +224,7 @@ export class AccountsService {
         ACCOUNT_CODE_TAKEN,
       );
       if (!updated) throw new CodedException('NOT_FOUND', 'No such account');
+      if (!dropFirst) await this.dropDimensions(tx, id, required, next.requiredDimensionTypeIds);
       await addRequiredDimensions(tx, companyId, id, required, next.requiredDimensionTypeIds);
       const diff = changedFields(before, auditedAccountOf(updated, next.requiredDimensionTypeIds));
       if (diff) {

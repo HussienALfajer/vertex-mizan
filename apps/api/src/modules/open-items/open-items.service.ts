@@ -4,11 +4,8 @@ import {
   type AgeingQuery,
   type AgeingReport,
   type ChangeDueDate,
-  type ClientFunds,
-  type ClientFundsQuery,
-  type ClientRef,
-  type ClientStatement,
-  type ClientStatementQuery,
+  type CounterpartyStatement,
+  type CounterpartyStatementQuery,
   type CurrencyCode,
   currencies as currencyTable,
   type Ledger,
@@ -16,16 +13,19 @@ import {
   type OpenItemPage,
   type OpenItemQuery,
   type OpenItemSummary,
+  type RunningBalances,
+  type RunningBalancesQuery,
   spreadsheetAmount,
 } from '@vertex-mizan/contracts';
 import {
+  counterpartyRefOf,
   type Database,
   type ItemAtDate,
   type ItemDueDate,
   openItemBalances,
   openItemDueDates,
   readAgeingReport,
-  readClientStatementReport,
+  readCounterpartyStatementReport,
   readDueDates,
   readItemMovements,
   readItemsAt,
@@ -53,11 +53,6 @@ const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 
 const text = (amount: bigint | null) => amount?.toString() ?? null;
 
-const clientOf = (item: ItemAtDate): ClientRef | null =>
-  item.clientValueId === null
-    ? null
-    : { id: item.clientValueId, code: item.clientCode, name: item.clientName ?? '' };
-
 /** An item as the lists answer it, with its due date in force at the date (rule 14). */
 function summaryOf(
   item: ItemAtDate,
@@ -70,7 +65,7 @@ function summaryOf(
     kind: item.kind,
     reference: item.reference,
     source: item.source,
-    client: clientOf(item),
+    counterparty: counterpartyRefOf(item),
     currency: item.currency,
     documentDate: item.documentDate,
     dueOn:
@@ -106,7 +101,8 @@ function ledgerCurrency(
 }
 
 /**
- * Open items, the ageing, client funds and the client statement (S04 "API"), read in the
+ * Open items, the ageing, running balances and the counterparty statement (S04 "API", S11 rule 6),
+ * read in the
  * company's context; a manual item's due date changed with its audit row in the same transaction.
  * Every figure is summed in SQL or by `packages/ledger`, never here.
  */
@@ -114,14 +110,15 @@ function ledgerCurrency(
 export class OpenItemsService {
   constructor(@Inject(DATABASE) private readonly db: Database) {}
 
-  /** `GET /api/open-items`: items by account, client, state and reference, at a date. */
+  /** `GET /api/open-items`: items by account, counterparty or its type, state and reference, at a date. */
   async list(access: CompanyRouteAccess, query: OpenItemQuery): Promise<OpenItemPage> {
     const asOf = query.asOf ?? todayInDamascus();
     return withCompany(this.db, access.company.id, async (tx) => {
       const rows = await readItemsAt(tx, {
         asOf,
         ...(query.account && { accountIds: [query.account] }),
-        ...(query.client && { clientValueId: query.client }),
+        ...(query.counterparty && { counterpartyValueId: query.counterparty }),
+        ...(query.counterpartyType && { counterpartyType: query.counterpartyType }),
         state: query.state,
         ...(query.text && { text: query.text }),
         ...(query.cursor && { afterItemId: decodeCursor(query.cursor).id }),
@@ -235,7 +232,8 @@ export class OpenItemsService {
           asOf: report.asOf,
           ledger: report.ledger,
           accountIds: report.accounts.map((account) => account.id),
-          clientValueId: query.client ?? null,
+          counterpartyValueId: query.counterparty ?? null,
+          counterpartyType: query.counterpartyType ?? null,
         },
       });
       return report;
@@ -247,16 +245,23 @@ export class OpenItemsService {
     };
   }
 
-  /** `GET /api/client-funds` (rule 17): each running item at the date. */
-  async clientFunds(access: CompanyRouteAccess, query: ClientFundsQuery): Promise<ClientFunds> {
+  /** `GET /api/running-balances` (S04 rule 17, S11 rule 6): each running item at the date. */
+  async runningBalances(
+    access: CompanyRouteAccess,
+    query: RunningBalancesQuery,
+  ): Promise<RunningBalances> {
     const asOf = query.asOf ?? todayInDamascus();
     return withCompany(this.db, access.company.id, async (tx) => {
       const currencies = await ledgerCurrencies(tx);
       ledgerCurrency(currencies, query.ledger);
-      const items = await readItemsAt(tx, { asOf, kind: 'running' });
+      const items = await readItemsAt(tx, {
+        asOf,
+        kind: 'running',
+        ...(query.counterpartyType && { counterpartyType: query.counterpartyType }),
+      });
       const sorted = [...items].sort(
         (a, b) =>
-          (a.clientName ?? '').localeCompare(b.clientName ?? '', 'ar') ||
+          (a.counterpartyName ?? '').localeCompare(b.counterpartyName ?? '', 'ar') ||
           (a.currency < b.currency ? -1 : a.currency > b.currency ? 1 : 0),
       );
       const totals = fundTotals(
@@ -269,51 +274,65 @@ export class OpenItemsService {
         ledger: query.ledger,
         bookCurrency: currencies.book,
         parallelCurrency: currencies.parallel,
-        funds: sorted.map((item) => ({
+        balances: sorted.map((item) => ({
           itemId: item.id,
           account: { id: item.accountId, code: item.accountCode, name: item.accountName },
-          client: clientOf(item) ?? { id: item.reference, code: item.reference, name: '' },
+          counterparty: counterpartyRefOf(item) ?? {
+            id: item.reference,
+            type: 'client' as const,
+            code: item.reference,
+            name: '',
+          },
           currency: item.currency,
           amounts: {
             openMinor: item.openMinor.toString(),
             bookMinor: item.bookMinor.toString(),
             parallelMinor: text(item.parallelMinor),
           },
-          receivable: item.openMinor > 0n,
+          debit: item.openMinor > 0n,
         })),
-        heldMinor: totals.heldMinor.toString(),
-        receivableMinor: totals.receivableMinor.toString(),
+        creditMinor: totals.heldMinor.toString(),
+        debitMinor: totals.receivableMinor.toString(),
       };
     });
   }
 
-  /** `GET /api/clients/:valueId/statement`. */
+  /** `GET /api/counterparties/:valueId/statement`. */
   async statement(
     access: CompanyRouteAccess,
     valueId: string,
-    query: ClientStatementQuery,
-  ): Promise<ClientStatement> {
+    query: CounterpartyStatementQuery,
+  ): Promise<CounterpartyStatement> {
     return withCompany(this.db, access.company.id, (tx) =>
-      readClientStatementReport(tx, valueId, query, todayInDamascus()),
+      readCounterpartyStatementReport(tx, valueId, query, todayInDamascus()),
     );
   }
 
-  /** `GET /api/clients/:valueId/statement/export`: the statement as an Arabic workbook, audited. */
+  /**
+   * `GET /api/counterparties/:valueId/statement/export`: the statement as an Arabic workbook,
+   * audited `export.client_statement`, the action its stored rows keep.
+   */
   async statementExport(
     access: CompanyRouteAccess,
     valueId: string,
-    query: ClientStatementQuery,
+    query: CounterpartyStatementQuery,
   ): Promise<ExportFile> {
     const companyId = access.company.id;
     const statement = await withCompany(this.db, companyId, async (tx) => {
-      const statement = await readClientStatementReport(tx, valueId, query, todayInDamascus());
+      const statement = await readCounterpartyStatementReport(
+        tx,
+        valueId,
+        query,
+        todayInDamascus(),
+      );
       await writeCompanyAudit(tx, companyId, actorOf(access), {
         action: 'export.client_statement',
         entityType: 'receivables_export',
         entityId: valueId,
         after: {
           format: 'xlsx',
-          clientValueId: valueId,
+          counterpartyValueId: valueId,
+          counterpartyType: statement.counterparty.type,
           from: statement.from,
           to: statement.to,
           ledger: statement.ledger,
@@ -324,7 +343,7 @@ export class OpenItemsService {
     });
     return {
       // The value id, never its typed code: a header carries ASCII only.
-      fileName: `client-statement-${statement.client.id}-${statement.to}.xlsx`,
+      fileName: `counterparty-statement-${statement.counterparty.id}-${statement.to}.xlsx`,
       contentType: XLSX,
       body: await statementWorkbook(statement),
     };
@@ -400,7 +419,7 @@ function formatAmounts(row: ExcelJS.Row, columns: readonly (readonly [number, Cu
   for (const [column, currency] of columns) row.getCell(column).numFmt = amountFormat(currency);
 }
 
-/** The ageing's workbook: one row per item under its client, amounts as numbers (S04 "Printing"). */
+/** The ageing's workbook: one row per item under its counterparty, amounts as numbers (S04 "Printing"). */
 export async function ageingWorkbook(report: AgeingReport): Promise<Buffer> {
   const labels = ar.openItems.ageingExport;
   const workbook = new ExcelJS.Workbook();
@@ -424,11 +443,12 @@ export async function ageingWorkbook(report: AgeingReport): Promise<Buffer> {
     labels.adjusted,
   ]);
   header.font = { bold: true };
-  for (const client of report.clients) {
-    for (const item of client.items) {
-      const row = sheet.addRow([
-        client.client?.name ?? ar.openItems.labels.noClient,
-        client.client?.code ?? '',
+  for (const row of report.counterparties) {
+    const counterparty = row.counterparty;
+    for (const item of row.items) {
+      const line = sheet.addRow([
+        counterparty?.name ?? ar.openItems.labels.noClient,
+        counterparty?.code ?? '',
         item.account.code,
         item.reference,
         item.documentDate,
@@ -441,7 +461,7 @@ export async function ageingWorkbook(report: AgeingReport): Promise<Buffer> {
         cell(item.carryingMinor, report.ledgerCurrency),
         item.adjusted ? labels.adjusted : '',
       ]);
-      formatAmounts(row, [
+      formatAmounts(line, [
         [10, item.currency],
         [12, report.ledgerCurrency],
       ]);
@@ -495,12 +515,12 @@ export async function ageingWorkbook(report: AgeingReport): Promise<Buffer> {
   return Buffer.from(await workbook.xlsx.writeBuffer());
 }
 
-/** The client statement's workbook: the opening, every movement, the closing (S04 "Printing"). */
-export async function statementWorkbook(statement: ClientStatement): Promise<Buffer> {
+/** The counterparty statement's workbook: the opening, every movement, the closing (S04 "Printing"). */
+export async function statementWorkbook(statement: CounterpartyStatement): Promise<Buffer> {
   const labels = ar.openItems.statementExport;
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet(labels.sheet, { views: [{ rightToLeft: true }] });
-  sheet.addRow([labels.client, statement.client.name, statement.client.code ?? '']);
+  sheet.addRow([labels.client, statement.counterparty.name, statement.counterparty.code ?? '']);
   sheet.addRow([labels.from, statement.from ?? '']);
   sheet.addRow([labels.to, statement.to]);
   sheet.addRow([labels.ledger, ar.accounting.ledger[statement.ledger]]);

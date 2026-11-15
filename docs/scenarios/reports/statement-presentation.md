@@ -2,7 +2,7 @@
 
 Status: Approved (owner, 2026-11-12)
 
-S09 wrote these cases (S09 "Scenarios"). They post with the executors the book already has, and add what the reports read: a `reports` expectation, a company's `contracts`, a service's department on Hub's service reference and a `service_department` step (`docs/scenarios/README.md`). S09's feature slice brought the report readers and the department step.
+S09 wrote these cases (S09 "Scenarios"). They post with the executors the book already has, and add what the reports read: a `reports` expectation, a company's `contracts`, a service's department on Hub's service reference and a `service_department` step (`docs/scenarios/README.md`). S09's feature slice brought the report readers and the department step. The case "Contracting: suppliers and workers each on their own side" came with S11's first PR, after its accounting review; the owner approved its numbers on 2026-11-15.
 
 ## Rule
 
@@ -226,6 +226,140 @@ expect:
       year_result: 1120000
       # assets: 1,098,000 + 482,000 + 240,000 = 1,820,000; liabilities: 40,000 + 560,000 + 100,000 = 700,000
       totals: { assets: 1820000, liabilities: 700000, equity: 1120000, liabilities_and_equity: 1820000 }
+```
+
+### Contracting: suppliers and workers each on their own side (`syp-usd`, S11)
+
+S11 rule 6 and the template's notes (ADR 0022; owner, 2026-11-15, after the accounting review of S11's first PR). Rule 18 reads a control account per **counterparty**, its value of the account's counterparty type: a client, a supplier or a worker, never only the client. On `contracting@1` the suppliers' payables `211001`, the workers' balances `211007` and the advances to suppliers `114002` are keyed by supplier or worker, so a supplier paid beyond its balance (S2) or a worker paid ahead (W2) is a receivable, presented in trade receivables, never netted against another supplier's or worker's payable (IAS 1.32). The advance to S3 carries its contract P1 on the line (S11 rule 3), but `bs.other_current_assets` is not a contract line, so rule 17 does not net it and rule 18 reads it per supplier. Every line is in SYP, measured at the market rate of 125 in the USD parallel ledger, and the December revaluations find nothing to remeasure.
+
+```yaml
+case: contracting@1; a supplier and a worker in debit reclassified to receivables, each counterparty on its own side; book and parallel
+company: { shape: syp-usd, book: SYP, parallel: USD, template: contracting,
+           rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true },
+           contracts: [{ code: P1, kind: project, client: C1 }] }
+rates:
+  - { date: 2026-12-01, base: USD, quote: SYP, rate: "120.0000", type: bulletin }
+  - { date: 2026-12-01, base: USD, quote: SYP, rate: "125.0000", type: market }
+  - { date: 2026-12-31, base: USD, quote: SYP, rate: "120.0000", type: bulletin }
+steps:
+  - manual: capital paid into the SYP box
+    accounting_date: 2026-12-01
+    payload: { lines: [{ account: "111001", currency: SYP, amount: 200000000 },
+                       { account: "311001", currency: SYP, amount: -200000000 }] }
+  - manual: materials for P1 bought on credit from S1
+    accounting_date: 2026-12-01
+    payload: { lines: [{ account: "511001", dims: { contract: P1 }, currency: SYP, amount: 100000000 },
+                       { account: "211001", dims: { supplier: S1 }, currency: SYP, amount: -100000000 }] }
+  - manual: S2 paid ahead of any supply
+    accounting_date: 2026-12-01
+    payload: { lines: [{ account: "211001", dims: { supplier: S2 }, currency: SYP, amount: 30000000 },
+                       { account: "111001", currency: SYP, amount: -30000000 }] }
+  - manual: W1's wages on P1, not yet paid
+    accounting_date: 2026-12-01
+    payload: { lines: [{ account: "511002", dims: { contract: P1 }, currency: SYP, amount: 20000000 },
+                       { account: "211007", dims: { worker: W1 }, currency: SYP, amount: -20000000 }] }
+  - manual: W2 paid ahead of any work
+    accounting_date: 2026-12-01
+    payload: { lines: [{ account: "211007", dims: { worker: W2 }, currency: SYP, amount: 5000000 },
+                       { account: "111001", currency: SYP, amount: -5000000 }] }
+  - manual: an advance to S3 on P1
+    accounting_date: 2026-12-01
+    payload: { lines: [{ account: "114002", dims: { supplier: S3, contract: P1 }, currency: SYP, amount: 10000000 },
+                       { account: "111001", currency: SYP, amount: -10000000 }] }
+  # every monetary balance is carried at the closing rate: nothing to remeasure, no entry
+  - revalue: book
+    period: 2026-12
+  - revalue: parallel
+    period: 2026-12
+expect:
+  entries:
+    - source: manual
+      date: 2026-12-01
+      lines:
+        # parallel: 2,000,000.00 SYP / 125 (market) = 16,000.00 USD
+        - { account: "111001", currency: SYP, amount: 200000000, book: 200000000, parallel: 1600000 }
+        - { account: "311001", currency: SYP, amount: -200000000, book: -200000000, parallel: -1600000 }
+    - source: manual
+      date: 2026-12-01
+      lines:
+        # 1,000,000.00 / 125 = 8,000.00 USD
+        - { account: "511001", dims: { contract: P1 }, currency: SYP, amount: 100000000, book: 100000000, parallel: 800000 }
+        - { account: "211001", dims: { supplier: S1 }, currency: SYP, amount: -100000000, book: -100000000, parallel: -800000 }
+    - source: manual
+      date: 2026-12-01
+      lines:
+        # 300,000.00 / 125 = 2,400.00 USD
+        - { account: "211001", dims: { supplier: S2 }, currency: SYP, amount: 30000000, book: 30000000, parallel: 240000 }
+        - { account: "111001", currency: SYP, amount: -30000000, book: -30000000, parallel: -240000 }
+    - source: manual
+      date: 2026-12-01
+      lines:
+        # 200,000.00 / 125 = 1,600.00 USD
+        - { account: "511002", dims: { contract: P1 }, currency: SYP, amount: 20000000, book: 20000000, parallel: 160000 }
+        - { account: "211007", dims: { worker: W1 }, currency: SYP, amount: -20000000, book: -20000000, parallel: -160000 }
+    - source: manual
+      date: 2026-12-01
+      lines:
+        # 50,000.00 / 125 = 400.00 USD
+        - { account: "211007", dims: { worker: W2 }, currency: SYP, amount: 5000000, book: 5000000, parallel: 40000 }
+        - { account: "111001", currency: SYP, amount: -5000000, book: -5000000, parallel: -40000 }
+    - source: manual
+      date: 2026-12-01
+      lines:
+        # 100,000.00 / 125 = 800.00 USD
+        - { account: "114002", dims: { supplier: S3, contract: P1 }, currency: SYP, amount: 10000000, book: 10000000, parallel: 80000 }
+        - { account: "111001", currency: SYP, amount: -10000000, book: -10000000, parallel: -80000 }
+  balances:
+    # gross: S1 credit 1,000,000.00, S2 debit 300,000.00
+    - { account: "211001", book: -70000000, parallel: -560000 }
+    # gross: W1 credit 200,000.00, W2 debit 50,000.00
+    - { account: "211007", book: -15000000, parallel: -120000 }
+  reports:
+    - report: balance_sheet
+      params: { as_of: 2026-12-31, ledger: book }
+      marks: [period_open]
+      lines:
+        # 2,000,000.00 − 300,000.00 − 50,000.00 − 100,000.00
+        - { line: bs.cash, amount: 155000000,
+            parts: [{ account: "111001", amount: 155000000 }] }
+        # S2's and W2's debits presented here (rule 18): 300,000.00 + 50,000.00
+        - { line: bs.trade_receivables, amount: 35000000,
+            parts: [{ account: "211001", dims: { supplier: S2 }, amount: 30000000, reclassified: true },
+                    { account: "211007", dims: { worker: W2 }, amount: 5000000, reclassified: true }] }
+        - { line: bs.other_current_assets, amount: 10000000,
+            parts: [{ account: "114002", dims: { supplier: S3 }, amount: 10000000 }] }
+        # S1's and W1's credits, not netted against S2 and W2: 1,000,000.00 + 200,000.00
+        - { line: bs.trade_payables, amount: 120000000,
+            parts: [{ account: "211001", dims: { supplier: S1 }, amount: 100000000 },
+                    { account: "211007", dims: { worker: W1 }, amount: 20000000 }] }
+        - { line: bs.share_capital, amount: 200000000,
+            parts: [{ account: "311001", amount: 200000000 }] }
+      # December's direct costs, −(1,000,000.00 + 200,000.00)
+      year_result: -120000000
+      # assets: 155,000,000 + 35,000,000 + 10,000,000 = 200,000,000; liabilities 120,000,000
+      # equity: 200,000,000 − 120,000,000 = 80,000,000
+      totals: { assets: 200000000, liabilities: 120000000, equity: 80000000, liabilities_and_equity: 200000000 }
+    - report: balance_sheet
+      params: { as_of: 2026-12-31, ledger: parallel }
+      marks: [period_open]
+      lines:
+        # 16,000.00 − 2,400.00 − 400.00 − 800.00 USD
+        - { line: bs.cash, amount: 1240000,
+            parts: [{ account: "111001", amount: 1240000 }] }
+        - { line: bs.trade_receivables, amount: 280000,
+            parts: [{ account: "211001", dims: { supplier: S2 }, amount: 240000, reclassified: true },
+                    { account: "211007", dims: { worker: W2 }, amount: 40000, reclassified: true }] }
+        - { line: bs.other_current_assets, amount: 80000,
+            parts: [{ account: "114002", dims: { supplier: S3 }, amount: 80000 }] }
+        - { line: bs.trade_payables, amount: 960000,
+            parts: [{ account: "211001", dims: { supplier: S1 }, amount: 800000 },
+                    { account: "211007", dims: { worker: W1 }, amount: 160000 }] }
+        - { line: bs.share_capital, amount: 1600000,
+            parts: [{ account: "311001", amount: 1600000 }] }
+      # −(8,000.00 + 1,600.00) USD
+      year_result: -960000
+      # assets: 1,240,000 + 280,000 + 80,000 = 1,600,000; liabilities 960,000; equity 1,600,000 − 960,000 = 640,000
+      totals: { assets: 1600000, liabilities: 960000, equity: 640000, liabilities_and_equity: 1600000 }
 ```
 
 ### The year's result and an unclosed earlier year (`syp`)

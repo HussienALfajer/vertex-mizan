@@ -241,7 +241,7 @@ export const balanceSheet: BalanceSheet = {
       parts: [
         {
           account: cash,
-          client: null,
+          counterparty: null,
           contract: null,
           amount: '62000000',
           reclassified: false,
@@ -259,7 +259,7 @@ export const balanceSheet: BalanceSheet = {
       parts: [
         {
           account: receivables,
-          client: clientValue,
+          counterparty: clientValue,
           contract: null,
           amount: '47500000',
           reclassified: false,
@@ -268,7 +268,7 @@ export const balanceSheet: BalanceSheet = {
         // A manual line with no client (edge case 16): the lines filter cannot isolate it.
         {
           account: receivables,
-          client: null,
+          counterparty: null,
           contract: null,
           amount: '500000',
           reclassified: false,
@@ -276,7 +276,7 @@ export const balanceSheet: BalanceSheet = {
         },
         {
           account: adFunds,
-          client: fundsClient,
+          counterparty: fundsClient,
           contract: null,
           amount: '240000',
           reclassified: true,
@@ -294,7 +294,7 @@ export const balanceSheet: BalanceSheet = {
       parts: [
         {
           account: contractAssets,
-          client: null,
+          counterparty: null,
           contract: contractValue,
           amount: '30000000',
           reclassified: false,
@@ -312,7 +312,7 @@ export const balanceSheet: BalanceSheet = {
       parts: [
         {
           account: contractLiabilities,
-          client: null,
+          counterparty: null,
           contract: projectValue,
           amount: '120000000',
           reclassified: false,
@@ -320,7 +320,7 @@ export const balanceSheet: BalanceSheet = {
         },
         {
           account: contractAssets,
-          client: null,
+          counterparty: null,
           contract: projectValue,
           amount: '-50000000',
           reclassified: false,
@@ -338,7 +338,7 @@ export const balanceSheet: BalanceSheet = {
       parts: [
         {
           account: adFunds,
-          client: clientValue,
+          counterparty: clientValue,
           contract: null,
           amount: '12000000',
           reclassified: false,

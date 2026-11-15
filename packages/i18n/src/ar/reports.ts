@@ -23,7 +23,7 @@ export const reports = {
     contract_position: 'مركز العقود',
     revenue_schedule: 'جدول تحقق الإيراد',
     ageing: 'أعمار الذمم المدينة',
-    client_statement: 'كشف حساب عميل',
+    client_statement: 'كشف حساب طرف',
     chart: 'دليل الحسابات',
   } satisfies Record<Report, string>,
   /** The journal of `/reports/journal` (rule 12), the journal book's Excel. */

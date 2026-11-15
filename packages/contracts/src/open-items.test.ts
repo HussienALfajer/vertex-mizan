@@ -8,7 +8,7 @@ import {
   ageingBucketOf,
   ageingQuerySchema,
   changeDueDateSchema,
-  clientStatementQuerySchema,
+  counterpartyStatementQuerySchema,
   openItemQuerySchema,
 } from './open-items.js';
 
@@ -67,9 +67,11 @@ describe('the receivables queries', () => {
 
   it('refuses a statement range that ends before it starts', () => {
     expect(
-      clientStatementQuerySchema.safeParse({ from: '2026-11-30', to: '2026-11-01' }).success,
+      counterpartyStatementQuerySchema.safeParse({ from: '2026-11-30', to: '2026-11-01' }).success,
     ).toBe(false);
-    expect(clientStatementQuerySchema.parse({ from: '2026-11-01', to: '2026-11-01' })).toEqual({
+    expect(
+      counterpartyStatementQuerySchema.parse({ from: '2026-11-01', to: '2026-11-01' }),
+    ).toEqual({
       from: '2026-11-01',
       to: '2026-11-01',
       ledger: 'book',
@@ -138,10 +140,10 @@ it('converts every S04 schema to JSON Schema with its id', () => {
       'ChangeDueDate',
       'AgeingQuery',
       'AgeingReport',
-      'ClientFundsQuery',
-      'ClientFunds',
-      'ClientStatementQuery',
-      'ClientStatement',
+      'RunningBalancesQuery',
+      'RunningBalances',
+      'CounterpartyStatementQuery',
+      'CounterpartyStatement',
       'NewItem',
       'EntryLineItem',
       'PreviewItem',

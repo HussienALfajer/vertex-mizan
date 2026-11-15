@@ -77,6 +77,10 @@ describe('admin:create-company', () => {
     expect(() => parseCreateCompany([...base, '--books-start', '2026-10-15'])).toThrow();
     expect(parseCreateCompany([...base, '--template', 'general']).company.template).toBe('general');
     expect(parseCreateCompany([...base, '--template', 'none']).company.template).toBeNull();
+    // S11: the contracting chart (N5).
+    expect(parseCreateCompany([...base, '--template', 'contracting']).company.template).toBe(
+      'contracting',
+    );
     expect(() => parseCreateCompany([...base, '--template', 'retail'])).toThrow();
     expect(() =>
       parseCreateCompany(['--name', 'x', '--policy-note', 'y', '--owner-email', 'not an email']),

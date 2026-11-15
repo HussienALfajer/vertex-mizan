@@ -4,12 +4,13 @@ import {
   accountClassOfCode,
   accountCodeLevel,
   accountRoleFits,
+  canBeCashAccount,
   checkAccountShape,
   ROOT_ACCOUNTS,
 } from './chart.js';
 import { CHART_TEMPLATES, chartTemplate } from './chart-templates.js';
 
-describe('the chart templates (S02 "Templates", version 3 after the review of Q3)', () => {
+describe('the chart templates (S02 "Templates" after the review of Q3, S11 "Templates")', () => {
   for (const template of CHART_TEMPLATES) {
     describe(`${template.id}@${template.version}`, () => {
       const accounts = template.accounts;
@@ -41,6 +42,7 @@ describe('the chart templates (S02 "Templates", version 3 after the review of Q3
           const level = accountCodeLevel(account.code);
           if (level === null) throw new Error(account.code);
           checkAccountShape({
+            code: account.code,
             level,
             kind: account.kind,
             class: accountClassOfCode(account.code),
@@ -48,6 +50,8 @@ describe('the chart templates (S02 "Templates", version 3 after the review of Q3
             currency: account.currency,
             isControl: account.isControl,
             itemKind: account.itemKind,
+            counterpartyType: account.counterpartyType,
+            cashKind: account.cashKind,
             isMonetary: account.isMonetary,
             requiredDimensionCount: account.requiredDimensions.length,
           });
@@ -83,11 +87,22 @@ describe('the chart templates (S02 "Templates", version 3 after the review of Q3
         }
       });
 
-      it('requires a contract only together with its client', () => {
+      it('gives each control account a counterparty type it requires (S11 rule 5)', () => {
         for (const account of accounts) {
-          if (account.requiredDimensions.includes('contract')) {
-            expect(account.requiredDimensions, account.code).toContain('client');
+          expect(account.counterpartyType !== null, account.code).toBe(account.isControl);
+          if (account.counterpartyType !== null) {
+            expect(account.requiredDimensions, account.code).toContain(account.counterpartyType);
           }
+        }
+      });
+
+      it('puts a cash kind only on an account that can carry it (S11 "Data")', () => {
+        for (const account of accounts) {
+          if (account.cashKind === null) continue;
+          expect(
+            canBeCashAccount({ ...account, class: accountClassOfCode(account.code) }),
+            account.code,
+          ).toBe(true);
         }
       });
     });
@@ -143,8 +158,8 @@ describe('the chart templates (S02 "Templates", version 3 after the review of Q3
     }
   });
 
-  it('applies the review of 2026-11-13 to both templates (E1, E2, A1–A14)', () => {
-    for (const template of CHART_TEMPLATES) {
+  it('applies the review of 2026-11-13 to the general chart (E1, E2, A1–A14)', () => {
+    for (const template of [chartTemplate('general')]) {
       expect(template.version).toBe(3);
       const find = (code: string) => {
         const account = template.accounts.find((candidate) => candidate.code === code);
@@ -190,10 +205,143 @@ describe('the chart templates (S02 "Templates", version 3 after the review of Q3
     }
   });
 
-  it('gives each control account its item kind (S04)', () => {
+  it('gives each control account its item kind (S04) and counterparty type (S11)', () => {
     const kinds = chartTemplate('general')
       .accounts.filter((account) => account.isControl || account.itemKind !== null)
-      .map((account) => [account.code, account.itemKind]);
-    expect(kinds).toEqual([['112001', 'document']]);
+      .map((account) => [account.code, account.itemKind, account.counterpartyType]);
+    expect(kinds).toEqual([['112001', 'document', 'client']]);
+    expect(
+      chartTemplate('general').accounts.filter((account) => account.cashKind !== null),
+    ).toEqual([]);
+  });
+
+  describe('contracting@1 (S11 "Templates", N5)', () => {
+    const contracting = chartTemplate('contracting');
+    const general = chartTemplate('general');
+    const find = (code: string) => {
+      const account = contracting.accounts.find((candidate) => candidate.code === code);
+      if (account === undefined) throw new Error(`contracting has no ${code}`);
+      return account;
+    };
+
+    it('is version 1, named, with 128 accounts of which 84 postable', () => {
+      expect([contracting.version, contracting.name, contracting.nameLatin]).toEqual([
+        1,
+        'مقاولات',
+        'Contracting',
+      ]);
+      expect(contracting.accounts).toHaveLength(128);
+      expect(contracting.accounts.filter((account) => account.kind === 'postable')).toHaveLength(
+        84,
+      );
+    });
+
+    it('marks five cash accounts: a box per currency and the two banks', () => {
+      expect(
+        contracting.accounts
+          .filter((account) => account.cashKind !== null)
+          .map((account) => [account.code, account.currency, account.cashKind]),
+      ).toEqual([
+        ['111001', 'SYP', 'box'],
+        ['111002', 'USD', 'box'],
+        ['111003', 'SYP', 'bank'],
+        ['111004', 'USD', 'bank'],
+        ['111005', 'TRY', 'box'],
+      ]);
+    });
+
+    it('has the control accounts of ADR 0022 with their kinds, counterparties and monetary flags', () => {
+      expect(
+        contracting.accounts
+          .filter((account) => account.isControl)
+          .map((account) => [
+            account.code,
+            account.itemKind,
+            account.counterpartyType,
+            account.isMonetary,
+            account.requiredDimensions,
+          ]),
+      ).toEqual([
+        ['112001', 'document', 'client', true, ['client', 'contract']],
+        ['113001', 'document', 'client', true, ['client', 'contract']],
+        ['113002', 'document', 'client', true, ['client', 'contract']],
+        // Advances are non-monetary (IAS 21.16, IFRIC 22).
+        ['114002', 'running', 'supplier', false, ['supplier', 'contract']],
+        ['211001', 'running', 'supplier', true, ['supplier']],
+        ['211002', 'running', 'supplier', true, ['supplier']],
+        ['211006', 'running', 'supplier', true, ['supplier', 'contract']],
+        ['211007', 'running', 'worker', true, ['worker']],
+        ['212002', 'running', 'client', false, ['client', 'contract']],
+      ]);
+    });
+
+    it('requires the contract on project costs and contract revenue, not on office costs (rule 3)', () => {
+      for (const code of ['511001', '511002', '511003', '511004', '511005', '511006']) {
+        expect(find(code), code).toMatchObject({
+          statementLine: 'is.direct_costs',
+          requiredDimensions: ['contract'],
+        });
+      }
+      expect(find('411001').requiredDimensions).toEqual(['client', 'contract']);
+      expect(find('212001').requiredDimensions).toEqual(['client', 'contract']);
+      for (const account of contracting.accounts) {
+        if (account.code.startsWith('5') && !account.code.startsWith('51')) {
+          expect(account.requiredDimensions, account.code).toEqual([]);
+        }
+      }
+    });
+
+    it('keeps general@3 for every code both share, but those the spec lists (rule 2)', () => {
+      const differing = new Set([
+        '121001',
+        '121005',
+        '121006',
+        '121007',
+        '121008',
+        '211001',
+        '211002',
+        '211006',
+        '211007',
+        '212002',
+        '411001',
+        '422002',
+        '511001',
+        '511002',
+        '511003',
+        '511004',
+        '511005',
+        '511006',
+        '532004',
+        '532007',
+        '533004',
+        '533005',
+      ]);
+      const contractingCodes = new Set(contracting.accounts.map((account) => account.code));
+      const meaning = (candidate: (typeof general.accounts)[number]) => [
+        candidate.kind,
+        candidate.normalBalance,
+        candidate.isMonetary,
+        candidate.currency,
+        candidate.statementLine,
+        candidate.role,
+      ];
+      for (const account of general.accounts) {
+        expect(contractingCodes.has(account.code), account.code).toBe(true);
+        if (differing.has(account.code)) continue;
+        expect(meaning(find(account.code)), account.code).toEqual(meaning(account));
+      }
+    });
+
+    it('books cash shortages and overages on their own accounts', () => {
+      expect(find('532007')).toMatchObject({
+        name: 'عجز الصناديق',
+        statementLine: 'is.other_expenses',
+      });
+      expect(find('422002')).toMatchObject({
+        name: 'زيادة الصناديق',
+        statementLine: 'is.other_income',
+      });
+      expect(find('532002').name).toBe('الرسوم المصرفية وعمولات التحويل');
+    });
   });
 });

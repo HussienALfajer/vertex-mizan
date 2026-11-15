@@ -54,6 +54,8 @@ const actor = (): PersonActor => ({
   userAgent: null,
 });
 
+// Two fresh databases migrated through every migration: longer than a hook's default 10 s while
+// the whole verify runs the packages' tests side by side.
 beforeAll(async () => {
   db = createDatabase(inject('appUrl'));
   jobs = createDatabase(inject('jobsUrl'));
@@ -68,7 +70,7 @@ beforeAll(async () => {
   // The same company in another database, with one entry of its own: a restore whose chain is
   // not production's.
   await seed(otherDb, [1_000n]);
-});
+}, 60_000);
 
 async function seed(target: Database, amounts: readonly bigint[]): Promise<void> {
   const [person] = await target

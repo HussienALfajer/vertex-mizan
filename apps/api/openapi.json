@@ -1716,7 +1716,7 @@
             }
           },
           "422": {
-            "description": "VALIDATION_FAILED, ACCOUNT_CODE_INVALID, ACCOUNT_NOT_HEADER, ACCOUNT_ARCHIVED, STATEMENT_LINE_INVALID",
+            "description": "VALIDATION_FAILED, ACCOUNT_CODE_INVALID, ACCOUNT_NOT_HEADER, ACCOUNT_ARCHIVED, STATEMENT_LINE_INVALID, CASH_ACCOUNT_INVALID",
             "content": {
               "application/json": {
                 "schema": {
@@ -1808,7 +1808,7 @@
             }
           },
           "422": {
-            "description": "VALIDATION_FAILED, ACCOUNT_CODE_INVALID, ACCOUNT_NOT_HEADER, ACCOUNT_ARCHIVED, ACCOUNT_ROLE_INVALID, STATEMENT_LINE_INVALID",
+            "description": "VALIDATION_FAILED, ACCOUNT_CODE_INVALID, ACCOUNT_NOT_HEADER, ACCOUNT_ARCHIVED, ACCOUNT_ROLE_INVALID, STATEMENT_LINE_INVALID, CASH_ACCOUNT_INVALID",
             "content": {
               "application/json": {
                 "schema": {
@@ -6624,13 +6624,26 @@
             }
           },
           {
-            "name": "client",
+            "name": "counterparty",
             "required": false,
             "in": "query",
             "schema": {
               "type": "string",
               "format": "uuid",
               "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          },
+          {
+            "name": "counterpartyType",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "client",
+                "supplier",
+                "worker"
+              ]
             }
           },
           {
@@ -6956,7 +6969,7 @@
             }
           },
           {
-            "name": "client",
+            "name": "counterparty",
             "required": false,
             "in": "query",
             "schema": {
@@ -6964,11 +6977,24 @@
               "format": "uuid",
               "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
             }
+          },
+          {
+            "name": "counterpartyType",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "client",
+                "supplier",
+                "worker"
+              ]
+            }
           }
         ],
         "responses": {
           "200": {
-            "description": "The ageing by client",
+            "description": "The ageing by counterparty",
             "content": {
               "application/json": {
                 "schema": {
@@ -7060,13 +7086,26 @@
             }
           },
           {
-            "name": "client",
+            "name": "counterparty",
             "required": false,
             "in": "query",
             "schema": {
               "type": "string",
               "format": "uuid",
               "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          },
+          {
+            "name": "counterpartyType",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "client",
+                "supplier",
+                "worker"
+              ]
             }
           }
         ],
@@ -7128,9 +7167,9 @@
         ]
       }
     },
-    "/api/client-funds": {
+    "/api/running-balances": {
       "get": {
-        "operationId": "ClientFundsController_list",
+        "operationId": "RunningBalancesController_list",
         "parameters": [
           {
             "name": "asOf",
@@ -7154,15 +7193,28 @@
                 "parallel"
               ]
             }
+          },
+          {
+            "name": "counterpartyType",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "client",
+                "supplier",
+                "worker"
+              ]
+            }
           }
         ],
         "responses": {
           "200": {
-            "description": "The client funds at the date",
+            "description": "The running balances at the date",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ClientFunds"
+                  "$ref": "#/components/schemas/RunningBalances"
                 }
               }
             }
@@ -7213,9 +7265,9 @@
         ]
       }
     },
-    "/api/clients/{valueId}/statement": {
+    "/api/counterparties/{valueId}/statement": {
       "get": {
-        "operationId": "ClientsController_statement",
+        "operationId": "CounterpartiesController_statement",
         "parameters": [
           {
             "name": "from",
@@ -7277,11 +7329,11 @@
         ],
         "responses": {
           "200": {
-            "description": "The client statement",
+            "description": "The counterparty statement",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ClientStatement"
+                  "$ref": "#/components/schemas/CounterpartyStatement"
                 }
               }
             }
@@ -7342,9 +7394,9 @@
         ]
       }
     },
-    "/api/clients/{valueId}/statement/export": {
+    "/api/counterparties/{valueId}/statement/export": {
       "get": {
-        "operationId": "ClientsController_statementExport",
+        "operationId": "CounterpartiesController_statementExport",
         "parameters": [
           {
             "name": "from",
@@ -7406,7 +7458,7 @@
         ],
         "responses": {
           "200": {
-            "description": "The client statement as an Excel workbook",
+            "description": "The counterparty statement as an Excel workbook",
             "content": {
               "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {
                 "schema": {
@@ -10771,7 +10823,10 @@
           "OPENING_CHECKS_FAILED",
           "OPENING_NOT_REVERSIBLE",
           "NO_BOOKS_START",
-          "BOOKS_START_LOCKED"
+          "BOOKS_START_LOCKED",
+          "CASH_BOX_NEGATIVE",
+          "CASH_COUNT_STALE",
+          "CASH_ACCOUNT_INVALID"
         ]
       },
       "PageQuery": {
@@ -11031,7 +11086,8 @@
       "ChartTemplateId": {
         "type": "string",
         "enum": [
-          "general"
+          "general",
+          "contracting"
         ]
       },
       "Company": {
@@ -11743,6 +11799,22 @@
               }
             ]
           },
+          "counterpartyType": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CounterpartyType"
+              }
+            ]
+          },
+          "cashKind": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CashKind"
+              }
+            ]
+          },
           "isMonetary": {
             "type": "boolean"
           },
@@ -11824,6 +11896,8 @@
           "currency",
           "isControl",
           "itemKind",
+          "counterpartyType",
+          "cashKind",
           "isMonetary",
           "requiredDimensionTypeIds",
           "roles",
@@ -11863,6 +11937,21 @@
         "enum": [
           "document",
           "running"
+        ]
+      },
+      "CounterpartyType": {
+        "type": "string",
+        "enum": [
+          "client",
+          "supplier",
+          "worker"
+        ]
+      },
+      "CashKind": {
+        "type": "string",
+        "enum": [
+          "box",
+          "bank"
         ]
       },
       "AccountRole": {
@@ -11938,6 +12027,24 @@
             "allOf": [
               {
                 "$ref": "#/components/schemas/ItemKind"
+              }
+            ]
+          },
+          "counterpartyType": {
+            "default": null,
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CounterpartyType"
+              }
+            ]
+          },
+          "cashKind": {
+            "default": null,
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CashKind"
               }
             ]
           },
@@ -12036,6 +12143,22 @@
             "allOf": [
               {
                 "$ref": "#/components/schemas/ItemKind"
+              }
+            ]
+          },
+          "counterpartyType": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CounterpartyType"
+              }
+            ]
+          },
+          "cashKind": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CashKind"
               }
             ]
           },
@@ -15285,10 +15408,17 @@
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
           },
-          "client": {
+          "counterparty": {
             "type": "string",
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "counterpartyType": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CounterpartyType"
+              }
+            ]
           },
           "state": {
             "default": "open",
@@ -15362,11 +15492,11 @@
           "source": {
             "$ref": "#/components/schemas/ItemSource"
           },
-          "client": {
+          "counterparty": {
             "nullable": true,
             "allOf": [
               {
-                "$ref": "#/components/schemas/ClientRef"
+                "$ref": "#/components/schemas/CounterpartyRef"
               }
             ]
           },
@@ -15400,7 +15530,7 @@
           "kind",
           "reference",
           "source",
-          "client",
+          "counterparty",
           "currency",
           "documentDate",
           "dueOn",
@@ -15440,13 +15570,16 @@
           "opening"
         ]
       },
-      "ClientRef": {
+      "CounterpartyRef": {
         "type": "object",
         "properties": {
           "id": {
             "type": "string",
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "type": {
+            "$ref": "#/components/schemas/CounterpartyType"
           },
           "code": {
             "nullable": true,
@@ -15458,6 +15591,7 @@
         },
         "required": [
           "id",
+          "type",
           "code",
           "name"
         ],
@@ -15500,11 +15634,11 @@
           "source": {
             "$ref": "#/components/schemas/ItemSource"
           },
-          "client": {
+          "counterparty": {
             "nullable": true,
             "allOf": [
               {
-                "$ref": "#/components/schemas/ClientRef"
+                "$ref": "#/components/schemas/CounterpartyRef"
               }
             ]
           },
@@ -15579,7 +15713,7 @@
           "kind",
           "reference",
           "source",
-          "client",
+          "counterparty",
           "currency",
           "documentDate",
           "dueOn",
@@ -15776,10 +15910,17 @@
             "type": "string",
             "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}(,[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})*$"
           },
-          "client": {
+          "counterparty": {
             "type": "string",
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "counterpartyType": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CounterpartyType"
+              }
+            ]
           }
         }
       },
@@ -15803,10 +15944,10 @@
               "$ref": "#/components/schemas/AccountRef"
             }
           },
-          "clients": {
+          "counterparties": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/AgeingClient"
+              "$ref": "#/components/schemas/AgeingCounterparty"
             }
           },
           "buckets": {
@@ -15827,21 +15968,21 @@
           "ledger",
           "ledgerCurrency",
           "accounts",
-          "clients",
+          "counterparties",
           "buckets",
           "totalMinor",
           "currencyTotals"
         ],
         "additionalProperties": false
       },
-      "AgeingClient": {
+      "AgeingCounterparty": {
         "type": "object",
         "properties": {
-          "client": {
+          "counterparty": {
             "nullable": true,
             "allOf": [
               {
-                "$ref": "#/components/schemas/ClientRef"
+                "$ref": "#/components/schemas/CounterpartyRef"
               }
             ]
           },
@@ -15859,7 +16000,7 @@
           }
         },
         "required": [
-          "client",
+          "counterparty",
           "buckets",
           "totalMinor",
           "items"
@@ -15989,7 +16130,7 @@
         ],
         "additionalProperties": false
       },
-      "ClientFundsQuery": {
+      "RunningBalancesQuery": {
         "type": "object",
         "properties": {
           "asOf": {
@@ -16004,10 +16145,17 @@
                 "$ref": "#/components/schemas/Ledger"
               }
             ]
+          },
+          "counterpartyType": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CounterpartyType"
+              }
+            ]
           }
         }
       },
-      "ClientFunds": {
+      "RunningBalances": {
         "type": "object",
         "properties": {
           "asOf": {
@@ -16029,16 +16177,16 @@
               }
             ]
           },
-          "funds": {
+          "balances": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/ClientFund"
+              "$ref": "#/components/schemas/RunningBalance"
             }
           },
-          "heldMinor": {
+          "creditMinor": {
             "$ref": "#/components/schemas/MinorUnits"
           },
-          "receivableMinor": {
+          "debitMinor": {
             "$ref": "#/components/schemas/MinorUnits"
           }
         },
@@ -16047,13 +16195,13 @@
           "ledger",
           "bookCurrency",
           "parallelCurrency",
-          "funds",
-          "heldMinor",
-          "receivableMinor"
+          "balances",
+          "creditMinor",
+          "debitMinor"
         ],
         "additionalProperties": false
       },
-      "ClientFund": {
+      "RunningBalance": {
         "type": "object",
         "properties": {
           "itemId": {
@@ -16064,8 +16212,8 @@
           "account": {
             "$ref": "#/components/schemas/AccountRef"
           },
-          "client": {
-            "$ref": "#/components/schemas/ClientRef"
+          "counterparty": {
+            "$ref": "#/components/schemas/CounterpartyRef"
           },
           "currency": {
             "$ref": "#/components/schemas/CurrencyCode"
@@ -16073,21 +16221,21 @@
           "amounts": {
             "$ref": "#/components/schemas/ItemAmounts"
           },
-          "receivable": {
+          "debit": {
             "type": "boolean"
           }
         },
         "required": [
           "itemId",
           "account",
-          "client",
+          "counterparty",
           "currency",
           "amounts",
-          "receivable"
+          "debit"
         ],
         "additionalProperties": false
       },
-      "ClientParams": {
+      "CounterpartyParams": {
         "type": "object",
         "properties": {
           "valueId": {
@@ -16100,7 +16248,7 @@
           "valueId"
         ]
       },
-      "ClientStatementQuery": {
+      "CounterpartyStatementQuery": {
         "type": "object",
         "properties": {
           "from": {
@@ -16130,11 +16278,11 @@
           }
         }
       },
-      "ClientStatement": {
+      "CounterpartyStatement": {
         "type": "object",
         "properties": {
-          "client": {
-            "$ref": "#/components/schemas/ClientRef"
+          "counterparty": {
+            "$ref": "#/components/schemas/CounterpartyRef"
           },
           "from": {
             "nullable": true,
@@ -16173,7 +16321,7 @@
           "lines": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/ClientStatementLine"
+              "$ref": "#/components/schemas/CounterpartyStatementLine"
             }
           },
           "closing": {
@@ -16187,7 +16335,7 @@
           }
         },
         "required": [
-          "client",
+          "counterparty",
           "from",
           "to",
           "ledger",
@@ -16221,7 +16369,7 @@
         ],
         "additionalProperties": false
       },
-      "ClientStatementLine": {
+      "CounterpartyStatementLine": {
         "type": "object",
         "properties": {
           "movementId": {
@@ -18667,7 +18815,7 @@
           "account": {
             "$ref": "#/components/schemas/ReportAccount"
           },
-          "client": {
+          "counterparty": {
             "nullable": true,
             "allOf": [
               {
@@ -18695,7 +18843,7 @@
         },
         "required": [
           "account",
-          "client",
+          "counterparty",
           "contract",
           "amount",
           "reclassified",

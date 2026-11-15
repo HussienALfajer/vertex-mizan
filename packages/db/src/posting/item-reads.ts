@@ -1,4 +1,5 @@
 import type {
+  CounterpartyType,
   CurrencyCode,
   ItemKind,
   ItemSource,
@@ -44,9 +45,11 @@ export interface ItemAtDate {
   readonly reference: string;
   readonly source: ItemSource;
   readonly hubDocument: { type: string; id: string; number: string } | null;
-  readonly clientValueId: string | null;
-  readonly clientCode: string | null;
-  readonly clientName: string | null;
+  /** The item's counterparty (S11, ADR 0022), of its account's counterparty type. */
+  readonly counterpartyValueId: string | null;
+  readonly counterpartyType: CounterpartyType | null;
+  readonly counterpartyCode: string | null;
+  readonly counterpartyName: string | null;
   readonly currency: CurrencyCode;
   readonly documentDate: string;
   readonly openedByEntryId: string;
@@ -66,7 +69,9 @@ export interface ItemFilter {
   readonly asOf: string;
   readonly itemIds?: readonly string[];
   readonly accountIds?: readonly string[];
-  readonly clientValueId?: string;
+  readonly counterpartyValueId?: string;
+  /** The items of control accounts of this counterparty type (S11 rule 6). */
+  readonly counterpartyType?: CounterpartyType;
   readonly kind?: ItemKind;
   /** `open`: not zero at the date; `settled`: zero; `all` (default) both. */
   readonly state?: 'open' | 'settled' | 'all';
@@ -103,7 +108,12 @@ export async function readItemsAt(tx: Transaction, filter: ItemFilter): Promise<
       )})`,
     );
   }
-  if (filter.clientValueId) conditions.push(sql`i.client_value_id = ${filter.clientValueId}::uuid`);
+  if (filter.counterpartyValueId) {
+    conditions.push(sql`i.counterparty_value_id = ${filter.counterpartyValueId}::uuid`);
+  }
+  if (filter.counterpartyType) {
+    conditions.push(sql`a.counterparty_type = ${filter.counterpartyType}`);
+  }
   if (filter.kind) conditions.push(sql`i.kind = ${filter.kind}`);
   if (filter.text) {
     const pattern = `%${filter.text.replace(/[\\%_]/g, (character) => `\\${character}`)}%`;
@@ -128,9 +138,10 @@ export async function readItemsAt(tx: Transaction, filter: ItemFilter): Promise<
     reference: string;
     source: string;
     hub_document: ItemAtDate['hubDocument'];
-    client_value_id: string | null;
-    client_code: string | null;
-    client_name: string | null;
+    counterparty_value_id: string | null;
+    counterparty_type: CounterpartyType | null;
+    counterparty_code: string | null;
+    counterparty_name: string | null;
     currency: string;
     document_date: string;
     opened_by_entry_id: string;
@@ -154,15 +165,15 @@ export async function readItemsAt(tx: Transaction, filter: ItemFilter): Promise<
       group by item_id
     )
     select i.id, i.account_id, a.code as account_code, a.name as account_name, i.kind,
-      i.reference, i.source, i.hub_document, i.client_value_id, v.code as client_code,
-      v.name as client_name, i.currency, i.document_date::text as document_date,
+      i.reference, i.source, i.hub_document, i.counterparty_value_id, a.counterparty_type,
+      v.code as counterparty_code, v.name as counterparty_name, i.currency, i.document_date::text as document_date,
       i.opened_by_entry_id, to_json(i.created_at) #>> '{}' as created_at,
       m.open_minor::text, m.book_minor::text, m.parallel_minor::text,
       (select s.parallel_currency is not null from company_settings s) as has_parallel,
       m.adjusted, m.movement_count
     from ${openItems} i
     join ${chartAccounts} a on a.company_id = i.company_id and a.id = i.account_id
-    left join dimension_values v on v.company_id = i.company_id and v.id = i.client_value_id
+    left join dimension_values v on v.company_id = i.company_id and v.id = i.counterparty_value_id
     left join m on m.item_id = i.id
     ${where}
     order by i.created_at desc, i.id desc
@@ -177,9 +188,10 @@ export async function readItemsAt(tx: Transaction, filter: ItemFilter): Promise<
     reference: row.reference,
     source: row.source as ItemSource,
     hubDocument: row.hub_document,
-    clientValueId: row.client_value_id,
-    clientCode: row.client_code,
-    clientName: row.client_name,
+    counterpartyValueId: row.counterparty_value_id,
+    counterpartyType: row.counterparty_type,
+    counterpartyCode: row.counterparty_code,
+    counterpartyName: row.counterparty_name,
     currency: row.currency as CurrencyCode,
     documentDate: row.document_date,
     openedByEntryId: row.opened_by_entry_id,
@@ -364,14 +376,14 @@ export interface StatementMovementRow {
   readonly ledgerBalanceMinor: bigint;
 }
 
-/** A client's balance in one item currency at a date, and in the selected ledger. */
+/** A counterparty's balance in one item currency at a date, and in the selected ledger. */
 export interface StatementBalanceRow {
   readonly currency: CurrencyCode;
   readonly amountMinor: bigint;
   readonly ledgerMinor: bigint;
 }
 
-export interface ClientStatementRows {
+export interface CounterpartyStatementRows {
   readonly opening: readonly StatementBalanceRow[];
   readonly openingLedgerMinor: bigint;
   readonly movements: readonly StatementMovementRow[];
@@ -380,25 +392,25 @@ export interface ClientStatementRows {
 }
 
 /**
- * A client's statement (S04 "Reports"): the movements of the client's items on every control
- * account dated from `from` (or the first) to `to`, by date then entry number then line, with the
- * client's running balance per item currency and in the ledger; the balances before `from` and at
+ * A counterparty's statement (S04 "Reports", S11 rule 6): the movements of its items on every
+ * control account dated from `from` (or the first) to `to`, by date then entry number then line,
+ * with its running balance per item currency and in the ledger; the balances before `from` and at
  * the end of `to`. Opening plus movements equals closing, all summed in SQL.
  */
-export async function readClientStatement(
+export async function readCounterpartyStatement(
   tx: Transaction,
   query: {
-    readonly clientValueId: string;
+    readonly counterpartyValueId: string;
     readonly from: string | null;
     readonly to: string;
     readonly ledger: Ledger;
     readonly currency: CurrencyCode | null;
   },
-): Promise<ClientStatementRows> {
+): Promise<CounterpartyStatementRows> {
   const ledgerColumn =
     query.ledger === 'book' ? sql.raw('m.book_minor') : sql.raw('m.parallel_minor');
   const currency = query.currency === null ? sql`` : sql`and i.currency = ${query.currency}`;
-  const scope = sql`i.client_value_id = ${query.clientValueId}::uuid ${currency}`;
+  const scope = sql`i.counterparty_value_id = ${query.counterpartyValueId}::uuid ${currency}`;
   const balances = async (before: SQL) => {
     const { rows } = await tx.execute<{ currency: string; amount: string; ledger: string }>(sql`
       select i.currency, sum(m.amount_minor)::text as amount,

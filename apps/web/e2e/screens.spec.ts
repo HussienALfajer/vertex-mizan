@@ -578,7 +578,7 @@ for (const colorScheme of ['light', 'dark'] as const) {
         });
 
         test('client statement', async ({ page }, testInfo) => {
-          await page.goto(`/receivables/clients/${client.id}`);
+          await page.goto(`/counterparties/${client.id}`);
           await expect(
             page.getByRole('table', { name: ar.openItems.statement.label }),
           ).toBeVisible();

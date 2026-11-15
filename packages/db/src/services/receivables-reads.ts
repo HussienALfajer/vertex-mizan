@@ -4,9 +4,11 @@ import {
   type AgeingReport,
   ageingAccountIds,
   type BucketAmounts,
-  type ClientRef,
-  type ClientStatement,
-  type ClientStatementQuery,
+  COUNTERPARTY_TYPES,
+  type CounterpartyRef,
+  type CounterpartyStatement,
+  type CounterpartyStatementQuery,
+  type CounterpartyType,
   type CurrencyCode,
   DomainError,
   type Ledger,
@@ -16,7 +18,7 @@ import { and, eq, inArray, sql } from 'drizzle-orm';
 import type { Transaction } from '../client.js';
 import {
   type ItemAtDate,
-  readClientStatement,
+  readCounterpartyStatement,
   readDueDates,
   readItemsAt,
 } from '../posting/item-reads.js';
@@ -26,7 +28,8 @@ import { dimensionTypes, dimensionValues } from '../schema/dimensions.js';
 import { ledgersOf } from './companies.js';
 
 // The receivables' reports (S04 "Reports"), moved from apps/api in S09 so the worker prints the
-// same ageing and client statement as PDFs (S09 rule 36). Every figure is summed in SQL or by
+// same ageing and counterparty statement as PDFs (S09 rule 36); S11 (ADR 0022) reads any
+// counterparty, a client, supplier or worker. Every figure is summed in SQL or by
 // `packages/ledger`, never here.
 
 /** The statement line whose document control accounts the ageing reads by default (rule 16). */
@@ -42,10 +45,16 @@ async function ledgerCurrencies(
   return { book: ledgers.book.currency, parallel: ledgers.parallel?.currency ?? null };
 }
 
-const clientOf = (item: ItemAtDate): ClientRef | null =>
-  item.clientValueId === null
+/** An item's counterparty as the reports name it; null for an item without one. */
+export const counterpartyRefOf = (item: ItemAtDate): CounterpartyRef | null =>
+  item.counterpartyValueId === null || item.counterpartyType === null
     ? null
-    : { id: item.clientValueId, code: item.clientCode, name: item.clientName ?? '' };
+    : {
+        id: item.counterpartyValueId,
+        type: item.counterpartyType,
+        code: item.counterpartyCode,
+        name: item.counterpartyName ?? '',
+      };
 
 const bucketText = (totals: BucketTotals): BucketAmounts =>
   Object.fromEntries(
@@ -113,7 +122,8 @@ export async function readAgeingReport(
           asOf,
           kind: 'document',
           accountIds: accounts.map((account) => account.id),
-          ...(query.client && { clientValueId: query.client }),
+          ...(query.counterparty && { counterpartyValueId: query.counterparty }),
+          ...(query.counterpartyType && { counterpartyType: query.counterpartyType }),
           state: 'open',
         });
   const dueDates = await readDueDates(
@@ -124,7 +134,7 @@ export async function readAgeingReport(
   const ageing = ageingOf(
     items.map((item) => ({
       itemId: item.id,
-      clientId: item.clientValueId,
+      clientId: item.counterpartyValueId,
       currency: item.currency,
       documentDate: item.documentDate,
       dueDates: dueDates.filter((row) => row.itemId === item.id),
@@ -133,10 +143,10 @@ export async function readAgeingReport(
     })),
     asOf,
   );
-  const clients = ageing.clients.map((client) => {
+  const counterparties = ageing.clients.map((client) => {
     const first = byId.get(client.items[0]?.itemId ?? '');
     return {
-      client: first ? clientOf(first) : null,
+      counterparty: first ? counterpartyRefOf(first) : null,
       buckets: bucketText(client.buckets),
       totalMinor: client.totalMinor.toString(),
       items: client.items.map((aged) => {
@@ -157,20 +167,21 @@ export async function readAgeingReport(
       }),
     };
   });
-  // By client name; the items without a client last.
-  clients.sort((a, b) =>
-    a.client === null
+  // By counterparty name; the items without one last.
+  counterparties.sort((a, b) =>
+    a.counterparty === null
       ? 1
-      : b.client === null
+      : b.counterparty === null
         ? -1
-        : a.client.name.localeCompare(b.client.name, 'ar') || (a.client.id < b.client.id ? -1 : 1),
+        : a.counterparty.name.localeCompare(b.counterparty.name, 'ar') ||
+          (a.counterparty.id < b.counterparty.id ? -1 : 1),
   );
   return {
     asOf,
     ledger: query.ledger,
     ledgerCurrency: currency,
     accounts,
-    clients,
+    counterparties,
     buckets: bucketText(ageing.buckets),
     totalMinor: ageing.totalMinor.toString(),
     currencyTotals: ageing.currencies.map((total) => ({
@@ -181,38 +192,52 @@ export async function readAgeingReport(
   };
 }
 
-/** A value of the client type, or `NOT_FOUND` (another company's id answers the same). */
-async function clientValue(tx: Transaction, valueId: string): Promise<ClientRef> {
+/**
+ * A value of a built-in counterparty type (client, supplier or worker), or `NOT_FOUND` (another
+ * company's id answers the same).
+ */
+async function counterpartyValue(tx: Transaction, valueId: string): Promise<CounterpartyRef> {
   const [value] = await tx
-    .select({ id: dimensionValues.id, code: dimensionValues.code, name: dimensionValues.name })
+    .select({
+      id: dimensionValues.id,
+      type: dimensionTypes.code,
+      code: dimensionValues.code,
+      name: dimensionValues.name,
+    })
     .from(dimensionValues)
     .innerJoin(
       dimensionTypes,
       sql`${dimensionTypes.companyId} = ${dimensionValues.companyId} and ${dimensionTypes.id} = ${dimensionValues.typeId}`,
     )
-    .where(and(eq(dimensionValues.id, valueId), eq(dimensionTypes.code, 'client')));
-  if (!value) throw new DomainError('NOT_FOUND', 'No such client');
-  return value;
+    .where(
+      and(
+        eq(dimensionValues.id, valueId),
+        eq(dimensionTypes.builtin, true),
+        inArray(dimensionTypes.code, [...COUNTERPARTY_TYPES]),
+      ),
+    );
+  if (!value) throw new DomainError('NOT_FOUND', 'No such counterparty');
+  return { ...value, type: value.type as CounterpartyType };
 }
 
 /**
- * A client's statement (S04 "Reports"): its items' movements on every control account with running
- * balances, opening and closing, in the ledger asked; `NOT_FOUND` for a value that is not a client of
- * the company. Shared by the API and the worker's PDF.
+ * A counterparty's statement (S04 "Reports", S11 rule 6): its items' movements on every control
+ * account with running balances, opening and closing, in the ledger asked; `NOT_FOUND` for a value
+ * that is not a client, supplier or worker of the company. Shared by the API and the worker's PDF.
  */
-export async function readClientStatementReport(
+export async function readCounterpartyStatementReport(
   tx: Transaction,
   valueId: string,
-  query: ClientStatementQuery,
+  query: CounterpartyStatementQuery,
   today: string,
-): Promise<ClientStatement> {
-  const client = await clientValue(tx, valueId);
+): Promise<CounterpartyStatement> {
+  const counterparty = await counterpartyValue(tx, valueId);
   const currencies = await ledgerCurrencies(tx);
   const currency = ledgerCurrency(currencies, query.ledger);
   const to = query.to ?? today;
   const from = query.from ?? null;
-  const rows = await readClientStatement(tx, {
-    clientValueId: valueId,
+  const rows = await readCounterpartyStatement(tx, {
+    counterpartyValueId: valueId,
     from,
     to,
     ledger: query.ledger,
@@ -224,7 +249,7 @@ export async function readClientStatementReport(
     ledgerMinor: row.ledgerMinor.toString(),
   });
   return {
-    client,
+    counterparty,
     from,
     to,
     ledger: query.ledger,

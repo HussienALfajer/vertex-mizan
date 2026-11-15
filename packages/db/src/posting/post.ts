@@ -33,6 +33,7 @@ import {
   checkItemLine,
   checkLineAgainstChart,
   checkManualEntryDate,
+  counterpartyOf,
   type Dimensions,
   type EntrySource,
   emptyBalance,
@@ -241,7 +242,8 @@ interface NewItem {
   readonly kind: ItemKind;
   readonly reference: string;
   readonly dimensions: Dimensions;
-  readonly clientValueId: string | null;
+  /** Its value of the account's counterparty type (S11, ADR 0022). */
+  readonly counterpartyValueId: string | null;
   readonly currency: CurrencyCode;
   readonly dueOn: string | null;
   /** Its document date: the entry date, or the opening's (S10). */
@@ -425,6 +427,7 @@ async function chartOf(
         archived: row.archivedAt !== null,
         isControl: row.isControl,
         itemKind: row.itemKind as ItemKind | null,
+        counterpartyType: row.counterpartyType,
         requiredDimensionTypeIds: required
           .filter((link) => link.accountId === row.id)
           .map((link) => link.typeId),
@@ -680,11 +683,11 @@ async function itemsOf(
   );
 }
 
-/** The client's running item on an account in a currency, if it has one (S04 rule 3). */
+/** The counterparty's running item on an account in a currency, if it has one (S04 rule 3). */
 async function runningItemOf(
   tx: Transaction,
   accountId: string,
-  clientValueId: string,
+  counterpartyValueId: string,
   currency: CurrencyCode,
 ): Promise<string | null> {
   const [found] = await tx
@@ -694,7 +697,7 @@ async function runningItemOf(
       and(
         eq(openItems.kind, 'running'),
         eq(openItems.accountId, accountId),
-        eq(openItems.clientValueId, clientValueId),
+        eq(openItems.counterpartyValueId, counterpartyValueId),
         eq(openItems.currency, currency),
       ),
     );
@@ -724,18 +727,13 @@ async function hasStandingSettlements(
   return result.rows[0]?.standing === true;
 }
 
-/** Refuses an item line on a running account that names more than its client (S04 rule 9). */
-function clientOf(values: readonly LineDimensionValue[], accountId: string): LineDimensionValue {
-  const client = values.find((value) => value.typeCode === 'client');
-  if (client === undefined) {
-    refuse('DIMENSION_REQUIRED', 'A line on a running account names its client', { accountId });
-  }
-  if (values.length > 1) {
-    refuse('VALIDATION_FAILED', 'A line on a running account names only its client', {
-      accountId,
-    });
-  }
-  return client;
+/** The value of a line on a control account that is its counterparty, if it names one. */
+function counterpartyValueOf(
+  account: ChartAccount | undefined,
+  values: readonly LineDimensionValue[],
+): string | null {
+  if (account?.counterpartyType == null) return null;
+  return values.find((value) => value.typeCode === account.counterpartyType)?.id ?? null;
 }
 
 /**
@@ -746,7 +744,9 @@ function clientOf(values: readonly LineDimensionValue[], accountId: string): Lin
  *   adjusted): items Hub opened before its removal (ADR 0021) stay its records;
  * - a new manual document item (`newItem`), its reference free on the account
  *   (`OPEN_ITEM_REFERENCE_TAKEN`) and its due date not before the entry date;
- * - on a running account, the client's item in the line's currency, found or made.
+ * - on a running account, the counterparty's item in the line's currency, found or made (S11 rule
+ *   4, ADR 0022): keyed by the line's value of the account's counterparty type, its dimension set
+ *   that value alone, while the line keeps every dimension it carries (a contract, rule 3).
  *
  * Then `packages/ledger` opens, clears and moves the items and measures every new amount anew per
  * ledger with the dealt rates; each ledger's residual is a realised difference when a line is
@@ -877,7 +877,7 @@ async function manualLines(
         kind: 'document',
         reference,
         dimensions,
-        clientValueId: named.find((value) => value.typeCode === 'client')?.id ?? null,
+        counterpartyValueId: counterpartyValueOf(account, named),
         currency: spec.currency,
         dueOn,
         documentDate: on,
@@ -900,18 +900,23 @@ async function manualLines(
         }),
       );
       if (account?.itemKind === 'running') {
-        const client = onLine(lineNo, () => clientOf(named, spec.accountId));
-        const key = JSON.stringify([spec.accountId, client.id, spec.currency]);
-        dimensions = { [client.typeId]: client.id };
+        const counterparty = onLine(lineNo, () => counterpartyOf(account, named));
+        const key = JSON.stringify([spec.accountId, counterparty.id, spec.currency]);
+        const itemDimensions = { [counterparty.typeId]: counterparty.id };
         item = running.get(key);
         if (item === undefined) {
-          const id = await runningItemOf(tx, spec.accountId, client.id, spec.currency);
+          const id = await runningItemOf(tx, spec.accountId, counterparty.id, spec.currency);
           if (id !== null) {
             const stored = (await itemsOf(tx, [id], lock)).get(id);
             if (stored === undefined) throw new Error('A running item read and lost');
             adjusted = onLine(lineNo, () =>
               checkItemLine(
-                { account: spec.accountId, currency: spec.currency, dimensions, memo: spec.memo },
+                {
+                  account: spec.accountId,
+                  currency: spec.currency,
+                  dimensions: itemDimensions,
+                  memo: spec.memo,
+                },
                 {
                   account: stored.accountId,
                   currency: stored.currency,
@@ -925,15 +930,15 @@ async function manualLines(
             const [code] = await tx
               .select({ code: dimensionValues.code })
               .from(dimensionValues)
-              .where(eq(dimensionValues.id, client.id));
+              .where(eq(dimensionValues.id, counterparty.id));
             const id = uuidv7();
             newItems.push({
               id,
               accountId: spec.accountId,
               kind: 'running',
-              reference: code?.code ?? client.id,
-              dimensions,
-              clientValueId: client.id,
+              reference: code?.code ?? counterparty.id,
+              dimensions: itemDimensions,
+              counterpartyValueId: counterparty.id,
               currency: spec.currency,
               dueOn: null,
               documentDate: on,
@@ -1437,7 +1442,7 @@ async function openingLines(
     const lineNo = index + 1;
     const account = chart.get(spec.accountId);
     const named = spec.dimensionValueIds.map((id) => values.get(id) as LineDimensionValue);
-    let dimensions = Object.fromEntries(
+    const dimensions = Object.fromEntries(
       named.map((value) => [value.typeId, value.id]),
     ) as Dimensions;
     const origin = 'manual';
@@ -1451,15 +1456,21 @@ async function openingLines(
         ...(spec.newItem !== undefined && { item: 'new' as const }),
       }),
     );
-    if (spec.stated !== undefined) {
-      lines.push({
-        kind: 'stated',
-        account: spec.accountId,
-        dimensions,
-        transaction: amount,
-        bookMinor: spec.stated.bookMinor,
-        parallelMinor: spec.stated.parallelMinor,
-      });
+    const stated =
+      spec.stated === undefined
+        ? null
+        : ({
+            kind: 'stated',
+            account: spec.accountId,
+            dimensions,
+            transaction: amount,
+            bookMinor: spec.stated.bookMinor,
+            parallelMinor: spec.stated.parallelMinor,
+          } satisfies Line);
+    // A stated line on a non-monetary running account opens its counterparty's item below at the
+    // records' amounts (owner, 2026-11-15; IAS 21.23(b), IFRIC 22); any other stated line has none.
+    if (stated !== null && account?.itemKind !== 'running') {
+      lines.push(stated);
       continue;
     }
     let item: ItemState | null = null;
@@ -1492,7 +1503,7 @@ async function openingLines(
         kind: 'document',
         reference,
         dimensions,
-        clientValueId: named.find((value) => value.typeCode === 'client')?.id ?? null,
+        counterpartyValueId: counterpartyValueOf(account, named),
         currency: spec.currency,
         dueOn: spec.newItem.dueOn,
         documentDate: spec.newItem.documentDate,
@@ -1505,29 +1516,32 @@ async function openingLines(
         balance: emptyBalance(spec.currency, keepsParallel),
       };
     } else if (account?.itemKind === 'running') {
-      const client = onLine(lineNo, () => clientOf(named, spec.accountId));
-      dimensions = { [client.typeId]: client.id };
-      const existing = await runningItemOf(tx, spec.accountId, client.id, spec.currency);
+      // The item is the counterparty's alone; the line keeps every dimension it names (S11 rule 3).
+      const counterparty = onLine(lineNo, () => counterpartyOf(account, named));
+      const itemDimensions = { [counterparty.typeId]: counterparty.id };
+      const existing = await runningItemOf(tx, spec.accountId, counterparty.id, spec.currency);
       if (existing !== null) {
         const stored = (await itemsOf(tx, [existing], lock)).get(existing);
         if (stored === undefined) throw new Error('A running item read and lost');
         if (stored.state.balance.transaction.amountMinor !== 0n) {
-          refuse('VALIDATION_FAILED', "The client's running item is not at zero", { lineNo });
+          refuse('VALIDATION_FAILED', "The counterparty's running item is not at zero", {
+            lineNo,
+          });
         }
         item = stored.state;
       } else {
         const [code] = await tx
           .select({ code: dimensionValues.code })
           .from(dimensionValues)
-          .where(eq(dimensionValues.id, client.id));
+          .where(eq(dimensionValues.id, counterparty.id));
         const id = uuidv7();
         newItems.push({
           id,
           accountId: spec.accountId,
           kind: 'running',
-          reference: code?.code ?? client.id,
-          dimensions,
-          clientValueId: client.id,
+          reference: code?.code ?? counterparty.id,
+          dimensions: itemDimensions,
+          counterpartyValueId: counterparty.id,
           currency: spec.currency,
           dueOn: null,
           documentDate: on,
@@ -1543,6 +1557,11 @@ async function openingLines(
     const target = { account: spec.accountId, dimensions };
     if (item === null) {
       lines.push(onLine(lineNo, () => measuredLine({ ...target, amount }, context)));
+      continue;
+    }
+    if (stated !== null) {
+      // The item is new or at zero, so the stated line adds its amounts whole.
+      lines.push({ ...stated, item: { id: item.id, movement: 'add' } });
       continue;
     }
     const moved = onLine(lineNo, () => moveItem(item as ItemState, target, amount, context));
@@ -1970,7 +1989,7 @@ async function writeEntry(
         source: entry.source === 'opening' ? ('opening' as const) : ('manual' as const),
         hubDocument: null,
         dimensionSetId: sets.get(dimensionKey(item.dimensions)) as string,
-        clientValueId: item.clientValueId,
+        counterpartyValueId: item.counterpartyValueId,
         currency: item.currency,
         documentDate: item.documentDate,
         openedByEntryId: entryId,

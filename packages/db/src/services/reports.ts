@@ -126,6 +126,8 @@ async function contextOf(tx: Transaction, ledger: Ledger | undefined): Promise<R
 interface ChartRow extends ReportChartAccount {
   readonly report: ReportAccount;
   readonly name: string;
+  /** A control account's counterparty type (S11), which keys rule 18; null on any other. */
+  readonly counterpartyType: string | null;
 }
 
 async function readChart(tx: Transaction): Promise<ChartRow[]> {
@@ -141,6 +143,7 @@ async function readChart(tx: Transaction): Promise<ChartRow[]> {
     normalBalance: row.normalBalance as 'debit' | 'credit',
     archived: row.archivedAt !== null,
     name: row.name,
+    counterpartyType: row.counterpartyType,
     report: {
       id: row.id,
       code: row.code,
@@ -1108,7 +1111,7 @@ export async function readIncomeStatement(
 // --- Balance sheet (rules 15–19) ---
 
 /**
- * The balance-sheet accounts' balances at a date per client and contract, and classes 4–5's net
+ * The balance-sheet accounts' balances at a date per counterparty and contract, and classes 4–5's net
  * debit of the fiscal year and of the years before it.
  */
 async function balanceColumn(
@@ -1125,12 +1128,16 @@ async function balanceColumn(
   );
   const valueOfSet = (setId: string, type: string) =>
     sets.get(setId)?.find((value) => value.typeCode === type)?.id ?? null;
+  // Rule 18 per counterparty (S11 rule 6, ADR 0022): a control account's value of its
+  // counterparty type, a supplier or a worker as a client; any other account's client.
+  const counterpartyOfSet = (setId: string, accountId: string) =>
+    valueOfSet(setId, account(accountId).counterpartyType ?? 'client');
   const balances: PresentationBalance[] = [];
   for (const row of rows) {
     if (INCOME_LINE_CODES.has(account(row.accountId).statementLine ?? '')) continue;
     balances.push({
       accountId: row.accountId,
-      clientId: valueOfSet(row.setId, 'client'),
+      counterpartyId: counterpartyOfSet(row.setId, row.accountId),
       contractId: valueOfSet(row.setId, 'contract'),
       amount: row.net,
     });
@@ -1176,7 +1183,9 @@ export async function readBalanceSheet(
   const values = await valuesById(
     tx,
     sheet.lines.flatMap((line) =>
-      line.parts.flatMap((part) => [part.clientId, part.contractId].filter((id) => id !== null)),
+      line.parts.flatMap((part) =>
+        [part.counterpartyId, part.contractId].filter((id) => id !== null),
+      ),
     ),
   );
   const valueRef = (id: string | null): ReportValue | null => {
@@ -1209,7 +1218,7 @@ export async function readBalanceSheet(
       compareUnclosedYears: textOrNull(line.compareUnclosedYears),
       parts: line.parts.map((part) => ({
         account: account(part.accountId).report,
-        client: valueRef(part.clientId),
+        counterparty: valueRef(part.counterpartyId),
         contract: valueRef(part.contractId),
         amount: text(part.amount),
         reclassified: part.reclassified,

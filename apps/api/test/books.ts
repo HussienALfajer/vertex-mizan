@@ -90,6 +90,7 @@ export async function withClientMoney(book: Books): Promise<Books> {
     currency: 'USD',
     isControl: true,
     itemKind: 'running',
+    counterpartyType: 'client',
     isMonetary: true,
     requiredDimensionTypeIds: [client],
   });

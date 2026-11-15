@@ -29,6 +29,7 @@ import { Route as AuthSignInTwoFactorRouteImport } from './routes/_auth/sign-in/
 import { Route as AuthTwoFactorEnrolRouteImport } from './routes/_auth/two-factor/enrol'
 import { Route as AppCompanyChartIndexRouteImport } from './routes/_app/_company/chart/index'
 import { Route as AppCompanyChartRolesRouteImport } from './routes/_app/_company/chart/roles'
+import { Route as AppCompanyCounterpartiesValueIdRouteImport } from './routes/_app/_company/counterparties/$valueId'
 import { Route as AppCompanyDraftsIndexRouteImport } from './routes/_app/_company/drafts/index'
 import { Route as AppCompanyDraftsIdRouteImport } from './routes/_app/_company/drafts/$id'
 import { Route as AppCompanyEntriesIndexRouteImport } from './routes/_app/_company/entries/index'
@@ -154,6 +155,12 @@ const AppCompanyChartRolesRoute = AppCompanyChartRolesRouteImport.update({
   path: '/chart/roles',
   getParentRoute: () => AppCompanyRoute,
 } as any)
+const AppCompanyCounterpartiesValueIdRoute =
+  AppCompanyCounterpartiesValueIdRouteImport.update({
+    id: '/counterparties/$valueId',
+    path: '/counterparties/$valueId',
+    getParentRoute: () => AppCompanyRoute,
+  } as any)
 const AppCompanyDraftsIndexRoute = AppCompanyDraftsIndexRouteImport.update({
   id: '/drafts/',
   path: '/drafts/',
@@ -321,6 +328,7 @@ export interface FileRoutesByFullPath {
   '/companies/': typeof AppCompaniesIndexRoute
   '/sign-in/': typeof AuthSignInIndexRoute
   '/chart/roles': typeof AppCompanyChartRolesRoute
+  '/counterparties/$valueId': typeof AppCompanyCounterpartiesValueIdRoute
   '/drafts/$id': typeof AppCompanyDraftsIdRoute
   '/entries/$id': typeof AppCompanyEntriesIdRoute
   '/entries/new': typeof AppCompanyEntriesNewRoute
@@ -367,6 +375,7 @@ export interface FileRoutesByTo {
   '/companies': typeof AppCompaniesIndexRoute
   '/sign-in': typeof AuthSignInIndexRoute
   '/chart/roles': typeof AppCompanyChartRolesRoute
+  '/counterparties/$valueId': typeof AppCompanyCounterpartiesValueIdRoute
   '/drafts/$id': typeof AppCompanyDraftsIdRoute
   '/entries/$id': typeof AppCompanyEntriesIdRoute
   '/entries/new': typeof AppCompanyEntriesNewRoute
@@ -417,6 +426,7 @@ export interface FileRoutesById {
   '/_app/companies/': typeof AppCompaniesIndexRoute
   '/_auth/sign-in/': typeof AuthSignInIndexRoute
   '/_app/_company/chart/roles': typeof AppCompanyChartRolesRoute
+  '/_app/_company/counterparties/$valueId': typeof AppCompanyCounterpartiesValueIdRoute
   '/_app/_company/drafts/$id': typeof AppCompanyDraftsIdRoute
   '/_app/_company/entries/$id': typeof AppCompanyEntriesIdRoute
   '/_app/_company/entries/new': typeof AppCompanyEntriesNewRoute
@@ -465,6 +475,7 @@ export interface FileRouteTypes {
     | '/companies/'
     | '/sign-in/'
     | '/chart/roles'
+    | '/counterparties/$valueId'
     | '/drafts/$id'
     | '/entries/$id'
     | '/entries/new'
@@ -511,6 +522,7 @@ export interface FileRouteTypes {
     | '/companies'
     | '/sign-in'
     | '/chart/roles'
+    | '/counterparties/$valueId'
     | '/drafts/$id'
     | '/entries/$id'
     | '/entries/new'
@@ -560,6 +572,7 @@ export interface FileRouteTypes {
     | '/_app/companies/'
     | '/_auth/sign-in/'
     | '/_app/_company/chart/roles'
+    | '/_app/_company/counterparties/$valueId'
     | '/_app/_company/drafts/$id'
     | '/_app/_company/entries/$id'
     | '/_app/_company/entries/new'
@@ -736,6 +749,13 @@ declare module '@tanstack/react-router' {
       path: '/chart/roles'
       fullPath: '/chart/roles'
       preLoaderRoute: typeof AppCompanyChartRolesRouteImport
+      parentRoute: typeof AppCompanyRoute
+    }
+    '/_app/_company/counterparties/$valueId': {
+      id: '/_app/_company/counterparties/$valueId'
+      path: '/counterparties/$valueId'
+      fullPath: '/counterparties/$valueId'
+      preLoaderRoute: typeof AppCompanyCounterpartiesValueIdRouteImport
       parentRoute: typeof AppCompanyRoute
     }
     '/_app/_company/drafts/': {
@@ -937,6 +957,7 @@ interface AppCompanyRouteChildren {
   AppCompanyRevaluationRoute: typeof AppCompanyRevaluationRoute
   AppCompanyIndexRoute: typeof AppCompanyIndexRoute
   AppCompanyChartRolesRoute: typeof AppCompanyChartRolesRoute
+  AppCompanyCounterpartiesValueIdRoute: typeof AppCompanyCounterpartiesValueIdRoute
   AppCompanyDraftsIdRoute: typeof AppCompanyDraftsIdRoute
   AppCompanyEntriesIdRoute: typeof AppCompanyEntriesIdRoute
   AppCompanyEntriesNewRoute: typeof AppCompanyEntriesNewRoute
@@ -974,6 +995,7 @@ const AppCompanyRouteChildren: AppCompanyRouteChildren = {
   AppCompanyRevaluationRoute: AppCompanyRevaluationRoute,
   AppCompanyIndexRoute: AppCompanyIndexRoute,
   AppCompanyChartRolesRoute: AppCompanyChartRolesRoute,
+  AppCompanyCounterpartiesValueIdRoute: AppCompanyCounterpartiesValueIdRoute,
   AppCompanyDraftsIdRoute: AppCompanyDraftsIdRoute,
   AppCompanyEntriesIdRoute: AppCompanyEntriesIdRoute,
   AppCompanyEntriesNewRoute: AppCompanyEntriesNewRoute,

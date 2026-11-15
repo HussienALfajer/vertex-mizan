@@ -114,6 +114,8 @@ export interface LinesSearch {
   side?: 'debit' | 'credit' | undefined;
   client?: string | undefined;
   contract?: string | undefined;
+  /** Values every line carries, comma-separated: a supplier's or a worker's (S11). */
+  dims?: string | undefined;
   profitabilityBy?: string | undefined;
   profitabilityValue?: string | undefined;
   /** S10 rule 32: only the opening entries' lines, an opening column read from them. */

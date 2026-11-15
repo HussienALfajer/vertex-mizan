@@ -1,7 +1,10 @@
 import {
   ACCOUNT_ROLES,
   BUILTIN_DIMENSION_TYPES,
+  CASH_KINDS,
   CONTRACT_KINDS,
+  COUNTERPARTY_TYPES,
+  chartTemplate,
   DIMENSION_EXTERNAL_SOURCES,
   RATE_SOURCES,
   ROOT_ACCOUNTS,
@@ -13,11 +16,14 @@ import {
   accountRequiredDimensions,
   accountRole,
   accountRoles,
+  applyChartTemplate,
   bulletinHolidays,
   CHART_STATEMENT_LINES,
+  cashKind,
   chartAccounts,
   companies,
   companySettings,
+  counterpartyType,
   type Database,
   dimensionTypes,
   dimensionValues,
@@ -116,6 +122,41 @@ async function addAccount(parentCode: string, values: Partial<NewAccount> & { co
 const updateAccount = (code: string, change: Partial<NewAccount>) =>
   inA((tx) => tx.update(chartAccounts).set(change).where(eq(chartAccounts.code, code)));
 
+/**
+ * Adds a client control account under `parentCode` in company A, with the client dimension it
+ * requires, in one transaction (S11 rule 5).
+ */
+async function addControlAccount(
+  parentCode: string,
+  values: Partial<NewAccount> & { code: string; itemKind: 'document' | 'running' },
+) {
+  const parent = await accountByCode(parentCode);
+  const client = await typeByCode('client');
+  return inA(async (tx) => {
+    const [row] = await tx
+      .insert(chartAccounts)
+      .values({
+        companyId: companyA,
+        parentId: parent.id,
+        level: 4,
+        kind: 'postable',
+        class: parent.class,
+        name: 'حساب رقابي تجريبي',
+        normalBalance: parent.normalBalance,
+        statementLine: parent.class === 'asset' ? 'bs.trade_receivables' : 'bs.trade_payables',
+        isControl: true,
+        counterpartyType: 'client',
+        ...values,
+      })
+      .returning();
+    if (!row) throw new Error('no account inserted');
+    await tx
+      .insert(accountRequiredDimensions)
+      .values({ companyId: companyA, accountId: row.id, dimensionTypeId: client.id });
+    return row;
+  });
+}
+
 beforeAll(async () => {
   const [row] = await app
     .insert(users)
@@ -132,8 +173,10 @@ beforeAll(async () => {
 });
 
 describe('the database lists', () => {
-  it('match the contracts: roles, statement lines, contract kinds, sources', () => {
+  it('match the contracts: roles, counterparty types, cash kinds, statement lines, contract kinds, sources', () => {
     expect(accountRole.enumValues).toEqual(ACCOUNT_ROLES);
+    expect(counterpartyType.enumValues).toEqual(COUNTERPARTY_TYPES);
+    expect(cashKind.enumValues).toEqual(CASH_KINDS);
     for (const statement of ['balance_sheet', 'income_statement'] as const) {
       expect(CHART_STATEMENT_LINES[statement]).toEqual(
         STATEMENT_LINES.filter((line) => line.statement === statement).map((line) => line.code),
@@ -146,7 +189,7 @@ describe('the database lists', () => {
 });
 
 describe('a new company', () => {
-  it('has the five roots and the four built-in dimension types, made in its creation transaction', async () => {
+  it('has the five roots and the six built-in dimension types, made in its creation transaction', async () => {
     for (const companyId of [companyA, companyB]) {
       const [roots, types] = await withCompany(app, companyId, async (tx) => [
         await tx.select().from(chartAccounts).where(eq(chartAccounts.level, 1)),
@@ -340,7 +383,7 @@ describe('the lock after first use (S02 check 5) as the app role', () => {
     ['kind', { kind: 'header', statementLine: null }],
     ['normal balance', { normalBalance: 'credit' }],
     ['currency', { currency: 'SYP' }],
-    ['control flag', { isControl: true, itemKind: 'document' }],
+    ['control flag', { isControl: true, itemKind: 'document', counterpartyType: 'client' }],
     ['monetary flag', { isMonetary: true }],
     ['first use', { firstPostedAt: new Date('2026-11-05T09:00:00Z') }],
   ];
@@ -368,10 +411,6 @@ describe('the lock after first use (S02 check 5) as the app role', () => {
       ],
       [{ normalBalance: 'credit' }, { normalBalance: 'debit' }],
       [{ currency: 'SYP' }, { currency: null }],
-      [
-        { isControl: true, itemKind: 'document' },
-        { isControl: false, itemKind: null },
-      ],
       [{ isMonetary: true }, { isMonetary: false }],
     ];
     for (const [change, undo] of changes) {
@@ -381,17 +420,32 @@ describe('the lock after first use (S02 check 5) as the app role', () => {
   });
 
   it("keeps a control account's item kind once it is used, and only a control account has one (S04)", async () => {
-    await addAccount('111', { code: '111012', isControl: true, itemKind: 'document' });
-    await updateAccount('111012', { itemKind: 'running' });
-    await updateAccount('111012', { itemKind: 'document' });
-    await updateAccount('111012', { firstPostedAt: new Date('2026-11-04T09:00:00Z') });
-    expect(await refusal(updateAccount('111012', { itemKind: 'running' }))).toMatch(LOCK);
+    await addControlAccount('112', { code: '112012', itemKind: 'document' });
+    await updateAccount('112012', { itemKind: 'running' });
+    await updateAccount('112012', { itemKind: 'document' });
+    await updateAccount('112012', { firstPostedAt: new Date('2026-11-04T09:00:00Z') });
+    expect(await refusal(updateAccount('112012', { itemKind: 'running' }))).toMatch(LOCK);
     expect(await refusal(updateAccount('111010', { itemKind: 'document' }))).toMatch(
       /chart_accounts_item_kind/,
     );
-    expect(await refusal(addAccount('111', { code: '111013', isControl: true }))).toMatch(
-      /chart_accounts_item_kind/,
-    );
+    expect(
+      await refusal(
+        addAccount('111', { code: '111013', isControl: true, counterpartyType: 'client' }),
+      ),
+    ).toMatch(/chart_accounts_item_kind/);
+  });
+
+  it('keeps a control account\'s counterparty type and a cash kind once used (S11 "Data")', async () => {
+    await addControlAccount('112', { code: '112013', itemKind: 'running' });
+    await addAccount('111', { code: '111014', currency: 'USD', isMonetary: true, cashKind: 'box' });
+    await updateAccount('111014', { cashKind: 'bank' });
+    await updateAccount('111014', { cashKind: 'box' });
+    for (const code of ['112013', '111014']) {
+      await updateAccount(code, { firstPostedAt: new Date('2026-11-04T09:00:00Z') });
+    }
+    expect(await refusal(updateAccount('111014', { cashKind: 'bank' }))).toMatch(LOCK);
+    expect(await refusal(updateAccount('111014', { cashKind: null }))).toMatch(LOCK);
+    expect(await refusal(updateAccount('112013', { counterpartyType: 'supplier' }))).toMatch(LOCK);
   });
 
   it('refuses a change of the level or class, which the code fixes, from the checks or the lock', async () => {
@@ -551,6 +605,180 @@ describe('required dimensions and account roles', () => {
   });
 });
 
+describe('counterparties and cash kinds (S11 "Data", ADR 0022)', () => {
+  const system = {
+    kind: 'system' as const,
+    name: 'اختبار',
+    requestId: 'test',
+    ipAddress: null,
+    userAgent: null,
+  };
+
+  it('puts a cash kind only on a postable, monetary asset under 111 in one currency on bs.cash', async () => {
+    await addAccount('111', {
+      code: '111020',
+      currency: 'SYP',
+      isMonetary: true,
+      cashKind: 'bank',
+    });
+    for (const [label, values] of [
+      ['no currency', { code: '111021', isMonetary: true }],
+      ['not monetary', { code: '111022', currency: 'USD' }],
+      [
+        'another line',
+        {
+          code: '111023',
+          currency: 'USD',
+          isMonetary: true,
+          statementLine: 'bs.trade_receivables',
+        },
+      ],
+    ] as const) {
+      expect(await refusal(addAccount('111', { ...values, cashKind: 'box' })), label).toMatch(
+        /chart_accounts_cash_kind/,
+      );
+    }
+    expect(
+      await refusal(
+        addAccount('112', {
+          code: '112020',
+          currency: 'USD',
+          isMonetary: true,
+          statementLine: 'bs.cash',
+          cashKind: 'box',
+        }),
+      ),
+    ).toMatch(/chart_accounts_cash_kind/);
+    expect(
+      await refusal(
+        addControlAccount('111', {
+          code: '111024',
+          itemKind: 'running',
+          currency: 'USD',
+          isMonetary: true,
+          statementLine: 'bs.cash',
+          cashKind: 'box',
+        }),
+      ),
+    ).toMatch(/chart_accounts_cash_kind/);
+  });
+
+  it('gives a control account, and only one, a counterparty type', async () => {
+    expect(
+      await refusal(addAccount('112', { code: '112021', isControl: true, itemKind: 'document' })),
+    ).toMatch(/chart_accounts_counterparty_type/);
+    expect(
+      await refusal(addAccount('112', { code: '112022', counterpartyType: 'client' })),
+    ).toMatch(/chart_accounts_counterparty_type/);
+  });
+
+  it("requires a control account's counterparty dimension at commit, and keeps it required", async () => {
+    // A supplier account requiring the client only is refused when its transaction commits.
+    expect(
+      await refusal(
+        addControlAccount('112', {
+          code: '112023',
+          itemKind: 'running',
+          counterpartyType: 'supplier',
+        }),
+      ),
+    ).toMatch(/requires its supplier dimension/);
+    const supplier = await typeByCode('supplier');
+    const account = await addControlAccount('112', { code: '112024', itemKind: 'running' });
+    const requirement = await inA(async (tx) => {
+      const [row] = await tx
+        .select()
+        .from(accountRequiredDimensions)
+        .where(eq(accountRequiredDimensions.accountId, account.id));
+      return row;
+    });
+    if (requirement === undefined) throw new Error('no requirement');
+    expect(
+      await refusal(
+        inA((tx) =>
+          tx
+            .update(accountRequiredDimensions)
+            .set({ archivedAt: new Date() })
+            .where(eq(accountRequiredDimensions.id, requirement.id)),
+        ),
+      ),
+    ).toMatch(/keeps its counterparty dimension/);
+    // Turned into a supplier account with the supplier required, in one transaction, the client
+    // requirement may go.
+    await inA(async (tx) => {
+      await tx
+        .update(chartAccounts)
+        .set({ counterpartyType: 'supplier' })
+        .where(eq(chartAccounts.id, account.id));
+      await tx
+        .insert(accountRequiredDimensions)
+        .values({ companyId: companyA, accountId: account.id, dimensionTypeId: supplier.id });
+      await tx
+        .update(accountRequiredDimensions)
+        .set({ archivedAt: new Date() })
+        .where(eq(accountRequiredDimensions.id, requirement.id));
+    });
+    // An account no longer a control account drops its requirement.
+    await inA(async (tx) => {
+      await tx
+        .update(chartAccounts)
+        .set({ isControl: false, itemKind: null, counterpartyType: null })
+        .where(eq(chartAccounts.id, account.id));
+      await tx
+        .update(accountRequiredDimensions)
+        .set({ archivedAt: new Date() })
+        .where(
+          and(
+            eq(accountRequiredDimensions.accountId, account.id),
+            eq(accountRequiredDimensions.dimensionTypeId, supplier.id),
+          ),
+        );
+    });
+  });
+
+  it('applies contracting@1 with its cash kinds, counterparties and seven roles', async () => {
+    const companyId = await company();
+    await withCompany(app, companyId, (tx) =>
+      applyChartTemplate(tx, companyId, 'contracting', system),
+    );
+    const { accounts, required, roles } = await withCompany(app, companyId, async (tx) => ({
+      accounts: await tx.select().from(chartAccounts),
+      required: await tx
+        .select({ accountId: accountRequiredDimensions.accountId, code: dimensionTypes.code })
+        .from(accountRequiredDimensions)
+        .innerJoin(
+          dimensionTypes,
+          eq(dimensionTypes.id, accountRequiredDimensions.dimensionTypeId),
+        ),
+      roles: await tx.select().from(accountRoles),
+    }));
+    const byCode = new Map(accounts.map((account) => [account.code, account]));
+    const template = chartTemplate('contracting');
+    expect(accounts).toHaveLength(template.accounts.length);
+    for (const expected of template.accounts) {
+      const row = byCode.get(expected.code);
+      expect(
+        [row?.isControl, row?.itemKind, row?.counterpartyType, row?.cashKind, row?.currency],
+        expected.code,
+      ).toEqual([
+        expected.isControl,
+        expected.itemKind,
+        expected.counterpartyType,
+        expected.cashKind,
+        expected.currency,
+      ]);
+      expect(
+        required
+          .filter((link) => link.accountId === row?.id)
+          .map((link) => link.code)
+          .sort(),
+        expected.code,
+      ).toEqual([...expected.requiredDimensions].sort());
+    }
+    expect(roles.map((role) => role.role).sort()).toEqual([...ACCOUNT_ROLES].sort());
+  });
+});
+
 describe('dimension types and values', () => {
   it('never archives a built-in type, nor changes a type’s code', async () => {
     const service = await typeByCode('service');
@@ -591,7 +819,8 @@ describe('dimension types and values', () => {
 
   it('keeps at most 10 active types, and archives a type no account requires', async () => {
     const added: string[] = [];
-    for (let index = 1; index <= 6; index += 1) {
+    // Six built-in types leave four custom ones (S11 "Dimensions").
+    for (let index = 1; index <= 4; index += 1) {
       const [row] = await inA((tx) =>
         tx
           .insert(dimensionTypes)
@@ -600,7 +829,7 @@ describe('dimension types and values', () => {
             code: `custom_${index}`,
             builtin: false,
             name: `نوع ${index}`,
-            position: 4 + index,
+            position: 6 + index,
           })
           .returning({ id: dimensionTypes.id }),
       );

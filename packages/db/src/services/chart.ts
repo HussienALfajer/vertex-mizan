@@ -2,6 +2,7 @@ import {
   type AccountLevel,
   accountClassOfCode,
   type ChartTemplateId,
+  type CounterpartyType,
   type CreateAccount,
   chartTemplate,
   checkAccountCode,
@@ -43,6 +44,8 @@ export function auditedAccountOf(row: AccountRow, requiredDimensionTypeIds: read
     currency: row.currency,
     isControl: row.isControl,
     itemKind: row.itemKind,
+    counterpartyType: row.counterpartyType,
+    cashKind: row.cashKind,
     isMonetary: row.isMonetary,
     requiredDimensionTypeIds: [...requiredDimensionTypeIds],
   };
@@ -123,6 +126,29 @@ export async function checkDimensionTypes(
   }
 }
 
+/**
+ * A control account requires the built-in dimension type of its counterparty type (S11 rule 5,
+ * ADR 0022), `VALIDATION_FAILED` naming `requiredDimensionTypeIds`; the database holds the same at
+ * commit (`chart_account_counterparty_required()`).
+ */
+export async function checkCounterpartyRequired(
+  tx: Transaction,
+  counterpartyType: CounterpartyType | null,
+  requiredDimensionTypeIds: readonly string[],
+): Promise<void> {
+  if (counterpartyType === null) return;
+  const [type] = await tx
+    .select({ id: dimensionTypes.id })
+    .from(dimensionTypes)
+    .where(and(eq(dimensionTypes.builtin, true), eq(dimensionTypes.code, counterpartyType)));
+  if (type === undefined || !requiredDimensionTypeIds.includes(type.id)) {
+    const message = `A ${counterpartyType} control account requires the ${counterpartyType} dimension`;
+    throw new DomainError('VALIDATION_FAILED', message, {
+      issues: [{ path: ['requiredDimensionTypeIds'], message }],
+    });
+  }
+}
+
 /** Adds the required types new to the account. */
 export async function addRequiredDimensions(
   tx: Transaction,
@@ -158,6 +184,7 @@ export async function createAccount(
   });
   const accountClass = accountClassOfCode(input.code);
   checkAccountShape({
+    code: input.code,
     level,
     kind: input.kind,
     class: accountClass,
@@ -165,10 +192,13 @@ export async function createAccount(
     currency: input.currency,
     isControl: input.isControl,
     itemKind: input.itemKind,
+    counterpartyType: input.counterpartyType,
+    cashKind: input.cashKind,
     isMonetary: input.isMonetary,
     requiredDimensionCount: input.requiredDimensionTypeIds.length,
   });
   await checkDimensionTypes(tx, input.requiredDimensionTypeIds);
+  await checkCounterpartyRequired(tx, input.counterpartyType, input.requiredDimensionTypeIds);
   const [row] = await onUniqueViolation(
     () =>
       tx
@@ -187,6 +217,8 @@ export async function createAccount(
           currency: input.currency,
           isControl: input.isControl,
           itemKind: input.itemKind,
+          counterpartyType: input.counterpartyType,
+          cashKind: input.cashKind,
           isMonetary: input.isMonetary,
         })
         .returning(),
@@ -205,8 +237,8 @@ export async function createAccount(
 
 /**
  * Applies a chart template over the five roots (S02 rule 1), in the caller's transaction and
- * company context, with one audit row: the accounts in code order (each parent first), their
- * required built-in dimensions and the six roles. Refused unless the chart holds the roots alone
+ * company context, with one audit row: the accounts in code order (each parent first) with their
+ * counterparty types and cash kinds (S11), their required built-in dimensions and the seven roles. Refused unless the chart holds the roots alone
  * (`CHART_NOT_EMPTY`); the roots are locked first, so two applications run one after the other and
  * an account added meanwhile (its trigger reads its parent `FOR SHARE`) waits for the answer.
  */
@@ -275,6 +307,8 @@ export async function applyChart(
       currency: account.currency,
       isControl: account.isControl,
       itemKind: account.itemKind,
+      counterpartyType: account.counterpartyType,
+      cashKind: account.cashKind,
       isMonetary: account.isMonetary,
     };
   });
@@ -355,6 +389,8 @@ export async function appendPreOpeningResultAccount(
       currency: template.currency,
       isControl: template.isControl,
       itemKind: template.itemKind,
+      counterpartyType: template.counterpartyType,
+      cashKind: template.cashKind,
       isMonetary: template.isMonetary,
       requiredDimensionTypeIds: [],
     },

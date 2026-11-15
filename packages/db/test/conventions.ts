@@ -303,9 +303,11 @@ BEGIN
           WHERE c.company_id = OLD.company_id AND c.parent_id = OLD.id)))
       AND (
         (NEW.code, NEW.parent_id, NEW.level, NEW.kind, NEW.class, NEW.normal_balance,
-          NEW.currency, NEW.is_control, NEW.item_kind, NEW.is_monetary)
+          NEW.currency, NEW.is_control, NEW.item_kind, NEW.counterparty_type, NEW.cash_kind,
+          NEW.is_monetary)
           IS DISTINCT FROM (OLD.code, OLD.parent_id, OLD.level, OLD.kind, OLD.class,
-            OLD.normal_balance, OLD.currency, OLD.is_control, OLD.item_kind, OLD.is_monetary)
+            OLD.normal_balance, OLD.currency, OLD.is_control, OLD.item_kind,
+            OLD.counterparty_type, OLD.cash_kind, OLD.is_monetary)
         OR (OLD.first_posted_at IS NOT NULL
           AND NEW.first_posted_at IS DISTINCT FROM OLD.first_posted_at)
       ) THEN
@@ -364,6 +366,39 @@ END
 `,
     },
     {
+      name: 'chart_account_counterparty_required',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+DECLARE
+  account record;
+BEGIN
+  SELECT a.code, a.is_control, a.counterparty_type INTO account
+  FROM public.chart_accounts a
+  WHERE a.company_id = NEW.company_id AND a.id = NEW.id;
+  IF account.is_control AND NOT EXISTS (
+    SELECT 1 FROM public.account_required_dimensions d
+    JOIN public.dimension_types t ON t.company_id = d.company_id AND t.id = d.dimension_type_id
+    WHERE d.company_id = NEW.company_id AND d.account_id = NEW.id AND d.archived_at IS NULL
+      AND t.builtin AND t.code = account.counterparty_type::text
+  ) THEN
+    RAISE EXCEPTION 'chart_accounts: control account % requires its % dimension', account.code,
+      account.counterparty_type
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  RETURN NULL;
+END
+`,
+    },
+    {
       name: 'account_required_dimension_rules',
       arguments: '',
       returns: 'trigger',
@@ -396,6 +431,15 @@ BEGIN
     )
   ) THEN
     RAISE EXCEPTION 'account_required_dimensions: a postable account and an unarchived type'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF NEW.archived_at IS NOT NULL AND EXISTS (
+    SELECT 1 FROM public.chart_accounts a
+    JOIN public.dimension_types t ON t.company_id = a.company_id AND t.id = NEW.dimension_type_id
+    WHERE a.company_id = NEW.company_id AND a.id = NEW.account_id AND a.is_control
+      AND t.builtin AND t.code = a.counterparty_type::text
+  ) THEN
+    RAISE EXCEPTION 'account_required_dimensions: a control account keeps its counterparty dimension'
       USING ERRCODE = 'restrict_violation';
   END IF;
   RETURN NEW;
@@ -620,7 +664,9 @@ BEGIN
   VALUES
     (public.new_uuidv7(), company, 'contract', true, client_type, 'العقد', 'Contract', 2),
     (public.new_uuidv7(), company, 'department', true, NULL, 'القسم', 'Department', 3),
-    (public.new_uuidv7(), company, 'service', true, NULL, 'الخدمة', 'Service', 4);
+    (public.new_uuidv7(), company, 'service', true, NULL, 'الخدمة', 'Service', 4),
+    (public.new_uuidv7(), company, 'supplier', true, NULL, 'المورّد', 'Supplier', 5),
+    (public.new_uuidv7(), company, 'worker', true, NULL, 'العامل', 'Worker', 6);
 END
 `,
     },
@@ -1003,8 +1049,10 @@ DECLARE
   account record;
   entry record;
   settings record;
+  remeasures boolean;
 BEGIN
-  SELECT a.kind, a.class, a.currency, a.first_posted_at INTO account
+  SELECT a.kind, a.class, a.currency, a.first_posted_at, a.item_kind, a.counterparty_type
+    INTO account
   FROM public.chart_accounts a
   WHERE a.company_id = NEW.company_id AND a.id = NEW.account_id
   FOR SHARE;
@@ -1017,7 +1065,7 @@ BEGIN
       account.currency, NEW.currency
       USING ERRCODE = 'restrict_violation';
   END IF;
-  SELECT e.entry_date, e.reverses_entry_id, e.source INTO entry
+  SELECT e.entry_date, e.reverses_entry_id, e.source, e.request_id, e.draft_id INTO entry
   FROM public.journal_entries e
   WHERE e.company_id = NEW.company_id AND e.id = NEW.entry_id;
   IF NOT FOUND THEN
@@ -1041,10 +1089,28 @@ BEGIN
     RAISE EXCEPTION 'journal_lines: no SYP amount is dated before 2026-01-01'
       USING ERRCODE = 'restrict_violation';
   END IF;
+  -- Never NULL, so a line off a running account is checked as before.
+  remeasures := coalesce(account.item_kind = 'running', false)
+    AND EXISTS (
+      SELECT 1 FROM public.dimension_set_values v
+      JOIN public.dimension_types t ON t.company_id = v.company_id AND t.id = v.type_id
+      WHERE v.company_id = NEW.company_id AND v.set_id = NEW.dimension_set_id
+        AND t.builtin AND t.code = account.counterparty_type::text
+    )
+    AND (
+      entry.source = 'revaluation'
+      OR (entry.draft_id IS NULL AND EXISTS (
+        SELECT 1 FROM public.posting_requests p
+        WHERE p.company_id = NEW.company_id AND p.id = entry.request_id
+          AND p.idempotency_key LIKE '%:difference'
+      ))
+    );
   IF entry.reverses_entry_id IS NULL AND EXISTS (
     SELECT 1 FROM public.account_required_dimensions r
+    JOIN public.dimension_types t ON t.company_id = r.company_id AND t.id = r.dimension_type_id
     WHERE r.company_id = NEW.company_id AND r.account_id = NEW.account_id
       AND r.archived_at IS NULL
+      AND NOT (remeasures AND NOT (t.builtin AND t.code = account.counterparty_type::text))
       AND NOT EXISTS (
         SELECT 1 FROM public.dimension_set_values v
         WHERE v.company_id = NEW.company_id AND v.set_id = NEW.dimension_set_id
@@ -1520,9 +1586,9 @@ END;
       source: `
 DECLARE
   account record;
-  set_client uuid;
+  set_counterparty uuid;
 BEGIN
-  SELECT a.kind, a.is_control, a.item_kind, a.currency INTO account
+  SELECT a.kind, a.is_control, a.item_kind, a.currency, a.counterparty_type INTO account
   FROM public.chart_accounts a
   WHERE a.company_id = NEW.company_id AND a.id = NEW.account_id
   FOR SHARE;
@@ -1536,12 +1602,13 @@ BEGIN
       account.currency, NEW.currency
       USING ERRCODE = 'restrict_violation';
   END IF;
-  SELECT v.value_id INTO set_client
+  SELECT v.value_id INTO set_counterparty
   FROM public.dimension_set_values v
   JOIN public.dimension_types t ON t.company_id = v.company_id AND t.id = v.type_id
-  WHERE v.company_id = NEW.company_id AND v.set_id = NEW.dimension_set_id AND t.code = 'client';
-  IF set_client IS DISTINCT FROM NEW.client_value_id THEN
-    RAISE EXCEPTION 'open_items: an item''s client is its dimension set''s'
+  WHERE v.company_id = NEW.company_id AND v.set_id = NEW.dimension_set_id
+    AND t.builtin AND t.code = account.counterparty_type::text;
+  IF set_counterparty IS DISTINCT FROM NEW.counterparty_value_id THEN
+    RAISE EXCEPTION 'open_items: an item''s counterparty is its dimension set''s value of its account''s counterparty type'
       USING ERRCODE = 'restrict_violation';
   END IF;
   IF NOT EXISTS (
@@ -1615,14 +1682,20 @@ BEGIN
   FROM public.journal_entries e
   WHERE e.company_id = NEW.company_id AND e.id = line.entry_id;
   SELECT i.account_id, i.dimension_set_id, i.currency, i.kind, i.source, i.opened_by_entry_id,
-    i.hub_document
+    i.hub_document, i.counterparty_value_id
     INTO item
   FROM public.open_items i
   WHERE i.company_id = NEW.company_id AND i.id = NEW.item_id;
   IF line.entry_id IS NULL OR entry.entry_date IS NULL OR item.account_id IS NULL
     OR NEW.entry_id <> line.entry_id OR NEW.entry_date <> entry.entry_date
-    OR (line.account_id, line.dimension_set_id, line.currency)
-      IS DISTINCT FROM (item.account_id, item.dimension_set_id, item.currency)
+    OR (line.account_id, line.currency) IS DISTINCT FROM (item.account_id, item.currency)
+    OR (item.kind = 'document' AND line.dimension_set_id IS DISTINCT FROM item.dimension_set_id)
+    OR (item.kind = 'running' AND line.dimension_set_id IS DISTINCT FROM item.dimension_set_id
+      AND NOT EXISTS (
+        SELECT 1 FROM public.dimension_set_values v
+        WHERE v.company_id = NEW.company_id AND v.set_id = line.dimension_set_id
+          AND v.value_id = item.counterparty_value_id
+      ))
     OR (NEW.amount_minor, NEW.book_minor, NEW.parallel_minor)
       IS DISTINCT FROM (line.amount_minor, line.book_minor, line.parallel_minor) THEN
     RAISE EXCEPTION 'open_item_movements: a movement is its line''s, on its line''s item'
@@ -1631,10 +1704,11 @@ BEGIN
   IF NOT (
     (item.kind = 'document' AND NEW.kind IN ('open', 'clear', 'revaluation'))
     OR (item.kind = 'running' AND NEW.kind IN ('add', 'clear', 'difference', 'revaluation'))
-  ) OR line.kind IS DISTINCT FROM (CASE NEW.kind
+  ) OR (line.kind IS DISTINCT FROM (CASE NEW.kind
       WHEN 'open' THEN 'measured' WHEN 'add' THEN 'measured'
       WHEN 'clear' THEN 'carried' WHEN 'difference' THEN 'difference'
       WHEN 'revaluation' THEN 'difference' END)
+      AND NOT (NEW.kind = 'add' AND line.kind = 'stated' AND entry.source = 'opening'))
     OR (NEW.kind = 'revaluation') IS DISTINCT FROM (entry.source = 'revaluation')
     OR (NEW.kind = 'revaluation' AND NEW.amount_minor <> 0) THEN
     RAISE EXCEPTION 'open_item_movements: a % movement does not fit a % item on a % line of a % entry',
@@ -2772,6 +2846,13 @@ END
       name: 'chart_account_rules',
       function: 'chart_account_rules',
       deferred: false,
+      on: ['INSERT', 'UPDATE'],
+    },
+    {
+      table: 'chart_accounts',
+      name: 'chart_account_counterparty_required',
+      function: 'chart_account_counterparty_required',
+      deferred: true,
       on: ['INSERT', 'UPDATE'],
     },
     {
