@@ -17,7 +17,7 @@ A manual entry whose lines are all in one transaction currency must balance in t
 
 ## Cases
 
-The account codes are the service-agency template's (S02): the SYP and USD bank accounts `111003` and `111004`, the USD e-wallet `111006`, the expense accounts `5310xx` and `532002`, and the conversion-rounding account `541003`. A `third` case adds a TRY cash account `111007` to the template (monetary, restricted to TRY, statement line `bs.cash`). Every rate is synthetic. Sunday 8 November and Tuesday 10 November 2026 are publication days; Tuesday 1 December 2026 too.
+The account codes are the contracting template's (`contracting@1`, S11; the cases moved from the service-agency chart by S11's mapping table with no amount changed, owner 2026-11-14): the SYP and USD bank accounts `111003` and `111004`, the USD e-wallet `111006` (added by the case), the expense accounts `5310xx` and `532002`, and the conversion-rounding account `541003`. A `third` case adds a TRY cash account `111007` to the template (monetary, restricted to TRY, statement line `bs.cash`). Every rate is synthetic. Sunday 8 November and Tuesday 10 November 2026 are publication days; Tuesday 1 December 2026 too.
 
 A rounding line carries its amount in one ledger only, in that ledger's currency (ADR 0007): in the SYP books a book rounding line is an SYP line with parallel 0, and a parallel rounding line a USD line with book 0. A half minor unit rounds away from zero: 306,787.5 → 306,788 and −306,787.5 → −306,788.
 
@@ -27,7 +27,7 @@ The cases below leave out what other scenarios own: an entry in more than one cu
 
 ```yaml
 case: USD expenses paid from the USD bank; the book conversions leave 0.01 SYP, a credit
-company: { shape: syp-usd, book: SYP, parallel: USD, template: service-agency,
+company: { shape: syp-usd, book: SYP, parallel: USD, template: contracting,
            rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true } }
 rates:
   - { date: 2026-11-08, base: USD, quote: SYP, rate: "121.5000", type: bulletin }
@@ -58,8 +58,10 @@ expect:
 
 ```yaml
 case: a USD expense paid from two USD accounts; the book conversions leave 0.01 SYP, a debit
-company: { shape: syp-usd, book: SYP, parallel: USD, template: service-agency,
-           rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true } }
+company: { shape: syp-usd, book: SYP, parallel: USD, template: contracting,
+           rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true },
+           accounts: [{ code: "111006", name: "المحفظة الإلكترونية — دولار أمريكي", name_latin: "E-wallet — USD",
+                        statement_line: bs.cash, currency: USD, monetary: true }] }
 rates:
   - { date: 2026-11-08, base: USD, quote: SYP, rate: "121.5000", type: bulletin }
   - { date: 2026-11-08, base: USD, quote: SYP, rate: "122.0000", type: market }
@@ -86,7 +88,7 @@ expect:
 
 ```yaml
 case: four USD lines each rounded up by half a minor unit; one rounding line of 0.02 SYP
-company: { shape: syp-usd, book: SYP, parallel: USD, template: service-agency,
+company: { shape: syp-usd, book: SYP, parallel: USD, template: contracting,
            rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true } }
 rates:
   - { date: 2026-11-08, base: USD, quote: SYP, rate: "121.5000", type: bulletin }
@@ -122,7 +124,7 @@ expect:
 
 ```yaml
 case: SYP expenses paid from the SYP bank; the parallel conversions leave 0.01 USD, a credit
-company: { shape: syp-usd, book: SYP, parallel: USD, template: service-agency,
+company: { shape: syp-usd, book: SYP, parallel: USD, template: contracting,
            rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true } }
 rates:
   - { date: 2026-11-08, base: USD, quote: SYP, rate: "121.5000", type: bulletin }
@@ -153,7 +155,7 @@ expect:
 
 ```yaml
 case: the first USD entry reversed in December after the bulletin moved; the rounding line negated as posted
-company: { shape: syp-usd, book: SYP, parallel: USD, template: service-agency,
+company: { shape: syp-usd, book: SYP, parallel: USD, template: contracting,
            rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true } }
 rates:
   - { date: 2026-11-08, base: USD, quote: SYP, rate: "121.5000", type: bulletin }
@@ -198,7 +200,7 @@ expect:
 
 ```yaml
 case: a USD entry 0.01 USD short is refused, never balanced by a rounding or a difference line
-company: { shape: syp-usd, book: SYP, parallel: USD, template: service-agency,
+company: { shape: syp-usd, book: SYP, parallel: USD, template: contracting,
            rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true } }
 rates:
   - { date: 2026-11-08, base: USD, quote: SYP, rate: "121.5000", type: bulletin }
@@ -218,7 +220,7 @@ expect:
 
 ```yaml
 case: SYP books only; a USD entry rounded in the books by 0.01 SYP
-company: { shape: syp, book: SYP, template: service-agency, rate_policy: { book: bulletin } }
+company: { shape: syp, book: SYP, template: contracting, rate_policy: { book: bulletin } }
 rates:
   - { date: 2026-11-08, base: USD, quote: SYP, rate: "121.5000", type: bulletin }
 steps:
@@ -241,7 +243,7 @@ expect:
 
 ```yaml
 case: SYP books only; an SYP entry is never converted and needs no rounding line
-company: { shape: syp, book: SYP, template: service-agency, rate_policy: { book: bulletin } }
+company: { shape: syp, book: SYP, template: contracting, rate_policy: { book: bulletin } }
 steps:
   - manual: utilities and telecom paid from the SYP bank account
     accounting_date: 2026-11-08
@@ -265,7 +267,7 @@ The book ledger converts SYP into USD at the bulletin, dividing by the SYP-per-U
 
 ```yaml
 case: USD books; SYP expenses paid from the SYP bank; the book conversions leave 0.01 USD, a credit
-company: { shape: usd-syp, book: USD, parallel: SYP, template: service-agency,
+company: { shape: usd-syp, book: USD, parallel: SYP, template: contracting,
            rate_policy: { book: bulletin, parallel: market } }
 rates:
   - { date: 2026-11-08, base: USD, quote: SYP, rate: "121.5000", type: bulletin }
@@ -293,7 +295,7 @@ expect:
 
 ```yaml
 case: USD books; USD expenses paid from the USD bank; the parallel conversions leave 0.01 SYP, a credit
-company: { shape: usd-syp, book: USD, parallel: SYP, template: service-agency,
+company: { shape: usd-syp, book: USD, parallel: SYP, template: contracting,
            rate_policy: { book: bulletin, parallel: market } }
 rates:
   - { date: 2026-11-08, base: USD, quote: SYP, rate: "121.5000", type: bulletin }
@@ -327,7 +329,7 @@ Book SYP at the bulletin, crossed through USD (TRY→USD, then USD→SYP, one ex
 
 ```yaml
 case: TRY expenses paid from TRY cash; a 0.01 SYP debit in the book and a 0.01 USD credit in the parallel
-company: { shape: third, book: SYP, parallel: USD, template: service-agency,
+company: { shape: third, book: SYP, parallel: USD, template: contracting,
            rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true },
            accounts: [{ code: "111007", name: "الصندوق — ليرة تركية", name_latin: "Cash on hand — TRY",
                         currency: TRY, monetary: true, statement_line: bs.cash }] }

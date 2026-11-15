@@ -19,7 +19,7 @@ A ledger whose policy is the Central Bank bulletin converts a new amount at the 
 
 ## Cases
 
-Every company keeps the default days off, Friday and Saturday. The account codes are the service-agency template's (S02). Each entry is a manual entry, both lines in one currency, so both lines convert at the same rate and the entry balances with no rounding line. Calendar for November 2026: Thursday 5, Friday 6, Saturday 7, Sunday 8, Monday 9, Tuesday 10.
+Every company keeps the default days off, Friday and Saturday. The account codes are the contracting template's (`contracting@1`, S11; the cases moved from the service-agency chart by S11's mapping table with no amount changed, owner 2026-11-14). Each entry is a manual entry, both lines in one currency, so both lines convert at the same rate and the entry balances with no rounding line. Calendar for November 2026: Thursday 5, Friday 6, Saturday 7, Sunday 8, Monday 9, Tuesday 10.
 
 The `syp-usd` cases are Vertex Media's shape: the USD amount stays as is in the USD parallel ledger, so only the book amount depends on the bulletin.
 
@@ -27,7 +27,7 @@ The `syp-usd` cases are Vertex Media's shape: the USD amount stays as is in the 
 
 ```yaml
 case: a working day takes its own bulletin, not an older or a later one
-company: { shape: syp-usd, book: SYP, parallel: USD, template: service-agency,
+company: { shape: syp-usd, book: SYP, parallel: USD, template: contracting,
            rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true } }
 rates:
   - { date: 2026-11-05, base: USD, quote: SYP, rate: "120.0000", type: bulletin }
@@ -53,7 +53,7 @@ expect:
 
 ```yaml
 case: Friday and Saturday take Thursday's bulletin
-company: { shape: syp-usd, book: SYP, parallel: USD, template: service-agency,
+company: { shape: syp-usd, book: SYP, parallel: USD, template: contracting,
            rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true } }
 rates:
   - { date: 2026-11-05, base: USD, quote: SYP, rate: "120.0000", type: bulletin }
@@ -91,7 +91,7 @@ expect:
 
 ```yaml
 case: a holiday on a Sunday takes Thursday's bulletin across the weekend
-company: { shape: syp-usd, book: SYP, parallel: USD, template: service-agency,
+company: { shape: syp-usd, book: SYP, parallel: USD, template: contracting,
            rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true },
            bulletin_holidays: [2026-11-08] }
 rates:
@@ -118,7 +118,7 @@ expect:
 
 ```yaml
 case: a working day without its bulletin is refused, never converted at the day before's
-company: { shape: syp-usd, book: SYP, parallel: USD, template: service-agency,
+company: { shape: syp-usd, book: SYP, parallel: USD, template: contracting,
            rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true } }
 rates:
   - { date: 2026-11-05, base: USD, quote: SYP, rate: "120.0000", type: bulletin }
@@ -148,7 +148,7 @@ expect:
 
 ```yaml
 case: Friday 1 January takes the bulletin of Thursday 31 December
-company: { shape: syp-usd, book: SYP, parallel: USD, template: service-agency,
+company: { shape: syp-usd, book: SYP, parallel: USD, template: contracting,
            rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true } }
 rates:
   - { date: 2026-12-31, base: USD, quote: SYP, rate: "123.0000", type: bulletin }
@@ -174,7 +174,7 @@ A company whose book currency is USD converts an SYP amount into its USD book at
 
 ```yaml
 case: USD books; Saturday takes Thursday's bulletin, Sunday its own
-company: { shape: usd-syp, book: USD, parallel: SYP, template: service-agency,
+company: { shape: usd-syp, book: USD, parallel: SYP, template: contracting,
            rate_policy: { book: bulletin, parallel: market } }
 rates:
   - { date: 2026-11-05, base: USD, quote: SYP, rate: "120.0000", type: bulletin }
@@ -208,7 +208,7 @@ expect:
 
 ```yaml
 case: USD books; a working day without its bulletin is refused
-company: { shape: usd-syp, book: USD, parallel: SYP, template: service-agency,
+company: { shape: usd-syp, book: USD, parallel: SYP, template: contracting,
            rate_policy: { book: bulletin, parallel: market } }
 rates:
   - { date: 2026-11-05, base: USD, quote: SYP, rate: "120.0000", type: bulletin }
@@ -239,7 +239,7 @@ A TRY amount in the SYP books converts at the direct TRY–SYP bulletin, or at a
 
 ```yaml
 case: a TRY expense converts through a cross whose two quotes are of the day
-company: { shape: third, book: SYP, parallel: USD, template: service-agency,
+company: { shape: third, book: SYP, parallel: USD, template: contracting,
            rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true } }
 rates:
   - { date: 2026-11-05, base: TRY, quote: SYP, rate: "2.9000", type: bulletin }
@@ -265,7 +265,7 @@ expect:
 
 ```yaml
 case: a TRY expense is refused when one quote of the cross is not of the day
-company: { shape: third, book: SYP, parallel: USD, template: service-agency,
+company: { shape: third, book: SYP, parallel: USD, template: contracting,
            rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true } }
 rates:
   - { date: 2026-11-08, base: TRY, quote: SYP, rate: "2.9500", type: bulletin }

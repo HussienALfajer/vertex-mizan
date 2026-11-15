@@ -19,7 +19,7 @@ A month is closed with a reason once it has ended in Asia/Damascus, in order (ev
 
 ## Cases
 
-The account codes are the service-agency template's (S02): the SYP and USD bank accounts `111003` and `111004`, trade receivables `112001` and contract assets `113001` (document control accounts), other payables `211003`, contract liabilities `212001` (non-monetary), client ad funds held `213001` (a running control account), the owner's current account `313001` (non-monetary), service revenue `411001`, realised exchange gains `421001`, unrealised exchange gains `421002` and losses `541002`, software subscriptions `531004` and repairs `531006` (expenses, non-monetary). The `third` case adds a TRY cash account `111007` (monetary, restricted to TRY, statement line `bs.cash`). Every rate and amount is synthetic. Fridays and Saturdays are days off (the default calendar): the publication days of October 2026 are the 1st, 4th–8th, 11th–15th, 18th–22nd and 25th–29th (Saturday 31 October takes Thursday 29 October's bulletin), and those of November the 1st–5th, 8th–12th, 15th–19th, 22nd–26th, 29th and 30th.
+The account codes are the contracting template's (`contracting@1`, S11; the cases moved from the service-agency chart by S11's mapping table with no amount changed, owner 2026-11-14): the SYP and USD bank accounts `111003` and `111004`, trade receivables `112001` and contract assets `113001` (document control accounts), other payables `211003`, contract liabilities `212001` (non-monetary), client ad funds held `213001` (added by the case under a header `213`; a running control account), the owner's current account `313001` (non-monetary), service revenue `411001`, realised exchange gains `421001`, unrealised exchange gains `421002` and losses `541002`, software subscriptions `531004` and repairs `531006` (expenses, non-monetary). The `third` case adds a TRY cash account `111007` (monetary, restricted to TRY, statement line `bs.cash`). Every rate and amount is synthetic. Fridays and Saturdays are days off (the default calendar): the publication days of October 2026 are the 1st, 4th–8th, 11th–15th, 18th–22nd and 25th–29th (Saturday 31 October takes Thursday 29 October's bulletin), and those of November the 1st–5th, 8th–12th, 15th–19th, 22nd–26th, 29th and 30th.
 
 The steps:
 - A **`close`** step closes a month with a reason on the case's clock (S07 rules 2, 5, 7–9), and a **`reopen`** step reopens one (rule 3); neither posts an entry. A refusal names the first rule that fails, in rule 2's or rule 3's order: `PERIOD_CLOSED` (the month is closed already), `PERIOD_NOT_ENDED`, `PERIOD_ORDER` with the month it names as its detail (`period:2026-10`: the earliest open month for a close, the latest closed month for a reopen), `PERIOD_NOT_CLOSED`, and `CHECKLIST_FAILED` with its failing items as its detail, comma-separated in the checklist's order: `bulletins_recorded`, `closing_rates_recorded`, `no_drafts`, `open_items_agree`, `no_held_events`, `releases_posted`, `revaluation_current`. A refused close changes nothing; the case fixes what it names and closes again.
@@ -51,7 +51,7 @@ October and December have SYP expenses; November has no posting, so it has no pe
 
 ```yaml
 case: SYP books only; December refused PERIOD_ORDER naming October, then November, which has no posting; October, November and December closed in order
-company: { shape: syp, book: SYP, template: service-agency, rate_policy: { book: bulletin } }
+company: { shape: syp, book: SYP, template: contracting, rate_policy: { book: bulletin } }
 steps:
   - manual: an October software subscription the owner paid
     accounting_date: 2026-10-15
@@ -98,8 +98,9 @@ USD books at the bulletin hold the SYP invoice M-1, revalued at 125 on 30 Novemb
 
 ```yaml
 case: USD books; M-1 of 1,200,000.00 SYP revalued at 125 (−400.00 USD); the close refused on bulletins_recorded for 17 Nov, then closed once it is recorded
-company: { shape: usd-syp, book: USD, parallel: SYP, template: service-agency,
-           rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true } }
+company: { shape: usd-syp, book: USD, parallel: SYP, template: contracting,
+           rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true },
+           contracts: [{ code: P1, kind: project, client: C1 }] }
 rates:
   # every November publication day at 120, except Tuesday 17 (recorded by step 4); 125 on Monday 30 November
   - { date: 2026-11-01, base: USD, quote: SYP, rate: "120.0000", type: bulletin }
@@ -126,9 +127,9 @@ rates:
 steps:
   - manual: invoice M-1 to client C1 in SYP
     accounting_date: 2026-11-03
-    payload: { lines: [{ account: "112001", dims: { client: C1 }, currency: SYP, amount: 120000000,
+    payload: { lines: [{ account: "112001", dims: { client: C1, contract: P1 }, currency: SYP, amount: 120000000,
                          open_item: { ref: M-1, due: 2026-12-03 } },
-                       { account: "411001", dims: { client: C1, service: S1 }, currency: SYP, amount: -120000000 }] }
+                       { account: "411001", dims: { client: C1, contract: P1, service: S1 }, currency: SYP, amount: -120000000 }] }
   - revalue: book
     period: 2026-11
   - close: 2026-11
@@ -143,23 +144,23 @@ expect:
       date: 2026-11-03
       lines:
         # book: 1,200,000.00 SYP / 120 = 10,000.00 USD; parallel: SYP as is
-        - { account: "112001", dims: { client: C1 }, currency: SYP, amount: 120000000, book: 1000000, parallel: 120000000 }
-        - { account: "411001", dims: { client: C1, service: S1 }, currency: SYP, amount: -120000000, book: -1000000, parallel: -120000000 }
+        - { account: "112001", dims: { client: C1, contract: P1 }, currency: SYP, amount: 120000000, book: 1000000, parallel: 120000000 }
+        - { account: "411001", dims: { client: C1, contract: P1, service: S1 }, currency: SYP, amount: -120000000, book: -1000000, parallel: -120000000 }
     - source: revaluation
       date: 2026-11-30
       lines:
         # 1,200,000.00 / 125 = 9,600.00 USD; carrying 10,000.00; difference −400.00 USD (a loss)
-        - { account: "112001", dims: { client: C1 }, currency: SYP, amount: 0, book: -40000, parallel: 0 }
+        - { account: "112001", dims: { client: C1, contract: P1 }, currency: SYP, amount: 0, book: -40000, parallel: 0 }
         - { account: "541002", currency: USD, amount: 40000, book: 40000, parallel: 0 }
     - source: reversal
       date: 2026-12-01
       lines:
-        - { account: "112001", dims: { client: C1 }, currency: SYP, amount: 0, book: 40000, parallel: 0 }
+        - { account: "112001", dims: { client: C1, contract: P1 }, currency: SYP, amount: 0, book: 40000, parallel: 0 }
         - { account: "541002", currency: USD, amount: -40000, book: -40000, parallel: 0 }
   balances:
     - { account: "541002", book: 0, parallel: 0 }
   open_items:
-    - { item: M-1, account: "112001", dims: { client: C1 }, currency: SYP, amount: 120000000, book: 1000000, parallel: 120000000 }
+    - { item: M-1, account: "112001", dims: { client: C1, contract: P1 }, currency: SYP, amount: 120000000, book: 1000000, parallel: 120000000 }
 ```
 
 ### A third currency: a missing USD/TRY bulletin while every USD/SYP bulletin is recorded
@@ -168,7 +169,7 @@ TRY cash of 2,000.00 is measured in the SYP books through the cross (TRY→USD a
 
 ```yaml
 case: TRY cash revalued in both ledgers (−47.62 SYP, −1.22 USD); the close refused on bulletins_recorded for the USD/TRY bulletin of 17 Nov, then closed once it is recorded
-company: { shape: third, book: SYP, parallel: USD, template: service-agency,
+company: { shape: third, book: SYP, parallel: USD, template: contracting,
            rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true },
            accounts: [{ code: "111007", name: "الصندوق — ليرة تركية", name_latin: "Cash on hand — TRY",
                         currency: TRY, monetary: true, statement_line: bs.cash }] }

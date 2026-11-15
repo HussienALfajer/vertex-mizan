@@ -261,8 +261,7 @@ export interface ChartToApply {
 /**
  * Applies a chart's accounts to a chart that holds the five roots alone (`CHART_NOT_EMPTY`
  * otherwise), with their required dimensions and roles, audited `chart.template_applied`. The
- * scenario book applies its own chart through it, the service-agency chart its approved cases
- * name, which the product no longer offers (ADR 0021).
+ * scenario book applies a case's template through it.
  */
 export async function applyChart(
   tx: Transaction,

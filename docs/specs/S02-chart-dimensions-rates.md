@@ -417,7 +417,7 @@ Dimension types: the four built-in types; no account requires contract, departme
 | 561 | فوائد القروض والسحب على المكشوف | Interest on loans and overdrafts | H | D | | | | |
 | 561001 | فوائد القروض والسحب على المكشوف | Interest on loans and overdrafts | P | D |  |  | `is.finance_costs` |  |
 
-The service-agency template (`service-agency@3`) was removed by ADR 0021; the scenario book keeps a frozen copy for its approved cases until they move to the contracting template (N5).
+The service-agency template (`service-agency@3`) was removed by ADR 0021; the scenario book's cases moved to the contracting template in S11's PR 4 (N5), and the book keeps no copy of it.
 
 ## Acceptance
 - **The owner's end-to-end check, step by step:**

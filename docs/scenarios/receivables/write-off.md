@@ -18,7 +18,7 @@ A write-off is a manual entry on two lines and the difference. The line on the r
 
 ## Cases
 
-The account codes are the service-agency template's (S02): the SYP and USD bank accounts `111003` and `111004`, trade receivables `112001` (a `document` control account, client required), service revenue `411001` (client and service required), realised exchange gains `421001` and losses `541001`. When the owner approved the cases, the template had no account for written-off receivables and the statement-line catalogue no line for impairment losses (IAS 1.82(ba); S04 "Open questions", for the templates' review, Q3). The templates' version 3 adds impairment losses `532006` on `is.impairment_losses` (the review's A9); the cases keep their own account until the owner decides that a write-off posts there. Every case adds `532009` "ديون معدومة مشطوبة" (Bad debts written off) under the administrative expenses `532`, on `is.other_expenses`, with no currency restriction. (The owner approved the cases with this account as `532005`; the templates' version 3 gives that code to the non-resident tax borne, so the added account moved to `532009`, its line and every amount unchanged.) Every rate and amount is synthetic. Tuesday 3, Tuesday 10, Thursday 19 and Wednesday 25 November 2026 are publication days.
+The account codes are the contracting template's (`contracting@1`, S11; the cases moved from the service-agency chart by S11's mapping table with no amount changed, owner 2026-11-14): the SYP and USD bank accounts `111003` and `111004`, trade receivables `112001` (a `document` control account, client and contract required), service revenue `411001` (client and contract required; the lines keep their service), realised exchange gains `421001` and losses `541001`. When the owner approved the cases, the template had no account for written-off receivables and the statement-line catalogue no line for impairment losses (IAS 1.82(ba); S04 "Open questions", for the templates' review, Q3). The templates' version 3 adds impairment losses `532006` on `is.impairment_losses` (the review's A9); the cases keep their own account until the owner decides that a write-off posts there. Every case adds `532009` "ديون معدومة مشطوبة" (Bad debts written off) under the administrative expenses `532`, on `is.other_expenses`, with no currency restriction. (The owner approved the cases with this account as `532005`; the templates' version 3 gives that code to the non-resident tax borne, so the added account moved to `532009`, its line and every amount unchanged.) Every rate and amount is synthetic. Tuesday 3, Tuesday 10, Thursday 19 and Wednesday 25 November 2026 are publication days.
 
 A manual line opens an item with `open_item: { ref, due? }` and moves one with `item: <ref>`; it then takes the item's dimensions, so it states none (S04 rules 6–7). The expense line carries no dimension: `532009` requires none. A difference line carries its amount in one ledger only, in that ledger's currency (ADR 0007).
 
@@ -30,19 +30,20 @@ The S04 example. The item carries 120,000.00 SYP at bulletin 120 and is written 
 
 ```yaml
 case: a 1,000.00 USD item at bulletin 120 written off on 19 November at 123; a book gain of 3,000.00 SYP
-company: { shape: syp-usd, book: SYP, parallel: USD, template: service-agency,
+company: { shape: syp-usd, book: SYP, parallel: USD, template: contracting,
            rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true },
            accounts: [{ code: "532009", name: "ديون معدومة مشطوبة", name_latin: "Bad debts written off",
-                        statement_line: is.other_expenses }] }
+                        statement_line: is.other_expenses }],
+           contracts: [{ code: P1, kind: project, client: C1 }] }
 rates:
   - { date: 2026-11-03, base: USD, quote: SYP, rate: "120.0000", type: bulletin }
   - { date: 2026-11-19, base: USD, quote: SYP, rate: "123.0000", type: bulletin }
 steps:
   - manual: invoice M-1 to client C1
     accounting_date: 2026-11-03
-    payload: { lines: [{ account: "112001", dims: { client: C1 }, currency: USD, amount: 100000,
+    payload: { lines: [{ account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 100000,
                          open_item: { ref: M-1, due: 2026-12-03 } },
-                       { account: "411001", dims: { client: C1, service: S1 }, currency: USD, amount: -100000 }] }
+                       { account: "411001", dims: { client: C1, contract: P1, service: S1 }, currency: USD, amount: -100000 }] }
   - manual: write-off of M-1
     accounting_date: 2026-11-19
     payload: { description: "شطب دين غير قابل للتحصيل",
@@ -54,15 +55,15 @@ expect:
       date: 2026-11-03
       lines:
         # book: 1,000.00 USD × 120 = 120,000.00 SYP; parallel: USD as is
-        - { account: "112001", dims: { client: C1 }, currency: USD, amount: 100000, book: 12000000, parallel: 100000 }
-        - { account: "411001", dims: { client: C1, service: S1 }, currency: USD, amount: -100000, book: -12000000, parallel: -100000 }
+        - { account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 100000, book: 12000000, parallel: 100000 }
+        - { account: "411001", dims: { client: C1, contract: P1, service: S1 }, currency: USD, amount: -100000, book: -12000000, parallel: -100000 }
     - source: manual
       date: 2026-11-19
       lines:
         # a new measurement: 1,000.00 USD × 123 = 123,000.00 SYP
         - { account: "532009", currency: USD, amount: 100000, book: 12300000, parallel: 100000 }
         # all that is open, at what the item carries
-        - { account: "112001", dims: { client: C1 }, currency: USD, amount: -100000, book: -12000000, parallel: -100000 }
+        - { account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: -100000, book: -12000000, parallel: -100000 }
         # book residual: 12,300,000 − 12,000,000 = 300,000 → a credit: realised gain 3,000.00 SYP; parallel 0
         - { account: "421001", currency: SYP, amount: -300000, book: -300000, parallel: 0 }
   balances:
@@ -70,26 +71,27 @@ expect:
     - { account: "532009", book: 12300000, parallel: 100000 }
     - { account: "421001", book: -300000, parallel: 0 }
   open_items:
-    - { item: M-1, account: "112001", dims: { client: C1 }, currency: USD, amount: 0, book: 0, parallel: 0 }
+    - { item: M-1, account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 0, book: 0, parallel: 0 }
 ```
 
 ### Vertex Media: a USD item written off as the bulletin falls
 
 ```yaml
 case: a 1,000.00 USD item at bulletin 123 written off on 25 November at 121.5; a book loss of 1,500.00 SYP
-company: { shape: syp-usd, book: SYP, parallel: USD, template: service-agency,
+company: { shape: syp-usd, book: SYP, parallel: USD, template: contracting,
            rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true },
            accounts: [{ code: "532009", name: "ديون معدومة مشطوبة", name_latin: "Bad debts written off",
-                        statement_line: is.other_expenses }] }
+                        statement_line: is.other_expenses }],
+           contracts: [{ code: P1, kind: project, client: C1 }] }
 rates:
   - { date: 2026-11-19, base: USD, quote: SYP, rate: "123.0000", type: bulletin }
   - { date: 2026-11-25, base: USD, quote: SYP, rate: "121.5000", type: bulletin }
 steps:
   - manual: invoice M-1 to client C1
     accounting_date: 2026-11-19
-    payload: { lines: [{ account: "112001", dims: { client: C1 }, currency: USD, amount: 100000,
+    payload: { lines: [{ account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 100000,
                          open_item: { ref: M-1, due: 2026-12-19 } },
-                       { account: "411001", dims: { client: C1, service: S1 }, currency: USD, amount: -100000 }] }
+                       { account: "411001", dims: { client: C1, contract: P1, service: S1 }, currency: USD, amount: -100000 }] }
   - manual: write-off of M-1
     accounting_date: 2026-11-25
     payload: { lines: [{ account: "532009", currency: USD, amount: 100000 },
@@ -100,21 +102,21 @@ expect:
       date: 2026-11-19
       lines:
         # book: 1,000.00 USD × 123 = 123,000.00 SYP
-        - { account: "112001", dims: { client: C1 }, currency: USD, amount: 100000, book: 12300000, parallel: 100000 }
-        - { account: "411001", dims: { client: C1, service: S1 }, currency: USD, amount: -100000, book: -12300000, parallel: -100000 }
+        - { account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 100000, book: 12300000, parallel: 100000 }
+        - { account: "411001", dims: { client: C1, contract: P1, service: S1 }, currency: USD, amount: -100000, book: -12300000, parallel: -100000 }
     - source: manual
       date: 2026-11-25
       lines:
         # a new measurement: 1,000.00 USD × 121.5 = 121,500.00 SYP
         - { account: "532009", currency: USD, amount: 100000, book: 12150000, parallel: 100000 }
-        - { account: "112001", dims: { client: C1 }, currency: USD, amount: -100000, book: -12300000, parallel: -100000 }
+        - { account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: -100000, book: -12300000, parallel: -100000 }
         # book residual: 12,150,000 − 12,300,000 = −150,000 → a debit: realised loss 1,500.00 SYP
         - { account: "541001", currency: SYP, amount: 150000, book: 150000, parallel: 0 }
   balances:
     - { account: "532009", book: 12150000, parallel: 100000 }
     - { account: "541001", book: 150000, parallel: 0 }
   open_items:
-    - { item: M-1, account: "112001", dims: { client: C1 }, currency: USD, amount: 0, book: 0, parallel: 0 }
+    - { item: M-1, account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 0, book: 0, parallel: 0 }
 ```
 
 ### Vertex Media: a partial receipt, then the rest written off
@@ -123,10 +125,11 @@ The write-off clears all that remains after the receipt, so it takes everything 
 
 ```yaml
 case: 400.00 USD received on a 1,000.00 USD item at 123; the remaining 600.00 written off at 123.5
-company: { shape: syp-usd, book: SYP, parallel: USD, template: service-agency,
+company: { shape: syp-usd, book: SYP, parallel: USD, template: contracting,
            rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true },
            accounts: [{ code: "532009", name: "ديون معدومة مشطوبة", name_latin: "Bad debts written off",
-                        statement_line: is.other_expenses }] }
+                        statement_line: is.other_expenses }],
+           contracts: [{ code: P1, kind: project, client: C1 }] }
 rates:
   - { date: 2026-11-03, base: USD, quote: SYP, rate: "120.0000", type: bulletin }
   - { date: 2026-11-19, base: USD, quote: SYP, rate: "123.0000", type: bulletin }
@@ -134,9 +137,9 @@ rates:
 steps:
   - manual: invoice M-1 to client C1
     accounting_date: 2026-11-03
-    payload: { lines: [{ account: "112001", dims: { client: C1 }, currency: USD, amount: 100000,
+    payload: { lines: [{ account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 100000,
                          open_item: { ref: M-1, due: 2026-12-03 } },
-                       { account: "411001", dims: { client: C1, service: S1 }, currency: USD, amount: -100000 }] }
+                       { account: "411001", dims: { client: C1, contract: P1, service: S1 }, currency: USD, amount: -100000 }] }
   - manual: receipt on M-1
     accounting_date: 2026-11-19
     payload: { lines: [{ account: "111004", currency: USD, amount: 40000 },
@@ -150,15 +153,15 @@ expect:
     - source: manual
       date: 2026-11-03
       lines:
-        - { account: "112001", dims: { client: C1 }, currency: USD, amount: 100000, book: 12000000, parallel: 100000 }
-        - { account: "411001", dims: { client: C1, service: S1 }, currency: USD, amount: -100000, book: -12000000, parallel: -100000 }
+        - { account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 100000, book: 12000000, parallel: 100000 }
+        - { account: "411001", dims: { client: C1, contract: P1, service: S1 }, currency: USD, amount: -100000, book: -12000000, parallel: -100000 }
     - source: manual
       date: 2026-11-19
       lines:
         # book: 400.00 USD × 123 = 49,200.00 SYP
         - { account: "111004", currency: USD, amount: 40000, book: 4920000, parallel: 40000 }
         # 400 of 1,000 open: 12,000,000 × 4/10 = 4,800,000; 100,000 × 4/10 = 40,000
-        - { account: "112001", dims: { client: C1 }, currency: USD, amount: -40000, book: -4800000, parallel: -40000 }
+        - { account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: -40000, book: -4800000, parallel: -40000 }
         # book residual: 4,920,000 − 4,800,000 = 120,000 → realised gain 1,200.00 SYP
         - { account: "421001", currency: SYP, amount: -120000, book: -120000, parallel: 0 }
     - source: manual
@@ -167,7 +170,7 @@ expect:
         # a new measurement: 600.00 USD × 123.5 = 74,100.00 SYP
         - { account: "532009", currency: USD, amount: 60000, book: 7410000, parallel: 60000 }
         # 600 of 600 open: all that remains, 12,000,000 − 4,800,000 = 7,200,000; 100,000 − 40,000 = 60,000
-        - { account: "112001", dims: { client: C1 }, currency: USD, amount: -60000, book: -7200000, parallel: -60000 }
+        - { account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: -60000, book: -7200000, parallel: -60000 }
         # book residual: 7,410,000 − 7,200,000 = 210,000 → realised gain 2,100.00 SYP
         - { account: "421001", currency: SYP, amount: -210000, book: -210000, parallel: 0 }
   balances:
@@ -176,7 +179,7 @@ expect:
     # 120,000 + 210,000
     - { account: "421001", book: -330000, parallel: 0 }
   open_items:
-    - { item: M-1, account: "112001", dims: { client: C1 }, currency: USD, amount: 0, book: 0, parallel: 0 }
+    - { item: M-1, account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 0, book: 0, parallel: 0 }
 ```
 
 ### Vertex Media: a third written off, the rest received
@@ -185,10 +188,11 @@ A partial write-off clears its share of what the item carries, rounded half away
 
 ```yaml
 case: 333.33 USD of a 1,000.00 USD item at 120.5 written off at 123; the remaining 666.67 received at 123.5
-company: { shape: syp-usd, book: SYP, parallel: USD, template: service-agency,
+company: { shape: syp-usd, book: SYP, parallel: USD, template: contracting,
            rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true },
            accounts: [{ code: "532009", name: "ديون معدومة مشطوبة", name_latin: "Bad debts written off",
-                        statement_line: is.other_expenses }] }
+                        statement_line: is.other_expenses }],
+           contracts: [{ code: P1, kind: project, client: C1 }] }
 rates:
   - { date: 2026-11-03, base: USD, quote: SYP, rate: "120.5000", type: bulletin }
   - { date: 2026-11-19, base: USD, quote: SYP, rate: "123.0000", type: bulletin }
@@ -196,9 +200,9 @@ rates:
 steps:
   - manual: invoice M-1 to client C1
     accounting_date: 2026-11-03
-    payload: { lines: [{ account: "112001", dims: { client: C1 }, currency: USD, amount: 100000,
+    payload: { lines: [{ account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 100000,
                          open_item: { ref: M-1, due: 2026-12-03 } },
-                       { account: "411001", dims: { client: C1, service: S1 }, currency: USD, amount: -100000 }] }
+                       { account: "411001", dims: { client: C1, contract: P1, service: S1 }, currency: USD, amount: -100000 }] }
   - manual: write-off of a part of M-1
     accounting_date: 2026-11-19
     payload: { lines: [{ account: "532009", currency: USD, amount: 33333 },
@@ -213,8 +217,8 @@ expect:
       date: 2026-11-03
       lines:
         # book: 1,000.00 USD × 120.5 = 120,500.00 SYP
-        - { account: "112001", dims: { client: C1 }, currency: USD, amount: 100000, book: 12050000, parallel: 100000 }
-        - { account: "411001", dims: { client: C1, service: S1 }, currency: USD, amount: -100000, book: -12050000, parallel: -100000 }
+        - { account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 100000, book: 12050000, parallel: 100000 }
+        - { account: "411001", dims: { client: C1, contract: P1, service: S1 }, currency: USD, amount: -100000, book: -12050000, parallel: -100000 }
     - source: manual
       date: 2026-11-19
       lines:
@@ -222,7 +226,7 @@ expect:
         - { account: "532009", currency: USD, amount: 33333, book: 4099959, parallel: 33333 }
         # 333.33 of 1,000.00 open: book 12,050,000 × 33,333/100,000 = 4,016,626.5 → 4,016,627 (half away from zero)
         #                          parallel 100,000 × 33,333/100,000 = 33,333
-        - { account: "112001", dims: { client: C1 }, currency: USD, amount: -33333, book: -4016627, parallel: -33333 }
+        - { account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: -33333, book: -4016627, parallel: -33333 }
         # book residual: 4,099,959 − 4,016,627 = 83,332 → realised gain 833.32 SYP
         - { account: "421001", currency: SYP, amount: -83332, book: -83332, parallel: 0 }
     - source: manual
@@ -231,7 +235,7 @@ expect:
         # book: 666.67 USD × 123.5 = 82,333.745 → 82,333.75 SYP (half away from zero)
         - { account: "111004", currency: USD, amount: 66667, book: 8233375, parallel: 66667 }
         # 666.67 of 666.67 open: all that remains, 12,050,000 − 4,016,627 = 8,033,373; 100,000 − 33,333 = 66,667
-        - { account: "112001", dims: { client: C1 }, currency: USD, amount: -66667, book: -8033373, parallel: -66667 }
+        - { account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: -66667, book: -8033373, parallel: -66667 }
         # book residual: 8,233,375 − 8,033,373 = 200,002 → realised gain 2,000.02 SYP
         - { account: "421001", currency: SYP, amount: -200002, book: -200002, parallel: 0 }
   balances:
@@ -240,7 +244,7 @@ expect:
     # 83,332 + 200,002
     - { account: "421001", book: -283334, parallel: 0 }
   open_items:
-    - { item: M-1, account: "112001", dims: { client: C1 }, currency: USD, amount: 0, book: 0, parallel: 0 }
+    - { item: M-1, account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 0, book: 0, parallel: 0 }
 ```
 
 ### Vertex Media: a write-off made in error, reversed, then the item received
@@ -249,10 +253,11 @@ The client pays after the item was written off in error. The write-off is revers
 
 ```yaml
 case: M-1 written off on 19 November at 123; the write-off reversed on 25 November and 1,000.00 USD received at 123.5
-company: { shape: syp-usd, book: SYP, parallel: USD, template: service-agency,
+company: { shape: syp-usd, book: SYP, parallel: USD, template: contracting,
            rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true },
            accounts: [{ code: "532009", name: "ديون معدومة مشطوبة", name_latin: "Bad debts written off",
-                        statement_line: is.other_expenses }] }
+                        statement_line: is.other_expenses }],
+           contracts: [{ code: P1, kind: project, client: C1 }] }
 rates:
   - { date: 2026-11-03, base: USD, quote: SYP, rate: "120.0000", type: bulletin }
   - { date: 2026-11-19, base: USD, quote: SYP, rate: "123.0000", type: bulletin }
@@ -260,9 +265,9 @@ rates:
 steps:
   - manual: invoice M-1 to client C1
     accounting_date: 2026-11-03
-    payload: { lines: [{ account: "112001", dims: { client: C1 }, currency: USD, amount: 100000,
+    payload: { lines: [{ account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 100000,
                          open_item: { ref: M-1, due: 2026-12-03 } },
-                       { account: "411001", dims: { client: C1, service: S1 }, currency: USD, amount: -100000 }] }
+                       { account: "411001", dims: { client: C1, contract: P1, service: S1 }, currency: USD, amount: -100000 }] }
   - manual: write-off of M-1
     accounting_date: 2026-11-19
     payload: { lines: [{ account: "532009", currency: USD, amount: 100000 },
@@ -278,20 +283,20 @@ expect:
     - source: manual
       date: 2026-11-03
       lines:
-        - { account: "112001", dims: { client: C1 }, currency: USD, amount: 100000, book: 12000000, parallel: 100000 }
-        - { account: "411001", dims: { client: C1, service: S1 }, currency: USD, amount: -100000, book: -12000000, parallel: -100000 }
+        - { account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 100000, book: 12000000, parallel: 100000 }
+        - { account: "411001", dims: { client: C1, contract: P1, service: S1 }, currency: USD, amount: -100000, book: -12000000, parallel: -100000 }
     - source: manual
       date: 2026-11-19
       lines:
         - { account: "532009", currency: USD, amount: 100000, book: 12300000, parallel: 100000 }
-        - { account: "112001", dims: { client: C1 }, currency: USD, amount: -100000, book: -12000000, parallel: -100000 }
+        - { account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: -100000, book: -12000000, parallel: -100000 }
         - { account: "421001", currency: SYP, amount: -300000, book: -300000, parallel: 0 }
     - source: reversal
       date: 2026-11-25
       lines:
         # the exact negation of entry 2; the item moves back to 1,000.00 USD, 120,000.00 SYP
         - { account: "532009", currency: USD, amount: -100000, book: -12300000, parallel: -100000 }
-        - { account: "112001", dims: { client: C1 }, currency: USD, amount: 100000, book: 12000000, parallel: 100000 }
+        - { account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 100000, book: 12000000, parallel: 100000 }
         - { account: "421001", currency: SYP, amount: 300000, book: 300000, parallel: 0 }
     - source: manual
       date: 2026-11-25
@@ -299,7 +304,7 @@ expect:
         # book: 1,000.00 USD × 123.5 = 123,500.00 SYP
         - { account: "111004", currency: USD, amount: 100000, book: 12350000, parallel: 100000 }
         # all that is open again, at what the item carries
-        - { account: "112001", dims: { client: C1 }, currency: USD, amount: -100000, book: -12000000, parallel: -100000 }
+        - { account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: -100000, book: -12000000, parallel: -100000 }
         # book residual: 12,350,000 − 12,000,000 = 350,000 → realised gain 3,500.00 SYP
         - { account: "421001", currency: SYP, amount: -350000, book: -350000, parallel: 0 }
   balances:
@@ -308,17 +313,18 @@ expect:
     # −300,000 + 300,000 − 350,000
     - { account: "421001", book: -350000, parallel: 0 }
   open_items:
-    - { item: M-1, account: "112001", dims: { client: C1 }, currency: USD, amount: 0, book: 0, parallel: 0 }
+    - { item: M-1, account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 0, book: 0, parallel: 0 }
 ```
 
 ### Vertex Media: writing off more than is open
 
 ```yaml
 case: 500.00 USD written off on M-1 with 400.00 open is refused; the item keeps what it carries
-company: { shape: syp-usd, book: SYP, parallel: USD, template: service-agency,
+company: { shape: syp-usd, book: SYP, parallel: USD, template: contracting,
            rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true },
            accounts: [{ code: "532009", name: "ديون معدومة مشطوبة", name_latin: "Bad debts written off",
-                        statement_line: is.other_expenses }] }
+                        statement_line: is.other_expenses }],
+           contracts: [{ code: P1, kind: project, client: C1 }] }
 rates:
   - { date: 2026-11-03, base: USD, quote: SYP, rate: "120.0000", type: bulletin }
   - { date: 2026-11-19, base: USD, quote: SYP, rate: "123.0000", type: bulletin }
@@ -326,9 +332,9 @@ rates:
 steps:
   - manual: invoice M-1 to client C1
     accounting_date: 2026-11-03
-    payload: { lines: [{ account: "112001", dims: { client: C1 }, currency: USD, amount: 100000,
+    payload: { lines: [{ account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 100000,
                          open_item: { ref: M-1, due: 2026-12-03 } },
-                       { account: "411001", dims: { client: C1, service: S1 }, currency: USD, amount: -100000 }] }
+                       { account: "411001", dims: { client: C1, contract: P1, service: S1 }, currency: USD, amount: -100000 }] }
   - manual: receipt on M-1
     accounting_date: 2026-11-19
     payload: { lines: [{ account: "111004", currency: USD, amount: 60000 },
@@ -342,19 +348,19 @@ expect:
     - source: manual
       date: 2026-11-03
       lines:
-        - { account: "112001", dims: { client: C1 }, currency: USD, amount: 100000, book: 12000000, parallel: 100000 }
-        - { account: "411001", dims: { client: C1, service: S1 }, currency: USD, amount: -100000, book: -12000000, parallel: -100000 }
+        - { account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 100000, book: 12000000, parallel: 100000 }
+        - { account: "411001", dims: { client: C1, contract: P1, service: S1 }, currency: USD, amount: -100000, book: -12000000, parallel: -100000 }
     - source: manual
       date: 2026-11-19
       lines:
         # book: 600.00 USD × 123 = 73,800.00 SYP; 600 of 1,000 open: 12,000,000 × 6/10 = 7,200,000
         - { account: "111004", currency: USD, amount: 60000, book: 7380000, parallel: 60000 }
-        - { account: "112001", dims: { client: C1 }, currency: USD, amount: -60000, book: -7200000, parallel: -60000 }
+        - { account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: -60000, book: -7200000, parallel: -60000 }
         - { account: "421001", currency: SYP, amount: -180000, book: -180000, parallel: 0 }
   balances:
     - { account: "532009", book: 0, parallel: 0 }
   open_items:
-    - { item: M-1, account: "112001", dims: { client: C1 }, currency: USD, amount: 40000, book: 4800000, parallel: 40000 }
+    - { item: M-1, account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 40000, book: 4800000, parallel: 40000 }
   outcome: { status: refused, reason: RELEASE_EXCEEDS_BALANCE }
 ```
 
@@ -364,19 +370,20 @@ An SYP item carries its parallel amount at the market rate of its date. The writ
 
 ```yaml
 case: a 100,000.00 SYP item at market 121 written off on 25 November at market 124; a parallel loss of 20.00 USD
-company: { shape: syp-usd, book: SYP, parallel: USD, template: service-agency,
+company: { shape: syp-usd, book: SYP, parallel: USD, template: contracting,
            rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true },
            accounts: [{ code: "532009", name: "ديون معدومة مشطوبة", name_latin: "Bad debts written off",
-                        statement_line: is.other_expenses }] }
+                        statement_line: is.other_expenses }],
+           contracts: [{ code: P1, kind: project, client: C1 }] }
 rates:
   - { date: 2026-11-03, base: USD, quote: SYP, rate: "121.0000", type: market }
   - { date: 2026-11-25, base: USD, quote: SYP, rate: "124.0000", type: market }
 steps:
   - manual: invoice M-1 to client C1, in SYP
     accounting_date: 2026-11-03
-    payload: { lines: [{ account: "112001", dims: { client: C1 }, currency: SYP, amount: 10000000,
+    payload: { lines: [{ account: "112001", dims: { client: C1, contract: P1 }, currency: SYP, amount: 10000000,
                          open_item: { ref: M-1, due: 2026-12-03 } },
-                       { account: "411001", dims: { client: C1, service: S1 }, currency: SYP, amount: -10000000 }] }
+                       { account: "411001", dims: { client: C1, contract: P1, service: S1 }, currency: SYP, amount: -10000000 }] }
   - manual: write-off of M-1
     accounting_date: 2026-11-25
     payload: { lines: [{ account: "532009", currency: SYP, amount: 10000000 },
@@ -387,14 +394,14 @@ expect:
       date: 2026-11-03
       lines:
         # parallel: 100,000.00 SYP / 121 = 826.4462… → 826.45 USD
-        - { account: "112001", dims: { client: C1 }, currency: SYP, amount: 10000000, book: 10000000, parallel: 82645 }
-        - { account: "411001", dims: { client: C1, service: S1 }, currency: SYP, amount: -10000000, book: -10000000, parallel: -82645 }
+        - { account: "112001", dims: { client: C1, contract: P1 }, currency: SYP, amount: 10000000, book: 10000000, parallel: 82645 }
+        - { account: "411001", dims: { client: C1, contract: P1, service: S1 }, currency: SYP, amount: -10000000, book: -10000000, parallel: -82645 }
     - source: manual
       date: 2026-11-25
       lines:
         # parallel: 100,000.00 SYP / 124 = 806.4516… → 806.45 USD
         - { account: "532009", currency: SYP, amount: 10000000, book: 10000000, parallel: 80645 }
-        - { account: "112001", dims: { client: C1 }, currency: SYP, amount: -10000000, book: -10000000, parallel: -82645 }
+        - { account: "112001", dims: { client: C1, contract: P1 }, currency: SYP, amount: -10000000, book: -10000000, parallel: -82645 }
         # parallel residual: 80,645 − 82,645 = −2,000 → realised loss 20.00 USD; book residual 0
         - { account: "541001", currency: USD, amount: 2000, book: 0, parallel: 2000 }
   balances:
@@ -402,7 +409,7 @@ expect:
     - { account: "532009", book: 10000000, parallel: 80645 }
     - { account: "541001", book: 0, parallel: 2000 }
   open_items:
-    - { item: M-1, account: "112001", dims: { client: C1 }, currency: SYP, amount: 0, book: 0, parallel: 0 }
+    - { item: M-1, account: "112001", dims: { client: C1, contract: P1 }, currency: SYP, amount: 0, book: 0, parallel: 0 }
 ```
 
 ### SYP books only
@@ -411,18 +418,19 @@ A USD item written off posts a book difference; an SYP item written off posts no
 
 ```yaml
 case: SYP books only; the S04 example, a 1,000.00 USD item at 120 written off at 123
-company: { shape: syp, book: SYP, template: service-agency, rate_policy: { book: bulletin },
+company: { shape: syp, book: SYP, template: contracting, rate_policy: { book: bulletin },
            accounts: [{ code: "532009", name: "ديون معدومة مشطوبة", name_latin: "Bad debts written off",
-                        statement_line: is.other_expenses }] }
+                        statement_line: is.other_expenses }],
+           contracts: [{ code: P1, kind: project, client: C1 }] }
 rates:
   - { date: 2026-11-03, base: USD, quote: SYP, rate: "120.0000", type: bulletin }
   - { date: 2026-11-19, base: USD, quote: SYP, rate: "123.0000", type: bulletin }
 steps:
   - manual: invoice M-1 to client C1
     accounting_date: 2026-11-03
-    payload: { lines: [{ account: "112001", dims: { client: C1 }, currency: USD, amount: 100000,
+    payload: { lines: [{ account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 100000,
                          open_item: { ref: M-1, due: 2026-12-03 } },
-                       { account: "411001", dims: { client: C1, service: S1 }, currency: USD, amount: -100000 }] }
+                       { account: "411001", dims: { client: C1, contract: P1, service: S1 }, currency: USD, amount: -100000 }] }
   - manual: write-off of M-1
     accounting_date: 2026-11-19
     payload: { lines: [{ account: "532009", currency: USD, amount: 100000 },
@@ -432,34 +440,35 @@ expect:
     - source: manual
       date: 2026-11-03
       lines:
-        - { account: "112001", dims: { client: C1 }, currency: USD, amount: 100000, book: 12000000 }
-        - { account: "411001", dims: { client: C1, service: S1 }, currency: USD, amount: -100000, book: -12000000 }
+        - { account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 100000, book: 12000000 }
+        - { account: "411001", dims: { client: C1, contract: P1, service: S1 }, currency: USD, amount: -100000, book: -12000000 }
     - source: manual
       date: 2026-11-19
       lines:
         # 1,000.00 USD × 123 = 123,000.00 SYP; the item clears its 120,000.00; residual 300,000 → gain
         - { account: "532009", currency: USD, amount: 100000, book: 12300000 }
-        - { account: "112001", dims: { client: C1 }, currency: USD, amount: -100000, book: -12000000 }
+        - { account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: -100000, book: -12000000 }
         - { account: "421001", currency: SYP, amount: -300000, book: -300000 }
   balances:
     - { account: "112001", book: 0 }
     - { account: "532009", book: 12300000 }
     - { account: "421001", book: -300000 }
   open_items:
-    - { item: M-1, account: "112001", dims: { client: C1 }, currency: USD, amount: 0, book: 0 }
+    - { item: M-1, account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 0, book: 0 }
 ```
 
 ```yaml
 case: SYP books only; 50,000.00 SYP received on a 120,000.00 SYP item, the remaining 70,000.00 written off
-company: { shape: syp, book: SYP, template: service-agency, rate_policy: { book: bulletin },
+company: { shape: syp, book: SYP, template: contracting, rate_policy: { book: bulletin },
            accounts: [{ code: "532009", name: "ديون معدومة مشطوبة", name_latin: "Bad debts written off",
-                        statement_line: is.other_expenses }] }
+                        statement_line: is.other_expenses }],
+           contracts: [{ code: P1, kind: project, client: C1 }] }
 steps:
   - manual: invoice M-1 to client C1, in SYP
     accounting_date: 2026-11-03
-    payload: { lines: [{ account: "112001", dims: { client: C1 }, currency: SYP, amount: 12000000,
+    payload: { lines: [{ account: "112001", dims: { client: C1, contract: P1 }, currency: SYP, amount: 12000000,
                          open_item: { ref: M-1, due: 2026-12-03 } },
-                       { account: "411001", dims: { client: C1, service: S1 }, currency: SYP, amount: -12000000 }] }
+                       { account: "411001", dims: { client: C1, contract: P1, service: S1 }, currency: SYP, amount: -12000000 }] }
   - manual: receipt on M-1
     accounting_date: 2026-11-19
     payload: { lines: [{ account: "111003", currency: SYP, amount: 5000000 },
@@ -473,24 +482,24 @@ expect:
     - source: manual
       date: 2026-11-03
       lines:
-        - { account: "112001", dims: { client: C1 }, currency: SYP, amount: 12000000, book: 12000000 }
-        - { account: "411001", dims: { client: C1, service: S1 }, currency: SYP, amount: -12000000, book: -12000000 }
+        - { account: "112001", dims: { client: C1, contract: P1 }, currency: SYP, amount: 12000000, book: 12000000 }
+        - { account: "411001", dims: { client: C1, contract: P1, service: S1 }, currency: SYP, amount: -12000000, book: -12000000 }
     - source: manual
       date: 2026-11-19
       lines:
         - { account: "111003", currency: SYP, amount: 5000000, book: 5000000 }
-        - { account: "112001", dims: { client: C1 }, currency: SYP, amount: -5000000, book: -5000000 }
+        - { account: "112001", dims: { client: C1, contract: P1 }, currency: SYP, amount: -5000000, book: -5000000 }
     - source: manual
       date: 2026-11-25
       lines:
         # in the book currency the expense is the amount itself and the item clears what remains; residual 0
         - { account: "532009", currency: SYP, amount: 7000000, book: 7000000 }
-        - { account: "112001", dims: { client: C1 }, currency: SYP, amount: -7000000, book: -7000000 }
+        - { account: "112001", dims: { client: C1, contract: P1 }, currency: SYP, amount: -7000000, book: -7000000 }
   balances:
     - { account: "112001", book: 0 }
     - { account: "532009", book: 7000000 }
   open_items:
-    - { item: M-1, account: "112001", dims: { client: C1 }, currency: SYP, amount: 0, book: 0 }
+    - { item: M-1, account: "112001", dims: { client: C1, contract: P1 }, currency: SYP, amount: 0, book: 0 }
 ```
 
 ### USD books with an SYP parallel ledger
@@ -499,19 +508,20 @@ A USD item is in the book currency, so the book ledger has no difference; the SY
 
 ```yaml
 case: USD books; a 1,000.00 USD item at market 121 written off at market 124; a parallel gain of 3,000.00 SYP
-company: { shape: usd-syp, book: USD, parallel: SYP, template: service-agency,
+company: { shape: usd-syp, book: USD, parallel: SYP, template: contracting,
            rate_policy: { book: bulletin, parallel: market },
            accounts: [{ code: "532009", name: "ديون معدومة مشطوبة", name_latin: "Bad debts written off",
-                        statement_line: is.other_expenses }] }
+                        statement_line: is.other_expenses }],
+           contracts: [{ code: P1, kind: project, client: C1 }] }
 rates:
   - { date: 2026-11-03, base: USD, quote: SYP, rate: "121.0000", type: market }
   - { date: 2026-11-19, base: USD, quote: SYP, rate: "124.0000", type: market }
 steps:
   - manual: invoice M-1 to client C1
     accounting_date: 2026-11-03
-    payload: { lines: [{ account: "112001", dims: { client: C1 }, currency: USD, amount: 100000,
+    payload: { lines: [{ account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 100000,
                          open_item: { ref: M-1, due: 2026-12-03 } },
-                       { account: "411001", dims: { client: C1, service: S1 }, currency: USD, amount: -100000 }] }
+                       { account: "411001", dims: { client: C1, contract: P1, service: S1 }, currency: USD, amount: -100000 }] }
   - manual: write-off of M-1
     accounting_date: 2026-11-19
     payload: { lines: [{ account: "532009", currency: USD, amount: 100000 },
@@ -522,14 +532,14 @@ expect:
       date: 2026-11-03
       lines:
         # parallel: 1,000.00 USD × 121 (market) = 121,000.00 SYP
-        - { account: "112001", dims: { client: C1 }, currency: USD, amount: 100000, book: 100000, parallel: 12100000 }
-        - { account: "411001", dims: { client: C1, service: S1 }, currency: USD, amount: -100000, book: -100000, parallel: -12100000 }
+        - { account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 100000, book: 100000, parallel: 12100000 }
+        - { account: "411001", dims: { client: C1, contract: P1, service: S1 }, currency: USD, amount: -100000, book: -100000, parallel: -12100000 }
     - source: manual
       date: 2026-11-19
       lines:
         # parallel: 1,000.00 USD × 124 = 124,000.00 SYP
         - { account: "532009", currency: USD, amount: 100000, book: 100000, parallel: 12400000 }
-        - { account: "112001", dims: { client: C1 }, currency: USD, amount: -100000, book: -100000, parallel: -12100000 }
+        - { account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: -100000, book: -100000, parallel: -12100000 }
         # parallel residual: 12,400,000 − 12,100,000 = 300,000 → realised gain 3,000.00 SYP; book residual 0
         - { account: "421001", currency: SYP, amount: -300000, book: 0, parallel: -300000 }
   balances:
@@ -537,7 +547,7 @@ expect:
     - { account: "532009", book: 100000, parallel: 12400000 }
     - { account: "421001", book: 0, parallel: -300000 }
   open_items:
-    - { item: M-1, account: "112001", dims: { client: C1 }, currency: USD, amount: 0, book: 0, parallel: 0 }
+    - { item: M-1, account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 0, book: 0, parallel: 0 }
 ```
 
 ### A third currency: a TRY item written off
@@ -546,10 +556,11 @@ Book SYP at the bulletin, crossed through USD; the USD parallel ledger at the ma
 
 ```yaml
 case: a 41,000.00 TRY item written off on 25 November as the lira weakens; a loss in both ledgers
-company: { shape: third, book: SYP, parallel: USD, template: service-agency,
+company: { shape: third, book: SYP, parallel: USD, template: contracting,
            rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true },
            accounts: [{ code: "532009", name: "ديون معدومة مشطوبة", name_latin: "Bad debts written off",
-                        statement_line: is.other_expenses }] }
+                        statement_line: is.other_expenses }],
+           contracts: [{ code: P1, kind: project, client: C1 }] }
 rates:
   - { date: 2026-11-10, base: USD, quote: SYP, rate: "122.0000", type: bulletin }
   - { date: 2026-11-10, base: USD, quote: TRY, rate: "41.0000", type: bulletin }
@@ -560,9 +571,9 @@ rates:
 steps:
   - manual: invoice M-1 to client C1, in TRY
     accounting_date: 2026-11-10
-    payload: { lines: [{ account: "112001", dims: { client: C1 }, currency: TRY, amount: 4100000,
+    payload: { lines: [{ account: "112001", dims: { client: C1, contract: P1 }, currency: TRY, amount: 4100000,
                          open_item: { ref: M-1, due: 2026-12-10 } },
-                       { account: "411001", dims: { client: C1, service: S1 }, currency: TRY, amount: -4100000 }] }
+                       { account: "411001", dims: { client: C1, contract: P1, service: S1 }, currency: TRY, amount: -4100000 }] }
   - manual: write-off of M-1
     accounting_date: 2026-11-25
     payload: { lines: [{ account: "532009", currency: TRY, amount: 4100000 },
@@ -574,15 +585,15 @@ expect:
       lines:
         # book: 41,000.00 TRY / 41 × 122 = 122,000.00 SYP
         # parallel: 41,000.00 TRY / 41.2 (market) = 995.1456… → 995.15 USD
-        - { account: "112001", dims: { client: C1 }, currency: TRY, amount: 4100000, book: 12200000, parallel: 99515 }
-        - { account: "411001", dims: { client: C1, service: S1 }, currency: TRY, amount: -4100000, book: -12200000, parallel: -99515 }
+        - { account: "112001", dims: { client: C1, contract: P1 }, currency: TRY, amount: 4100000, book: 12200000, parallel: 99515 }
+        - { account: "411001", dims: { client: C1, contract: P1, service: S1 }, currency: TRY, amount: -4100000, book: -12200000, parallel: -99515 }
     - source: manual
       date: 2026-11-25
       lines:
         # book: 41,000.00 TRY / 41.8 × 123.5 (one exact product) = 121,136.3636… → 121,136.36 SYP
         # parallel: 41,000.00 TRY / 42 = 976.1904… → 976.19 USD
         - { account: "532009", currency: TRY, amount: 4100000, book: 12113636, parallel: 97619 }
-        - { account: "112001", dims: { client: C1 }, currency: TRY, amount: -4100000, book: -12200000, parallel: -99515 }
+        - { account: "112001", dims: { client: C1, contract: P1 }, currency: TRY, amount: -4100000, book: -12200000, parallel: -99515 }
         # book residual: 12,113,636 − 12,200,000 = −86,364 → realised loss 863.64 SYP
         - { account: "541001", currency: SYP, amount: 86364, book: 86364, parallel: 0 }
         # parallel residual: 97,619 − 99,515 = −1,896 → realised loss 18.96 USD
@@ -592,5 +603,5 @@ expect:
     - { account: "532009", book: 12113636, parallel: 97619 }
     - { account: "541001", book: 86364, parallel: 1896 }
   open_items:
-    - { item: M-1, account: "112001", dims: { client: C1 }, currency: TRY, amount: 0, book: 0, parallel: 0 }
+    - { item: M-1, account: "112001", dims: { client: C1, contract: P1 }, currency: TRY, amount: 0, book: 0, parallel: 0 }
 ```

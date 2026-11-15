@@ -15,7 +15,7 @@ Scenarios are written through `/posting-rule`, before the rule's code.
 - `reports` (S09: what the reports present, read after the steps).
 - `cash` (S11: cash vouchers, transfers and currency exchanges between cash accounts, cash counts).
 
-Hub's areas (`revenue`, `ad-funds`, `expenses`, `inbox`, `receivables/hub-payment.md`, `opening/before-books-start.md`) and the cases of other files that ran Hub's events left with the integration (ADR 0021); they stay in git history. Most cases keep `template: service-agency`: the book holds that chart as its own (`packages/scenarios/src/agency-chart.ts`), frozen, since their approved entries name its accounts; the product no longer offers it.
+Hub's areas (`revenue`, `ad-funds`, `expenses`, `inbox`, `receivables/hub-payment.md`, `opening/before-books-start.md`) and the cases of other files that ran Hub's events left with the integration (ADR 0021); they stay in git history. The cases that named the service-agency chart moved to `template: contracting` by S11's mapping table (owner, 2026-11-14), with no expected amount changed: a case adds the accounts the template lacks (the USD e-wallet `111006`, client ad funds held `213001` under a header `213`, project expenses awaiting payment source as `211092`), and its trade receivables and revenue lines name the client's contract. The book holds no chart of its own.
 
 ## File format
 
@@ -48,10 +48,13 @@ company:
   parallel: USD                     # omit for no parallel ledger
   rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true }
                                     # book_accepts_transaction_rate: false unless stated; only market accepts
-  template: service-agency          # chart-of-accounts template (optional)
-  accounts:                         # postable accounts added to the template (optional)
+  template: contracting             # chart-of-accounts template, general or contracting (optional)
+  accounts:                         # accounts added to the template, in order (optional)
     - { code: "111007", name: "الصندوق — ليرة تركية", name_latin: "Cash on hand — TRY",
         currency: TRY, monetary: true, statement_line: bs.cash }
+    - { code: "213", kind: header, name: "أمانات العملاء" }  # a level-3 header (kind: postable by default)
+    - { code: "213001", name: "أمانات إعلانات العملاء", statement_line: bs.client_money, currency: USD,
+        monetary: true, control: running, counterparty_type: client, required: [client] }
   closed_periods: []                # e.g. [2026-10]
   contracts:                        # contract values the case's manual lines name (optional; S09):
     - { code: P1, kind: project, client: C1 }  # a contract needs its kind and client
@@ -164,7 +167,7 @@ expect:
 Writing the YAML:
 - **Amounts** are whole minor units; a decimal amount is refused, never rounded. **Account codes and rates are quoted** (`"112001"`, `"120.0000"`), dates are `YYYY-MM-DD` and periods `YYYY-MM`.
 - A scenario file has no fence but its cases: each opens with exactly `` ```yaml `` and closes with `` ``` ``, both at the start of a line. Any other fence (no language, `yml`, indented, in a list or a quote, tildes, unclosed) is an error, so no case is hidden. A payload holds no decimal number.
-- An added account (`accounts`) is a postable code under a header of the case's template, not already in it, with a statement line of its class; `currency` restricts it, `monetary` marks it monetary (S02). It needs a `template`.
+- An added account (`accounts`) is a code not already in the case's template. A `header` is a level-3 code under one of the template's level-2 headers, with no statement line or flag. A postable account (the default) sits under a header of the template or one added before it, with a statement line of its class; `currency` restricts it, `monetary` marks it monetary, `control` (`document` or `running`) with `counterparty_type` (`client`, `supplier` or `worker`) makes it a control account (S04, S11 rule 5), and `required` lists the dimension types it requires (S02). The chart's services check the rest. It needs a `template`.
 - On a line or an open item, no `dims` means no dimensions. On a balance, `dims` filters: the balance over every dimension set holding the stated pairs, so no `dims` is the whole account; with a `currency`, only that currency's lines, and its `amount` may be stated.
 - **Items** (S04): a manual line on a `document` control account opens an item with `open_item: { ref: M-1, due: 2026-12-03 }` (`due` optional) or moves one with `item: M-1` (its reference). It then takes the item's dimensions, so it states no `dims`. A line on a `running` account names the client in `dims` and neither field. An expected line on an item carries the item's dimensions, and a running item is named in `open_items` by the client's code.
 - `parallel` is stated on every line, balance and open item exactly when the company keeps a parallel ledger. In a ledger's own currency, that ledger's amount is the transaction amount (ADR 0007): a SYP line in SYP books has `book` equal to `amount`.
