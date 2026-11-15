@@ -337,7 +337,8 @@ const realised = { gain: { account: 'G' }, loss: { account: 'L' } };
 const rounding = { account: 'R' };
 
 /** A rate of four decimals from its value times 10^4. */
-const fourPlaces = (scaled: bigint) => `${scaled / 10_000n}.${String(scaled % 10_000n).padStart(4, '0')}`;
+const fourPlaces = (scaled: bigint) =>
+  `${scaled / 10_000n}.${String(scaled % 10_000n).padStart(4, '0')}`;
 
 describe('an exchange voucher measured with its derived rate', () => {
   it("is the scenario's entry: the book left with nothing, a 750.00 SYP gain in the parallel ledger", () => {

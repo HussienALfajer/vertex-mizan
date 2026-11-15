@@ -42,6 +42,15 @@ export function missingOf(draft: DraftRow, lines: readonly DraftLine[]): Posting
   if (draft.reversesEntryId !== null) return refusals;
   // S11 rule 13: a count has no lines of its own, only the cash counted.
   if (draft.voucherKind === 'count') {
+    // Its lines come from its difference at posting: typed ones are refused, never dropped.
+    if (lines.length > 0) {
+      refusals.push({
+        code: 'CASH_ACCOUNT_INVALID',
+        message: 'A count has no lines: they come from its difference',
+        lineNo: null,
+        details: { field: 'lines', rule: '13' },
+      });
+    }
     if (draft.countedMinor === null) {
       refusals.push({
         code: 'VALIDATION_FAILED',
@@ -84,6 +93,11 @@ export function missingOf(draft: DraftRow, lines: readonly DraftLine[]): Posting
 export function refuseIncomplete(draft: DraftRow, lines: readonly DraftLine[]): void {
   const [first, ...rest] = missingOf(draft, lines);
   if (!first) return;
+  if (first.code === 'CASH_ACCOUNT_INVALID') {
+    throw new CodedException('CASH_ACCOUNT_INVALID', first.message, [
+      { path: ['lines'], message: first.message },
+    ]);
+  }
   if (first.code === 'ENTRY_TOO_FEW_LINES' && rest.length === 0) {
     throw new CodedException('ENTRY_TOO_FEW_LINES', first.message);
   }

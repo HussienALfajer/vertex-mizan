@@ -44,6 +44,7 @@ export {
 } from './posting/item-reads.js';
 export { closedPeriodList, isClosedPeriod, readClosedPeriods } from './posting/periods.js';
 export {
+  checkVoucher,
   type DealtRateSpec,
   type DerivedRate,
   type ManualLineSpec,

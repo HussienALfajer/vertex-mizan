@@ -10,12 +10,15 @@ import { v7 as uuidv7 } from 'uuid';
 import { beforeAll, describe, expect, it } from 'vitest';
 import {
   auditEntries,
+  blockAccount,
   cashVouchers,
   chartAccounts,
   createCompanyBooks,
   entryDrafts,
   journalEntries,
   journalLines,
+  ledgerHeads,
+  lockedAccount,
   type ManualLineSpec,
   type PersonActor,
   post,
@@ -70,7 +73,7 @@ interface Books {
   readonly accounts: Map<string, string>;
 }
 
-async function newBooks(): Promise<Books> {
+async function newBooks(template: 'contracting' | 'general' = 'contracting'): Promise<Books> {
   const id = uuidv7();
   await withCompany(app, id, async (tx) => {
     await createCompanyBooks(
@@ -82,7 +85,7 @@ async function newBooks(): Promise<Books> {
         ledgers: CLIENT,
         fiscalYearStartMonth: 1,
         policyNote: 'مذكرة سياسة تجريبية.',
-        template: 'contracting',
+        template,
         createdByUserId: personId,
       },
       actor(),
@@ -428,7 +431,133 @@ describe('the box rule (S11 rule 8)', () => {
   });
 });
 
+/** A count draft saved in its own transaction, to post it from two transactions at once. */
+async function countDraft(books: Books, counted: bigint): Promise<string> {
+  const draftId = uuidv7();
+  await inCompany(books.id, (tx) =>
+    tx.insert(entryDrafts).values({
+      id: draftId,
+      companyId: books.id,
+      state: 'draft',
+      entryDate: '2026-12-02',
+      description: 'جرد تجريبي',
+      preparedByUserId: personId,
+      voucherKind: 'count',
+      cashAccountId: account(books, '111002'),
+      countedMinor: counted,
+    }),
+  );
+  return draftId;
+}
+
+const postCount = (books: Books, draftId: string, counted: bigint, expected: bigint) =>
+  inCompany(books.id, (tx) =>
+    postVoucher(tx, {
+      client: 'manual',
+      idempotencyKey: draftId,
+      entryDate: '2026-12-02',
+      description: 'جرد تجريبي',
+      reference: null,
+      draftId,
+      preparedByUserId: personId,
+      approvedByUserId: null,
+      actor: actor(),
+      voucher: {
+        kind: 'count',
+        cashAccountId: account(books, '111002'),
+        counterCashAccountId: null,
+        partyName: null,
+        countedMinor: counted,
+        expectedMinor: expected,
+      },
+      lines: [],
+      dealtRates: [],
+      today: TODAY,
+    }),
+  );
+
 describe('cash counts (S11 rule 13)', () => {
+  it('answers a count draft posted twice at once with one voucher and a replay', async () => {
+    const books = await newBooks();
+    await receipt(books, '111002', 'USD', 200000n);
+    // A count that matches, then one with a shortage: each posted twice at once.
+    for (const [counted, expected] of [
+      [200000n, 200000n],
+      [199900n, 200000n],
+    ] as const) {
+      const draftId = await countDraft(books, counted);
+      const answers = await Promise.all([
+        postCount(books, draftId, counted, expected),
+        postCount(books, draftId, counted, expected),
+      ]);
+      expect(answers.map((answer) => answer.replayed).sort()).toEqual([false, true]);
+      expect(answers[0]?.id).toBe(answers[1]?.id);
+      const rows = await inCompany(books.id, (tx) =>
+        tx.select().from(cashVouchers).where(eq(cashVouchers.draftId, draftId)),
+      );
+      expect(rows).toHaveLength(1);
+    }
+  });
+
+  it('refuses a count of a blocked box, even one that matches', async () => {
+    const books = await newBooks();
+    await receipt(books, '111002', 'USD', 1000n);
+    await inCompany(books.id, async (tx) => {
+      await tx.select({ id: ledgerHeads.id }).from(ledgerHeads).for('update');
+      await blockAccount(
+        tx,
+        books.id,
+        actor(),
+        await lockedAccount(tx, account(books, '111002'), 'update'),
+        'صندوق موقوف للاختبار',
+      );
+    });
+    const refused = await codeOf(
+      postVoucherOf(books, {
+        kind: 'count',
+        cash: '111002',
+        on: '2026-12-02',
+        counted: 1000n,
+        expected: 1000n,
+      }),
+    );
+    expect(refused.code).toBe('ACCOUNT_BLOCKED');
+  });
+
+  it('refuses a difference where the chart has no cash shortage account of its meaning', async () => {
+    // The general chart has no 532007: a box marked there counts, but a shortage has nowhere to go.
+    const books = await newBooks('general');
+    await inCompany(books.id, (tx) =>
+      tx
+        .update(chartAccounts)
+        .set({ cashKind: 'box' })
+        .where(eq(chartAccounts.id, account(books, '111002'))),
+    );
+    await receipt(books, '111002', 'USD', 1000n);
+    const refused = await codeOf(
+      postVoucherOf(books, {
+        kind: 'count',
+        cash: '111002',
+        on: '2026-12-02',
+        counted: 900n,
+        expected: 1000n,
+      }),
+    );
+    expect(refused).toEqual({
+      code: 'CASH_ACCOUNT_INVALID',
+      details: { account: '532007', statementLine: 'is.other_expenses' },
+    });
+    // A count that matches needs neither account.
+    const matched = await postVoucherOf(books, {
+      kind: 'count',
+      cash: '111002',
+      on: '2026-12-02',
+      counted: 1000n,
+      expected: 1000n,
+    });
+    expect(matched.entry).toBeNull();
+  });
+
   it('posts a shortage, refuses a stale count and records a match with no entry', async () => {
     const books = await newBooks();
     await receipt(books, '111002', 'USD', 200000n);

@@ -1,6 +1,7 @@
 export * from './access.js';
 export * from './audit.js';
 export * from './canonical.js';
+export * from './cash.js';
 export * from './chart.js';
 export * from './chart-templates.js';
 export * from './companies.js';
@@ -23,4 +24,3 @@ export * from './periods.js';
 export * from './rates.js';
 export * from './reports.js';
 export * from './vouchers.js';
-export * from './cash.js';

@@ -229,6 +229,31 @@ describe('vouchers through the drafts (S11 rules 9–13)', () => {
   });
 });
 
+describe('a voucher draft checked before it posts (S11 "Data")', () => {
+  it('refuses lines typed on a count, and a malformed voucher at submission', async () => {
+    const books = await contractor();
+    const count = await voucherDraft(
+      books,
+      { kind: 'count', cashAccountId: books.accounts.get('111002'), countedMinor: '0' },
+      [line(books, '532007', 'USD', '100'), line(books, '111002', 'USD', '-100')],
+    );
+    const preview = await books.browser.post(`/api/drafts/${count}/preview`);
+    expect(preview.body.refusals[0]).toMatchObject({ code: 'CASH_ACCOUNT_INVALID' });
+    const posted = await books.browser.post(`/api/drafts/${count}/post`, { expectedMinor: '0' });
+    expect([posted.status, posted.body.code]).toEqual([422, 'CASH_ACCOUNT_INVALID']);
+
+    const approval = await books.browser.patch('/api/company', { manualEntryApproval: true });
+    expect(approval.status, JSON.stringify(approval.body)).toBe(200);
+    const malformed = await voucherDraft(
+      books,
+      { kind: 'receipt', cashAccountId: books.accounts.get('313001') },
+      [line(books, '313001', 'USD', '100'), line(books, '111002', 'USD', '-100')],
+    );
+    const submitted = await books.browser.post(`/api/drafts/${malformed}/submit`);
+    expect([submitted.status, submitted.body.code]).toEqual([422, 'CASH_ACCOUNT_INVALID']);
+  });
+});
+
 describe('the cash reads (S11 rules 16–17)', () => {
   it('answers the position, a statement, the register and a voucher; never another company’s', async () => {
     const books = await contractor();
@@ -299,4 +324,3 @@ describe('the cash reads (S11 rules 16–17)', () => {
     expect((await other.browser.get('/api/vouchers')).body.vouchers).toEqual([]);
   });
 });
-

@@ -77,9 +77,7 @@ export function dealtRateAccepted(
     ([, { currency, ratePolicy }]) =>
       ratePolicy.rateType === 'market' &&
       ratePolicy.acceptsTransactionRate &&
-      [...currencies].some(
-        (from) => from !== currency && quotesPair(dealt, from, currency),
-      ),
+      [...currencies].some((from) => from !== currency && quotesPair(dealt, from, currency)),
   );
 }
 

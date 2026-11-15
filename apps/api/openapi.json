@@ -5780,7 +5780,7 @@
             }
           },
           "422": {
-            "description": "VALIDATION_FAILED, ENTRY_TOO_FEW_LINES",
+            "description": "VALIDATION_FAILED, ENTRY_TOO_FEW_LINES, CASH_ACCOUNT_INVALID, ACCOUNT_ARCHIVED, ACCOUNT_BLOCKED",
             "content": {
               "application/json": {
                 "schema": {

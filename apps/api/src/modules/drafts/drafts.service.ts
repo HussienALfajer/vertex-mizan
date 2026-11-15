@@ -21,6 +21,7 @@ import {
 import {
   cashVouchers,
   chartAccounts,
+  checkVoucher,
   type Database,
   discardDraft,
   entryAttachments,
@@ -346,7 +347,16 @@ export class DraftsService {
       if (!(await approvalIsOn(tx))) {
         throw new CodedException('APPROVAL_NOT_REQUIRED', 'Post the draft instead');
       }
-      refuseIncomplete(row, await draftLines(tx, id));
+      const lines = await draftLines(tx, id);
+      refuseIncomplete(row, lines);
+      // S11 "Data": a voucher draft's lines are checked by rules 10–13 at submission too.
+      const voucher = voucherSpecOf(row, null);
+      if (voucher !== null) {
+        await checkVoucher(tx, {
+          voucher,
+          lines: voucher.kind === 'count' ? [] : manualLinesOf(lines),
+        });
+      }
       await tx
         .update(entryDrafts)
         .set({

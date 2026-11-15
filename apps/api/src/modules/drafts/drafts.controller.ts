@@ -199,6 +199,9 @@ export class DraftsController {
     'DRAFT_NOT_EDITABLE',
     'APPROVAL_NOT_REQUIRED',
     'ENTRY_TOO_FEW_LINES',
+    'CASH_ACCOUNT_INVALID',
+    'ACCOUNT_ARCHIVED',
+    'ACCOUNT_BLOCKED',
   )
   async submit(
     @Access() access: RequestAccess,

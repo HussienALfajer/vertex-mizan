@@ -2644,8 +2644,16 @@ async function pairOrientation(
     : { base: b, quote: a };
 }
 
-/** The codes of the accounts a count posts its difference to (S11 rule 13, `contracting@1`). */
-const COUNT_ACCOUNTS = { shortage: '532007', overage: '422002' } as const;
+/**
+ * The accounts a count posts its difference to (S11 rule 13, `contracting@1`): cash shortages
+ * `532007` on `is.other_expenses` and cash overages `422002` on `is.other_income` (IAS 1.97–98). An
+ * account of either code that is not that account (another chart's `532007`, a postable account on
+ * another statement line) is refused, never posted to.
+ */
+const COUNT_ACCOUNTS = {
+  shortage: { code: '532007', statementLine: 'is.other_expenses' },
+  overage: { code: '422002', statementLine: 'is.other_income' },
+} as const;
 
 /** A voucher draft as it posts (S11 rules 9–13): its header, typed lines, dealt rates and clock. */
 export interface VoucherRequest extends Omit<PostingRequest, 'content' | 'voucher'> {
@@ -2665,6 +2673,8 @@ export interface DerivedRate {
 
 /** What a voucher posts, prepared: its lines and dealt rates, a transfer's rate, a count's figures. */
 interface PreparedVoucher {
+  /** The cash account's currency. */
+  readonly cashCurrency: CurrencyCode;
   readonly lines: readonly ManualLineSpec[];
   readonly dealtRates: readonly DealtRateSpec[];
   readonly derivedRate: DerivedRate | null;
@@ -2680,12 +2690,10 @@ interface PreparedVoucher {
  * the end of its date, read under the box's lock when `lock`, compared with the preview's
  * (`CASH_COUNT_STALE`, with the new expected amount), and its difference lines.
  */
-async function prepareVoucher(
+export async function checkVoucher(
   tx: Transaction,
-  request: Pick<VoucherRequest, 'voucher' | 'lines' | 'dealtRates' | 'entryDate'>,
-  ledgers: CompanyLedgers,
-  lock: boolean,
-): Promise<PreparedVoucher> {
+  request: Pick<VoucherRequest, 'voucher' | 'lines'>,
+) {
   const { voucher } = request;
   const ids = [
     voucher.cashAccountId,
@@ -2698,6 +2706,8 @@ async function prepareVoucher(
       code: chartAccounts.code,
       cashKind: chartAccounts.cashKind,
       currency: chartAccounts.currency,
+      blockedAt: chartAccounts.blockedAt,
+      archivedAt: chartAccounts.archivedAt,
     })
     .from(chartAccounts)
     .where(inArray(chartAccounts.id, [...new Set(ids)]));
@@ -2725,6 +2735,17 @@ async function prepareVoucher(
       field: 'counterCashAccountId',
     });
   }
+  // Edge cases 16–17: an archived or blocked cash account takes no new voucher, a count that
+  // matches (which posts no line the chart would check) included.
+  for (const id of [voucher.cashAccountId, voucher.counterCashAccountId]) {
+    const row = rows.find((candidate) => candidate.id === id);
+    if (row?.archivedAt != null) {
+      refuse('ACCOUNT_ARCHIVED', `The cash account ${row.code} is archived`, { account: row.code });
+    }
+    if (row?.blockedAt != null) {
+      refuse('ACCOUNT_BLOCKED', `The cash account ${row.code} is blocked`, { account: row.code });
+    }
+  }
   const transfer = checkVoucherShape({
     kind: voucher.kind,
     cashAccount,
@@ -2736,6 +2757,17 @@ async function prepareVoucher(
     })),
     accounts,
   });
+  return { cashAccount, transfer };
+}
+
+async function prepareVoucher(
+  tx: Transaction,
+  request: Pick<VoucherRequest, 'voucher' | 'lines' | 'dealtRates' | 'entryDate'>,
+  ledgers: CompanyLedgers,
+  lock: boolean,
+): Promise<PreparedVoucher> {
+  const { voucher } = request;
+  const { cashAccount, transfer } = await checkVoucher(tx, request);
   if (transfer !== null) {
     const pair = await pairOrientation(tx, transfer.givenCurrency, transfer.receivedCurrency);
     const derivedRate = derivedDealtRate(transfer, pair);
@@ -2748,6 +2780,7 @@ async function prepareVoucher(
     const offered =
       derivedRate !== null && !typed && dealtRateAccepted(derivedRate, currencies, ledgers);
     return {
+      cashCurrency: cashAccount.currency as CurrencyCode,
       lines: request.lines,
       dealtRates:
         offered && derivedRate !== null ? [...request.dealtRates, derivedRate] : request.dealtRates,
@@ -2758,6 +2791,7 @@ async function prepareVoucher(
   }
   if (voucher.kind !== 'count') {
     return {
+      cashCurrency: cashAccount.currency as CurrencyCode,
       lines: request.lines,
       dealtRates: request.dealtRates,
       derivedRate: null,
@@ -2783,13 +2817,28 @@ async function prepareVoucher(
     });
   }
   const targets = await tx
-    .select({ id: chartAccounts.id, code: chartAccounts.code })
+    .select({
+      id: chartAccounts.id,
+      code: chartAccounts.code,
+      kind: chartAccounts.kind,
+      statementLine: chartAccounts.statementLine,
+    })
     .from(chartAccounts)
-    .where(inArray(chartAccounts.code, [COUNT_ACCOUNTS.shortage, COUNT_ACCOUNTS.overage]));
-  const accountOf = (code: string): string => {
-    const found = targets.find((target) => target.code === code);
-    if (found === undefined) {
-      refuse('CASH_ACCOUNT_INVALID', `A count posts its difference to ${code}`, { account: code });
+    .where(
+      inArray(chartAccounts.code, [COUNT_ACCOUNTS.shortage.code, COUNT_ACCOUNTS.overage.code]),
+    );
+  const accountOf = (target: { readonly code: string; readonly statementLine: string }) => {
+    const found = targets.find((row) => row.code === target.code);
+    if (
+      found === undefined ||
+      found.kind !== 'postable' ||
+      found.statementLine !== target.statementLine
+    ) {
+      refuse(
+        'CASH_ACCOUNT_INVALID',
+        `A count posts its difference to ${target.code} on ${target.statementLine}`,
+        { account: target.code, statementLine: target.statementLine },
+      );
     }
     return found.id;
   };
@@ -2801,8 +2850,8 @@ async function prepareVoucher(
           currency: cashAccount.currency as CurrencyCode,
           countedMinor,
           expectedMinor,
-          shortageAccount: accountOf(COUNT_ACCOUNTS.shortage),
-          overageAccount: accountOf(COUNT_ACCOUNTS.overage),
+          shortageAccount: countedMinor < expectedMinor ? accountOf(COUNT_ACCOUNTS.shortage) : '',
+          overageAccount: countedMinor > expectedMinor ? accountOf(COUNT_ACCOUNTS.overage) : '',
         }).map(
           (line): ManualLineSpec => ({
             accountId: line.account,
@@ -2813,6 +2862,7 @@ async function prepareVoucher(
           }),
         );
   return {
+    cashCurrency: cashAccount.currency as CurrencyCode,
     lines,
     dealtRates: [],
     derivedRate: null,
@@ -2849,9 +2899,11 @@ export async function postVoucher(
   const companyId = await contextCompany(tx);
   const draftId = request.draftId;
   if (draftId === null) throw new TypeError('A voucher posts from its draft');
+  // The voucher a draft posted is read after the ledger head is locked, so a second post of the
+  // draft at once waits for the first and answers its voucher (one voucher per draft).
+  const [head] = await tx.select({ id: ledgerHeads.id }).from(ledgerHeads).for('update');
   const existing = await voucherOfDraft(tx, draftId);
   if (existing !== null) return { ...existing, replayed: true };
-  const [head] = await tx.select({ id: ledgerHeads.id }).from(ledgerHeads).for('update');
   const [settings] = await tx.select().from(companySettings).for('update');
   if (!head || !settings) throw new Error('A company without its ledger head or settings');
   const prepared = await prepareVoucher(tx, request, ledgersOf(settings), true);
@@ -2865,6 +2917,7 @@ export async function postVoucher(
       dealtRates: [],
     });
     checkManualEntryDate(on, request.today);
+    checkCurrencyDate(prepared.cashCurrency, on);
     const fiscalYear = fiscalYearOf(on, settings.fiscalYearStartMonth);
     await openPeriod(tx, companyId, on, fiscalYear);
     const number = await takeVoucherNumber(tx, companyId, 'count', fiscalYear);
