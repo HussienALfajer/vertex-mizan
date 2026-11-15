@@ -25,6 +25,9 @@ export const reports = {
     ageing: 'أعمار الذمم المدينة',
     client_statement: 'كشف حساب طرف',
     chart: 'دليل الحسابات',
+    cash_position: 'المركز النقدي',
+    cash_statement: 'كشف صندوق',
+    voucher: 'سند',
   } satisfies Record<Report, string>,
   /** The journal of `/reports/journal` (rule 12), the journal book's Excel. */
   journal: 'اليومية العامة',

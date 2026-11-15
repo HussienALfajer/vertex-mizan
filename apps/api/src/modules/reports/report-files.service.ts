@@ -21,10 +21,13 @@ import {
   countQueuedReportFiles,
   type Database,
   parseReportFileParams,
+  readCashAccount,
   readJournalBookPrints,
   readReportAnswer,
   readReportFiles,
+  readVoucherRows,
   reportFiles,
+  type SheetReport,
   type Transaction,
   withCompany,
 } from '@vertex-mizan/db';
@@ -61,6 +64,7 @@ const SHEET_TEXT = {
   accounting: ar.accounting,
   openItems: ar.openItems,
   chart: ar.chart,
+  cash: ar.cash,
 };
 
 /** A ready PDF, to stream as a download. */
@@ -105,6 +109,21 @@ export class ReportFilesService {
         })),
       );
     }
+    return this.sheetExcel(access, report === 'journal_book' ? 'journal' : report, parsed.data);
+  }
+
+  /**
+   * A report's sheet as an Excel workbook, its parameters already validated (S11's cash exports
+   * pass theirs from their own routes): read whole in one snapshot, at most
+   * `REPORT_EXCEL_ROW_LIMIT` rows, audited `export.<report>` with its parameters.
+   */
+  async sheetExcel(
+    access: CompanyRouteAccess,
+    report: SheetReport,
+    params: unknown,
+  ): Promise<ExportFile> {
+    const audited = report === 'journal' ? 'journal_book' : report;
+    const parsed = { data: params };
     const companyId = access.company.id;
     const sheet = await withCompany(
       this.db,
@@ -112,7 +131,7 @@ export class ReportFilesService {
       async (tx) => {
         const answer = await readReportAnswer(
           tx,
-          report === 'journal_book' ? 'journal' : report,
+          report,
           parsed.data,
           new Date(),
           todayInDamascus(),
@@ -128,17 +147,17 @@ export class ReportFilesService {
           });
         }
         await writeCompanyAudit(tx, companyId, actorOf(access), {
-          action: `export.${report}`,
+          action: `export.${audited}`,
           entityType: 'report_export',
           entityId: null,
-          after: { report, format: 'xlsx', params: auditedParams(parsed.data) },
+          after: { report: audited, format: 'xlsx', params: auditedParams(parsed.data) },
         });
         return sheet;
       },
       { isolationLevel: 'repeatable read' },
     );
     return {
-      fileName: `${report}-${todayInDamascus()}.xlsx`,
+      fileName: `${audited}-${todayInDamascus()}.xlsx`,
       contentType: XLSX,
       body: await reportWorkbook(sheet, access.company.name, {
         currency: ar.reports.columns.currency,
@@ -171,6 +190,13 @@ export class ReportFilesService {
           queued: String(queued),
           limit: String(REPORT_FILE_QUEUE_LIMIT),
         });
+      }
+      // A cash account's statement and a voucher are refused here, not by the render, when the
+      // company has no such cash account or voucher (S11).
+      if (request.report === 'cash_statement') await readCashAccount(tx, params.account as string);
+      if (request.report === 'voucher') {
+        const [voucher] = await readVoucherRows(tx, { id: params.voucher as string }, 1);
+        if (voucher === undefined) throw new CodedException('NOT_FOUND', 'No such voucher');
       }
       if (request.official) {
         if (params.ledger !== 'book') {

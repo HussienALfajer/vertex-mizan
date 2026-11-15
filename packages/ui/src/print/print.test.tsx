@@ -13,6 +13,7 @@ const text = {
   accounting: ar.accounting,
   openItems: ar.openItems,
   chart: ar.chart,
+  cash: ar.cash,
 };
 const context = { text, fiscalYearStartMonth: 1 };
 

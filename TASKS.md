@@ -31,14 +31,14 @@ Four PRs, in order. PR 4 needs only PR 1 and may run beside PRs 2 and 3.
 
 ### PR 3 — cash screens, printing and exports (branch `feat/s11-cash-screens`)
 
-- [ ] i18n: `amountInWords(minor, currency)` with its table of tests; the `cash` namespace; the command palette's entries
-- [ ] worker: the voucher PDF (A5, Arabic, amount in words, signature lines, "ملغى" with the reversal's number) and the cash statement PDF
-- [ ] api: `/api/cash/accounts/:id/statement/export` (xlsx, pdf), the cash position export, `/api/vouchers/:id/pdf`, audited; tests
-- [ ] ui: `VoucherHeader` and `CashAccountPicker` in `packages/ui`, tested, both densities, on the design-system page
-- [ ] web: `/cash`, `/cash/:accountId`, `/cash/vouchers`, `/cash/vouchers/new/:kind` and the voucher draft in `/drafts/:id`; cancel as a reversal; S09's account statement gains the voucher column
-- [ ] e2e: the cash position, a receipt, an exchange, a count, a statement, a printed voucher; RTL screenshots light and dark at phone, tablet and desktop, looked at
+- [x] i18n: `amountInWords(minor, currency)` with its table of tests; the `cash` namespace (the palette's entries in it; their wiring with the screens)
+- [x] worker: the voucher PDF (A5, Arabic, amount in words, signature lines, "ملغى" with the reversal's number) and the cash statement PDF, and the cash position's (reports `cash_position`, `cash_statement`, `voucher`, migration `0069`)
+- [x] api: `/api/cash/accounts/export` and `/api/cash/accounts/:id/statement/export` (xlsx), the PDFs as report files (`POST /api/reports/files`, the spec's API table amended), audited; tests
+- [x] ui: `VoucherHeader` and `CashAccountPicker` in `packages/ui`, tested, both densities, on the design-system page
+- [x] web: `/cash`, `/cash/:accountId`, `/cash/vouchers`, `/cash/vouchers/:id`, `/cash/vouchers/new/:kind` and the voucher draft in `/drafts/:id`; cancel as a reversal; S09's account statement gains the voucher column (screen and export); the palette's entries
+- [x] e2e: the cash position, a receipt, an exchange, a count, a statement, a printed voucher; RTL screenshots light and dark at phone, tablet and desktop, looked at
 - [ ] docs: ROADMAP, folder CLAUDE.md files
-- [ ] checks and reviewers, PR with auto-merge and Auto-fix
+- [x] checks and reviewers (reviewer and accountant-reviewer: the printed exchange net of its fee at its own pair's derived rate, every printed figure with its currency's printed name, the register's date filter and row cancel), PR with auto-merge and Auto-fix
 
 ### PR 4 — the scenario book on `contracting@1` (branch `test/s11-book-on-contracting`)
 

@@ -27,6 +27,7 @@ import {
   STATEMENT_LINES,
   type TrialBalance,
   type TrialBalanceQuery,
+  type VoucherKind,
 } from '@vertex-mizan/contracts';
 import {
   balanceSheet,
@@ -671,6 +672,10 @@ type RunningRow = {
   item_id: string | null;
   item_reference: string | null;
   hub_document: ReportLine['hubDocument'];
+  voucher_id: string | null;
+  voucher_kind: VoucherKind | null;
+  voucher_year: number | null;
+  voucher_number: number | null;
 };
 
 /**
@@ -733,7 +738,9 @@ async function runningLines(
         (coalesce(o.transaction, 0) + sum(l.amount_minor) over (partition by l.account_id, l.currency
           order by e.entry_date, e.number, l.line_no rows between unbounded preceding and current row))::text
           as transaction_balance,
-        m.item_id, i.reference as item_reference
+        m.item_id, i.reference as item_reference,
+        cv.id as voucher_id, cv.kind as voucher_kind, cv.fiscal_year as voucher_year,
+        cv.number as voucher_number
       from journal_lines l
       join journal_entries e on e.company_id = l.company_id and e.id = l.entry_id
       join chart_accounts a on a.company_id = l.company_id and a.id = l.account_id
@@ -741,6 +748,7 @@ async function runningLines(
       left join opening o on o.account_id = l.account_id and o.currency = l.currency
       left join open_item_movements m on m.company_id = l.company_id and m.line_id = l.id
       left join open_items i on i.company_id = m.company_id and i.id = m.item_id
+      left join cash_vouchers cv on cv.company_id = l.company_id and cv.entry_id = l.entry_id
       where ${filters} and ${inRange(input.from, input.to)}
     )
     select * from ranged
@@ -772,6 +780,15 @@ function reportLineOf(row: RunningRow, values: Map<string, ReportValue[]>): Repo
     openItem:
       row.item_id === null ? null : { id: row.item_id, reference: row.item_reference ?? '' },
     hubDocument: row.hub_document,
+    voucher:
+      row.voucher_id === null || row.voucher_kind === null
+        ? null
+        : {
+            id: row.voucher_id,
+            kind: row.voucher_kind,
+            fiscalYear: Number(row.voucher_year),
+            number: Number(row.voucher_number),
+          },
   };
 }
 

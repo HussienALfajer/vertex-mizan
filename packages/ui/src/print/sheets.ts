@@ -4,6 +4,8 @@ import {
   AGEING_BUCKETS,
   type AgeingReport,
   type BalanceSheet,
+  type CashPosition,
+  type CashStatement,
   type CounterpartyStatement,
   type CurrencyCode,
   type GeneralLedger,
@@ -17,6 +19,7 @@ import {
   type ReportValue,
   STATEMENT_LINES,
   type TrialBalance,
+  type VoucherKind,
 } from '@vertex-mizan/contracts';
 import { type Catalog, displayTimeZone, formatLocale } from '@vertex-mizan/i18n';
 import type { ReportSheet, SheetCell, SheetColumn, SheetParameter, SheetRow } from './sheet.js';
@@ -32,7 +35,7 @@ export type {
 } from './sheet.js';
 
 /** The catalogs a sheet reads its text from. */
-export type SheetText = Pick<Catalog, 'reports' | 'accounting' | 'openItems' | 'chart'>;
+export type SheetText = Pick<Catalog, 'reports' | 'accounting' | 'openItems' | 'chart' | 'cash'>;
 
 /** What a sheet needs beyond the report: the company's fiscal year (its entry numbers). */
 export interface SheetContext {
@@ -60,6 +63,12 @@ export type SheetInput =
       readonly data: readonly Account[];
       readonly bookCurrency: CurrencyCode;
       readonly producedAt: string;
+    }
+  | { readonly report: 'cash_position'; readonly data: CashPosition; readonly producedAt: string }
+  | {
+      readonly report: 'cash_statement';
+      readonly data: CashStatement;
+      readonly producedAt: string;
     };
 
 /** The sheet of a report (S09 rules 35, 36). */
@@ -85,6 +94,10 @@ export function reportSheet(input: SheetInput, context: SheetContext): ReportShe
       return clientStatementSheet(input.data, input.producedAt, context);
     case 'chart':
       return chartSheet(input.data, input.bookCurrency, input.producedAt, context);
+    case 'cash_position':
+      return cashPositionSheet(input.data, input.producedAt, context);
+    case 'cash_statement':
+      return cashStatementSheet(input.data, input.producedAt, context);
   }
 }
 
@@ -330,6 +343,7 @@ function ledgerLineColumns(context: SheetContext, withTransaction: boolean): She
       { ...amount('transactionAmount', c.transactionAmount), currencyKey: 'currency' },
       { ...amount('transactionBalance', c.transactionBalance), currencyKey: 'currency' },
       text('openItem', c.openItem, 16),
+      text('voucher', context.text.cash.statement.columns.voucher, 16),
     );
   }
   return columns;
@@ -356,6 +370,7 @@ function ledgerLineRow(
     cells.transactionAmount = line.transactionAmount;
     cells.transactionBalance = line.transactionBalance;
     cells.openItem = line.openItem?.reference;
+    cells.voucher = line.voucher === null ? undefined : voucherNumberText(line.voucher, context);
   }
   return { cells, level: 1 };
 }
@@ -917,5 +932,201 @@ function chartSheet(
         archived: yesNo(account.archived !== null),
       },
     })),
+  };
+}
+
+// --- The cash boxes (S11 rules 16, 17) ---
+
+/** A voucher's number as printed: its kind's name and `<year>/<number>` (S11 "Arabic strings"). */
+export function voucherNumberText(
+  voucher: { readonly kind: VoucherKind; readonly fiscalYear: number; readonly number: number },
+  context: SheetContext,
+): string {
+  return `${context.text.cash.kinds[voucher.kind]} ${entryNumberText(voucher, context.fiscalYearStartMonth)}`;
+}
+
+type LedgerAmount = { readonly amountMinor: string } | null;
+
+function cashPositionSheet(
+  data: CashPosition,
+  producedAt: string,
+  context: SheetContext,
+): ReportSheet {
+  const t = context.text.reports;
+  const p = context.text.cash.position;
+  const rows: SheetRow[] = [];
+  const ledgerCells = (book: LedgerAmount, parallel: LedgerAmount) => ({
+    book: book?.amountMinor,
+    parallel: parallel?.amountMinor,
+    parallelCurrency: data.parallelCurrency ?? undefined,
+  });
+  for (const group of data.groups) {
+    rows.push({
+      emphasis: 'section',
+      cells: { name: printedCurrency(group.currency, context.text) },
+    });
+    for (const account of group.accounts) {
+      rows.push({
+        level: 1,
+        cells: {
+          code: account.code,
+          name: account.name,
+          kind: context.text.cash.cashKinds[account.cashKind],
+          currency: account.currency,
+          balance: account.balance.amountMinor,
+          ...ledgerCells(account.book, account.parallel),
+        },
+      });
+    }
+    rows.push({
+      emphasis: 'subtotal',
+      cells: {
+        name: p.total.replace('{currency}', group.currency),
+        currency: group.currency,
+        balance: group.total.amountMinor,
+        ...ledgerCells(group.book, group.parallel),
+      },
+    });
+  }
+  rows.push({
+    emphasis: 'total',
+    cells: { name: p.ledgerTotals, ...ledgerCells(data.book, data.parallel) },
+  });
+  const columns: SheetColumn[] = [
+    code('code', context.text.chart.export.code, 10),
+    text('name', context.text.chart.export.name, 30),
+    text('kind', context.text.chart.export.kind, 12),
+    code('currency', t.columns.currency, 8),
+    { ...amount('balance', p.balance), currencyKey: 'currency' },
+    amount('book', `${p.book} (${data.bookCurrency})`),
+  ];
+  if (data.parallelCurrency !== null) {
+    columns.push({
+      ...amount('parallel', `${p.parallel} (${data.parallelCurrency})`),
+      currencyKey: 'parallelCurrency',
+    });
+  }
+  return {
+    report: 'cash_position',
+    title: t.names.cash_position,
+    ...plainHeader(
+      producedAt,
+      data.bookCurrency,
+      [{ label: t.header.asOf, value: data.asOf }],
+      context,
+    ),
+    columns,
+    rows,
+  };
+}
+
+function cashStatementSheet(
+  data: CashStatement,
+  producedAt: string,
+  context: SheetContext,
+): ReportSheet {
+  const t = context.text.reports;
+  const s = context.text.cash.statement;
+  const c = s.columns;
+  const book = data.ledgers.includes('book');
+  const parallel = data.ledgers.includes('parallel') && data.parallelCurrency !== null;
+  const counts = data.rows.some((row) => row.kind === 'count');
+  const currency = data.account.currency;
+  const hidden = {
+    currency,
+    bookCurrency: data.bookCurrency,
+    parallelCurrency: data.parallelCurrency ?? undefined,
+  };
+  const balances = (
+    label: string,
+    balance: CashStatement['opening'],
+    emphasis: 'note' | 'total',
+  ): SheetRow => ({
+    emphasis,
+    cells: {
+      ...hidden,
+      description: label,
+      balance: balance.amount.amountMinor,
+      book: book ? balance.book?.amountMinor : undefined,
+      parallel: parallel ? balance.parallel?.amountMinor : undefined,
+    },
+  });
+  const named = (value: { readonly code: string | null; readonly name: string } | null) =>
+    value === null ? undefined : value.code ? `${value.code} ${value.name}` : value.name;
+  const rows: SheetRow[] = [balances(s.opening, data.opening, 'note')];
+  for (const row of data.rows) {
+    const line = row.kind === 'line';
+    rows.push({
+      level: 1,
+      cells: {
+        ...hidden,
+        date: row.date,
+        entry:
+          row.entry === null ? undefined : entryNumberText(row.entry, context.fiscalYearStartMonth),
+        voucher: row.voucher === null ? undefined : voucherNumberText(row.voucher, context),
+        description: row.description,
+        counterAccount: row.severalCounterAccounts ? s.several : named(row.counterAccount),
+        counterparty: named(row.counterparty),
+        contract: named(row.contract),
+        in: line ? row.in : undefined,
+        out: line ? row.out : undefined,
+        balance: row.balance,
+        book: book && line ? (row.book ?? undefined) : undefined,
+        parallel: parallel && line ? (row.parallel ?? undefined) : undefined,
+        expected: row.expectedMinor ?? undefined,
+        counted: row.countedMinor ?? undefined,
+      },
+    });
+  }
+  rows.push({
+    emphasis: 'subtotal',
+    cells: { ...hidden, description: s.totals, in: data.totalIn, out: data.totalOut },
+  });
+  rows.push(balances(s.closing, data.closing, 'total'));
+  const accountName = `${data.account.code} ${data.account.name}`;
+  const columns: SheetColumn[] = [
+    date('date', c.date),
+    code('entry', c.entry, 11),
+    text('voucher', c.voucher, 16),
+    text('description', c.description, 28),
+    text('counterAccount', c.counterAccount, 20),
+    text('counterparty', c.counterparty, 16),
+    text('contract', c.contract, 16),
+    { ...amount('in', c.in), currencyKey: 'currency' },
+    { ...amount('out', c.out), currencyKey: 'currency' },
+    { ...amount('balance', c.balance), currencyKey: 'currency' },
+  ];
+  if (book) {
+    columns.push({
+      ...amount('book', `${c.book} (${data.bookCurrency})`),
+      currencyKey: 'bookCurrency',
+    });
+  }
+  if (parallel) {
+    columns.push({
+      ...amount('parallel', `${c.parallel} (${data.parallelCurrency})`),
+      currencyKey: 'parallelCurrency',
+    });
+  }
+  if (counts) {
+    columns.push(
+      { ...amount('expected', c.expected), currencyKey: 'currency' },
+      { ...amount('counted', c.counted), currencyKey: 'currency' },
+    );
+  }
+  return {
+    report: 'cash_statement',
+    title: `${t.names.cash_statement}: ${accountName}`,
+    ...plainHeader(
+      producedAt,
+      currency,
+      [
+        { label: t.header.account, value: accountName },
+        { label: t.header.period, value: range(data.from, data.to, context.text) },
+      ],
+      context,
+    ),
+    columns,
+    rows,
   };
 }

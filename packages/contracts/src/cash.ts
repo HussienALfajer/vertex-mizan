@@ -33,6 +33,16 @@ export const cashPositionQuerySchema = z
 
 export type CashPositionQuery = z.infer<typeof cashPositionQuerySchema>;
 
+/**
+ * `GET /api/cash/accounts/export`: the cash position as an Excel workbook; its PDF is a report file
+ * (`POST /api/reports/files`, report `cash_position`), queued for the worker as S09's are.
+ */
+export const cashPositionExportQuerySchema = cashPositionQuerySchema
+  .extend({ format: z.enum(['xlsx']) })
+  .meta({ id: 'CashPositionExportQuery' });
+
+export type CashPositionExportQuery = z.infer<typeof cashPositionExportQuerySchema>;
+
 /** A cash account's balance in its currency and its carrying amounts in each ledger (rule 16). */
 export const cashPositionAccountSchema = z
   .object({
@@ -102,6 +112,16 @@ export const cashStatementQuerySchema = z
   .meta({ id: 'CashStatementQuery' });
 
 export type CashStatementQuery = z.infer<typeof cashStatementQuerySchema>;
+
+/**
+ * `GET /api/cash/accounts/:id/statement/export`: the statement as an Excel workbook; its PDF is a
+ * report file (report `cash_statement`), queued for the worker as S09's are.
+ */
+export const cashStatementExportQuerySchema = cashStatementQuerySchema
+  .safeExtend({ format: z.enum(['xlsx']) })
+  .meta({ id: 'CashStatementExportQuery' });
+
+export type CashStatementExportQuery = z.infer<typeof cashStatementExportQuerySchema>;
 
 /** The amounts of a statement balance: in the account's currency, and each ledger asked. */
 export const cashBalancesSchema = z

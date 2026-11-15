@@ -7,6 +7,7 @@ import {
 } from './document.js';
 import type { SheetColumn } from './sheet.js';
 import { journalBookStyles, printStyles } from './styles.js';
+import { VoucherPrint, type VoucherPrintProps, voucherStyles } from './voucher.js';
 
 /**
  * A printed report as a whole HTML document (S09 rule 36): right to left, the print stylesheet,
@@ -46,6 +47,18 @@ export function renderReportHtml(props: ReportPrintProps & { readonly fontFaces:
     print.sheet.title,
     `${fontFaces}\n${printStyles()}\n${columnWidthRules('main', widths)}`,
     renderToStaticMarkup(<ReportPrint {...print} />),
+  );
+}
+
+/** The printed voucher as a whole document (S11 "Printing and legal books"): one A5 page. */
+export function renderVoucherHtml(
+  props: VoucherPrintProps & { readonly fontFaces: string },
+): string {
+  const { fontFaces, ...print } = props;
+  return documentOf(
+    `${print.text.kinds[print.voucher.kind]} ${print.voucher.fiscalYear}/${print.voucher.number}`,
+    `${fontFaces}\n${voucherStyles()}`,
+    renderToStaticMarkup(<VoucherPrint {...print} />),
   );
 }
 

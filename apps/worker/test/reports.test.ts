@@ -12,10 +12,12 @@ import {
   type Database,
   dimensionTypes,
   dimensionValues,
+  entryDrafts,
   journalBookPrints,
   type PersonActor,
   parseReportFileParams,
   post,
+  postVoucher,
   recordRate,
   reportFiles,
   users,
@@ -387,7 +389,8 @@ describe('reports.render', () => {
       ageing: { asOf: '2026-10-31' },
       client_statement: { client, from: '2026-10-01', to: '2026-10-31' },
       chart: {},
-    } satisfies Record<ActiveReport, Record<string, string>>;
+      // The cash reports print from a contracting company's vouchers: their own test below.
+    } satisfies Record<Exclude<ActiveReport, CashReport>, Record<string, string>>;
     for (const [report, input] of Object.entries(asked) as [
       ActiveReport,
       Record<string, string>,
@@ -398,6 +401,146 @@ describe('reports.render', () => {
       });
     }
     expect(printer.printed).toHaveLength(10);
+  });
+});
+
+type CashReport = 'cash_position' | 'cash_statement' | 'voucher';
+
+/** The client's shape (S11): a USD book at market accepting dealt rates, an SYP parallel. */
+const CLIENT: CompanyLedgers = {
+  book: { currency: 'USD', ratePolicy: { rateType: 'market', acceptsTransactionRate: true } },
+  parallel: {
+    currency: 'SYP',
+    ratePolicy: { rateType: 'bulletin', acceptsTransactionRate: false },
+  },
+};
+
+/** A contracting company whose USD box `111002` received 1,500.00 by a receipt on 2026-12-02. */
+async function cashCompany(): Promise<{ id: string; box: string; voucher: string }> {
+  const id = uuidv7();
+  const accounts = await withCompany(db, id, async (tx) => {
+    await createCompanyBooks(
+      tx,
+      id,
+      {
+        name: 'شركة مقاولات تجريبية',
+        nameLatin: null,
+        ledgers: CLIENT,
+        fiscalYearStartMonth: 1,
+        policyNote: 'مذكرة سياسة تجريبية.',
+        template: 'contracting',
+        createdByUserId: person,
+      },
+      actor(),
+    );
+    // The bulletin is daily (S02 rule 16): the receipt's own day.
+    await recordRate(tx, id, actor(), {
+      effectiveOn: '2026-12-02',
+      base: 'USD',
+      quote: 'SYP',
+      rate: '120.0000',
+      type: 'bulletin',
+      source: 'manual',
+    });
+    const rows = await tx
+      .select({ id: chartAccounts.id, code: chartAccounts.code })
+      .from(chartAccounts);
+    return new Map(rows.map((row) => [row.code, row.id]));
+  });
+  const box = accounts.get('111002') as string;
+  const voucher = await withCompany(db, id, async (tx) => {
+    const draftId = uuidv7();
+    await tx.insert(entryDrafts).values({
+      id: draftId,
+      companyId: id,
+      state: 'draft',
+      entryDate: '2026-12-02',
+      description: 'إيداع رأس مال تجريبي',
+      preparedByUserId: person,
+      voucherKind: 'receipt',
+      cashAccountId: box,
+      partyName: 'شريك تجريبي',
+    });
+    const posted = await postVoucher(tx, {
+      client: 'manual',
+      idempotencyKey: draftId,
+      entryDate: '2026-12-02',
+      description: 'إيداع رأس مال تجريبي',
+      reference: null,
+      draftId,
+      preparedByUserId: person,
+      approvedByUserId: null,
+      actor: actor(),
+      voucher: {
+        kind: 'receipt',
+        cashAccountId: box,
+        counterCashAccountId: null,
+        partyName: 'شريك تجريبي',
+        countedMinor: null,
+        expectedMinor: null,
+      },
+      lines: [
+        {
+          accountId: box,
+          dimensionValueIds: [],
+          currency: 'USD',
+          amountMinor: 150_000n,
+          memo: null,
+        },
+        {
+          accountId: accounts.get('311001') as string,
+          dimensionValueIds: [],
+          currency: 'USD',
+          amountMinor: -150_000n,
+          memo: null,
+        },
+      ],
+      dealtRates: [],
+      today: '2026-12-31',
+    });
+    await tx
+      .update(entryDrafts)
+      .set({ state: 'posted', postedEntryId: posted.entry?.id ?? null })
+      .where(eq(entryDrafts.id, draftId));
+    return posted.id;
+  });
+  return { id, box, voucher };
+}
+
+describe('reports.render of the cash reports (S11)', () => {
+  it('prints the cash position, a box statement and a voucher in Arabic with its amount in words', async () => {
+    const { id, box, voucher } = await cashCompany();
+    const printer = new KeepingPrinter();
+    const job = new ReportsRenderJob(db, files, printer);
+    const asked = {
+      cash_position: { asOf: '2026-12-31' },
+      cash_statement: {
+        account: box,
+        from: '2026-12-01',
+        to: '2026-12-31',
+        ledgers: 'book,parallel',
+      },
+      voucher: { voucher },
+    } satisfies Record<CashReport, Record<string, string>>;
+    for (const [report, input] of Object.entries(asked) as [CashReport, Record<string, string>][]) {
+      const file = await ask(id, { report, params: parseReportFileParams(report, input).stored });
+      expect(await job.work({ companyId: id, fileId: file.id }), report).toEqual({
+        state: 'ready',
+      });
+    }
+    const [position, statement, printed] = printer.printed;
+    expect(position?.html).toContain('المركز النقدي');
+    expect(position?.html).toContain('1,500.00');
+    expect(statement?.html).toContain('كشف صندوق: 111002');
+    expect(statement?.html).toContain('سند قبض 2026/1');
+    expect(statement?.html).toContain('180,000.00');
+    expect(printed?.html).toContain('size: A5 portrait');
+    expect(printed?.html).toContain('فقط ألف وخمسمئة دولار أمريكي لا غير');
+    expect(printed?.html).toContain('شريك تجريبي');
+    expect(printed?.html).toContain('311001');
+    expect(printed?.html).toContain('محاسب تجريبي');
+    // The voucher numbers its own page: no footer.
+    expect(printed?.options).toEqual({ pageNumbers: null });
   });
 });
 

@@ -441,6 +441,9 @@ test.describe('invitation', () => {
       await page.getByRole('button', { name: t.signIn.submit }).click();
       // The code goes into the two-factor step, not into the sign-in form still on screen.
       await expect(page).toHaveURL(/\/sign-in\/two-factor\?redirect=%2Finvitation/);
+      // The address changes before the step renders: wait for its heading, so the click lands on
+      // the code's first slot and not on the sign-in form still on screen.
+      await expect(page.getByRole('heading', { level: 1 })).toHaveText(t.twoFactor.title);
       await page.getByRole('textbox').first().click();
       await page.keyboard.type('123456');
       // Back without the fragment: the token waited in this tab's session storage.

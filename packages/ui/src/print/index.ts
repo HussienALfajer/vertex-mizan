@@ -16,6 +16,7 @@ export {
   JOURNAL_BOOK_WIDTHS,
   renderJournalBookHtml,
   renderReportHtml,
+  renderVoucherHtml,
 } from './render.js';
 export type {
   ReportSheet,
@@ -35,5 +36,13 @@ export {
   type SheetInput,
   type SheetText,
   sides,
+  voucherNumberText,
 } from './sheets.js';
 export { journalBookStyles, printStyles } from './styles.js';
+export {
+  VoucherPrint,
+  type VoucherPrintData,
+  type VoucherPrintProps,
+  type VoucherPrintText,
+  voucherStyles,
+} from './voucher.js';

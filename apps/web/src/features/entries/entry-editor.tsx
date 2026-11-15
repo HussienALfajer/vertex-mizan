@@ -17,6 +17,7 @@ import {
   postedDraftSchema,
   type RatePair,
   signedAmount,
+  type VoucherKind,
 } from '@vertex-mizan/contracts';
 import { ar } from '@vertex-mizan/i18n';
 import {
@@ -79,6 +80,7 @@ import { ReasonDialog } from '../../components/reason-dialog';
 import { api, hasCode } from '../../lib/api';
 import { damascusToday, formatDateTime, formatDay } from '../../lib/format';
 import { can, useCompany } from '../../lib/session';
+import { VoucherFields, type VoucherProblems, voucherProblems } from '../cash/voucher-fields';
 import { openItemsQuery } from '../receivables/receivables-queries';
 import {
   dealtRatePairs,
@@ -93,6 +95,9 @@ import {
   isCompleteLine,
   lineValueOf,
   newDraft,
+  newVoucherDraft,
+  type VoucherCashAccount,
+  withCashAccount,
   withDimensionValue,
 } from './draft-lines';
 import {
@@ -119,10 +124,15 @@ type Row = EditLine & { readonly no: number };
 type Lookup = { readonly key: string; readonly column: string };
 
 /** What the client checks before a post or a submit (rule 5); the API checks it again. */
-interface Problems {
+interface Problems extends VoucherProblems {
   date?: string | undefined;
   description?: string | undefined;
   lines?: string | undefined;
+}
+
+/** A voucher saved without its cash accounts: the fields name what is missing. */
+class VoucherIncomplete extends Error {
+  override readonly name = 'VoucherIncomplete';
 }
 
 /**
@@ -139,6 +149,7 @@ export function EntryEditor({
   runPreview = false,
   onReload,
   clientValueId = null,
+  newVoucher = null,
 }: {
   draft: Draft | null;
   company: Company;
@@ -151,6 +162,8 @@ export function EntryEditor({
   onReload?: (() => void) | undefined;
   /** A new receipt from a client statement: the client named on the credit line (S04). */
   clientValueId?: string | null | undefined;
+  /** A new voucher (S11): its kind and the cash account it starts on. */
+  newVoucher?: { kind: VoucherKind; account: VoucherCashAccount | null } | null | undefined;
 }) {
   const { companyId, me, membership } = useCompany();
   const navigate = useNavigate();
@@ -158,8 +171,14 @@ export function EntryEditor({
   const catalog = useDimensionCatalog(companyId);
   const startMonth = useFiscalYearStartMonth(companyId);
   const [edit, setEdit] = useState<EditDraft>(() =>
-    draft ? editDraftOf(draft) : newDraft(damascusToday(), clientValueId),
+    draft
+      ? editDraftOf(draft)
+      : newVoucher
+        ? newVoucherDraft(damascusToday(), newVoucher.kind, newVoucher.account)
+        : newDraft(damascusToday(), clientValueId),
   );
+  const voucher = edit.voucher;
+  const [countedRefused, setCountedRefused] = useState(false);
   const reversal = draft?.reversesEntryId != null;
   /** The draft as it would be saved now: only the dealt rates of the pairs the entry has. */
   const inputOf = (current: EditDraft) =>
@@ -193,7 +212,8 @@ export function EntryEditor({
   const approval = company.manualEntryApproval;
   const body = JSON.stringify(inputOf(edit));
   const dirty = body !== saved.current.body;
-  const holdsRefusedText = gridRefusal !== null || amountErrors.size > 0 || rateErrors.size > 0;
+  const holdsRefusedText =
+    gridRefusal !== null || amountErrors.size > 0 || rateErrors.size > 0 || countedRefused;
   const preparerOrSubmitter =
     draft !== null &&
     (draft.preparedBy.id === me.person.id || draft.submitted?.by.id === me.person.id);
@@ -487,6 +507,12 @@ export function EntryEditor({
   /** The draft saved as typed: created by the first save, then updated with its `updatedAt`. */
   async function persist(): Promise<Draft> {
     if (holdsRefusedText) throw new RefusedText();
+    const incomplete = voucherProblems(edit, false);
+    if (incomplete.cashAccount || incomplete.destination) {
+      setProblems((current) => ({ ...current, ...incomplete }));
+      setAttempt((count) => count + 1);
+      throw new VoucherIncomplete();
+    }
     const input = inputOf(edit);
     const current = saved.current;
     if (current.draft && JSON.stringify(input) === current.body) return current.draft;
@@ -518,6 +544,7 @@ export function EntryEditor({
   function readyToPost(): boolean {
     const typed = edit.lines.filter((line) => !isBlankLine(line));
     const found: Problems = {
+      ...voucherProblems(edit, true),
       date: edit.entryDate === '' ? te.validation.date : undefined,
       description:
         edit.description.trim() === ''
@@ -526,14 +553,16 @@ export function EntryEditor({
             ? te.validation.statementLength
             : undefined,
       lines:
-        reversal || (typed.length >= 2 && typed.every(isCompleteLine) && !holdsRefusedText)
+        reversal ||
+        voucher?.kind === 'count' ||
+        (typed.length >= 2 && typed.every(isCompleteLine) && !holdsRefusedText)
           ? undefined
           : holdsRefusedText
             ? te.fixBeforeSaving
             : te.validation.lines,
     };
     setProblems(found);
-    const ok = !found.date && !found.description && !found.lines;
+    const ok = Object.values(found).every((problem) => problem === undefined);
     if (!ok) setAttempt((count) => count + 1);
     return ok;
   }
@@ -569,17 +598,32 @@ export function EntryEditor({
       const stored = await persist();
       return api('POST', `/drafts/${stored.id}/post`, {
         company: companyId,
+        body: { expectedMinor: countExpected() },
         schema: postedDraftSchema,
       });
     },
     onSuccess: async (posted) => {
       await queryClient.invalidateQueries({ queryKey: ['entries', companyId] });
       await queryClient.invalidateQueries({ queryKey: ['drafts', companyId] });
-      // A count that matched posts its voucher alone (S11 rule 13): the drafts list shows it posted.
-      if (posted.entry === null) await navigate({ to: '/drafts' });
+      await queryClient.invalidateQueries({ queryKey: ['cash', companyId] });
+      // A voucher opens on its own page, a count that matched too (S11 rule 13).
+      if (posted.voucher) {
+        await navigate({ to: '/cash/vouchers/$id', params: { id: posted.voucher.id } });
+      } else if (posted.entry === null) await navigate({ to: '/drafts' });
       else await navigate({ to: '/entries/$id', params: { id: posted.entry.id } });
     },
   });
+
+  /**
+   * A count's expected amount as its current preview showed it (S11 rule 13), which the posting
+   * compares under the box's lock; null for any other draft.
+   */
+  function countExpected(): string | null {
+    if (voucher?.kind !== 'count') return null;
+    return preview !== null && preview.body === body
+      ? (preview.answer.voucher?.expectedMinor ?? null)
+      : null;
+  }
 
   /** A state change of a saved draft: submit, withdraw, approve, reject, discard. */
   const transition = useMutation({
@@ -589,20 +633,29 @@ export function EntryEditor({
       if (step === 'approve') {
         const posted = await api('POST', `/drafts/${stored.id}/approve`, {
           company: companyId,
+          body: { expectedMinor: countExpected() },
           schema: postedDraftSchema,
         });
-        return { draft: posted.draft, entryId: posted.entry?.id ?? null };
+        return {
+          draft: posted.draft,
+          entryId: posted.entry?.id ?? null,
+          voucherId: posted.voucher?.id ?? null,
+        };
       }
       const next = await api('POST', `/drafts/${stored.id}/${step}`, {
         company: companyId,
         schema: draftSchema,
       });
-      return { draft: next, entryId: null };
+      return { draft: next, entryId: null, voucherId: null };
     },
-    onSuccess: async ({ draft: next, entryId }) => {
+    onSuccess: async ({ draft: next, entryId, voucherId }) => {
       queryClient.setQueryData(draftQuery(companyId, next.id).queryKey, next);
       await queryClient.invalidateQueries({ queryKey: ['drafts', companyId, 'list'] });
-      if (entryId) {
+      if (voucherId) {
+        await queryClient.invalidateQueries({ queryKey: ['entries', companyId] });
+        await queryClient.invalidateQueries({ queryKey: ['cash', companyId] });
+        await navigate({ to: '/cash/vouchers/$id', params: { id: voucherId } });
+      } else if (entryId) {
         await queryClient.invalidateQueries({ queryKey: ['entries', companyId] });
         await navigate({ to: '/entries/$id', params: { id: entryId } });
       } else {
@@ -616,6 +669,11 @@ export function EntryEditor({
 
   function postOrSubmit() {
     if (busy || !editable || !readyToPost()) return;
+    if (voucher?.kind === 'count' && !approval && countExpected() === null) {
+      // The expected balance comes from the preview: it is asked for first (S11 rule 13).
+      showPreview.mutate();
+      return;
+    }
     if (approval) {
       if (can(me, 'drafts.manage')) transition.mutate('submit');
     } else if (can(me, 'entries.post')) {
@@ -684,7 +742,16 @@ export function EntryEditor({
     setLookup(null);
     if (row >= 0 && column >= 0) grid.current?.focusCell({ row, column });
   };
-  const title = draft ? (reversal ? te.reversalTitle : te.title) : te.newTitle;
+  const title = voucher
+    ? (draft ? ar.cash.form.draftTitle : ar.cash.form.newTitle).replace(
+        '{kind}',
+        ar.cash.kinds[voucher.kind],
+      )
+    : draft
+      ? reversal
+        ? te.reversalTitle
+        : te.title
+      : te.newTitle;
   const stalePreview = preview !== null && preview.body !== body;
   // A refusal names a line as saved, blank lines left out: the grid row it is on now.
   const typedRows = edit.lines.flatMap((line, index) => (isBlankLine(line) ? [] : [index + 1]));
@@ -711,59 +778,108 @@ export function EntryEditor({
         attempt={attempt}
         errors={[
           ['draft-date', problems.date],
+          ['voucher-cash-account', problems.cashAccount],
+          ['voucher-destination', problems.destination],
+          ['voucher-counted', problems.counted],
           ['draft-description', problems.description],
           ['draft-lines', problems.lines],
         ]}
       />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>{te.header}</CardTitle>
-        </CardHeader>
-        <div className="grid gap-4 px-6 pb-6 md:grid-cols-3">
-          <Field id="draft-date" invalid={problems.date !== undefined}>
-            <FieldLabel>{te.date}</FieldLabel>
-            <Input
-              type="date"
-              dir="ltr"
-              value={edit.entryDate}
-              readOnly={!editable}
-              onChange={(event) => setEdit({ ...edit, entryDate: event.target.value })}
-            />
-            <FieldDescription>{te.dateHint}</FieldDescription>
-            <FieldError match={problems.date !== undefined}>{problems.date}</FieldError>
-          </Field>
-          <Field
-            id="draft-description"
-            className="md:col-span-2"
-            invalid={problems.description !== undefined}
-          >
-            <FieldLabel>{te.statement}</FieldLabel>
-            <Input
-              value={edit.description}
-              maxLength={500}
-              readOnly={!editable}
-              onChange={(event) => setEdit({ ...edit, description: event.target.value })}
-            />
-            <FieldDescription>{te.statementHint}</FieldDescription>
-            <FieldError match={problems.description !== undefined}>
-              {problems.description}
-            </FieldError>
-          </Field>
-          <Field className="md:col-span-3 lg:col-span-1">
-            <FieldLabel>{te.reference}</FieldLabel>
-            <Input
-              value={edit.reference}
-              maxLength={100}
-              readOnly={!editable}
-              onChange={(event) => setEdit({ ...edit, reference: event.target.value })}
-            />
-            <FieldDescription>{te.referenceHint}</FieldDescription>
-          </Field>
-        </div>
-      </Card>
+      {voucher ? (
+        <VoucherFields
+          edit={edit}
+          voucher={voucher}
+          editable={editable}
+          problems={problems}
+          preview={preview !== null && preview.body === body ? preview.answer.voucher : null}
+          onChange={(change) => setEdit((current) => ({ ...current, ...change }))}
+          onCashAccount={(account) =>
+            setEdit((current) => ({
+              ...current,
+              lines:
+                current.voucher?.kind === 'count'
+                  ? current.lines
+                  : withCashAccount(current.lines, current.voucher?.cashAccountId ?? null, account),
+              voucher: current.voucher && { ...current.voucher, cashAccountId: account.id },
+            }))
+          }
+          onDestination={(account) =>
+            setEdit((current) => ({
+              ...current,
+              lines: withCashAccount(
+                current.lines,
+                current.voucher?.counterCashAccountId ?? null,
+                account,
+                1,
+              ),
+              voucher: current.voucher && { ...current.voucher, counterCashAccountId: account.id },
+            }))
+          }
+          onParty={(partyName) =>
+            setEdit((current) => ({
+              ...current,
+              voucher: current.voucher && { ...current.voucher, partyName },
+            }))
+          }
+          onCounted={(countedMinor) =>
+            setEdit((current) => ({
+              ...current,
+              voucher: current.voucher && { ...current.voucher, countedMinor },
+            }))
+          }
+          onCountedError={setCountedRefused}
+        />
+      ) : (
+        <Card>
+          <CardHeader>
+            <CardTitle>{te.header}</CardTitle>
+          </CardHeader>
+          <div className="grid gap-4 px-6 pb-6 md:grid-cols-3">
+            <Field id="draft-date" invalid={problems.date !== undefined}>
+              <FieldLabel>{te.date}</FieldLabel>
+              <Input
+                type="date"
+                dir="ltr"
+                value={edit.entryDate}
+                readOnly={!editable}
+                onChange={(event) => setEdit({ ...edit, entryDate: event.target.value })}
+              />
+              <FieldDescription>{te.dateHint}</FieldDescription>
+              <FieldError match={problems.date !== undefined}>{problems.date}</FieldError>
+            </Field>
+            <Field
+              id="draft-description"
+              className="md:col-span-2"
+              invalid={problems.description !== undefined}
+            >
+              <FieldLabel>{te.statement}</FieldLabel>
+              <Input
+                value={edit.description}
+                maxLength={500}
+                readOnly={!editable}
+                onChange={(event) => setEdit({ ...edit, description: event.target.value })}
+              />
+              <FieldDescription>{te.statementHint}</FieldDescription>
+              <FieldError match={problems.description !== undefined}>
+                {problems.description}
+              </FieldError>
+            </Field>
+            <Field className="md:col-span-3 lg:col-span-1">
+              <FieldLabel>{te.reference}</FieldLabel>
+              <Input
+                value={edit.reference}
+                maxLength={100}
+                readOnly={!editable}
+                onChange={(event) => setEdit({ ...edit, reference: event.target.value })}
+              />
+              <FieldDescription>{te.referenceHint}</FieldDescription>
+            </Field>
+          </div>
+        </Card>
+      )}
 
-      {!reversal && (
+      {!reversal && voucher?.kind !== 'count' && (
         <section
           id="draft-lines"
           tabIndex={-1}
@@ -955,7 +1071,12 @@ export function EntryEditor({
             <Button
               loading={transition.isPending}
               disabled={busy}
-              onClick={() => transition.mutate('approve')}
+              onClick={() =>
+                // An approver posts a count at the expected amount of their own preview (S11 rule 13).
+                voucher?.kind === 'count' && countExpected() === null
+                  ? showPreview.mutate()
+                  : transition.mutate('approve')
+              }
             >
               <CheckIcon aria-hidden="true" />
               {te.approve}

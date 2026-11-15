@@ -2624,7 +2624,8 @@ async function checkBoxes(
 const BASE_ORDER: readonly CurrencyCode[] = ['USD', 'EUR', 'TRY', 'SYP'];
 
 /** The company's orientation of a pair (S02 `RATE_ORIENTATION`), or the base order's. */
-async function pairOrientation(
+/** A pair of currencies in the company's orientation (`RATE_ORIENTATION`), else `BASE_ORDER`'s. */
+export async function pairOrientation(
   tx: Transaction,
   a: CurrencyCode,
   b: CurrencyCode,

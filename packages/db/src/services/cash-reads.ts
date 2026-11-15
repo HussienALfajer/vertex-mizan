@@ -11,11 +11,13 @@ import type {
   VoucherState,
 } from '@vertex-mizan/contracts';
 import { DomainError } from '@vertex-mizan/contracts';
-import { dayBefore, periodOf } from '@vertex-mizan/ledger';
+import { dayBefore, derivedDealtRate, periodOf } from '@vertex-mizan/ledger';
 import { type SQL, sql } from 'drizzle-orm';
 import type { Transaction } from '../client.js';
+import { pairOrientation } from '../posting/post.js';
 import { companySettings } from '../schema/companies.js';
 import { ledgersOf } from './companies.js';
+import { rateText } from './rates.js';
 
 // The cash screens' reads (S11 rules 16–17, "Reports"): the cash position at a date, a cash
 // account's statement and the vouchers' register, shared by the API and (S11 PR 3) the worker's
@@ -482,4 +484,160 @@ export async function readVoucherRows(
     approvedByUserId: row.approved_by,
     createdAt: row.created_at,
   }));
+}
+
+/** A counter line of a printed voucher: its account, amount and dimensions (S11 "Printing"). */
+export interface VoucherPrintLine {
+  readonly lineNo: number;
+  readonly account: { readonly code: string; readonly name: string };
+  readonly currency: CurrencyCode;
+  /** The line's amount in its currency, positive in the voucher's direction (a receipt's credit). */
+  readonly amountMinor: string;
+  readonly counterparty: string | null;
+  readonly contract: string | null;
+  readonly memo: string | null;
+}
+
+/**
+ * A voucher as it prints (S11 "Printing and legal books"): the register's row, its preparer and
+ * approver by name, its counter lines (every line but the cash accounts' and the differences), a
+ * transfer's destination amount and dealt rate, and a count's difference. Amounts are summed and
+ * signed in SQL.
+ */
+export interface VoucherPrint extends VoucherRow {
+  readonly preparedBy: string | null;
+  readonly approvedBy: string | null;
+  readonly lines: readonly VoucherPrintLine[];
+  /** A transfer's destination amount in the destination's currency. */
+  readonly destinationMinor: string | null;
+  /** A transfer's fee in the source's currency (its debit lines there), zero without one. */
+  readonly feeMinor: string | null;
+  /** What a transfer exchanged: the source's credit net of the fee (S11 rule 12). */
+  readonly exchangedMinor: string | null;
+  /**
+   * An exchange's rate derived from its amounts (S11 rule 12), in the company's orientation of the
+   * source's and destination's pair; null for a transfer in one currency or any other voucher.
+   */
+  readonly dealtRate: {
+    readonly base: CurrencyCode;
+    readonly quote: CurrencyCode;
+    readonly rate: string;
+  } | null;
+  /** A count's counted less expected. */
+  readonly differenceMinor: string | null;
+}
+
+/** The voucher `id` as it prints (`NOT_FOUND` for none in the company). */
+export async function readVoucherPrint(tx: Transaction, id: string): Promise<VoucherPrint> {
+  const [row] = await readVoucherRows(tx, { id }, 1);
+  if (row === undefined) throw new DomainError('NOT_FOUND', 'No such voucher');
+  const people = await tx.execute<{ id: string; name: string }>(sql`
+    select u.id, u.name from public.users u
+    where u.id in (${row.preparedByUserId ?? row.id}, ${row.approvedByUserId ?? row.id})`);
+  const nameOf = (userId: string | null) =>
+    userId === null ? null : (people.rows.find((person) => person.id === userId)?.name ?? null);
+  const entryId = row.entry?.id ?? null;
+  const facts = await tx.execute<{
+    destination: string | null;
+    given: string | null;
+    fee: string | null;
+    exchanged: string | null;
+    difference: string | null;
+  }>(sql`
+    with figures as (
+      select v.kind, v.counted_minor, v.expected_minor,
+        (select sum(l.amount_minor) from public.journal_lines l
+          where l.entry_id = v.entry_id and l.account_id = v.counter_cash_account_id) as destination,
+        coalesce((select -sum(l.amount_minor) from public.journal_lines l
+          where l.entry_id = v.entry_id and l.account_id = v.cash_account_id), 0) as given,
+        coalesce((select sum(l.amount_minor) from public.journal_lines l
+          where l.entry_id = v.entry_id and l.amount_minor > 0
+            and l.account_id not in (v.cash_account_id, v.counter_cash_account_id)
+            and l.kind not in ('difference', 'rounding')
+            and l.currency = ${row.cashAccount.currency}), 0) as fee
+      from public.cash_vouchers v
+      where v.id = ${id}
+    )
+    select destination::text as destination,
+      case when kind = 'transfer' then given::text end as given,
+      case when kind = 'transfer' then fee::text end as fee,
+      case when kind = 'transfer' then (given - fee)::text end as exchanged,
+      (counted_minor - expected_minor)::text as difference
+    from figures`);
+  const lines =
+    entryId === null
+      ? { rows: [] }
+      : await tx.execute<{
+          line_no: number;
+          code: string;
+          name: string;
+          currency: CurrencyCode;
+          amount: string;
+          counterparty: string | null;
+          contract: string | null;
+          memo: string | null;
+        }>(sql`
+          with cash as (
+            select sign(sum(l.amount_minor)) as direction from public.journal_lines l
+            where l.entry_id = ${entryId} and l.account_id = ${row.cashAccount.id}
+          )
+          select l.line_no, a.code, a.name, l.currency,
+            (l.amount_minor * -coalesce(nullif((select direction from cash), 0), 1))::text as amount,
+            (select dv.name from public.dimension_set_values sv
+              join public.dimension_types t on t.company_id = sv.company_id and t.id = sv.type_id
+              join public.dimension_values dv on dv.company_id = sv.company_id and dv.id = sv.value_id
+              where sv.set_id = l.dimension_set_id and t.code in ${COUNTERPARTY_TYPE_CODES}
+              limit 1) as counterparty,
+            (select dv.name from public.dimension_set_values sv
+              join public.dimension_types t on t.company_id = sv.company_id and t.id = sv.type_id
+              join public.dimension_values dv on dv.company_id = sv.company_id and dv.id = sv.value_id
+              where sv.set_id = l.dimension_set_id and t.code = 'contract'
+              limit 1) as contract,
+            l.memo
+          from public.journal_lines l
+          join public.chart_accounts a on a.company_id = l.company_id and a.id = l.account_id
+          where l.entry_id = ${entryId}
+            and l.account_id not in (${row.cashAccount.id}, ${row.counterCashAccount?.id ?? row.cashAccount.id})
+            and l.kind not in ('difference', 'rounding')
+          order by l.line_no`);
+  const fact = facts.rows[0];
+  const destination = row.counterCashAccount;
+  // The rate the exchange was dealt at, from its two amounts (rule 12): never a conversion's rate,
+  // which may be of another pair.
+  const dealtRate =
+    destination !== null &&
+    destination.currency !== row.cashAccount.currency &&
+    fact?.given != null &&
+    fact.destination != null &&
+    fact.fee != null
+      ? derivedDealtRate(
+          {
+            given: BigInt(fact.given),
+            givenCurrency: row.cashAccount.currency,
+            received: BigInt(fact.destination),
+            receivedCurrency: destination.currency,
+            fee: BigInt(fact.fee),
+          },
+          await pairOrientation(tx, row.cashAccount.currency, destination.currency),
+        )
+      : null;
+  return {
+    ...row,
+    preparedBy: nameOf(row.preparedByUserId),
+    approvedBy: nameOf(row.approvedByUserId),
+    lines: lines.rows.map((line) => ({
+      lineNo: Number(line.line_no),
+      account: { code: line.code, name: line.name },
+      currency: line.currency,
+      amountMinor: line.amount,
+      counterparty: line.counterparty,
+      contract: line.contract,
+      memo: line.memo,
+    })),
+    destinationMinor: fact?.destination ?? null,
+    feeMinor: fact?.fee ?? null,
+    exchangedMinor: fact?.exchanged ?? null,
+    dealtRate: dealtRate === null ? null : { ...dealtRate, rate: rateText(dealtRate.rate) },
+    differenceMinor: fact?.difference ?? null,
+  };
 }

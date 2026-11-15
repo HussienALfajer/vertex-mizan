@@ -1,5 +1,6 @@
 import { ar } from '@vertex-mizan/i18n';
 import { linkToken, newPersonInvitation, notEnrolled, setup, signIns } from './access-mocks';
+import { cashReads, receipt, usdBox } from './cash-mocks';
 import { accountOf, chartReads, roots } from './chart-mocks';
 import { archivedCompany, archivedOwner, company, companyReads, owner } from './company-mocks';
 import { dimensionReads, typeOf } from './dimension-mocks';
@@ -624,6 +625,50 @@ for (const colorScheme of ['light', 'dark'] as const) {
           await expectNoPageOverflow(page);
           await screenshot(page, testInfo, `receipt-${colorScheme}-${width}`);
         });
+      });
+
+      test.describe('cash screens', () => {
+        test.use({ me: owner, api: cashReads });
+        test.beforeEach(async ({ page }) => {
+          await page.clock.setFixedTime(today);
+        });
+
+        test('cash position', async ({ page }, testInfo) => {
+          await page.goto('/cash');
+          await expect(page.locator('[data-slot="cash-account-card"]')).toHaveCount(3);
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `cash-position-${colorScheme}-${width}`);
+        });
+
+        test('cash statement', async ({ page }, testInfo) => {
+          await page.goto(`/cash/${usdBox.id}?from=2026-11-01&to=2026-11-09&ledgers=book`);
+          await expect(page.getByRole('table', { name: ar.cash.statement.title })).toBeVisible();
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `cash-statement-${colorScheme}-${width}`);
+        });
+
+        test('vouchers', async ({ page }, testInfo) => {
+          await page.goto('/cash/vouchers');
+          await expect(page.getByRole('table', { name: ar.cash.register.title })).toBeVisible();
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `vouchers-${colorScheme}-${width}`);
+        });
+
+        test('voucher', async ({ page }, testInfo) => {
+          await page.goto(`/cash/vouchers/${receipt.id}`);
+          await expect(page.locator('[data-slot="voucher-number"]')).toHaveText('2026/1');
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `voucher-${colorScheme}-${width}`);
+        });
+
+        for (const kind of ['receipt', 'transfer', 'count'] as const) {
+          test(`new ${kind}`, async ({ page }, testInfo) => {
+            await page.goto(`/cash/vouchers/new/${kind}?account=${usdBox.id}`);
+            await expect(page.locator('[data-slot="voucher-header"]')).toContainText('1,500.00USD');
+            await expectNoPageOverflow(page);
+            await screenshot(page, testInfo, `voucher-new-${kind}-${colorScheme}-${width}`);
+          });
+        }
       });
 
       test.describe('trust screens', () => {

@@ -27,6 +27,8 @@ import { Route as AppCompaniesNewRouteImport } from './routes/_app/companies/new
 import { Route as AuthSignInIndexRouteImport } from './routes/_auth/sign-in/index'
 import { Route as AuthSignInTwoFactorRouteImport } from './routes/_auth/sign-in/two-factor'
 import { Route as AuthTwoFactorEnrolRouteImport } from './routes/_auth/two-factor/enrol'
+import { Route as AppCompanyCashIndexRouteImport } from './routes/_app/_company/cash/index'
+import { Route as AppCompanyCashAccountIdRouteImport } from './routes/_app/_company/cash/$accountId'
 import { Route as AppCompanyChartIndexRouteImport } from './routes/_app/_company/chart/index'
 import { Route as AppCompanyChartRolesRouteImport } from './routes/_app/_company/chart/roles'
 import { Route as AppCompanyCounterpartiesValueIdRouteImport } from './routes/_app/_company/counterparties/$valueId'
@@ -54,9 +56,12 @@ import { Route as AppCompanySettingsCompanyRouteImport } from './routes/_app/_co
 import { Route as AppCompanySettingsExportRouteImport } from './routes/_app/_company/settings/export'
 import { Route as AppCompanySettingsMembersRouteImport } from './routes/_app/_company/settings/members'
 import { Route as AppCompanyAccountsIdLinesRouteImport } from './routes/_app/_company/accounts/$id/lines'
+import { Route as AppCompanyCashVouchersIndexRouteImport } from './routes/_app/_company/cash/vouchers/index'
+import { Route as AppCompanyCashVouchersIdRouteImport } from './routes/_app/_company/cash/vouchers/$id'
 import { Route as AppCompanyReceivablesClientsValueIdRouteImport } from './routes/_app/_company/receivables/clients/$valueId'
 import { Route as AppCompanyReportsAccountsIdRouteImport } from './routes/_app/_company/reports/accounts/$id'
 import { Route as AppCompanyReportsJournalBookPrintsRouteImport } from './routes/_app/_company/reports/journal-book/prints'
+import { Route as AppCompanyCashVouchersNewKindRouteImport } from './routes/_app/_company/cash/vouchers/new/$kind'
 
 const AppRoute = AppRouteImport.update({
   id: '/_app',
@@ -144,6 +149,16 @@ const AuthTwoFactorEnrolRoute = AuthTwoFactorEnrolRouteImport.update({
   id: '/two-factor/enrol',
   path: '/two-factor/enrol',
   getParentRoute: () => AuthRoute,
+} as any)
+const AppCompanyCashIndexRoute = AppCompanyCashIndexRouteImport.update({
+  id: '/cash/',
+  path: '/cash/',
+  getParentRoute: () => AppCompanyRoute,
+} as any)
+const AppCompanyCashAccountIdRoute = AppCompanyCashAccountIdRouteImport.update({
+  id: '/cash/$accountId',
+  path: '/cash/$accountId',
+  getParentRoute: () => AppCompanyRoute,
 } as any)
 const AppCompanyChartIndexRoute = AppCompanyChartIndexRouteImport.update({
   id: '/chart/',
@@ -292,6 +307,18 @@ const AppCompanyAccountsIdLinesRoute =
     path: '/accounts/$id/lines',
     getParentRoute: () => AppCompanyRoute,
   } as any)
+const AppCompanyCashVouchersIndexRoute =
+  AppCompanyCashVouchersIndexRouteImport.update({
+    id: '/cash/vouchers/',
+    path: '/cash/vouchers/',
+    getParentRoute: () => AppCompanyRoute,
+  } as any)
+const AppCompanyCashVouchersIdRoute =
+  AppCompanyCashVouchersIdRouteImport.update({
+    id: '/cash/vouchers/$id',
+    path: '/cash/vouchers/$id',
+    getParentRoute: () => AppCompanyRoute,
+  } as any)
 const AppCompanyReceivablesClientsValueIdRoute =
   AppCompanyReceivablesClientsValueIdRouteImport.update({
     id: '/receivables/clients/$valueId',
@@ -308,6 +335,12 @@ const AppCompanyReportsJournalBookPrintsRoute =
   AppCompanyReportsJournalBookPrintsRouteImport.update({
     id: '/reports/journal-book/prints',
     path: '/reports/journal-book/prints',
+    getParentRoute: () => AppCompanyRoute,
+  } as any)
+const AppCompanyCashVouchersNewKindRoute =
+  AppCompanyCashVouchersNewKindRouteImport.update({
+    id: '/cash/vouchers/new/$kind',
+    path: '/cash/vouchers/new/$kind',
     getParentRoute: () => AppCompanyRoute,
   } as any)
 
@@ -327,6 +360,7 @@ export interface FileRoutesByFullPath {
   '/two-factor/enrol': typeof AuthTwoFactorEnrolRoute
   '/companies/': typeof AppCompaniesIndexRoute
   '/sign-in/': typeof AuthSignInIndexRoute
+  '/cash/$accountId': typeof AppCompanyCashAccountIdRoute
   '/chart/roles': typeof AppCompanyChartRolesRoute
   '/counterparties/$valueId': typeof AppCompanyCounterpartiesValueIdRoute
   '/drafts/$id': typeof AppCompanyDraftsIdRoute
@@ -346,6 +380,7 @@ export interface FileRoutesByFullPath {
   '/settings/company': typeof AppCompanySettingsCompanyRoute
   '/settings/export': typeof AppCompanySettingsExportRoute
   '/settings/members': typeof AppCompanySettingsMembersRoute
+  '/cash/': typeof AppCompanyCashIndexRoute
   '/chart/': typeof AppCompanyChartIndexRoute
   '/drafts/': typeof AppCompanyDraftsIndexRoute
   '/entries/': typeof AppCompanyEntriesIndexRoute
@@ -354,9 +389,12 @@ export interface FileRoutesByFullPath {
   '/receivables/': typeof AppCompanyReceivablesIndexRoute
   '/reports/': typeof AppCompanyReportsIndexRoute
   '/accounts/$id/lines': typeof AppCompanyAccountsIdLinesRoute
+  '/cash/vouchers/$id': typeof AppCompanyCashVouchersIdRoute
   '/receivables/clients/$valueId': typeof AppCompanyReceivablesClientsValueIdRoute
   '/reports/accounts/$id': typeof AppCompanyReportsAccountsIdRoute
   '/reports/journal-book/prints': typeof AppCompanyReportsJournalBookPrintsRoute
+  '/cash/vouchers/': typeof AppCompanyCashVouchersIndexRoute
+  '/cash/vouchers/new/$kind': typeof AppCompanyCashVouchersNewKindRoute
 }
 export interface FileRoutesByTo {
   '/': typeof AppCompanyIndexRoute
@@ -374,6 +412,7 @@ export interface FileRoutesByTo {
   '/two-factor/enrol': typeof AuthTwoFactorEnrolRoute
   '/companies': typeof AppCompaniesIndexRoute
   '/sign-in': typeof AuthSignInIndexRoute
+  '/cash/$accountId': typeof AppCompanyCashAccountIdRoute
   '/chart/roles': typeof AppCompanyChartRolesRoute
   '/counterparties/$valueId': typeof AppCompanyCounterpartiesValueIdRoute
   '/drafts/$id': typeof AppCompanyDraftsIdRoute
@@ -393,6 +432,7 @@ export interface FileRoutesByTo {
   '/settings/company': typeof AppCompanySettingsCompanyRoute
   '/settings/export': typeof AppCompanySettingsExportRoute
   '/settings/members': typeof AppCompanySettingsMembersRoute
+  '/cash': typeof AppCompanyCashIndexRoute
   '/chart': typeof AppCompanyChartIndexRoute
   '/drafts': typeof AppCompanyDraftsIndexRoute
   '/entries': typeof AppCompanyEntriesIndexRoute
@@ -401,9 +441,12 @@ export interface FileRoutesByTo {
   '/receivables': typeof AppCompanyReceivablesIndexRoute
   '/reports': typeof AppCompanyReportsIndexRoute
   '/accounts/$id/lines': typeof AppCompanyAccountsIdLinesRoute
+  '/cash/vouchers/$id': typeof AppCompanyCashVouchersIdRoute
   '/receivables/clients/$valueId': typeof AppCompanyReceivablesClientsValueIdRoute
   '/reports/accounts/$id': typeof AppCompanyReportsAccountsIdRoute
   '/reports/journal-book/prints': typeof AppCompanyReportsJournalBookPrintsRoute
+  '/cash/vouchers': typeof AppCompanyCashVouchersIndexRoute
+  '/cash/vouchers/new/$kind': typeof AppCompanyCashVouchersNewKindRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -425,6 +468,7 @@ export interface FileRoutesById {
   '/_app/_company/': typeof AppCompanyIndexRoute
   '/_app/companies/': typeof AppCompaniesIndexRoute
   '/_auth/sign-in/': typeof AuthSignInIndexRoute
+  '/_app/_company/cash/$accountId': typeof AppCompanyCashAccountIdRoute
   '/_app/_company/chart/roles': typeof AppCompanyChartRolesRoute
   '/_app/_company/counterparties/$valueId': typeof AppCompanyCounterpartiesValueIdRoute
   '/_app/_company/drafts/$id': typeof AppCompanyDraftsIdRoute
@@ -444,6 +488,7 @@ export interface FileRoutesById {
   '/_app/_company/settings/company': typeof AppCompanySettingsCompanyRoute
   '/_app/_company/settings/export': typeof AppCompanySettingsExportRoute
   '/_app/_company/settings/members': typeof AppCompanySettingsMembersRoute
+  '/_app/_company/cash/': typeof AppCompanyCashIndexRoute
   '/_app/_company/chart/': typeof AppCompanyChartIndexRoute
   '/_app/_company/drafts/': typeof AppCompanyDraftsIndexRoute
   '/_app/_company/entries/': typeof AppCompanyEntriesIndexRoute
@@ -452,9 +497,12 @@ export interface FileRoutesById {
   '/_app/_company/receivables/': typeof AppCompanyReceivablesIndexRoute
   '/_app/_company/reports/': typeof AppCompanyReportsIndexRoute
   '/_app/_company/accounts/$id/lines': typeof AppCompanyAccountsIdLinesRoute
+  '/_app/_company/cash/vouchers/$id': typeof AppCompanyCashVouchersIdRoute
   '/_app/_company/receivables/clients/$valueId': typeof AppCompanyReceivablesClientsValueIdRoute
   '/_app/_company/reports/accounts/$id': typeof AppCompanyReportsAccountsIdRoute
   '/_app/_company/reports/journal-book/prints': typeof AppCompanyReportsJournalBookPrintsRoute
+  '/_app/_company/cash/vouchers/': typeof AppCompanyCashVouchersIndexRoute
+  '/_app/_company/cash/vouchers/new/$kind': typeof AppCompanyCashVouchersNewKindRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -474,6 +522,7 @@ export interface FileRouteTypes {
     | '/two-factor/enrol'
     | '/companies/'
     | '/sign-in/'
+    | '/cash/$accountId'
     | '/chart/roles'
     | '/counterparties/$valueId'
     | '/drafts/$id'
@@ -493,6 +542,7 @@ export interface FileRouteTypes {
     | '/settings/company'
     | '/settings/export'
     | '/settings/members'
+    | '/cash/'
     | '/chart/'
     | '/drafts/'
     | '/entries/'
@@ -501,9 +551,12 @@ export interface FileRouteTypes {
     | '/receivables/'
     | '/reports/'
     | '/accounts/$id/lines'
+    | '/cash/vouchers/$id'
     | '/receivables/clients/$valueId'
     | '/reports/accounts/$id'
     | '/reports/journal-book/prints'
+    | '/cash/vouchers/'
+    | '/cash/vouchers/new/$kind'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -521,6 +574,7 @@ export interface FileRouteTypes {
     | '/two-factor/enrol'
     | '/companies'
     | '/sign-in'
+    | '/cash/$accountId'
     | '/chart/roles'
     | '/counterparties/$valueId'
     | '/drafts/$id'
@@ -540,6 +594,7 @@ export interface FileRouteTypes {
     | '/settings/company'
     | '/settings/export'
     | '/settings/members'
+    | '/cash'
     | '/chart'
     | '/drafts'
     | '/entries'
@@ -548,9 +603,12 @@ export interface FileRouteTypes {
     | '/receivables'
     | '/reports'
     | '/accounts/$id/lines'
+    | '/cash/vouchers/$id'
     | '/receivables/clients/$valueId'
     | '/reports/accounts/$id'
     | '/reports/journal-book/prints'
+    | '/cash/vouchers'
+    | '/cash/vouchers/new/$kind'
   id:
     | '__root__'
     | '/_app'
@@ -571,6 +629,7 @@ export interface FileRouteTypes {
     | '/_app/_company/'
     | '/_app/companies/'
     | '/_auth/sign-in/'
+    | '/_app/_company/cash/$accountId'
     | '/_app/_company/chart/roles'
     | '/_app/_company/counterparties/$valueId'
     | '/_app/_company/drafts/$id'
@@ -590,6 +649,7 @@ export interface FileRouteTypes {
     | '/_app/_company/settings/company'
     | '/_app/_company/settings/export'
     | '/_app/_company/settings/members'
+    | '/_app/_company/cash/'
     | '/_app/_company/chart/'
     | '/_app/_company/drafts/'
     | '/_app/_company/entries/'
@@ -598,9 +658,12 @@ export interface FileRouteTypes {
     | '/_app/_company/receivables/'
     | '/_app/_company/reports/'
     | '/_app/_company/accounts/$id/lines'
+    | '/_app/_company/cash/vouchers/$id'
     | '/_app/_company/receivables/clients/$valueId'
     | '/_app/_company/reports/accounts/$id'
     | '/_app/_company/reports/journal-book/prints'
+    | '/_app/_company/cash/vouchers/'
+    | '/_app/_company/cash/vouchers/new/$kind'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -736,6 +799,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/two-factor/enrol'
       preLoaderRoute: typeof AuthTwoFactorEnrolRouteImport
       parentRoute: typeof AuthRoute
+    }
+    '/_app/_company/cash/': {
+      id: '/_app/_company/cash/'
+      path: '/cash'
+      fullPath: '/cash/'
+      preLoaderRoute: typeof AppCompanyCashIndexRouteImport
+      parentRoute: typeof AppCompanyRoute
+    }
+    '/_app/_company/cash/$accountId': {
+      id: '/_app/_company/cash/$accountId'
+      path: '/cash/$accountId'
+      fullPath: '/cash/$accountId'
+      preLoaderRoute: typeof AppCompanyCashAccountIdRouteImport
+      parentRoute: typeof AppCompanyRoute
     }
     '/_app/_company/chart/': {
       id: '/_app/_company/chart/'
@@ -926,6 +1003,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppCompanyAccountsIdLinesRouteImport
       parentRoute: typeof AppCompanyRoute
     }
+    '/_app/_company/cash/vouchers/': {
+      id: '/_app/_company/cash/vouchers/'
+      path: '/cash/vouchers'
+      fullPath: '/cash/vouchers/'
+      preLoaderRoute: typeof AppCompanyCashVouchersIndexRouteImport
+      parentRoute: typeof AppCompanyRoute
+    }
+    '/_app/_company/cash/vouchers/$id': {
+      id: '/_app/_company/cash/vouchers/$id'
+      path: '/cash/vouchers/$id'
+      fullPath: '/cash/vouchers/$id'
+      preLoaderRoute: typeof AppCompanyCashVouchersIdRouteImport
+      parentRoute: typeof AppCompanyRoute
+    }
     '/_app/_company/receivables/clients/$valueId': {
       id: '/_app/_company/receivables/clients/$valueId'
       path: '/receivables/clients/$valueId'
@@ -947,6 +1038,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppCompanyReportsJournalBookPrintsRouteImport
       parentRoute: typeof AppCompanyRoute
     }
+    '/_app/_company/cash/vouchers/new/$kind': {
+      id: '/_app/_company/cash/vouchers/new/$kind'
+      path: '/cash/vouchers/new/$kind'
+      fullPath: '/cash/vouchers/new/$kind'
+      preLoaderRoute: typeof AppCompanyCashVouchersNewKindRouteImport
+      parentRoute: typeof AppCompanyRoute
+    }
   }
 }
 
@@ -956,6 +1054,7 @@ interface AppCompanyRouteChildren {
   AppCompanyOpeningRoute: typeof AppCompanyOpeningRoute
   AppCompanyRevaluationRoute: typeof AppCompanyRevaluationRoute
   AppCompanyIndexRoute: typeof AppCompanyIndexRoute
+  AppCompanyCashAccountIdRoute: typeof AppCompanyCashAccountIdRoute
   AppCompanyChartRolesRoute: typeof AppCompanyChartRolesRoute
   AppCompanyCounterpartiesValueIdRoute: typeof AppCompanyCounterpartiesValueIdRoute
   AppCompanyDraftsIdRoute: typeof AppCompanyDraftsIdRoute
@@ -975,6 +1074,7 @@ interface AppCompanyRouteChildren {
   AppCompanySettingsCompanyRoute: typeof AppCompanySettingsCompanyRoute
   AppCompanySettingsExportRoute: typeof AppCompanySettingsExportRoute
   AppCompanySettingsMembersRoute: typeof AppCompanySettingsMembersRoute
+  AppCompanyCashIndexRoute: typeof AppCompanyCashIndexRoute
   AppCompanyChartIndexRoute: typeof AppCompanyChartIndexRoute
   AppCompanyDraftsIndexRoute: typeof AppCompanyDraftsIndexRoute
   AppCompanyEntriesIndexRoute: typeof AppCompanyEntriesIndexRoute
@@ -983,9 +1083,12 @@ interface AppCompanyRouteChildren {
   AppCompanyReceivablesIndexRoute: typeof AppCompanyReceivablesIndexRoute
   AppCompanyReportsIndexRoute: typeof AppCompanyReportsIndexRoute
   AppCompanyAccountsIdLinesRoute: typeof AppCompanyAccountsIdLinesRoute
+  AppCompanyCashVouchersIdRoute: typeof AppCompanyCashVouchersIdRoute
   AppCompanyReceivablesClientsValueIdRoute: typeof AppCompanyReceivablesClientsValueIdRoute
   AppCompanyReportsAccountsIdRoute: typeof AppCompanyReportsAccountsIdRoute
   AppCompanyReportsJournalBookPrintsRoute: typeof AppCompanyReportsJournalBookPrintsRoute
+  AppCompanyCashVouchersIndexRoute: typeof AppCompanyCashVouchersIndexRoute
+  AppCompanyCashVouchersNewKindRoute: typeof AppCompanyCashVouchersNewKindRoute
 }
 
 const AppCompanyRouteChildren: AppCompanyRouteChildren = {
@@ -994,6 +1097,7 @@ const AppCompanyRouteChildren: AppCompanyRouteChildren = {
   AppCompanyOpeningRoute: AppCompanyOpeningRoute,
   AppCompanyRevaluationRoute: AppCompanyRevaluationRoute,
   AppCompanyIndexRoute: AppCompanyIndexRoute,
+  AppCompanyCashAccountIdRoute: AppCompanyCashAccountIdRoute,
   AppCompanyChartRolesRoute: AppCompanyChartRolesRoute,
   AppCompanyCounterpartiesValueIdRoute: AppCompanyCounterpartiesValueIdRoute,
   AppCompanyDraftsIdRoute: AppCompanyDraftsIdRoute,
@@ -1013,6 +1117,7 @@ const AppCompanyRouteChildren: AppCompanyRouteChildren = {
   AppCompanySettingsCompanyRoute: AppCompanySettingsCompanyRoute,
   AppCompanySettingsExportRoute: AppCompanySettingsExportRoute,
   AppCompanySettingsMembersRoute: AppCompanySettingsMembersRoute,
+  AppCompanyCashIndexRoute: AppCompanyCashIndexRoute,
   AppCompanyChartIndexRoute: AppCompanyChartIndexRoute,
   AppCompanyDraftsIndexRoute: AppCompanyDraftsIndexRoute,
   AppCompanyEntriesIndexRoute: AppCompanyEntriesIndexRoute,
@@ -1021,11 +1126,14 @@ const AppCompanyRouteChildren: AppCompanyRouteChildren = {
   AppCompanyReceivablesIndexRoute: AppCompanyReceivablesIndexRoute,
   AppCompanyReportsIndexRoute: AppCompanyReportsIndexRoute,
   AppCompanyAccountsIdLinesRoute: AppCompanyAccountsIdLinesRoute,
+  AppCompanyCashVouchersIdRoute: AppCompanyCashVouchersIdRoute,
   AppCompanyReceivablesClientsValueIdRoute:
     AppCompanyReceivablesClientsValueIdRoute,
   AppCompanyReportsAccountsIdRoute: AppCompanyReportsAccountsIdRoute,
   AppCompanyReportsJournalBookPrintsRoute:
     AppCompanyReportsJournalBookPrintsRoute,
+  AppCompanyCashVouchersIndexRoute: AppCompanyCashVouchersIndexRoute,
+  AppCompanyCashVouchersNewKindRoute: AppCompanyCashVouchersNewKindRoute,
 }
 
 const AppCompanyRouteWithChildren = AppCompanyRoute._addFileChildren(

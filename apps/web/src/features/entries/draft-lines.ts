@@ -7,6 +7,7 @@ import type {
   Draft,
   DraftInput,
   RatePair,
+  VoucherKind,
 } from '@vertex-mizan/contracts';
 
 /*
@@ -39,12 +40,26 @@ export interface EditDealtRate {
   readonly rate: string | null;
 }
 
+/**
+ * A voucher draft's header as typed (S11 rules 9–13): its kind, cash account, a transfer's
+ * destination, the party as printed and a count's counted amount.
+ */
+export interface EditVoucher {
+  readonly kind: VoucherKind;
+  readonly cashAccountId: string | null;
+  readonly counterCashAccountId: string | null;
+  readonly partyName: string;
+  readonly countedMinor: bigint | null;
+}
+
 export interface EditDraft {
   readonly entryDate: string;
   readonly description: string;
   readonly reference: string;
   readonly dealtRates: readonly EditDealtRate[];
   readonly lines: readonly EditLine[];
+  /** A voucher draft's header (S11); null on an entry. */
+  readonly voucher: EditVoucher | null;
 }
 
 let lastKey = 0;
@@ -83,7 +98,76 @@ export function newDraft(today: string, clientValueId: string | null = null): Ed
       emptyLine(),
       clientValueId === null ? second : { ...second, dimensionValueIds: [clientValueId] },
     ],
+    voucher: null,
   };
+}
+
+/** A cash account a new voucher starts on: its id and currency. */
+export interface VoucherCashAccount {
+  readonly id: string;
+  readonly currency: CurrencyCode;
+}
+
+/** A line on a cash account, its amount still to type. */
+function cashLine(account: VoucherCashAccount | null): EditLine {
+  return account === null
+    ? emptyLine()
+    : { ...emptyLine(), accountId: account.id, currency: account.currency };
+}
+
+/**
+ * A new voucher (S11 rules 10–13): a receipt or a payment starts with its cash line and one counter
+ * line, a transfer with its source and destination lines, a count with no line (the posting builds
+ * a difference's lines).
+ */
+export function newVoucherDraft(
+  today: string,
+  kind: VoucherKind,
+  account: VoucherCashAccount | null,
+): EditDraft {
+  return {
+    entryDate: today,
+    description: '',
+    reference: '',
+    dealtRates: [],
+    lines:
+      kind === 'count'
+        ? []
+        : kind === 'transfer'
+          ? [cashLine(account), emptyLine()]
+          : [cashLine(account), emptyLine()],
+    voucher: {
+      kind,
+      cashAccountId: account?.id ?? null,
+      counterCashAccountId: null,
+      partyName: '',
+      countedMinor: null,
+    },
+  };
+}
+
+/**
+ * The lines with the voucher's cash account changed (S11): every line on the account it replaces,
+ * or the first line when none is, moves to the new account in its currency.
+ */
+export function withCashAccount(
+  lines: readonly EditLine[],
+  previous: string | null,
+  next: VoucherCashAccount,
+  position: 0 | 1 = 0,
+): EditLine[] {
+  const moved = (line: EditLine): EditLine => ({
+    ...line,
+    accountId: next.id,
+    currency: next.currency,
+    openItemId: null,
+    newItem: null,
+  });
+  if (previous !== null && lines.some((line) => line.accountId === previous)) {
+    return lines.map((line) => (line.accountId === previous ? moved(line) : line));
+  }
+  const padded = lines.length > position ? [...lines] : [...lines, emptyLine(), emptyLine()];
+  return padded.map((line, index) => (index === position ? moved(line) : line));
 }
 
 /** The working copy of a stored draft. */
@@ -94,7 +178,7 @@ export function editDraftOf(draft: Draft): EditDraft {
     reference: draft.reference ?? '',
     dealtRates: draft.dealtRates,
     lines:
-      draft.lines.length === 0 && draft.reversesEntryId === null
+      draft.lines.length === 0 && draft.reversesEntryId === null && draft.voucher?.kind !== 'count'
         ? [emptyLine(), emptyLine()]
         : draft.lines.map((line) => ({
             key: newLineKey(),
@@ -106,6 +190,17 @@ export function editDraftOf(draft: Draft): EditDraft {
             openItemId: line.openItemId,
             newItem: line.newItem,
           })),
+    voucher:
+      draft.voucher === null
+        ? null
+        : {
+            kind: draft.voucher.kind,
+            cashAccountId: draft.voucher.cashAccountId,
+            counterCashAccountId: draft.voucher.counterCashAccountId,
+            partyName: draft.voucher.partyName ?? '',
+            countedMinor:
+              draft.voucher.countedMinor === null ? null : BigInt(draft.voucher.countedMinor),
+          },
   };
 }
 
@@ -170,6 +265,22 @@ export function draftInputOf(
             openItemId: line.openItemId,
             newItem: line.newItem,
           })),
+    // A voucher's header goes with every save; an entry sends none, which keeps it an entry.
+    ...(edit.voucher === null || edit.voucher.cashAccountId === null
+      ? {}
+      : {
+          voucher: {
+            kind: edit.voucher.kind,
+            cashAccountId: edit.voucher.cashAccountId,
+            counterCashAccountId:
+              edit.voucher.kind === 'transfer' ? edit.voucher.counterCashAccountId : null,
+            partyName: text(edit.voucher.partyName),
+            countedMinor:
+              edit.voucher.kind === 'count' && edit.voucher.countedMinor !== null
+                ? edit.voucher.countedMinor.toString()
+                : null,
+          },
+        }),
   };
 }
 
