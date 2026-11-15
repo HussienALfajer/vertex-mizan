@@ -24,6 +24,7 @@ import {
   post,
   postVoucher,
   previewVoucher,
+  readVoucherPrint,
   recordRate,
   type Transaction,
   users,
@@ -275,6 +276,45 @@ describe('vouchers through the posting function (S11 rules 9–12)', () => {
     expect(entry?.reference).toBe('سند تحويل 2026/1');
     const second = await receipt(books, '111002', 'USD', 100n, '2026-12-02');
     expect(second.number).toBe(2);
+  });
+
+  it('reads an exchange as it prints: net of its fee, at the rate of its own pair (S11 PR 3)', async () => {
+    const books = await newBooks();
+    await receipt(books, '111002', 'USD', 200000n);
+    const exchange = await postVoucherOf(books, {
+      kind: 'transfer',
+      cash: '111002',
+      counter: '111005',
+      on: '2026-12-01',
+      lines: [
+        ['111002', 'USD', -101000n],
+        ['111005', 'TRY', 3450000n],
+        ['532002', 'USD', 1000n],
+      ],
+    });
+    const printed = await inCompany(books.id, (tx) => readVoucherPrint(tx, exchange.id));
+    expect(printed).toMatchObject({
+      kind: 'transfer',
+      amountMinor: '101000',
+      exchangedMinor: '100000',
+      feeMinor: '1000',
+      destinationMinor: '3450000',
+      dealtRate: { base: 'USD', quote: 'TRY', rate: '34.5' },
+      differenceMinor: null,
+      preparedBy: 'محاسب تجريبي',
+    });
+    // The fee is the one counter line, positive in the voucher's direction (out of the box).
+    expect(printed.lines).toEqual([
+      expect.objectContaining({
+        account: expect.objectContaining({ code: '532002' }),
+        amountMinor: '1000',
+      }),
+    ]);
+    // Another company never reads it.
+    const other = await newBooks();
+    expect(
+      (await codeOf(inCompany(other.id, (tx) => readVoucherPrint(tx, exchange.id)))).code,
+    ).toBe('NOT_FOUND');
   });
 
   it('previews the derived rate in the company orientation, rounded to 10 decimals', async () => {

@@ -66,7 +66,11 @@ export type ReportAnswer =
       readonly producedAt: string;
     }
   | { readonly report: 'cash_position'; readonly data: CashPosition; readonly producedAt: string }
-  | { readonly report: 'cash_statement'; readonly data: CashStatement; readonly producedAt: string };
+  | {
+      readonly report: 'cash_statement';
+      readonly data: CashStatement;
+      readonly producedAt: string;
+    };
 
 /**
  * The reports a sheet is read for: every one but the journal book's print and the voucher, which

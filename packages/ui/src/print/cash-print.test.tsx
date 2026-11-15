@@ -224,6 +224,8 @@ const receipt: VoucherPrintData = {
   countedMinor: null,
   differenceMinor: null,
   destinationMinor: null,
+  feeMinor: null,
+  exchangedMinor: null,
   dealtRate: null,
   preparedBy: 'محاسب تجريبي',
   approvedBy: null,
@@ -246,7 +248,11 @@ const printed = (voucher: VoucherPrintData) =>
     voucher,
     text: ar.cash,
     amountInWords: amountInWords(
-      BigInt(voucher.kind === 'count' ? (voucher.countedMinor ?? '0') : voucher.amountMinor),
+      BigInt(
+        voucher.kind === 'count'
+          ? (voucher.countedMinor ?? '0')
+          : (voucher.exchangedMinor ?? voucher.amountMinor),
+      ),
       voucher.cashAccount.currency,
     ),
     currencyName: (currency) =>
@@ -290,6 +296,8 @@ describe('the printed voucher', () => {
       amountMinor: '101000',
       counterCashAccount: { code: '111005', name: 'صندوق الليرة التركية', currency: 'TRY' },
       destinationMinor: '3450000',
+      feeMinor: '1000',
+      exchangedMinor: '100000',
       dealtRate: { base: 'USD', quote: 'TRY', rate: '34.5' },
       lines: [
         {
@@ -304,7 +312,10 @@ describe('the printed voucher', () => {
       ],
     });
     expect(html).toContain('سند تحويل (صرف عملة)');
+    // What it exchanged, net of the fee, agrees with its rate: 1,000.00 × 34.5 = 34,500.00.
+    expect(html).toMatch(/المبلغ المحوَّل<\/th><td><bdi class="num">1,000\.00<\/bdi>/);
     expect(html).toContain('34,500.00');
+    expect(html).toMatch(/إجمالي الصادر من الحساب<\/th><td><bdi class="num">1,010\.00<\/bdi>/);
     expect(html).toContain('1 USD = 34.5 TRY');
     expect(html).toContain('10.00');
     expect(html).not.toContain('استلمنا من');
@@ -321,7 +332,17 @@ describe('the printed voucher', () => {
       expectedMinor: '500000',
       countedMinor: '490000',
       differenceMinor: '-10000',
-      lines: [],
+      lines: [
+        {
+          lineNo: 2,
+          account: { code: '532007', name: 'عجز الصناديق' },
+          currency: 'SYP',
+          amountMinor: '10000',
+          counterparty: null,
+          contract: null,
+          memo: null,
+        },
+      ],
     });
     expect(html).toContain('محضر جرد');
     expect(html).toContain('الرصيد المتوقع');
@@ -330,6 +351,9 @@ describe('the printed voucher', () => {
     expect(html).toContain('-100.00');
     expect(html).toContain('الليرة السورية الجديدة');
     expect(html).toContain('ليرة سورية جديدة');
+    // Every figure names its currency as printed: never the bare code for SYP.
+    expect(html).not.toMatch(/>SYP</);
+    expect(html.match(/الليرة السورية الجديدة/g)?.length).toBeGreaterThanOrEqual(4);
     expect(html).toContain('جرد مفاجئ');
   });
 });

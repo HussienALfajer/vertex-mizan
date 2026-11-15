@@ -11,9 +11,10 @@ import type {
   VoucherState,
 } from '@vertex-mizan/contracts';
 import { DomainError } from '@vertex-mizan/contracts';
-import { dayBefore, periodOf } from '@vertex-mizan/ledger';
+import { dayBefore, derivedDealtRate, periodOf } from '@vertex-mizan/ledger';
 import { type SQL, sql } from 'drizzle-orm';
 import type { Transaction } from '../client.js';
+import { pairOrientation } from '../posting/post.js';
 import { companySettings } from '../schema/companies.js';
 import { ledgersOf } from './companies.js';
 import { rateText } from './rates.js';
@@ -509,8 +510,19 @@ export interface VoucherPrint extends VoucherRow {
   readonly lines: readonly VoucherPrintLine[];
   /** A transfer's destination amount in the destination's currency. */
   readonly destinationMinor: string | null;
-  /** The dealt rate an exchange posted at, as quoted. */
-  readonly dealtRate: { readonly base: CurrencyCode; readonly quote: CurrencyCode; readonly rate: string } | null;
+  /** A transfer's fee in the source's currency (its debit lines there), zero without one. */
+  readonly feeMinor: string | null;
+  /** What a transfer exchanged: the source's credit net of the fee (S11 rule 12). */
+  readonly exchangedMinor: string | null;
+  /**
+   * An exchange's rate derived from its amounts (S11 rule 12), in the company's orientation of the
+   * source's and destination's pair; null for a transfer in one currency or any other voucher.
+   */
+  readonly dealtRate: {
+    readonly base: CurrencyCode;
+    readonly quote: CurrencyCode;
+    readonly rate: string;
+  } | null;
   /** A count's counted less expected. */
   readonly differenceMinor: string | null;
 }
@@ -527,24 +539,31 @@ export async function readVoucherPrint(tx: Transaction, id: string): Promise<Vou
   const entryId = row.entry?.id ?? null;
   const facts = await tx.execute<{
     destination: string | null;
-    base: CurrencyCode | null;
-    quote: CurrencyCode | null;
-    rate: string | null;
+    given: string | null;
+    fee: string | null;
+    exchanged: string | null;
     difference: string | null;
   }>(sql`
-    select
-      (select sum(l.amount_minor)::text from public.journal_lines l
-        where l.entry_id = v.entry_id and l.account_id = v.counter_cash_account_id) as destination,
-      c.base, c.quote, c.rate::text as rate,
-      (v.counted_minor - v.expected_minor)::text as difference
-    from public.cash_vouchers v
-    left join lateral (
-      select k.base, k.quote, k.rate from public.line_conversions k
-      join public.journal_lines l on l.company_id = k.company_id and l.id = k.line_id
-      where l.entry_id = v.entry_id and k.basis = 'transaction'
-      order by l.line_no limit 1
-    ) c on true
-    where v.id = ${id}`);
+    with figures as (
+      select v.kind, v.counted_minor, v.expected_minor,
+        (select sum(l.amount_minor) from public.journal_lines l
+          where l.entry_id = v.entry_id and l.account_id = v.counter_cash_account_id) as destination,
+        coalesce((select -sum(l.amount_minor) from public.journal_lines l
+          where l.entry_id = v.entry_id and l.account_id = v.cash_account_id), 0) as given,
+        coalesce((select sum(l.amount_minor) from public.journal_lines l
+          where l.entry_id = v.entry_id and l.amount_minor > 0
+            and l.account_id not in (v.cash_account_id, v.counter_cash_account_id)
+            and l.kind not in ('difference', 'rounding')
+            and l.currency = ${row.cashAccount.currency}), 0) as fee
+      from public.cash_vouchers v
+      where v.id = ${id}
+    )
+    select destination::text as destination,
+      case when kind = 'transfer' then given::text end as given,
+      case when kind = 'transfer' then fee::text end as fee,
+      case when kind = 'transfer' then (given - fee)::text end as exchanged,
+      (counted_minor - expected_minor)::text as difference
+    from figures`);
   const lines =
     entryId === null
       ? { rows: [] }
@@ -582,6 +601,26 @@ export async function readVoucherPrint(tx: Transaction, id: string): Promise<Vou
             and l.kind not in ('difference', 'rounding')
           order by l.line_no`);
   const fact = facts.rows[0];
+  const destination = row.counterCashAccount;
+  // The rate the exchange was dealt at, from its two amounts (rule 12): never a conversion's rate,
+  // which may be of another pair.
+  const dealtRate =
+    destination !== null &&
+    destination.currency !== row.cashAccount.currency &&
+    fact?.given != null &&
+    fact.destination != null &&
+    fact.fee != null
+      ? derivedDealtRate(
+          {
+            given: BigInt(fact.given),
+            givenCurrency: row.cashAccount.currency,
+            received: BigInt(fact.destination),
+            receivedCurrency: destination.currency,
+            fee: BigInt(fact.fee),
+          },
+          await pairOrientation(tx, row.cashAccount.currency, destination.currency),
+        )
+      : null;
   return {
     ...row,
     preparedBy: nameOf(row.preparedByUserId),
@@ -596,10 +635,9 @@ export async function readVoucherPrint(tx: Transaction, id: string): Promise<Vou
       memo: line.memo,
     })),
     destinationMinor: fact?.destination ?? null,
-    dealtRate:
-      fact?.base && fact.quote && fact.rate
-        ? { base: fact.base, quote: fact.quote, rate: rateText(fact.rate) }
-        : null,
+    feeMinor: fact?.fee ?? null,
+    exchangedMinor: fact?.exchanged ?? null,
+    dealtRate: dealtRate === null ? null : { ...dealtRate, rate: rateText(dealtRate.rate) },
     differenceMinor: fact?.difference ?? null,
   };
 }

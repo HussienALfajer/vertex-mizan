@@ -88,6 +88,7 @@ export const cash = {
     allAccounts: 'كل الحسابات',
     state: 'الحالة',
     allStates: 'كل الحالات',
+    range: 'تاريخ السند',
     empty: 'لا سندات بهذه الشروط',
     more: 'عرض المزيد',
     columns: {
@@ -204,6 +205,7 @@ export const cash = {
     destinationAmount: 'المبلغ المستلَم',
     dealtRate: 'سعر الصرف',
     fee: 'العمولة',
+    sourceTotal: 'إجمالي الصادر من الحساب',
     expected: 'الرصيد المتوقع',
     counted: 'المبلغ المعدود',
     difference: 'الفرق',

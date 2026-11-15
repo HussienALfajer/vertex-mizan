@@ -1,11 +1,11 @@
 import { z } from 'zod';
 import { cursorSchema } from './audit.js';
+import { cashPositionQuerySchema, cashStatementQuerySchema } from './cash.js';
 import { STATEMENT_LINES } from './chart.js';
 import { entryHubDocumentSchema } from './entries.js';
 import { currencyCodeSchema, ledgerSchema } from './money.js';
-import { cashPositionQuerySchema, cashStatementQuerySchema } from './cash.js';
-import { voucherNumberSchema } from './vouchers.js';
 import { ageingQuerySchema, counterpartyStatementQuerySchema } from './open-items.js';
+import { voucherNumberSchema } from './vouchers.js';
 import { entryNumberSchema, minorUnitsSchema, personRefSchema } from './wire.js';
 
 /**
@@ -895,7 +895,9 @@ export const cashStatementFileQuerySchema = z
 export type CashStatementFileQuery = z.infer<typeof cashStatementFileQuerySchema>;
 
 /** A printed voucher names its voucher (S11 "Printing and legal books"). */
-export const voucherFileQuerySchema = z.object({ voucher: z.uuid() }).meta({ id: 'VoucherFileQuery' });
+export const voucherFileQuerySchema = z
+  .object({ voucher: z.uuid() })
+  .meta({ id: 'VoucherFileQuery' });
 
 export type VoucherFileQuery = z.infer<typeof voucherFileQuerySchema>;
 

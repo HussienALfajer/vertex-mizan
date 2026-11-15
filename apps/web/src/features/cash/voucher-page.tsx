@@ -43,12 +43,13 @@ const route = getRouteApi('/_app/_company/cash/vouchers/$id');
  */
 export function VoucherPage() {
   const { id } = route.useParams();
+  const { cancel } = route.useSearch();
   const { companyId, me, membership } = useCompany();
   const startMonth = useFiscalYearStartMonth(companyId);
   const company = useQuery(companyQuery(companyId));
   const catalog = useDimensionCatalog(companyId);
   const voucher = useQuery(voucherQuery(companyId, id));
-  const [cancelling, setCancelling] = useState(false);
+  const [cancelling, setCancelling] = useState(cancel === true);
 
   if (voucher.isPending) {
     return (

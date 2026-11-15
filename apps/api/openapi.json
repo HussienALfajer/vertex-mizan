@@ -20045,6 +20045,38 @@
                 "$ref": "#/components/schemas/EntryHubDocument"
               }
             ]
+          },
+          "voucher": {
+            "default": null,
+            "nullable": true,
+            "type": "object",
+            "properties": {
+              "kind": {
+                "$ref": "#/components/schemas/VoucherKind"
+              },
+              "fiscalYear": {
+                "type": "integer",
+                "minimum": 2000,
+                "maximum": 9999
+              },
+              "number": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "id": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              }
+            },
+            "required": [
+              "kind",
+              "fiscalYear",
+              "number",
+              "id"
+            ],
+            "additionalProperties": false
           }
         },
         "required": [
@@ -20062,7 +20094,8 @@
           "transactionAmount",
           "transactionBalance",
           "openItem",
-          "hubDocument"
+          "hubDocument",
+          "voucher"
         ],
         "additionalProperties": false
       },

@@ -47,6 +47,9 @@ export interface VoucherPrintData {
   readonly countedMinor: string | null;
   readonly differenceMinor: string | null;
   readonly destinationMinor: string | null;
+  /** A transfer's fee and what it exchanged net of the fee, in the source's currency. */
+  readonly feeMinor: string | null;
+  readonly exchangedMinor: string | null;
   readonly dealtRate: {
     readonly base: CurrencyCode;
     readonly quote: CurrencyCode;
@@ -86,6 +89,8 @@ export interface VoucherPrintText {
     readonly sourceAmount: string;
     readonly destinationAmount: string;
     readonly dealtRate: string;
+    readonly fee: string;
+    readonly sourceTotal: string;
     readonly expected: string;
     readonly counted: string;
     readonly difference: string;
@@ -190,7 +195,8 @@ export function VoucherPrint({
               <Field label={p.source}>{accountText(voucher.cashAccount)}</Field>
               <Field label={p.destination}>{accountText(voucher.counterCashAccount)}</Field>
               <Field label={p.sourceAmount}>
-                <Figure minor={voucher.amountMinor} currency={currency} /> {currencyName(currency)}
+                <Figure minor={voucher.exchangedMinor ?? voucher.amountMinor} currency={currency} />{' '}
+                {currencyName(currency)}
               </Field>
               {voucher.destinationMinor === null ? null : (
                 <Field label={p.destinationAmount}>
@@ -208,6 +214,17 @@ export function VoucherPrint({
                   </bdi>
                 </Field>
               )}
+              {voucher.feeMinor !== null && voucher.feeMinor !== '0' && (
+                <>
+                  <Field label={p.fee}>
+                    <Figure minor={voucher.feeMinor} currency={currency} /> {currencyName(currency)}
+                  </Field>
+                  <Field label={p.sourceTotal}>
+                    <Figure minor={voucher.amountMinor} currency={currency} />{' '}
+                    {currencyName(currency)}
+                  </Field>
+                </>
+              )}
             </>
           ) : (
             <>
@@ -222,12 +239,14 @@ export function VoucherPrint({
             <>
               {voucher.expectedMinor === null ? null : (
                 <Field label={p.expected}>
-                  <Figure minor={voucher.expectedMinor} currency={currency} />
+                  <Figure minor={voucher.expectedMinor} currency={currency} />{' '}
+                  {currencyName(currency)}
                 </Field>
               )}
               {voucher.differenceMinor === null ? null : (
                 <Field label={p.difference}>
-                  <Figure minor={voucher.differenceMinor} currency={currency} />
+                  <Figure minor={voucher.differenceMinor} currency={currency} />{' '}
+                  {currencyName(currency)}
                 </Field>
               )}
             </>
@@ -242,7 +261,7 @@ export function VoucherPrint({
           </Field>
         </tbody>
       </table>
-      {voucher.lines.length > 0 ? (
+      {voucher.lines.length > 0 && voucher.kind !== 'transfer' ? (
         <table className="voucher-lines">
           <caption>{p.lines}</caption>
           <thead>
@@ -268,7 +287,7 @@ export function VoucherPrint({
                 <td>{line.contract === null ? null : <bdi>{line.contract}</bdi>}</td>
                 <td className="num">
                   <Figure minor={line.amountMinor} currency={line.currency} />{' '}
-                  <bdi className="code">{line.currency}</bdi>
+                  {currencyName(line.currency)}
                 </td>
               </tr>
             ))}

@@ -182,6 +182,28 @@ test.describe('the vouchers', () => {
     ).toBeVisible();
   });
 
+  test('filter by a range of dates and cancel from a row', async ({ page }) => {
+    const reads = await answer(page, 'GET', '/vouchers', (request) => {
+      const params = new URL(request.url()).searchParams;
+      return {
+        status: 200,
+        json: {
+          vouchers: params.get('from') === '2026-11-05' ? [receipt] : [receipt, count],
+          nextCursor: null,
+        },
+      };
+    });
+    await page.goto('/cash/vouchers?from=2026-11-05&to=2026-11-05');
+    const table = page.getByRole('table', { name: t.register.title });
+    await expect(table.getByRole('row')).toHaveCount(2);
+    const asked = new URL(reads[0]?.url() ?? '').searchParams;
+    expect([asked.get('from'), asked.get('to')]).toEqual(['2026-11-05', '2026-11-05']);
+    await expect(page.getByLabel(ar.reports.header.from)).toHaveValue('2026-11-05');
+    await table.getByRole('link', { name: t.register.cancel }).click();
+    await expect(page).toHaveURL(new RegExp(`/cash/vouchers/${receipt.id}\\?cancel=true$`));
+    await expect(page.getByRole('dialog')).toBeVisible();
+  });
+
   test('a voucher shows its number, entry and lines, and is cancelled by a reversal', async ({
     page,
   }) => {

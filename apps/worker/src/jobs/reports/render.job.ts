@@ -234,7 +234,9 @@ export class ReportsRenderJob implements QueueWorker {
           const params = REPORT_FILE_QUERIES.voucher.parse(row.params);
           const voucher = await readVoucherPrint(tx, params.voucher);
           const shown =
-            voucher.kind === 'count' ? (voucher.countedMinor ?? '0') : voucher.amountMinor;
+            voucher.kind === 'count'
+              ? (voucher.countedMinor ?? '0')
+              : (voucher.exchangedMinor ?? voucher.amountMinor);
           const html = renderVoucherHtml({
             company: company.name,
             voucher,

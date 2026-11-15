@@ -209,7 +209,9 @@ function wholeInWords(groups: readonly number[], noun: CountedNoun): string {
     // A scale's one and two are always its own forms: "ألف", "ألفان", "مليون وألف". When the
     // counted noun follows it directly, it is in construct: "ألفا دولار", "أحد عشر ألف دولار".
     const beforeNoun = groups.slice(index + 1).every((later) => later === 0);
-    const form = beforeNoun ? { ...scaleNoun, two: scaleNoun.construct, many: scaleNoun.genitive } : scaleNoun;
+    const form = beforeNoun
+      ? { ...scaleNoun, two: scaleNoun.construct, many: scaleNoun.genitive }
+      : scaleNoun;
     parts.push(group(value, form, true));
   });
   const words = parts.join(' و');

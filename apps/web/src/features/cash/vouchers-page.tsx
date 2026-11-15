@@ -12,7 +12,10 @@ import {
   Amount,
   Button,
   Card,
+  type DateRange,
+  DateRangeField,
   EmptyState,
+  isDateRangeOrdered,
   PageHeader,
   SelectField,
   Skeleton,
@@ -23,10 +26,10 @@ import {
   TableHeader,
   TableRow,
 } from '@vertex-mizan/ui';
-import { ReceiptIcon } from 'lucide-react';
+import { BanIcon, ReceiptIcon } from 'lucide-react';
 import { FormError } from '../../components/form-error';
 import { formatDay } from '../../lib/format';
-import { useCompany } from '../../lib/session';
+import { can, useCompany } from '../../lib/session';
 import { useFiscalYearStartMonth } from '../entries/entry-parts';
 import { PrintVoucherButton, VoucherNumberText, VoucherStateBadge } from './cash-parts';
 import { cashPositionQuery, vouchersQuery } from './cash-queries';
@@ -47,8 +50,20 @@ export function VouchersPage() {
   const navigate = useNavigate();
   const { companyId } = useCompany();
   const startMonth = useFiscalYearStartMonth(companyId);
-  const filters = { kind: search.kind, cashAccount: search.account, state: search.state };
-  const pages = useInfiniteQuery(vouchersQuery(companyId, filters));
+  const range: DateRange = { from: search.from ?? '', to: search.to ?? '' };
+  const filters = {
+    kind: search.kind,
+    cashAccount: search.account,
+    state: search.state,
+    from: search.from,
+    to: search.to,
+  };
+  const { me, membership } = useCompany();
+  const cancels = !membership.company.archived && can(me, 'drafts.manage');
+  const pages = useInfiniteQuery({
+    ...vouchersQuery(companyId, filters),
+    enabled: isDateRangeOrdered(range),
+  });
   const position = useQuery(cashPositionQuery(companyId, undefined));
   const accounts = (position.data?.groups ?? []).flatMap((group) => group.accounts);
   const vouchers = pages.data?.pages.flatMap((page) => page.vouchers) ?? [];
@@ -59,6 +74,17 @@ export function VouchersPage() {
       <PageHeader back={<CashBackLink />} title={t.title} />
       <Card className="p-4">
         <search aria-label={t.filters} className="grid gap-4 md:grid-cols-3">
+          <DateRangeField
+            value={range}
+            onValueChange={(next) =>
+              set({ from: next.from || undefined, to: next.to || undefined })
+            }
+            label={t.range}
+            fromLabel={ar.reports.header.from}
+            toLabel={ar.reports.header.to}
+            orderError={ar.cash.statement.rangeError}
+            className="md:col-span-3"
+          />
           <SelectField
             label={t.kind}
             value={search.kind ?? ALL}
@@ -167,7 +193,25 @@ export function VouchersPage() {
                     <VoucherStateBadge state={voucher.state} />
                   </TableCell>
                   <TableCell>
-                    <PrintVoucherButton voucherId={voucher.id} size="sm" />
+                    <span className="flex flex-wrap items-center gap-2">
+                      <PrintVoucherButton voucherId={voucher.id} size="sm" />
+                      {cancels && voucher.state === 'posted' && voucher.entry !== null && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          render={
+                            <Link
+                              to="/cash/vouchers/$id"
+                              params={{ id: voucher.id }}
+                              search={{ cancel: true }}
+                            />
+                          }
+                        >
+                          <BanIcon aria-hidden="true" />
+                          {t.cancel}
+                        </Button>
+                      )}
+                    </span>
                   </TableCell>
                 </TableRow>
               ))}
