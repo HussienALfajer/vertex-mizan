@@ -872,9 +872,9 @@ describe('a case', () => {
     ).toContain('A material is stated twice');
     // A purchase needs no terms and may be in any currency; it states its supplier.
     const document = 'currency: SYP, reference: "F-1" }';
-    expect(refusal(PURCHASE.replace(document, 'currency: SYP, reference: "F-1", sequence: 1 }'))).toContain(
-      'sequence',
-    );
+    expect(
+      refusal(PURCHASE.replace(document, 'currency: SYP, reference: "F-1", sequence: 1 }')),
+    ).toContain('sequence');
     expect(refusal(PURCHASE.replace('supplier: S1, entry: 1', 'entry: 1'))).toContain('supplier');
     expect(refusal(PURCHASE.replace('client: C1, supplier', 'client: C2, supplier'))).toContain(
       "P1 is C1's project",
