@@ -184,8 +184,11 @@ export const draftInputSchema = z
       )
       .default([]),
     lines: z.array(draftLineInputSchema).max(DRAFT_LINE_LIMIT).default([]),
-    /** A voucher draft's header (S11 rules 9–13); null on any other draft. */
-    voucher: voucherHeaderInputSchema.nullable().default(null),
+    /**
+     * A voucher draft's header (S11 rules 9–13): null or left out on any other draft; on a save,
+     * left out keeps the draft's header and null removes it.
+     */
+    voucher: voucherHeaderInputSchema.nullable().optional(),
   })
   .meta({ id: 'DraftInput' });
 
@@ -667,6 +670,19 @@ export const NUMBERING_PROBLEMS = ['missing', 'duplicate', 'counter'] as const;
  */
 export const PERIOD_BALANCE_PROBLEMS = ['different', 'missing', 'unexpected'] as const;
 
+/**
+ * What the integrity check finds wrong with the vouchers (S11 "Reports"): a gap, a repeat or a
+ * sequence that disagrees with a kind's numbers in a fiscal year; a voucher with no entry that is
+ * not a count that matched; an entry posted from a voucher draft with no voucher.
+ */
+export const VOUCHER_PROBLEMS = [
+  'missing',
+  'duplicate',
+  'sequence',
+  'no_entry',
+  'entry_without_voucher',
+] as const;
+
 /** The amounts the integrity check compares between a control account and its items (S04). */
 export const CONTROL_ACCOUNT_AMOUNTS = ['transaction', 'book', 'parallel'] as const;
 
@@ -739,6 +755,16 @@ export const integrityReportSchema = z
     /** An item's balance row that disagrees with its movements, or one missing (S04). */
     openItemBalances: z.array(
       z.object({ itemId: z.uuid(), problem: z.enum(PERIOD_BALANCE_PROBLEMS) }),
+    ),
+    /** The voucher register against its numbers and entries (S11 "Reports"). */
+    vouchers: z.array(
+      z.object({
+        kind: z.string(),
+        fiscalYear: z.int().nullable(),
+        number: z.int().nullable(),
+        entryId: z.uuid().nullable(),
+        problem: z.enum(VOUCHER_PROBLEMS),
+      }),
     ),
     anchors: z.array(
       z.object({

@@ -287,3 +287,33 @@ export function boxShortfall(box: {
   }
   return null;
 }
+
+/** Each account's net movement in its transaction currency over `lines` (S11 rule 8). */
+export function netChanges(
+  lines: readonly {
+    readonly account: string;
+    readonly transaction: { readonly amountMinor: bigint };
+  }[],
+): Map<string, bigint> {
+  const changes = new Map<string, bigint>();
+  for (const line of lines) {
+    changes.set(line.account, (changes.get(line.account) ?? 0n) + line.transaction.amountMinor);
+  }
+  return changes;
+}
+
+/** A box's balance at the end of `on` (S11 rule 13): `opening` plus its movements dated `on`. */
+export function balanceAtEnd(box: {
+  readonly opening: bigint;
+  readonly later: readonly BoxMovement[];
+  readonly on: string;
+}): bigint {
+  let balance = box.opening;
+  for (const movement of box.later) if (movement.date === box.on) balance += movement.amountMinor;
+  return balance;
+}
+
+/** A count's difference (S11 rule 13): counted less expected, a shortage below zero. */
+export function countDifference(countedMinor: bigint, expectedMinor: bigint): bigint {
+  return countedMinor - expectedMinor;
+}

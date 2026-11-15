@@ -7,10 +7,14 @@ import type {
   StoredCounter,
   StoredHead,
   StoredPeriodBalance,
+  StoredVoucher,
+  StoredVoucherSequence,
 } from '@vertex-mizan/ledger';
 import { asc, eq, sql } from 'drizzle-orm';
 import type { Transaction } from '../client.js';
+import { cashVouchers, voucherSequences } from '../schema/cash.js';
 import { companySettings } from '../schema/companies.js';
+import { entryDrafts } from '../schema/drafts.js';
 import {
   dimensionSets,
   entryNumberCounters,
@@ -329,5 +333,55 @@ export async function readLedgerState(tx: Transaction): Promise<LedgerState> {
     })),
     dimensionSetIds: new Map(sets.map((set) => [set.key, set.id])),
     anchors,
+  };
+}
+
+/**
+ * The vouchers as stored, for the integrity check (S11 "Reports"): every voucher with its number
+ * and entry, every sequence, and every entry posted from a voucher draft with the draft's kind.
+ */
+export async function readVoucherState(tx: Transaction): Promise<{
+  vouchers: StoredVoucher[];
+  sequences: StoredVoucherSequence[];
+  voucherEntries: { entryId: string; kind: string }[];
+}> {
+  const vouchers = await tx
+    .select({
+      kind: cashVouchers.kind,
+      fiscalYear: cashVouchers.fiscalYear,
+      number: cashVouchers.number,
+      entryId: cashVouchers.entryId,
+      countedMinor: cashVouchers.countedMinor,
+      expectedMinor: cashVouchers.expectedMinor,
+    })
+    .from(cashVouchers);
+  const sequences = await tx
+    .select({
+      kind: voucherSequences.kind,
+      fiscalYear: voucherSequences.fiscalYear,
+      lastNumber: voucherSequences.lastNumber,
+    })
+    .from(voucherSequences);
+  const voucherEntries = await tx
+    .select({ entryId: journalEntries.id, kind: entryDrafts.voucherKind })
+    .from(journalEntries)
+    .innerJoin(
+      entryDrafts,
+      sql`${entryDrafts.companyId} = ${journalEntries.companyId} and ${entryDrafts.id} = ${journalEntries.draftId}`,
+    )
+    .where(sql`${entryDrafts.voucherKind} is not null`);
+  return {
+    vouchers: vouchers.map((voucher) => ({
+      kind: voucher.kind,
+      fiscalYear: voucher.fiscalYear,
+      number: voucher.number,
+      entryId: voucher.entryId,
+      countMatched:
+        voucher.kind === 'count' &&
+        voucher.countedMinor !== null &&
+        voucher.countedMinor === voucher.expectedMinor,
+    })),
+    sequences,
+    voucherEntries: voucherEntries.map((row) => ({ entryId: row.entryId, kind: String(row.kind) })),
   };
 }

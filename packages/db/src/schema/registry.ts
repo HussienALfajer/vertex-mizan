@@ -82,6 +82,9 @@ export const tableRegistry = {
   // S07: a ledger's month-end revaluation with its entry and reversal.
   revaluations: { module: 'ledger', scope: 'company', kind: 'append-only' },
   period_events: { module: 'ledger', scope: 'company', kind: 'append-only' },
+  // S11: cash vouchers and their numbers per kind and fiscal year, written by `post()` only.
+  voucher_sequences: { module: 'ledger', scope: 'company', kind: 'ledger-state' },
+  cash_vouchers: { module: 'ledger', scope: 'company', kind: 'append-only' },
   // drafts (S03, ADR 0005 "drafts are not ledger"): manual entries being prepared, and the files
   // attached to a draft or a posted entry.
   entry_drafts: { module: 'drafts', scope: 'company', kind: 'draft' },

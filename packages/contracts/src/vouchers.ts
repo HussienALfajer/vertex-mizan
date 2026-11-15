@@ -97,6 +97,8 @@ export type VoucherPreview = z.infer<typeof voucherPreviewSchema>;
  */
 export const postDraftSchema = z
   .object({ expectedMinor: minorUnitsSchema.nullable().default(null) })
+  // No body at all, as S03's clients post, is an empty one.
+  .prefault({})
   .meta({ id: 'PostDraft' });
 
 export type PostDraft = z.infer<typeof postDraftSchema>;

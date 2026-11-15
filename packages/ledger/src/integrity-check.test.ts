@@ -12,6 +12,7 @@ import {
   periodTotalsOf,
   type StoredEntry,
   unbalancedEntries,
+  voucherProblems,
 } from './integrity-check.js';
 
 // Synthetic ids: a company, accounts and a dimension set key.
@@ -615,5 +616,63 @@ describe('openItemProblems (S04 "Reports")', () => {
         },
       ),
     );
+  });
+});
+
+describe('voucherProblems (S11 "Reports")', () => {
+  it('finds a gap, a repeat, a sequence ahead, a voucher with no entry and an entry with none', () => {
+    const voucher = (
+      kind: string,
+      number: number,
+      entryId: string | null,
+      countMatched = false,
+    ) => ({
+      kind,
+      fiscalYear: 2026,
+      number,
+      entryId,
+      countMatched,
+    });
+    expect(
+      voucherProblems({
+        vouchers: [
+          voucher('receipt', 1, 'e1'),
+          voucher('receipt', 3, 'e3'),
+          voucher('payment', 1, 'e4'),
+          voucher('payment', 1, 'e5'),
+          voucher('count', 1, null, true),
+          voucher('count', 2, null),
+        ],
+        sequences: [
+          { kind: 'receipt', fiscalYear: 2026, lastNumber: 3 },
+          { kind: 'payment', fiscalYear: 2026, lastNumber: 2 },
+          { kind: 'count', fiscalYear: 2026, lastNumber: 2 },
+        ],
+        voucherEntries: [
+          { entryId: 'e1', kind: 'receipt' },
+          { entryId: 'e9', kind: 'transfer' },
+        ],
+      }).map(
+        (problem) => `${problem.kind} ${problem.number ?? problem.entryId} ${problem.problem}`,
+      ),
+    ).toEqual([
+      'count 2 no_entry',
+      'payment 1 duplicate',
+      'payment 2 sequence',
+      'receipt 2 missing',
+      'transfer e9 entry_without_voucher',
+    ]);
+  });
+
+  it('finds nothing in a sound register', () => {
+    expect(
+      voucherProblems({
+        vouchers: [
+          { kind: 'count', fiscalYear: 2026, number: 1, entryId: null, countMatched: true },
+        ],
+        sequences: [{ kind: 'count', fiscalYear: 2026, lastNumber: 1 }],
+        voucherEntries: [],
+      }),
+    ).toEqual([]);
   });
 });

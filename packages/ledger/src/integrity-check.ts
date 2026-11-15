@@ -493,3 +493,90 @@ export function openItemProblems(input: OpenItemsInput): OpenItemFindings {
   itemBalances.sort((a, b) => (a.itemId < b.itemId ? -1 : a.itemId > b.itemId ? 1 : 0));
   return { controlAccounts, itemBalances };
 }
+
+/** A voucher as stored (`cash_vouchers`, S11): its kind, number, entry and draft. */
+export interface StoredVoucher {
+  readonly kind: string;
+  readonly fiscalYear: number;
+  readonly number: number;
+  readonly entryId: string | null;
+  /** A count that matched records no entry (S11 rule 13). */
+  readonly countMatched: boolean;
+}
+
+/** A voucher sequence as stored (`voucher_sequences`). */
+export interface StoredVoucherSequence {
+  readonly kind: string;
+  readonly fiscalYear: number;
+  readonly lastNumber: number;
+}
+
+/**
+ * What the integrity check finds wrong with the vouchers (S11 "Reports"): a gap, a repeat or a
+ * sequence that disagrees with a kind's numbers in a fiscal year (as entry numbers, `missing`,
+ * `duplicate`, `sequence`); a voucher with no entry that is not a count that matched
+ * (`no_entry`); an entry posted from a voucher draft with no voucher (`entry_without_voucher`).
+ */
+export interface VoucherProblem {
+  readonly kind: string;
+  readonly fiscalYear: number | null;
+  readonly number: number | null;
+  readonly entryId: string | null;
+  readonly problem: 'missing' | 'duplicate' | 'sequence' | 'no_entry' | 'entry_without_voucher';
+}
+
+/** The vouchers against their numbers and entries (S11 "Reports": the voucher register). */
+export function voucherProblems(input: {
+  readonly vouchers: readonly StoredVoucher[];
+  readonly sequences: readonly StoredVoucherSequence[];
+  /** Entries posted from a voucher draft, with the draft's kind. */
+  readonly voucherEntries: readonly { readonly entryId: string; readonly kind: string }[];
+}): VoucherProblem[] {
+  const problems: VoucherProblem[] = [];
+  const key = (kind: string, fiscalYear: number) => `${kind}|${fiscalYear}`;
+  const numbers = new Map<string, number[]>();
+  for (const voucher of input.vouchers) {
+    const listed = numbers.get(key(voucher.kind, voucher.fiscalYear)) ?? [];
+    listed.push(voucher.number);
+    numbers.set(key(voucher.kind, voucher.fiscalYear), listed);
+    if (voucher.entryId === null && !voucher.countMatched) {
+      problems.push({ ...voucher, entryId: null, problem: 'no_entry' });
+    }
+  }
+  const sequences = new Map(
+    input.sequences.map((sequence) => [key(sequence.kind, sequence.fiscalYear), sequence]),
+  );
+  for (const name of [...new Set([...numbers.keys(), ...sequences.keys()])].sort()) {
+    const [kind, year] = name.split('|') as [string, string];
+    const fiscalYear = Number(year);
+    const listed = (numbers.get(name) ?? []).sort((a, b) => a - b);
+    let expected = 1;
+    for (const [index, number] of listed.entries()) {
+      if (index > 0 && number === listed[index - 1]) {
+        problems.push({ kind, fiscalYear, number, entryId: null, problem: 'duplicate' });
+        continue;
+      }
+      if (number > expected) {
+        problems.push({ kind, fiscalYear, number: expected, entryId: null, problem: 'missing' });
+      }
+      expected = number + 1;
+    }
+    const last = sequences.get(name)?.lastNumber ?? 0;
+    if (last !== (listed.at(-1) ?? 0)) {
+      problems.push({ kind, fiscalYear, number: last, entryId: null, problem: 'sequence' });
+    }
+  }
+  const withVoucher = new Set(input.vouchers.map((voucher) => voucher.entryId));
+  for (const entry of input.voucherEntries) {
+    if (!withVoucher.has(entry.entryId)) {
+      problems.push({
+        kind: entry.kind,
+        fiscalYear: null,
+        number: null,
+        entryId: entry.entryId,
+        problem: 'entry_without_voucher',
+      });
+    }
+  }
+  return problems;
+}

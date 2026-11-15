@@ -72,7 +72,6 @@ describe('draftInputSchema', () => {
       reference: null,
       dealtRates: [],
       lines: [],
-      voucher: null,
     });
   });
 

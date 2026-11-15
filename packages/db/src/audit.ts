@@ -111,6 +111,19 @@ export const AUDITED_FIELDS = {
     'follows',
     // S10 rule 28: the opening schedules its lines cleared.
     'schedules',
+    // S11 rule 9: the voucher it posted, its kind and number.
+    'voucher',
+  ],
+  // S11 rule 13: a cash count recorded with no entry.
+  cash_voucher: [
+    'kind',
+    'fiscalYear',
+    'number',
+    'voucherDate',
+    'cashAccountId',
+    'countedMinor',
+    'expectedMinor',
+    'description',
   ],
   // The drafts of manual entries and their attachments (S03 PR 2).
   entry_draft: [
@@ -123,6 +136,8 @@ export const AUDITED_FIELDS = {
     'reversesEntryId',
     'copiedFromEntryId',
     'postedEntryId',
+    // S11: a voucher draft's header.
+    'voucher',
     'rejectedReason',
     'archivedReason',
   ],

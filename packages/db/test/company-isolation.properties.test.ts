@@ -28,6 +28,7 @@ import {
   periods,
   post,
   postRevaluation,
+  postVoucher,
   previewRevaluation,
   ratePairs,
   reportFiles,
@@ -83,6 +84,8 @@ const COVERED = [
   'journal_book_prints',
   'openings',
   'opening_lines',
+  'voucher_sequences',
+  'cash_vouchers',
 ];
 
 const auditRow = fc.record({
@@ -373,7 +376,9 @@ const POSTED = 7;
 const expectedRows = (data: CompanyData): Record<string, number> => ({
   // S07 a monetary account and the unrealised gain and loss accounts.
   // S10 adds two headers and a postable account under assets and under equity for the opening.
-  chart_accounts: 5 + data.headers.length + 3 + 4 + 3 + 3 + 6,
+  // S11 adds a box under `111` (and `11` when the headers lack it).
+  chart_accounts:
+    5 + data.headers.length + 3 + 4 + 3 + 3 + 6 + 2 + (data.headers.includes('11') ? 0 : 1),
   // S11: the receivable control account requires its client.
   account_required_dimensions: 2,
   account_roles: 3,
@@ -406,7 +411,8 @@ const expectedRows = (data: CompanyData): Record<string, number> => ({
   // again in December.
   // S10's opening: its two accounts in November.
   period_balances: 10,
-  entry_drafts: 1,
+  // S11's count draft beside S03's.
+  entry_drafts: 2,
   entry_draft_lines: 2,
   entry_attachments: 2,
   chain_anchors: 1,
@@ -424,7 +430,70 @@ const expectedRows = (data: CompanyData): Record<string, number> => ({
   // S10: the posted opening and its two lines.
   openings: 1,
   opening_lines: 2,
+  // S11: a count of the box that matched, recorded with its number and no entry.
+  voucher_sequences: 1,
+  cash_vouchers: 1,
 });
+
+/**
+ * S11's rows: a box in the book currency, and a count of it that matched (rule 13), posted through
+ * the posting function from its voucher draft with no entry, the draft then marked posted.
+ */
+async function seedVoucher(tx: Transaction, companyId: string, userId: string, data: CompanyData) {
+  if (!data.headers.includes('11')) await addAccount(tx, companyId, '1', { code: '11' });
+  await addAccount(tx, companyId, '11', { code: '111' });
+  const box = await addAccount(tx, companyId, '111', {
+    code: '111001',
+    kind: 'postable',
+    statementLine: 'bs.cash',
+    currency: data.bookCurrency,
+    isMonetary: true,
+    cashKind: 'box',
+  });
+  const draftId = uuidv7();
+  await tx.insert(entryDrafts).values({
+    id: draftId,
+    companyId,
+    state: 'draft',
+    entryDate: '2026-11-20',
+    description: 'جرد مولّد',
+    preparedByUserId: userId,
+    voucherKind: 'count',
+    cashAccountId: box,
+    countedMinor: 0n,
+  });
+  await postVoucher(tx, {
+    client: 'manual',
+    idempotencyKey: draftId,
+    entryDate: '2026-11-20',
+    description: 'جرد مولّد',
+    reference: null,
+    draftId,
+    preparedByUserId: userId,
+    approvedByUserId: null,
+    actor: {
+      kind: 'person',
+      userId,
+      name: 'شخص مولّد',
+      sessionId: null,
+      requestId: 'request-generated',
+      ipAddress: null,
+      userAgent: null,
+    },
+    voucher: {
+      kind: 'count',
+      cashAccountId: box,
+      counterCashAccountId: null,
+      partyName: null,
+      countedMinor: 0n,
+      expectedMinor: 0n,
+    },
+    lines: [],
+    dealtRates: [],
+    today: '2026-11-30',
+  });
+  await tx.update(entryDrafts).set({ state: 'posted' }).where(eq(entryDrafts.id, draftId));
+}
 
 /**
  * S10's rows: the company's books start on 1 November, the opening's draft at version 1 with two
@@ -758,6 +827,7 @@ async function seed(userId: string, data: CompanyData): Promise<string> {
     await seedRevaluation(tx, row.id, userId, data);
     await tx.insert(companyExports).values({ companyId: row.id, requestedByUserId: userId });
     await seedServiceDepartment(tx, row.id, userId);
+    await seedVoucher(tx, row.id, userId, data);
     // S07's period history: November closed, as the posting function writes a close.
     await writePeriodTransition(tx, {
       companyId: row.id,
@@ -817,8 +887,8 @@ describe('company isolation, as a property', () => {
               .where(inArray(auditEntries.companyId, ids)),
           }));
           expect(seen.settings).toEqual([{ companyId: id, note: data.policyNote }]);
-          // Each entry's row, and S07's revaluation.posted.
-          expect(seen.audit).toHaveLength(data.audit.length + POSTED + 1);
+          // Each entry's row, S07's revaluation.posted and S11's cash_count.recorded.
+          expect(seen.audit).toHaveLength(data.audit.length + POSTED + 2);
           for (const row of seen.audit) expect(row.companyId).toBe(id);
           const listed = sql.join(
             ids.map((value) => sql`${value}::uuid`),
