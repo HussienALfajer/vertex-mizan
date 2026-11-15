@@ -931,9 +931,9 @@ describe('a case', () => {
       '        entry: 1, currency: SYP, cumulative: 100000, previous: 0, retention: 10000, advance: 0 }';
     const stated = (...rows: string[]) =>
       refusal(SUBCONTRACT_BILLING.replace(document, rows.join('\n    - ')));
-    expect(refusal(SUBCONTRACT_BILLING.replace(rates, `${rates}, ${subcontract} ${rates}`))).toContain(
-      'A subcontract is stated twice',
-    );
+    expect(
+      refusal(SUBCONTRACT_BILLING.replace(rates, `${rates}, ${subcontract} ${rates}`)),
+    ).toContain('A subcontract is stated twice');
     expect(
       refusal(SUBCONTRACT_BILLING.replace(subcontract, subcontract.replace('P1', 'P2'))),
     ).toContain('P2 is not a project in company.contracts');
