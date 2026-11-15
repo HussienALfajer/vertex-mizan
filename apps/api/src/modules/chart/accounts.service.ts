@@ -188,7 +188,15 @@ export class AccountsService {
       // gains them last. Otherwise dropped dimensions go after the account changes: a control
       // account keeps its counterparty's dimension until it changes its type or stops being one
       // (S11 rule 5), and the deferred check reads the result at commit.
+      // A control account that turns into a header stops being one first, while still postable,
+      // since the database keeps a control account's counterparty dimension until then.
       const dropFirst = next.kind === 'header';
+      if (dropFirst && row.isControl) {
+        await tx
+          .update(chartAccounts)
+          .set({ isControl: false, itemKind: null, counterpartyType: null })
+          .where(eq(chartAccounts.id, id));
+      }
       if (dropFirst) await this.dropDimensions(tx, id, required, next.requiredDimensionTypeIds);
       const [updated] = await onUniqueViolation(
         () =>

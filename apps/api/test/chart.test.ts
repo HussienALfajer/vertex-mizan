@@ -375,6 +375,42 @@ describe('counterparty types and cash kinds (S11 rules 5, 7; ADR 0022)', () => {
     });
   });
 
+  it('turns an unused control account into a header', async () => {
+    const owner = await ownerWith('contracting');
+    const accounts = await tree(owner.browser);
+    const supplier = await typeIdOf(owner.browser, 'supplier');
+    const created = await owner.browser.post('/api/accounts', {
+      parentId: byCode(accounts, '21').id,
+      code: '219',
+      kind: 'postable',
+      name: 'ذمم دائنة تجريبية',
+      statementLine: 'bs.trade_payables',
+      isMonetary: true,
+      isControl: true,
+      itemKind: 'running',
+      counterpartyType: 'supplier',
+      requiredDimensionTypeIds: [supplier],
+    });
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
+    // The sheet's request: the control account lets its counterparty go, then becomes a header.
+    const header = await owner.browser.patch(`/api/accounts/${created.body.id}`, {
+      kind: 'header',
+      statementLine: null,
+      isMonetary: false,
+      isControl: false,
+      itemKind: null,
+      counterpartyType: null,
+      requiredDimensionTypeIds: [],
+    });
+    expect(header.status, JSON.stringify(header.body)).toBe(200);
+    expect(header.body).toMatchObject({
+      kind: 'header',
+      isControl: false,
+      counterpartyType: null,
+      requiredDimensionTypeIds: [],
+    });
+  });
+
   it('keeps the cash kind, the counterparty type and its dimension after first use', async () => {
     const owner = await ownerWith('contracting');
     const accounts = await tree(owner.browser);

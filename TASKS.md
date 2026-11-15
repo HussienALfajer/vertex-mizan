@@ -12,9 +12,9 @@ Four PRs, in order. PR 4 needs only PR 1 and may run beside PRs 2 and 3.
 - [x] scenarios: the runner accepts `template: contracting`; the book still passes (100 run, 24 skipped)
 - [x] api: the open-items module on the renamed contracts; `PATCH /api/accounts/:id` with `counterpartyType` and `cashKind` (audited before/after); `GET /api/chart/templates` lists `contracting@1`; S04 endpoints renamed (`/api/running-balances`, `/api/counterparties/:valueId/statement`, `counterparty` and `counterpartyType` filters); `admin:create-company --template contracting`; tests with another company and a missing permission
 - [x] bridge: `openapi.json` regenerated (no breaking-change guard since ADR 0021; the web app reads the contracts, no generated types); the worker needed no change
-- [ ] web: the account sheet's counterparty type and cash kind (locked after first use); `/receivables/clients/:valueId` → `/counterparties/:valueId` with a redirect; the receivables screens on the renamed endpoints with the type filter; the template choice in company creation; i18n (`chart`, `dimensions`, `open-items`)
-- [ ] e2e: the account sheet and the counterparty statement specs updated; screenshots looked at
-- [ ] docs: ROADMAP, glossary rows (counterparty, counterparty type, supplier, worker, subcontractor, retention, progress billing, advance from a client), AGENTS.md command (`--template contracting`), folder CLAUDE.md files
+- [x] web: the account sheet's counterparty type and cash kind (locked after first use); `/receivables/clients/:valueId` → `/counterparties/:valueId` with a redirect; the receivables screens on the renamed endpoints with the type filter; the template choice in company creation; i18n (`chart`, `dimensions`, `open-items`)
+- [x] e2e: the account sheet and the counterparty statement specs updated; screenshots looked at
+- [x] docs: ROADMAP, glossary rows (counterparty, counterparty type, supplier, worker, subcontractor, retention, progress billing, advance from a client), AGENTS.md command (`--template contracting`), folder CLAUDE.md files
 - [ ] checks and reviewers, PR with auto-merge and Auto-fix
 
 ### PR 2 — vouchers and the box rule (branch `feat/s11-vouchers`)

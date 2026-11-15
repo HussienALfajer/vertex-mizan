@@ -219,5 +219,6 @@ describe('migrations 0062–0064 over an existing company (S11, ADR 0022)', () =
       { action: 'dimension_type.created', actor_kind: 'system', code: 'worker' },
     ]);
     expect(after.account).toEqual({ counterparty_type: 'client', required: ['client'] });
-  });
+    // Two migration runs over a fresh database: longer than Vitest's default 5 s under a full run.
+  }, 60_000);
 });
