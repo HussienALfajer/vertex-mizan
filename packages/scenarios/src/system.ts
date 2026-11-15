@@ -1,5 +1,6 @@
 import {
   type CurrencyCode,
+  chartTemplate,
   createAccountSchema,
   createDimensionValueSchema,
   currencyCodeSchema,
@@ -46,7 +47,6 @@ import {
 import { and, asc, eq, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import { z } from 'zod';
-import { bookChart } from './agency-chart.js';
 import { advanceClock, caseToday, dayAfterMonth } from './clock.js';
 import type { CaseCompany, Step } from './format.js';
 import type {
@@ -139,31 +139,40 @@ export async function setUp(
       },
       actor,
     );
-    // The case's chart: a template of contracts, or the book's frozen service-agency chart.
+    // The case's chart: a template of contracts, then the accounts the case adds to it in order,
+    // each under its parent header (a header the case adds first holds the accounts after it).
     if (company.template !== null) {
-      const chart = bookChart(company.template);
-      if (chart === undefined) throw new Error(`No chart ${company.template} in the book`);
-      await applyChart(tx, companyId, chart, actor);
+      await applyChart(tx, companyId, chartTemplate(company.template), actor);
     }
-    const accounts = await accountIdsByCode(tx);
+    const types = await tx.select().from(dimensionTypes);
+    const typeId = (code: string) => {
+      const type = types.find((candidate) => candidate.code === code);
+      if (type === undefined) throw new Error(`The company has no dimension type ${code}`);
+      return type.id;
+    };
     for (const account of company.accounts) {
+      const accounts = await accountIdsByCode(tx);
+      const parentCode = account.code.slice(0, account.kind === 'header' ? 2 : 3);
       await createAccount(
         tx,
         companyId,
         createAccountSchema.parse({
-          parentId: accounts.get(account.code.slice(0, 3)),
+          parentId: accounts.get(parentCode),
           code: account.code,
-          kind: 'postable',
+          kind: account.kind,
           name: account.name,
           nameLatin: account.nameLatin,
           statementLine: account.statementLine,
           currency: account.currency,
           isMonetary: account.isMonetary,
+          isControl: account.itemKind !== null,
+          itemKind: account.itemKind,
+          counterpartyType: account.counterpartyType,
+          requiredDimensionTypeIds: account.requiredDimensions.map(typeId),
         }),
         actor,
       );
     }
-    const types = await tx.select().from(dimensionTypes);
     const made = new Map<string, string>();
     // A contract's client first: a contract value names it (S02 rule 9, `company.contracts`, S09).
     const ordered = [

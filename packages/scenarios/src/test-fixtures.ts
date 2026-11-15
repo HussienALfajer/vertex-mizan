@@ -70,7 +70,7 @@ expect:
 /** One report of each kind after an SYP invoice, a contract and a manual service's department (S09). */
 export const REPORTS = `
 case: reports after an SYP invoice
-company: { shape: syp, book: SYP, template: service-agency, rate_policy: { book: bulletin },
+company: { shape: syp, book: SYP, template: contracting, rate_policy: { book: bulletin },
            contracts: [{ code: P1, kind: project, client: C1 }] }
 steps:
   - service_department: { service: S1, department: design, effective_from: 2026-11-01 }

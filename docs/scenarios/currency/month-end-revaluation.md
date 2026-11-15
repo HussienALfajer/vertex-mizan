@@ -17,7 +17,7 @@ At the end of each month, each ledger revalues its monetary balances in currenci
 
 ## Cases
 
-The account codes are the service-agency template's (S02): the USD cash on hand `111002`, the SYP and USD bank accounts `111003` and `111004`, the USD e-wallet `111006`, trade receivables `112001` and contract assets `113001` (document control accounts), ad platforms payable `211001` (client required), project expenses awaiting payment source `211002`, other payables `211003`, contract liabilities `212001` (non-monetary), client ad funds held `213001` (a running control account, USD only), capital `311001` and the owner's current account `313001` (non-monetary), service revenue `411001`, realised exchange gains `421001`, unrealised exchange gains `421002` and losses `541002`. A `third` case adds a TRY cash account `111007` (monetary, restricted to TRY, statement line `bs.cash`). Every rate and amount is synthetic. Saturday 31 October 2026 is a day off, whose bulletin is Thursday 29 October's; Monday 30 November and Thursday 31 December 2026 are publication days.
+The account codes are the contracting template's (`contracting@1`, S11; the cases moved from the service-agency chart by S11's mapping table with no amount changed, owner 2026-11-14): the USD cash on hand `111002`, the SYP and USD bank accounts `111003` and `111004`, the USD e-wallet `111006` (added by the case), trade receivables `112001` and contract assets `113001` (document control accounts), ad platforms payable `211091` (added by a case that needs it) (client required), project expenses awaiting payment source `211092` (added by a case that needs it), other payables `211003`, contract liabilities `212001` (non-monetary), client ad funds held `213001` (added by the case under a header `213`; a running control account, USD only), capital `311001` and the owner's current account `313001` (non-monetary), service revenue `411001`, realised exchange gains `421001`, unrealised exchange gains `421002` and losses `541002`. A `third` case adds a TRY cash account `111007` (monetary, restricted to TRY, statement line `bs.cash`). Every rate and amount is synthetic. Saturday 31 October 2026 is a day off, whose bulletin is Thursday 29 October's; Monday 30 November and Thursday 31 December 2026 are publication days.
 
 A `revalue` step is the accountant's posting of one ledger's revaluation of a month from the preview (S07 rules 16–18), once the month has ended: the case's clock moves to the first day of the next month, as a `job` step's does. Its entry has the source `revaluation` and the month's last day; its reversal, posted in the same transaction, is read as `reversal` with the next month's first day. A step that finds every difference zero posts nothing and is done (`posted: false`). A `block` step blocks an account with a reason, as the chart's screen does (S02 rule 5).
 
@@ -43,8 +43,9 @@ S07's acceptance, steps 2–4 and 8. Invoice M-1 (1,000.00 USD) is measured at t
 
 ```yaml
 case: M-1 (1,000.00 USD at 120) revalued at 125, a 5,000.00 SYP gain; 1,250,000.00 SYP at 125 revalued at 128, a 234.37 USD loss; reversed on 1 Dec; M-1 paid on 10 Dec at 126 realises 6,000.00 SYP
-company: { shape: syp-usd, book: SYP, parallel: USD, template: service-agency,
-           rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true } }
+company: { shape: syp-usd, book: SYP, parallel: USD, template: contracting,
+           rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true },
+           contracts: [{ code: P1, kind: project, client: C1 }] }
 rates:
   - { date: 2026-11-03, base: USD, quote: SYP, rate: "120.0000", type: bulletin }
   - { date: 2026-11-30, base: USD, quote: SYP, rate: "125.0000", type: bulletin }
@@ -54,9 +55,9 @@ rates:
 steps:
   - manual: invoice M-1 to client C1
     accounting_date: 2026-11-03
-    payload: { lines: [{ account: "112001", dims: { client: C1 }, currency: USD, amount: 100000,
+    payload: { lines: [{ account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 100000,
                          open_item: { ref: M-1, due: 2026-12-03 } },
-                       { account: "411001", dims: { client: C1, service: S1 }, currency: USD, amount: -100000 }] }
+                       { account: "411001", dims: { client: C1, contract: P1, service: S1 }, currency: USD, amount: -100000 }] }
   - manual: capital paid into the SYP bank account
     accounting_date: 2026-11-03
     payload: { lines: [{ account: "111003", currency: SYP, amount: 125000000 },
@@ -75,8 +76,8 @@ expect:
       date: 2026-11-03
       lines:
         # book: 1,000.00 USD × 120 = 120,000.00 SYP; parallel: USD as is
-        - { account: "112001", dims: { client: C1 }, currency: USD, amount: 100000, book: 12000000, parallel: 100000 }
-        - { account: "411001", dims: { client: C1, service: S1 }, currency: USD, amount: -100000, book: -12000000, parallel: -100000 }
+        - { account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 100000, book: 12000000, parallel: 100000 }
+        - { account: "411001", dims: { client: C1, contract: P1, service: S1 }, currency: USD, amount: -100000, book: -12000000, parallel: -100000 }
     - source: manual
       date: 2026-11-03
       lines:
@@ -87,13 +88,13 @@ expect:
       date: 2026-11-30
       lines:
         # M-1: target 1,000.00 × 125 = 125,000.00 SYP; carrying 120,000.00; difference +5,000.00
-        - { account: "112001", dims: { client: C1 }, currency: USD, amount: 0, book: 500000, parallel: 0 }
+        - { account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 0, book: 500000, parallel: 0 }
         - { account: "421002", currency: SYP, amount: -500000, book: -500000, parallel: 0 }
         # 111003 is in the book's own currency and 411001, 311001 are non-monetary: nothing else
     - source: reversal
       date: 2026-12-01
       lines:
-        - { account: "112001", dims: { client: C1 }, currency: USD, amount: 0, book: -500000, parallel: 0 }
+        - { account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 0, book: -500000, parallel: 0 }
         - { account: "421002", currency: SYP, amount: 500000, book: 500000, parallel: 0 }
     - source: revaluation
       date: 2026-11-30
@@ -114,7 +115,7 @@ expect:
         # book: 1,000.00 USD × 126 = 126,000.00 SYP received
         - { account: "111004", currency: USD, amount: 100000, book: 12600000, parallel: 100000 }
         # M-1 cleared at its carrying amount, 120,000.00 SYP: the revaluation is not part of it
-        - { account: "112001", dims: { client: C1 }, currency: USD, amount: -100000, book: -12000000, parallel: -100000 }
+        - { account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: -100000, book: -12000000, parallel: -100000 }
         # book residual: 12,600,000 − 12,000,000 = 600,000 → realised gain 6,000.00 SYP
         - { account: "421001", currency: SYP, amount: -600000, book: -600000, parallel: 0 }
   balances:
@@ -124,7 +125,7 @@ expect:
     - { account: "421002", book: 0, parallel: 0 }
     - { account: "541002", book: 0, parallel: 0 }
   open_items:
-    - { item: M-1, account: "112001", dims: { client: C1 }, currency: USD, amount: 0, book: 0, parallel: 0 }
+    - { item: M-1, account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 0, book: 0, parallel: 0 }
 ```
 
 ### Vertex Media: USD cash spent to zero with a book residual, a blocked e-wallet, and December over the year end
@@ -133,8 +134,10 @@ The owner pays 100.00 USD into the cash box and 200.00 USD into the e-wallet at 
 
 ```yaml
 case: USD cash at zero with a −300.00 SYP residual brought to zero at each month end; a blocked USD e-wallet revalued at 125 and 126; the December reversal on 1 Jan 2027
-company: { shape: syp-usd, book: SYP, parallel: USD, template: service-agency,
-           rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true } }
+company: { shape: syp-usd, book: SYP, parallel: USD, template: contracting,
+           rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true },
+           accounts: [{ code: "111006", name: "المحفظة الإلكترونية — دولار أمريكي", name_latin: "E-wallet — USD",
+                        statement_line: bs.cash, currency: USD, monetary: true }] }
 rates:
   - { date: 2026-11-03, base: USD, quote: SYP, rate: "120.0000", type: bulletin }
   - { date: 2026-11-25, base: USD, quote: SYP, rate: "123.0000", type: bulletin }
@@ -218,8 +221,9 @@ The bulletin of 30 November equals the one M-1 was measured at, and no market ra
 
 ```yaml
 case: the bulletin still 120 and the market still 125 on 30 Nov; neither ledger posts
-company: { shape: syp-usd, book: SYP, parallel: USD, template: service-agency,
-           rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true } }
+company: { shape: syp-usd, book: SYP, parallel: USD, template: contracting,
+           rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true },
+           contracts: [{ code: P1, kind: project, client: C1 }] }
 rates:
   - { date: 2026-11-03, base: USD, quote: SYP, rate: "120.0000", type: bulletin }
   - { date: 2026-11-30, base: USD, quote: SYP, rate: "120.0000", type: bulletin }
@@ -227,9 +231,9 @@ rates:
 steps:
   - manual: invoice M-1 to client C1
     accounting_date: 2026-11-03
-    payload: { lines: [{ account: "112001", dims: { client: C1 }, currency: USD, amount: 100000,
+    payload: { lines: [{ account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 100000,
                          open_item: { ref: M-1, due: 2026-12-03 } },
-                       { account: "411001", dims: { client: C1, service: S1 }, currency: USD, amount: -100000 }] }
+                       { account: "411001", dims: { client: C1, contract: P1, service: S1 }, currency: USD, amount: -100000 }] }
   - manual: capital paid into the SYP bank account
     accounting_date: 2026-11-03
     payload: { lines: [{ account: "111003", currency: SYP, amount: 125000000 },
@@ -243,8 +247,8 @@ expect:
     - source: manual
       date: 2026-11-03
       lines:
-        - { account: "112001", dims: { client: C1 }, currency: USD, amount: 100000, book: 12000000, parallel: 100000 }
-        - { account: "411001", dims: { client: C1, service: S1 }, currency: USD, amount: -100000, book: -12000000, parallel: -100000 }
+        - { account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 100000, book: 12000000, parallel: 100000 }
+        - { account: "411001", dims: { client: C1, contract: P1, service: S1 }, currency: USD, amount: -100000, book: -12000000, parallel: -100000 }
     - source: manual
       date: 2026-11-03
       lines:
@@ -263,8 +267,9 @@ Monday 30 November is a publication day without its bulletin, so the book ledger
 
 ```yaml
 case: the bulletin of Monday 30 Nov missing; the book revaluation refused RATE_MISSING, the parallel posts; the bulletin recorded, the book posts its 5,000.00 SYP gain
-company: { shape: syp-usd, book: SYP, parallel: USD, template: service-agency,
-           rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true } }
+company: { shape: syp-usd, book: SYP, parallel: USD, template: contracting,
+           rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true },
+           contracts: [{ code: P1, kind: project, client: C1 }] }
 rates:
   - { date: 2026-11-03, base: USD, quote: SYP, rate: "120.0000", type: bulletin }
   - { date: 2026-11-26, base: USD, quote: SYP, rate: "124.0000", type: bulletin }
@@ -273,9 +278,9 @@ rates:
 steps:
   - manual: invoice M-1 to client C1
     accounting_date: 2026-11-03
-    payload: { lines: [{ account: "112001", dims: { client: C1 }, currency: USD, amount: 100000,
+    payload: { lines: [{ account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 100000,
                          open_item: { ref: M-1, due: 2026-12-03 } },
-                       { account: "411001", dims: { client: C1, service: S1 }, currency: USD, amount: -100000 }] }
+                       { account: "411001", dims: { client: C1, contract: P1, service: S1 }, currency: USD, amount: -100000 }] }
   - manual: capital paid into the SYP bank account
     accounting_date: 2026-11-03
     payload: { lines: [{ account: "111003", currency: SYP, amount: 125000000 },
@@ -294,8 +299,8 @@ expect:
     - source: manual
       date: 2026-11-03
       lines:
-        - { account: "112001", dims: { client: C1 }, currency: USD, amount: 100000, book: 12000000, parallel: 100000 }
-        - { account: "411001", dims: { client: C1, service: S1 }, currency: USD, amount: -100000, book: -12000000, parallel: -100000 }
+        - { account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 100000, book: 12000000, parallel: 100000 }
+        - { account: "411001", dims: { client: C1, contract: P1, service: S1 }, currency: USD, amount: -100000, book: -12000000, parallel: -100000 }
     - source: manual
       date: 2026-11-03
       lines:
@@ -316,12 +321,12 @@ expect:
       date: 2026-11-30
       lines:
         # 1,000.00 × 125 = 125,000.00; carrying 120,000.00; difference +5,000.00
-        - { account: "112001", dims: { client: C1 }, currency: USD, amount: 0, book: 500000, parallel: 0 }
+        - { account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 0, book: 500000, parallel: 0 }
         - { account: "421002", currency: SYP, amount: -500000, book: -500000, parallel: 0 }
     - source: reversal
       date: 2026-12-01
       lines:
-        - { account: "112001", dims: { client: C1 }, currency: USD, amount: 0, book: -500000, parallel: 0 }
+        - { account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 0, book: -500000, parallel: 0 }
         - { account: "421002", currency: SYP, amount: 500000, book: 500000, parallel: 0 }
 ```
 
@@ -331,16 +336,17 @@ Saturday 31 October has no bulletin, so the closing rate is the bulletin of the 
 
 ```yaml
 case: SYP books only; M-1 (250.25 USD at 118) revalued on Saturday 31 Oct at Thursday's 119.5 (2,990,487.5 → 2,990,488), a 375.38 SYP gain
-company: { shape: syp, book: SYP, template: service-agency, rate_policy: { book: bulletin } }
+company: { shape: syp, book: SYP, template: contracting, rate_policy: { book: bulletin },
+           contracts: [{ code: P1, kind: project, client: C1 }] }
 rates:
   - { date: 2026-10-01, base: USD, quote: SYP, rate: "118.0000", type: bulletin }
   - { date: 2026-10-29, base: USD, quote: SYP, rate: "119.5000", type: bulletin }
 steps:
   - manual: invoice M-1 to client C1
     accounting_date: 2026-10-01
-    payload: { lines: [{ account: "112001", dims: { client: C1 }, currency: USD, amount: 25025,
+    payload: { lines: [{ account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 25025,
                          open_item: { ref: M-1, due: 2026-10-31 } },
-                       { account: "411001", dims: { client: C1, service: S1 }, currency: USD, amount: -25025 }] }
+                       { account: "411001", dims: { client: C1, contract: P1, service: S1 }, currency: USD, amount: -25025 }] }
   - revalue: book
     period: 2026-10
 expect:
@@ -349,22 +355,22 @@ expect:
       date: 2026-10-01
       lines:
         # 250.25 USD × 118 = 29,529.50 SYP
-        - { account: "112001", dims: { client: C1 }, currency: USD, amount: 25025, book: 2952950 }
-        - { account: "411001", dims: { client: C1, service: S1 }, currency: USD, amount: -25025, book: -2952950 }
+        - { account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 25025, book: 2952950 }
+        - { account: "411001", dims: { client: C1, contract: P1, service: S1 }, currency: USD, amount: -25025, book: -2952950 }
     - source: revaluation
       date: 2026-10-31
       lines:
         # target 250.25 × 119.5 = 29,904.875 SYP → 2,990,487.5 minor → 2,990,488; carrying
         #   2,952,950; difference +37,538, a gain of 375.38 SYP
-        - { account: "112001", dims: { client: C1 }, currency: USD, amount: 0, book: 37538 }
+        - { account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 0, book: 37538 }
         - { account: "421002", currency: SYP, amount: -37538, book: -37538 }
     - source: reversal
       date: 2026-11-01
       lines:
-        - { account: "112001", dims: { client: C1 }, currency: USD, amount: 0, book: -37538 }
+        - { account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 0, book: -37538 }
         - { account: "421002", currency: SYP, amount: 37538, book: 37538 }
   open_items:
-    - { item: M-1, account: "112001", dims: { client: C1 }, currency: USD, amount: 25025, book: 2952950 }
+    - { item: M-1, account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 25025, book: 2952950 }
 ```
 
 ### USD books with an SYP parallel ledger
@@ -373,8 +379,9 @@ The USD book ledger revalues the SYP bank balance at the bulletin; the SYP paral
 
 ```yaml
 case: USD books; 24,000.00 SYP at 120 revalued at the bulletin 125, an 8.00 USD book loss; M-1 (100.00 USD at the market 122) revalued at 127, a 500.00 SYP parallel gain
-company: { shape: usd-syp, book: USD, parallel: SYP, template: service-agency,
-           rate_policy: { book: bulletin, parallel: market } }
+company: { shape: usd-syp, book: USD, parallel: SYP, template: contracting,
+           rate_policy: { book: bulletin, parallel: market },
+           contracts: [{ code: P1, kind: project, client: C1 }] }
 rates:
   - { date: 2026-11-03, base: USD, quote: SYP, rate: "120.0000", type: bulletin }
   - { date: 2026-11-30, base: USD, quote: SYP, rate: "125.0000", type: bulletin }
@@ -387,9 +394,9 @@ steps:
                        { account: "311001", currency: SYP, amount: -2400000 }] }
   - manual: invoice M-1 to client C1
     accounting_date: 2026-11-03
-    payload: { lines: [{ account: "112001", dims: { client: C1 }, currency: USD, amount: 10000,
+    payload: { lines: [{ account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 10000,
                          open_item: { ref: M-1, due: 2026-12-03 } },
-                       { account: "411001", dims: { client: C1, service: S1 }, currency: USD, amount: -10000 }] }
+                       { account: "411001", dims: { client: C1, contract: P1, service: S1 }, currency: USD, amount: -10000 }] }
   - revalue: book
     period: 2026-11
   - revalue: parallel
@@ -406,8 +413,8 @@ expect:
       date: 2026-11-03
       lines:
         # book: USD as is; parallel: 100.00 USD × 122 (market) = 12,200.00 SYP
-        - { account: "112001", dims: { client: C1 }, currency: USD, amount: 10000, book: 10000, parallel: 1220000 }
-        - { account: "411001", dims: { client: C1, service: S1 }, currency: USD, amount: -10000, book: -10000, parallel: -1220000 }
+        - { account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 10000, book: 10000, parallel: 1220000 }
+        - { account: "411001", dims: { client: C1, contract: P1, service: S1 }, currency: USD, amount: -10000, book: -10000, parallel: -1220000 }
     - source: revaluation
       date: 2026-11-30
       lines:
@@ -423,15 +430,15 @@ expect:
       date: 2026-11-30
       lines:
         # M-1: target 100.00 × 127 = 12,700.00 SYP; carrying 12,200.00; difference +500.00, a gain
-        - { account: "112001", dims: { client: C1 }, currency: USD, amount: 0, book: 0, parallel: 50000 }
+        - { account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 0, book: 0, parallel: 50000 }
         - { account: "421002", currency: SYP, amount: -50000, book: 0, parallel: -50000 }
     - source: reversal
       date: 2026-12-01
       lines:
-        - { account: "112001", dims: { client: C1 }, currency: USD, amount: 0, book: 0, parallel: -50000 }
+        - { account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 0, book: 0, parallel: -50000 }
         - { account: "421002", currency: SYP, amount: 50000, book: 0, parallel: 50000 }
   open_items:
-    - { item: M-1, account: "112001", dims: { client: C1 }, currency: USD, amount: 10000, book: 10000, parallel: 1220000 }
+    - { item: M-1, account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 10000, book: 10000, parallel: 1220000 }
 ```
 
 ### A third currency: TRY cash and a TRY payable in both ledgers
@@ -440,7 +447,7 @@ The book ledger has no direct TRY–SYP bulletin, so it crosses through USD (TRY
 
 ```yaml
 case: TRY cash (2,000.00) and a TRY payable (4,100.00) revalued in the SYP book through the cross 125 / 42 and in the USD parallel at the market 42.5
-company: { shape: third, book: SYP, parallel: USD, template: service-agency,
+company: { shape: third, book: SYP, parallel: USD, template: contracting,
            rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true },
            accounts: [{ code: "111007", name: "الصندوق — ليرة تركية", name_latin: "Cash on hand — TRY",
                         currency: TRY, monetary: true, statement_line: bs.cash }] }

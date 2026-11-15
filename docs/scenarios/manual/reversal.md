@@ -16,7 +16,7 @@ A posted manual entry is corrected only by its reversal: a new entry that refere
 
 ## Cases
 
-The account codes are the service-agency template's (S02): the SYP and USD bank accounts `111003` and `111004`, the expense accounts `5310xx`, realised exchange losses `541001` and the conversion-rounding account `541003`. A `third` case adds a TRY cash account `111007` to the template (monetary, restricted to TRY, statement line `bs.cash`). Every rate is synthetic. Sunday 8 November, Tuesday 10 November, Tuesday 1 December and Tuesday 29 December 2026 are publication days; Sunday 3 January 2027 too.
+The account codes are the contracting template's (`contracting@1`, S11; the cases moved from the service-agency chart by S11's mapping table with no amount changed, owner 2026-11-14): the SYP and USD bank accounts `111003` and `111004`, the expense accounts `5310xx`, realised exchange losses `541001` and the conversion-rounding account `541003`. A `third` case adds a TRY cash account `111007` to the template (monetary, restricted to TRY, statement line `bs.cash`). Every rate is synthetic. Sunday 8 November, Tuesday 10 November, Tuesday 1 December and Tuesday 29 December 2026 are publication days; Sunday 3 January 2027 too.
 
 Each original entry below is one the scenario book already approved (`manual/conversion-rounding.md`, `manual/currency-purchase.md`), or a plain one-currency entry with no rounding. A reversal's lines are the original's with every amount negated: the transaction, book and parallel amounts, line by line, each rounding and difference line in its own ledger.
 
@@ -26,7 +26,7 @@ The cases below leave out what other scenarios or later specs own: the reversals
 
 ```yaml
 case: a USD expense posted to the wrong account; reversed on its own date and reposted to the right one
-company: { shape: syp-usd, book: SYP, parallel: USD, template: service-agency,
+company: { shape: syp-usd, book: SYP, parallel: USD, template: contracting,
            rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true } }
 rates:
   - { date: 2026-11-08, base: USD, quote: SYP, rate: "121.5000", type: bulletin }
@@ -72,7 +72,7 @@ expect:
 
 ```yaml
 case: USD bought at the market rate, with a loss in both ledgers; reversed in December, both difference lines negated
-company: { shape: syp-usd, book: SYP, parallel: USD, template: service-agency,
+company: { shape: syp-usd, book: SYP, parallel: USD, template: contracting,
            rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true } }
 rates:
   - { date: 2026-11-08, base: USD, quote: SYP, rate: "121.5000", type: bulletin }
@@ -119,7 +119,7 @@ expect:
 
 ```yaml
 case: a reversal dated before its original is refused
-company: { shape: syp-usd, book: SYP, parallel: USD, template: service-agency,
+company: { shape: syp-usd, book: SYP, parallel: USD, template: contracting,
            rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true } }
 rates:
   - { date: 2026-11-10, base: USD, quote: SYP, rate: "121.5000", type: bulletin }
@@ -143,7 +143,7 @@ expect:
 
 ```yaml
 case: an entry already reversed is refused a second reversal
-company: { shape: syp-usd, book: SYP, parallel: USD, template: service-agency,
+company: { shape: syp-usd, book: SYP, parallel: USD, template: contracting,
            rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true } }
 rates:
   - { date: 2026-11-08, base: USD, quote: SYP, rate: "121.5000", type: bulletin }
@@ -177,7 +177,7 @@ expect:
 
 ```yaml
 case: a reversal is never reversed; the original is copied instead
-company: { shape: syp-usd, book: SYP, parallel: USD, template: service-agency,
+company: { shape: syp-usd, book: SYP, parallel: USD, template: contracting,
            rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true } }
 rates:
   - { date: 2026-11-08, base: USD, quote: SYP, rate: "121.5000", type: bulletin }
@@ -210,7 +210,7 @@ expect:
 
 ```yaml
 case: SYP books only; a USD entry with a rounding line reversed in January 2027, whose bulletin is not entered
-company: { shape: syp, book: SYP, template: service-agency, rate_policy: { book: bulletin } }
+company: { shape: syp, book: SYP, template: contracting, rate_policy: { book: bulletin } }
 rates:
   # no bulletin for 2027-01-03, a publication day: a reversal that read a rate would be
   # refused with RATE_MISSING
@@ -254,7 +254,7 @@ expect:
 
 ```yaml
 case: USD books; an SYP entry with a book rounding line reversed in December after the bulletin moved
-company: { shape: usd-syp, book: USD, parallel: SYP, template: service-agency,
+company: { shape: usd-syp, book: USD, parallel: SYP, template: contracting,
            rate_policy: { book: bulletin, parallel: market } }
 rates:
   - { date: 2026-11-08, base: USD, quote: SYP, rate: "121.5000", type: bulletin }
@@ -299,7 +299,7 @@ expect:
 
 ```yaml
 case: TRY expenses with a rounding line in each ledger, reversed in December after every rate moved
-company: { shape: third, book: SYP, parallel: USD, template: service-agency,
+company: { shape: third, book: SYP, parallel: USD, template: contracting,
            rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true },
            accounts: [{ code: "111007", name: "الصندوق — ليرة تركية", name_latin: "Cash on hand — TRY",
                         currency: TRY, monetary: true, statement_line: bs.cash }] }

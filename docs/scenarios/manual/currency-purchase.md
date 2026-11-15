@@ -17,7 +17,7 @@ A manual entry that exchanges one currency for another measures every line anew 
 
 ## Cases
 
-The account codes are the service-agency template's (S02): the SYP and USD bank accounts `111003` and `111004`, realised exchange gains `421001` and losses `541001`. A `third` case adds a TRY cash account `111007` to the template (monetary, restricted to TRY, statement line `bs.cash`). Every rate is synthetic. Sunday 8 November and Tuesday 10 November 2026 are publication days; Tuesday 1 December 2026 too.
+The account codes are the contracting template's (`contracting@1`, S11; the cases moved from the service-agency chart by S11's mapping table with no amount changed, owner 2026-11-14): the SYP and USD bank accounts `111003` and `111004`, realised exchange gains `421001` and losses `541001`. A `third` case adds a TRY cash account `111007` to the template (monetary, restricted to TRY, statement line `bs.cash`). Every rate is synthetic. Sunday 8 November and Tuesday 10 November 2026 are publication days; Tuesday 1 December 2026 too.
 
 A difference line carries its amount in one ledger only, in that ledger's currency (ADR 0007): in the SYP books a book difference is an SYP line with parallel 0, and a parallel difference a USD line with book 0. A manual entry's `dealt_rates` give, per currency pair, the rate dealt at, quoted in the company's orientation of the pair (S03 rule 13).
 
@@ -27,7 +27,7 @@ The cases below leave out what other scenarios own: rounding in one currency (`m
 
 ```yaml
 case: 100.00 USD bought for 12,250.00 SYP dealt at 122.5; a book loss only
-company: { shape: syp-usd, book: SYP, parallel: USD, template: service-agency,
+company: { shape: syp-usd, book: SYP, parallel: USD, template: contracting,
            rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true } }
 rates:
   - { date: 2026-11-08, base: USD, quote: SYP, rate: "121.5000", type: bulletin }
@@ -58,7 +58,7 @@ expect:
 
 ```yaml
 case: 100.00 USD bought for 12,250.00 SYP at the market rate; a loss in both ledgers
-company: { shape: syp-usd, book: SYP, parallel: USD, template: service-agency,
+company: { shape: syp-usd, book: SYP, parallel: USD, template: contracting,
            rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true } }
 rates:
   - { date: 2026-11-08, base: USD, quote: SYP, rate: "121.5000", type: bulletin }
@@ -89,7 +89,7 @@ expect:
 
 ```yaml
 case: 100.00 USD sold for 12,300.00 SYP dealt at 123; a book gain only
-company: { shape: syp-usd, book: SYP, parallel: USD, template: service-agency,
+company: { shape: syp-usd, book: SYP, parallel: USD, template: contracting,
            rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true } }
 rates:
   - { date: 2026-11-08, base: USD, quote: SYP, rate: "121.5000", type: bulletin }
@@ -119,7 +119,7 @@ expect:
 
 ```yaml
 case: 100.00 USD bought for 12,180.00 SYP at the market rate; a book loss and a parallel gain
-company: { shape: syp-usd, book: SYP, parallel: USD, template: service-agency,
+company: { shape: syp-usd, book: SYP, parallel: USD, template: contracting,
            rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true } }
 rates:
   - { date: 2026-11-08, base: USD, quote: SYP, rate: "121.5000", type: bulletin }
@@ -148,7 +148,7 @@ expect:
 
 ```yaml
 case: the dealt purchase reversed in December after the bulletin moved; every line negated as posted
-company: { shape: syp-usd, book: SYP, parallel: USD, template: service-agency,
+company: { shape: syp-usd, book: SYP, parallel: USD, template: contracting,
            rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true } }
 rates:
   - { date: 2026-11-08, base: USD, quote: SYP, rate: "121.5000", type: bulletin }
@@ -190,7 +190,7 @@ expect:
 
 ```yaml
 case: SYP books only; 100.00 USD bought for 12,250.00 SYP; a loss in the books
-company: { shape: syp, book: SYP, template: service-agency, rate_policy: { book: bulletin } }
+company: { shape: syp, book: SYP, template: contracting, rate_policy: { book: bulletin } }
 rates:
   - { date: 2026-11-08, base: USD, quote: SYP, rate: "121.5000", type: bulletin }
 steps:
@@ -212,7 +212,7 @@ expect:
 
 ```yaml
 case: SYP books only; a dealt rate is refused, since the bulletin ledger cannot take it
-company: { shape: syp, book: SYP, template: service-agency, rate_policy: { book: bulletin } }
+company: { shape: syp, book: SYP, template: contracting, rate_policy: { book: bulletin } }
 rates:
   - { date: 2026-11-08, base: USD, quote: SYP, rate: "121.5000", type: bulletin }
 steps:
@@ -232,7 +232,7 @@ The book ledger converts SYP into USD at the bulletin, dividing by the SYP-per-U
 
 ```yaml
 case: USD books; 100.00 USD bought for 12,250.00 SYP; a loss in both ledgers
-company: { shape: usd-syp, book: USD, parallel: SYP, template: service-agency,
+company: { shape: usd-syp, book: USD, parallel: SYP, template: contracting,
            rate_policy: { book: bulletin, parallel: market } }
 rates:
   - { date: 2026-11-08, base: USD, quote: SYP, rate: "121.5000", type: bulletin }
@@ -261,7 +261,7 @@ expect:
 
 ```yaml
 case: USD books; a dealt rate is refused when the parallel ledger does not accept one
-company: { shape: usd-syp, book: USD, parallel: SYP, template: service-agency,
+company: { shape: usd-syp, book: USD, parallel: SYP, template: contracting,
            rate_policy: { book: bulletin, parallel: market } }
 rates:
   - { date: 2026-11-08, base: USD, quote: SYP, rate: "121.5000", type: bulletin }
@@ -279,7 +279,7 @@ expect:
 
 ```yaml
 case: USD books; the SYP parallel ledger accepts the dealt rate; a book loss only
-company: { shape: usd-syp, book: USD, parallel: SYP, template: service-agency,
+company: { shape: usd-syp, book: USD, parallel: SYP, template: contracting,
            rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true } }
 rates:
   - { date: 2026-11-08, base: USD, quote: SYP, rate: "121.5000", type: bulletin }
@@ -309,7 +309,7 @@ A dealt rate is used only for the pair of a line's currency and the currency of 
 
 ```yaml
 case: Vertex Media; a USD/TRY dealt rate on a USD/SYP purchase is refused
-company: { shape: syp-usd, book: SYP, parallel: USD, template: service-agency,
+company: { shape: syp-usd, book: SYP, parallel: USD, template: contracting,
            rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true } }
 rates:
   - { date: 2026-11-08, base: USD, quote: SYP, rate: "121.5000", type: bulletin }
@@ -328,7 +328,7 @@ expect:
 
 ```yaml
 case: TRY sold for SYP at a dealt TRY/SYP rate is refused; the USD parallel ledger never converts TRY/SYP
-company: { shape: third, book: SYP, parallel: USD, template: service-agency,
+company: { shape: third, book: SYP, parallel: USD, template: contracting,
            rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true },
            accounts: [{ code: "111007", name: "الصندوق — ليرة تركية", name_latin: "Cash on hand — TRY",
                         currency: TRY, monetary: true, statement_line: bs.cash }] }
@@ -355,7 +355,7 @@ Book SYP at the bulletin, crossed through USD (TRY→USD, then USD→SYP); the U
 
 ```yaml
 case: 4,150.00 TRY sold for 100.00 USD at the market rate; a loss in both ledgers
-company: { shape: third, book: SYP, parallel: USD, template: service-agency,
+company: { shape: third, book: SYP, parallel: USD, template: contracting,
            rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true },
            accounts: [{ code: "111007", name: "الصندوق — ليرة تركية", name_latin: "Cash on hand — TRY",
                         currency: TRY, monetary: true, statement_line: bs.cash }] }
@@ -386,7 +386,7 @@ expect:
 
 ```yaml
 case: 4,150.00 TRY sold for 100.00 USD dealt at 41.5; a book loss only
-company: { shape: third, book: SYP, parallel: USD, template: service-agency,
+company: { shape: third, book: SYP, parallel: USD, template: contracting,
            rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true },
            accounts: [{ code: "111007", name: "الصندوق — ليرة تركية", name_latin: "Cash on hand — TRY",
                         currency: TRY, monetary: true, statement_line: bs.cash }] }

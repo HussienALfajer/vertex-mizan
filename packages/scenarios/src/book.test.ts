@@ -688,18 +688,50 @@ describe('a case', () => {
   const withAccounts = (...accounts: string[]) =>
     SYP_ONLY.replace(
       'company: { shape: syp,',
-      `company: { template: service-agency, accounts: [${accounts.join(', ')}], shape: syp,`,
+      `company: { template: contracting, accounts: [${accounts.join(', ')}], shape: syp,`,
     );
+  const HEADER = '{ code: "213", kind: header, name: "أمانات العملاء" }';
+  const FUNDS =
+    '{ code: "213001", name: "أمانات العملاء", statement_line: bs.client_money, currency: USD, monetary: true, control: running, counterparty_type: client, required: [client] }';
 
-  it('reads the accounts a case adds to its template', () => {
+  it('reads the accounts a case adds to its template, headers and control accounts among them', () => {
+    const added = {
+      kind: 'postable',
+      nameLatin: null,
+      itemKind: null,
+      counterpartyType: null,
+      requiredDimensions: [],
+    };
     expect(parseCase(withAccounts(TRY_CASH)).company.accounts).toEqual([
       {
+        ...added,
         code: '111007',
         name: 'الصندوق — ليرة تركية',
-        nameLatin: null,
         statementLine: 'bs.cash',
         currency: 'TRY',
         isMonetary: true,
+      },
+    ]);
+    expect(parseCase(withAccounts(HEADER, FUNDS)).company.accounts).toEqual([
+      {
+        ...added,
+        code: '213',
+        kind: 'header',
+        name: 'أمانات العملاء',
+        statementLine: null,
+        currency: null,
+        isMonetary: false,
+      },
+      {
+        ...added,
+        code: '213001',
+        name: 'أمانات العملاء',
+        statementLine: 'bs.client_money',
+        currency: 'USD',
+        isMonetary: true,
+        itemKind: 'running',
+        counterpartyType: 'client',
+        requiredDimensions: ['client'],
       },
     ]);
     expect(parseCase(SYP_ONLY).company.accounts).toEqual([]);
@@ -708,20 +740,47 @@ describe('a case', () => {
   it.each([
     [
       'an account added with no template',
-      withAccounts(TRY_CASH).replace('template: service-agency, ', ''),
-      'known chart template',
+      withAccounts(TRY_CASH).replace('template: contracting, ', ''),
+      'added to a chart template',
+    ],
+    [
+      'an unknown template',
+      withAccounts(TRY_CASH).replace('template: contracting', 'template: service-agency'),
+      'template',
     ],
     ['an account added twice', withAccounts(TRY_CASH, TRY_CASH), 'added twice'],
     [
       'an account already in the template',
       withAccounts(TRY_CASH.replace('111007', '111004')),
-      'already in the service-agency template',
+      'already in the contracting template',
     ],
-    ['a header added', withAccounts(TRY_CASH.replace('"111007"', '"119"')), 'postable'],
+    ['a header without its kind', withAccounts(TRY_CASH.replace('"111007"', '"119"')), 'postable'],
     [
       'an account under no header of the template',
       withAccounts(TRY_CASH.replace('111007', '119001')),
       'no header 119',
+    ],
+    ['an account before its added header', withAccounts(FUNDS, HEADER), 'no header 213'],
+    [
+      'a header with a statement line',
+      withAccounts(HEADER.replace(' }', ', statement_line: bs.client_money }')),
+      'statement line',
+    ],
+    [
+      'a header under no header of the template',
+      withAccounts(HEADER.replace('"213"', '"223"')),
+      'no header 22',
+    ],
+    ['a header below level 3', withAccounts(HEADER.replace('"213"', '"2131"')), 'level-3 header'],
+    [
+      'a control account without its counterparty type',
+      withAccounts(HEADER, FUNDS.replace(' counterparty_type: client,', '')),
+      'counterparty type',
+    ],
+    [
+      'a required dimension stated twice',
+      withAccounts(HEADER, FUNDS.replace('[client]', '[client, client]')),
+      'stated twice',
     ],
     [
       'a statement line of another class',

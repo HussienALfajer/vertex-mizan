@@ -17,13 +17,13 @@ A wrong rate is corrected by recording a newer row for the same pair, type and d
 
 ## Cases
 
-The account codes are the service-agency template's (S02). A `rate` step records a rate row at that point of the case, as the accountant does on the rates screen; a row for a pair, type and date that already has one is a correction and carries its reason. `expect.corrections` states, for each correction step, the entries (by their number in posting order) the answer lists as having used the superseded row. Calendar: Thursday 5, Friday 6, Saturday 7 and Sunday 8 November 2026; Friday and Saturday are days off.
+The account codes are the contracting template's (`contracting@1`, S11; the cases moved from the service-agency chart by S11's mapping table with no amount changed, owner 2026-11-14). A `rate` step records a rate row at that point of the case, as the accountant does on the rates screen; a row for a pair, type and date that already has one is a correction and carries its reason. `expect.corrections` states, for each correction step, the entries (by their number in posting order) the answer lists as having used the superseded row. Calendar: Thursday 5, Friday 6, Saturday 7 and Sunday 8 November 2026; Friday and Saturday are days off.
 
 ### The accountant reverses and reposts
 
 ```yaml
 case: a mistyped bulletin corrected after use; the entry is reversed and reposted
-company: { shape: syp-usd, book: SYP, parallel: USD, template: service-agency,
+company: { shape: syp-usd, book: SYP, parallel: USD, template: contracting,
            rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true } }
 rates:
   # the bulletin of the 8th was 121.5; its digits were transposed when recorded
@@ -85,7 +85,7 @@ expect:
 
 ```yaml
 case: Thursday's bulletin corrected after Friday used it; Friday's entry stays, Saturday's uses the correction
-company: { shape: syp-usd, book: SYP, parallel: USD, template: service-agency,
+company: { shape: syp-usd, book: SYP, parallel: USD, template: contracting,
            rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true } }
 rates:
   # Thursday's bulletin was 120; recorded as 102
@@ -127,7 +127,7 @@ expect:
 
 ```yaml
 case: USD books; a mistyped bulletin corrected; the reversal carries 98.04, the repost 83.33
-company: { shape: usd-syp, book: USD, parallel: SYP, template: service-agency,
+company: { shape: usd-syp, book: USD, parallel: SYP, template: contracting,
            rate_policy: { book: bulletin, parallel: market } }
 rates:
   - { date: 2026-11-05, base: USD, quote: SYP, rate: "102.0000", type: bulletin }

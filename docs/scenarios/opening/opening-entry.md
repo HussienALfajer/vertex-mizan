@@ -24,7 +24,7 @@ The opening may be reversed whole while it is the company's only entry; the reve
 
 ## Cases
 
-The account codes are the service-agency template's (S02), in the new version with `312002` (S10 "Data"): the SYP and USD cash on hand `111001` and `111002`, the USD bank account `111004`, trade receivables `112001` and contract assets `113001` (document control accounts, monetary), computers and equipment `121001` and their accumulated depreciation `121003` (non-monetary), other payables `211003` (monetary), contract liabilities `212001` (client and contract, non-monetary), client ad funds held `213001` (a running control account, USD only, monetary), capital `311001`, retained earnings `312001` (role `retained_earnings`), the result of the year before the books start `312002` (role `pre_opening_result`), service revenue `411001`, rent `531001`, realised exchange gains `421001`, unrealised exchange gains `421002` and losses `541002`. The `third` case adds a TRY cash account `111007` (monetary, restricted to TRY, statement line `bs.cash`). Every rate and amount is synthetic.
+The account codes are the contracting template's (`contracting@1`, S11; the cases moved from the service-agency chart by S11's mapping table with no amount changed, owner 2026-11-14), in the new version with `312002` (S10 "Data"): the SYP and USD cash on hand `111001` and `111002`, the USD bank account `111004`, trade receivables `112001` and contract assets `113001` (document control accounts, monetary), construction machinery and equipment `121001` and their accumulated depreciation `121003` (non-monetary), other payables `211003` (monetary), contract liabilities `212001` (client and contract, non-monetary), client ad funds held `213001` (added by the case under a header `213`; a running control account, USD only, monetary), capital `311001`, retained earnings `312001` (role `retained_earnings`), the result of the year before the books start `312002` (role `pre_opening_result`), service revenue `411001`, rent `531001`, realised exchange gains `421001`, unrealised exchange gains `421002` and losses `541002`. The `third` case adds a TRY cash account `111007` (monetary, restricted to TRY, statement line `bs.cash`). Every rate and amount is synthetic.
 
 Every case's books start is Thursday 1 October 2026, so its eve (`as_of`) is Wednesday 30 September, a publication day; 10, 15, 21 and 30 September and 20 and 29 October 2026 are publication days, and Saturday 31 October takes Thursday 29 October's bulletin.
 
@@ -48,7 +48,7 @@ S10 edge case 21. A company with a books start and no Hub client: no snapshot an
 
 ```yaml
 case: SYP books only and no Hub; the records' lines, a USD cash balance at the bulletin of the eve and a 30,000.00 SYP balancing figure
-company: { shape: syp, book: SYP, template: service-agency, books_start: 2026-10-01,
+company: { shape: syp, book: SYP, template: contracting, books_start: 2026-10-01,
            rate_policy: { book: bulletin } }
 rates:
   - { date: 2026-09-30, base: USD, quote: SYP, rate: "115.0000", type: bulletin }
@@ -88,7 +88,7 @@ S10 rule 19: a balancing figure of zero in every ledger posts no line.
 
 ```yaml
 case: SYP books only, the records balance exactly; no line on 312001
-company: { shape: syp, book: SYP, template: service-agency, books_start: 2026-10-01,
+company: { shape: syp, book: SYP, template: contracting, books_start: 2026-10-01,
            rate_policy: { book: bulletin } }
 rates:
   - { date: 2026-09-30, base: USD, quote: SYP, rate: "115.0000", type: bulletin }
@@ -126,8 +126,9 @@ S10 rule 12 and edge case 21 (owner, 2026-11-12). With no Hub client, the receiv
 
 ```yaml
 case: SYP books only and no Hub; OLD-1 (100.00 USD at 115) and OLD-2 (250,000.00 SYP) opened on 112001; OLD-1 received at 118 with a 300.00 SYP gain
-company: { shape: syp, book: SYP, template: service-agency, books_start: 2026-10-01,
-           rate_policy: { book: bulletin } }
+company: { shape: syp, book: SYP, template: contracting, books_start: 2026-10-01,
+           rate_policy: { book: bulletin },
+           contracts: [{ code: P1, kind: project, client: C1 }, { code: P2, kind: project, client: C2 }] }
 rates:
   - { date: 2026-09-30, base: USD, quote: SYP, rate: "115.0000", type: bulletin }
   - { date: 2026-10-20, base: USD, quote: SYP, rate: "118.0000", type: bulletin }
@@ -135,9 +136,9 @@ steps:
   - opening: the records' balances with two receivables
     records:
       lines:
-        - { account: "112001", dims: { client: C1 }, currency: USD, amount: 10000,
+        - { account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 10000,
             open_item: { ref: OLD-1, due: 2026-10-15 } }
-        - { account: "112001", dims: { client: C2 }, currency: SYP, amount: 25000000,
+        - { account: "112001", dims: { client: C2, contract: P2 }, currency: SYP, amount: 25000000,
             open_item: { ref: OLD-2 } }
         - { account: "111001", currency: SYP, amount: 10000000 }
         - { account: "311001", currency: SYP, amount: -30000000 }
@@ -152,8 +153,8 @@ expect:
       date: 2026-10-01
       lines:
         # monetary: 100.00 USD × 115 (bulletin of the eve) = 11,500.00 SYP
-        - { account: "112001", dims: { client: C1 }, currency: USD, amount: 10000, book: 1150000 }
-        - { account: "112001", dims: { client: C2 }, currency: SYP, amount: 25000000, book: 25000000 }
+        - { account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 10000, book: 1150000 }
+        - { account: "112001", dims: { client: C2, contract: P2 }, currency: SYP, amount: 25000000, book: 25000000 }
         - { account: "111001", currency: SYP, amount: 10000000, book: 10000000 }
         - { account: "311001", currency: SYP, amount: -30000000, book: -30000000 }
         - { account: "312002", currency: SYP, amount: -5000000, book: -5000000 }
@@ -165,7 +166,7 @@ expect:
         # 100.00 USD × 118 = 11,800.00 SYP received
         - { account: "111002", currency: USD, amount: 10000, book: 1180000 }
         # OLD-1 cleared at its carrying 11,500.00 SYP
-        - { account: "112001", dims: { client: C1 }, currency: USD, amount: -10000, book: -1150000 }
+        - { account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: -10000, book: -1150000 }
         # book residual 1,180,000 − 1,150,000 = 30,000 → a realised gain of 300.00 SYP
         - { account: "421001", currency: SYP, amount: -30000, book: -30000 }
   balances:
@@ -173,8 +174,8 @@ expect:
     - { account: "421001", book: -30000 }
     - { account: "312001", book: -1150000 }
   open_items:
-    - { item: OLD-1, account: "112001", dims: { client: C1 }, currency: USD, amount: 0, book: 0 }
-    - { item: OLD-2, account: "112001", dims: { client: C2 }, currency: SYP, amount: 25000000, book: 25000000 }
+    - { item: OLD-1, account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 0, book: 0 }
+    - { item: OLD-2, account: "112001", dims: { client: C2, contract: P2 }, currency: SYP, amount: 25000000, book: 25000000 }
 ```
 
 ### Contracting: advances opened as non-monetary running items (`syp-usd`, S11)
@@ -247,7 +248,7 @@ S10 edge cases 23 and 19. The TRY cash is monetary: the SYP book has no TRY bull
 
 ```yaml
 case: TRY cash through the cross 115 / 42 in the SYP book and at the market 42.5 in the USD parallel; the balancing line zero in the parallel ledger
-company: { shape: third, book: SYP, parallel: USD, template: service-agency, books_start: 2026-10-01,
+company: { shape: third, book: SYP, parallel: USD, template: contracting, books_start: 2026-10-01,
            rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true },
            accounts: [{ code: "111007", name: "الصندوق — ليرة تركية", name_latin: "Cash on hand — TRY",
                         currency: TRY, monetary: true, statement_line: bs.cash }] }

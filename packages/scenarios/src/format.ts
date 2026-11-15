@@ -1,11 +1,17 @@
 import {
   accountClassOfCode,
   accountCodeLevel,
+  BUILTIN_DIMENSION_TYPES,
+  type BuiltinDimensionType,
   type CompanyLedgers,
   type CurrencyCode,
+  chartTemplate,
+  chartTemplateIdSchema,
   companyLedgersSchema,
+  counterpartyTypeSchema,
   currencyCodeSchema,
   exchangeRateSchema,
+  itemKindSchema,
   minorAmountSchema,
   rateSourceSchema,
   rateTypeSchema,
@@ -13,7 +19,6 @@ import {
   statementLineFits,
 } from '@vertex-mizan/contracts';
 import { z } from 'zod';
-import { bookChart } from './agency-chart.js';
 import {
   BOOKS_START_MARKS,
   expectedReportSchema,
@@ -80,26 +85,55 @@ export const SHAPES = {
 
 export type Shape = keyof typeof SHAPES;
 
+const builtinDimensionTypeSchema = z.enum(
+  BUILTIN_DIMENSION_TYPES.map((type) => type.code) as [
+    BuiltinDimensionType,
+    ...BuiltinDimensionType[],
+  ],
+);
+
 /**
- * A postable account the case adds to its template, as the accountant adds one in the chart (S02),
- * for a case that needs an account the template lacks (a TRY cash account, for instance).
+ * An account the case adds to its template, as the accountant adds one in the chart (S02), for a
+ * case that needs an account the template lacks (a TRY cash account, for instance). A header
+ * (level 3) holds the postable accounts added under it; a postable account carries its statement
+ * line and may be a control account with its item kind and counterparty type (S04, S11 rule 5)
+ * and name the dimension types it requires (S02). The services check the account's shape.
  */
 const addedAccountSchema = z
   .strictObject({
     code: accountSchema,
+    kind: z.enum(['header', 'postable']).default('postable'),
     name: z.string().trim().min(1),
     name_latin: z.string().trim().min(1).optional(),
-    statement_line: z.string().min(1),
+    statement_line: z.string().min(1).optional(),
     currency: currencyCodeSchema.optional(),
     monetary: z.boolean().default(false),
+    control: itemKindSchema.optional(),
+    counterparty_type: counterpartyTypeSchema.optional(),
+    required: z
+      .array(builtinDimensionTypeSchema)
+      .refine((types) => new Set(types).size === types.length, 'A dimension type is stated twice')
+      .default([]),
   })
+  .refine(
+    (account) => (account.kind === 'postable') === (account.statement_line !== undefined),
+    'A postable account, and only a postable account, has a statement line',
+  )
+  .refine(
+    (account) => (account.control === undefined) === (account.counterparty_type === undefined),
+    'A control account, and only a control account, has a counterparty type',
+  )
   .transform((account) => ({
     code: account.code,
+    kind: account.kind,
     name: account.name,
     nameLatin: account.name_latin ?? null,
-    statementLine: account.statement_line,
+    statementLine: account.statement_line ?? null,
     currency: account.currency ?? null,
     isMonetary: account.monetary,
+    itemKind: account.control ?? null,
+    counterpartyType: account.counterparty_type ?? null,
+    requiredDimensions: account.required,
   }));
 
 export type AddedAccount = z.output<typeof addedAccountSchema>;
@@ -114,7 +148,7 @@ const rawCompanySchema = z.strictObject({
     parallel: rateTypeSchema.optional(),
     parallel_accepts_transaction_rate: z.boolean().optional(),
   }),
-  template: z.string().min(1).optional(),
+  template: chartTemplateIdSchema.optional(),
   accounts: z.array(addedAccountSchema).default([]),
   closed_periods: z.array(periodSchema).default([]),
   // The contract values the case's manual lines name, with the kind and client a contract needs
@@ -175,37 +209,50 @@ function ledgersOf(company: RawCompany): CompanyLedgers {
 }
 
 /**
- * Each added account fits the template as S02 would place it: a postable code under one of the
- * template's headers, not already in it, stated once, with a statement line of its class.
+ * Each added account fits the template as S02 would place it: a code not already in it, stated
+ * once; a header at level 3 under one of the template's level-2 headers; a postable account under
+ * one of its headers or an earlier added header, with a statement line of its class.
  */
 function checkAddedAccounts(company: RawCompany, context: z.RefinementCtx): void {
   if (company.accounts.length === 0) return;
-  const chart = bookChart(company.template);
-  if (chart === undefined) {
-    const message = 'Accounts are added to a known chart template';
+  if (company.template === undefined) {
+    const message = 'Accounts are added to a chart template';
     context.addIssue({ code: 'custom', message, path: ['accounts'] });
     return;
   }
-  const templateId = chart.id;
-  const template = chart.accounts;
+  const templateId = company.template;
+  const template = chartTemplate(templateId).accounts;
+  const isHeader = (code: string, before: number) =>
+    template.some((existing) => existing.code === code && existing.kind === 'header') ||
+    company.accounts
+      .slice(0, before)
+      .some((added) => added.code === code && added.kind === 'header');
   const issue = (index: number, message: string) =>
     context.addIssue({ code: 'custom', message, path: ['accounts', index] });
   for (const [index, account] of company.accounts.entries()) {
     const { code } = account;
+    const level = accountCodeLevel(code);
     if (company.accounts.slice(0, index).some((other) => other.code === code)) {
       issue(index, `Account ${code} is added twice`);
-    } else if (accountCodeLevel(code) !== 4) {
-      issue(index, `Account ${code} is not the code of a postable account`);
     } else if (template.some((existing) => existing.code === code)) {
       issue(index, `Account ${code} is already in the ${templateId} template`);
-    } else if (
-      !template.some((existing) => existing.code === code.slice(0, 3) && existing.kind === 'header')
-    ) {
+    } else if (account.kind === 'header') {
+      if (level !== 3) {
+        issue(index, `Header ${code} is not the code of a level-3 header`);
+      } else if (!isHeader(code.slice(0, 2), index)) {
+        issue(index, `Header ${code} has no header ${code.slice(0, 2)} in the ${templateId} template`);
+      }
+    } else if (level !== 4) {
+      issue(index, `Account ${code} is not the code of a postable account`);
+    } else if (!isHeader(code.slice(0, 3), index)) {
       issue(
         index,
         `Account ${code} has no header ${code.slice(0, 3)} in the ${templateId} template`,
       );
-    } else if (!statementLineFits(account.statementLine, accountClassOfCode(code))) {
+    } else if (
+      account.statementLine === null ||
+      !statementLineFits(account.statementLine, accountClassOfCode(code))
+    ) {
       issue(index, `Statement line ${account.statementLine} does not fit account ${code}`);
     }
   }

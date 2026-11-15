@@ -512,7 +512,7 @@ expect:
   it("takes a department step's values (S09)", () => {
     const withDepartment = parseCase(`
 case: a manual service's department
-company: { shape: syp, book: SYP, template: service-agency, rate_policy: { book: bulletin } }
+company: { shape: syp, book: SYP, template: contracting, rate_policy: { book: bulletin } }
 steps:
   - service_department: { service: S3, department: video, effective_from: 2026-12-01 }
     reason: "خدمة يدوية"
