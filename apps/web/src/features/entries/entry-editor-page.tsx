@@ -105,3 +105,34 @@ export function DraftEditorPage() {
     />
   );
 }
+
+const newVoucherRoute = getRouteApi('/_app/_company/cash/vouchers/new/$kind');
+
+/**
+ * `/cash/vouchers/new/:kind` (S11 "Screens"): a new receipt, payment, transfer or count on the
+ * entry screen with its voucher header; `?account=`, from a cash account's card, starts it on that
+ * account. The first save creates its draft, which then opens on `/drafts/:id`.
+ */
+export function NewVoucherPage() {
+  const { kind } = newVoucherRoute.useParams();
+  const { account } = newVoucherRoute.useSearch();
+  const { company, accounts, pairs } = useEditorBasics();
+  if (company.isPending || accounts.isPending || pairs.isPending) return <Loading />;
+  if (company.isError || accounts.isError || pairs.isError) {
+    return <FormError error={company.error ?? accounts.error ?? pairs.error} />;
+  }
+  const start = accounts.data.find((candidate) => candidate.id === account && candidate.cashKind);
+  return (
+    <EntryEditor
+      key={`${kind}:${account ?? ''}`}
+      draft={null}
+      company={company.data}
+      accounts={accounts.data}
+      pairs={pairs.data}
+      newVoucher={{
+        kind,
+        account: start?.currency != null ? { id: start.id, currency: start.currency } : null,
+      }}
+    />
+  );
+}

@@ -4,6 +4,7 @@ import { STATEMENT_LINES } from './chart.js';
 import { entryHubDocumentSchema } from './entries.js';
 import { currencyCodeSchema, ledgerSchema } from './money.js';
 import { cashPositionQuerySchema, cashStatementQuerySchema } from './cash.js';
+import { voucherNumberSchema } from './vouchers.js';
 import { ageingQuerySchema, counterpartyStatementQuerySchema } from './open-items.js';
 import { entryNumberSchema, minorUnitsSchema, personRefSchema } from './wire.js';
 
@@ -309,6 +310,8 @@ export const reportLineSchema = z
     /** The open item a control account's line moves (rule 11). */
     openItem: z.object({ id: z.uuid(), reference: z.string() }).nullable(),
     hubDocument: entryHubDocumentSchema.nullable(),
+    /** The voucher its entry posted (S11 "Reports": the account statement's voucher column). */
+    voucher: voucherNumberSchema.extend({ id: z.uuid() }).nullable().default(null),
   })
   .meta({ id: 'ReportLine' });
 

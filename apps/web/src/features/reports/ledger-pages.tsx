@@ -24,6 +24,7 @@ import {
 import { Fragment, type ReactNode } from 'react';
 import { damascusToday, formatDay } from '../../lib/format';
 import { useCompany } from '../../lib/session';
+import { VoucherNumberText } from '../cash/cash-parts';
 import { accountsQuery } from '../chart/chart-queries';
 import {
   accountPickerLabels,
@@ -123,6 +124,19 @@ function LineRow({
           <EntryNumberText number={line} startMonth={startMonth} />
         </Link>
       </TableCell>
+      {transaction && (
+        <TableCell>
+          {line.voucher && (
+            <Link
+              to="/cash/vouchers/$id"
+              params={{ id: line.voucher.id }}
+              className="text-primary underline-offset-4 hover:underline"
+            >
+              <VoucherNumberText voucher={line.voucher} startMonth={startMonth} />
+            </Link>
+          )}
+        </TableCell>
+      )}
       <TableCell className="min-w-48 whitespace-normal">
         <span className="flex flex-col gap-1">
           <bdi>{line.description}</bdi>
@@ -172,6 +186,7 @@ function LinesHead({ transaction }: { transaction?: boolean }) {
       <TableRow>
         <TableHead>{t.columns.date}</TableHead>
         <TableHead>{t.columns.entry}</TableHead>
+        {transaction && <TableHead>{ar.cash.statement.columns.voucher}</TableHead>}
         <TableHead>{t.columns.description}</TableHead>
         <TableHead numeric>{t.columns.debit}</TableHead>
         <TableHead numeric>{t.columns.credit}</TableHead>
@@ -431,7 +446,7 @@ export function AccountStatementPage() {
                   label={t.totals.opening}
                   balance={first.opening}
                   currency={currency}
-                  span={7}
+                  span={8}
                 />
                 {lines.map((line) => (
                   <LineRow
@@ -446,7 +461,7 @@ export function AccountStatementPage() {
                   label={t.totals.closing}
                   balance={last.closing}
                   currency={currency}
-                  span={7}
+                  span={8}
                   closing
                 />
               </TableBody>

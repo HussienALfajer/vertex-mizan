@@ -182,7 +182,7 @@ export function HeaderMarks({ header }: { header: ReportHeader }) {
 }
 
 /** A PDF state as `ExportMenu` shows it, its failure in words. */
-function menuFile(file: ReportFile | undefined): ExportMenuFile | null {
+export function menuFile(file: ReportFile | undefined): ExportMenuFile | null {
   if (!file) return null;
   const code = file.error as ErrorCode | null;
   return {

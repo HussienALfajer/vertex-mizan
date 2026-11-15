@@ -253,7 +253,7 @@ function EntryView({ entry }: { entry: Entry }) {
  * Reverse a manual entry (S03 rule 9): the date (the original's by default) and the description
  * ("عكس القيد 2026/1: " and the reason). Approval off, the reversal posts; on, its draft opens.
  */
-function ReverseDialog({
+export function ReverseDialog({
   entry,
   number,
   approval,

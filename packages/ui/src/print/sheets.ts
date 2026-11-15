@@ -343,6 +343,7 @@ function ledgerLineColumns(context: SheetContext, withTransaction: boolean): She
       { ...amount('transactionAmount', c.transactionAmount), currencyKey: 'currency' },
       { ...amount('transactionBalance', c.transactionBalance), currencyKey: 'currency' },
       text('openItem', c.openItem, 16),
+      text('voucher', context.text.cash.statement.columns.voucher, 16),
     );
   }
   return columns;
@@ -369,6 +370,7 @@ function ledgerLineRow(
     cells.transactionAmount = line.transactionAmount;
     cells.transactionBalance = line.transactionBalance;
     cells.openItem = line.openItem?.reference;
+    cells.voucher = line.voucher === null ? undefined : voucherNumberText(line.voucher, context);
   }
   return { cells, level: 1 };
 }

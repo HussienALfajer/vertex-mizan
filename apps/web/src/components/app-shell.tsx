@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link, type LinkProps, useRouter } from '@tanstack/react-router';
-import type { Me, Permission } from '@vertex-mizan/contracts';
+import { type Me, type Permission, VOUCHER_KINDS } from '@vertex-mizan/contracts';
 import { ar } from '@vertex-mizan/i18n';
 import {
   Badge,
@@ -62,6 +62,7 @@ import {
   TagsIcon,
   UserRoundSearchIcon,
   UsersIcon,
+  WalletIcon,
 } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { companyQuery, useSwitchCompany } from '../features/company/company-queries';
@@ -103,6 +104,7 @@ const navItems: NavItem[] = [
   { to: '/dimensions', label: ar.dimensions.nav, icon: TagsIcon, permission: 'dimensions.read' },
   { to: '/entries', label: ar.entries.nav, icon: BookOpenIcon, permission: 'entries.read' },
   { to: '/drafts', label: ar.drafts.nav, icon: FilePenLineIcon, permission: 'drafts.read' },
+  { to: '/cash', label: ar.cash.title, icon: WalletIcon, permission: 'reports.read' },
   {
     to: '/receivables',
     label: ar.openItems.ageing.nav,
@@ -363,6 +365,28 @@ function useShellCommands(me: Me | null | undefined): PaletteCommand[] {
             shortcut: keymap.newEntry,
             icon: <PlusIcon />,
             run: () => void router.navigate({ to: '/entries/new' }),
+          },
+        ]
+      : []),
+    ...(me && can(me, 'drafts.manage')
+      ? VOUCHER_KINDS.map((kind) => ({
+          id: `new-voucher-${kind}`,
+          label: ar.cash.palette[kind],
+          group: ar.cash.palette.group,
+          keywords: [ar.cash.newVoucher[kind], ar.cash.palette.keywords, `voucher ${kind}`],
+          icon: <WalletIcon />,
+          run: () => void router.navigate({ to: '/cash/vouchers/new/$kind', params: { kind } }),
+        }))
+      : []),
+    ...(me && can(me, 'reports.read')
+      ? [
+          {
+            id: 'cash-statement',
+            label: ar.cash.palette.statement,
+            group: ar.cash.palette.group,
+            keywords: [ar.cash.palette.keywords, 'cash statement'],
+            icon: <WalletIcon />,
+            run: () => void router.navigate({ to: '/cash', search: { find: 'statement' } }),
           },
         ]
       : []),
