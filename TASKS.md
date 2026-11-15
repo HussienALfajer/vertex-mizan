@@ -38,7 +38,7 @@ Four PRs, in order. PR 4 needs only PR 1 and may run beside PRs 2 and 3.
 - [x] web: `/cash`, `/cash/:accountId`, `/cash/vouchers`, `/cash/vouchers/:id`, `/cash/vouchers/new/:kind` and the voucher draft in `/drafts/:id`; cancel as a reversal; S09's account statement gains the voucher column (screen and export); the palette's entries
 - [x] e2e: the cash position, a receipt, an exchange, a count, a statement, a printed voucher; RTL screenshots light and dark at phone, tablet and desktop, looked at
 - [ ] docs: ROADMAP, folder CLAUDE.md files
-- [ ] checks and reviewers, PR with auto-merge and Auto-fix
+- [x] checks and reviewers (reviewer and accountant-reviewer: the printed exchange net of its fee at its own pair's derived rate, every printed figure with its currency's printed name, the register's date filter and row cancel), PR with auto-merge and Auto-fix
 
 ### PR 4 — the scenario book on `contracting@1` (branch `test/s11-book-on-contracting`)
 
