@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { parseCase, parseScenario, readBook, ScenarioFormatError, yamlBlocks } from './book.js';
 import { marginOf } from './report-format.js';
-import { BILLING, CASE, CORRECTION, REPORTS, SYP_ONLY } from './test-fixtures.js';
+import { BILLING, CASE, CORRECTION, PURCHASE, REPORTS, SYP_ONLY } from './test-fixtures.js';
 
 function file(status: string, ...cases: string[]) {
   return [
@@ -777,6 +777,107 @@ describe('a case', () => {
     expect(stated(document, second)).toContain("Entry 1 is another document's");
     expect(stated(document.replace('advance: 0 }', 'advance: 0, cancelled_by: 1 }'))).toContain(
       'Entry 1 is not a later expected reversal',
+    );
+  });
+
+  it('reads materials, a purchase and the quantities a case states (S12)', () => {
+    const purchase = parseCase(PURCHASE);
+    expect(purchase.company.materials).toEqual([{ code: 'CEM', name: 'أسمنت', unit: 'طن' }]);
+    expect(purchase.expect.projectDocuments).toEqual([
+      {
+        kind: 'purchase',
+        number: 1,
+        date: '2026-11-03',
+        contract: 'P1',
+        client: 'C1',
+        supplier: 'S1',
+        entry: 1,
+        currency: 'SYP',
+        reference: 'F-1',
+        cancelledBy: null,
+      },
+    ]);
+    expect(purchase.expect.quantities).toEqual([
+      {
+        entry: 1,
+        account: '511001',
+        currency: 'SYP',
+        amount: 3788n,
+        material: 'CEM',
+        unit: 'طن',
+        quantity: '12.500',
+        unitPrice: '3.0300',
+      },
+      {
+        entry: 1,
+        account: '511001',
+        currency: 'SYP',
+        amount: -500n,
+        material: 'CEM',
+        unit: 'طن',
+        quantity: '0.000',
+        unitPrice: null,
+      },
+    ]);
+    expect(parseCase(CASE).expect.quantities).toBeNull();
+    expect(parseCase(CASE).company.materials).toEqual([]);
+
+    const row =
+      '{ entry: 1, account: "511001", currency: SYP, amount: 3788, material: CEM, unit: "طن", quantity: "12.500", unit_price: "3.0300" }';
+    const withRow = (replacement: string) => refusal(PURCHASE.replace(row, replacement));
+    // 12.500 × 3.0300 = 37.875 → 37.88: half away from zero, never typed.
+    expect(withRow(row.replace('amount: 3788', 'amount: 3787'))).toContain(
+      '12.500 × 3.0300 is 3788 minor units',
+    );
+    expect(withRow(row.replace('"12.500"', '"12.5"'))).toContain(
+      'Expected a quantity with 3 decimals',
+    );
+    expect(withRow(row.replace('"3.0300"', '"3.03"'))).toContain(
+      'Expected a unit price with 4 decimals',
+    );
+    expect(withRow(row.replace(', unit_price: "3.0300"', ''))).toContain(
+      'A quantity has its unit price',
+    );
+    expect(withRow(row.replace('quantity: "12.500"', 'quantity: "-0.000"'))).toContain(
+      'A zero quantity has no sign',
+    );
+    expect(
+      refusal(PURCHASE.replace('quantity: "0.000" }', 'quantity: "0.000", unit_price: "1.0000" }')),
+    ).toContain('A price adjustment (quantity 0) has no unit price');
+    expect(
+      refusal(
+        PURCHASE.replace(
+          'amount: -500, material: CEM, unit: "طن", quantity: "0.000" }',
+          'amount: -500, unit: "طن", quantity: "0.000" }',
+        ),
+      ),
+    ).toContain('A quantity 0 is a price adjustment on a material');
+    expect(withRow(row.replace('entry: 1', 'entry: 2'))).toContain(
+      'Entry 2 is not an expected entry',
+    );
+    expect(withRow(row.replace('account: "511001"', 'account: "511002"'))).toContain(
+      'Entry 1 has no 511002 line of 3788 SYP',
+    );
+    expect(withRow(row.replace('material: CEM', 'material: STL'))).toContain(
+      'STL is not a material in company.materials',
+    );
+    expect(withRow(row.replace('unit: "طن"', 'unit: "كيس"'))).toContain('CEM is counted in طن');
+    expect(
+      refusal(
+        PURCHASE.replace(
+          'materials: [{ code: CEM, name: "أسمنت", unit: "طن" }]',
+          'materials: [{ code: CEM, name: "أسمنت", unit: "طن" }, { code: CEM, name: "x", unit: "طن" }]',
+        ),
+      ),
+    ).toContain('A material is stated twice');
+    // A purchase needs no terms and may be in any currency; it states its supplier.
+    const document = 'currency: SYP, reference: "F-1" }';
+    expect(refusal(PURCHASE.replace(document, 'currency: SYP, reference: "F-1", sequence: 1 }'))).toContain(
+      'sequence',
+    );
+    expect(refusal(PURCHASE.replace('supplier: S1, entry: 1', 'entry: 1'))).toContain('supplier');
+    expect(refusal(PURCHASE.replace('client: C1, supplier', 'client: C2, supplier'))).toContain(
+      "P1 is C1's project",
     );
   });
 

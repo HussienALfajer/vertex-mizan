@@ -3,6 +3,7 @@ import type {
   ExpectedEntry,
   ExpectedOpenItem,
   ExpectedProjectDocument,
+  ExpectedQuantity,
   ExpectedVoucher,
 } from './format.js';
 import type {
@@ -10,6 +11,7 @@ import type {
   ObservedBalance,
   ObservedOpenItem,
   ObservedProjectDocument,
+  ObservedQuantity,
   ObservedVoucher,
   PostedEntry,
   PostedLine,
@@ -163,9 +165,16 @@ export function compareVouchers(
 
 function describeProjectDocument(document: ExpectedProjectDocument): string {
   const cancelled = document.cancelledBy === null ? '' : `, cancelled by ${document.cancelledBy}`;
+  const head = `${document.kind} ${document.date.slice(0, 4)}/${document.number} of ${document.date}, `;
+  if (document.kind === 'purchase') {
+    const reference = document.reference === null ? '' : `, reference ${document.reference}`;
+    return (
+      `${head}${document.contract} of ${document.client} from ${document.supplier}: ` +
+      `entry ${document.entry}, ${document.currency}${reference}${cancelled}`
+    );
+  }
   return (
-    `${document.kind} ${document.date.slice(0, 4)}/${document.number} of ${document.date}, ` +
-    `${document.contract} of ${document.client} no. ${document.sequence}: entry ${document.entry}, ` +
+    `${head}${document.contract} of ${document.client} no. ${document.sequence}: entry ${document.entry}, ` +
     `${document.currency} cumulative ${document.cumulative}, previous ${document.previous}, ` +
     `retention ${document.retention}, advance ${document.advance}${cancelled}`
   );
@@ -187,4 +196,28 @@ export function compareProjectDocuments(
     else left.splice(found, 1);
   }
   return [...differences, ...left.map((document) => `unexpected project document: ${document}`)];
+}
+
+function describeQuantity(row: ExpectedQuantity): string {
+  const material = row.material === null ? '' : ` ${row.material}`;
+  const price = row.unitPrice === null ? 'price adjustment' : `at ${row.unitPrice}`;
+  return (
+    `entry ${row.entry} ${row.account} ${row.currency} ${row.amount}:${material} ` +
+    `${row.quantity} ${row.unit} ${price}`
+  );
+}
+
+/** The exact set of line quantities (S12 rules 4–6): a missing or an extra one, in any order. */
+export function compareQuantities(
+  expected: readonly ExpectedQuantity[],
+  observed: readonly ObservedQuantity[],
+): string[] {
+  const left = observed.map(describeQuantity);
+  const differences: string[] = [];
+  for (const row of expected.map(describeQuantity)) {
+    const found = left.indexOf(row);
+    if (found === -1) differences.push(`missing quantity: ${row}`);
+    else left.splice(found, 1);
+  }
+  return [...differences, ...left.map((row) => `unexpected quantity: ${row}`)];
 }

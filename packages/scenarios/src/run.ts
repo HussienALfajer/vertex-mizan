@@ -4,6 +4,7 @@ import {
   compareEntries,
   compareOpenItem,
   compareProjectDocuments,
+  compareQuantities,
   compareVouchers,
 } from './compare.js';
 import type { Outcome, ScenarioCase, Step, StepKind } from './format.js';
@@ -65,10 +66,13 @@ export function namedDimensionValues(scenarioCase: ScenarioCase): NamedValue[] {
       for (const line of step.lines) add(line.dims);
       continue;
     }
-    // A project document names its project (S12); its lines, when it has any, as a manual entry's.
+    // A project document names its project and, a purchase, its supplier (S12); its lines, when it
+    // has any, as a manual entry's.
     if (step.kind === 'project_document') {
-      const { document } = step.payload as { document?: { contract?: unknown } };
-      add({ contract: document?.contract });
+      const { document } = step.payload as {
+        document?: { contract?: unknown; supplier?: unknown };
+      };
+      add({ contract: document?.contract, supplier: document?.supplier });
     }
     if (
       step.kind !== 'manual' &&
@@ -255,6 +259,18 @@ export async function runCase(
         'project documents arrive with S12',
     );
   }
+  if (scenarioCase.company.materials.length > 0 && !harness.materials) {
+    missing.push(
+      'No materials setup is registered (packages/scenarios/src/harness.ts); ' +
+        'materials arrive with S12',
+    );
+  }
+  if (scenarioCase.expect.quantities !== null && !harness.quantities) {
+    missing.push(
+      'No quantity reader is registered (packages/scenarios/src/harness.ts); ' +
+        'quantities arrive with S12',
+    );
+  }
   if (!harness.setUp || !harness.ledger || missing.length > 0) throw new ScenarioFailure(missing);
 
   const { company, rates, steps, expect } = scenarioCase;
@@ -265,6 +281,7 @@ export async function runCase(
     namedDimensionValues(scenarioCase),
   );
   const context: CaseContext = { database, companyId, company };
+  if (company.materials.length > 0) await harness.materials?.(context, company.materials);
   const differences: string[] = [];
   const corrections = new Map(expect.corrections.map((c) => [c.step, c.usedBy]));
 
@@ -309,6 +326,10 @@ export async function runCase(
   if (expect.projectDocuments !== null) {
     const observed = (await harness.projectDocuments?.(context)) ?? [];
     differences.push(...compareProjectDocuments(expect.projectDocuments, observed));
+  }
+  if (expect.quantities !== null) {
+    const observed = (await harness.quantities?.(context)) ?? [];
+    differences.push(...compareQuantities(expect.quantities, observed));
   }
   for (const report of expect.reports) {
     differences.push(...((await harness.reports?.(context, report)) ?? []));

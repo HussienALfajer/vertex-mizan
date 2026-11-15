@@ -62,6 +62,8 @@ company:
                                     #   may state its terms (S12 rule 1), which a billing needs:
                                     #   terms: { currency: USD, value: 10000000 (the contract value),
                                     #   retention_bp: 1000, advance_recovery_bp: 2000 (basis points) }
+  materials:                        # the materials catalogue a case's lines name (optional; S12 rule 3)
+    - { code: CEM, name: "أسمنت بورتلاندي", unit: "طن" }
   bulletin_days_off: [5, 6]         # ISO weekdays without a bulletin; default Friday and Saturday
   bulletin_holidays: []             # e.g. [2026-11-08]: dates the accountant marked (S02 rules 16–17)
   books_start: 2026-10-01           # optional (S10 rule 1), the first day of a month, only in a case
@@ -136,6 +138,20 @@ steps:                              # in order; a manual entry, a reversal, a ra
                                     #   (contract), and for a billing the cumulative typed, with
                                     #   retention and advance (the recovery) only where the accountant
                                     #   changed the computed amount; the posting derives the lines
+  - project_document: <what it records>  # a purchase (S12 rules 7–8): the supplier, the currency, an
+    accounting_date: 2026-12-03     #   optional supplier_reference, the advance applied (advance);
+    payload: { document: { kind: purchase, contract: P1, supplier: S1, currency: TRY, advance: 1500000 },
+               lines: [{ account: "511001", material: CEM, quantity: "12.500", unit_price: "3150.0000",
+                         advance: 1500000 },
+                       { account: "511001", material: CEM, quantity: "0.000", amount: -50000 },
+                       { account: "511005", amount: 120000 }] }
+                                    #   each line in the document's currency and project, with a
+                                    #   material, its quantity and unit price as quoted decimals (3
+                                    #   and 4 places; the amount is computed), or a typed amount (a
+                                    #   price adjustment: quantity "0.000"; an account needing no
+                                    #   material), and its covered part of the advance when typed
+                                    #   (rule 12). A voucher line may name a material, a quantity and
+                                    #   a unit price the same way (rule 9)
 expect:
   entries:                          # the exact set posted, in posting order; every line of every entry
     - source: <manual | opening | revaluation | reversal>
@@ -164,6 +180,19 @@ expect:
                                     #   (sequence), the entry it posted and the reversal that
                                     #   cancelled it (posting order; rule 22), the terms' currency,
                                     #   cumulative, previous, retention and recovery (advance); [] none
+    - { kind: purchase, number: 1, date: 2026-12-03, contract: P1, client: C1, supplier: S1, entry: 1,
+        currency: TRY, reference: "F-1024" }
+                                    # a purchase: the project and its client, the supplier, its entry
+                                    #   and cancelling reversal, its currency and the supplier's
+                                    #   reference when it has one; it needs no terms
+  quantities:                       # optional (S12 rules 4–6): the exact set of the line quantities
+    - { entry: 1, account: "511001", currency: TRY, amount: 3937500, material: CEM, unit: "طن",
+        quantity: "12.500", unit_price: "3150.0000" }
+                                    # the entry (posting order) and its line by account, currency
+                                    #   and amount; the material (none on a line that needs none),
+                                    #   its unit, the quantity, and the unit price, none on a price
+                                    #   adjustment (quantity "0.000"); the amount is the quantity
+                                    #   times the unit price, rounded half away from zero
   outcome:                          # optional: the last step's refusal, when the step does not
     status: refused                 #   state it itself
     reason: CHECKLIST_FAILED
@@ -225,6 +254,7 @@ The runner is `packages/scenarios` (`pnpm test:scenarios`, in CI).
   - each stated correction's answer: exactly the entries it lists as converted at the superseded row.
   - the stated vouchers (S11): exactly the company's, every field equal.
   - the stated project documents (S12): exactly the company's, every field equal.
+  - the stated quantities (S12): exactly the company's line quantities, every field equal; a case's materials are made in its setup.
   - each stated report's figures (S09; "Reports").
 - It runs on a fresh test database through the real posting function, never through a mock. Each case has a company of its own, made with the company, chart, dimension and rate services the API uses: every dimension value the case names (`client: C1` in a manual line, an expected line, a balance or an open item) is made in the setup, by its type's code and its own code (S04).
 
