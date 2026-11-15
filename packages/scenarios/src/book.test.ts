@@ -4,7 +4,15 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { parseCase, parseScenario, readBook, ScenarioFormatError, yamlBlocks } from './book.js';
 import { marginOf } from './report-format.js';
-import { BILLING, CASE, CORRECTION, PURCHASE, REPORTS, SYP_ONLY } from './test-fixtures.js';
+import {
+  BILLING,
+  CASE,
+  CORRECTION,
+  PURCHASE,
+  REPORTS,
+  SYP_ONLY,
+  WAGE_SHEET,
+} from './test-fixtures.js';
 
 function file(status: string, ...cases: string[]) {
   return [
@@ -879,6 +887,57 @@ describe('a case', () => {
     expect(refusal(PURCHASE.replace('client: C1, supplier', 'client: C2, supplier'))).toContain(
       "P1 is C1's project",
     );
+  });
+
+  it('reads a wage sheet among the project documents, its period within one month (S12)', () => {
+    const sheet = parseCase(WAGE_SHEET);
+    expect(sheet.expect.projectDocuments).toEqual([
+      {
+        kind: 'wage_sheet',
+        number: 1,
+        date: '2026-12-15',
+        contract: 'P1',
+        client: 'C1',
+        entry: 1,
+        currency: 'SYP',
+        periodFrom: '2026-12-01',
+        periodTo: '2026-12-15',
+        cancelledBy: null,
+      },
+    ]);
+    // A days line has no material: its unit is the days', not a catalogue's.
+    expect(sheet.expect.quantities).toEqual([
+      {
+        entry: 1,
+        account: '511002',
+        currency: 'SYP',
+        amount: 1800000n,
+        material: null,
+        unit: 'يوم',
+        quantity: '6.000',
+        unitPrice: '3000.0000',
+      },
+    ]);
+
+    const period = 'period_from: 2026-12-01, period_to: 2026-12-15 }';
+    const stated = (replacement: string) =>
+      refusal(WAGE_SHEET.replace(`currency: SYP,\n        ${period}`, replacement));
+    expect(
+      stated('currency: SYP,\n        period_from: 2026-11-25, period_to: 2026-12-15 }'),
+    ).toContain("A wage sheet's period lies within one calendar month");
+    expect(
+      stated('currency: SYP,\n        period_from: 2026-12-16, period_to: 2026-12-15 }'),
+    ).toContain("A wage sheet's period starts before it ends");
+    expect(
+      stated('currency: SYP,\n        period_from: 2026-12-01, period_to: 2026-12-14 }'),
+    ).toContain("A wage sheet is dated its period's last day");
+    expect(stated('currency: SYP, supplier: S1,\n        ' + period)).toContain('supplier');
+    expect(stated('currency: SYP }')).toContain('period_from');
+    expect(
+      refusal(
+        WAGE_SHEET.replace('contract: P1, client: C1, entry', 'contract: P1, client: C2, entry'),
+      ),
+    ).toContain("P1 is C1's project");
   });
 
   const TRY_CASH =

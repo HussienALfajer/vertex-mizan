@@ -152,6 +152,15 @@ steps:                              # in order; a manual entry, a reversal, a ra
                                     #   material), and its covered part of the advance when typed
                                     #   (rule 12). A voucher line may name a material, a quantity and
                                     #   a unit price the same way (rule 9)
+  - project_document: <what it records>  # a wage sheet (S12 rules 10–11), dated its period's last day:
+    accounting_date: 2026-12-15     #   the currency and the period (period_from, period_to, within
+    payload: { document: { kind: wage_sheet, contract: P1, currency: USD, period_from: 2026-12-01,
+                           period_to: 2026-12-15 },
+               lines: [{ worker: W1, days: "6.0", daily_rate: "25.0000" },
+                       { worker: W2, amount: 40000, description: "نجارة قوالب" }] }
+                                    #   one month); each line a worker with days and a daily rate as
+                                    #   quoted decimals (as typed, at most 1 decimal used; 4 places),
+                                    #   or a typed amount with its description (piece work)
 expect:
   entries:                          # the exact set posted, in posting order; every line of every entry
     - source: <manual | opening | revaluation | reversal>
@@ -185,6 +194,10 @@ expect:
                                     # a purchase: the project and its client, the supplier, its entry
                                     #   and cancelling reversal, its currency and the supplier's
                                     #   reference when it has one; it needs no terms
+    - { kind: wage_sheet, number: 1, date: 2026-12-15, contract: P1, client: C1, entry: 1, currency: USD,
+        period_from: 2026-12-01, period_to: 2026-12-15 }
+                                    # a wage sheet: its period, within one calendar month and ending
+                                    #   on its date; no terms, no counterparty
   quantities:                       # optional (S12 rules 4–6): the exact set of the line quantities
     - { entry: 1, account: "511001", currency: TRY, amount: 3937500, material: CEM, unit: "طن",
         quantity: "12.500", unit_price: "3150.0000" }
@@ -192,7 +205,9 @@ expect:
                                     #   and amount; the material (none on a line that needs none),
                                     #   its unit, the quantity, and the unit price, none on a price
                                     #   adjustment (quantity "0.000"); the amount is the quantity
-                                    #   times the unit price, rounded half away from zero
+                                    #   times the unit price, rounded half away from zero; a wage
+                                    #   sheet's days line: no material, the unit "يوم", the days and
+                                    #   the daily rate (a lump sum has no row)
   outcome:                          # optional: the last step's refusal, when the step does not
     status: refused                 #   state it itself
     reason: CHECKLIST_FAILED

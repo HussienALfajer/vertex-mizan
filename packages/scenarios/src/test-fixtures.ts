@@ -150,6 +150,33 @@ expect:
         currency: SYP, cumulative: 100000, previous: 0, retention: 10000, advance: 0 }
 `;
 
+/** S12: a wage sheet with a days line and a lump sum, and the document it holds. */
+export const WAGE_SHEET = `
+case: a wage sheet
+company: { shape: syp, book: SYP, rate_policy: { book: bulletin }, template: contracting,
+           contracts: [{ code: P1, kind: project, client: C1 }] }
+steps:
+  - project_document: the wage sheet of P1 for 1–15 December
+    accounting_date: 2026-12-15
+    payload: { document: { kind: wage_sheet, contract: P1, currency: SYP, period_from: 2026-12-01, period_to: 2026-12-15 },
+               lines: [{ worker: W1, days: "6.0", daily_rate: "3000.0000" },
+                       { worker: W2, amount: 4800000, description: "نجارة" }] }
+expect:
+  entries:
+    - source: manual
+      date: 2026-12-15
+      lines:
+        - { account: "511002", dims: { contract: P1, worker: W1 }, currency: SYP, amount: 1800000, book: 1800000 }
+        - { account: "511002", dims: { contract: P1, worker: W2 }, currency: SYP, amount: 4800000, book: 4800000 }
+        - { account: "211007", dims: { worker: W1, contract: P1 }, currency: SYP, amount: -1800000, book: -1800000 }
+        - { account: "211007", dims: { worker: W2, contract: P1 }, currency: SYP, amount: -4800000, book: -4800000 }
+  project_documents:
+    - { kind: wage_sheet, number: 1, date: 2026-12-15, contract: P1, client: C1, entry: 1, currency: SYP,
+        period_from: 2026-12-01, period_to: 2026-12-15 }
+  quantities:
+    - { entry: 1, account: "511002", currency: SYP, amount: 1800000, unit: "يوم", quantity: "6.000", unit_price: "3000.0000" }
+`;
+
 /** S12: a project purchase invoice with quantities, a price adjustment and the document it holds. */
 export const PURCHASE = `
 case: a project purchase invoice
