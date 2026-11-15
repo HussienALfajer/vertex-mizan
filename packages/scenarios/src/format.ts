@@ -979,8 +979,50 @@ const purchaseSchema = z
     cancelledBy: cancelled_by ?? null,
   }));
 
+/**
+ * A wage sheet the company holds (S12 rules 10, 21): its number in its kind and fiscal year, its
+ * date, project and the project's client, the entry it posted and the reversal that cancelled it
+ * (posting order, rule 22), its currency and its period, within one calendar month and ending on
+ * the sheet's date.
+ */
+const wageSheetSchema = z
+  .strictObject({
+    kind: z.literal('wage_sheet'),
+    number: countSchema(1),
+    date: dateSchema,
+    contract: z.string().min(1),
+    client: z.string().min(1),
+    entry: countSchema(1),
+    currency: currencyCodeSchema,
+    period_from: dateSchema,
+    period_to: dateSchema,
+    cancelled_by: countSchema(1).optional(),
+  })
+  .superRefine((document, context) => {
+    const issue = (message: string, path: PropertyKey[]) =>
+      context.addIssue({ code: 'custom', message, path });
+    if (document.period_from > document.period_to) {
+      issue("A wage sheet's period starts before it ends", ['period_from']);
+    } else if (document.period_from.slice(0, 7) !== document.period_to.slice(0, 7)) {
+      issue("A wage sheet's period lies within one calendar month", ['period_from']);
+    }
+    if (document.date !== document.period_to) {
+      issue("A wage sheet is dated its period's last day", ['date']);
+    }
+  })
+  .transform(({ cancelled_by, period_from, period_to, ...document }) => ({
+    ...document,
+    periodFrom: period_from,
+    periodTo: period_to,
+    cancelledBy: cancelled_by ?? null,
+  }));
+
 /** A project document the company holds (S12 rule 21), by its kind. */
-const projectDocumentSchema = z.discriminatedUnion('kind', [progressBillingSchema, purchaseSchema]);
+const projectDocumentSchema = z.discriminatedUnion('kind', [
+  progressBillingSchema,
+  purchaseSchema,
+  wageSheetSchema,
+]);
 
 export type ExpectedProjectDocument = z.output<typeof projectDocumentSchema>;
 
@@ -1257,7 +1299,7 @@ export const caseSchema = z
       } else if (contract.client !== document.client) {
         issue(`${document.contract} is ${contract.client}'s project`, [...path, 'client']);
       } else if (document.kind !== 'progress_billing') {
-        // A purchase needs no terms, and may be in any currency (rule 7).
+        // A purchase or a wage sheet needs no terms, and may be in any currency (rules 7, 10).
       } else if (contract.terms === null) {
         issue(`A billing needs the terms of ${document.contract}`, [...path, 'contract']);
       } else if (contract.terms.currency !== document.currency) {
