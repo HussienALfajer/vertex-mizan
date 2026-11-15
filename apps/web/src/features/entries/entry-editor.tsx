@@ -575,7 +575,9 @@ export function EntryEditor({
     onSuccess: async (posted) => {
       await queryClient.invalidateQueries({ queryKey: ['entries', companyId] });
       await queryClient.invalidateQueries({ queryKey: ['drafts', companyId] });
-      await navigate({ to: '/entries/$id', params: { id: posted.entry.id } });
+      // A count that matched posts its voucher alone (S11 rule 13): the drafts list shows it posted.
+      if (posted.entry === null) await navigate({ to: '/drafts' });
+      else await navigate({ to: '/entries/$id', params: { id: posted.entry.id } });
     },
   });
 
@@ -589,7 +591,7 @@ export function EntryEditor({
           company: companyId,
           schema: postedDraftSchema,
         });
-        return { draft: posted.draft, entryId: posted.entry.id };
+        return { draft: posted.draft, entryId: posted.entry?.id ?? null };
       }
       const next = await api('POST', `/drafts/${stored.id}/${step}`, {
         company: companyId,

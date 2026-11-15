@@ -5,9 +5,15 @@ import {
   readChain,
   readLedgerState,
   readOpenItemState,
+  readVoucherState,
   withCompany,
 } from '@vertex-mizan/db';
-import { anchorResult, checkIntegrity, openItemProblems } from '@vertex-mizan/ledger';
+import {
+  anchorResult,
+  checkIntegrity,
+  openItemProblems,
+  voucherProblems,
+} from '@vertex-mizan/ledger';
 import { sql } from 'drizzle-orm';
 import { actorOf, type CompanyRouteAccess } from '../../core/access/access.js';
 import { writeCompanyAudit } from '../../core/audit/audit.js';
@@ -24,7 +30,8 @@ export class IntegrityService {
    * `POST /api/integrity/check` (S03 rule 19): the chain, numbers, balances, period balances and
    * head recomputed from the first entry by `packages/ledger`, every stored anchor and the pasted
    * one compared with the chain, each control account against its items and each item's balance
-   * row against its movements (S04), all in one snapshot. Each run is audited with its result.
+   * row against its movements (S04), the vouchers against their numbers and entries (S11), all in
+   * one snapshot. Each run is audited with its result.
    */
   async check(access: CompanyRouteAccess, body: IntegrityCheck): Promise<IntegrityReport> {
     const companyId = access.company.id;
@@ -45,6 +52,7 @@ export class IntegrityService {
           ...(await readOpenItemState(tx)),
           periodBalances: state.periodBalances,
         });
+        const vouchers = voucherProblems(await readVoucherState(tx));
         const anchors = state.anchors.map((anchor) => ({
           anchoredOn: anchor.anchoredOn,
           entryCount: Number(anchor.entryCount),
@@ -71,7 +79,8 @@ export class IntegrityService {
           findings.unbalanced.length +
           findings.periodBalances.length +
           items.controlAccounts.length +
-          items.itemBalances.length;
+          items.itemBalances.length +
+          vouchers.length;
         const ok =
           findings.firstBreak === null &&
           findings.headMatchesChain &&
@@ -115,6 +124,7 @@ export class IntegrityService {
           })),
           controlAccounts: [...items.controlAccounts],
           openItemBalances: [...items.itemBalances],
+          vouchers: [...vouchers],
           anchors,
           pasted,
         };

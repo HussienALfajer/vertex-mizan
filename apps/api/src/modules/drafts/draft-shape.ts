@@ -5,6 +5,7 @@ import type {
   DraftLine,
   DraftState,
   DraftSummary,
+  VoucherHeader,
 } from '@vertex-mizan/contracts';
 import { entryAttachments, entryDraftLines, entryDrafts, type Transaction } from '@vertex-mizan/db';
 import { and, asc, eq, isNull } from 'drizzle-orm';
@@ -52,6 +53,18 @@ function lineOf(row: LineRow): DraftLine {
   };
 }
 
+/** A voucher draft's header as stored (S11), null on any other draft. */
+export function voucherOf(row: DraftRow): VoucherHeader | null {
+  if (row.voucherKind === null || row.cashAccountId === null) return null;
+  return {
+    kind: row.voucherKind,
+    cashAccountId: row.cashAccountId,
+    counterCashAccountId: row.counterCashAccountId,
+    partyName: row.partyName,
+    countedMinor: row.countedMinor?.toString() ?? null,
+  };
+}
+
 /** A draft with its lines and attachments (`GET /api/drafts/:id`). */
 export async function readDraft(tx: Transaction, id: string): Promise<Draft> {
   const row = await draftRow(tx, id);
@@ -77,6 +90,7 @@ export async function readDraft(tx: Transaction, id: string): Promise<Draft> {
     reversesEntryId: row.reversesEntryId,
     copiedFromEntryId: row.copiedFromEntryId,
     lines,
+    voucher: voucherOf(row),
     preparedBy: personOf(people, row.preparedByUserId),
     submitted:
       row.submittedByUserId && row.submittedAt
@@ -113,6 +127,7 @@ export function summaryOf(
     description: row.description,
     reference: row.reference,
     reversesEntryId: row.reversesEntryId,
+    voucherKind: row.voucherKind,
     lineCount,
     preparedBy: personOf(people, row.preparedByUserId),
     submitted:
@@ -125,4 +140,10 @@ export function summaryOf(
 }
 
 // The draft writes the scenario book shares live in `packages/db` (S07: its `draft` step).
-export { auditedLines, type DraftOrigin, insertDraft, writeLines } from '@vertex-mizan/db';
+export {
+  auditedLines,
+  type DraftOrigin,
+  insertDraft,
+  voucherColumns,
+  writeLines,
+} from '@vertex-mizan/db';

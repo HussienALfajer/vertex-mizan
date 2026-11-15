@@ -1483,7 +1483,11 @@
                 "opening.saved",
                 "opening.posted",
                 "opening.reversed",
-                "export.opening"
+                "export.opening",
+                "cash_count.recorded",
+                "export.cash_statement",
+                "export.cash_position",
+                "export.voucher"
               ]
             }
           },
@@ -5622,6 +5626,16 @@
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PostDraft"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "The posted entry and the posted draft; posting twice answers the same entry",
@@ -5664,7 +5678,7 @@
             }
           },
           "409": {
-            "description": "COMPANY_NOT_SELECTED, COMPANY_SWITCHED, COMPANY_ARCHIVED, DRAFT_NOT_EDITABLE, APPROVAL_REQUIRED, PERIOD_CLOSED, ENTRY_NOT_REVERSIBLE, ENTRY_ALREADY_REVERSED, IDEMPOTENCY_CONFLICT",
+            "description": "COMPANY_NOT_SELECTED, COMPANY_SWITCHED, COMPANY_ARCHIVED, DRAFT_NOT_EDITABLE, APPROVAL_REQUIRED, PERIOD_CLOSED, ENTRY_NOT_REVERSIBLE, ENTRY_ALREADY_REVERSED, IDEMPOTENCY_CONFLICT, CASH_BOX_NEGATIVE, CASH_COUNT_STALE",
             "content": {
               "application/json": {
                 "schema": {
@@ -5674,7 +5688,7 @@
             }
           },
           "422": {
-            "description": "VALIDATION_FAILED, ENTRY_TOO_FEW_LINES, ENTRY_UNBALANCED, ENTRY_DATE_OUT_OF_RANGE, RATE_MISSING, DEALT_RATE_NOT_ACCEPTED, RATE_ORIENTATION, INVALID_RATE, SYP_BEFORE_REDENOMINATION, ACCOUNT_IS_CONTROL, ACCOUNT_ROLE_MISSING, ACCOUNT_NOT_POSTABLE, ACCOUNT_BLOCKED, ACCOUNT_ARCHIVED, ACCOUNT_CURRENCY_MISMATCH, DIMENSION_REQUIRED, DIMENSION_VALUE_ARCHIVED, DIMENSION_PARENT_MISMATCH, REVERSAL_BEFORE_ORIGINAL, OPEN_ITEM_REQUIRED, ACCOUNT_NOT_CONTROL, OPEN_ITEM_DIRECTION, RELEASE_EXCEEDS_BALANCE",
+            "description": "VALIDATION_FAILED, ENTRY_TOO_FEW_LINES, ENTRY_UNBALANCED, ENTRY_DATE_OUT_OF_RANGE, RATE_MISSING, DEALT_RATE_NOT_ACCEPTED, RATE_ORIENTATION, INVALID_RATE, SYP_BEFORE_REDENOMINATION, ACCOUNT_IS_CONTROL, ACCOUNT_ROLE_MISSING, ACCOUNT_NOT_POSTABLE, ACCOUNT_BLOCKED, ACCOUNT_ARCHIVED, ACCOUNT_CURRENCY_MISMATCH, DIMENSION_REQUIRED, DIMENSION_VALUE_ARCHIVED, DIMENSION_PARENT_MISMATCH, REVERSAL_BEFORE_ORIGINAL, OPEN_ITEM_REQUIRED, ACCOUNT_NOT_CONTROL, OPEN_ITEM_DIRECTION, RELEASE_EXCEEDS_BALANCE, CASH_ACCOUNT_INVALID",
             "content": {
               "application/json": {
                 "schema": {
@@ -5970,6 +5984,16 @@
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PostDraft"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "The posted entry and draft",
@@ -6012,7 +6036,7 @@
             }
           },
           "409": {
-            "description": "COMPANY_NOT_SELECTED, COMPANY_SWITCHED, COMPANY_ARCHIVED, DRAFT_NOT_EDITABLE, PERIOD_CLOSED, ENTRY_NOT_REVERSIBLE, ENTRY_ALREADY_REVERSED, IDEMPOTENCY_CONFLICT",
+            "description": "COMPANY_NOT_SELECTED, COMPANY_SWITCHED, COMPANY_ARCHIVED, DRAFT_NOT_EDITABLE, PERIOD_CLOSED, ENTRY_NOT_REVERSIBLE, ENTRY_ALREADY_REVERSED, IDEMPOTENCY_CONFLICT, CASH_BOX_NEGATIVE, CASH_COUNT_STALE",
             "content": {
               "application/json": {
                 "schema": {
@@ -6022,7 +6046,7 @@
             }
           },
           "422": {
-            "description": "VALIDATION_FAILED, ENTRY_TOO_FEW_LINES, ENTRY_UNBALANCED, ENTRY_DATE_OUT_OF_RANGE, RATE_MISSING, DEALT_RATE_NOT_ACCEPTED, RATE_ORIENTATION, INVALID_RATE, SYP_BEFORE_REDENOMINATION, ACCOUNT_IS_CONTROL, ACCOUNT_ROLE_MISSING, ACCOUNT_NOT_POSTABLE, ACCOUNT_BLOCKED, ACCOUNT_ARCHIVED, ACCOUNT_CURRENCY_MISMATCH, DIMENSION_REQUIRED, DIMENSION_VALUE_ARCHIVED, DIMENSION_PARENT_MISMATCH, REVERSAL_BEFORE_ORIGINAL, OPEN_ITEM_REQUIRED, ACCOUNT_NOT_CONTROL, OPEN_ITEM_DIRECTION, RELEASE_EXCEEDS_BALANCE",
+            "description": "VALIDATION_FAILED, ENTRY_TOO_FEW_LINES, ENTRY_UNBALANCED, ENTRY_DATE_OUT_OF_RANGE, RATE_MISSING, DEALT_RATE_NOT_ACCEPTED, RATE_ORIENTATION, INVALID_RATE, SYP_BEFORE_REDENOMINATION, ACCOUNT_IS_CONTROL, ACCOUNT_ROLE_MISSING, ACCOUNT_NOT_POSTABLE, ACCOUNT_BLOCKED, ACCOUNT_ARCHIVED, ACCOUNT_CURRENCY_MISMATCH, DIMENSION_REQUIRED, DIMENSION_VALUE_ARCHIVED, DIMENSION_PARENT_MISMATCH, REVERSAL_BEFORE_ORIGINAL, OPEN_ITEM_REQUIRED, ACCOUNT_NOT_CONTROL, OPEN_ITEM_DIRECTION, RELEASE_EXCEEDS_BALANCE, CASH_ACCOUNT_INVALID",
             "content": {
               "application/json": {
                 "schema": {
@@ -6339,6 +6363,388 @@
         },
         "tags": [
           "drafts"
+        ]
+      }
+    },
+    "/api/cash/accounts": {
+      "get": {
+        "operationId": "CashController_position",
+        "parameters": [
+          {
+            "name": "asOf",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Every cash account with its balance and carrying amounts at a date, by currency, with totals",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CashPosition"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "TWO_FACTOR_REQUIRED, FORBIDDEN",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "COMPANY_NOT_SELECTED, COMPANY_SWITCHED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_FAILED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "cash"
+        ]
+      }
+    },
+    "/api/cash/accounts/{id}/statement": {
+      "get": {
+        "operationId": "CashController_statement",
+        "parameters": [
+          {
+            "name": "from",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            }
+          },
+          {
+            "name": "to",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            }
+          },
+          {
+            "name": "ledgers",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A cash account's statement: opening, each line and count with its voucher, closing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CashStatement"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "TWO_FACTOR_REQUIRED, FORBIDDEN",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "COMPANY_NOT_SELECTED, COMPANY_SWITCHED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_FAILED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "cash"
+        ]
+      }
+    },
+    "/api/vouchers": {
+      "get": {
+        "operationId": "VouchersController_list",
+        "parameters": [
+          {
+            "name": "kind",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "receipt",
+                "payment",
+                "transfer",
+                "count"
+              ]
+            }
+          },
+          {
+            "name": "cashAccount",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          },
+          {
+            "name": "from",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            }
+          },
+          {
+            "name": "to",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            }
+          },
+          {
+            "name": "state",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "posted",
+                "cancelled"
+              ]
+            }
+          },
+          {
+            "name": "cursor",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Vouchers by date, newest first, 100 a page",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoucherPage"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "TWO_FACTOR_REQUIRED, FORBIDDEN",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "COMPANY_NOT_SELECTED, COMPANY_SWITCHED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_FAILED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "cash"
+        ]
+      }
+    },
+    "/api/vouchers/{id}": {
+      "get": {
+        "operationId": "VouchersController_get",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A voucher with its entry",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Voucher"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "TWO_FACTOR_REQUIRED, FORBIDDEN",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "COMPANY_NOT_SELECTED, COMPANY_SWITCHED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "cash"
         ]
       }
     },
@@ -11610,7 +12016,11 @@
           "opening.saved",
           "opening.posted",
           "opening.reversed",
-          "export.opening"
+          "export.opening",
+          "cash_count.recorded",
+          "export.cash_statement",
+          "export.cash_position",
+          "export.voucher"
         ]
       },
       "AuditPage": {
@@ -13610,6 +14020,37 @@
               "$ref": "#/components/schemas/EntryLine"
             }
           },
+          "voucher": {
+            "nullable": true,
+            "type": "object",
+            "properties": {
+              "kind": {
+                "$ref": "#/components/schemas/VoucherKind"
+              },
+              "fiscalYear": {
+                "type": "integer",
+                "minimum": 2000,
+                "maximum": 9999
+              },
+              "number": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "id": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              }
+            },
+            "required": [
+              "kind",
+              "fiscalYear",
+              "number",
+              "id"
+            ],
+            "additionalProperties": false
+          },
           "attachments": {
             "type": "array",
             "items": {
@@ -13645,6 +14086,7 @@
           "bookCurrency",
           "parallelCurrency",
           "lines",
+          "voucher",
           "attachments",
           "previousHash",
           "hash"
@@ -13877,6 +14319,15 @@
           "revaluation"
         ]
       },
+      "VoucherKind": {
+        "type": "string",
+        "enum": [
+          "receipt",
+          "payment",
+          "transfer",
+          "count"
+        ]
+      },
       "Attachment": {
         "type": "object",
         "properties": {
@@ -14035,6 +14486,14 @@
               "$ref": "#/components/schemas/DraftLine"
             }
           },
+          "voucher": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/VoucherHeader"
+              }
+            ]
+          },
           "preparedBy": {
             "$ref": "#/components/schemas/PersonRef"
           },
@@ -14133,6 +14592,7 @@
           "reversesEntryId",
           "copiedFromEntryId",
           "lines",
+          "voucher",
           "preparedBy",
           "submitted",
           "rejected",
@@ -14261,6 +14721,45 @@
         "required": [
           "reference",
           "dueOn"
+        ],
+        "additionalProperties": false
+      },
+      "VoucherHeader": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/VoucherKind"
+          },
+          "cashAccountId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "counterCashAccountId": {
+            "nullable": true,
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "partyName": {
+            "nullable": true,
+            "type": "string"
+          },
+          "countedMinor": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MinorUnits"
+              }
+            ]
+          }
+        },
+        "required": [
+          "kind",
+          "cashAccountId",
+          "counterCashAccountId",
+          "partyName",
+          "countedMinor"
         ],
         "additionalProperties": false
       },
@@ -14529,6 +15028,14 @@
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
           },
+          "voucherKind": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/VoucherKind"
+              }
+            ]
+          },
           "lineCount": {
             "type": "integer",
             "minimum": 0,
@@ -14572,6 +15079,7 @@
           "description",
           "reference",
           "reversesEntryId",
+          "voucherKind",
           "lineCount",
           "preparedBy",
           "submitted",
@@ -14617,6 +15125,14 @@
             "items": {
               "$ref": "#/components/schemas/DraftLineInput"
             }
+          },
+          "voucher": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/VoucherHeaderInput"
+              }
+            ]
           }
         },
         "required": [
@@ -14688,6 +15204,46 @@
           "amountMinor"
         ]
       },
+      "VoucherHeaderInput": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/VoucherKind"
+          },
+          "cashAccountId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "counterCashAccountId": {
+            "default": null,
+            "nullable": true,
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "partyName": {
+            "default": null,
+            "nullable": true,
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "countedMinor": {
+            "default": null,
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MinorUnits"
+              }
+            ]
+          }
+        },
+        "required": [
+          "kind",
+          "cashAccountId"
+        ]
+      },
       "UpdateDraft": {
         "type": "object",
         "properties": {
@@ -14725,6 +15281,14 @@
             "items": {
               "$ref": "#/components/schemas/DraftLineInput"
             }
+          },
+          "voucher": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/VoucherHeaderInput"
+              }
+            ]
           },
           "updatedAt": {
             "type": "string",
@@ -14768,6 +15332,14 @@
               "$ref": "#/components/schemas/PreviewItem"
             }
           },
+          "voucher": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/VoucherPreview"
+              }
+            ]
+          },
           "refusals": {
             "type": "array",
             "items": {
@@ -14781,6 +15353,7 @@
           "parallelCurrency",
           "lines",
           "items",
+          "voucher",
           "refusals"
         ],
         "additionalProperties": false
@@ -14854,6 +15427,59 @@
         ],
         "additionalProperties": false
       },
+      "VoucherPreview": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/VoucherKind"
+          },
+          "derivedRate": {
+            "nullable": true,
+            "type": "object",
+            "properties": {
+              "base": {
+                "$ref": "#/components/schemas/CurrencyCode"
+              },
+              "quote": {
+                "$ref": "#/components/schemas/CurrencyCode"
+              },
+              "rate": {
+                "type": "string",
+                "pattern": "^(?:0|[1-9]\\d{0,11})(?:\\.\\d{1,10})?$"
+              }
+            },
+            "required": [
+              "base",
+              "quote",
+              "rate"
+            ],
+            "additionalProperties": false
+          },
+          "expectedMinor": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MinorUnits"
+              }
+            ]
+          },
+          "differenceMinor": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MinorUnits"
+              }
+            ]
+          }
+        },
+        "required": [
+          "kind",
+          "derivedRate",
+          "expectedMinor",
+          "differenceMinor"
+        ],
+        "additionalProperties": false
+      },
       "PostingRefusal": {
         "type": "object",
         "properties": {
@@ -14884,19 +15510,71 @@
         ],
         "additionalProperties": false
       },
+      "PostDraft": {
+        "default": {},
+        "type": "object",
+        "properties": {
+          "expectedMinor": {
+            "default": null,
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MinorUnits"
+              }
+            ]
+          }
+        }
+      },
       "PostedDraft": {
         "type": "object",
         "properties": {
           "entry": {
-            "$ref": "#/components/schemas/Entry"
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Entry"
+              }
+            ]
           },
           "draft": {
             "$ref": "#/components/schemas/Draft"
+          },
+          "voucher": {
+            "nullable": true,
+            "type": "object",
+            "properties": {
+              "kind": {
+                "$ref": "#/components/schemas/VoucherKind"
+              },
+              "fiscalYear": {
+                "type": "integer",
+                "minimum": 2000,
+                "maximum": 9999
+              },
+              "number": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "id": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              }
+            },
+            "required": [
+              "kind",
+              "fiscalYear",
+              "number",
+              "id"
+            ],
+            "additionalProperties": false
           }
         },
         "required": [
           "entry",
-          "draft"
+          "draft",
+          "voucher"
         ],
         "additionalProperties": false
       },
@@ -14943,6 +15621,914 @@
           "id",
           "attachmentId"
         ]
+      },
+      "CashPositionQuery": {
+        "type": "object",
+        "properties": {
+          "asOf": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          }
+        }
+      },
+      "CashPosition": {
+        "type": "object",
+        "properties": {
+          "asOf": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          },
+          "bookCurrency": {
+            "$ref": "#/components/schemas/CurrencyCode"
+          },
+          "parallelCurrency": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CurrencyCode"
+              }
+            ]
+          },
+          "groups": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CashPositionGroup"
+            }
+          },
+          "book": {
+            "$ref": "#/components/schemas/MoneyAmount"
+          },
+          "parallel": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MoneyAmount"
+              }
+            ]
+          }
+        },
+        "required": [
+          "asOf",
+          "bookCurrency",
+          "parallelCurrency",
+          "groups",
+          "book",
+          "parallel"
+        ],
+        "additionalProperties": false
+      },
+      "CashPositionGroup": {
+        "type": "object",
+        "properties": {
+          "currency": {
+            "$ref": "#/components/schemas/CurrencyCode"
+          },
+          "accounts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CashPositionAccount"
+            }
+          },
+          "total": {
+            "$ref": "#/components/schemas/MoneyAmount"
+          },
+          "book": {
+            "$ref": "#/components/schemas/MoneyAmount"
+          },
+          "parallel": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MoneyAmount"
+              }
+            ]
+          }
+        },
+        "required": [
+          "currency",
+          "accounts",
+          "total",
+          "book",
+          "parallel"
+        ],
+        "additionalProperties": false
+      },
+      "CashPositionAccount": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "nameLatin": {
+            "nullable": true,
+            "type": "string"
+          },
+          "cashKind": {
+            "$ref": "#/components/schemas/CashKind"
+          },
+          "currency": {
+            "$ref": "#/components/schemas/CurrencyCode"
+          },
+          "balance": {
+            "$ref": "#/components/schemas/MoneyAmount"
+          },
+          "book": {
+            "$ref": "#/components/schemas/MoneyAmount"
+          },
+          "parallel": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MoneyAmount"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "code",
+          "name",
+          "nameLatin",
+          "cashKind",
+          "currency",
+          "balance",
+          "book",
+          "parallel"
+        ],
+        "additionalProperties": false
+      },
+      "CashStatementQuery": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          },
+          "to": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          },
+          "ledgers": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "from",
+          "to"
+        ]
+      },
+      "CashStatement": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "$ref": "#/components/schemas/CashAccountRef"
+          },
+          "from": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          },
+          "to": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          },
+          "ledgers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Ledger"
+            }
+          },
+          "bookCurrency": {
+            "$ref": "#/components/schemas/CurrencyCode"
+          },
+          "parallelCurrency": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CurrencyCode"
+              }
+            ]
+          },
+          "opening": {
+            "$ref": "#/components/schemas/CashBalances"
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CashStatementRow"
+            }
+          },
+          "totalIn": {
+            "$ref": "#/components/schemas/MinorUnits"
+          },
+          "totalOut": {
+            "$ref": "#/components/schemas/MinorUnits"
+          },
+          "closing": {
+            "$ref": "#/components/schemas/CashBalances"
+          }
+        },
+        "required": [
+          "account",
+          "from",
+          "to",
+          "ledgers",
+          "bookCurrency",
+          "parallelCurrency",
+          "opening",
+          "rows",
+          "totalIn",
+          "totalOut",
+          "closing"
+        ],
+        "additionalProperties": false
+      },
+      "CashAccountRef": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "nameLatin": {
+            "nullable": true,
+            "type": "string"
+          },
+          "cashKind": {
+            "$ref": "#/components/schemas/CashKind"
+          },
+          "currency": {
+            "$ref": "#/components/schemas/CurrencyCode"
+          }
+        },
+        "required": [
+          "id",
+          "code",
+          "name",
+          "nameLatin",
+          "cashKind",
+          "currency"
+        ],
+        "additionalProperties": false
+      },
+      "CashBalances": {
+        "type": "object",
+        "properties": {
+          "amount": {
+            "$ref": "#/components/schemas/MoneyAmount"
+          },
+          "book": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MoneyAmount"
+              }
+            ]
+          },
+          "parallel": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MoneyAmount"
+              }
+            ]
+          }
+        },
+        "required": [
+          "amount",
+          "book",
+          "parallel"
+        ],
+        "additionalProperties": false
+      },
+      "CashStatementRow": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "line",
+              "count"
+            ]
+          },
+          "date": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          },
+          "entry": {
+            "nullable": true,
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              "fiscalYear": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "number": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "lineNo": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "id",
+              "fiscalYear",
+              "number",
+              "lineNo"
+            ],
+            "additionalProperties": false
+          },
+          "voucher": {
+            "nullable": true,
+            "type": "object",
+            "properties": {
+              "kind": {
+                "$ref": "#/components/schemas/VoucherKind"
+              },
+              "fiscalYear": {
+                "type": "integer",
+                "minimum": 2000,
+                "maximum": 9999
+              },
+              "number": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "id": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              }
+            },
+            "required": [
+              "kind",
+              "fiscalYear",
+              "number",
+              "id"
+            ],
+            "additionalProperties": false
+          },
+          "description": {
+            "type": "string"
+          },
+          "counterAccount": {
+            "nullable": true,
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              "code": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "code",
+              "name"
+            ],
+            "additionalProperties": false
+          },
+          "severalCounterAccounts": {
+            "type": "boolean"
+          },
+          "counterparty": {
+            "nullable": true,
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              "code": {
+                "nullable": true,
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "code",
+              "name"
+            ],
+            "additionalProperties": false
+          },
+          "contract": {
+            "nullable": true,
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              "code": {
+                "nullable": true,
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "code",
+              "name"
+            ],
+            "additionalProperties": false
+          },
+          "in": {
+            "$ref": "#/components/schemas/MinorUnits"
+          },
+          "out": {
+            "$ref": "#/components/schemas/MinorUnits"
+          },
+          "balance": {
+            "$ref": "#/components/schemas/MinorUnits"
+          },
+          "book": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MinorUnits"
+              }
+            ]
+          },
+          "parallel": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MinorUnits"
+              }
+            ]
+          },
+          "expectedMinor": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MinorUnits"
+              }
+            ]
+          },
+          "countedMinor": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MinorUnits"
+              }
+            ]
+          }
+        },
+        "required": [
+          "kind",
+          "date",
+          "entry",
+          "voucher",
+          "description",
+          "counterAccount",
+          "severalCounterAccounts",
+          "counterparty",
+          "contract",
+          "in",
+          "out",
+          "balance",
+          "book",
+          "parallel",
+          "expectedMinor",
+          "countedMinor"
+        ],
+        "additionalProperties": false
+      },
+      "VoucherQuery": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/VoucherKind"
+              }
+            ]
+          },
+          "cashAccount": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "from": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          },
+          "to": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          },
+          "state": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/VoucherState"
+              }
+            ]
+          },
+          "cursor": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Cursor"
+              }
+            ]
+          }
+        }
+      },
+      "VoucherState": {
+        "type": "string",
+        "enum": [
+          "posted",
+          "cancelled"
+        ]
+      },
+      "VoucherPage": {
+        "type": "object",
+        "properties": {
+          "vouchers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VoucherSummary"
+            }
+          },
+          "nextCursor": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Cursor"
+              }
+            ]
+          }
+        },
+        "required": [
+          "vouchers",
+          "nextCursor"
+        ],
+        "additionalProperties": false
+      },
+      "VoucherSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/VoucherKind"
+          },
+          "fiscalYear": {
+            "type": "integer",
+            "minimum": 2000,
+            "maximum": 9999
+          },
+          "number": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "date": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          },
+          "state": {
+            "$ref": "#/components/schemas/VoucherState"
+          },
+          "cashAccount": {
+            "$ref": "#/components/schemas/CashAccountRef"
+          },
+          "counterCashAccount": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CashAccountRef"
+              }
+            ]
+          },
+          "amount": {
+            "$ref": "#/components/schemas/MoneyAmount"
+          },
+          "partyName": {
+            "nullable": true,
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "entry": {
+            "nullable": true,
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              "fiscalYear": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "number": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "id",
+              "fiscalYear",
+              "number"
+            ],
+            "additionalProperties": false
+          },
+          "reversal": {
+            "nullable": true,
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              "fiscalYear": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "number": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "id",
+              "fiscalYear",
+              "number"
+            ],
+            "additionalProperties": false
+          },
+          "expectedMinor": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MinorUnits"
+              }
+            ]
+          },
+          "countedMinor": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MinorUnits"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "fiscalYear",
+          "number",
+          "date",
+          "state",
+          "cashAccount",
+          "counterCashAccount",
+          "amount",
+          "partyName",
+          "description",
+          "entry",
+          "reversal",
+          "expectedMinor",
+          "countedMinor"
+        ],
+        "additionalProperties": false
+      },
+      "Voucher": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/VoucherKind"
+          },
+          "fiscalYear": {
+            "type": "integer",
+            "minimum": 2000,
+            "maximum": 9999
+          },
+          "number": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "date": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          },
+          "state": {
+            "$ref": "#/components/schemas/VoucherState"
+          },
+          "cashAccount": {
+            "$ref": "#/components/schemas/CashAccountRef"
+          },
+          "counterCashAccount": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CashAccountRef"
+              }
+            ]
+          },
+          "amount": {
+            "$ref": "#/components/schemas/MoneyAmount"
+          },
+          "partyName": {
+            "nullable": true,
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "entry": {
+            "nullable": true,
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              "fiscalYear": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "number": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "id",
+              "fiscalYear",
+              "number"
+            ],
+            "additionalProperties": false
+          },
+          "reversal": {
+            "nullable": true,
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              "fiscalYear": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "number": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "id",
+              "fiscalYear",
+              "number"
+            ],
+            "additionalProperties": false
+          },
+          "expectedMinor": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MinorUnits"
+              }
+            ]
+          },
+          "countedMinor": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MinorUnits"
+              }
+            ]
+          },
+          "draftId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "preparedBy": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PersonRef"
+              }
+            ]
+          },
+          "approvedBy": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PersonRef"
+              }
+            ]
+          },
+          "entryDetail": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Entry"
+              }
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "fiscalYear",
+          "number",
+          "date",
+          "state",
+          "cashAccount",
+          "counterCashAccount",
+          "amount",
+          "partyName",
+          "description",
+          "entry",
+          "reversal",
+          "expectedMinor",
+          "countedMinor",
+          "draftId",
+          "preparedBy",
+          "approvedBy",
+          "entryDetail",
+          "createdAt"
+        ],
+        "additionalProperties": false
       },
       "IntegrityCheck": {
         "type": "object",
@@ -15231,6 +16817,53 @@
               "additionalProperties": false
             }
           },
+          "vouchers": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string"
+                },
+                "fiscalYear": {
+                  "nullable": true,
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "number": {
+                  "nullable": true,
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "entryId": {
+                  "nullable": true,
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                },
+                "problem": {
+                  "type": "string",
+                  "enum": [
+                    "missing",
+                    "duplicate",
+                    "sequence",
+                    "no_entry",
+                    "entry_without_voucher"
+                  ]
+                }
+              },
+              "required": [
+                "kind",
+                "fiscalYear",
+                "number",
+                "entryId",
+                "problem"
+              ],
+              "additionalProperties": false
+            }
+          },
           "anchors": {
             "type": "array",
             "items": {
@@ -15301,6 +16934,7 @@
           "periodBalances",
           "controlAccounts",
           "openItemBalances",
+          "vouchers",
           "anchors",
           "pasted"
         ],

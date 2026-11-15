@@ -12,6 +12,7 @@ import {
   applyChart,
   auditEntries,
   blockAccount,
+  cashVouchers,
   chartAccounts,
   closePeriod,
   createAccount,
@@ -22,6 +23,7 @@ import {
   dimensionValues,
   discardDraft,
   entriesUsingRate,
+  entryDrafts,
   insertDraft,
   journalEntries,
   journalLines,
@@ -32,6 +34,7 @@ import {
   type PersonActor,
   post,
   postRevaluation,
+  postVoucher,
   previewRevaluation,
   recordRate,
   reopenPeriod,
@@ -52,6 +55,7 @@ import type {
   LedgerReader,
   ObservedBalance,
   ObservedOpenItem,
+  ObservedVoucher,
   OpenItemQuery,
   PostedEntry,
   ScenarioDatabase,
@@ -353,6 +357,165 @@ export function manual(
       });
     }),
   );
+}
+
+/**
+ * A voucher step's payload, as the voucher form sends it (README "YAML schema", S11): the header,
+ * the lines (none on a count) and, on a receipt or a payment, the dealt rates the accountant typed.
+ */
+const voucherPayloadSchema = z.strictObject({
+  description: z.string().trim().min(1).max(500).optional(),
+  reference: z.string().trim().min(1).max(100).optional(),
+  dealt_rates: manualPayloadSchema.shape.dealt_rates,
+  voucher: z.strictObject({
+    kind: z.enum(['receipt', 'payment', 'transfer', 'count']),
+    cash_account: z.string().regex(/^[1-5][0-9]{0,5}$/),
+    counter_cash_account: z
+      .string()
+      .regex(/^[1-5][0-9]{0,5}$/)
+      .optional(),
+    party_name: z.string().trim().min(1).max(200).optional(),
+    counted: z.bigint().optional(),
+    expected: z.bigint().optional(),
+  }),
+  lines: manualPayloadSchema.shape.lines.optional(),
+});
+
+/** A refusal with the detail the book names: a stale count's new expected amount (S11 rule 13). */
+function voucherOutcome(error: unknown): StepResult {
+  if (!(error instanceof DomainError)) throw error;
+  const detail =
+    error.code === 'CASH_COUNT_STALE'
+      ? `expected:${String(error.details?.expectedMinor)}`
+      : undefined;
+  return { status: 'refused', reason: error.code, ...(detail !== undefined && { detail }) };
+}
+
+/**
+ * A cash voucher (S11 rules 9–14), as the voucher form saves and posts it: the voucher draft saved
+ * through the drafts service with its header and lines, then posted through the posting function's
+ * `postVoucher()` with a count's expected amount as its preview showed it, and the draft marked
+ * posted, in one transaction, so a refusal leaves neither the draft nor a number behind.
+ */
+export async function voucher(
+  context: CaseContext,
+  step: Extract<Step, { kind: 'voucher' }>,
+): Promise<StepResult> {
+  const payload = voucherPayloadSchema.parse(step.payload);
+  const actor = bookkeeperOf(context.companyId);
+  advanceClock(context.companyId, step.accountingDate);
+  try {
+    await withCompany(context.database.app, context.companyId, async (tx) => {
+      const accounts = await accountIdsByCode(tx);
+      const idOf = (code: string) => accounts.get(code) ?? uuidv7();
+      const lines = await manualLines(tx, {
+        dealt_rates: payload.dealt_rates,
+        lines: payload.lines ?? [],
+        ...(payload.description !== undefined && { description: payload.description }),
+      });
+      const header = payload.voucher;
+      const description = payload.description ?? step.description;
+      const draftId = await insertDraft(
+        tx,
+        context.companyId,
+        actor,
+        draftInputSchema.parse({
+          entryDate: step.accountingDate,
+          description,
+          reference: payload.reference ?? null,
+          dealtRates: payload.dealt_rates,
+          lines: lines.map((line) => ({
+            accountId: line.accountId,
+            dimensionValueIds: line.dimensionValueIds,
+            currency: line.currency,
+            amountMinor: line.amountMinor.toString(),
+            memo: line.memo,
+            openItemId: line.openItemId ?? null,
+            newItem: line.newItem ?? null,
+          })),
+          voucher: {
+            kind: header.kind,
+            cashAccountId: idOf(header.cash_account),
+            counterCashAccountId:
+              header.counter_cash_account === undefined ? null : idOf(header.counter_cash_account),
+            partyName: header.party_name ?? null,
+            countedMinor: header.counted === undefined ? null : header.counted.toString(),
+          },
+        }),
+      );
+      const posted = await postVoucher(tx, {
+        client: 'manual',
+        idempotencyKey: draftId,
+        entryDate: step.accountingDate,
+        description,
+        reference: payload.reference ?? null,
+        draftId,
+        preparedByUserId: actor.userId,
+        approvedByUserId: null,
+        actor,
+        voucher: {
+          kind: header.kind,
+          cashAccountId: idOf(header.cash_account),
+          counterCashAccountId:
+            header.counter_cash_account === undefined ? null : idOf(header.counter_cash_account),
+          partyName: header.party_name ?? null,
+          countedMinor: header.counted ?? null,
+          expectedMinor: header.expected ?? null,
+        },
+        lines: header.kind === 'count' ? [] : lines,
+        dealtRates: payload.dealt_rates,
+        today: step.accountingDate,
+      });
+      await tx
+        .update(entryDrafts)
+        .set({ state: 'posted', postedEntryId: posted.entry?.id ?? null })
+        .where(eq(entryDrafts.id, draftId));
+    });
+    return { status: 'done' };
+  } catch (error) {
+    return voucherOutcome(error);
+  }
+}
+
+/**
+ * Every cash voucher the company holds (S11), as the vouchers' register reads it: its kind, number,
+ * date and accounts by code, its entry and its cancelling reversal by their place in posting order.
+ */
+export function vouchers(context: CaseContext): Promise<ObservedVoucher[]> {
+  return withCompany(context.database.app, context.companyId, async (tx) => {
+    const codes = new Map(
+      (await tx.select({ id: chartAccounts.id, code: chartAccounts.code }).from(chartAccounts)).map(
+        (row) => [row.id, row.code],
+      ),
+    );
+    const entries = await tx
+      .select({
+        id: journalEntries.id,
+        sequence: journalEntries.sequence,
+        reverses: journalEntries.reversesEntryId,
+      })
+      .from(journalEntries);
+    const sequenceOf = (id: string | null) =>
+      id === null ? null : Number(entries.find((entry) => entry.id === id)?.sequence ?? 0);
+    const rows = await tx.select().from(cashVouchers);
+    return rows.map((row) => {
+      const reversal = entries.find(
+        (entry) => row.entryId !== null && entry.reverses === row.entryId,
+      );
+      return {
+        kind: row.kind,
+        number: row.number,
+        date: row.voucherDate,
+        cashAccount: codes.get(row.cashAccountId) ?? '',
+        counterCashAccount:
+          row.counterCashAccountId === null ? null : (codes.get(row.counterCashAccountId) ?? ''),
+        entry: sequenceOf(row.entryId),
+        expected: row.expectedMinor,
+        counted: row.countedMinor,
+        cancelledBy: reversal === undefined ? null : Number(reversal.sequence),
+      };
+    });
+  });
 }
 
 /** The case's entry of a number in posting order (the chain's sequence). */

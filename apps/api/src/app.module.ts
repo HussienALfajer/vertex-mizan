@@ -18,6 +18,7 @@ import { HealthModule } from './core/health/health.module.js';
 import { JobsModule } from './core/jobs/job-queue.js';
 import { AuditModule } from './modules/audit/audit.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
+import { CashModule } from './modules/cash/cash.module.js';
 import { ChartModule } from './modules/chart/chart.module.js';
 import { CompaniesModule } from './modules/companies/companies.module.js';
 import { DimensionsModule } from './modules/dimensions/dimensions.module.js';
@@ -78,6 +79,7 @@ export class AppModule {
         RatesModule,
         EntriesModule,
         DraftsModule,
+        CashModule,
         IntegrityModule,
         ExportsModule,
         OpenItemsModule,

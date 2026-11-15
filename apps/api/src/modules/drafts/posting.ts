@@ -4,11 +4,13 @@ import {
   type DealtRateSpec,
   entryAttachments,
   entryDrafts,
+  type ManualLineSpec,
   type PersonActor,
-  type PostedEntryRef,
   type PostingContent,
   post,
+  postVoucher,
   type Transaction,
+  type VoucherSpec,
 } from '@vertex-mizan/db';
 import { and, eq, isNull } from 'drizzle-orm';
 import { CodedException } from '../../core/errors/coded-exception.js';
@@ -38,6 +40,18 @@ export function missingOf(draft: DraftRow, lines: readonly DraftLine[]): Posting
     });
   }
   if (draft.reversesEntryId !== null) return refusals;
+  // S11 rule 13: a count has no lines of its own, only the cash counted.
+  if (draft.voucherKind === 'count') {
+    if (draft.countedMinor === null) {
+      refusals.push({
+        code: 'VALIDATION_FAILED',
+        message: 'A count states the cash counted',
+        lineNo: null,
+        details: { field: 'countedMinor' },
+      });
+    }
+    return refusals;
+  }
   for (const line of lines) {
     if (line.accountId === null || line.currency === null || line.amountMinor === null) {
       refusals.push({
@@ -99,15 +113,36 @@ export function contentOf(
     kind: 'manual',
     today,
     dealtRates: draft.dealtRates as DealtRateSpec[],
-    lines: lines.map((line) => ({
-      accountId: line.accountId as string,
-      dimensionValueIds: line.dimensionValueIds,
-      currency: line.currency as NonNullable<DraftLine['currency']>,
-      amountMinor: BigInt(line.amountMinor as string),
-      memo: line.memo,
-      openItemId: line.openItemId,
-      newItem: line.newItem,
-    })),
+    lines: manualLinesOf(lines),
+  };
+}
+
+/** A complete draft's lines as the posting function takes them. */
+export function manualLinesOf(lines: readonly DraftLine[]): ManualLineSpec[] {
+  return lines.map((line) => ({
+    accountId: line.accountId as string,
+    dimensionValueIds: line.dimensionValueIds,
+    currency: line.currency as NonNullable<DraftLine['currency']>,
+    amountMinor: BigInt(line.amountMinor as string),
+    memo: line.memo,
+    openItemId: line.openItemId,
+    newItem: line.newItem,
+  }));
+}
+
+/**
+ * A voucher draft's header as the posting function takes it (S11 rules 9–13), with a count's
+ * expected amount as its preview showed it; null for any other draft.
+ */
+export function voucherSpecOf(draft: DraftRow, expectedMinor: bigint | null): VoucherSpec | null {
+  if (draft.voucherKind === null || draft.cashAccountId === null) return null;
+  return {
+    kind: draft.voucherKind,
+    cashAccountId: draft.cashAccountId,
+    counterCashAccountId: draft.counterCashAccountId,
+    partyName: draft.partyName,
+    countedMinor: draft.countedMinor,
+    expectedMinor,
   };
 }
 
@@ -128,17 +163,20 @@ export function refusalOf(error: DomainError): PostingRefusal {
 
 /**
  * Posts a complete draft through the posting function, idempotent by the draft (S03 "API"): its
- * key is the draft id, a reversal's `reversal:<entry id>`. The draft becomes `posted` and its
- * files move to the entry, in the same transaction.
+ * key is the draft id, a reversal's `reversal:<entry id>`. A voucher draft posts through
+ * `postVoucher()` with its header and, for a count, the expected amount its preview showed (S11
+ * rules 9–13). The draft becomes `posted` and its files move to the entry, in the same
+ * transaction; a count that matched posts no entry, so its files stay with its draft. Answers the
+ * entry's id, null for such a count.
  */
 export async function postDraft(
   tx: Transaction,
   draft: DraftRow,
   lines: readonly DraftLine[],
   actor: PersonActor,
-  options: { today: string; approvedByUserId: string | null },
-): Promise<PostedEntryRef> {
-  const entry = await post(tx, {
+  options: { today: string; approvedByUserId: string | null; expectedMinor: bigint | null },
+): Promise<string | null> {
+  const request = {
     client: 'manual',
     idempotencyKey: draft.reversesEntryId === null ? draft.id : `reversal:${draft.reversesEntryId}`,
     entryDate: draft.entryDate,
@@ -148,15 +186,29 @@ export async function postDraft(
     preparedByUserId: draft.preparedByUserId,
     approvedByUserId: options.approvedByUserId,
     actor,
-    content: contentOf(draft, lines, options.today),
-  });
+  };
+  const voucher = voucherSpecOf(draft, options.expectedMinor);
+  const entryId =
+    voucher === null
+      ? (await post(tx, { ...request, content: contentOf(draft, lines, options.today) })).id
+      : ((
+          await postVoucher(tx, {
+            ...request,
+            voucher,
+            lines: voucher.kind === 'count' ? [] : manualLinesOf(lines),
+            dealtRates: draft.dealtRates as DealtRateSpec[],
+            today: options.today,
+          })
+        ).entry?.id ?? null);
   await tx
     .update(entryDrafts)
-    .set({ state: 'posted', postedEntryId: entry.id })
+    .set({ state: 'posted', postedEntryId: entryId })
     .where(eq(entryDrafts.id, draft.id));
-  await tx
-    .update(entryAttachments)
-    .set({ entryId: entry.id })
-    .where(and(eq(entryAttachments.draftId, draft.id), isNull(entryAttachments.archivedAt)));
-  return entry;
+  if (entryId !== null) {
+    await tx
+      .update(entryAttachments)
+      .set({ entryId })
+      .where(and(eq(entryAttachments.draftId, draft.id), isNull(entryAttachments.archivedAt)));
+  }
+  return entryId;
 }

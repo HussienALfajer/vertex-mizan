@@ -394,6 +394,7 @@ test.describe('the entry screen with open items', () => {
       { id: ownDraft.id },
     );
     const preview: EntryPreview = {
+      voucher: null,
       entryDate: '2026-11-09',
       bookCurrency: 'SYP',
       parallelCurrency: 'USD',

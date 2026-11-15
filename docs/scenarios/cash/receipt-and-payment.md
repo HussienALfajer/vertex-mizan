@@ -1,8 +1,8 @@
 # A receipt and a payment through a cash account
 
-Status: Proposed
+Status: Approved (owner, 2026-11-14)
 
-The expected entries of all eleven cases were approved by the owner on 2026-11-14, with the TRY receipt at a dealt rate as two cases: at the rate agreed with the client, which leaves no book difference, and with no dealt rate, which leaves a difference in both ledgers. They stay `Proposed` until S11's slice brings the `voucher` executor, the box rule and the cash chart `contracting@1`; that PR switches them to `Approved (owner, 2026-11-14)` with no expected value changed.
+The expected entries of all eleven cases were approved by the owner on 2026-11-14, with the TRY receipt at a dealt rate as two cases: at the rate agreed with the client, which leaves no book difference, and with no dealt rate, which leaves a difference in both ledgers. S11's second PR brought the `voucher` executor, the box rule and the cash chart `contracting@1` and switched them to `Approved` with no expected value changed.
 
 ## Rule
 

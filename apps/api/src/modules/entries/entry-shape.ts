@@ -16,6 +16,7 @@ import type {
   RateType,
 } from '@vertex-mizan/contracts';
 import {
+  cashVouchers,
   chartAccounts,
   companySettings,
   dimensionSetValues,
@@ -198,6 +199,15 @@ export async function readEntry(tx: Transaction, id: string): Promise<Entry> {
   ]);
   const currencies = await ledgerCurrencies(tx);
   const items = await lineItemsOf(tx, id);
+  const [voucher] = await tx
+    .select({
+      id: cashVouchers.id,
+      kind: cashVouchers.kind,
+      fiscalYear: cashVouchers.fiscalYear,
+      number: cashVouchers.number,
+    })
+    .from(cashVouchers)
+    .where(eq(cashVouchers.entryId, id));
   return {
     id: row.id,
     fiscalYear: row.fiscalYear,
@@ -212,6 +222,7 @@ export async function readEntry(tx: Transaction, id: string): Promise<Entry> {
     reference: row.reference,
     reverses: link(linked.find((entry) => entry.id === row.reversesEntryId)),
     reversedBy: link(linked.find((entry) => entry.reversesEntryId === id)),
+    voucher: voucher ?? null,
     draftId: row.draftId,
     preparedBy: personOrNull(people, row.preparedByUserId),
     approvedBy: personOrNull(people, row.approvedByUserId),
