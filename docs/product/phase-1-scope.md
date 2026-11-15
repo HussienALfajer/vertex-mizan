@@ -157,7 +157,8 @@ Specified with the owner (`/spec`) before they are built, in two specs (owner, 2
 - **S12 Project costs:**
   - **N2 Expenses by project.**
   - **N3 Wages** of workers and craftsmen.
-  - **N4 Materials** with quantities, as lines of a project cost when materials go straight to the project. If the client keeps materials in a store and issues them later, N4 is inventory (IAS 2) and gets a spec of its own (Q19).
+  - **N4 Materials** with quantities, as lines of a project cost: materials go straight to the project (owner, 2026-11-16, Q19). A store with issues to projects would be inventory (IAS 2) and a spec of its own.
+  - Contract revenue over time by certified progress billings (owner, 2026-11-16, Q20; S12, ADR 0023).
 
 ## 6. Accounting treatment of Hub events — withdrawn (ADR 0021)
 
