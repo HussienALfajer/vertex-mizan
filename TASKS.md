@@ -44,8 +44,8 @@ Four PRs, in order. PR 4 needs only PR 1 and may run beside PRs 2 and 3.
 
 - [x] The 13 files naming `template: service-agency` switched to `template: contracting` per the spec's mapping table, each case creating the accounts the template lacks; no expected amount changed
 - [x] `packages/scenarios/src/agency-chart.ts` deleted; the book passes (126 run); the added accounts gain a header and a control account's flags
-- [ ] The owner approves the mapping and the moved files (quoted in the PR); docs: ROADMAP, `packages/scenarios/CLAUDE.md`
-- [ ] checks and reviewers, PR (auto-merge only after the owner's approval)
+- [x] The owner approves the mapping and the moved files (owner, 2026-11-16) (quoted in the PR); docs: ROADMAP, `packages/scenarios/CLAUDE.md`
+- [x] checks and reviewers, PR (auto-merge only after the owner's approval)
 
 ## Carried over
 
