@@ -26,6 +26,8 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
+  CashAccountPicker,
+  type CashAccountPickerOption,
   type CellEdit,
   ChangeList,
   Checklist,
@@ -85,6 +87,7 @@ import {
   ToggleGroupItem,
   useDensity,
   VertexMizanLogo,
+  VoucherHeader,
 } from '@vertex-mizan/ui';
 import { CheckIcon, DownloadIcon, SearchIcon } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
@@ -1064,6 +1067,96 @@ function ReceivablesSample() {
   );
 }
 
+/** Three synthetic cash accounts in two currencies (S11). */
+const sampleCashAccounts: CashAccountPickerOption[] = [
+  {
+    id: 'usd-box',
+    code: '111002',
+    name: t.cash.usdBox,
+    currency: 'USD',
+    kindLabel: ar.cash.cashKinds.box,
+    balanceMinor: 150000n,
+  },
+  {
+    id: 'usd-bank',
+    code: '111004',
+    name: t.cash.usdBank,
+    currency: 'USD',
+    kindLabel: ar.cash.cashKinds.bank,
+    balanceMinor: -2500n,
+  },
+  {
+    id: 'try-box',
+    code: '111005',
+    name: t.cash.tryBox,
+    currency: 'TRY',
+    kindLabel: ar.cash.cashKinds.box,
+    balanceMinor: 3450000n,
+  },
+];
+
+const cashPickerLabels = {
+  ...ar.cash.picker,
+  blocked: ar.accounting.account.blocked,
+  currency: (currency: CurrencyCode) => ar.accounting.currencies[currency],
+};
+
+/** The cash components (S11): a voucher's header with its fields, in both densities. */
+function CashSample() {
+  const [account, setAccount] = useState<string | null>('usd-box');
+  const chosen = sampleCashAccounts.find((option) => option.id === account);
+  const c = t.cash;
+  return (
+    <div className="grid min-w-0 gap-4">
+      {(['compact', 'comfortable'] as const).map((density) => (
+        <div
+          key={density}
+          data-density={density}
+          className="flex min-w-0 flex-col gap-2 text-control"
+        >
+          <p className="text-muted-foreground text-sm">{c[density]}</p>
+          <VoucherHeader
+            kind={ar.cash.kinds.payment}
+            number={density === 'compact' ? '2026/15' : null}
+            date={density === 'compact' ? '2026-12-03' : undefined}
+            labels={ar.cash.form}
+            state={
+              density === 'compact'
+                ? { label: ar.cash.states.cancelled, tone: 'danger' }
+                : undefined
+            }
+            accounts={
+              chosen
+                ? [
+                    {
+                      role: ar.cash.form.cashAccount,
+                      code: chosen.code,
+                      name: chosen.name,
+                      currency: chosen.currency,
+                      balanceMinor: chosen.balanceMinor,
+                    },
+                  ]
+                : []
+            }
+          >
+            <CashAccountPicker
+              label={ar.cash.form.cashAccount}
+              accounts={sampleCashAccounts}
+              value={account}
+              onValueChange={setAccount}
+              labels={cashPickerLabels}
+            />
+            <Field>
+              <FieldLabel>{ar.cash.form.partyPayment}</FieldLabel>
+              <Input defaultValue={c.party} />
+            </Field>
+          </VoucherHeader>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function DimensionPickerSample() {
   const [client, setClient] = useState<string | null>('c1');
   const [rate, setRate] = useState<string | null>('120.0000');
@@ -1221,6 +1314,11 @@ export function DesignSystemPage() {
       <Section id="receivables" title={t.receivables.title}>
         <p className="text-muted-foreground">{t.receivables.hint}</p>
         <ReceivablesSample />
+      </Section>
+
+      <Section id="cash" title={t.cash.title}>
+        <p className="text-muted-foreground">{t.cash.hint}</p>
+        <CashSample />
       </Section>
 
       <Section id="reports" title={t.reports.title}>
