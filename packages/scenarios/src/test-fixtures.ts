@@ -126,3 +126,26 @@ expect:
       pages: [{ page: 1, entries: [1], debits: 50000, credits: 50000,
                 brought_forward: { debits: 0, credits: 0 }, cumulative: { debits: 50000, credits: 50000 } }]
 `;
+
+/** S12: a progress billing of a project with its terms, and the document it holds. */
+export const BILLING = `
+case: a progress billing
+company: { shape: syp, book: SYP, rate_policy: { book: bulletin },
+           contracts: [{ code: P1, kind: project, client: C1,
+                         terms: { currency: SYP, value: 1000000, retention_bp: 1000, advance_recovery_bp: 2000 } }] }
+steps:
+  - project_document: progress billing 1 of P1
+    accounting_date: 2026-11-03
+    payload: { document: { kind: progress_billing, contract: P1, cumulative: 100000 } }
+expect:
+  entries:
+    - source: manual
+      date: 2026-11-03
+      lines:
+        - { account: "112001", dims: { client: C1, contract: P1 }, currency: SYP, amount: 90000, book: 90000 }
+        - { account: "113002", dims: { client: C1, contract: P1 }, currency: SYP, amount: 10000, book: 10000 }
+        - { account: "411001", dims: { client: C1, contract: P1 }, currency: SYP, amount: -100000, book: -100000 }
+  project_documents:
+    - { kind: progress_billing, number: 1, date: 2026-11-03, contract: P1, client: C1, sequence: 1, entry: 1,
+        currency: SYP, cumulative: 100000, previous: 0, retention: 10000, advance: 0 }
+`;

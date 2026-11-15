@@ -152,14 +152,43 @@ const rawCompanySchema = z.strictObject({
   accounts: z.array(addedAccountSchema).default([]),
   closed_periods: z.array(periodSchema).default([]),
   // The contract values the case's manual lines name, with the kind and client a contract needs
-  // (S02); a contract an event names is made by the event (S09).
+  // (S02); a contract an event names is made by the event (S09). A project's terms (S12 rule 1):
+  // its currency, contract value and retention and advance-recovery rates in basis points.
   contracts: z
     .array(
-      z.strictObject({
-        code: z.string().min(1),
-        kind: z.enum(['project', 'retainer']),
-        client: z.string().min(1),
-      }),
+      z
+        .strictObject({
+          code: z.string().min(1),
+          kind: z.enum(['project', 'retainer']),
+          client: z.string().min(1),
+          terms: z
+            .strictObject({
+              currency: currencyCodeSchema,
+              value: amountSchema.refine(
+                (value) => value >= 0n,
+                'A contract value is never negative',
+              ),
+              retention_bp: countSchema(0, 10000),
+              advance_recovery_bp: countSchema(0, 10000),
+            })
+            .optional(),
+        })
+        .refine((contract) => contract.terms === undefined || contract.kind === 'project', {
+          message: 'Only a project has terms',
+          path: ['terms'],
+        })
+        .transform(({ terms, ...contract }) => ({
+          ...contract,
+          terms:
+            terms === undefined
+              ? null
+              : {
+                  currency: terms.currency,
+                  value: terms.value,
+                  retentionBp: terms.retention_bp,
+                  advanceRecoveryBp: terms.advance_recovery_bp,
+                },
+        })),
     )
     .refine(
       (contracts) => new Set(contracts.map((contract) => contract.code)).size === contracts.length,
@@ -383,7 +412,7 @@ const stepOutcome = { outcome: outcomeSchema.optional() };
  * rules 4 and 11), which S07's checklist reads (`no_drafts`); and S09's `service_department`, a
  * manual service's dated department (rule 34); and S10's `opening` (rules 10–23) and its
  * `reverse_opening` (rule 25); and S11's `voucher` (rules 9–14), a cash voucher posted from its
- * draft.
+ * draft; and S12's `project_document` (rules 7–22), a project document posted from its draft.
  */
 export const STEP_KINDS = [
   'manual',
@@ -399,6 +428,7 @@ export const STEP_KINDS = [
   'opening',
   'reverse_opening',
   'voucher',
+  'project_document',
 ] as const;
 
 export type StepKind = (typeof STEP_KINDS)[number];
@@ -568,6 +598,28 @@ const voucherStepSchema = z
     outcome: step.outcome ?? null,
   }));
 
+/**
+ * A project document (S12 rules 7–22): what it records, its date and the document as the form
+ * sends it (`document: { kind, contract, cumulative?, retention?, advance?, … }` and, for a
+ * purchase or a wage sheet, its lines), saved as a draft and posted from it. The posting derives
+ * its entry (`buildProjectDocument()`), so the payload is the executor's to read.
+ */
+const projectDocumentStepSchema = z
+  .strictObject({
+    kind: z.literal('project_document'),
+    project_document: z.string().trim().min(1),
+    accounting_date: dateSchema,
+    payload: payloadSchema,
+    ...stepOutcome,
+  })
+  .transform((step) => ({
+    kind: step.kind,
+    description: step.project_document,
+    accountingDate: step.accounting_date,
+    payload: step.payload,
+    outcome: step.outcome ?? null,
+  }));
+
 /** Discard a draft the case saved, by its step number, with a reason (S03 rule 11). */
 const discardStepSchema = z
   .strictObject({
@@ -692,11 +744,13 @@ const stepSchema = z.preprocess(
       openingStepSchema,
       reverseOpeningStepSchema,
       voucherStepSchema,
+      projectDocumentStepSchema,
     ],
     {
       error:
         'Expected a step with one of the keys manual, reversal, rate, revalue, block, close, ' +
-        'reopen, draft, discard, service_department, opening, reverse_opening or voucher',
+        'reopen, draft, discard, service_department, opening, reverse_opening, voucher or ' +
+        'project_document',
     },
   ),
 );
@@ -842,6 +896,49 @@ const voucherSchema = z
 
 export type ExpectedVoucher = z.output<typeof voucherSchema>;
 
+/**
+ * A project document the company holds (S12 rule 21): its kind and its number in that kind and its
+ * fiscal year, its date, project and client, a billing's number within its project (`sequence`),
+ * the entry it posted and the reversal that cancelled it (posting order, rule 22), and a billing's
+ * currency, cumulative, previous, retention and advance recovery (rules 14–15).
+ */
+const projectDocumentSchema = z
+  .strictObject({
+    kind: z.literal('progress_billing'),
+    number: countSchema(1),
+    date: dateSchema,
+    contract: z.string().min(1),
+    client: z.string().min(1),
+    sequence: countSchema(1),
+    entry: countSchema(1),
+    currency: currencyCodeSchema,
+    cumulative: amountSchema,
+    previous: amountSchema,
+    retention: amountSchema,
+    advance: amountSchema,
+    cancelled_by: countSchema(1).optional(),
+  })
+  .superRefine((document, context) => {
+    const issue = (message: string, path: PropertyKey[]) =>
+      context.addIssue({ code: 'custom', message, path });
+    // Rule 14: the period's value is above zero; rule 15: each deduction is not negative, and
+    // neither is the net, the period's value less both.
+    const period = document.cumulative - document.previous;
+    if (document.previous < 0n) issue('The previous cumulative is never negative', ['previous']);
+    if (period <= 0n) issue("A billing's cumulative is above the previous", ['cumulative']);
+    if (document.retention < 0n) issue('A retention is never negative', ['retention']);
+    if (document.advance < 0n) issue('An advance recovery is never negative', ['advance']);
+    if (period - document.retention - document.advance < 0n) {
+      issue("A billing's net is never negative", ['advance']);
+    }
+  })
+  .transform(({ cancelled_by, ...document }) => ({
+    ...document,
+    cancelledBy: cancelled_by ?? null,
+  }));
+
+export type ExpectedProjectDocument = z.output<typeof projectDocumentSchema>;
+
 const expectSchema = z
   .strictObject({
     entries: z.array(entrySchema),
@@ -849,13 +946,15 @@ const expectSchema = z
     open_items: z.array(openItemSchema).default([]),
     corrections: z.array(correctionSchema).default([]),
     vouchers: z.array(voucherSchema).optional(),
+    project_documents: z.array(projectDocumentSchema).optional(),
     reports: z.array(expectedReportSchema).default([]),
     outcome: outcomeSchema.optional(),
   })
-  .transform(({ open_items, ...expect }) => ({
+  .transform(({ open_items, project_documents, ...expect }) => ({
     ...expect,
     openItems: open_items,
     vouchers: expect.vouchers ?? null,
+    projectDocuments: project_documents ?? null,
     outcome: expect.outcome ?? null,
   }));
 
@@ -1024,6 +1123,56 @@ export const caseSchema = z
       if (cancelledBy !== null) {
         const reversal = entries[cancelledBy - 1];
         if (reversal?.source !== 'reversal' || cancelledBy <= (voucher.entry ?? 0)) {
+          issue(`Entry ${cancelledBy} is not a later expected reversal`, [...path, 'cancelled_by']);
+        }
+      }
+    }
+
+    // S12 rules 1, 14, 21 and 22: a document names a stated project with its client and terms, in
+    // the terms' currency; its number is unique in its kind and fiscal year and a billing's
+    // sequence within its project; its entry is an expected entry of its date posted by no other
+    // document, and its cancelling reversal a later expected reversal.
+    const documentNumbers = new Set<string>();
+    const sequences = new Set<string>();
+    const documentEntries = new Set<number>();
+    const { contracts } = scenarioCase.company;
+    for (const [d, document] of (scenarioCase.expect.projectDocuments ?? []).entries()) {
+      const path = ['expect', 'project_documents', d];
+      const contract = contracts.find((candidate) => candidate.code === document.contract);
+      if (contract?.kind !== 'project') {
+        issue(`${document.contract} is not a project in company.contracts`, [...path, 'contract']);
+      } else if (contract.client !== document.client) {
+        issue(`${document.contract} is ${contract.client}'s project`, [...path, 'client']);
+      } else if (contract.terms === null) {
+        issue(`A billing needs the terms of ${document.contract}`, [...path, 'contract']);
+      } else if (contract.terms.currency !== document.currency) {
+        const message = `${document.contract}'s terms are in ${contract.terms.currency}`;
+        issue(message, [...path, 'currency']);
+      }
+      const number = JSON.stringify([document.kind, document.date.slice(0, 4), document.number]);
+      if (documentNumbers.has(number)) {
+        issue(`${document.kind} ${document.number} is stated twice`, [...path, 'number']);
+      }
+      documentNumbers.add(number);
+      const sequence = JSON.stringify([document.kind, document.contract, document.sequence]);
+      if (sequences.has(sequence)) {
+        const message = `Billing ${document.sequence} of ${document.contract} is stated twice`;
+        issue(message, [...path, 'sequence']);
+      }
+      sequences.add(sequence);
+      if (document.entry > entries.length) {
+        issue(`Entry ${document.entry} is not an expected entry`, [...path, 'entry']);
+      } else if (entries[document.entry - 1]?.date !== document.date) {
+        issue(`Entry ${document.entry} is not dated ${document.date}`, [...path, 'entry']);
+      }
+      if (documentEntries.has(document.entry)) {
+        issue(`Entry ${document.entry} is another document's`, [...path, 'entry']);
+      }
+      documentEntries.add(document.entry);
+      const { cancelledBy } = document;
+      if (cancelledBy !== null) {
+        const reversal = entries[cancelledBy - 1];
+        if (reversal?.source !== 'reversal' || cancelledBy <= document.entry) {
           issue(`Entry ${cancelledBy} is not a later expected reversal`, [...path, 'cancelled_by']);
         }
       }

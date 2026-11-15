@@ -10,7 +10,7 @@ import type {
   StepResult,
 } from './harness.js';
 import { namedDimensionValues, runCase, ScenarioFailure } from './run.js';
-import { CASE, CORRECTION, REPORTS } from './test-fixtures.js';
+import { BILLING, CASE, CORRECTION, REPORTS } from './test-fixtures.js';
 
 // The runner against a fake harness: what the S03, S05 and S07 parts will hand it, built here from
 // the case itself so each test can break one thing. The book runs on a real database
@@ -147,6 +147,42 @@ describe('runCase', () => {
       'missing voucher: receipt 1 of 2026-11-03 on 111002: entry 1',
       'unexpected voucher: transfer 1 of 2026-11-03 on 111002 to 111005: entry 1',
       'unexpected voucher: count 1 of 2026-11-03 on 111002: entry none, expected 10000, counted 10000',
+    ]);
+  });
+
+  it('compares the stated project documents as an exact set, and needs their reader (S12)', async () => {
+    const stated = parseCase(BILLING);
+    const { fake } = harness(asPosted(stated));
+    const done = async () => ({ status: 'done' as const });
+    const withExecutor = { ...fake, executors: { ...fake.executors, project_document: done } };
+    expect(await differences(runCase(stated, fake, database))).toEqual([
+      'step 1 (project document "progress billing 1 of P1" on 2026-11-03): no executor for ' +
+        'project_document steps; project documents arrive with S12',
+      'No project document reader is registered (packages/scenarios/src/harness.ts); ' +
+        'project documents arrive with S12',
+    ]);
+    const [billing] = stated.expect.projectDocuments ?? [];
+    if (!billing) throw new Error('expected a project document');
+    await runCase(stated, { ...withExecutor, projectDocuments: async () => [billing] }, database);
+    const found = await differences(
+      runCase(
+        stated,
+        {
+          ...withExecutor,
+          projectDocuments: async () => [{ ...billing, retention: 9000n, cancelledBy: 2 }],
+        },
+        database,
+      ),
+    );
+    expect(found).toEqual([
+      'missing project document: progress_billing 2026/1 of 2026-11-03, P1 of C1 no. 1: entry 1, ' +
+        'SYP cumulative 100000, previous 0, retention 10000, advance 0',
+      'unexpected project document: progress_billing 2026/1 of 2026-11-03, P1 of C1 no. 1: ' +
+        'entry 1, SYP cumulative 100000, previous 0, retention 9000, advance 0, cancelled by 2',
+    ]);
+    expect(namedDimensionValues(stated)).toEqual([
+      { type: 'contract', code: 'P1' },
+      { type: 'client', code: 'C1' },
     ]);
   });
 

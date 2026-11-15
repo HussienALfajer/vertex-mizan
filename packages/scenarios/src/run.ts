@@ -3,6 +3,7 @@ import {
   compareBalance,
   compareEntries,
   compareOpenItem,
+  compareProjectDocuments,
   compareVouchers,
 } from './compare.js';
 import type { Outcome, ScenarioCase, Step, StepKind } from './format.js';
@@ -23,6 +24,7 @@ export const STEPS_ARRIVE_WITH = {
   opening: 'the opening arrives with S10',
   reverse_opening: "the opening's whole reversal arrives with S10",
   voucher: 'cash vouchers arrive with S11',
+  project_document: 'project documents arrive with S12',
 } as const satisfies Record<StepKind, string>;
 
 /** A case that did not do what its scenario states: every difference, one per line. */
@@ -63,7 +65,19 @@ export function namedDimensionValues(scenarioCase: ScenarioCase): NamedValue[] {
       for (const line of step.lines) add(line.dims);
       continue;
     }
-    if (step.kind !== 'manual' && step.kind !== 'draft' && step.kind !== 'voucher') continue;
+    // A project document names its project (S12); its lines, when it has any, as a manual entry's.
+    if (step.kind === 'project_document') {
+      const { document } = step.payload as { document?: { contract?: unknown } };
+      add({ contract: document?.contract });
+    }
+    if (
+      step.kind !== 'manual' &&
+      step.kind !== 'draft' &&
+      step.kind !== 'voucher' &&
+      step.kind !== 'project_document'
+    ) {
+      continue;
+    }
     const lines = (step.payload as { lines?: unknown }).lines;
     if (Array.isArray(lines)) {
       for (const line of lines) add((line as { dims?: unknown }).dims);
@@ -134,6 +148,10 @@ function executorFor(harness: ScenarioHarness, step: Step): Run | undefined {
       const execute = harness.executors.voucher;
       return execute && ((context) => execute(context, step));
     }
+    case 'project_document': {
+      const execute = harness.executors.project_document;
+      return execute && ((context) => execute(context, step));
+    }
   }
 }
 
@@ -168,6 +186,8 @@ function describeStep(step: Step): string {
       return 'whole reversal of the opening';
     case 'voucher':
       return `voucher "${step.description}" on ${step.accountingDate}`;
+    case 'project_document':
+      return `project document "${step.description}" on ${step.accountingDate}`;
   }
 }
 
@@ -194,7 +214,8 @@ function sameResult(result: StepResult, expected: StepResult | Outcome): boolean
  * frees posts then, so its entry is expected where it posts. Then
  * the ledger must hold exactly the expected entries (`compareEntries`), the stated balances and
  * the stated open items, each stated correction's answer must list exactly its entries, the
- * stated vouchers must be exactly the company's (S11), and each stated report must present its
+ * stated vouchers must be exactly the company's (S11), and so must the stated project documents
+ * (S12), and each stated report must present its
  * figures (S09).
  */
 export async function runCase(
@@ -226,6 +247,12 @@ export async function runCase(
   if (scenarioCase.expect.vouchers !== null && !harness.vouchers) {
     missing.push(
       'No voucher reader is registered (packages/scenarios/src/harness.ts); vouchers arrive with S11',
+    );
+  }
+  if (scenarioCase.expect.projectDocuments !== null && !harness.projectDocuments) {
+    missing.push(
+      'No project document reader is registered (packages/scenarios/src/harness.ts); ' +
+        'project documents arrive with S12',
     );
   }
   if (!harness.setUp || !harness.ledger || missing.length > 0) throw new ScenarioFailure(missing);
@@ -278,6 +305,10 @@ export async function runCase(
   if (expect.vouchers !== null) {
     const observed = (await harness.vouchers?.(context)) ?? [];
     differences.push(...compareVouchers(expect.vouchers, observed));
+  }
+  if (expect.projectDocuments !== null) {
+    const observed = (await harness.projectDocuments?.(context)) ?? [];
+    differences.push(...compareProjectDocuments(expect.projectDocuments, observed));
   }
   for (const report of expect.reports) {
     differences.push(...((await harness.reports?.(context, report)) ?? []));
