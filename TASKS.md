@@ -27,7 +27,7 @@ Four PRs, in order. PR 4 needs only PR 1 and may run beside PRs 2 and 3.
 - [x] api: drafts with the voucher header, preview with the derived rate and a count's expected amount and difference, post and approve; `GET /api/cash/accounts`, `/api/cash/accounts/:id/statement`, `GET /api/vouchers`, `GET /api/vouchers/:id`; tests (success, 401, 403, another company, idempotent replay)
 - [x] bridge: build, OpenAPI export and its check, client types
 - [x] docs: ROADMAP, glossary rows (cash account, box, voucher, receipt, payment, transfer voucher, currency exchange, cash count, cash shortage and overage, derived dealt rate), folder CLAUDE.md files
-- [ ] checks and reviewers (reviewer and accountant-reviewer), PR with auto-merge and Auto-fix
+- [x] checks and reviewers (reviewer and accountant-reviewer: a count's accounts by meaning, a count's typed lines refused, archived and blocked cash accounts, the shape at submission, the replay after the head lock), PR with auto-merge and Auto-fix
 
 ### PR 3 — cash screens, printing and exports (branch `feat/s11-cash-screens`)
 
