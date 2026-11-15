@@ -10,7 +10,7 @@ import type {
   StepResult,
 } from './harness.js';
 import { namedDimensionValues, runCase, ScenarioFailure } from './run.js';
-import { BILLING, CASE, CORRECTION, REPORTS } from './test-fixtures.js';
+import { BILLING, CASE, CORRECTION, PURCHASE, REPORTS } from './test-fixtures.js';
 
 // The runner against a fake harness: what the S03, S05 and S07 parts will hand it, built here from
 // the case itself so each test can break one thing. The book runs on a real database
@@ -182,6 +182,53 @@ describe('runCase', () => {
     ]);
     expect(namedDimensionValues(stated)).toEqual([
       { type: 'contract', code: 'P1' },
+      { type: 'client', code: 'C1' },
+    ]);
+  });
+
+  it('makes the materials, compares the stated quantities as an exact set, and needs both parts (S12)', async () => {
+    const stated = parseCase(PURCHASE);
+    const { fake } = harness(asPosted(stated));
+    const done = async () => ({ status: 'done' as const });
+    const purchases = async () => stated.expect.projectDocuments ?? [];
+    const withExecutor = {
+      ...fake,
+      executors: { ...fake.executors, project_document: done },
+      projectDocuments: purchases,
+    };
+    expect(await differences(runCase(stated, withExecutor, database))).toEqual([
+      'No materials setup is registered (packages/scenarios/src/harness.ts); ' +
+        'materials arrive with S12',
+      'No quantity reader is registered (packages/scenarios/src/harness.ts); ' +
+        'quantities arrive with S12',
+    ]);
+    const made: string[] = [];
+    const materials = async (_: unknown, list: readonly { code: string }[]) => {
+      made.push(...list.map((material) => material.code));
+    };
+    const rows = stated.expect.quantities ?? [];
+    await runCase(stated, { ...withExecutor, materials, quantities: async () => rows }, database);
+    expect(made).toEqual(['CEM']);
+    const [first, second] = rows;
+    if (!first || !second) throw new Error('expected two quantities');
+    const found = await differences(
+      runCase(
+        stated,
+        {
+          ...withExecutor,
+          materials,
+          quantities: async () => [first, { ...second, quantity: '1.000', unitPrice: '1.0000' }],
+        },
+        database,
+      ),
+    );
+    expect(found).toEqual([
+      'missing quantity: entry 1 511001 SYP -500: CEM 0.000 طن price adjustment',
+      'unexpected quantity: entry 1 511001 SYP -500: CEM 1.000 طن at 1.0000',
+    ]);
+    expect(namedDimensionValues(stated)).toEqual([
+      { type: 'contract', code: 'P1' },
+      { type: 'supplier', code: 'S1' },
       { type: 'client', code: 'C1' },
     ]);
   });

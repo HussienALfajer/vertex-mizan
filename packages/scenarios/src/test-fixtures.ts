@@ -149,3 +149,31 @@ expect:
     - { kind: progress_billing, number: 1, date: 2026-11-03, contract: P1, client: C1, sequence: 1, entry: 1,
         currency: SYP, cumulative: 100000, previous: 0, retention: 10000, advance: 0 }
 `;
+
+/** S12: a project purchase invoice with quantities, a price adjustment and the document it holds. */
+export const PURCHASE = `
+case: a project purchase invoice
+company: { shape: syp, book: SYP, rate_policy: { book: bulletin }, template: contracting,
+           contracts: [{ code: P1, kind: project, client: C1 }],
+           materials: [{ code: CEM, name: "أسمنت", unit: "طن" }] }
+steps:
+  - project_document: S1's invoice for P1
+    accounting_date: 2026-11-03
+    payload: { document: { kind: purchase, contract: P1, supplier: S1, currency: SYP, supplier_reference: "F-1" },
+               lines: [{ account: "511001", material: CEM, quantity: "12.500", unit_price: "3.0300" },
+                       { account: "511001", material: CEM, quantity: "0.000", amount: -500 }] }
+expect:
+  entries:
+    - source: manual
+      date: 2026-11-03
+      lines:
+        - { account: "511001", dims: { contract: P1 }, currency: SYP, amount: 3788, book: 3788 }
+        - { account: "511001", dims: { contract: P1 }, currency: SYP, amount: -500, book: -500 }
+        - { account: "211001", dims: { supplier: S1, contract: P1 }, currency: SYP, amount: -3288, book: -3288 }
+  project_documents:
+    - { kind: purchase, number: 1, date: 2026-11-03, contract: P1, client: C1, supplier: S1, entry: 1,
+        currency: SYP, reference: "F-1" }
+  quantities:
+    - { entry: 1, account: "511001", currency: SYP, amount: 3788, material: CEM, unit: "طن", quantity: "12.500", unit_price: "3.0300" }
+    - { entry: 1, account: "511001", currency: SYP, amount: -500, material: CEM, unit: "طن", quantity: "0.000" }
+`;

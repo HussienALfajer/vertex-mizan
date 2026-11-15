@@ -6,6 +6,7 @@ import type {
   ExpectedLine,
   ExpectedOpenItem,
   ExpectedProjectDocument,
+  ExpectedQuantity,
   ExpectedVoucher,
   Step,
   StepKind,
@@ -130,6 +131,16 @@ export type ScenarioHarness = {
    * reversal by their place in posting order; a case that states its project documents needs it.
    */
   projectDocuments?: (context: CaseContext) => Promise<ObservedProjectDocument[]>;
+  /**
+   * Makes the case's materials catalogue (S12 rule 3) after the setup, through the service the API
+   * uses; a case that states materials needs it.
+   */
+  materials?: (context: CaseContext, materials: CaseCompany['materials']) => Promise<void>;
+  /**
+   * Reads every line quantity the company holds (S12 rules 4–6), its entry by its place in posting
+   * order; a case that states its quantities needs it.
+   */
+  quantities?: (context: CaseContext) => Promise<ObservedQuantity[]>;
 };
 
 /** A cash voucher as the company holds it: the fields a case states (`ExpectedVoucher`). */
@@ -137,6 +148,9 @@ export type ObservedVoucher = ExpectedVoucher;
 
 /** A project document as the company holds it: the fields a case states. */
 export type ObservedProjectDocument = ExpectedProjectDocument;
+
+/** A line quantity as the company holds it: the fields a case states. */
+export type ObservedQuantity = ExpectedQuantity;
 
 /**
  * The harness the book runs with: S03's company setup, ledger reader and `manual`, `reversal` and

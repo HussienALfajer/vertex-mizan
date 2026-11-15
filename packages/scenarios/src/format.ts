@@ -9,7 +9,9 @@ import {
   chartTemplateIdSchema,
   companyLedgersSchema,
   counterpartyTypeSchema,
+  currencies,
   currencyCodeSchema,
+  divideHalfAwayFromZero,
   exchangeRateSchema,
   itemKindSchema,
   minorAmountSchema,
@@ -195,6 +197,20 @@ const rawCompanySchema = z.strictObject({
       'A contract is stated twice',
     )
     .default([]),
+  // The materials catalogue the case's lines name (S12 rule 3): a code, a name and a unit.
+  materials: z
+    .array(
+      z.strictObject({
+        code: z.string().min(1).max(30),
+        name: z.string().trim().min(1).max(200),
+        unit: z.string().trim().min(1).max(20),
+      }),
+    )
+    .refine(
+      (materials) => new Set(materials.map((material) => material.code)).size === materials.length,
+      'A material is stated twice',
+    )
+    .default([]),
   // The bulletin publication calendar (S02 rules 16–17): ISO weekdays off (Friday and Saturday by
   // default) and the holidays the accountant has marked.
   bulletin_days_off: z
@@ -337,6 +353,7 @@ const companySchema = rawCompanySchema
     accounts: company.accounts,
     closedPeriods: company.closed_periods,
     contracts: company.contracts,
+    materials: company.materials,
     calendar: { daysOff: company.bulletin_days_off, holidays: company.bulletin_holidays },
     booksStart: company.books_start ?? null,
   }));
@@ -897,12 +914,12 @@ const voucherSchema = z
 export type ExpectedVoucher = z.output<typeof voucherSchema>;
 
 /**
- * A project document the company holds (S12 rule 21): its kind and its number in that kind and its
- * fiscal year, its date, project and client, a billing's number within its project (`sequence`),
- * the entry it posted and the reversal that cancelled it (posting order, rule 22), and a billing's
- * currency, cumulative, previous, retention and advance recovery (rules 14–15).
+ * A client's progress billing the company holds (S12 rules 14–16, 21): its kind and its number in
+ * that kind and its fiscal year, its date, project and client, its number within its project
+ * (`sequence`), the entry it posted and the reversal that cancelled it (posting order, rule 22),
+ * and its currency, cumulative, previous, retention and advance recovery (rules 14–15).
  */
-const projectDocumentSchema = z
+const progressBillingSchema = z
   .strictObject({
     kind: z.literal('progress_billing'),
     number: countSchema(1),
@@ -937,7 +954,101 @@ const projectDocumentSchema = z
     cancelledBy: cancelled_by ?? null,
   }));
 
+/**
+ * A project purchase invoice the company holds (S12 rules 7–8, 21): its number in its kind and
+ * fiscal year, its date, project and the project's client, the supplier, the entry it posted and
+ * the reversal that cancelled it (posting order, rule 22), its currency and the supplier's
+ * reference when it has one.
+ */
+const purchaseSchema = z
+  .strictObject({
+    kind: z.literal('purchase'),
+    number: countSchema(1),
+    date: dateSchema,
+    contract: z.string().min(1),
+    client: z.string().min(1),
+    supplier: z.string().min(1),
+    entry: countSchema(1),
+    currency: currencyCodeSchema,
+    reference: z.string().trim().min(1).max(60).optional(),
+    cancelled_by: countSchema(1).optional(),
+  })
+  .transform(({ cancelled_by, reference, ...document }) => ({
+    ...document,
+    reference: reference ?? null,
+    cancelledBy: cancelled_by ?? null,
+  }));
+
+/** A project document the company holds (S12 rule 21), by its kind. */
+const projectDocumentSchema = z.discriminatedUnion('kind', [progressBillingSchema, purchaseSchema]);
+
 export type ExpectedProjectDocument = z.output<typeof projectDocumentSchema>;
+
+/** A quantity as typed: up to 3 decimals, always written with 3 (`"12.500"`, `"-2.500"`). */
+const quantityTextSchema = z
+  .string({ error: 'Expected the quantity in quotes ("12.500")' })
+  .regex(/^-?\d{1,11}\.\d{3}$/, 'Expected a quantity with 3 decimals ("12.500")')
+  .refine((quantity) => quantity !== '-0.000', 'A zero quantity has no sign');
+
+/** A unit price as typed: up to 4 decimals, always written with 4 (`"3150.0000"`), never negative. */
+const unitPriceTextSchema = z
+  .string({ error: 'Expected the unit price in quotes ("3150.0000")' })
+  .regex(/^\d{1,14}\.\d{4}$/, 'Expected a unit price with 4 decimals ("3150.0000")');
+
+/** A decimal written with a fixed number of places, as a whole number of those places. */
+const scaled = (text: string) => BigInt(text.replace('.', ''));
+
+/**
+ * `lineAmount()` (S12 rule 6): a quantity times a unit price, rounded half away from zero to the
+ * currency's minor units.
+ */
+export function lineAmountOf(quantity: string, unitPrice: string, currency: CurrencyCode): bigint {
+  const minor = 10n ** BigInt(currencies[currency].exponent);
+  return divideHalfAwayFromZero(scaled(quantity) * scaled(unitPrice) * minor, 10n ** 7n);
+}
+
+/**
+ * A line's quantity the company holds (S12 rules 4–6, `line_quantities`): the entry (posting
+ * order) and the line by its account, currency and amount; its material, unit and quantity, and its
+ * unit price, none on a price adjustment (quantity 0).
+ */
+const quantitySchema = z
+  .strictObject({
+    entry: countSchema(1),
+    account: accountSchema,
+    currency: currencyCodeSchema,
+    amount: amountSchema,
+    material: z.string().min(1).optional(),
+    unit: z.string().trim().min(1).max(20),
+    quantity: quantityTextSchema,
+    unit_price: unitPriceTextSchema.optional(),
+  })
+  .superRefine((row, context) => {
+    const issue = (message: string, path: PropertyKey[]) =>
+      context.addIssue({ code: 'custom', message, path });
+    const zero = scaled(row.quantity) === 0n;
+    // Rule 6: a price adjustment is a quantity 0 on a material, with the amount typed and no price.
+    if (zero && row.unit_price !== undefined) {
+      issue('A price adjustment (quantity 0) has no unit price', ['unit_price']);
+    } else if (!zero && row.unit_price === undefined) {
+      issue('A quantity has its unit price', ['unit_price']);
+    } else if (row.unit_price !== undefined) {
+      const amount = lineAmountOf(row.quantity, row.unit_price, row.currency);
+      if (amount !== row.amount) {
+        issue(`${row.quantity} × ${row.unit_price} is ${amount} minor units`, ['amount']);
+      }
+    }
+    if (zero && row.material === undefined) {
+      issue('A quantity 0 is a price adjustment on a material', ['material']);
+    }
+  })
+  .transform(({ unit_price, material, ...row }) => ({
+    ...row,
+    material: material ?? null,
+    unitPrice: unit_price ?? null,
+  }));
+
+export type ExpectedQuantity = z.output<typeof quantitySchema>;
 
 const expectSchema = z
   .strictObject({
@@ -947,6 +1058,7 @@ const expectSchema = z
     corrections: z.array(correctionSchema).default([]),
     vouchers: z.array(voucherSchema).optional(),
     project_documents: z.array(projectDocumentSchema).optional(),
+    quantities: z.array(quantitySchema).optional(),
     reports: z.array(expectedReportSchema).default([]),
     outcome: outcomeSchema.optional(),
   })
@@ -955,6 +1067,7 @@ const expectSchema = z
     openItems: open_items,
     vouchers: expect.vouchers ?? null,
     projectDocuments: project_documents ?? null,
+    quantities: expect.quantities ?? null,
     outcome: expect.outcome ?? null,
   }));
 
@@ -1128,10 +1241,10 @@ export const caseSchema = z
       }
     }
 
-    // S12 rules 1, 14, 21 and 22: a document names a stated project with its client and terms, in
-    // the terms' currency; its number is unique in its kind and fiscal year and a billing's
-    // sequence within its project; its entry is an expected entry of its date posted by no other
-    // document, and its cancelling reversal a later expected reversal.
+    // S12 rules 1, 7, 14, 21 and 22: a document names a stated project with its client, and a
+    // billing the project's terms, in the terms' currency; its number is unique in its kind and
+    // fiscal year and a billing's sequence within its project; its entry is an expected entry of its
+    // date posted by no other document, and its cancelling reversal a later expected reversal.
     const documentNumbers = new Set<string>();
     const sequences = new Set<string>();
     const documentEntries = new Set<number>();
@@ -1143,6 +1256,8 @@ export const caseSchema = z
         issue(`${document.contract} is not a project in company.contracts`, [...path, 'contract']);
       } else if (contract.client !== document.client) {
         issue(`${document.contract} is ${contract.client}'s project`, [...path, 'client']);
+      } else if (document.kind !== 'progress_billing') {
+        // A purchase needs no terms, and may be in any currency (rule 7).
       } else if (contract.terms === null) {
         issue(`A billing needs the terms of ${document.contract}`, [...path, 'contract']);
       } else if (contract.terms.currency !== document.currency) {
@@ -1154,12 +1269,14 @@ export const caseSchema = z
         issue(`${document.kind} ${document.number} is stated twice`, [...path, 'number']);
       }
       documentNumbers.add(number);
-      const sequence = JSON.stringify([document.kind, document.contract, document.sequence]);
-      if (sequences.has(sequence)) {
-        const message = `Billing ${document.sequence} of ${document.contract} is stated twice`;
-        issue(message, [...path, 'sequence']);
+      if (document.kind === 'progress_billing') {
+        const sequence = JSON.stringify([document.kind, document.contract, document.sequence]);
+        if (sequences.has(sequence)) {
+          const message = `Billing ${document.sequence} of ${document.contract} is stated twice`;
+          issue(message, [...path, 'sequence']);
+        }
+        sequences.add(sequence);
       }
-      sequences.add(sequence);
       if (document.entry > entries.length) {
         issue(`Entry ${document.entry} is not an expected entry`, [...path, 'entry']);
       } else if (entries[document.entry - 1]?.date !== document.date) {
@@ -1174,6 +1291,35 @@ export const caseSchema = z
         const reversal = entries[cancelledBy - 1];
         if (reversal?.source !== 'reversal' || cancelledBy <= document.entry) {
           issue(`Entry ${cancelledBy} is not a later expected reversal`, [...path, 'cancelled_by']);
+        }
+      }
+    }
+
+    // S12 rules 3–6: a quantity is on a line of an expected entry with its account, currency and
+    // amount, and names a stated material in that material's unit.
+    const { materials } = scenarioCase.company;
+    for (const [q, row] of (scenarioCase.expect.quantities ?? []).entries()) {
+      const path = ['expect', 'quantities', q];
+      const entry = entries[row.entry - 1];
+      if (entry === undefined) {
+        issue(`Entry ${row.entry} is not an expected entry`, [...path, 'entry']);
+      } else if (
+        !entry.lines.some(
+          (line) =>
+            line.account === row.account &&
+            line.currency === row.currency &&
+            line.amount === row.amount,
+        )
+      ) {
+        const message = `Entry ${row.entry} has no ${row.account} line of ${row.amount} ${row.currency}`;
+        issue(message, [...path, 'amount']);
+      }
+      if (row.material !== null) {
+        const material = materials.find((candidate) => candidate.code === row.material);
+        if (material === undefined) {
+          issue(`${row.material} is not a material in company.materials`, [...path, 'material']);
+        } else if (material.unit !== row.unit) {
+          issue(`${row.material} is counted in ${material.unit}`, [...path, 'unit']);
         }
       }
     }
