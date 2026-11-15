@@ -150,6 +150,30 @@ expect:
         currency: SYP, cumulative: 100000, previous: 0, retention: 10000, advance: 0 }
 `;
 
+/** S12: a subcontractor's billing on a subcontract, and the document it holds. */
+export const SUBCONTRACT_BILLING = `
+case: a subcontractor's billing
+company: { shape: syp, book: SYP, rate_policy: { book: bulletin }, template: contracting,
+           contracts: [{ code: P1, kind: project, client: C1 }],
+           subcontracts: [{ contract: P1, supplier: S2, currency: SYP, value: 1000000,
+                            retention_bp: 1000, advance_recovery_bp: 2000 }] }
+steps:
+  - project_document: S2's billing 1 on P1
+    accounting_date: 2026-11-03
+    payload: { document: { kind: subcontract_billing, contract: P1, supplier: S2, cumulative: 100000 } }
+expect:
+  entries:
+    - source: manual
+      date: 2026-11-03
+      lines:
+        - { account: "511003", dims: { contract: P1, supplier: S2 }, currency: SYP, amount: 100000, book: 100000 }
+        - { account: "211006", dims: { supplier: S2, contract: P1 }, currency: SYP, amount: -10000, book: -10000 }
+        - { account: "211002", dims: { supplier: S2, contract: P1 }, currency: SYP, amount: -90000, book: -90000 }
+  project_documents:
+    - { kind: subcontract_billing, number: 1, date: 2026-11-03, contract: P1, client: C1, supplier: S2, sequence: 1,
+        entry: 1, currency: SYP, cumulative: 100000, previous: 0, retention: 10000, advance: 0 }
+`;
+
 /** S12: a wage sheet with a days line and a lump sum, and the document it holds. */
 export const WAGE_SHEET = `
 case: a wage sheet

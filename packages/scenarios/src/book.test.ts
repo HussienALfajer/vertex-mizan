@@ -10,6 +10,7 @@ import {
   CORRECTION,
   PURCHASE,
   REPORTS,
+  SUBCONTRACT_BILLING,
   SYP_ONLY,
   WAGE_SHEET,
 } from './test-fixtures.js';
@@ -887,6 +888,74 @@ describe('a case', () => {
     expect(refusal(PURCHASE.replace('client: C1, supplier', 'client: C2, supplier'))).toContain(
       "P1 is C1's project",
     );
+  });
+
+  it("reads a company's subcontracts and a subcontractor's billing among the documents (S12)", () => {
+    const billing = parseCase(SUBCONTRACT_BILLING);
+    expect(billing.company.subcontracts).toEqual([
+      {
+        contract: 'P1',
+        supplier: 'S2',
+        currency: 'SYP',
+        value: 1000000n,
+        retentionBp: 1000,
+        advanceRecoveryBp: 2000,
+      },
+    ]);
+    expect(billing.expect.projectDocuments).toEqual([
+      {
+        kind: 'subcontract_billing',
+        number: 1,
+        date: '2026-11-03',
+        contract: 'P1',
+        client: 'C1',
+        supplier: 'S2',
+        sequence: 1,
+        entry: 1,
+        currency: 'SYP',
+        cumulative: 100000n,
+        previous: 0n,
+        retention: 10000n,
+        advance: 0n,
+        cancelledBy: null,
+      },
+    ]);
+    // The value is optional (S12 rule 2).
+    const noValue = parseCase(SUBCONTRACT_BILLING.replace(' value: 1000000,', ''));
+    expect(noValue.company.subcontracts[0]?.value).toBeNull();
+
+    const subcontract = '{ contract: P1, supplier: S2, currency: SYP, value: 1000000,';
+    const rates = 'retention_bp: 1000, advance_recovery_bp: 2000 }';
+    const document =
+      '{ kind: subcontract_billing, number: 1, date: 2026-11-03, contract: P1, client: C1, supplier: S2, sequence: 1,\n' +
+      '        entry: 1, currency: SYP, cumulative: 100000, previous: 0, retention: 10000, advance: 0 }';
+    const stated = (...rows: string[]) =>
+      refusal(SUBCONTRACT_BILLING.replace(document, rows.join('\n    - ')));
+    expect(refusal(SUBCONTRACT_BILLING.replace(rates, `${rates}, ${subcontract} ${rates}`))).toContain(
+      'A subcontract is stated twice',
+    );
+    expect(
+      refusal(SUBCONTRACT_BILLING.replace(subcontract, subcontract.replace('P1', 'P2'))),
+    ).toContain('P2 is not a project in company.contracts');
+    expect(refusal(SUBCONTRACT_BILLING.replace('value: 1000000', 'value: -1'))).toContain(
+      'A subcontract value is never negative',
+    );
+    expect(stated(document.replace('supplier: S2', 'supplier: S3'))).toContain(
+      'S3 has no subcontract on P1',
+    );
+    expect(stated(document.replace('currency: SYP', 'currency: USD'))).toContain(
+      "S2's subcontract on P1 is in SYP",
+    );
+    expect(stated(document.replace('cumulative: 100000', 'cumulative: 0'))).toContain(
+      "A billing's cumulative is above the previous",
+    );
+    expect(stated(document.replace('advance: 0', 'advance: 95000'))).toContain(
+      "A billing's net is never negative",
+    );
+    expect(stated(document, document.replace('number: 1', 'number: 2'))).toContain(
+      'Billing 1 of P1 by S2 is stated twice',
+    );
+    expect(stated(document.replace(' supplier: S2,', ''))).toContain('supplier');
   });
 
   it('reads a wage sheet among the project documents, its period within one month (S12)', () => {

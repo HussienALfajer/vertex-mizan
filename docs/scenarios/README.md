@@ -64,6 +64,11 @@ company:
                                     #   retention_bp: 1000, advance_recovery_bp: 2000 (basis points) }
   materials:                        # the materials catalogue a case's lines name (optional; S12 rule 3)
     - { code: CEM, name: "أسمنت بورتلاندي", unit: "طن" }
+  subcontracts:                     # the subcontracts a subcontractor's billing needs (optional;
+    - { contract: P1, supplier: S2, currency: TRY, value: 150000000,  # S12 rule 2): a project
+        retention_bp: 1000, advance_recovery_bp: 2000 }  # and a supplier, the currency, the value
+                                    #   (optional) and the rates in basis points; made by the
+                                    #   harness's subcontracts setup
   bulletin_days_off: [5, 6]         # ISO weekdays without a bulletin; default Friday and Saturday
   bulletin_holidays: []             # e.g. [2026-11-08]: dates the accountant marked (S02 rules 16–17)
   books_start: 2026-10-01           # optional (S10 rule 1), the first day of a month, only in a case
@@ -152,6 +157,12 @@ steps:                              # in order; a manual entry, a reversal, a ra
                                     #   material), and its covered part of the advance when typed
                                     #   (rule 12). A voucher line may name a material, a quantity and
                                     #   a unit price the same way (rule 9)
+  - project_document: <what it records>  # a subcontractor's billing (S12 rule 18): the project and
+    accounting_date: 2026-12-31     #   the supplier of a stated subcontract, in its currency, with
+    payload: { document: { kind: subcontract_billing, contract: P1, supplier: S2, cumulative: 60000000 } }
+                                    #   the cumulative typed, and retention and advance (the
+                                    #   recovery) only where the accountant changed the computed
+                                    #   amount, as a client's billing
   - project_document: <what it records>  # a wage sheet (S12 rules 10–11), dated its period's last day:
     accounting_date: 2026-12-15     #   the currency and the period (period_from, period_to, within
     payload: { document: { kind: wage_sheet, contract: P1, currency: USD, period_from: 2026-12-01,
@@ -189,6 +200,11 @@ expect:
                                     #   (sequence), the entry it posted and the reversal that
                                     #   cancelled it (posting order; rule 22), the terms' currency,
                                     #   cumulative, previous, retention and recovery (advance); [] none
+    - { kind: subcontract_billing, number: 1, date: 2026-12-31, contract: P1, client: C1, supplier: S2,
+        sequence: 1, entry: 3, currency: TRY, cumulative: 60000000, previous: 0, retention: 6000000,
+        advance: 12000000 }         # a subcontractor's billing: a billing's fields with the supplier,
+                                    #   its sequence within its subcontract and the subcontract's
+                                    #   currency
     - { kind: purchase, number: 1, date: 2026-12-03, contract: P1, client: C1, supplier: S1, entry: 1,
         currency: TRY, reference: "F-1024" }
                                     # a purchase: the project and its client, the supplier, its entry
