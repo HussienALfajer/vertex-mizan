@@ -240,7 +240,10 @@ function checkAddedAccounts(company: RawCompany, context: z.RefinementCtx): void
       if (level !== 3) {
         issue(index, `Header ${code} is not the code of a level-3 header`);
       } else if (!isHeader(code.slice(0, 2), index)) {
-        issue(index, `Header ${code} has no header ${code.slice(0, 2)} in the ${templateId} template`);
+        issue(
+          index,
+          `Header ${code} has no header ${code.slice(0, 2)} in the ${templateId} template`,
+        );
       }
     } else if (level !== 4) {
       issue(index, `Account ${code} is not the code of a postable account`);
