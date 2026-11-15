@@ -2,11 +2,11 @@
 
 Status: Proposed
 
-The expected entries of all eight cases were approved by the owner on 2026-11-16. They stay `Proposed` until S12's slice brings the `project_document` executor and the project documents reader.
+The expected entries of the first eight cases were approved by the owner on 2026-11-16; after the accounting review the owner decided the same day that a recovery clears at the average of the project's own share of the client's advance (S12 rule 12, ADR 0023), and the last two cases were added for it and for S12 edge cases 7 and 8. They stay `Proposed` until S12's slice brings the `project_document` executor and the project documents reader.
 
 ## Rule
 
-A client's progress billing (مستخلص) is a numbered project document in the project's terms' currency. The accountant enters the cumulative certified value to date; the previous value is the cumulative of the project's latest posted, uncancelled billing; the period's value is their difference and must be above zero (`BILLING_NOT_INCREASING`), and a billing dated before the project's latest is refused (`VALIDATION_FAILED`). Retention and advance recovery are each the period's value times the project's rate, rounded half away from zero, the recovery capped at the client's advance balance for the project, and either may be changed by the accountant; the net is the remainder. The billing posts Dr `112001` the net and Dr `113002` the retention, each a new document item named by the billing's printed number and newly measured, Dr `212002` the recovery, cleared at the advance's average carrying amount, and Cr `411001` the period's value, whose covered part takes exactly the recovery's carried amounts and whose rest is newly measured, so the advance leaves no exchange difference; any conversion rounding of the new measurements, in an entry with a carried line, is a realised difference. Work done and not certified at month end, or certified in excess of the work done, is a manual entry the accountant reverses on the first of the next month. A billing is cancelled by reversing its entry, only while it is the latest uncancelled billing of its project (`PROJECT_DOCUMENT_NOT_LATEST`), and the reversal puts the advance back at exactly what it cleared.
+A client's progress billing (مستخلص) is a numbered project document in the project's terms' currency. The accountant enters the cumulative certified value to date; the previous value is the cumulative of the project's latest posted, uncancelled billing; the period's value is their difference and must be above zero (`BILLING_NOT_INCREASING`), and a billing dated before the project's latest is refused (`VALIDATION_FAILED`). Retention and advance recovery are each the period's value times the project's rate, rounded half away from zero, the recovery capped at the client's advance balance for the project, and either may be changed by the accountant; the net is the remainder. The billing posts Dr `112001` the net and Dr `113002` the retention, each a new document item named by the billing's printed number and newly measured (no `112001` line when the net is zero), Dr `212002` the recovery, cleared at the average carrying amount of the project's share of the client's advance (the item's lines with this project), and Cr `411001` the period's value, whose covered part takes exactly the recovery's carried amounts and whose rest is newly measured, so the advance leaves no exchange difference; any conversion rounding of the new measurements, in an entry with a carried line, is a realised difference. Work done and not certified at month end, or certified in excess of the work done, is a manual entry the accountant reverses on the first of the next month. A billing is cancelled by reversing its entry, only while it is the latest uncancelled billing of its project (`PROJECT_DOCUMENT_NOT_LATEST`), and the reversal puts the advance back at exactly what it cleared.
 
 ## Basis
 
@@ -14,7 +14,7 @@ A client's progress billing (مستخلص) is a numbered project document in the
 - **IFRS 15.105–108:** the unconditional right to the net is a receivable (`112001`); the retention, due only on completion, is a contract asset (`113002`); work done and not billed is a contract asset (`113001`) and a billing in excess of work done a contract liability (`212001`); an advance received is a contract liability (`212002`).
 - **IFRIC 22.8–9 and IAS 21.23(b):** an advance received is non-monetary; the revenue it pays for is measured, for the part it covers, at the rate of the advance's receipt, so its recovery has no exchange difference and the advance is never revalued.
 - **IAS 21.21–22 and 21.28:** every other line is recorded at the spot rate of the billing date (the ledger's policy rate); a residual left by conversion rounding in an entry with a carried line is a realised exchange difference.
-- **Company policy:** S12 rules 12–17, 21 and 22 and its "Accounting treatment" (owner, 2026-11-16; Q20 answered: revenue by certified progress billings; ADR 0023); the application of advances at their carrying amount (owner, 2026-11-14); advances applied only in their own currency (S12 answer 6); S04 rules 3, 4, 10 and 13 (running items cleared at the average carrying amount, document items, residuals, reopening by reversal); S03 rule 9 (the accountant's reversal); S07 (revaluation of monetary items only); the client's currencies, a USD book at `market` accepting dealt rates and an SYP parallel ledger at the bulletin (S11, ADR 0021).
+- **Company policy:** S12 rules 12–17, 21 and 22 and its "Accounting treatment" (owner, 2026-11-16; Q20 answered: revenue by certified progress billings; ADR 0023); the application of advances at their carrying amount (owner, 2026-11-14), at the average of the project's own share of the client's advance (owner, 2026-11-16); advances applied only in their own currency (S12 answer 6); S04 rules 3, 4, 10 and 13 (running items cleared at the average carrying amount, document items, residuals, reopening by reversal); S03 rule 9 (the accountant's reversal); S07 (revaluation of monetary items only); the client's currencies, a USD book at `market` accepting dealt rates and an SYP parallel ledger at the bulletin (S11, ADR 0021).
 - **Syrian rules:** the bulletin for the parallel ledger, UNVERIFIED (Q1), adopted by the owner as the company's policy; a daily TRY/SYP bulletin, UNVERIFIED (Q10), assumed by the owner (S11); Friday and Saturday as days without a bulletin, UNVERIFIED, a company setting.
 
 ## Cases
@@ -603,4 +603,152 @@ expect:
   project_documents:
     - { kind: progress_billing, number: 1, date: 2026-12-31, contract: P1, client: C1, sequence: 1, entry: 2,
         currency: USD, cumulative: 3000000, previous: 0, retention: 300000, advance: 600000 }
+```
+
+### One client's advance for two projects: each recovery at its own project's share
+
+S12 edge case 6. Client C1 pays 20,000.00 USD on P1 at the bulletin of 115 and 10,000.00 USD on P2 at 125: one running item for C1 in USD on `212002`, carried at 3,550,000.00 SYP, whose average (118.33) belongs to neither project. A recovery clears at the average of its own project's lines in the item (S12 rule 12; owner, 2026-11-16), so P1's revenue keeps P1's 115 and P2's keeps P2's 125. P1's billing first tries a recovery of 21,000.00, above P1's 20,000.00 though within the item's 30,000.00: refused (`RELEASE_EXCEEDS_BALANCE`), and it consumes no number.
+
+```yaml
+case: C1's advances of 20,000.00 USD on P1 at 115 and 10,000.00 on P2 at 125; each billing at 120 recovers at its project's own average
+company: { shape: usd-syp, book: USD, parallel: SYP, template: contracting,
+           rate_policy: { book: market, book_accepts_transaction_rate: true, parallel: bulletin },
+           contracts: [{ code: P1, kind: project, client: C1,
+                         terms: { currency: USD, value: 10000000, retention_bp: 1000, advance_recovery_bp: 2000 } },
+                       { code: P2, kind: project, client: C1,
+                         terms: { currency: USD, value: 5000000, retention_bp: 1000, advance_recovery_bp: 2000 } }] }
+rates:
+  - { date: 2026-11-02, base: USD, quote: SYP, rate: "115.0000", type: bulletin }
+  - { date: 2026-11-16, base: USD, quote: SYP, rate: "125.0000", type: bulletin }
+  - { date: 2026-12-31, base: USD, quote: SYP, rate: "120.0000", type: bulletin }
+steps:
+  - voucher: client C1 pays an advance on P1 into the USD bank
+    accounting_date: 2026-11-02
+    payload: { voucher: { kind: receipt, cash_account: "111004", party_name: "العميل" },
+               lines: [{ account: "111004", currency: USD, amount: 2000000 },
+                       { account: "212002", dims: { client: C1, contract: P1 }, currency: USD, amount: -2000000 }] }
+  - voucher: client C1 pays an advance on P2 into the USD bank
+    accounting_date: 2026-11-16
+    payload: { voucher: { kind: receipt, cash_account: "111004", party_name: "العميل" },
+               lines: [{ account: "111004", currency: USD, amount: 1000000 },
+                       { account: "212002", dims: { client: C1, contract: P2 }, currency: USD, amount: -1000000 }] }
+  - project_document: billing 1 of P1 recovering more than P1's advance
+    accounting_date: 2026-12-31
+    payload: { document: { kind: progress_billing, contract: P1, cumulative: 3000000, advance: 2100000 } }
+    outcome: { status: refused, reason: RELEASE_EXCEEDS_BALANCE }
+  - project_document: progress billing 1 of P1
+    accounting_date: 2026-12-31
+    payload: { document: { kind: progress_billing, contract: P1, cumulative: 3000000 } }
+  - project_document: progress billing 1 of P2
+    accounting_date: 2026-12-31
+    payload: { document: { kind: progress_billing, contract: P2, cumulative: 2000000 } }
+expect:
+  entries:
+    - source: manual
+      date: 2026-11-02
+      lines:
+        # 20,000.00 × 115 = 2,300,000.00 SYP
+        - { account: "111004", currency: USD, amount: 2000000, book: 2000000, parallel: 230000000 }
+        - { account: "212002", dims: { client: C1, contract: P1 }, currency: USD, amount: -2000000, book: -2000000, parallel: -230000000 }
+    - source: manual
+      date: 2026-11-16
+      lines:
+        # 10,000.00 × 125 = 1,250,000.00 SYP
+        - { account: "111004", currency: USD, amount: 1000000, book: 1000000, parallel: 125000000 }
+        - { account: "212002", dims: { client: C1, contract: P2 }, currency: USD, amount: -1000000, book: -1000000, parallel: -125000000 }
+    - source: manual
+      date: 2026-12-31
+      lines:
+        # P1 as the first case: net 21,000.00, retention 3,000.00, recovery 6,000.00
+        - { account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 2100000, book: 2100000, parallel: 252000000 }
+        - { account: "113002", dims: { client: C1, contract: P1 }, currency: USD, amount: 300000, book: 300000, parallel: 36000000 }
+        # P1's share: 20,000.00 at 230,000,000 → 230,000,000 × 6,000 / 20,000 = 69,000,000
+        #   (the item's average would give 355,000,000 × 6,000 / 30,000 = 71,000,000)
+        - { account: "212002", dims: { client: C1, contract: P1 }, currency: USD, amount: 600000, book: 600000, parallel: 69000000 }
+        # 69,000,000 + 24,000.00 × 120 = 357,000,000
+        - { account: "411001", dims: { client: C1, contract: P1 }, currency: USD, amount: -3000000, book: -3000000, parallel: -357000000 }
+    - source: manual
+      date: 2026-12-31
+      lines:
+        # P2: period 20,000.00; retention 2,000.00; recovery 4,000.00 (≤ P2's 10,000.00); net 14,000.00
+        # 14,000.00 × 120 = 1,680,000.00 SYP
+        - { account: "112001", dims: { client: C1, contract: P2 }, currency: USD, amount: 1400000, book: 1400000, parallel: 168000000 }
+        # 2,000.00 × 120 = 240,000.00 SYP
+        - { account: "113002", dims: { client: C1, contract: P2 }, currency: USD, amount: 200000, book: 200000, parallel: 24000000 }
+        # P2's share: 10,000.00 at 125,000,000 → 125,000,000 × 4,000 / 10,000 = 50,000,000
+        - { account: "212002", dims: { client: C1, contract: P2 }, currency: USD, amount: 400000, book: 400000, parallel: 50000000 }
+        # 50,000,000 + 16,000.00 × 120 = 192,000,000 → 242,000,000
+        - { account: "411001", dims: { client: C1, contract: P2 }, currency: USD, amount: -2000000, book: -2000000, parallel: -242000000 }
+  balances:
+    # what is left of each project's share: P1 14,000.00 at 1,610,000.00 SYP; P2 6,000.00 at 750,000.00 SYP
+    - { account: "212002", dims: { contract: P1 }, book: -1400000, parallel: -161000000 }
+    - { account: "212002", dims: { contract: P2 }, book: -600000, parallel: -75000000 }
+    - { account: "411001", dims: { contract: P1 }, book: -3000000, parallel: -357000000 }
+    - { account: "411001", dims: { contract: P2 }, book: -2000000, parallel: -242000000 }
+  open_items:
+    # one running item for C1 in USD: 20,000.00 left, 161,000,000 + 75,000,000 = 236,000,000
+    - { item: C1, account: "212002", dims: { client: C1 }, currency: USD, amount: -2000000, book: -2000000, parallel: -236000000 }
+    - { item: "2026/1", account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 2100000, book: 2100000, parallel: 252000000 }
+    - { item: "2026/2", account: "112001", dims: { client: C1, contract: P2 }, currency: USD, amount: 1400000, book: 1400000, parallel: 168000000 }
+  project_documents:
+    # the refusal consumed no number; numbers run per kind and year, sequences per project
+    - { kind: progress_billing, number: 1, date: 2026-12-31, contract: P1, client: C1, sequence: 1, entry: 3,
+        currency: USD, cumulative: 3000000, previous: 0, retention: 300000, advance: 600000 }
+    - { kind: progress_billing, number: 2, date: 2026-12-31, contract: P2, client: C1, sequence: 1, entry: 4,
+        currency: USD, cumulative: 2000000, previous: 0, retention: 200000, advance: 400000 }
+```
+
+### A first billing of zero, and a billing whose deductions take its whole value
+
+S12 edge cases 7 and 8. A first billing with a cumulative of 0.00 is refused (`BILLING_NOT_INCREASING`). Billing 1 then certifies 10,000.00 USD; the retention is 1,000.00 and the accountant recovers 9,000.00 of the 20,000.00 advance, so the net is zero: the billing posts no `112001` line and opens no receivable, only the retention item.
+
+```yaml
+case: a first billing of 0.00 refused; billing 1 of 10,000.00 with retention 1,000.00 and recovery 9,000.00 posts no receivable
+company: { shape: usd-syp, book: USD, parallel: SYP, template: contracting,
+           rate_policy: { book: market, book_accepts_transaction_rate: true, parallel: bulletin },
+           contracts: [{ code: P1, kind: project, client: C1,
+                         terms: { currency: USD, value: 10000000, retention_bp: 1000, advance_recovery_bp: 2000 } }] }
+rates:
+  - { date: 2026-11-02, base: USD, quote: SYP, rate: "115.0000", type: bulletin }
+  - { date: 2026-12-31, base: USD, quote: SYP, rate: "120.0000", type: bulletin }
+steps:
+  - voucher: client C1 pays an advance on P1 into the USD bank
+    accounting_date: 2026-11-02
+    payload: { voucher: { kind: receipt, cash_account: "111004", party_name: "العميل" },
+               lines: [{ account: "111004", currency: USD, amount: 2000000 },
+                       { account: "212002", dims: { client: C1, contract: P1 }, currency: USD, amount: -2000000 }] }
+  - project_document: a first billing of zero
+    accounting_date: 2026-12-31
+    payload: { document: { kind: progress_billing, contract: P1, cumulative: 0 } }
+    outcome: { status: refused, reason: BILLING_NOT_INCREASING }
+  - project_document: progress billing 1 of P1, all of it deducted
+    accounting_date: 2026-12-31
+    payload: { document: { kind: progress_billing, contract: P1, cumulative: 1000000, advance: 900000 } }
+expect:
+  entries:
+    - source: manual
+      date: 2026-11-02
+      lines:
+        - { account: "111004", currency: USD, amount: 2000000, book: 2000000, parallel: 230000000 }
+        - { account: "212002", dims: { client: C1, contract: P1 }, currency: USD, amount: -2000000, book: -2000000, parallel: -230000000 }
+    - source: manual
+      date: 2026-12-31
+      lines:
+        # period 10,000.00; retention 10% = 1,000.00; recovery typed 9,000.00 (20% would be 2,000.00);
+        # net: 10,000.00 − 1,000.00 − 9,000.00 = 0 → no 112001 line
+        # 1,000.00 × 120 = 120,000.00 SYP
+        - { account: "113002", dims: { client: C1, contract: P1 }, currency: USD, amount: 100000, book: 100000, parallel: 12000000 }
+        # 230,000,000 × 9,000 / 20,000 = 103,500,000
+        - { account: "212002", dims: { client: C1, contract: P1 }, currency: USD, amount: 900000, book: 900000, parallel: 103500000 }
+        # covered 9,000.00 at 103,500,000 + the other 1,000.00 × 120 = 12,000,000 → 115,500,000
+        - { account: "411001", dims: { client: C1, contract: P1 }, currency: USD, amount: -1000000, book: -1000000, parallel: -115500000 }
+  balances:
+    - { account: "112001", book: 0, parallel: 0 }
+    # 11,000.00 USD left at 230,000,000 − 103,500,000 = 126,500,000
+    - { account: "212002", book: -1100000, parallel: -126500000 }
+  open_items:
+    - { item: "2026/1", account: "113002", dims: { client: C1, contract: P1 }, currency: USD, amount: 100000, book: 100000, parallel: 12000000 }
+  project_documents:
+    - { kind: progress_billing, number: 1, date: 2026-12-31, contract: P1, client: C1, sequence: 1, entry: 2,
+        currency: USD, cumulative: 1000000, previous: 0, retention: 100000, advance: 900000 }
 ```
