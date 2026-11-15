@@ -14,6 +14,7 @@ Scenarios are written through `/posting-rule`, before the rule's code.
 - `manual`;
 - `reports` (S09: what the reports present, read after the steps).
 - `cash` (S11: cash vouchers, transfers and currency exchanges between cash accounts, cash counts).
+- `projects` (S12: project documents, the application of advances, contract revenue by progress billings).
 
 Hub's areas (`revenue`, `ad-funds`, `expenses`, `inbox`, `receivables/hub-payment.md`, `opening/before-books-start.md`) and the cases of other files that ran Hub's events left with the integration (ADR 0021); they stay in git history. The cases that named the service-agency chart moved to `template: contracting` by S11's mapping table (owner, 2026-11-14), with no expected amount changed: a case adds the accounts the template lacks (the USD e-wallet `111006`, client ad funds held `213001` under a header `213`, project expenses awaiting payment source as `211092`), and its trade receivables and revenue lines name the client's contract. The book holds no chart of its own.
 
@@ -57,7 +58,10 @@ company:
         monetary: true, control: running, counterparty_type: client, required: [client] }
   closed_periods: []                # e.g. [2026-10]
   contracts:                        # contract values the case's manual lines name (optional; S09):
-    - { code: P1, kind: project, client: C1 }  # a contract needs its kind and client
+    - { code: P1, kind: project, client: C1 }  # a contract needs its kind and client; a project
+                                    #   may state its terms (S12 rule 1), which a billing needs:
+                                    #   terms: { currency: USD, value: 10000000 (the contract value),
+                                    #   retention_bp: 1000, advance_recovery_bp: 2000 (basis points) }
   bulletin_days_off: [5, 6]         # ISO weekdays without a bulletin; default Friday and Saturday
   bulletin_holidays: []             # e.g. [2026-11-08]: dates the accountant marked (S02 rules 16–17)
   books_start: 2026-10-01           # optional (S10 rule 1), the first day of a month, only in a case
@@ -125,6 +129,13 @@ steps:                              # in order; a manual entry, a reversal, a ra
                voucher: { kind: count, cash_account: "111005", counted: 3445000, expected: 3450000 } }
                                     #   preview showed, which the post carries; refused CASH_COUNT_STALE
                                     #   with the new expected amount as its detail ("expected:3450000")
+  - project_document: <what it records>  # a project document (S12 rules 7–22) as the form sends it,
+    accounting_date: 2026-12-31     #   saved as a draft and posted from it; its entry has the source
+    payload: { document: { kind: progress_billing, contract: P1, cumulative: 3000000 } }
+                                    #   manual. document: kind (progress_billing, …), the project
+                                    #   (contract), and for a billing the cumulative typed, with
+                                    #   retention and advance (the recovery) only where the accountant
+                                    #   changed the computed amount; the posting derives the lines
 expect:
   entries:                          # the exact set posted, in posting order; every line of every entry
     - source: <manual | opening | revaluation | reversal>
@@ -145,6 +156,14 @@ expect:
                                     #   only on a transfer), the entry it posted (posting order; null only for a
                                     #   count that matched), a count's expected and counted amounts,
                                     #   and the reversal that cancelled it (rule 14); [] states none
+  project_documents:                # optional (S12): the exact set of the company's project documents
+    - { kind: progress_billing, number: 1, date: 2026-12-31, contract: P1, client: C1, sequence: 1,
+        entry: 2, currency: USD, cumulative: 3000000, previous: 0, retention: 300000, advance: 600000,
+        cancelled_by: 5 }           # kind, its number in its kind and fiscal year, date, the project
+                                    #   and its client, a billing's number within its project
+                                    #   (sequence), the entry it posted and the reversal that
+                                    #   cancelled it (posting order; rule 22), the terms' currency,
+                                    #   cumulative, previous, retention and recovery (advance); [] none
   outcome:                          # optional: the last step's refusal, when the step does not
     status: refused                 #   state it itself
     reason: CHECKLIST_FAILED
@@ -205,6 +224,7 @@ The runner is `packages/scenarios` (`pnpm test:scenarios`, in CI).
   - the outcomes: every step completes when received, except a step that states its `outcome` and the last when `expect` states one; such a step must match its status and reason exactly, and its detail when stated;
   - each stated correction's answer: exactly the entries it lists as converted at the superseded row.
   - the stated vouchers (S11): exactly the company's, every field equal.
+  - the stated project documents (S12): exactly the company's, every field equal.
   - each stated report's figures (S09; "Reports").
 - It runs on a fresh test database through the real posting function, never through a mock. Each case has a company of its own, made with the company, chart, dimension and rate services the API uses: every dimension value the case names (`client: C1` in a manual line, an expected line, a balance or an open item) is made in the setup, by its type's code and its own code (S04).
 

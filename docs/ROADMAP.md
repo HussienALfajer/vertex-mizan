@@ -147,6 +147,7 @@ The owner cancelled the integration with Hub on 2026-11-13 (`docs/product/phase-
 - [~] S12 Project costs: N2 expenses by project, N3 wages of workers and craftsmen, N4 materials with quantities (spec, scenarios, slice), with the application of advances at their carrying amount (IFRIC 22, owner 2026-11-14) and contract revenue by certified progress billings (Q20); materials go straight to the project (Q19)
   - [x] Spec `docs/specs/S12-project-costs.md` and ADR 0023 (`docs/S12-spec`)
   - [ ] Scenarios through `/posting-rule`: `projects/purchase-invoice`, `projects/wage-sheet`, `projects/progress-billing`, `projects/subcontract-billing`, `projects/retention-release`, `reports/project-report`
+    - [x] `projects/progress-billing`: ten cases approved by the owner on 2026-11-16 (a recovery at the average of its project's own share of the advance, S12 rule 12 and ADR 0023 amended), `Proposed` until the slice brings the `project_document` executor (`docs/progress-billing-scenario`); the book reads the area `projects`, a project's `terms`, the step `project_document` and `expect.project_documents`
   - [ ] Slice (`/feature-slice S12`)
 - [ ] The client's first company in production; a real month closed; the client keeps the full export
 

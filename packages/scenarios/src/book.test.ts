@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { parseCase, parseScenario, readBook, ScenarioFormatError, yamlBlocks } from './book.js';
 import { marginOf } from './report-format.js';
-import { CASE, CORRECTION, REPORTS, SYP_ONLY } from './test-fixtures.js';
+import { BILLING, CASE, CORRECTION, REPORTS, SYP_ONLY } from './test-fixtures.js';
 
 function file(status: string, ...cases: string[]) {
   return [
@@ -261,7 +261,7 @@ describe('a case', () => {
     [
       'a step of no kind',
       CASE.replace('  - manual: a USD invoice', '  - what: a USD invoice'),
-      'manual, reversal, rate, revalue, block, close, reopen, draft, discard, service_department, opening, reverse_opening or voucher',
+      'manual, reversal, rate, revalue, block, close, reopen, draft, discard, service_department, opening, reverse_opening, voucher or project_document',
     ],
     [
       'a step of two kinds',
@@ -683,6 +683,103 @@ describe('a case', () => {
     ).toContain('accounting_date');
   });
 
+  it("reads a project's terms, a project document step and the documents a case states (S12)", () => {
+    const billing = parseCase(BILLING);
+    expect(billing.company.contracts).toEqual([
+      {
+        code: 'P1',
+        kind: 'project',
+        client: 'C1',
+        terms: { currency: 'SYP', value: 1000000n, retentionBp: 1000, advanceRecoveryBp: 2000 },
+      },
+    ]);
+    expect(billing.steps[0]).toEqual({
+      kind: 'project_document',
+      description: 'progress billing 1 of P1',
+      accountingDate: '2026-11-03',
+      payload: { document: { kind: 'progress_billing', contract: 'P1', cumulative: 100000n } },
+      outcome: null,
+    });
+    expect(billing.expect.projectDocuments).toEqual([
+      {
+        kind: 'progress_billing',
+        number: 1,
+        date: '2026-11-03',
+        contract: 'P1',
+        client: 'C1',
+        sequence: 1,
+        entry: 1,
+        currency: 'SYP',
+        cumulative: 100000n,
+        previous: 0n,
+        retention: 10000n,
+        advance: 0n,
+        cancelledBy: null,
+      },
+    ]);
+    expect(parseCase(CASE).expect.projectDocuments).toBeNull();
+    const refusedStep = parseCase(
+      BILLING.replace(
+        'cumulative: 100000 } }\n',
+        'cumulative: 100000 } }\n    outcome: { status: refused, reason: BILLING_NOT_INCREASING }\n',
+      ),
+    );
+    expect(refusedStep.steps[0]).toMatchObject({
+      kind: 'project_document',
+      outcome: { status: 'refused', reason: 'BILLING_NOT_INCREASING', detail: null },
+    });
+
+    const document =
+      '{ kind: progress_billing, number: 1, date: 2026-11-03, contract: P1, client: C1, sequence: 1, entry: 1,\n' +
+      '        currency: SYP, cumulative: 100000, previous: 0, retention: 10000, advance: 0 }';
+    const stated = (...rows: string[]) => refusal(BILLING.replace(document, rows.join('\n    - ')));
+    expect(
+      refusal(BILLING.replace('kind: project, client: C1,', 'kind: retainer, client: C1,')),
+    ).toContain('Only a project has terms');
+    expect(refusal(BILLING.replace('retention_bp: 1000', 'retention_bp: 10001'))).toContain(
+      'Expected a whole number from 0 to 10000',
+    );
+    expect(refusal(BILLING.replace(/,\n {25}terms: \{[^}]*\} \}/, ' }'))).toContain(
+      'A billing needs the terms of P1',
+    );
+    expect(stated(document.replace('contract: P1', 'contract: P2'))).toContain(
+      'P2 is not a project in company.contracts',
+    );
+    expect(stated(document.replace('client: C1', 'client: C2'))).toContain("P1 is C1's project");
+    expect(stated(document.replace('currency: SYP', 'currency: USD'))).toContain(
+      "P1's terms are in SYP",
+    );
+    expect(stated(document.replace('cumulative: 100000', 'cumulative: 0'))).toContain(
+      "A billing's cumulative is above the previous",
+    );
+    expect(stated(document.replace('previous: 0', 'previous: -1'))).toContain(
+      'The previous cumulative is never negative',
+    );
+    expect(stated(document.replace('retention: 10000', 'retention: -1'))).toContain(
+      'A retention is never negative',
+    );
+    expect(stated(document.replace('advance: 0', 'advance: 95000'))).toContain(
+      "A billing's net is never negative",
+    );
+    expect(stated(document.replace('entry: 1', 'entry: 2'))).toContain(
+      'Entry 2 is not an expected entry',
+    );
+    expect(stated(document.replace('date: 2026-11-03', 'date: 2026-11-04'))).toContain(
+      'Entry 1 is not dated 2026-11-04',
+    );
+    expect(stated(document, document.replace('sequence: 1', 'sequence: 2'))).toContain(
+      'progress_billing 1 is stated twice',
+    );
+    expect(stated(document, document.replace('number: 1', 'number: 2'))).toContain(
+      'Billing 1 of P1 is stated twice',
+    );
+    const second = document.replace('number: 1', 'number: 2').replace('sequence: 1', 'sequence: 2');
+    expect(stated(document, second)).toContain("Entry 1 is another document's");
+    expect(stated(document.replace('advance: 0 }', 'advance: 0, cancelled_by: 1 }'))).toContain(
+      'Entry 1 is not a later expected reversal',
+    );
+  });
+
   const TRY_CASH =
     '{ code: "111007", name: "الصندوق — ليرة تركية", currency: TRY, monetary: true, statement_line: bs.cash }';
   const withAccounts = (...accounts: string[]) =>
@@ -794,7 +891,9 @@ describe('a case', () => {
 
   it("reads a company's contracts, a manual service's department and every report (S09)", () => {
     const reports = parseCase(REPORTS);
-    expect(reports.company.contracts).toEqual([{ code: 'P1', kind: 'project', client: 'C1' }]);
+    expect(reports.company.contracts).toEqual([
+      { code: 'P1', kind: 'project', client: 'C1', terms: null },
+    ]);
     expect(reports.steps[0]).toEqual({
       kind: 'service_department',
       service: 'S1',

@@ -2,12 +2,14 @@ import type {
   ExpectedBalance,
   ExpectedEntry,
   ExpectedOpenItem,
+  ExpectedProjectDocument,
   ExpectedVoucher,
 } from './format.js';
 import type {
   BalanceQuery,
   ObservedBalance,
   ObservedOpenItem,
+  ObservedProjectDocument,
   ObservedVoucher,
   PostedEntry,
   PostedLine,
@@ -157,4 +159,32 @@ export function compareVouchers(
     else left.splice(found, 1);
   }
   return [...differences, ...left.map((voucher) => `unexpected voucher: ${voucher}`)];
+}
+
+function describeProjectDocument(document: ExpectedProjectDocument): string {
+  const cancelled = document.cancelledBy === null ? '' : `, cancelled by ${document.cancelledBy}`;
+  return (
+    `${document.kind} ${document.date.slice(0, 4)}/${document.number} of ${document.date}, ` +
+    `${document.contract} of ${document.client} no. ${document.sequence}: entry ${document.entry}, ` +
+    `${document.currency} cumulative ${document.cumulative}, previous ${document.previous}, ` +
+    `retention ${document.retention}, advance ${document.advance}${cancelled}`
+  );
+}
+
+/**
+ * The exact set of project documents (S12): a missing or an extra one, every field equal, in any
+ * order.
+ */
+export function compareProjectDocuments(
+  expected: readonly ExpectedProjectDocument[],
+  observed: readonly ObservedProjectDocument[],
+): string[] {
+  const left = observed.map(describeProjectDocument);
+  const differences: string[] = [];
+  for (const document of expected.map(describeProjectDocument)) {
+    const found = left.indexOf(document);
+    if (found === -1) differences.push(`missing project document: ${document}`);
+    else left.splice(found, 1);
+  }
+  return [...differences, ...left.map((document) => `unexpected project document: ${document}`)];
 }
