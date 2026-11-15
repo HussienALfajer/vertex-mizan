@@ -20,13 +20,13 @@ Four PRs, in order. PR 4 needs only PR 1 and may run beside PRs 2 and 3.
 
 ### PR 2 — vouchers and the box rule (branch `feat/s11-vouchers`)
 
-- [ ] contracts: `cash.ts` (voucher header, voucher, cash position, statement), drafts gain `voucher`, audit actions (`cash_count.recorded`, `export.cash_statement`, `export.cash_position`, `export.voucher`)
-- [ ] ledger: the voucher shapes (rules 10–13), the derived dealt rate (rule 12, 10 decimals, half away from zero), the count's difference lines, the box check's arithmetic (the minimum running balance from a date); property tests (balance in both ledgers, differences in one ledger, reversal nets to zero, the box never negative at any date under any order of back-dated postings and reversals)
-- [ ] db (`/db-migration`): enum `voucher_kind`; `voucher_sequences` and `cash_vouchers` (append-only, RLS, composite keys, registry, guards); the drafts' voucher columns; `post()` takes the voucher number (gapless, per kind and fiscal year), writes the voucher, sets the reference, builds a count's lines and refuses a stale one, and takes a per-box lock after the head lock for rule 8 on every entry; the integrity check's voucher comparisons; concurrency tests (gapless numbers, two payments from one box)
-- [ ] scenarios: the `voucher` executor (receipt, payment, transfer, count) and the `vouchers` reader; the three `cash/` files switched to `Approved (owner, 2026-11-14)` and run, with no expected value changed
-- [ ] api: drafts with the voucher header, preview with the derived rate and a count's expected amount and difference, post and approve; `GET /api/cash/accounts`, `/api/cash/accounts/:id/statement`, `GET /api/vouchers`, `GET /api/vouchers/:id`; tests (success, 401, 403, another company, idempotent replay)
-- [ ] bridge: build, OpenAPI export and its check, client types
-- [ ] docs: ROADMAP, glossary rows (cash account, box, voucher, receipt, payment, transfer voucher, currency exchange, cash count, cash shortage and overage), folder CLAUDE.md files
+- [x] contracts: `cash.ts` (voucher header, voucher, cash position, statement), drafts gain `voucher`, audit actions (`cash_count.recorded`, `export.cash_statement`, `export.cash_position`, `export.voucher`)
+- [x] ledger: the voucher shapes (rules 10–13), the derived dealt rate (rule 12, 10 decimals, half away from zero), the count's difference lines, the box check's arithmetic (the minimum running balance from a date); property tests (balance in both ledgers, differences in one ledger, reversal nets to zero, the box never negative at any date under any order of back-dated postings and reversals)
+- [x] db (`/db-migration`, `0067`–`0068`): enum `voucher_kind`; `voucher_sequences` and `cash_vouchers` (append-only, RLS, composite keys, registry, guards); the drafts' voucher columns; `post()` takes the voucher number (gapless, per kind and fiscal year), writes the voucher, sets the reference, builds a count's lines and refuses a stale one, and takes a per-box lock after the head lock for rule 8 on every entry; the integrity check's voucher comparisons; concurrency tests (gapless numbers, two payments from one box)
+- [x] scenarios: the `voucher` executor (receipt, payment, transfer, count) and the `vouchers` reader; the three `cash/` files switched to `Approved (owner, 2026-11-14)` and run, with no expected value changed
+- [x] api: drafts with the voucher header, preview with the derived rate and a count's expected amount and difference, post and approve; `GET /api/cash/accounts`, `/api/cash/accounts/:id/statement`, `GET /api/vouchers`, `GET /api/vouchers/:id`; tests (success, 401, 403, another company, idempotent replay)
+- [x] bridge: build, OpenAPI export and its check, client types
+- [x] docs: ROADMAP, glossary rows (cash account, box, voucher, receipt, payment, transfer voucher, currency exchange, cash count, cash shortage and overage, derived dealt rate), folder CLAUDE.md files
 - [ ] checks and reviewers (reviewer and accountant-reviewer), PR with auto-merge and Auto-fix
 
 ### PR 3 — cash screens, printing and exports (branch `feat/s11-cash-screens`)

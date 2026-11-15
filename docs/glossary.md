@@ -134,6 +134,7 @@ One name per concept. Code, contracts and tables use the English term; the Arabi
 | سند | voucher | A receipt, payment, transfer or cash count prepared as a draft that posts one entry, numbered per kind and fiscal year (S11, ADR 0022) |
 | سند قبض / سند صرف / سند تحويل | receipt voucher / payment voucher / transfer voucher | Cash into a cash account, cash out of it, cash moved between two cash accounts (S11) |
 | صرف عملة | currency exchange | A transfer between cash accounts of two currencies, measured at the rate derived from its two amounts; its residual is realised (S11) |
+| سعر الصرف المشتق | derived dealt rate | The rate a currency exchange was dealt at, derived from its two amounts net of the fee, in the company's orientation of the pair, to 10 decimals (S11 rule 12) |
 | محضر جرد | cash count | A count of a box against its expected balance; a difference posts as a cash shortage or overage (S11) |
 | عجز الصناديق / زيادة الصناديق | cash shortage / cash overage | The difference a cash count finds below or above the expected balance (S11) |
 | حساب نقدية | cash account | A postable asset account under `111` restricted to one currency and marked a box or a bank (S11) |
