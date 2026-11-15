@@ -27,7 +27,7 @@ export interface ReportChartAccount {
   readonly level: number;
   readonly postable: boolean;
   readonly statementLine: string | null;
-  /** A control account (S04): its balance is read per client (rule 18). */
+  /** A control account (S04): its balance is read per counterparty (rule 18; S11 rule 6). */
   readonly control: boolean;
   /** The account's normal balance: a balance on the other side is flagged (Q17). */
   readonly normalBalance: 'debit' | 'credit';
@@ -423,10 +423,10 @@ export function incomeStatement(input: {
 
 // --- Balance sheet (rules 15–19) ---
 
-/** A balance-sheet account's balance at a date for one client and one contract. */
+/** A balance-sheet account's balance at a date for one counterparty and one contract. */
 export interface PresentationBalance {
   readonly accountId: string;
-  readonly clientId: string | null;
+  readonly counterpartyId: string | null;
   readonly contractId: string | null;
   /** Net debit. */
   readonly amount: bigint;
@@ -449,7 +449,7 @@ export interface BalanceSheetColumn {
 
 export interface BalanceSheetPartValue {
   readonly accountId: string;
-  readonly clientId: string | null;
+  readonly counterpartyId: string | null;
   readonly contractId: string | null;
   readonly amount: bigint;
   readonly reclassified: boolean;
@@ -484,7 +484,7 @@ const CONTRACT_LINES = new Set(['bs.contract_assets', 'bs.contract_liabilities']
 
 /**
  * The parts of each line at one date (rules 17, 18): the contract lines' balances netted per
- * contract, then each control account's balance per client on its own side or moved to the
+ * contract, then each control account's balance per counterparty on its own side or moved to the
  * opposite side, and every other account net on its line.
  */
 function presentBalances(
@@ -526,7 +526,7 @@ function presentBalances(
   for (const contractId of contractIds) {
     const rows = grouped(
       contractRows.filter((row) => row.contractId === contractId),
-      (row) => `${row.accountId}|${row.clientId ?? ''}`,
+      (row) => `${row.accountId}|${row.counterpartyId ?? ''}`,
     );
     const net = sum(rows.map((row) => row.amount));
     if (net === 0n) continue;
@@ -534,7 +534,7 @@ function presentBalances(
     for (const { first, amount } of rows) {
       add(line, {
         accountId: first.accountId,
-        clientId: first.clientId,
+        counterpartyId: first.counterpartyId,
         contractId,
         amount: onLine(line, amount),
         reclassified: false,
@@ -544,10 +544,11 @@ function presentBalances(
   }
 
   const rest = balances.filter((row) => !contractRows.includes(row));
-  // Rule 18: a control account per client (no client is one counterparty), on its own side.
+  // Rule 18: a control account per counterparty, its value of the account's counterparty type
+  // (S11 rule 6; none is one counterparty), on its own side.
   const controlRows = grouped(
     rest.filter((row) => accountOf(row.accountId).account.control),
-    (row) => `${row.accountId}|${row.clientId ?? ''}`,
+    (row) => `${row.accountId}|${row.counterpartyId ?? ''}`,
   );
   for (const { first, amount } of controlRows) {
     const { line } = accountOf(first.accountId);
@@ -559,7 +560,7 @@ function presentBalances(
         : 'bs.trade_receivables';
     add(target, {
       accountId: first.accountId,
-      clientId: first.clientId,
+      counterpartyId: first.counterpartyId,
       contractId: null,
       amount: onLine(target, amount),
       reclassified: !ownSide,
@@ -576,7 +577,7 @@ function presentBalances(
     const presented = onLine(line, amount);
     add(line, {
       accountId: first.accountId,
-      clientId: null,
+      counterpartyId: null,
       contractId: null,
       amount: presented,
       reclassified: false,
@@ -590,8 +591,8 @@ function presentBalances(
       const codeA = accounts.get(a.accountId)?.code ?? '';
       const codeB = accounts.get(b.accountId)?.code ?? '';
       if (codeA !== codeB) return codeA < codeB ? -1 : 1;
-      const keyA = `${a.clientId ?? ''}|${a.contractId ?? ''}`;
-      const keyB = `${b.clientId ?? ''}|${b.contractId ?? ''}`;
+      const keyA = `${a.counterpartyId ?? ''}|${a.contractId ?? ''}`;
+      const keyB = `${b.counterpartyId ?? ''}|${b.contractId ?? ''}`;
       return keyA < keyB ? -1 : keyA > keyB ? 1 : 0;
     });
   }

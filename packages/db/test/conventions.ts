@@ -1704,10 +1704,11 @@ BEGIN
   IF NOT (
     (item.kind = 'document' AND NEW.kind IN ('open', 'clear', 'revaluation'))
     OR (item.kind = 'running' AND NEW.kind IN ('add', 'clear', 'difference', 'revaluation'))
-  ) OR line.kind IS DISTINCT FROM (CASE NEW.kind
+  ) OR (line.kind IS DISTINCT FROM (CASE NEW.kind
       WHEN 'open' THEN 'measured' WHEN 'add' THEN 'measured'
       WHEN 'clear' THEN 'carried' WHEN 'difference' THEN 'difference'
       WHEN 'revaluation' THEN 'difference' END)
+      AND NOT (NEW.kind = 'add' AND line.kind = 'stated' AND entry.source = 'opening'))
     OR (NEW.kind = 'revaluation') IS DISTINCT FROM (entry.source = 'revaluation')
     OR (NEW.kind = 'revaluation' AND NEW.amount_minor <> 0) THEN
     RAISE EXCEPTION 'open_item_movements: a % movement does not fit a % item on a % line of a % entry',

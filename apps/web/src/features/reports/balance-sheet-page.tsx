@@ -116,14 +116,14 @@ export function BalanceSheetPage() {
   );
 }
 
-/** A part's name: its account, and the contract or client it is read per. */
+/** A part's name: its account, and the contract or counterparty it is read per. */
 function partLabel(part: BalanceSheetPart): ReactNode {
   return (
     <span className="flex flex-col">
       <ReportAccountName account={part.account} />
-      {(part.contract || part.client) && (
+      {(part.contract || part.counterparty) && (
         <span className="text-xs text-muted-foreground">
-          <ReportValueName value={part.contract ?? part.client} />
+          <ReportValueName value={part.contract ?? part.counterparty} />
         </span>
       )}
     </span>
@@ -192,7 +192,7 @@ function drillable(part: BalanceSheetPart, parts: readonly BalanceSheetPart[]): 
     (other) =>
       other !== part &&
       other.account.id === part.account.id &&
-      (part.client === null || other.client?.id === part.client.id) &&
+      (part.counterparty === null || other.counterparty?.id === part.counterparty.id) &&
       (part.contract === null || other.contract?.id === part.contract.id),
   );
 }
@@ -217,7 +217,7 @@ function balanceRows(data: BalanceSheet, range: { ledger: Ledger; to: string }):
         },
         ...line.parts.map(
           (part, index): ReportTableRow => ({
-            key: `${line.line}-${part.account.id}-${part.client?.id ?? part.contract?.id ?? index}`,
+            key: `${line.line}-${part.account.id}-${part.counterparty?.id ?? part.contract?.id ?? index}`,
             label: partLabel(part),
             level: 2,
             note: part.reclassified
@@ -232,7 +232,10 @@ function balanceRows(data: BalanceSheet, range: { ledger: Ledger; to: string }):
                   ? linesLink({
                       ...range,
                       account: part.account.id,
-                      client: part.client?.id,
+                      // A client through its filter; a supplier or a worker as a value its lines carry.
+                      ...(part.counterparty?.typeCode === 'client'
+                        ? { client: part.counterparty.id }
+                        : { dims: part.counterparty?.id }),
                       contract: part.contract?.id,
                     })
                   : undefined,

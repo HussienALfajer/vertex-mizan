@@ -15,6 +15,7 @@ Four PRs, in order. PR 4 needs only PR 1 and may run beside PRs 2 and 3.
 - [x] web: the account sheet's counterparty type and cash kind (locked after first use); `/receivables/clients/:valueId` → `/counterparties/:valueId` with a redirect; the receivables screens on the renamed endpoints with the type filter; the template choice in company creation; i18n (`chart`, `dimensions`, `open-items`)
 - [x] e2e: the account sheet and the counterparty statement specs updated; screenshots looked at
 - [x] docs: ROADMAP, glossary rows (counterparty, counterparty type, supplier, worker, subcontractor, retention, progress billing, advance from a client), AGENTS.md command (`--template contracting`), folder CLAUDE.md files
+- [x] review findings (owner, 2026-11-15): an unused control account turned into a header; the balance sheet per counterparty and the opening's non-monetary running items, their scenarios approved by the owner, migration `0066`
 - [ ] checks and reviewers, PR with auto-merge and Auto-fix
 
 ### PR 2 — vouchers and the box rule (branch `feat/s11-vouchers`)

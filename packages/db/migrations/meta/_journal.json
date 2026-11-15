@@ -463,6 +463,13 @@
       "when": 1794656377246,
       "tag": "0065_s11_running_system_lines",
       "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1794767969577,
+      "tag": "0066_s11_opening_stated_items",
+      "breakpoints": true
     }
   ]
 }

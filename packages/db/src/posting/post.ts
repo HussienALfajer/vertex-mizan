@@ -1456,15 +1456,21 @@ async function openingLines(
         ...(spec.newItem !== undefined && { item: 'new' as const }),
       }),
     );
-    if (spec.stated !== undefined) {
-      lines.push({
-        kind: 'stated',
-        account: spec.accountId,
-        dimensions,
-        transaction: amount,
-        bookMinor: spec.stated.bookMinor,
-        parallelMinor: spec.stated.parallelMinor,
-      });
+    const stated =
+      spec.stated === undefined
+        ? null
+        : ({
+            kind: 'stated',
+            account: spec.accountId,
+            dimensions,
+            transaction: amount,
+            bookMinor: spec.stated.bookMinor,
+            parallelMinor: spec.stated.parallelMinor,
+          } satisfies Line);
+    // A stated line on a non-monetary running account opens its counterparty's item below at the
+    // records' amounts (owner, 2026-11-15; IAS 21.23(b), IFRIC 22); any other stated line has none.
+    if (stated !== null && account?.itemKind !== 'running') {
+      lines.push(stated);
       continue;
     }
     let item: ItemState | null = null;
@@ -1551,6 +1557,11 @@ async function openingLines(
     const target = { account: spec.accountId, dimensions };
     if (item === null) {
       lines.push(onLine(lineNo, () => measuredLine({ ...target, amount }, context)));
+      continue;
+    }
+    if (stated !== null) {
+      // The item is new or at zero, so the stated line adds its amounts whole.
+      lines.push({ ...stated, item: { id: item.id, movement: 'add' } });
       continue;
     }
     const moved = onLine(lineNo, () => moveItem(item as ItemState, target, amount, context));

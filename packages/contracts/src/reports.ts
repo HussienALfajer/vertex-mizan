@@ -513,7 +513,7 @@ export const balanceSheetQuerySchema = z
 export type BalanceSheetQuery = z.infer<typeof balanceSheetQuerySchema>;
 
 /**
- * A balance a line is made of: an account's, per contract where rule 17 nets it, per client
+ * A balance a line is made of: an account's, per contract where rule 17 nets it, per counterparty
  * where rule 18 reads it, signed as it adds to the line. `reclassified` marks a counterparty's
  * balance rule 18 moved to the opposite side; `oppositeSide` a non-control account's balance
  * against its normal balance, such as a bank account in credit, flagged (Q17); a contra account
@@ -522,7 +522,8 @@ export type BalanceSheetQuery = z.infer<typeof balanceSheetQuerySchema>;
 export const balanceSheetPartSchema = z
   .object({
     account: reportAccountSchema,
-    client: reportValueSchema.nullable(),
+    /** A client, a supplier or a worker: the value of a control account's counterparty type. */
+    counterparty: reportValueSchema.nullable(),
     contract: reportValueSchema.nullable(),
     amount: minorUnitsSchema,
     reclassified: z.boolean(),

@@ -73,6 +73,10 @@ export function namedDimensionValues(scenarioCase: ScenarioCase): NamedValue[] {
   for (const entry of expect.entries) for (const line of entry.lines) add(line.dims);
   for (const balance of expect.balances) add(balance.dims);
   for (const item of expect.openItems) add(item.dims);
+  // A contract's client, which a case's lines may not name (a contract named on a cost line only).
+  for (const contract of scenarioCase.company.contracts) {
+    if (named.has(keyOf('contract', contract.code))) add({ client: contract.client });
+  }
   return [...named.values()];
 }
 

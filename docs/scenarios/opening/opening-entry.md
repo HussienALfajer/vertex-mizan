@@ -2,7 +2,7 @@
 
 Status: Approved (owner, 2026-11-12)
 
-S10 wrote these cases (S10 "Scenarios"); the owner approved their expected entries and outcomes on 2026-11-12: seven cases, then, after the accounting review, the eighth, a company without Hub opening its receivables on `112001`, with the owner's decision on S10 rule 12 of the same day (Hub's slots refuse the accountant's lines only in a company with a Hub client, an API client holding `events:write` or `opening:write`). They stay `Proposed` until S10's feature slice brings the executors of the `opening` and `reverse_opening` steps and of the company's `books_start`, then become `Approved (owner, 2026-11-12)` (`docs/scenarios/README.md`, "Status").
+S10 wrote these cases (S10 "Scenarios"); the owner approved their expected entries and outcomes on 2026-11-12: seven cases, then, after the accounting review, the eighth, a company without Hub opening its receivables on `112001`, with the owner's decision on S10 rule 12 of the same day (Hub's slots refuse the accountant's lines only in a company with a Hub client, an API client holding `events:write` or `opening:write`). They stay `Proposed` until S10's feature slice brings the executors of the `opening` and `reverse_opening` steps and of the company's `books_start`, then become `Approved (owner, 2026-11-12)` (`docs/scenarios/README.md`, "Status"). The case "Contracting: advances opened as non-monetary running items" came with S11's first PR, after its accounting review; the owner approved its numbers on 2026-11-15.
 
 ## Rule
 
@@ -175,6 +175,70 @@ expect:
   open_items:
     - { item: OLD-1, account: "112001", dims: { client: C1 }, currency: USD, amount: 0, book: 0 }
     - { item: OLD-2, account: "112001", dims: { client: C2 }, currency: SYP, amount: 25000000, book: 25000000 }
+```
+
+### Contracting: advances opened as non-monetary running items (`syp-usd`, S11)
+
+S11's template notes and S10 rules 17–19 (owner, 2026-11-15, after the accounting review of S11's first PR). On `contracting@1` the advances from clients `212002` and to suppliers `114002` are running control accounts and non-monetary (IAS 21.16, IFRIC 22.8): the records state their book and parallel amounts at the rates of the day the cash moved, and each line opens its counterparty's running item at those carrying amounts, its line keeping the contract (S11 rule 3). C1's advance of 1,000.00 USD was received at 110; S1's of 200,000.00 SYP was 1,700.00 USD then. The cash is monetary and measured at the eve's rates: the bulletin of 115 in the SYP book, the market rate of 125 in the USD parallel ledger. On 20 October 400.00 USD of C1's advance is refunded from the USD box at the bulletin of 118: the item clears at its average carrying amount, 400 / 1,000 of 11,000.00 SYP, never remeasured, and the book residual is a realised loss (IAS 21.23(b), 21.28; IFRIC 22).
+
+```yaml
+case: contracting@1; C1's USD advance at 110 and S1's SYP advance stated and opened as running items; 400.00 USD refunded at 118 with a 3,200.00 SYP loss
+company: { shape: syp-usd, book: SYP, parallel: USD, template: contracting, books_start: 2026-10-01,
+           rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true },
+           contracts: [{ code: P1, kind: project, client: C1 }] }
+rates:
+  - { date: 2026-09-30, base: USD, quote: SYP, rate: "115.0000", type: bulletin }
+  - { date: 2026-09-30, base: USD, quote: SYP, rate: "125.0000", type: market }
+  - { date: 2026-10-20, base: USD, quote: SYP, rate: "118.0000", type: bulletin }
+  - { date: 2026-10-20, base: USD, quote: SYP, rate: "120.0000", type: market }
+steps:
+  - opening: the records' balances with the two advances
+    records:
+      lines:
+        - { account: "111001", currency: SYP, amount: 50000000 }
+        - { account: "111002", currency: USD, amount: 150000 }
+        - { account: "212002", dims: { client: C1, contract: P1 }, currency: USD, amount: -100000, book: -11000000 }
+        - { account: "114002", dims: { supplier: S1, contract: P1 }, currency: SYP, amount: 20000000, parallel: 170000 }
+        - { account: "311001", currency: SYP, amount: -50000000, parallel: -420000 }
+  - manual: 400.00 USD of C1's advance refunded from the USD box
+    accounting_date: 2026-10-20
+    payload: { lines: [{ account: "212002", dims: { client: C1, contract: P1 }, currency: USD, amount: 40000 },
+                       { account: "111002", currency: USD, amount: -40000 }] }
+expect:
+  entries:
+    - source: opening
+      date: 2026-10-01
+      lines:
+        # monetary: parallel 500,000.00 SYP / 125 = 4,000.00 USD
+        - { account: "111001", currency: SYP, amount: 50000000, book: 50000000, parallel: 400000 }
+        # monetary: book 1,500.00 USD × 115 = 172,500.00 SYP
+        - { account: "111002", currency: USD, amount: 150000, book: 17250000, parallel: 150000 }
+        # non-monetary, stated: 1,000.00 USD received at 110 = 11,000.00 SYP; opens C1's USD running item
+        - { account: "212002", dims: { client: C1, contract: P1 }, currency: USD, amount: -100000, book: -11000000, parallel: -100000 }
+        # non-monetary, stated: 200,000.00 SYP, 1,700.00 USD then; opens S1's SYP running item
+        - { account: "114002", dims: { supplier: S1, contract: P1 }, currency: SYP, amount: 20000000, book: 20000000, parallel: 170000 }
+        - { account: "311001", currency: SYP, amount: -50000000, book: -50000000, parallel: -420000 }
+        # balancing: book −(50,000,000 + 17,250,000 − 11,000,000 + 20,000,000 − 50,000,000) = −26,250,000;
+        # parallel −(400,000 + 150,000 − 100,000 + 170,000 − 420,000) = −200,000
+        - { account: "312001", currency: SYP, amount: -26250000, book: -26250000, parallel: -200000 }
+    - source: manual
+      date: 2026-10-20
+      lines:
+        # C1's item cleared at its average carrying amount: 40,000 / 100,000 × 11,000,000 = 4,400,000
+        - { account: "212002", dims: { client: C1, contract: P1 }, currency: USD, amount: 40000, book: 4400000, parallel: 40000 }
+        # 400.00 USD × 118 = 47,200.00 SYP paid
+        - { account: "111002", currency: USD, amount: -40000, book: -4720000, parallel: -40000 }
+        # book residual 4,400,000 − 4,720,000 = −320,000 → a realised loss of 3,200.00 SYP
+        - { account: "541001", currency: SYP, amount: 320000, book: 320000, parallel: 0 }
+  balances:
+    - { account: "212002", book: -6600000, parallel: -60000 }
+    - { account: "114002", book: 20000000, parallel: 170000 }
+    - { account: "541001", book: 320000, parallel: 0 }
+    - { account: "312001", book: -26250000, parallel: -200000 }
+  open_items:
+    # 600.00 USD left at 110: 11,000,000 − 4,400,000 = 6,600,000
+    - { item: C1, account: "212002", dims: { client: C1 }, currency: USD, amount: -60000, book: -6600000, parallel: -60000 }
+    - { item: S1, account: "114002", dims: { supplier: S1 }, currency: SYP, amount: 20000000, book: 20000000, parallel: 170000 }
 ```
 
 ### A third currency: TRY cash in the records

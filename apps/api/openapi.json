@@ -18815,7 +18815,7 @@
           "account": {
             "$ref": "#/components/schemas/ReportAccount"
           },
-          "client": {
+          "counterparty": {
             "nullable": true,
             "allOf": [
               {
@@ -18843,7 +18843,7 @@
         },
         "required": [
           "account",
-          "client",
+          "counterparty",
           "contract",
           "amount",
           "reclassified",

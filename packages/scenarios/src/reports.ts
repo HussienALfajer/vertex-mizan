@@ -337,7 +337,7 @@ export async function reports(
             // The parts: every stated one (absent reads as zero), and no unstated one but zeros.
             const parts = line.parts.map((part) => ({
               account: part.account.code,
-              dims: dimsOf([part.client, part.contract]),
+              dims: dimsOf([part.counterparty, part.contract]),
               amount: BigInt(part.amount),
               reclassified: part.reclassified,
             }));
