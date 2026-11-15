@@ -77,7 +77,11 @@ export function lastPublicationDay(on: string, calendar: PublicationCalendar): s
 }
 
 /** Whether a rate quotes one of two currencies in the other, either way round. */
-export function quotesPair(rate: ExchangeRate, a: CurrencyCode, b: CurrencyCode): boolean {
+export function quotesPair(
+  rate: Pick<ExchangeRate, 'base' | 'quote'>,
+  a: CurrencyCode,
+  b: CurrencyCode,
+): boolean {
   return (rate.base === a && rate.quote === b) || (rate.base === b && rate.quote === a);
 }
 

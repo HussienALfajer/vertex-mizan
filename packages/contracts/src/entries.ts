@@ -14,6 +14,12 @@ import {
   movementKindSchema,
 } from './open-items.js';
 import {
+  voucherHeaderInputSchema,
+  voucherHeaderSchema,
+  voucherNumberSchema,
+  voucherPreviewSchema,
+} from './vouchers.js';
+import {
   type EntryNumber,
   entryNumberSchema,
   type MoneyAmount,
@@ -178,6 +184,8 @@ export const draftInputSchema = z
       )
       .default([]),
     lines: z.array(draftLineInputSchema).max(DRAFT_LINE_LIMIT).default([]),
+    /** A voucher draft's header (S11 rules 9–13); null on any other draft. */
+    voucher: voucherHeaderInputSchema.nullable().default(null),
   })
   .meta({ id: 'DraftInput' });
 
@@ -238,6 +246,8 @@ export const draftSchema = z
     reversesEntryId: z.uuid().nullable(),
     copiedFromEntryId: z.uuid().nullable(),
     lines: z.array(draftLineSchema),
+    /** A voucher draft's header (S11); null on any other draft. */
+    voucher: voucherHeaderSchema.nullable(),
     preparedBy: personRefSchema,
     submitted: happenedSchema.nullable(),
     /** The last rejection, shown until the draft is submitted again. */
@@ -273,6 +283,8 @@ export const draftSummarySchema = z
     description: z.string().nullable(),
     reference: z.string().nullable(),
     reversesEntryId: z.uuid().nullable(),
+    /** A voucher draft's kind (S11); null on any other draft. */
+    voucherKind: voucherHeaderSchema.shape.kind.nullable(),
     lineCount: z.int().min(0),
     preparedBy: personRefSchema,
     submitted: happenedSchema.nullable(),
@@ -400,6 +412,8 @@ export const entryPreviewSchema = z
     lines: z.array(entryLineSchema),
     /** Each item the lines move (S04): what it carries before the entry and after it. */
     items: z.array(previewItemSchema),
+    /** A voucher draft's derived rate or count (S11 "API"); null on any other draft. */
+    voucher: voucherPreviewSchema.nullable(),
     refusals: z.array(postingRefusalSchema),
   })
   .meta({ id: 'EntryPreview' });
@@ -437,6 +451,8 @@ export const entrySchema = z
     bookCurrency: currencyCodeSchema,
     parallelCurrency: currencyCodeSchema.nullable(),
     lines: z.array(entryLineSchema),
+    /** The voucher the entry posted (S11 rule 9), cancelled when the entry is reversed. */
+    voucher: voucherNumberSchema.extend({ id: z.uuid() }).nullable(),
     attachments: z.array(attachmentSchema),
     previousHash: z.string().nullable(),
     hash: z.string(),
@@ -506,9 +522,17 @@ export const reversalResultSchema = z
 
 export type ReversalResult = z.infer<typeof reversalResultSchema>;
 
-/** The answer of posting or approving a draft: the posted entry and the draft now `posted`. */
+/**
+ * The answer of posting or approving a draft: the posted entry and the draft now `posted`; a voucher
+ * draft's voucher with its number (S11 rule 9). A count that matches records its voucher with no
+ * entry (rule 13), the only answer whose `entry` is null.
+ */
 export const postedDraftSchema = z
-  .object({ entry: entrySchema, draft: draftSchema })
+  .object({
+    entry: entrySchema.nullable(),
+    draft: draftSchema,
+    voucher: voucherNumberSchema.extend({ id: z.uuid() }).nullable(),
+  })
   .meta({ id: 'PostedDraft' });
 
 export type PostedDraft = z.infer<typeof postedDraftSchema>;

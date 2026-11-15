@@ -22,3 +22,5 @@ export * from './people.js';
 export * from './periods.js';
 export * from './rates.js';
 export * from './reports.js';
+export * from './vouchers.js';
+export * from './cash.js';

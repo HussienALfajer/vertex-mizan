@@ -72,7 +72,22 @@ describe('draftInputSchema', () => {
       reference: null,
       dealtRates: [],
       lines: [],
+      voucher: null,
     });
+  });
+
+  it("takes a voucher header, a transfer's destination and a count's counted amount only (S11)", () => {
+    const cashAccountId = '019a0000-0000-7000-8000-000000000001';
+    const other = '019a0000-0000-7000-8000-000000000002';
+    const parse = (voucher: unknown) =>
+      draftInputSchema.safeParse({ entryDate: '2026-12-01', voucher }).success;
+    expect(parse({ kind: 'receipt', cashAccountId, partyName: 'المالك' })).toBe(true);
+    expect(parse({ kind: 'transfer', cashAccountId, counterCashAccountId: other })).toBe(true);
+    expect(parse({ kind: 'transfer', cashAccountId })).toBe(false);
+    expect(parse({ kind: 'payment', cashAccountId, counterCashAccountId: other })).toBe(false);
+    expect(parse({ kind: 'count', cashAccountId, countedMinor: '3445000' })).toBe(true);
+    expect(parse({ kind: 'count', cashAccountId, countedMinor: '-1' })).toBe(false);
+    expect(parse({ kind: 'receipt', cashAccountId, countedMinor: '1' })).toBe(false);
   });
 
   it(`takes ${DRAFT_LINE_LIMIT} lines and refuses one more (edge case 20)`, () => {

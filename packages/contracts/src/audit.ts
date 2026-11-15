@@ -131,6 +131,11 @@ export const COMPANY_AUDIT_ACTIONS = [
   'opening.reversed',
   // S10 "Screens": the Excel of the opening's preview or of its agreement with Hub.
   'export.opening',
+  // S11: a cash count recorded with no entry (rule 13), and the cash exports and the voucher's print.
+  'cash_count.recorded',
+  'export.cash_statement',
+  'export.cash_position',
+  'export.voucher',
 ] as const;
 
 /**
