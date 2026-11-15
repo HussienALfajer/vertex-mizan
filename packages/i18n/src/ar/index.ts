@@ -1,6 +1,7 @@
 import { accounting } from './accounting.js';
 import { audit } from './audit.js';
 import { auth } from './auth.js';
+import { cash } from './cash.js';
 import { chart } from './chart.js';
 import { commandPalette } from './command-palette.js';
 import { common } from './common.js';
@@ -55,6 +56,7 @@ export const ar = {
   revaluation,
   reports,
   opening,
+  cash,
 };
 
 export type Catalog = typeof ar;

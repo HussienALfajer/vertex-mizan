@@ -24,19 +24,21 @@ import {
   readJournalBookTotals,
   readRangePeriods,
   readReportAnswer,
+  readVoucherPrint,
   reportFiles,
   SYSTEM_NAME,
   type Transaction,
   withCompany,
   writeCompanyAudit,
 } from '@vertex-mizan/db';
-import { ar } from '@vertex-mizan/i18n';
+import { amountInWords, ar } from '@vertex-mizan/i18n';
 import {
   entryNumberText,
   printedCurrency,
   printFontFaces,
   renderJournalBookHtml,
   renderReportHtml,
+  renderVoucherHtml,
   reportSheet,
 } from '@vertex-mizan/ui/print';
 import { and, eq, sql } from 'drizzle-orm';
@@ -78,6 +80,7 @@ const SHEET_TEXT = {
   accounting: ar.accounting,
   openItems: ar.openItems,
   chart: ar.chart,
+  cash: ar.cash,
 };
 
 const sha256 = (data: Buffer | string) => createHash('sha256').update(data).digest('hex');
@@ -226,6 +229,22 @@ export class ReportsRenderJob implements QueueWorker {
               lastPage: book.pages.at(-1)?.page ?? null,
             };
           }
+        } else if (report === 'voucher') {
+          // The printed voucher (S11 "Printing and legal books"): one A5 page of its own.
+          const params = REPORT_FILE_QUERIES.voucher.parse(row.params);
+          const voucher = await readVoucherPrint(tx, params.voucher);
+          const shown =
+            voucher.kind === 'count' ? (voucher.countedMinor ?? '0') : voucher.amountMinor;
+          const html = renderVoucherHtml({
+            company: company.name,
+            voucher,
+            text: ar.cash,
+            amountInWords: amountInWords(BigInt(shown), voucher.cashAccount.currency),
+            currencyName: (currency) => printedCurrency(currency, SHEET_TEXT),
+            fiscalYearStartMonth: settings.startMonth,
+            fontFaces: this.fontFaces(),
+          });
+          pdf = await this.printer.print(html, { pageNumbers: null });
         } else {
           const params = REPORT_FILE_QUERIES[report].parse(row.params);
           const answer = await readReportAnswer(tx, report, params, now, todayInDamascus());

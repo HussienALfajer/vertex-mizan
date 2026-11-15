@@ -39,6 +39,9 @@ export const REPORT_FILE_REPORTS = [
   'ageing',
   'client_statement',
   'chart',
+  'cash_position',
+  'cash_statement',
+  'voucher',
 ] as const;
 
 /** `REPORT_FILE_STATES` of `@vertex-mizan/contracts`; a test keeps them equal. */

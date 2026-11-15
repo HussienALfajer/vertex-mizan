@@ -3,6 +3,7 @@ import { cursorSchema } from './audit.js';
 import { STATEMENT_LINES } from './chart.js';
 import { entryHubDocumentSchema } from './entries.js';
 import { currencyCodeSchema, ledgerSchema } from './money.js';
+import { cashPositionQuerySchema, cashStatementQuerySchema } from './cash.js';
 import { ageingQuerySchema, counterpartyStatementQuerySchema } from './open-items.js';
 import { entryNumberSchema, minorUnitsSchema, personRefSchema } from './wire.js';
 
@@ -27,6 +28,9 @@ export const REPORTS = [
   'ageing',
   'client_statement',
   'chart',
+  'cash_position',
+  'cash_statement',
+  'voucher',
 ] as const;
 
 export const reportSchema = z.enum(REPORTS).meta({ id: 'Report' });
@@ -880,6 +884,18 @@ export type ClientStatementFileQuery = z.infer<typeof clientStatementFileQuerySc
 /** The chart's PDF takes no parameter: every account, archived ones included, as its Excel. */
 export const chartFileQuerySchema = z.object({}).meta({ id: 'ChartFileQuery' });
 
+/** A cash account's statement file names its cash account (S11 rule 17). */
+export const cashStatementFileQuerySchema = z
+  .intersection(z.object({ account: z.uuid() }), cashStatementQuerySchema)
+  .meta({ id: 'CashStatementFileQuery' });
+
+export type CashStatementFileQuery = z.infer<typeof cashStatementFileQuerySchema>;
+
+/** A printed voucher names its voucher (S11 "Printing and legal books"). */
+export const voucherFileQuerySchema = z.object({ voucher: z.uuid() }).meta({ id: 'VoucherFileQuery' });
+
+export type VoucherFileQuery = z.infer<typeof voucherFileQuerySchema>;
+
 /** The query of each report's Excel export, `format=xlsx` aside. */
 export const EXCEL_REPORT_QUERIES = {
   trial_balance: trialBalanceQuerySchema,
@@ -903,6 +919,9 @@ export const REPORT_FILE_QUERIES = {
   ageing: ageingQuerySchema,
   client_statement: clientStatementFileQuerySchema,
   chart: chartFileQuerySchema,
+  cash_position: cashPositionQuerySchema,
+  cash_statement: cashStatementFileQuerySchema,
+  voucher: voucherFileQuerySchema,
 } as const satisfies Record<ActiveReport, z.ZodType>;
 
 export type ReportFileQuery<R extends ActiveReport> = z.output<(typeof REPORT_FILE_QUERIES)[R]>;

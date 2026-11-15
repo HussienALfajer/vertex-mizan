@@ -4,6 +4,8 @@ import {
   type ActiveReport,
   type AgeingReport,
   type BalanceSheet,
+  type CashPosition,
+  type CashStatement,
   type CounterpartyStatement,
   type CurrencyCode,
   DomainError,
@@ -22,6 +24,7 @@ import { isClosedPeriod, readClosedPeriods } from '../posting/periods.js';
 import { companySettings } from '../schema/companies.js';
 import { periods } from '../schema/ledger.js';
 import { journalBookPrints, reportFiles } from '../schema/reports.js';
+import { readCashPosition, readCashStatement } from './cash-reads.js';
 import { readChartAccounts } from './chart-reads.js';
 import { ledgersOf } from './companies.js';
 import { readAgeingReport, readCounterpartyStatementReport } from './receivables-reads.js';
@@ -61,10 +64,15 @@ export type ReportAnswer =
       readonly data: readonly Account[];
       readonly bookCurrency: CurrencyCode;
       readonly producedAt: string;
-    };
+    }
+  | { readonly report: 'cash_position'; readonly data: CashPosition; readonly producedAt: string }
+  | { readonly report: 'cash_statement'; readonly data: CashStatement; readonly producedAt: string };
 
-/** The reports a sheet is read for: every one but the journal book's print, and the journal. */
-export type SheetReport = Exclude<ActiveReport, 'journal_book'> | 'journal';
+/**
+ * The reports a sheet is read for: every one but the journal book's print and the voucher, which
+ * print their own pages, and the journal.
+ */
+export type SheetReport = Exclude<ActiveReport, 'journal_book' | 'voucher'> | 'journal';
 
 /**
  * Reads a report whole in the transaction's snapshot: the general ledger, the account statement
@@ -116,6 +124,20 @@ export async function readReportAnswer(
         report,
         data: await readChartAccounts(tx, true),
         bookCurrency: ledgersOf(settings).book.currency,
+        producedAt: now.toISOString(),
+      };
+    }
+    case 'cash_position':
+      return {
+        report,
+        data: await readCashPosition(tx, query(report, params).asOf ?? today),
+        producedAt: now.toISOString(),
+      };
+    case 'cash_statement': {
+      const { account, ...rest } = query(report, params);
+      return {
+        report,
+        data: await readCashStatement(tx, account, rest),
         producedAt: now.toISOString(),
       };
     }

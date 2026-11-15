@@ -2,6 +2,7 @@ import type { INestApplication } from '@nestjs/common';
 import type { Account } from '@vertex-mizan/contracts';
 import { auditEntries, type Database, withCompany } from '@vertex-mizan/db';
 import { eq } from 'drizzle-orm';
+import ExcelJS from 'exceljs';
 import { v7 as uuidv7 } from 'uuid';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createTestApp } from './app.js';
@@ -117,6 +118,12 @@ describe('the guard on the cash routes', () => {
       },
       { method: 'get', path: '/api/vouchers' },
       { method: 'get', path: `/api/vouchers/${id}` },
+      { method: 'get', path: '/api/cash/accounts/export', query: { format: 'xlsx' } },
+      {
+        method: 'get',
+        path: `/api/cash/accounts/${id}/statement/export`,
+        query: { format: 'xlsx', from: '2026-12-01', to: '2026-12-31' },
+      },
     ]);
   });
 });
@@ -322,5 +329,117 @@ describe('the cash reads (S11 rules 16–17)', () => {
       ).body.code,
     ).toBe('NOT_FOUND');
     expect((await other.browser.get('/api/vouchers')).body.vouchers).toEqual([]);
+  });
+});
+
+async function workbookRows(body: Buffer): Promise<unknown[][]> {
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(body as unknown as ArrayBuffer);
+  const rows: unknown[][] = [];
+  workbook.worksheets[0]?.eachRow((row) => {
+    rows.push((row.values as unknown[]).slice(1));
+  });
+  return rows;
+}
+
+describe('the cash exports and prints (S11 "Reports", "Printing and legal books")', () => {
+  it('writes the position and a statement to Excel, audited, and queues the PDFs of each and a voucher', async () => {
+    const books = await contractor();
+    const posted = await books.browser.post(
+      `/api/drafts/${await receipt(books, '111002', 'USD', '200000')}/post`,
+    );
+    expect(posted.status, JSON.stringify(posted.body)).toBe(200);
+    const box = books.accounts.get('111002') as string;
+    const viewer = await joinCompany(app, db, books.companyId, 'viewer');
+
+    const position = await viewer.browser.download('/api/cash/accounts/export', {
+      format: 'xlsx',
+      asOf: today(),
+    });
+    expect(position.status, String(position.body)).toBe(200);
+    expect(position.headers['content-type']).toContain('spreadsheetml');
+    const positionRows = await workbookRows(position.body as Buffer);
+    expect(positionRows.flat()).toContain('المركز النقدي');
+    // 2,000.00 USD in the box, as a number in major units; 240,000.00 SYP in the parallel ledger.
+    const usdBox = positionRows.find((row) => row[0] === '111002');
+    expect(usdBox).toContain(2000);
+    expect(usdBox).toContain(240000);
+
+    const statement = await viewer.browser.download(`/api/cash/accounts/${box}/statement/export`, {
+      format: 'xlsx',
+      from: today(),
+      to: today(),
+      ledgers: 'book',
+    });
+    expect(statement.status, String(statement.body)).toBe(200);
+    const statementRows = await workbookRows(statement.body as Buffer);
+    expect(statementRows.flat()).toContain('الرصيد الختامي');
+    expect(statementRows.flat()).toContain(`سند قبض ${today().slice(0, 4)}/1`);
+
+    const audit = await withCompany(db, books.companyId, (tx) =>
+      tx
+        .select({ action: auditEntries.action, after: auditEntries.after })
+        .from(auditEntries)
+        .where(eq(auditEntries.entityType, 'report_export')),
+    );
+    expect(audit.map((row) => row.action).sort()).toEqual([
+      'export.cash_position',
+      'export.cash_statement',
+    ]);
+    expect(audit.find((row) => row.action === 'export.cash_statement')?.after).toMatchObject({
+      report: 'cash_statement',
+      format: 'xlsx',
+      params: { account: box, ledgers: ['book'] },
+    });
+
+    // The PDFs are report files queued for the worker, audited as their exports.
+    for (const [report, params] of [
+      ['cash_position', { asOf: today() }],
+      ['cash_statement', { account: box, from: today(), to: today() }],
+      ['voucher', { voucher: posted.body.voucher.id }],
+    ] as const) {
+      const file = await viewer.browser.post('/api/reports/files', { report, params });
+      expect(file.status, JSON.stringify(file.body)).toBe(201);
+      expect(file.body).toMatchObject({ report, state: 'queued', format: 'pdf' });
+    }
+    const files = await withCompany(db, books.companyId, (tx) =>
+      tx
+        .select({ action: auditEntries.action })
+        .from(auditEntries)
+        .where(eq(auditEntries.entityType, 'report_export')),
+    );
+    expect(files.map((row) => row.action)).toContain('export.voucher');
+
+    // A range out of order, an unknown cash account or voucher; another company's are unknown too.
+    expect(
+      (
+        await viewer.browser.get(`/api/cash/accounts/${box}/statement/export`, {
+          format: 'xlsx',
+          from: today(),
+          to: '2000-01-01',
+        })
+      ).body.code,
+    ).toBe('VALIDATION_FAILED');
+    const other = await contractor();
+    expect(
+      (
+        await other.browser.get(`/api/cash/accounts/${box}/statement/export`, {
+          format: 'xlsx',
+          from: today(),
+          to: today(),
+        })
+      ).body.code,
+    ).toBe('NOT_FOUND');
+    for (const [report, params] of [
+      ['cash_statement', { account: box, from: today(), to: today() }],
+      ['voucher', { voucher: posted.body.voucher.id }],
+    ] as const) {
+      const refused = await other.browser.post('/api/reports/files', { report, params });
+      expect(refused.body.code, report).toBe('NOT_FOUND');
+    }
+    expect(
+      (await viewer.browser.post('/api/reports/files', { report: 'voucher', params: {} })).body
+        .code,
+    ).toBe('VALIDATION_FAILED');
   });
 });

@@ -172,9 +172,10 @@ All under `/api`, with `X-Mizan-Company`; lists are cursor-paged (S01 pattern). 
 | `POST /api/drafts/:id/preview` · `/submit` · `/post` · `/approve` (S03) | as S03 | as S03 | as S03, plus the voucher's kind and, after posting, its number; for a transfer the derived dealt rate; for a count the expected amount and the difference | S03's and S04's, `CASH_BOX_NEGATIVE`, `CASH_COUNT_STALE`, `CASH_ACCOUNT_INVALID` |
 | `GET /api/cash/accounts` | `reports.read` | `asOf` | cash accounts with kind, currency, balance and both carrying amounts; totals per currency and ledger | — |
 | `GET /api/cash/accounts/:id/statement` | `reports.read` | `from`, `to`, `ledgers` | rule 17 | `NOT_FOUND`, `VALIDATION_FAILED` |
-| `GET /api/cash/accounts/:id/statement/export` | `reports.read` | as above, `format` (`xlsx` · `pdf`) | the file | as above |
+| `GET /api/cash/accounts/export` · `GET /api/cash/accounts/:id/statement/export` | `reports.read` | as above, `format=xlsx` | the workbook, audited `export.cash_position` · `export.cash_statement` | as above, `REPORT_TOO_LARGE` |
+| `POST /api/reports/files` (S09) | `reports.read` | `report`: `cash_position` (`asOf`), `cash_statement` (`account`, `from`, `to`, `ledgers`) or `voucher` (`voucher`) | the PDF queued for the worker and downloaded as S09's files; audited `export.<report>` (PR 3: the worker prints PDFs, so they are queued rather than answered at once) | S09's, `NOT_FOUND` for another company's cash account or voucher |
 | `GET /api/vouchers` | `reports.read` | `kind`, `cashAccount`, `from`, `to`, `state` (`posted` · `cancelled`), cursor | vouchers with number, date, amount, party, entry and state | — |
-| `GET /api/vouchers/:id` · `/pdf` | `reports.read` | — | the voucher with its entry · the printed voucher | `NOT_FOUND` |
+| `GET /api/vouchers/:id` | `reports.read` | — | the voucher with its entry (its print: report `voucher` above) | `NOT_FOUND` |
 | `GET /api/open-items`, ageing, running balances, statements (S04) | `open_items.read` | gain `counterpartyType`; `client` becomes `counterparty`; `GET /api/client-funds` becomes `GET /api/running-balances`, `GET /api/clients/:valueId/statement` becomes `GET /api/counterparties/:valueId/statement` (the web app is the API's only client, ADR 0021) | as S04 | as S04 |
 
 New error codes, appended to the registry:

@@ -179,6 +179,7 @@ test('a draft journal book prints its mark, and a long report flows over its pag
           accounting: ar.accounting,
           openItems: ar.openItems,
           chart: ar.chart,
+          cash: ar.cash,
         },
         fiscalYearStartMonth: 1,
       },

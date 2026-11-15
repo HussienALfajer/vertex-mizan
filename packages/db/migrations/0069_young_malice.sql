@@ -1,0 +1,2 @@
+ALTER TABLE "report_files" DROP CONSTRAINT "report_files_report";--> statement-breakpoint
+ALTER TABLE "report_files" ADD CONSTRAINT "report_files_report" CHECK ("report_files"."report" in ('trial_balance', 'general_ledger', 'account_statement', 'journal_book', 'income_statement', 'balance_sheet', 'profitability', 'contract_position', 'revenue_schedule', 'ageing', 'client_statement', 'chart', 'cash_position', 'cash_statement', 'voucher'));

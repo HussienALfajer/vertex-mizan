@@ -7,6 +7,8 @@ import {
 } from './dimensions.js';
 import {
   accountStatementFileQuerySchema,
+  cashStatementFileQuerySchema,
+  voucherFileQuerySchema,
   accountStatementQuerySchema,
   balanceSheetQuerySchema,
   balanceSheetSchema,
@@ -51,6 +53,9 @@ describe('the report identities and marks', () => {
       'ageing',
       'client_statement',
       'chart',
+      'cash_position',
+      'cash_statement',
+      'voucher',
     ]);
     // S10 rules 32–33's marks appended after rule 4's two.
     expect(REPORT_MARKS).toEqual([
@@ -236,5 +241,18 @@ describe('the exports and files', () => {
     expect(
       journalBookQuerySchema.parse({ fiscalYear: '2026', from: '2026-10', to: '2026-11' }),
     ).toEqual({ fiscalYear: 2026, from: '2026-10', to: '2026-11', ledger: 'book' });
+  });
+
+  it('reads the cash files of S11: a statement with its cash account, a voucher by its id', () => {
+    const account = '019a0000-0000-7000-8000-000000000001';
+    expect(
+      cashStatementFileQuerySchema.parse({ account, from: '2026-12-01', to: '2026-12-31' }),
+    ).toEqual({ account, from: '2026-12-01', to: '2026-12-31', ledgers: [] });
+    expect(
+      issuePaths(cashStatementFileQuerySchema, { from: '2026-12-01', to: '2026-12-31' }),
+    ).toEqual(['account']);
+    expect(voucherFileQuerySchema.parse({ voucher: account })).toEqual({ voucher: account });
+    expect(issuePaths(voucherFileQuerySchema, { voucher: 'x' })).toEqual(['voucher']);
+    expect(REPORT_FILE_QUERIES.cash_position.parse({})).toEqual({});
   });
 });
