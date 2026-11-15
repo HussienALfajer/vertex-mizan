@@ -173,6 +173,14 @@ function describeProjectDocument(document: ExpectedProjectDocument): string {
       `entry ${document.entry}, ${document.currency}${reference}${cancelled}`
     );
   }
+  if (document.kind === 'subcontract_billing') {
+    return (
+      `${head}${document.contract} of ${document.client} by ${document.supplier} no. ${document.sequence}: ` +
+      `entry ${document.entry}, ${document.currency} cumulative ${document.cumulative}, ` +
+      `previous ${document.previous}, retention ${document.retention}, ` +
+      `advance ${document.advance}${cancelled}`
+    );
+  }
   if (document.kind === 'wage_sheet') {
     return (
       `${head}${document.contract} of ${document.client} for ${document.periodFrom}–${document.periodTo}: ` +

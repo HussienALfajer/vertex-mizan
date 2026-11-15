@@ -137,6 +137,11 @@ export type ScenarioHarness = {
    */
   materials?: (context: CaseContext, materials: CaseCompany['materials']) => Promise<void>;
   /**
+   * Makes the case's subcontracts (S12 rule 2) after the setup, through the service the API uses;
+   * a case that states subcontracts needs it.
+   */
+  subcontracts?: (context: CaseContext, subcontracts: CaseCompany['subcontracts']) => Promise<void>;
+  /**
    * Reads every line quantity the company holds (S12 rules 4–6), its entry by its place in posting
    * order; a case that states its quantities needs it.
    */

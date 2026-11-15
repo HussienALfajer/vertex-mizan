@@ -10,7 +10,14 @@ import type {
   StepResult,
 } from './harness.js';
 import { namedDimensionValues, runCase, ScenarioFailure } from './run.js';
-import { BILLING, CASE, CORRECTION, PURCHASE, REPORTS } from './test-fixtures.js';
+import {
+  BILLING,
+  CASE,
+  CORRECTION,
+  PURCHASE,
+  REPORTS,
+  SUBCONTRACT_BILLING,
+} from './test-fixtures.js';
 
 // The runner against a fake harness: what the S03, S05 and S07 parts will hand it, built here from
 // the case itself so each test can break one thing. The book runs on a real database
@@ -182,6 +189,54 @@ describe('runCase', () => {
     ]);
     expect(namedDimensionValues(stated)).toEqual([
       { type: 'contract', code: 'P1' },
+      { type: 'client', code: 'C1' },
+    ]);
+  });
+
+  it("makes the subcontracts, compares a subcontractor's billing, and needs the setup (S12)", async () => {
+    const stated = parseCase(SUBCONTRACT_BILLING);
+    const { fake } = harness(asPosted(stated));
+    const done = async () => ({ status: 'done' as const });
+    const [billing] = stated.expect.projectDocuments ?? [];
+    if (!billing) throw new Error('expected a project document');
+    const withExecutor = {
+      ...fake,
+      executors: { ...fake.executors, project_document: done },
+      projectDocuments: async () => [billing],
+    };
+    expect(await differences(runCase(stated, withExecutor, database))).toEqual([
+      'No subcontracts setup is registered (packages/scenarios/src/harness.ts); ' +
+        'subcontracts arrive with S12',
+    ]);
+    const made: string[] = [];
+    const subcontracts = async (
+      _: unknown,
+      list: readonly { contract: string; supplier: string }[],
+    ) => {
+      made.push(...list.map((subcontract) => `${subcontract.contract}/${subcontract.supplier}`));
+    };
+    await runCase(stated, { ...withExecutor, subcontracts }, database);
+    expect(made).toEqual(['P1/S2']);
+    const found = await differences(
+      runCase(
+        stated,
+        {
+          ...withExecutor,
+          subcontracts,
+          projectDocuments: async () => [{ ...billing, sequence: 2 }],
+        },
+        database,
+      ),
+    );
+    expect(found).toEqual([
+      'missing project document: subcontract_billing 2026/1 of 2026-11-03, P1 of C1 by S2 no. 1: ' +
+        'entry 1, SYP cumulative 100000, previous 0, retention 10000, advance 0',
+      'unexpected project document: subcontract_billing 2026/1 of 2026-11-03, P1 of C1 by S2 no. 2: ' +
+        'entry 1, SYP cumulative 100000, previous 0, retention 10000, advance 0',
+    ]);
+    expect(namedDimensionValues(stated)).toEqual([
+      { type: 'contract', code: 'P1' },
+      { type: 'supplier', code: 'S2' },
       { type: 'client', code: 'C1' },
     ]);
   });

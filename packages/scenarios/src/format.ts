@@ -211,6 +211,36 @@ const rawCompanySchema = z.strictObject({
       'A material is stated twice',
     )
     .default([]),
+  // The subcontracts a subcontractor's billing needs (S12 rule 2): a project and a supplier value
+  // with the subcontract's currency, its value and its retention and advance-recovery rates in
+  // basis points.
+  subcontracts: z
+    .array(
+      z
+        .strictObject({
+          contract: z.string().min(1),
+          supplier: z.string().min(1),
+          currency: currencyCodeSchema,
+          value: amountSchema
+            .refine((value) => value >= 0n, 'A subcontract value is never negative')
+            .optional(),
+          retention_bp: countSchema(0, 10000),
+          advance_recovery_bp: countSchema(0, 10000),
+        })
+        .transform(({ retention_bp, advance_recovery_bp, value, ...subcontract }) => ({
+          ...subcontract,
+          value: value ?? null,
+          retentionBp: retention_bp,
+          advanceRecoveryBp: advance_recovery_bp,
+        })),
+    )
+    .refine(
+      (subcontracts) =>
+        new Set(subcontracts.map((s) => JSON.stringify([s.contract, s.supplier]))).size ===
+        subcontracts.length,
+      'A subcontract is stated twice',
+    )
+    .default([]),
   // The bulletin publication calendar (S02 rules 16–17): ISO weekdays off (Friday and Saturday by
   // default) and the holidays the accountant has marked.
   bulletin_days_off: z
@@ -354,6 +384,7 @@ const companySchema = rawCompanySchema
     closedPeriods: company.closed_periods,
     contracts: company.contracts,
     materials: company.materials,
+    subcontracts: company.subcontracts,
     calendar: { daysOff: company.bulletin_days_off, holidays: company.bulletin_holidays },
     booksStart: company.books_start ?? null,
   }));
@@ -913,6 +944,46 @@ const voucherSchema = z
 
 export type ExpectedVoucher = z.output<typeof voucherSchema>;
 
+/** The fields a client's and a subcontractor's billing share (S12 rules 14–15, 18). */
+const billingFields = {
+  number: countSchema(1),
+  date: dateSchema,
+  contract: z.string().min(1),
+  client: z.string().min(1),
+  sequence: countSchema(1),
+  entry: countSchema(1),
+  currency: currencyCodeSchema,
+  cumulative: amountSchema,
+  previous: amountSchema,
+  retention: amountSchema,
+  advance: amountSchema,
+  cancelled_by: countSchema(1).optional(),
+};
+
+type BillingFields = {
+  cumulative: bigint;
+  previous: bigint;
+  retention: bigint;
+  advance: bigint;
+};
+
+/**
+ * Rule 14: the period's value is above zero; rule 15: each deduction is not negative, and neither
+ * is the net, the period's value less both (rule 18 for a subcontractor's billing).
+ */
+function checkBilling(document: BillingFields, context: z.RefinementCtx) {
+  const issue = (message: string, path: PropertyKey[]) =>
+    context.addIssue({ code: 'custom', message, path });
+  const period = document.cumulative - document.previous;
+  if (document.previous < 0n) issue('The previous cumulative is never negative', ['previous']);
+  if (period <= 0n) issue("A billing's cumulative is above the previous", ['cumulative']);
+  if (document.retention < 0n) issue('A retention is never negative', ['retention']);
+  if (document.advance < 0n) issue('An advance recovery is never negative', ['advance']);
+  if (period - document.retention - document.advance < 0n) {
+    issue("A billing's net is never negative", ['advance']);
+  }
+}
+
 /**
  * A client's progress billing the company holds (S12 rules 14–16, 21): its kind and its number in
  * that kind and its fiscal year, its date, project and client, its number within its project
@@ -920,35 +991,25 @@ export type ExpectedVoucher = z.output<typeof voucherSchema>;
  * and its currency, cumulative, previous, retention and advance recovery (rules 14–15).
  */
 const progressBillingSchema = z
+  .strictObject({ kind: z.literal('progress_billing'), ...billingFields })
+  .superRefine(checkBilling)
+  .transform(({ cancelled_by, ...document }) => ({
+    ...document,
+    cancelledBy: cancelled_by ?? null,
+  }));
+
+/**
+ * A subcontractor's billing the company holds (S12 rules 18, 21): a progress billing's fields with
+ * the supplier, its number within its subcontract (`sequence`, the project and the supplier) and
+ * the subcontract's currency and rates.
+ */
+const subcontractBillingSchema = z
   .strictObject({
-    kind: z.literal('progress_billing'),
-    number: countSchema(1),
-    date: dateSchema,
-    contract: z.string().min(1),
-    client: z.string().min(1),
-    sequence: countSchema(1),
-    entry: countSchema(1),
-    currency: currencyCodeSchema,
-    cumulative: amountSchema,
-    previous: amountSchema,
-    retention: amountSchema,
-    advance: amountSchema,
-    cancelled_by: countSchema(1).optional(),
+    kind: z.literal('subcontract_billing'),
+    ...billingFields,
+    supplier: z.string().min(1),
   })
-  .superRefine((document, context) => {
-    const issue = (message: string, path: PropertyKey[]) =>
-      context.addIssue({ code: 'custom', message, path });
-    // Rule 14: the period's value is above zero; rule 15: each deduction is not negative, and
-    // neither is the net, the period's value less both.
-    const period = document.cumulative - document.previous;
-    if (document.previous < 0n) issue('The previous cumulative is never negative', ['previous']);
-    if (period <= 0n) issue("A billing's cumulative is above the previous", ['cumulative']);
-    if (document.retention < 0n) issue('A retention is never negative', ['retention']);
-    if (document.advance < 0n) issue('An advance recovery is never negative', ['advance']);
-    if (period - document.retention - document.advance < 0n) {
-      issue("A billing's net is never negative", ['advance']);
-    }
-  })
+  .superRefine(checkBilling)
   .transform(({ cancelled_by, ...document }) => ({
     ...document,
     cancelledBy: cancelled_by ?? null,
@@ -1020,6 +1081,7 @@ const wageSheetSchema = z
 /** A project document the company holds (S12 rule 21), by its kind. */
 const projectDocumentSchema = z.discriminatedUnion('kind', [
   progressBillingSchema,
+  subcontractBillingSchema,
   purchaseSchema,
   wageSheetSchema,
 ]);
@@ -1290,7 +1352,15 @@ export const caseSchema = z
     const documentNumbers = new Set<string>();
     const sequences = new Set<string>();
     const documentEntries = new Set<number>();
-    const { contracts } = scenarioCase.company;
+    const { contracts, subcontracts } = scenarioCase.company;
+    // Rule 2: a subcontract pairs a stated project with a supplier.
+    for (const [i, subcontract] of subcontracts.entries()) {
+      const contract = contracts.find((candidate) => candidate.code === subcontract.contract);
+      if (contract?.kind !== 'project') {
+        const message = `${subcontract.contract} is not a project in company.contracts`;
+        issue(message, ['company', 'subcontracts', i, 'contract']);
+      }
+    }
     for (const [d, document] of (scenarioCase.expect.projectDocuments ?? []).entries()) {
       const path = ['expect', 'project_documents', d];
       const contract = contracts.find((candidate) => candidate.code === document.contract);
@@ -1298,6 +1368,18 @@ export const caseSchema = z
         issue(`${document.contract} is not a project in company.contracts`, [...path, 'contract']);
       } else if (contract.client !== document.client) {
         issue(`${document.contract} is ${contract.client}'s project`, [...path, 'client']);
+      } else if (document.kind === 'subcontract_billing') {
+        // Rule 2: a subcontractor's billing needs the subcontract, in its currency.
+        const subcontract = subcontracts.find(
+          (s) => s.contract === document.contract && s.supplier === document.supplier,
+        );
+        if (subcontract === undefined) {
+          const message = `${document.supplier} has no subcontract on ${document.contract}`;
+          issue(message, [...path, 'supplier']);
+        } else if (subcontract.currency !== document.currency) {
+          const message = `${document.supplier}'s subcontract on ${document.contract} is in ${subcontract.currency}`;
+          issue(message, [...path, 'currency']);
+        }
       } else if (document.kind !== 'progress_billing') {
         // A purchase or a wage sheet needs no terms, and may be in any currency (rules 7, 10).
       } else if (contract.terms === null) {
@@ -1311,10 +1393,15 @@ export const caseSchema = z
         issue(`${document.kind} ${document.number} is stated twice`, [...path, 'number']);
       }
       documentNumbers.add(number);
-      if (document.kind === 'progress_billing') {
-        const sequence = JSON.stringify([document.kind, document.contract, document.sequence]);
+      if (document.kind === 'progress_billing' || document.kind === 'subcontract_billing') {
+        // A client's billing runs within its project, a subcontractor's within its subcontract.
+        const owner =
+          document.kind === 'subcontract_billing'
+            ? `${document.contract} by ${document.supplier}`
+            : document.contract;
+        const sequence = JSON.stringify([document.kind, owner, document.sequence]);
         if (sequences.has(sequence)) {
-          const message = `Billing ${document.sequence} of ${document.contract} is stated twice`;
+          const message = `Billing ${document.sequence} of ${owner} is stated twice`;
           issue(message, [...path, 'sequence']);
         }
         sequences.add(sequence);

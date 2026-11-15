@@ -66,8 +66,8 @@ export function namedDimensionValues(scenarioCase: ScenarioCase): NamedValue[] {
       for (const line of step.lines) add(line.dims);
       continue;
     }
-    // A project document names its project and, a purchase, its supplier (S12); its lines, when it
-    // has any, as a manual entry's.
+    // A project document names its project and, a purchase or a subcontractor's billing, its
+    // supplier (S12); its lines, when it has any, as a manual entry's.
     if (step.kind === 'project_document') {
       const { document } = step.payload as {
         document?: { contract?: unknown; supplier?: unknown };
@@ -91,6 +91,10 @@ export function namedDimensionValues(scenarioCase: ScenarioCase): NamedValue[] {
   for (const entry of expect.entries) for (const line of entry.lines) add(line.dims);
   for (const balance of expect.balances) add(balance.dims);
   for (const item of expect.openItems) add(item.dims);
+  // A subcontract's project and supplier (S12 rule 2), which only the subcontract may name.
+  for (const subcontract of scenarioCase.company.subcontracts) {
+    add({ contract: subcontract.contract, supplier: subcontract.supplier });
+  }
   // A contract's client, which a case's lines may not name (a contract named on a cost line only).
   for (const contract of scenarioCase.company.contracts) {
     if (named.has(keyOf('contract', contract.code))) add({ client: contract.client });
@@ -265,6 +269,12 @@ export async function runCase(
         'materials arrive with S12',
     );
   }
+  if (scenarioCase.company.subcontracts.length > 0 && !harness.subcontracts) {
+    missing.push(
+      'No subcontracts setup is registered (packages/scenarios/src/harness.ts); ' +
+        'subcontracts arrive with S12',
+    );
+  }
   if (scenarioCase.expect.quantities !== null && !harness.quantities) {
     missing.push(
       'No quantity reader is registered (packages/scenarios/src/harness.ts); ' +
@@ -282,6 +292,9 @@ export async function runCase(
   );
   const context: CaseContext = { database, companyId, company };
   if (company.materials.length > 0) await harness.materials?.(context, company.materials);
+  if (company.subcontracts.length > 0) {
+    await harness.subcontracts?.(context, company.subcontracts);
+  }
   const differences: string[] = [];
   const corrections = new Map(expect.corrections.map((c) => [c.step, c.usedBy]));
 
