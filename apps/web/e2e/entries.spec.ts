@@ -37,7 +37,11 @@ function recorder(reply: ApiReply | ((request: Request) => ApiReply)) {
 const newDraftId = '01900000-0000-7000-800a-000000000099';
 const posted = {
   status: 200,
-  json: { entry: purchase, draft: { ...ownDraft, state: 'posted', postedEntryId: purchase.id } },
+  json: {
+    entry: purchase,
+    draft: { ...ownDraft, state: 'posted', postedEntryId: purchase.id },
+    voucher: null,
+  },
 };
 
 test.use({ me: owner, api: entryReads });

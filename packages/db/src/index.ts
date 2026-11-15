@@ -44,16 +44,24 @@ export {
 } from './posting/item-reads.js';
 export { closedPeriodList, isClosedPeriod, readClosedPeriods } from './posting/periods.js';
 export {
+  checkVoucher,
   type DealtRateSpec,
+  type DerivedRate,
   type ManualLineSpec,
   type OpeningLineSpec,
   openingIsPosted,
   type PostedEntryRef,
+  type PostedVoucherRef,
   type PostingContent,
   type PostingRequest,
   type PreviewLine,
   post,
+  postVoucher,
   previewPosting,
+  previewVoucher,
+  type VoucherPreviewResult,
+  type VoucherRequest,
+  type VoucherSpec,
   writePeriodTransition,
 } from './posting/post.js';
 export {
@@ -64,6 +72,7 @@ export {
   readChain,
   readLedgerState,
   readPeriodBalances,
+  readVoucherState,
   rebuildPeriodBalances,
   type StoredAnchor,
   type StoredChainLink,
@@ -75,6 +84,7 @@ export {
   type TableScope,
   tableRegistry,
 } from './schema/registry.js';
+export * from './services/cash-reads.js';
 export * from './services/chart.js';
 export * from './services/chart-reads.js';
 export * from './services/companies.js';

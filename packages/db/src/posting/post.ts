@@ -16,10 +16,13 @@ import {
   money,
   type RateSource,
   type RateType,
+  type VoucherKind,
 } from '@vertex-mizan/contracts';
 import {
+  balanceAtEnd,
   balanceEntry,
   balancingLine,
+  boxShortfall,
   type CanonicalValue,
   type CarriedAmounts,
   type ChainConversion,
@@ -33,8 +36,13 @@ import {
   checkItemLine,
   checkLineAgainstChart,
   checkManualEntryDate,
+  checkVoucherShape,
+  countDifference,
   counterpartyOf,
+  countLines,
   type Dimensions,
+  dealtRateAccepted,
+  derivedDealtRate,
   type EntrySource,
   emptyBalance,
   entryHash,
@@ -50,6 +58,7 @@ import {
   measuredLine,
   moveItem,
   movementOn,
+  netChanges,
   periodOf,
   type RevaluedBalance,
   revaluationLines,
@@ -62,6 +71,7 @@ import { and, asc, desc, eq, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import { type AuditActor, writeCompanyAudit } from '../audit.js';
 import type { Transaction } from '../client.js';
+import { cashVouchers, voucherSequences } from '../schema/cash.js';
 import { accountRequiredDimensions, accountRoles, chartAccounts } from '../schema/chart.js';
 import { companySettings } from '../schema/companies.js';
 import { dimensionTypes, dimensionValues } from '../schema/dimensions.js';
@@ -213,6 +223,26 @@ export interface PostingRequest {
   /** Who posts: a person for a manual entry; the audit row's actor. */
   readonly actor: AuditActor;
   readonly content: PostingContent;
+  /**
+   * A voucher draft's header (S11 rule 9): the posting takes the voucher's next number of its kind
+   * and fiscal year, writes the voucher with the entry and puts its number in an empty reference.
+   * Set only by `postVoucher()`, with the draft id.
+   */
+  readonly voucher?: VoucherSpec;
+}
+
+/**
+ * A voucher draft's header as it posts (S11 rules 9–13): its kind and cash account, a transfer's
+ * destination, the party as printed, and a count's counted amount and the expected balance its
+ * preview showed (null in a preview).
+ */
+export interface VoucherSpec {
+  readonly kind: VoucherKind;
+  readonly cashAccountId: string;
+  readonly counterCashAccountId: string | null;
+  readonly partyName: string | null;
+  readonly countedMinor: bigint | null;
+  readonly expectedMinor: bigint | null;
 }
 
 /** The posted entry; `replayed` when the request had posted it before and nothing posted now. */
@@ -372,6 +402,17 @@ function payloadOf(request: PostingRequest): CanonicalValue {
     preparedByUserId: request.preparedByUserId,
     approvedByUserId: request.approvedByUserId,
     content: contentPayload(request.content),
+    // Only when set, so a request of S03's shape hashes as it did.
+    ...(request.voucher !== undefined && {
+      voucher: {
+        kind: request.voucher.kind,
+        cashAccountId: request.voucher.cashAccountId,
+        counterCashAccountId: request.voucher.counterCashAccountId,
+        partyName: request.voucher.partyName,
+        countedMinor: request.voucher.countedMinor,
+        expectedMinor: request.voucher.expectedMinor,
+      },
+    }),
   };
 }
 
@@ -1809,6 +1850,7 @@ export async function previewPosting(
     refuse('PERIOD_CLOSED', `The period ${period} is closed`, { period });
   }
   const built = await buildLines(tx, content, on, ledgers, settings.bulletinDaysOff, false);
+  await checkBoxes(tx, built.lines, on, false);
   const made = new Map(built.newItems.map((item) => [item.id, item]));
   return built.lines.map(({ line, memo, adjusted }, index) => ({
     lineNo: index + 1,
@@ -1859,6 +1901,8 @@ interface EntryToWrite {
   readonly follows: string | null;
   /** The entry's source: `manual`, `revaluation` or `opening`. */
   readonly source: EntrySource;
+  /** The voucher it posts (S11 rule 9), named in its audit row. */
+  readonly voucher?: { readonly kind: VoucherKind; readonly number: number };
 }
 
 /**
@@ -2049,6 +2093,9 @@ async function writeEntry(
       ...(reversesEntryId !== null && { reverses: reversesEntryId }),
       ...(items.length > 0 && { items }),
       ...(entry.follows !== null && { follows: entry.follows }),
+      ...(entry.voucher !== undefined && {
+        voucher: { kind: entry.voucher.kind, fiscalYear, number: entry.voucher.number },
+      }),
     },
   });
   await tx
@@ -2229,6 +2276,8 @@ export async function post(tx: Transaction, request: PostingRequest): Promise<Po
   const periodId = await openPeriod(tx, companyId, on, fiscalYear);
 
   const built = await buildLines(tx, content, on, ledgers, settings.bulletinDaysOff, true);
+  // S11 rule 8: every entry, of any source, leaves each box at or above zero at every date.
+  await checkBoxes(tx, built.lines, on, true);
   const reversesEntryId =
     content.kind === 'reversal' || content.kind === 'opening_reversal' ? content.entryId : null;
   const source: EntrySource =
@@ -2239,10 +2288,20 @@ export async function post(tx: Transaction, request: PostingRequest): Promise<Po
         : 'manual';
   const head: Head = { id: headRow.id, entryCount: headRow.entryCount, lastHash: headRow.lastHash };
   const at = { on, fiscalYear, settingsId: settings.id };
+  // S11 rule 9: a voucher's number, taken here so that its entry's reference can carry it.
+  const voucher =
+    request.voucher === undefined
+      ? null
+      : {
+          spec: request.voucher,
+          number: await takeVoucherNumber(tx, companyId, request.voucher.kind, fiscalYear),
+        };
   const posted = await writeEntry(tx, companyId, head, at, request.actor, {
     requestId: created.id,
     description: request.description,
-    reference: request.reference,
+    reference:
+      request.reference ??
+      (voucher === null ? null : voucherReference(voucher.spec.kind, fiscalYear, voucher.number)),
     reversesEntryId,
     draftId: request.draftId,
     preparedByUserId: request.preparedByUserId,
@@ -2250,7 +2309,19 @@ export async function post(tx: Transaction, request: PostingRequest): Promise<Po
     built,
     follows: null,
     source,
+    ...(voucher !== null && { voucher: { kind: voucher.spec.kind, number: voucher.number } }),
   });
+  if (voucher !== null) {
+    if (request.draftId === null) throw new TypeError('A voucher posts from its draft');
+    await writeVoucher(tx, companyId, {
+      spec: voucher.spec,
+      fiscalYear,
+      number: voucher.number,
+      on,
+      entryId: posted.id,
+      draftId: request.draftId,
+    });
+  }
   if (content.kind === 'revaluation') {
     await writeRevaluationReversal(tx, companyId, head, request, {
       entryId: posted.id,
@@ -2385,4 +2456,598 @@ export async function writePeriodTransition(
   });
   await tx.update(periods).set({ state: kind }).where(eq(periods.id, row.id));
   return row.id;
+}
+
+// Cash vouchers (S11 rules 8–14).
+
+/** How a voucher's kind reads in its entry's reference, before its number (S11 "Arabic strings"). */
+const VOUCHER_LABELS: { readonly [Kind in VoucherKind]: string } = {
+  receipt: 'سند قبض',
+  payment: 'سند صرف',
+  transfer: 'سند تحويل',
+  count: 'محضر جرد',
+};
+
+/** The reference a voucher's entry takes when the accountant left it empty: `سند قبض 2026/15`. */
+function voucherReference(kind: VoucherKind, fiscalYear: number, number: number): string {
+  return `${VOUCHER_LABELS[kind]} ${fiscalYear}/${number}`;
+}
+
+/**
+ * The next number of a voucher kind in a fiscal year (S11 rule 9), under the sequence row's lock:
+ * gapless, since a refusal rolls the transaction back and the guards check every number is taken.
+ */
+async function takeVoucherNumber(
+  tx: Transaction,
+  companyId: string,
+  kind: VoucherKind,
+  fiscalYear: number,
+): Promise<number> {
+  const [sequence] = await tx
+    .insert(voucherSequences)
+    .values({ companyId, kind, fiscalYear, lastNumber: 1 })
+    .onConflictDoUpdate({
+      target: [voucherSequences.companyId, voucherSequences.kind, voucherSequences.fiscalYear],
+      set: { lastNumber: sql`${voucherSequences.lastNumber} + 1`, updatedAt: sql`now()` },
+    })
+    .returning({ lastNumber: voucherSequences.lastNumber });
+  if (!sequence) throw new Error('No voucher number');
+  return sequence.lastNumber;
+}
+
+/** Writes a posted voucher with its number, entry (none for a count that matched) and header. */
+async function writeVoucher(
+  tx: Transaction,
+  companyId: string,
+  voucher: {
+    readonly spec: VoucherSpec;
+    readonly fiscalYear: number;
+    readonly number: number;
+    readonly on: string;
+    readonly entryId: string | null;
+    readonly draftId: string;
+  },
+): Promise<string> {
+  const { spec } = voucher;
+  const id = uuidv7();
+  await tx.insert(cashVouchers).values({
+    id,
+    companyId,
+    kind: spec.kind,
+    fiscalYear: voucher.fiscalYear,
+    number: voucher.number,
+    voucherDate: voucher.on,
+    entryId: voucher.entryId,
+    draftId: voucher.draftId,
+    cashAccountId: spec.cashAccountId,
+    counterCashAccountId: spec.counterCashAccountId,
+    partyName: spec.partyName,
+    countedMinor: spec.kind === 'count' ? spec.countedMinor : null,
+    expectedMinor: spec.kind === 'count' ? spec.expectedMinor : null,
+  });
+  return id;
+}
+
+/**
+ * A box's balance in its currency at the end of the day before `on`, from the period balances of
+ * the months before `on`'s and the lines of its month before `on`, and its net movement on each
+ * date from `on` on (S11 rule 8; "Volume and performance").
+ */
+async function boxMovements(
+  tx: Transaction,
+  box: string,
+  on: string,
+): Promise<{ opening: bigint; later: { date: string; amountMinor: bigint }[] }> {
+  const month = periodOf(on);
+  const monthStart = `${month}-01`;
+  const opening = await tx.execute<{ amount: string | null }>(sql`
+    select (
+      coalesce((
+        select sum(b.debit_minor - b.credit_minor)
+        from public.period_balances b
+        join public.periods p on p.company_id = b.company_id and p.id = b.period_id
+        where b.account_id = ${box} and p.period < ${month}
+      ), 0)
+      + coalesce((
+        select sum(l.amount_minor)
+        from public.journal_lines l
+        join public.journal_entries e on e.company_id = l.company_id and e.id = l.entry_id
+        where l.account_id = ${box} and e.entry_date >= ${monthStart}::date
+          and e.entry_date < ${on}::date
+      ), 0)
+    )::text as amount`);
+  const later = await tx.execute<{ date: string; amount: string }>(sql`
+    select e.entry_date::text as date, sum(l.amount_minor)::text as amount
+    from public.journal_lines l
+    join public.journal_entries e on e.company_id = l.company_id and e.id = l.entry_id
+    where l.account_id = ${box} and e.entry_date >= ${on}::date
+    group by e.entry_date
+    order by e.entry_date`);
+  return {
+    opening: BigInt(opening.rows[0]?.amount ?? '0'),
+    later: later.rows.map((row) => ({ date: row.date, amountMinor: BigInt(row.amount) })),
+  };
+}
+
+/**
+ * A box's expected balance for a count (S11 rule 13): its balance in its currency at the end of
+ * `on`, from what is posted.
+ */
+async function boxBalanceAt(tx: Transaction, box: string, on: string): Promise<bigint> {
+  const { opening, later } = await boxMovements(tx, box, on);
+  return balanceAtEnd({ opening, later, on });
+}
+
+/**
+ * S11 rule 8: refuses lines after which a box would be below zero in its currency at the end of
+ * their date or of any later date (`CASH_BOX_NEGATIVE`, naming the box, the first such date and
+ * the shortfall). Each box the lines take cash out of is locked `FOR NO KEY UPDATE` in id order when
+ * `lock` (after the ledger head, ADR 0008's order), so two payments from one box serialise and the
+ * second reads the first's line; a draft or a line that names the box (a key share) never blocks it.
+ * Bank accounts are not checked (an overdraft is a borrowing, Q17).
+ */
+async function checkBoxes(
+  tx: Transaction,
+  lines: readonly BuiltLine[],
+  on: string,
+  lock: boolean,
+): Promise<void> {
+  const changes = netChanges(lines.map(({ line }) => line));
+  const outgoing = [...changes].filter(([, change]) => change < 0n).map(([account]) => account);
+  if (outgoing.length === 0) return;
+  const query = tx
+    .select({ id: chartAccounts.id, code: chartAccounts.code, currency: chartAccounts.currency })
+    .from(chartAccounts)
+    .where(and(inArray(chartAccounts.id, outgoing), eq(chartAccounts.cashKind, 'box')))
+    .orderBy(asc(chartAccounts.id));
+  const boxes = lock ? await query.for('no key update') : await query;
+  for (const box of boxes) {
+    const { opening, later } = await boxMovements(tx, box.id, on);
+    const shortfall = boxShortfall({ opening, later, on, change: changes.get(box.id) ?? 0n });
+    if (shortfall !== null) {
+      refuse(
+        'CASH_BOX_NEGATIVE',
+        `The box ${box.code} would be ${shortfall.shortfallMinor} below zero on ${shortfall.date}`,
+        {
+          accountId: box.id,
+          account: box.code,
+          currency: box.currency,
+          date: shortfall.date,
+          shortfallMinor: shortfall.shortfallMinor.toString(),
+        },
+      );
+    }
+  }
+}
+
+/** The order in which a currency is a pair's base when the company holds no orientation for it. */
+const BASE_ORDER: readonly CurrencyCode[] = ['USD', 'EUR', 'TRY', 'SYP'];
+
+/** The company's orientation of a pair (S02 `RATE_ORIENTATION`), or the base order's. */
+async function pairOrientation(
+  tx: Transaction,
+  a: CurrencyCode,
+  b: CurrencyCode,
+): Promise<{ base: CurrencyCode; quote: CurrencyCode }> {
+  const [held] = await tx
+    .select({ base: ratePairs.base, quote: ratePairs.quote })
+    .from(ratePairs)
+    .where(
+      or(
+        and(eq(ratePairs.base, a), eq(ratePairs.quote, b)),
+        and(eq(ratePairs.base, b), eq(ratePairs.quote, a)),
+      ),
+    );
+  if (held) return { base: held.base as CurrencyCode, quote: held.quote as CurrencyCode };
+  return BASE_ORDER.indexOf(a) <= BASE_ORDER.indexOf(b)
+    ? { base: a, quote: b }
+    : { base: b, quote: a };
+}
+
+/**
+ * The accounts a count posts its difference to (S11 rule 13, `contracting@1`): cash shortages
+ * `532007` on `is.other_expenses` and cash overages `422002` on `is.other_income` (IAS 1.97–98). An
+ * account of either code that is not that account (another chart's `532007`, a postable account on
+ * another statement line) is refused, never posted to.
+ */
+const COUNT_ACCOUNTS = {
+  shortage: { code: '532007', statementLine: 'is.other_expenses' },
+  overage: { code: '422002', statementLine: 'is.other_income' },
+} as const;
+
+/** A voucher draft as it posts (S11 rules 9–13): its header, typed lines, dealt rates and clock. */
+export interface VoucherRequest extends Omit<PostingRequest, 'content' | 'voucher'> {
+  readonly voucher: VoucherSpec;
+  /** The typed lines; none on a count, whose lines come from its difference. */
+  readonly lines: readonly ManualLineSpec[];
+  readonly dealtRates: readonly DealtRateSpec[];
+  readonly today: string;
+}
+
+/** A derived dealt rate as a transfer offers it (S11 rule 12). */
+export interface DerivedRate {
+  readonly base: CurrencyCode;
+  readonly quote: CurrencyCode;
+  readonly rate: string;
+}
+
+/** What a voucher posts, prepared: its lines and dealt rates, a transfer's rate, a count's figures. */
+interface PreparedVoucher {
+  /** The cash account's currency. */
+  readonly cashCurrency: CurrencyCode;
+  readonly lines: readonly ManualLineSpec[];
+  readonly dealtRates: readonly DealtRateSpec[];
+  readonly derivedRate: DerivedRate | null;
+  readonly expectedMinor: bigint | null;
+  readonly differenceMinor: bigint | null;
+}
+
+/**
+ * A voucher's lines checked and completed (S11 rules 10–13): the shape of its lines against its
+ * header (`checkVoucherShape()`, `CASH_ACCOUNT_INVALID`); for a currency exchange the rate derived
+ * from its amounts, offered as the pair's dealt rate when the accountant typed none for the pair
+ * and a ledger takes it, never refused for it (rule 12); for a count, the box's expected balance at
+ * the end of its date, read under the box's lock when `lock`, compared with the preview's
+ * (`CASH_COUNT_STALE`, with the new expected amount), and its difference lines.
+ */
+export async function checkVoucher(
+  tx: Transaction,
+  request: Pick<VoucherRequest, 'voucher' | 'lines'>,
+) {
+  const { voucher } = request;
+  const ids = [
+    voucher.cashAccountId,
+    ...(voucher.counterCashAccountId === null ? [] : [voucher.counterCashAccountId]),
+    ...request.lines.map((line) => line.accountId),
+  ];
+  const rows = await tx
+    .select({
+      id: chartAccounts.id,
+      code: chartAccounts.code,
+      cashKind: chartAccounts.cashKind,
+      currency: chartAccounts.currency,
+      blockedAt: chartAccounts.blockedAt,
+      archivedAt: chartAccounts.archivedAt,
+    })
+    .from(chartAccounts)
+    .where(inArray(chartAccounts.id, [...new Set(ids)]));
+  const accounts = new Map(
+    rows.map((row) => [
+      row.id,
+      {
+        id: row.id,
+        cashKind: row.cashKind,
+        currency: row.currency as CurrencyCode | null,
+        accountClass: Number(row.code[0]),
+      },
+    ]),
+  );
+  const cashAccount = accounts.get(voucher.cashAccountId);
+  if (cashAccount === undefined) {
+    refuse('CASH_ACCOUNT_INVALID', "The voucher's account is not a cash account", {
+      field: 'cashAccountId',
+    });
+  }
+  const counterCashAccount =
+    voucher.counterCashAccountId === null ? null : accounts.get(voucher.counterCashAccountId);
+  if (counterCashAccount === undefined) {
+    refuse('CASH_ACCOUNT_INVALID', "The transfer's destination is not a cash account", {
+      field: 'counterCashAccountId',
+    });
+  }
+  // Edge cases 16–17: an archived or blocked cash account takes no new voucher, a count that
+  // matches (which posts no line the chart would check) included.
+  for (const id of [voucher.cashAccountId, voucher.counterCashAccountId]) {
+    const row = rows.find((candidate) => candidate.id === id);
+    if (row?.archivedAt != null) {
+      refuse('ACCOUNT_ARCHIVED', `The cash account ${row.code} is archived`, { account: row.code });
+    }
+    if (row?.blockedAt != null) {
+      refuse('ACCOUNT_BLOCKED', `The cash account ${row.code} is blocked`, { account: row.code });
+    }
+  }
+  const transfer = checkVoucherShape({
+    kind: voucher.kind,
+    cashAccount,
+    counterCashAccount,
+    lines: request.lines.map((line) => ({
+      account: line.accountId,
+      currency: line.currency,
+      amountMinor: line.amountMinor,
+    })),
+    accounts,
+  });
+  return { cashAccount, transfer };
+}
+
+async function prepareVoucher(
+  tx: Transaction,
+  request: Pick<VoucherRequest, 'voucher' | 'lines' | 'dealtRates' | 'entryDate'>,
+  ledgers: CompanyLedgers,
+  lock: boolean,
+): Promise<PreparedVoucher> {
+  const { voucher } = request;
+  const { cashAccount, transfer } = await checkVoucher(tx, request);
+  if (transfer !== null) {
+    const pair = await pairOrientation(tx, transfer.givenCurrency, transfer.receivedCurrency);
+    const derivedRate = derivedDealtRate(transfer, pair);
+    const typed = request.dealtRates.some(
+      (rate) =>
+        (rate.base === pair.base && rate.quote === pair.quote) ||
+        (rate.base === pair.quote && rate.quote === pair.base),
+    );
+    const currencies = new Set(request.lines.map((line) => line.currency));
+    const offered =
+      derivedRate !== null && !typed && dealtRateAccepted(derivedRate, currencies, ledgers);
+    return {
+      cashCurrency: cashAccount.currency as CurrencyCode,
+      lines: request.lines,
+      dealtRates:
+        offered && derivedRate !== null ? [...request.dealtRates, derivedRate] : request.dealtRates,
+      derivedRate,
+      expectedMinor: null,
+      differenceMinor: null,
+    };
+  }
+  if (voucher.kind !== 'count') {
+    return {
+      cashCurrency: cashAccount.currency as CurrencyCode,
+      lines: request.lines,
+      dealtRates: request.dealtRates,
+      derivedRate: null,
+      expectedMinor: null,
+      differenceMinor: null,
+    };
+  }
+  const countedMinor = voucher.countedMinor;
+  if (countedMinor === null) {
+    refuse('VALIDATION_FAILED', 'A count states the cash counted', { field: 'countedMinor' });
+  }
+  if (lock) {
+    await tx
+      .select({ id: chartAccounts.id })
+      .from(chartAccounts)
+      .where(eq(chartAccounts.id, voucher.cashAccountId))
+      .for('no key update');
+  }
+  const expectedMinor = await boxBalanceAt(tx, voucher.cashAccountId, request.entryDate);
+  if (voucher.expectedMinor !== null && voucher.expectedMinor !== expectedMinor) {
+    refuse('CASH_COUNT_STALE', 'The box has changed since the count was previewed', {
+      expectedMinor: expectedMinor.toString(),
+    });
+  }
+  const targets = await tx
+    .select({
+      id: chartAccounts.id,
+      code: chartAccounts.code,
+      kind: chartAccounts.kind,
+      statementLine: chartAccounts.statementLine,
+    })
+    .from(chartAccounts)
+    .where(
+      inArray(chartAccounts.code, [COUNT_ACCOUNTS.shortage.code, COUNT_ACCOUNTS.overage.code]),
+    );
+  const accountOf = (target: { readonly code: string; readonly statementLine: string }) => {
+    const found = targets.find((row) => row.code === target.code);
+    if (
+      found === undefined ||
+      found.kind !== 'postable' ||
+      found.statementLine !== target.statementLine
+    ) {
+      refuse(
+        'CASH_ACCOUNT_INVALID',
+        `A count posts its difference to ${target.code} on ${target.statementLine}`,
+        { account: target.code, statementLine: target.statementLine },
+      );
+    }
+    return found.id;
+  };
+  const lines =
+    countedMinor === expectedMinor
+      ? []
+      : countLines({
+          box: voucher.cashAccountId,
+          currency: cashAccount.currency as CurrencyCode,
+          countedMinor,
+          expectedMinor,
+          shortageAccount: countedMinor < expectedMinor ? accountOf(COUNT_ACCOUNTS.shortage) : '',
+          overageAccount: countedMinor > expectedMinor ? accountOf(COUNT_ACCOUNTS.overage) : '',
+        }).map(
+          (line): ManualLineSpec => ({
+            accountId: line.account,
+            dimensionValueIds: [],
+            currency: line.currency,
+            amountMinor: line.amountMinor,
+            memo: null,
+          }),
+        );
+  return {
+    cashCurrency: cashAccount.currency as CurrencyCode,
+    lines,
+    dealtRates: [],
+    derivedRate: null,
+    expectedMinor,
+    differenceMinor: countDifference(countedMinor, expectedMinor),
+  };
+}
+
+/** A posted voucher: its number and its entry, none for a count that matched (S11 rule 13). */
+export interface PostedVoucherRef {
+  readonly id: string;
+  readonly kind: VoucherKind;
+  readonly fiscalYear: number;
+  readonly number: number;
+  readonly entry: PostedEntryRef | null;
+  /** The draft had posted its voucher before and nothing posted now. */
+  readonly replayed: boolean;
+}
+
+/**
+ * Posts a voucher draft (S11 rules 8–14), inside `withCompany`, idempotent by the draft (one
+ * voucher per draft): the ledger head locked first, then the voucher prepared (`prepareVoucher()`,
+ * a count's box locked and its expected balance compared), then posted by `post()` with its voucher
+ * header, which takes the number, writes the entry with its reference and the voucher, and checks
+ * every box (rule 8). A count that matches posts no entry: its period made open, its date checked
+ * as a manual entry's, its number taken and its voucher written with the audit row
+ * `cash_count.recorded`. Any refusal throws and the caller's transaction rolls back, so no number
+ * is used up.
+ */
+export async function postVoucher(
+  tx: Transaction,
+  request: VoucherRequest,
+): Promise<PostedVoucherRef> {
+  const companyId = await contextCompany(tx);
+  const draftId = request.draftId;
+  if (draftId === null) throw new TypeError('A voucher posts from its draft');
+  // The voucher a draft posted is read after the ledger head is locked, so a second post of the
+  // draft at once waits for the first and answers its voucher (one voucher per draft).
+  const [head] = await tx.select({ id: ledgerHeads.id }).from(ledgerHeads).for('update');
+  const existing = await voucherOfDraft(tx, draftId);
+  if (existing !== null) return { ...existing, replayed: true };
+  const [settings] = await tx.select().from(companySettings).for('update');
+  if (!head || !settings) throw new Error('A company without its ledger head or settings');
+  const prepared = await prepareVoucher(tx, request, ledgersOf(settings), true);
+  const spec: VoucherSpec = { ...request.voucher, expectedMinor: prepared.expectedMinor };
+  if (request.voucher.kind === 'count' && prepared.lines.length === 0) {
+    const on = request.entryDate;
+    await checkOpeningPosted(tx, settings.booksStart, {
+      kind: 'manual',
+      today: request.today,
+      lines: [],
+      dealtRates: [],
+    });
+    checkManualEntryDate(on, request.today);
+    checkCurrencyDate(prepared.cashCurrency, on);
+    const fiscalYear = fiscalYearOf(on, settings.fiscalYearStartMonth);
+    await openPeriod(tx, companyId, on, fiscalYear);
+    const number = await takeVoucherNumber(tx, companyId, 'count', fiscalYear);
+    const id = await writeVoucher(tx, companyId, {
+      spec,
+      fiscalYear,
+      number,
+      on,
+      entryId: null,
+      draftId,
+    });
+    await writeCompanyAudit(tx, companyId, request.actor, {
+      action: 'cash_count.recorded',
+      entityType: 'cash_voucher',
+      entityId: id,
+      after: {
+        kind: 'count',
+        fiscalYear,
+        number,
+        voucherDate: on,
+        cashAccountId: spec.cashAccountId,
+        countedMinor: spec.countedMinor?.toString() ?? null,
+        expectedMinor: spec.expectedMinor?.toString() ?? null,
+        description: request.description,
+      },
+    });
+    return { id, kind: 'count', fiscalYear, number, entry: null, replayed: false };
+  }
+  const entry = await post(tx, {
+    client: request.client,
+    idempotencyKey: request.idempotencyKey,
+    entryDate: request.entryDate,
+    description: request.description,
+    reference: request.reference,
+    draftId,
+    preparedByUserId: request.preparedByUserId,
+    approvedByUserId: request.approvedByUserId,
+    actor: request.actor,
+    content: {
+      kind: 'manual',
+      today: request.today,
+      dealtRates: prepared.dealtRates,
+      lines: prepared.lines,
+    },
+    voucher: spec,
+  });
+  const posted = await voucherOfDraft(tx, draftId);
+  if (posted === null) throw new Error('A voucher posted without its row');
+  return { ...posted, entry, replayed: entry.replayed };
+}
+
+/** The voucher a draft posted, with its entry, or null. */
+async function voucherOfDraft(
+  tx: Transaction,
+  draftId: string,
+): Promise<Omit<PostedVoucherRef, 'replayed'> | null> {
+  const [row] = await tx
+    .select({ voucher: cashVouchers, entry: journalEntries })
+    .from(cashVouchers)
+    .leftJoin(
+      journalEntries,
+      and(
+        eq(journalEntries.companyId, cashVouchers.companyId),
+        eq(journalEntries.id, cashVouchers.entryId),
+      ),
+    )
+    .where(eq(cashVouchers.draftId, draftId));
+  if (row === undefined) return null;
+  const { voucher, entry } = row;
+  return {
+    id: voucher.id,
+    kind: voucher.kind,
+    fiscalYear: voucher.fiscalYear,
+    number: voucher.number,
+    entry:
+      entry === null
+        ? null
+        : {
+            id: entry.id,
+            fiscalYear: entry.fiscalYear,
+            number: entry.number,
+            sequence: entry.sequence,
+            hash: entry.hash,
+            replayed: true,
+          },
+  };
+}
+
+/** A voucher's preview (S11 "API"): its lines, a transfer's derived rate and a count's figures. */
+export interface VoucherPreviewResult {
+  readonly lines: PreviewLine[];
+  readonly derivedRate: DerivedRate | null;
+  readonly expectedMinor: bigint | null;
+  readonly differenceMinor: bigint | null;
+}
+
+/**
+ * What a voucher draft would post now (S11 "API"), with no write and no lock: the lines as
+ * `previewPosting()` builds them (none for a count that matches), a transfer's derived rate and a
+ * count's expected balance and difference. It refuses as `postVoucher()` would, but for a count's
+ * stale expected amount, which the preview gives.
+ */
+export async function previewVoucher(
+  tx: Transaction,
+  request: Pick<VoucherRequest, 'voucher' | 'lines' | 'dealtRates' | 'entryDate' | 'today'>,
+): Promise<VoucherPreviewResult> {
+  const [settings] = await tx.select().from(companySettings);
+  if (!settings) throw new Error('A company without its settings');
+  const prepared = await prepareVoucher(
+    tx,
+    { ...request, voucher: { ...request.voucher, expectedMinor: null } },
+    ledgersOf(settings),
+    false,
+  );
+  const lines =
+    prepared.lines.length === 0
+      ? []
+      : await previewPosting(tx, {
+          entryDate: request.entryDate,
+          content: {
+            kind: 'manual',
+            today: request.today,
+            dealtRates: prepared.dealtRates,
+            lines: prepared.lines,
+          },
+        });
+  return {
+    lines,
+    derivedRate: prepared.derivedRate,
+    expectedMinor: prepared.expectedMinor,
+    differenceMinor: prepared.differenceMinor,
+  };
 }

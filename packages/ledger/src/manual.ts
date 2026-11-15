@@ -52,13 +52,7 @@ function checkDealtRates(entry: ManualEntry, context: MeasureContext): void {
     ) {
       throw new TypeError(`Two dealt rates for ${dealt.base}/${dealt.quote}`);
     }
-    const used = keptLedgers(context.ledgers).some(
-      ([, { currency, ratePolicy }]) =>
-        ratePolicy.rateType === 'market' &&
-        ratePolicy.acceptsTransactionRate &&
-        [...currencies].some((from) => from !== currency && quotesPair(dealt, from, currency)),
-    );
-    if (!used) {
+    if (!dealtRateAccepted(dealt, currencies, context.ledgers)) {
       throw new DomainError(
         'DEALT_RATE_NOT_ACCEPTED',
         `No ledger of the company takes a dealt ${dealt.base}/${dealt.quote} rate for this entry`,
@@ -66,6 +60,25 @@ function checkDealtRates(entry: ManualEntry, context: MeasureContext): void {
       );
     }
   }
+}
+
+/**
+ * Whether a ledger of the company takes a dealt rate for an entry in `currencies`: a ledger whose
+ * policy is `market` and accepts a transaction's rate, for the pair of one of the entry's currencies
+ * and that ledger's currency (S03 rule 13). A transfer's derived rate (S11 rule 12) is offered only
+ * when one does.
+ */
+export function dealtRateAccepted(
+  dealt: Pick<ExchangeRate, 'base' | 'quote'>,
+  currencies: ReadonlySet<CurrencyCode>,
+  ledgers: MeasureContext['ledgers'],
+): boolean {
+  return keptLedgers(ledgers).some(
+    ([, { currency, ratePolicy }]) =>
+      ratePolicy.rateType === 'market' &&
+      ratePolicy.acceptsTransactionRate &&
+      [...currencies].some((from) => from !== currency && quotesPair(dealt, from, currency)),
+  );
 }
 
 /** A manual entry's lines, and for each the manual line it comes from. */

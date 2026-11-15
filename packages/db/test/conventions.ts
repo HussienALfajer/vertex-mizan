@@ -154,7 +154,7 @@ export type Guards = {
  * their movements, due dates and balances; S05's inbox and API clients; S06's recognition schedules
  * and movements; S07's revaluations, and its item movements and balances with revaluations).
  * S07's second PR adds the period close; S08 the reconciliation; S09 the service departments;
- * S10 the opening balances.
+ * S10 the opening balances; S11 the cash vouchers and their sequences.
  */
 export const GUARDS: Guards = {
   functions: [
@@ -1328,6 +1328,147 @@ END
 `,
     },
     {
+      name: 'voucher_sequence_rules',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    IF NEW.last_number <> 1 THEN
+      RAISE EXCEPTION 'voucher_sequences: a kind''s numbers in a fiscal year start at 1'
+        USING ERRCODE = 'restrict_violation';
+    END IF;
+    RETURN NEW;
+  END IF;
+  IF (NEW.id, NEW.company_id, NEW.kind, NEW.fiscal_year, NEW.created_at)
+      IS DISTINCT FROM (OLD.id, OLD.company_id, OLD.kind, OLD.fiscal_year, OLD.created_at)
+    OR NEW.last_number IS DISTINCT FROM OLD.last_number + 1 THEN
+    RAISE EXCEPTION 'voucher_sequences: a sequence moves by one number at a time'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  RETURN NEW;
+END
+`,
+    },
+    {
+      name: 'voucher_sequence_used',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM public.cash_vouchers v
+    WHERE v.company_id = NEW.company_id AND v.kind = NEW.kind
+      AND v.fiscal_year = NEW.fiscal_year AND v.number = NEW.last_number
+  ) THEN
+    RAISE EXCEPTION '% voucher number % of fiscal year % was given but no voucher took it',
+      NEW.kind, NEW.last_number, NEW.fiscal_year
+      USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NULL;
+END
+`,
+    },
+    {
+      name: 'cash_voucher_rules',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+DECLARE
+  draft record;
+  cash_kind_of text;
+  counter_kind text;
+  given integer;
+  entry record;
+  month record;
+BEGIN
+  SELECT d.state, d.archived_at, d.entry_date, d.voucher_kind, d.cash_account_id,
+    d.counter_cash_account_id, d.party_name, d.counted_minor
+  INTO draft
+  FROM public.entry_drafts d
+  WHERE d.company_id = NEW.company_id AND d.id = NEW.draft_id
+  FOR SHARE;
+  IF NOT FOUND OR draft.state = 'posted' OR draft.archived_at IS NOT NULL
+    OR draft.voucher_kind IS DISTINCT FROM NEW.kind
+    OR draft.entry_date IS DISTINCT FROM NEW.voucher_date
+    OR (draft.cash_account_id, draft.counter_cash_account_id, draft.party_name)
+      IS DISTINCT FROM (NEW.cash_account_id, NEW.counter_cash_account_id, NEW.party_name)
+    OR draft.counted_minor IS DISTINCT FROM NEW.counted_minor THEN
+    RAISE EXCEPTION 'cash_vouchers: a voucher is its own voucher draft''s, as prepared'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  SELECT a.cash_kind::text INTO cash_kind_of
+  FROM public.chart_accounts a
+  WHERE a.company_id = NEW.company_id AND a.id = NEW.cash_account_id;
+  IF cash_kind_of IS NULL OR (NEW.kind = 'count' AND cash_kind_of <> 'box') THEN
+    RAISE EXCEPTION 'cash_vouchers: a voucher is of a cash account, a count of a box'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF NEW.counter_cash_account_id IS NOT NULL THEN
+    SELECT a.cash_kind::text INTO counter_kind
+    FROM public.chart_accounts a
+    WHERE a.company_id = NEW.company_id AND a.id = NEW.counter_cash_account_id;
+    IF counter_kind IS NULL THEN
+      RAISE EXCEPTION 'cash_vouchers: a transfer''s destination is a cash account'
+        USING ERRCODE = 'restrict_violation';
+    END IF;
+  END IF;
+  SELECT s.last_number INTO given
+  FROM public.voucher_sequences s
+  WHERE s.company_id = NEW.company_id AND s.kind = NEW.kind AND s.fiscal_year = NEW.fiscal_year;
+  IF given IS DISTINCT FROM NEW.number THEN
+    RAISE EXCEPTION 'cash_vouchers: a voucher takes the number its sequence just gave'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF NEW.entry_id IS NOT NULL THEN
+    SELECT e.draft_id, e.entry_date, e.fiscal_year, e.source, e.reverses_entry_id INTO entry
+    FROM public.journal_entries e
+    WHERE e.company_id = NEW.company_id AND e.id = NEW.entry_id;
+    IF NOT FOUND OR entry.draft_id IS DISTINCT FROM NEW.draft_id
+      OR entry.entry_date <> NEW.voucher_date OR entry.fiscal_year <> NEW.fiscal_year
+      OR entry.source <> 'manual' OR entry.reverses_entry_id IS NOT NULL THEN
+      RAISE EXCEPTION 'cash_vouchers: a voucher''s entry is posted from its draft, on its date'
+        USING ERRCODE = 'restrict_violation';
+    END IF;
+  ELSE
+    SELECT p.fiscal_year, p.state INTO month
+    FROM public.periods p
+    WHERE p.company_id = NEW.company_id AND p.period = to_char(NEW.voucher_date, 'YYYY-MM')
+    FOR SHARE;
+    IF NOT FOUND OR month.state = 'closed' OR month.fiscal_year <> NEW.fiscal_year THEN
+      RAISE EXCEPTION 'cash_vouchers: a count with no entry is in an open month of its fiscal year'
+        USING ERRCODE = 'restrict_violation';
+    END IF;
+  END IF;
+  RETURN NEW;
+END
+`,
+    },
+    {
       name: 'entry_draft_rules',
       arguments: '',
       returns: 'trigger',
@@ -1362,13 +1503,24 @@ BEGIN
       USING ERRCODE = 'restrict_violation';
   END IF;
   IF OLD.state = 'submitted'
-    AND (NEW.entry_date, NEW.description, NEW.reference, NEW.dealt_rates, NEW.archived_at)
+    AND (NEW.entry_date, NEW.description, NEW.reference, NEW.dealt_rates, NEW.archived_at,
+      NEW.voucher_kind, NEW.cash_account_id, NEW.counter_cash_account_id, NEW.party_name,
+      NEW.counted_minor)
       IS DISTINCT FROM (OLD.entry_date, OLD.description, OLD.reference, OLD.dealt_rates,
-        OLD.archived_at) THEN
+        OLD.archived_at, OLD.voucher_kind, OLD.cash_account_id, OLD.counter_cash_account_id,
+        OLD.party_name, OLD.counted_minor) THEN
     RAISE EXCEPTION 'entry_drafts: draft % is submitted and read only', OLD.id
       USING ERRCODE = 'restrict_violation';
   END IF;
-  IF NEW.state = 'posted' AND NOT EXISTS (
+  IF NEW.state = 'posted' AND NEW.voucher_kind IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM public.cash_vouchers v
+    WHERE v.company_id = NEW.company_id AND v.draft_id = NEW.id
+      AND v.entry_id IS NOT DISTINCT FROM NEW.posted_entry_id
+  ) THEN
+    RAISE EXCEPTION 'entry_drafts: voucher draft % posts only with its voucher', OLD.id
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF NEW.state = 'posted' AND NEW.posted_entry_id IS NOT NULL AND NOT EXISTS (
     SELECT 1 FROM public.journal_entries e
     WHERE e.company_id = NEW.company_id AND e.id = NEW.posted_entry_id AND e.draft_id = NEW.id
       AND e.source = 'manual'
@@ -3201,6 +3353,56 @@ END
       function: 'refuse_delete',
       deferred: false,
       on: ['TRUNCATE'],
+    },
+    // S11's vouchers (0068): append-only vouchers of their drafts, gapless sequences.
+    {
+      table: 'cash_vouchers',
+      name: 'cash_vouchers_refuse_change',
+      function: 'refuse_change',
+      deferred: false,
+      on: ['UPDATE', 'DELETE'],
+    },
+    {
+      table: 'cash_vouchers',
+      name: 'cash_vouchers_refuse_truncate',
+      function: 'refuse_change',
+      deferred: false,
+      on: ['TRUNCATE'],
+    },
+    {
+      table: 'cash_vouchers',
+      name: 'cash_voucher_rules',
+      function: 'cash_voucher_rules',
+      deferred: false,
+      on: ['INSERT'],
+    },
+    {
+      table: 'voucher_sequences',
+      name: 'voucher_sequences_refuse_delete',
+      function: 'refuse_delete',
+      deferred: false,
+      on: ['DELETE'],
+    },
+    {
+      table: 'voucher_sequences',
+      name: 'voucher_sequences_refuse_truncate',
+      function: 'refuse_delete',
+      deferred: false,
+      on: ['TRUNCATE'],
+    },
+    {
+      table: 'voucher_sequences',
+      name: 'voucher_sequence_rules',
+      function: 'voucher_sequence_rules',
+      deferred: false,
+      on: ['INSERT', 'UPDATE'],
+    },
+    {
+      table: 'voucher_sequences',
+      name: 'voucher_sequence_used',
+      function: 'voucher_sequence_used',
+      deferred: true,
+      on: ['INSERT', 'UPDATE'],
     },
     {
       table: 'entry_drafts',

@@ -3,6 +3,7 @@ import {
   type DraftInput,
   type DraftLine,
   type DraftLineInput,
+  type VoucherHeaderInput,
 } from '@vertex-mizan/contracts';
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
@@ -116,6 +117,54 @@ export async function writeLines(
   }
 }
 
+/**
+ * A voucher draft's header as stored (S11 rules 9–13), its accounts checked to be the company's
+ * (`VALIDATION_FAILED`, rather than their foreign key); every column null on any other draft.
+ * Whether they are cash accounts is the posting's check (`CASH_ACCOUNT_INVALID`).
+ */
+export async function voucherColumns(
+  tx: Transaction,
+  voucher: VoucherHeaderInput | null | undefined,
+) {
+  if (voucher === null || voucher === undefined) {
+    return {
+      voucherKind: null,
+      cashAccountId: null,
+      counterCashAccountId: null,
+      partyName: null,
+      countedMinor: null,
+    };
+  }
+  const ids = [
+    voucher.cashAccountId,
+    ...(voucher.counterCashAccountId === null ? [] : [voucher.counterCashAccountId]),
+  ];
+  const known = new Set(
+    (
+      await tx
+        .select({ id: chartAccounts.id })
+        .from(chartAccounts)
+        .where(inArray(chartAccounts.id, ids))
+    ).map((row) => row.id),
+  );
+  const unknown = (['cashAccountId', 'counterCashAccountId'] as const).flatMap((field) => {
+    const id = voucher[field];
+    return id !== null && !known.has(id)
+      ? [{ path: ['voucher', field], message: 'Unknown account' }]
+      : [];
+  });
+  if (unknown.length > 0) {
+    throw new DomainError('VALIDATION_FAILED', 'Unknown account', { issues: unknown });
+  }
+  return {
+    voucherKind: voucher.kind,
+    cashAccountId: voucher.cashAccountId,
+    counterCashAccountId: voucher.counterCashAccountId,
+    partyName: voucher.partyName,
+    countedMinor: voucher.countedMinor === null ? null : BigInt(voucher.countedMinor),
+  };
+}
+
 /** Where a new draft comes from: typed, a copy of an entry, or a reversal waiting for approval. */
 export interface DraftOrigin {
   readonly copiedFromEntryId?: string;
@@ -142,6 +191,7 @@ export async function insertDraft(
     reversesEntryId: origin.reversesEntryId ?? null,
     copiedFromEntryId: origin.copiedFromEntryId ?? null,
     preparedByUserId: actor.userId,
+    ...(await voucherColumns(tx, input.voucher)),
   });
   await writeLines(tx, companyId, id, input.lines);
   await writeCompanyAudit(tx, companyId, actor, {
@@ -155,6 +205,7 @@ export async function insertDraft(
       reference: input.reference,
       dealtRates: input.dealtRates,
       lines: auditedLines(input.lines),
+      ...(input.voucher != null && { voucher: input.voucher }),
       ...(origin.reversesEntryId && { reversesEntryId: origin.reversesEntryId }),
       ...(origin.copiedFromEntryId && { copiedFromEntryId: origin.copiedFromEntryId }),
     },

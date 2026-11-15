@@ -139,6 +139,10 @@ export const audit = {
     'opening.posted': 'رحّل قيد الأرصدة الافتتاحية',
     'opening.reversed': 'عكس قيد الأرصدة الافتتاحية كاملاً',
     'export.opening': 'صدّر الأرصدة الافتتاحية',
+    'cash_count.recorded': 'سجّل جرد صندوق مطابقًا',
+    'export.cash_statement': 'صدّر كشف حساب نقدي',
+    'export.cash_position': 'صدّر الموقف النقدي',
+    'export.voucher': 'طبع سندًا',
   } satisfies Record<CompanyAuditAction, string>,
   /** The audited entities (`AUDITED_FIELDS` in `packages/db`). */
   entities: {
@@ -172,6 +176,7 @@ export const audit = {
     opening_snapshot: 'لقطة الأرصدة الافتتاحية',
     opening: 'الأرصدة الافتتاحية',
     opening_export: 'تصدير الأرصدة الافتتاحية',
+    cash_voucher: 'السند',
   },
   /** The audited fields, by entity field name. */
   fields: {

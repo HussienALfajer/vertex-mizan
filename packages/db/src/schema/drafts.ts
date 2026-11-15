@@ -7,6 +7,7 @@ import {
   index,
   integer,
   jsonb,
+  pgEnum,
   pgTable,
   smallint,
   text,
@@ -45,6 +46,12 @@ export const ATTACHMENT_TYPES = [
   'image/webp',
 ] as const;
 
+/**
+ * `VOUCHER_KINDS` of `@vertex-mizan/contracts` (S11 rules 10–13), the `voucher_kind` enum of a
+ * voucher draft and of `cash_vouchers`; values are never renamed. A test keeps them equal.
+ */
+export const voucherKind = pgEnum('voucher_kind', ['receipt', 'payment', 'transfer', 'count']);
+
 const listed = (values: readonly string[]) =>
   sql.raw(values.map((value) => `'${value}'`).join(', '));
 
@@ -75,6 +82,13 @@ export const entryDrafts = pgTable(
     rejectedReason: text(),
     rejectedAt: timestamptz(),
     postedEntryId: uuid(),
+    // S11 rules 9–13: a voucher draft's header. A count's lines come from its difference at
+    // posting; a count that matches posts no entry, its draft `posted` with its voucher alone.
+    voucherKind: voucherKind(),
+    cashAccountId: uuid(),
+    counterCashAccountId: uuid(),
+    partyName: text(),
+    countedMinor: bigint({ mode: 'bigint' }),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
     archivedAt: archivedAt(),
@@ -99,6 +113,18 @@ export const entryDrafts = pgTable(
       columns: [t.companyId, t.postedEntryId],
       foreignColumns: [journalEntries.companyId, journalEntries.id],
     }),
+    foreignKey({
+      name: 'entry_drafts_cash_account_fk',
+      columns: [t.companyId, t.cashAccountId],
+      foreignColumns: [chartAccounts.companyId, chartAccounts.id],
+    }),
+    foreignKey({
+      name: 'entry_drafts_counter_cash_account_fk',
+      columns: [t.companyId, t.counterCashAccountId],
+      foreignColumns: [chartAccounts.companyId, chartAccounts.id],
+    }),
+    index('entry_drafts_company_cash_account_idx').on(t.companyId, t.cashAccountId),
+    index('entry_drafts_company_counter_cash_account_idx').on(t.companyId, t.counterCashAccountId),
     index('entry_drafts_company_state_idx').on(t.companyId, t.state, t.updatedAt),
     index('entry_drafts_company_reverses_idx').on(t.companyId, t.reversesEntryId),
     index('entry_drafts_company_copied_from_idx').on(t.companyId, t.copiedFromEntryId),
@@ -107,7 +133,24 @@ export const entryDrafts = pgTable(
       .on(t.companyId, t.reversesEntryId)
       .where(sql`${t.archivedAt} is null`),
     check('entry_drafts_state', sql`${t.state} in (${listed(ENTRY_DRAFT_STATES)})`),
-    check('entry_drafts_posted', sql`(${t.postedEntryId} is not null) = (${t.state} = 'posted')`),
+    // Posted with its entry; a count that matches is posted with its voucher and no entry (S11).
+    check(
+      'entry_drafts_posted_entry',
+      sql`(${t.postedEntryId} is null or ${t.state} = 'posted')
+        and (${t.state} <> 'posted' or ${t.postedEntryId} is not null or ${t.voucherKind} = 'count')`,
+    ),
+    // A voucher's header (S11 rules 9–13): a cash account; a destination on a transfer only; a
+    // counted amount on a count only, never below zero; never on a reversal's draft.
+    check(
+      'entry_drafts_voucher',
+      sql`(${t.voucherKind} is null) = (${t.cashAccountId} is null)
+        and (${t.voucherKind} is null or ${t.reversesEntryId} is null)
+        and (${t.counterCashAccountId} is not null) = (${t.voucherKind} is not distinct from 'transfer')
+        and (${t.counterCashAccountId} is null or ${t.counterCashAccountId} <> ${t.cashAccountId})
+        and (${t.countedMinor} is null or (${t.voucherKind} = 'count' and ${t.countedMinor} >= 0))
+        and (${t.partyName} is null or (${t.voucherKind} is not null
+          and char_length(${t.partyName}) between 1 and 200))`,
+    ),
     check(
       'entry_drafts_description_length',
       sql`${t.description} is null or char_length(${t.description}) between 1 and 500`,

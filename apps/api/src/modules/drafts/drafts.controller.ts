@@ -31,7 +31,9 @@ import {
   entryPreviewSchema,
   type IdParam,
   idParamSchema,
+  type PostDraft,
   type PostedDraft,
+  postDraftSchema,
   postedDraftSchema,
   type RejectDraft,
   rejectDraftSchema,
@@ -79,6 +81,10 @@ const POSTING_ERRORS = [
   'ACCOUNT_NOT_CONTROL',
   'OPEN_ITEM_DIRECTION',
   'RELEASE_EXCEEDS_BALANCE',
+  // S11: the box rule, a stale count and a voucher's shape.
+  'CASH_BOX_NEGATIVE',
+  'CASH_COUNT_STALE',
+  'CASH_ACCOUNT_INVALID',
 ] as const;
 
 /** `/api/drafts`: the drafts of manual entries and the approval queue (S03 rules 4–11, 17). */
@@ -176,8 +182,9 @@ export class DraftsController {
   async post(
     @Access() access: RequestAccess,
     @Param({ schema: idParamSchema }) params: IdParam,
+    @Body({ schema: postDraftSchema }) body: PostDraft,
   ): Promise<PostedDraft> {
-    return this.drafts.post(inCompany(access), params.id);
+    return this.drafts.post(inCompany(access), params.id, body);
   }
 
   @Post(':id/submit')
@@ -192,6 +199,9 @@ export class DraftsController {
     'DRAFT_NOT_EDITABLE',
     'APPROVAL_NOT_REQUIRED',
     'ENTRY_TOO_FEW_LINES',
+    'CASH_ACCOUNT_INVALID',
+    'ACCOUNT_ARCHIVED',
+    'ACCOUNT_BLOCKED',
   )
   async submit(
     @Access() access: RequestAccess,
@@ -246,8 +256,9 @@ export class DraftsController {
   async approve(
     @Access() access: RequestAccess,
     @Param({ schema: idParamSchema }) params: IdParam,
+    @Body({ schema: postDraftSchema }) body: PostDraft,
   ): Promise<PostedDraft> {
-    return this.drafts.approve(inCompany(access), params.id);
+    return this.drafts.approve(inCompany(access), params.id, body);
   }
 
   @Post(':id/reject')

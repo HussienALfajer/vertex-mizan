@@ -2,6 +2,7 @@ export * from './ageing.js';
 export * from './allocation.js';
 export * from './balance.js';
 export * from './carried.js';
+export * from './cash.js';
 export * from './chart.js';
 export * from './integrity.js';
 export * from './integrity-check.js';

@@ -470,6 +470,20 @@
       "when": 1794767969577,
       "tag": "0066_s11_opening_stated_items",
       "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1794769693039,
+      "tag": "0067_third_multiple_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1794769740899,
+      "tag": "0068_s11_voucher_guards",
+      "breakpoints": true
     }
   ]
 }

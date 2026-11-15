@@ -133,6 +133,7 @@ export const purchase: Entry = {
   postedAt: '2026-11-08T10:00:00.000Z',
   source: 'manual',
   sourceRef: null,
+  voucher: null,
   hubDocument: null,
   description: 'شراء دولار',
   reference: 'ص-12',
@@ -208,6 +209,7 @@ export function draftOf(input: DraftInput, fields: Partial<Draft> & Pick<Draft, 
     dealtRates: input.dealtRates,
     reversesEntryId: null,
     copiedFromEntryId: null,
+    voucher: null,
     lines: input.lines.map((line, index) => ({
       lineNo: index + 1,
       accountId: line.accountId,
@@ -293,6 +295,7 @@ const draftSummaryOf = (draft: Draft): DraftSummary => ({
   description: draft.description,
   reference: draft.reference,
   reversesEntryId: draft.reversesEntryId,
+  voucherKind: draft.voucher?.kind ?? null,
   lineCount: draft.lines.length,
   preparedBy: draft.preparedBy,
   submitted: draft.submitted,
@@ -309,6 +312,7 @@ export const purchasePreview: EntryPreview = {
   parallelCurrency: 'USD',
   lines: purchaseLines,
   items: [],
+  voucher: null,
   refusals: [],
 };
 

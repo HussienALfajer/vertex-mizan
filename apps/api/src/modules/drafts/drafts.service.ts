@@ -12,12 +12,16 @@ import {
   type DraftQuery,
   type EntryPreview,
   type ItemKind,
+  type PostDraft,
   type PostedDraft,
   type PreviewItem,
   type UpdateDraft,
+  type VoucherPreview,
 } from '@vertex-mizan/contracts';
 import {
+  cashVouchers,
   chartAccounts,
+  checkVoucher,
   type Database,
   discardDraft,
   entryAttachments,
@@ -27,6 +31,7 @@ import {
   type PersonActor,
   type PreviewLine,
   previewPosting,
+  previewVoucher,
   readItemBalances,
   type Transaction,
   withCompany,
@@ -60,15 +65,19 @@ import {
   insertDraft,
   readDraft,
   summaryOf,
+  voucherColumns,
+  voucherOf,
   writeLines,
 } from './draft-shape.js';
 import {
   approvalIsOn,
   contentOf,
+  manualLinesOf,
   missingOf,
   postDraft,
   refusalOf,
   refuseIncomplete,
+  voucherSpecOf,
 } from './posting.js';
 
 const PAGE_SIZE = 100;
@@ -172,6 +181,7 @@ export class DraftsService {
             rate,
           })),
           lines: auditedLines(lines),
+          ...(input.voucher !== undefined && { voucher: voucherOf(row) }),
         },
         {
           entryDate: input.entryDate,
@@ -179,8 +189,14 @@ export class DraftsService {
           reference: input.reference,
           dealtRates: input.dealtRates,
           lines: auditedLines(input.lines),
+          ...(input.voucher !== undefined && { voucher: input.voucher }),
         },
       );
+      if (row.reversesEntryId !== null && input.voucher != null) {
+        throw new CodedException('VALIDATION_FAILED', 'A reversal is not a voucher', [
+          { path: ['voucher'], message: 'A reversal is not a voucher' },
+        ]);
+      }
       await tx
         .update(entryDrafts)
         .set({
@@ -188,6 +204,8 @@ export class DraftsService {
           description: input.description,
           reference: input.reference,
           dealtRates: input.dealtRates,
+          // S11: left out keeps the voucher header, null removes it.
+          ...(input.voucher !== undefined && (await voucherColumns(tx, input.voucher))),
           updatedAt: new Date(),
         })
         .where(eq(entryDrafts.id, id));
@@ -213,6 +231,11 @@ export class DraftsService {
       const row = await draftRow(tx, id);
       const lines = await draftLines(tx, id);
       const currencies = await ledgerCurrencies(tx);
+      const voucher = voucherSpecOf(row, null);
+      let voucherPreview: VoucherPreview | null =
+        voucher === null
+          ? null
+          : { kind: voucher.kind, derivedRate: null, expectedMinor: null, differenceMinor: null };
       const answer = (
         refusals: EntryPreview['refusals'],
         built: EntryPreview['lines'] = [],
@@ -223,15 +246,35 @@ export class DraftsService {
         parallelCurrency: currencies.parallel,
         lines: built,
         items,
+        voucher: voucherPreview,
         refusals,
       });
       const missing = missingOf(row, lines);
       if (missing.length > 0) return answer(missing);
       try {
-        const built = await previewPosting(tx, {
-          entryDate: row.entryDate,
-          content: contentOf(row, lines, todayInDamascus()),
-        });
+        let built: PreviewLine[];
+        if (voucher === null) {
+          built = await previewPosting(tx, {
+            entryDate: row.entryDate,
+            content: contentOf(row, lines, todayInDamascus()),
+          });
+        } else {
+          // S11 "API": a transfer's derived rate, a count's expected amount and difference.
+          const previewed = await previewVoucher(tx, {
+            voucher,
+            lines: voucher.kind === 'count' ? [] : manualLinesOf(lines),
+            dealtRates: row.dealtRates as DealtRate[],
+            entryDate: row.entryDate,
+            today: todayInDamascus(),
+          });
+          voucherPreview = {
+            kind: voucher.kind,
+            derivedRate: previewed.derivedRate,
+            expectedMinor: previewed.expectedMinor?.toString() ?? null,
+            differenceMinor: previewed.differenceMinor?.toString() ?? null,
+          };
+          built = previewed.lines;
+        }
         const accounts = await accountNames(
           tx,
           built.map((line) => line.accountId),
@@ -276,24 +319,24 @@ export class DraftsService {
    * `POST /api/drafts/:id/post` (rule 7): approval off only (`APPROVAL_REQUIRED`), a complete draft
    * being prepared, posted now. A second post of a posted draft answers its entry (a double click).
    */
-  async post(access: CompanyRouteAccess, id: string): Promise<PostedDraft> {
+  async post(access: CompanyRouteAccess, id: string, body: PostDraft): Promise<PostedDraft> {
     const companyId = access.company.id;
     return withCompany(this.db, companyId, async (tx) => {
       await lockCompanyForWrite(tx, companyId);
       const row = await draftRow(tx, id, 'update');
-      if (row.state === 'posted' && row.postedEntryId)
-        return this.posted(tx, row.postedEntryId, id);
+      if (row.state === 'posted') return this.posted(tx, row.postedEntryId, id);
       this.editable(row);
       if (await approvalIsOn(tx)) {
         throw new CodedException('APPROVAL_REQUIRED', 'Submit the draft for approval');
       }
       const lines = await draftLines(tx, id);
       refuseIncomplete(row, lines);
-      const entry = await postDraft(tx, row, lines, actorOf(access), {
+      const entryId = await postDraft(tx, row, lines, actorOf(access), {
         today: todayInDamascus(),
         approvedByUserId: null,
+        expectedMinor: expectedOf(row, body),
       });
-      return this.posted(tx, entry.id, id);
+      return this.posted(tx, entryId, id);
     });
   }
 
@@ -304,7 +347,16 @@ export class DraftsService {
       if (!(await approvalIsOn(tx))) {
         throw new CodedException('APPROVAL_NOT_REQUIRED', 'Post the draft instead');
       }
-      refuseIncomplete(row, await draftLines(tx, id));
+      const lines = await draftLines(tx, id);
+      refuseIncomplete(row, lines);
+      // S11 "Data": a voucher draft's lines are checked by rules 10–13 at submission too.
+      const voucher = voucherSpecOf(row, null);
+      if (voucher !== null) {
+        await checkVoucher(tx, {
+          voucher,
+          lines: voucher.kind === 'count' ? [] : manualLinesOf(lines),
+        });
+      }
       await tx
         .update(entryDrafts)
         .set({
@@ -351,7 +403,7 @@ export class DraftsService {
    * submitted it (`APPROVER_IS_PREPARER`), posted now with them as its approver. A second approval
    * of the same draft finds it posted (`DRAFT_NOT_EDITABLE`, edge case 2).
    */
-  async approve(access: CompanyRouteAccess, id: string): Promise<PostedDraft> {
+  async approve(access: CompanyRouteAccess, id: string, body: PostDraft): Promise<PostedDraft> {
     const companyId = access.company.id;
     return withCompany(this.db, companyId, async (tx) => {
       await lockCompanyForWrite(tx, companyId);
@@ -360,15 +412,16 @@ export class DraftsService {
       this.approvable(row, actor);
       const lines = await draftLines(tx, id);
       refuseIncomplete(row, lines);
-      const entry = await postDraft(tx, row, lines, actor, {
+      const entryId = await postDraft(tx, row, lines, actor, {
         today: todayInDamascus(),
         approvedByUserId: actor.userId,
+        expectedMinor: expectedOf(row, body),
       });
       await this.audit(tx, row, actor, 'draft.approved', {
         state: 'posted',
-        postedEntryId: entry.id,
+        postedEntryId: entryId,
       });
-      return this.posted(tx, entry.id, id);
+      return this.posted(tx, entryId, id);
     });
   }
 
@@ -496,9 +549,41 @@ export class DraftsService {
     });
   }
 
-  private async posted(tx: Transaction, entryId: string, draftId: string): Promise<PostedDraft> {
-    return { entry: await readEntry(tx, entryId), draft: await readDraft(tx, draftId) };
+  /** A posted draft with its entry (none for a count that matched) and its voucher (S11). */
+  private async posted(
+    tx: Transaction,
+    entryId: string | null,
+    draftId: string,
+  ): Promise<PostedDraft> {
+    const [voucher] = await tx
+      .select({
+        id: cashVouchers.id,
+        kind: cashVouchers.kind,
+        fiscalYear: cashVouchers.fiscalYear,
+        number: cashVouchers.number,
+      })
+      .from(cashVouchers)
+      .where(eq(cashVouchers.draftId, draftId));
+    return {
+      entry: entryId === null ? null : await readEntry(tx, entryId),
+      draft: await readDraft(tx, draftId),
+      voucher: voucher ?? null,
+    };
   }
+}
+
+/**
+ * A count's expected amount as its preview showed it (S11 rule 13): required to post a count, so
+ * the posting can refuse a stale one; null for any other draft.
+ */
+function expectedOf(row: DraftRow, body: PostDraft): bigint | null {
+  if (row.voucherKind !== 'count') return null;
+  if (body.expectedMinor === null) {
+    throw new CodedException('VALIDATION_FAILED', 'A count posts with its expected amount', [
+      { path: ['expectedMinor'], message: 'A count posts with the expected amount it previewed' },
+    ]);
+  }
+  return BigInt(body.expectedMinor);
 }
 
 /**

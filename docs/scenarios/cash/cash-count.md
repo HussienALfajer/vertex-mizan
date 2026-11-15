@@ -1,8 +1,8 @@
 # A cash count
 
-Status: Proposed
+Status: Approved (owner, 2026-11-14)
 
-The expected entries and vouchers of all five cases were approved by the owner on 2026-11-14. They stay `Proposed` until S11's slice brings the `voucher` executor with counts, the voucher reader and the cash chart `contracting@1`; that PR switches them to `Approved (owner, 2026-11-14)` with no expected value changed.
+The expected entries and vouchers of all five cases were approved by the owner on 2026-11-14. S11's second PR brought the `voucher` executor with counts, the voucher reader and the cash chart `contracting@1` and switched them to `Approved` with no expected value changed.
 
 ## Rule
 

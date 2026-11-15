@@ -25,6 +25,8 @@ import {
   revalue,
   reversal,
   setUp,
+  voucher,
+  vouchers,
 } from './system.js';
 
 /**
@@ -133,7 +135,7 @@ export type ObservedVoucher = ExpectedVoucher;
  * S07's `revalue` and
  * `block` (its first PR), then `close`, `reopen`, `draft` and `discard` and the setup's closed
  * periods through the close service (its second); S09's `service_department` and the `reports`
- * reader (`reports.ts`).
+ * reader (`reports.ts`); S11's `voucher` executor and `vouchers` reader.
  */
 export const bookHarness: ScenarioHarness = {
   setUp,
@@ -150,7 +152,9 @@ export const bookHarness: ScenarioHarness = {
     service_department: serviceDepartment,
     opening,
     reverse_opening: reverseOpening,
+    voucher,
   },
   ledger,
   reports,
+  vouchers,
 };

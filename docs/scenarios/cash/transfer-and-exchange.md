@@ -1,8 +1,8 @@
 # A transfer between cash accounts and a currency exchange
 
-Status: Proposed
+Status: Approved (owner, 2026-11-14)
 
-The expected entries of all eight cases were approved by the owner on 2026-11-14, with "the same exchange" in `syp` and `syp-usd` read as the TRY to USD exchange and the refused cancellation added. They stay `Proposed` until S11's slice brings the `voucher` executor, the box rule and the cash chart `contracting@1`; that PR switches them to `Approved (owner, 2026-11-14)` with no expected value changed.
+The expected entries of all eight cases were approved by the owner on 2026-11-14, with "the same exchange" in `syp` and `syp-usd` read as the TRY to USD exchange and the refused cancellation added. S11's second PR brought the `voucher` executor, the box rule and the cash chart `contracting@1` and switched them to `Approved` with no expected value changed.
 
 ## Rule
 
