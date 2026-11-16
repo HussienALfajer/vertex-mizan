@@ -24,6 +24,7 @@ import {
   type DocumentLineSpec,
   dimensionSets,
   dimensionTypes,
+  dimensionValues,
   entryDrafts,
   entryNumberCounters,
   journalEntries,
@@ -671,8 +672,8 @@ describe('progress billings through the posting function (S12 rules 14–16, 21�
         .where(eq(openItems.kind, 'document')),
     );
     expect(items).toEqual([
-      { reference: '2026/1', client: books.client },
-      { reference: '2026/1', client: books.client },
+      { reference: 'مستخلص 2026/1', client: books.client },
+      { reference: 'مستخلص 2026/1', client: books.client },
     ]);
     const [row] = await inCompany(books.id, (tx) => tx.select().from(projectDocuments));
     expect(row).toMatchObject({
@@ -802,7 +803,177 @@ describe('retention releases through the posting function (S12 rules 19–20)', 
         .where(eq(openItems.accountId, account(books, '112001')))
         .orderBy(asc(openItems.reference)),
     );
-    expect(references.map((row) => row.reference)).toEqual(['2026/1', 'إفراج 2026/1']);
+    expect(references.map((row) => row.reference)).toEqual(['إفراج 2026/1', 'مستخلص 2026/1']);
+    // A line naming another account's item, or none, is refused, naming the line.
+    const [receivable] = await inCompany(books.id, (tx) =>
+      tx
+        .select({ id: openItems.id })
+        .from(openItems)
+        .where(eq(openItems.accountId, account(books, '112001'))),
+    );
+    const naming = (openItemId: string | null) => {
+      const content = release(100000n);
+      return { ...content, lines: content.lines.map((line) => ({ ...line, openItemId })) };
+    };
+    for (const openItemId of [receivable?.id as string, null]) {
+      expect(await codeOf(postDocument(books, '2026-12-15', naming(openItemId)))).toEqual({
+        code: 'VALIDATION_FAILED',
+        details: expect.objectContaining({ lineNo: 1 }),
+      });
+    }
+  });
+
+  it("cancels a subcontractor's billing exactly, only once its later release is cancelled", async () => {
+    const books = await newBooks();
+    await inCompany(books.id, (tx) =>
+      createSubcontract(
+        tx,
+        books.id,
+        {
+          contractValueId: books.project,
+          supplierValueId: books.supplier,
+          currency: 'USD',
+          valueMinor: null,
+          retentionBp: 1000,
+          advanceRecoveryBp: 0,
+        },
+        actor(),
+      ),
+    );
+    const supplierDocument = (
+      kind: 'subcontract_billing' | 'retention_release',
+      amounts: { cumulativeMinor?: bigint; retentionMinor?: bigint },
+    ) => ({
+      document: {
+        ...billingOf(books, 0n).document,
+        kind,
+        counterpartyValueId: books.supplier,
+        side: kind === 'retention_release' ? ('supplier' as const) : null,
+        cumulativeMinor: amounts.cumulativeMinor ?? null,
+        retentionMinor: amounts.retentionMinor ?? null,
+      },
+      lines: [],
+    });
+    const billing = await postDocument(
+      books,
+      '2026-12-15',
+      supplierDocument('subcontract_billing', { cumulativeMinor: 3000000n }),
+    );
+    const release = await postDocument(
+      books,
+      '2026-12-15',
+      supplierDocument('retention_release', { retentionMinor: 300000n }),
+    );
+    expect((await codeOf(reverse(books, billing.entry.id, '2026-12-20'))).code).toBe(
+      'OPEN_ITEM_HAS_SETTLEMENTS',
+    );
+    await reverse(books, release.entry.id, '2026-12-20');
+    await reverse(books, billing.entry.id, '2026-12-20');
+    const sums = await inCompany(books.id, (tx) =>
+      tx.execute<{ code: string; amount: string; book: string; parallel: string }>(sql`
+        select a.code, sum(l.amount_minor)::text as amount, sum(l.book_minor)::text as book,
+          sum(l.parallel_minor)::text as parallel
+        from journal_lines l join chart_accounts a on a.id = l.account_id
+        group by a.code order by a.code`),
+    );
+    // Exact: every account back at zero in both ledgers, with no difference entry.
+    expect(sums.rows.every((row) => row.book === '0' && row.parallel === '0')).toBe(true);
+    expect(sums.rows.map((row) => row.code)).not.toContain('541001');
+  });
+});
+
+describe("a progress billing's chain is its project's (S12 rules 14, 16)", () => {
+  it("keeps the chain when the project's client changes", async () => {
+    const books = await newBooks();
+    await billable(books);
+    await postDocument(books, '2026-12-15', billingOf(books, 3000000n));
+    const other = await inCompany(books.id, async (tx) => {
+      const [type] = await tx
+        .select({ id: dimensionTypes.id })
+        .from(dimensionTypes)
+        .where(eq(dimensionTypes.code, 'client'));
+      const made = await createDimensionValue(
+        tx,
+        books.id,
+        {
+          typeId: type?.id as string,
+          code: 'C2',
+          name: 'C2',
+          nameLatin: null,
+          contractKind: null,
+          parentValueId: null,
+        },
+        actor(),
+      );
+      await tx
+        .update(dimensionValues)
+        .set({ parentValueId: made.id })
+        .where(eq(dimensionValues.id, books.project));
+      return made.id;
+    });
+    expect((await codeOf(postDocument(books, '2026-12-15', billingOf(books, 3000000n)))).code).toBe(
+      'BILLING_NOT_INCREASING',
+    );
+    await postDocument(books, '2026-12-15', billingOf(books, 5000000n));
+    const rows = await inCompany(books.id, (tx) =>
+      tx.select().from(projectDocuments).orderBy(asc(projectDocuments.projectSequence)),
+    );
+    expect(
+      rows.map((row) => [row.projectSequence, row.previousMinor, row.counterpartyValueId]),
+    ).toEqual([
+      [1, 0n, books.client],
+      [2, 3000000n, other],
+    ]);
+  });
+});
+
+describe('progress billings, written by hand (0073)', () => {
+  it('refuses a billing out of its chain', async () => {
+    const books = await newBooks();
+    await billable(books);
+    await postDocument(books, '2026-12-15', billingOf(books, 3000000n));
+    const forged = (previousMinor: bigint, projectSequence: number) =>
+      inCompany(books.id, async (tx) => {
+        const draftId = uuidv7();
+        await tx.insert(entryDrafts).values({
+          id: draftId,
+          companyId: books.id,
+          state: 'draft',
+          entryDate: '2026-12-15',
+          description: 'مستخلص مزوّر',
+          preparedByUserId: personId,
+          projectDocumentKind: 'progress_billing',
+          contractValueId: books.project,
+          cumulativeMinor: 5000000n,
+        });
+        const [sequence] = await tx
+          .update(projectDocumentSequences)
+          .set({ lastNumber: sql`${projectDocumentSequences.lastNumber} + 1` })
+          .where(eq(projectDocumentSequences.kind, 'progress_billing'))
+          .returning();
+        await tx.insert(projectDocuments).values({
+          companyId: books.id,
+          kind: 'progress_billing',
+          fiscalYear: 2026,
+          number: sequence?.lastNumber as number,
+          projectSequence,
+          documentDate: '2026-12-15',
+          entryId: uuidv7(),
+          draftId,
+          contractValueId: books.project,
+          counterpartyValueId: books.client,
+          currency: 'USD',
+          totalMinor: previousMinor === 0n ? 5000000n : 2000000n,
+          cumulativeMinor: 5000000n,
+          previousMinor,
+          retentionMinor: 0n,
+          advanceMinor: 0n,
+        });
+      });
+    expect(await refusal(forged(0n, 2))).toMatch(/follows the latest billing/);
+    expect(await refusal(forged(3000000n, 1))).toMatch(/follows the latest billing/);
+    // In its chain, it passes this check and stops at its entry.
+    expect(await refusal(forged(3000000n, 2))).toMatch(/posted from its draft/);
   });
 });
 

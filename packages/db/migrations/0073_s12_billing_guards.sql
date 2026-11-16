@@ -3,9 +3,10 @@
 -- - `project_document_rules()`: a progress billing's and a client's release's counterparty is the
 --   project's client, which their draft does not name; a billing's cumulative, and its deductions
 --   where the accountant typed them, are its draft's, a supplier's release's amount too; a billing
---   takes the next number within its project or subcontract, its previous is the cumulative of the
---   latest uncancelled billing there, and it is dated on or after that billing (the ledger head
---   locked first, so two billings of one project serialise);
+--   takes the next number within its project (a progress billing, whatever client the project names
+--   now) or subcontract, its previous is the cumulative of the latest uncancelled billing there,
+--   and it is dated on or after that billing (the ledger head locked first, so two billings of one
+--   project serialise);
 -- - `journal_entry_billing_order()` (new): a billing's entry is reversed only while no later
 --   billing of its project or subcontract stands (`PROJECT_DOCUMENT_NOT_LATEST` in `post()`).
 CREATE OR REPLACE FUNCTION project_document_rules() RETURNS trigger
@@ -61,15 +62,6 @@ BEGIN
     RAISE EXCEPTION 'project_documents: a document takes the number its sequence just gave'
       USING ERRCODE = 'restrict_violation';
   END IF;
-  SELECT e.draft_id, e.entry_date, e.fiscal_year, e.source, e.reverses_entry_id INTO entry
-  FROM public.journal_entries e
-  WHERE e.company_id = NEW.company_id AND e.id = NEW.entry_id;
-  IF NOT FOUND OR entry.draft_id IS DISTINCT FROM NEW.draft_id
-    OR entry.entry_date <> NEW.document_date OR entry.fiscal_year <> NEW.fiscal_year
-    OR entry.source <> 'manual' OR entry.reverses_entry_id IS NOT NULL THEN
-    RAISE EXCEPTION 'project_documents: a document''s entry is posted from its draft, on its date'
-      USING ERRCODE = 'restrict_violation';
-  END IF;
   -- A billing (S12 rules 14, 16): the next number within its project or subcontract, its previous
   -- the cumulative of the latest uncancelled billing there, dated on or after it. The ledger head,
   -- locked first, serialises two billings of one project.
@@ -79,12 +71,12 @@ BEGIN
     FROM public.project_documents d
     WHERE d.company_id = NEW.company_id AND d.kind = NEW.kind
       AND d.contract_value_id = NEW.contract_value_id
-      AND d.counterparty_value_id = NEW.counterparty_value_id;
+      AND (NEW.kind = 'progress_billing' OR d.counterparty_value_id = NEW.counterparty_value_id);
     SELECT d.cumulative_minor, d.document_date INTO latest
     FROM public.project_documents d
     WHERE d.company_id = NEW.company_id AND d.kind = NEW.kind
       AND d.contract_value_id = NEW.contract_value_id
-      AND d.counterparty_value_id = NEW.counterparty_value_id
+      AND (NEW.kind = 'progress_billing' OR d.counterparty_value_id = NEW.counterparty_value_id)
       AND NOT EXISTS (
         SELECT 1 FROM public.journal_entries r
         WHERE r.company_id = d.company_id AND r.reverses_entry_id = d.entry_id)
@@ -96,6 +88,15 @@ BEGIN
       RAISE EXCEPTION 'project_documents: a billing follows the latest billing of its project'
         USING ERRCODE = 'restrict_violation';
     END IF;
+  END IF;
+  SELECT e.draft_id, e.entry_date, e.fiscal_year, e.source, e.reverses_entry_id INTO entry
+  FROM public.journal_entries e
+  WHERE e.company_id = NEW.company_id AND e.id = NEW.entry_id;
+  IF NOT FOUND OR entry.draft_id IS DISTINCT FROM NEW.draft_id
+    OR entry.entry_date <> NEW.document_date OR entry.fiscal_year <> NEW.fiscal_year
+    OR entry.source <> 'manual' OR entry.reverses_entry_id IS NOT NULL THEN
+    RAISE EXCEPTION 'project_documents: a document''s entry is posted from its draft, on its date'
+      USING ERRCODE = 'restrict_violation';
   END IF;
   RETURN NEW;
 END
@@ -110,7 +111,7 @@ BEGIN
     FROM public.project_documents d
     JOIN public.project_documents l ON l.company_id = d.company_id AND l.kind = d.kind
       AND l.contract_value_id = d.contract_value_id
-      AND l.counterparty_value_id = d.counterparty_value_id
+      AND (d.kind = 'progress_billing' OR l.counterparty_value_id = d.counterparty_value_id)
       AND l.project_sequence > d.project_sequence
     WHERE d.company_id = NEW.company_id AND d.entry_id = NEW.reverses_entry_id
       AND d.project_sequence IS NOT NULL

@@ -1420,7 +1420,7 @@ async function checkLatestBilling(tx: Transaction, entryId: string): Promise<voi
       select 1 from ${projectDocuments} d
       join ${projectDocuments} l on l.company_id = d.company_id and l.kind = d.kind
         and l.contract_value_id = d.contract_value_id
-        and l.counterparty_value_id = d.counterparty_value_id
+        and (d.kind = 'progress_billing' or l.counterparty_value_id = d.counterparty_value_id)
         and l.project_sequence > d.project_sequence
       where d.entry_id = ${entryId} and d.project_sequence is not null
         and not exists (
@@ -1432,6 +1432,59 @@ async function checkLatestBilling(tx: Transaction, entryId: string): Promise<voi
       entryId,
     });
   }
+}
+
+/**
+ * A billing's or a retention release's cancellation is exact (owner, 2026-11-16): its reversal
+ * gives back to each running item exactly what it moved, with no S04 rule 13 difference entry, so a
+ * project's share of an advance or a retention stays the sum of its lines. To keep that true, it
+ * is refused (`OPEN_ITEM_HAS_SETTLEMENTS`) while a later clearing of a running item it moved stands
+ * uncancelled: a payment of the supplier on `211002`, or a release or recovery of the same
+ * project's share on `211006`, `114002` or `212002` (as a client's billing with a receipt is,
+ * S12 rule 22). Answers whether the entry is such a document's.
+ */
+async function checkExactCancellation(
+  tx: Transaction,
+  entryId: string,
+  sequence: bigint,
+): Promise<boolean> {
+  const [document] = await tx
+    .select({ kind: projectDocuments.kind, contractValueId: projectDocuments.contractValueId })
+    .from(projectDocuments)
+    .where(eq(projectDocuments.entryId, entryId));
+  if (
+    document === undefined ||
+    (document.kind !== 'progress_billing' &&
+      document.kind !== 'subcontract_billing' &&
+      document.kind !== 'retention_release')
+  ) {
+    return false;
+  }
+  const result = await tx.execute<{ later: boolean }>(sql`
+    select exists (
+      select 1
+      from ${openItemMovements} mine
+      join ${openItems} i on i.company_id = mine.company_id and i.id = mine.item_id
+      join ${chartAccounts} a on a.company_id = i.company_id and a.id = i.account_id
+      join ${openItemMovements} m on m.company_id = i.company_id and m.item_id = i.id
+      join ${journalEntries} e on e.company_id = m.company_id and e.id = m.entry_id
+      join ${journalLines} l on l.company_id = m.company_id and l.id = m.line_id
+      where mine.entry_id = ${entryId} and i.kind = 'running' and m.kind = 'clear'
+        and e.sequence > ${sequence} and e.reverses_entry_id is null
+        and not exists (
+          select 1 from ${journalEntries} r
+          where r.company_id = e.company_id and r.reverses_entry_id = e.id)
+        and (a.code not in ('211006', '114002', '212002') or exists (
+          select 1 from ${dimensionSetValues} v
+          where v.company_id = l.company_id and v.set_id = l.dimension_set_id
+            and v.value_id = ${document.contractValueId}))
+    ) as later`);
+  if (result.rows[0]?.later === true) {
+    refuse('OPEN_ITEM_HAS_SETTLEMENTS', 'Reverse the later payments or releases first', {
+      entryId,
+    });
+  }
+  return true;
 }
 
 async function reversalLines(
@@ -1476,6 +1529,7 @@ async function reversalLines(
   });
   if (balanced.length !== negated.length) throw new Error('A reversal needed a rounding line');
   await checkLatestBilling(tx, original.id);
+  const exact = await checkExactCancellation(tx, original.id, original.sequence);
   const items = await itemsOf(
     tx,
     movements.map((movement) => movement.itemId),
@@ -1493,7 +1547,9 @@ async function reversalLines(
   }
   const voided: VoidedRunningItem[] = [];
   for (const [id, item] of items) {
-    if (item.state.kind !== 'running') continue;
+    // A billing's or a release's cancellation is exact (owner, 2026-11-16): no S04 rule 13
+    // difference, so each project's share of a running item stays its lines' sum.
+    if (item.state.kind !== 'running' || exact) continue;
     const reversed = movementOn(
       negated,
       id,
@@ -2282,36 +2338,39 @@ async function newDocumentItem(
 
 /**
  * The latest posted, uncancelled billing of a project (or a supplier's subcontract on it) and the
- * next number within it (S12 rules 14, 16): the numbers run through cancelled billings too. The
- * ledger head, locked first by every posting, serialises two billings of one project, so the second
- * reads the first's cumulative.
+ * next number within it (S12 rules 14, 16): the numbers run through cancelled billings too. A
+ * progress billing's chain is its project's, whatever client the project names now; a
+ * subcontractor's is the project's and the supplier's. The ledger head, locked first by every
+ * posting, serialises two billings of one project, so the second reads the first's cumulative.
  */
 async function billingChain(
   tx: Transaction,
   kind: 'progress_billing' | 'subcontract_billing',
   contractValueId: string,
-  counterpartyValueId: string,
+  supplierValueId: string | null,
 ): Promise<{ previous: { cumulativeMinor: bigint; on: string } | null; sequence: number }> {
+  const party =
+    supplierValueId === null ? sql`true` : sql`d.counterparty_value_id = ${supplierValueId}`;
   const result = await tx.execute<{ cumulative: string | null; on: string | null; next: number }>(
     sql`
     select
       (select d.cumulative_minor::text from ${projectDocuments} d
         where d.kind = ${kind} and d.contract_value_id = ${contractValueId}
-          and d.counterparty_value_id = ${counterpartyValueId}
+          and ${party}
           and not exists (
             select 1 from ${journalEntries} r
             where r.company_id = d.company_id and r.reverses_entry_id = d.entry_id)
         order by d.project_sequence desc limit 1) as cumulative,
       (select d.document_date::text from ${projectDocuments} d
         where d.kind = ${kind} and d.contract_value_id = ${contractValueId}
-          and d.counterparty_value_id = ${counterpartyValueId}
+          and ${party}
           and not exists (
             select 1 from ${journalEntries} r
             where r.company_id = d.company_id and r.reverses_entry_id = d.entry_id)
         order by d.project_sequence desc limit 1) as on,
       (select coalesce(max(d.project_sequence), 0) + 1 from ${projectDocuments} d
         where d.kind = ${kind} and d.contract_value_id = ${contractValueId}
-          and d.counterparty_value_id = ${counterpartyValueId})::int as next`,
+          and ${party})::int as next`,
   );
   const row = result.rows[0];
   return {
@@ -2345,6 +2404,13 @@ async function billingOrRelease(
   const { content, project, on, keepsParallel, lock, documentNumber, newItems } = input;
   const { document } = content;
   const printed = `${documentNumber.fiscalYear}/${documentNumber.number}`;
+  // A billing's items are named by its printed number, `مستخلص 2026/1` (owner, 2026-11-16), so a
+  // manual item's reference never blocks a billing's number.
+  const billingItem = documentReference(
+    'progress_billing',
+    documentNumber.fiscalYear,
+    documentNumber.number,
+  );
   const projectDimension = { [project.typeId]: project.id };
   const clientSide =
     document.kind === 'progress_billing' ||
@@ -2380,7 +2446,7 @@ async function billingOrRelease(
         refuse('VALIDATION_FAILED', 'A billing has its cumulative value', {});
       }
       const advances = await documentAccount(tx, DOCUMENT_ACCOUNTS.clientAdvances);
-      const chain = await billingChain(tx, 'progress_billing', project.id, client.id);
+      const chain = await billingChain(tx, 'progress_billing', project.id, null);
       const target = { counterpartyValueId: client.id, currency, on, keepsParallel, dimensions };
       return {
         input: {
@@ -2399,12 +2465,12 @@ async function billingOrRelease(
           },
           net: await newDocumentItem(
             tx,
-            { ...target, accountId: receivables, reference: printed },
+            { ...target, accountId: receivables, reference: billingItem },
             newItems,
           ),
           retention: await newDocumentItem(
             tx,
-            { ...target, accountId: retentions, reference: printed },
+            { ...target, accountId: retentions, reference: billingItem },
             newItems,
           ),
           // An advance received from the client is a credit (S12 rule 12).

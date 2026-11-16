@@ -2,7 +2,7 @@
 
 Status: Approved (owner, 2026-11-16)
 
-The expected entries of the first eight cases were approved by the owner on 2026-11-16; after the accounting review the owner decided the same day that a recovery clears at the average of the project's own share of the client's advance (S12 rule 12, ADR 0023), and the last two cases were added for it and for S12 edge cases 7 and 8. S12's second PR brought the billings and releases to the `project_document` executor, the project terms setup and the project documents reader, and switched the cases to `Approved` with no expected value changed.
+The expected entries of the first eight cases were approved by the owner on 2026-11-16; after the accounting review the owner decided the same day that a recovery clears at the average of the project's own share of the client's advance (S12 rule 12, ADR 0023), and the last two cases were added for it and for S12 edge cases 7 and 8. S12's second PR brought the billings and releases to the `project_document` executor, the project terms setup and the project documents reader, and switched the cases to `Approved` with no expected value changed. After the accounting review the owner decided on 2026-11-16 that a billing's items on `112001` and `113002` are named `مستخلص <fiscal year>/<number>`, the printed number with its kind, so a manual item's reference never blocks a billing's number; only the items' names changed.
 
 ## Rule
 
@@ -21,7 +21,7 @@ A client's progress billing (مستخلص) is a numbered project document in the
 
 The company is the contracting client's shape unless a case says otherwise: `usd-syp`, the USD book at `market` accepting dealt rates, the SYP parallel ledger at the bulletin, TRY as a third currency, and the chart `contracting@1` (S11 "Templates"): the USD bank `111004` and the TRY box `111005`, trade receivables `112001` (progress billings), contract assets `113001` (work done, not billed) and `113002` (retentions receivable), each a document control account for clients with client and contract required; contract liabilities `212001` (billings in excess) and advances from clients `212002` (a running control account for clients, non-monetary), with client and contract required; contract revenue `411001` (client and contract required); realised exchange gains `421001`. Project P1 belongs to client C1; its terms (S12 rule 1) are stated with the contract: the currency, the contract value, the retention rate (`retention_bp`) and the advance-recovery rate (`advance_recovery_bp`) in basis points. Every rate and amount is synthetic. Monday 2 November 2026, Wednesday 30 and Thursday 31 December 2026, Thursday 7 January, Sunday 31 January and Sunday 28 February 2027 are publication days; Friday 1 January 2027 is not, and a reversal reads no rate.
 
-A `project_document` step is the document as the form sends it (S12 "Drafts"): `kind`, the `contract`, and for a billing the `cumulative` value typed, with `retention` and `advance` only where the accountant changed the computed deduction. It is saved as a draft and posted from it; its entry has the source `manual`. A billing's items on `112001` and `113002` are named by its printed number (`<fiscal year>/<number>`, S12 rule 21); the advance is a running item named by the client's code. `project_documents` states the exact set of the company's project documents: kind, number within its kind and fiscal year, date, project, client, the billing's number within its project (`sequence`), the entry it posted and the reversal that cancelled it (posting order), currency, cumulative, previous, retention and recovery (`advance`); the net is the period's value less both.
+A `project_document` step is the document as the form sends it (S12 "Drafts"): `kind`, the `contract`, and for a billing the `cumulative` value typed, with `retention` and `advance` only where the accountant changed the computed deduction. It is saved as a draft and posted from it; its entry has the source `manual`. A billing's items on `112001` and `113002` are named by its printed number (`مستخلص <fiscal year>/<number>`, S12 rule 21); the advance is a running item named by the client's code. `project_documents` states the exact set of the company's project documents: kind, number within its kind and fiscal year, date, project, client, the billing's number within its project (`sequence`), the entry it posted and the reversal that cancelled it (posting order), currency, cumulative, previous, retention and recovery (`advance`); the net is the period's value less both.
 
 A difference line carries its amount in one ledger only, in that ledger's currency (ADR 0007).
 
@@ -76,8 +76,8 @@ expect:
     - { account: "212002", book: -1400000, parallel: -161000000 }
     - { account: "411001", book: -3000000, parallel: -357000000 }
   open_items:
-    - { item: "2026/1", account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 2100000, book: 2100000, parallel: 252000000 }
-    - { item: "2026/1", account: "113002", dims: { client: C1, contract: P1 }, currency: USD, amount: 300000, book: 300000, parallel: 36000000 }
+    - { item: "مستخلص 2026/1", account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 2100000, book: 2100000, parallel: 252000000 }
+    - { item: "مستخلص 2026/1", account: "113002", dims: { client: C1, contract: P1 }, currency: USD, amount: 300000, book: 300000, parallel: 36000000 }
     - { item: C1, account: "212002", dims: { client: C1 }, currency: USD, amount: -1400000, book: -1400000, parallel: -161000000 }
   project_documents:
     - { kind: progress_billing, number: 1, date: 2026-12-31, contract: P1, client: C1, sequence: 1, entry: 2,
@@ -113,7 +113,7 @@ steps:
     accounting_date: 2027-01-07
     payload: { voucher: { kind: receipt, cash_account: "111004", party_name: "العميل" },
                lines: [{ account: "111004", currency: USD, amount: 2100000 },
-                       { account: "112001", currency: USD, amount: -2100000, item: "2026/1" }] }
+                       { account: "112001", currency: USD, amount: -2100000, item: "مستخلص 2026/1" }] }
   - project_document: progress billing 2 of P1, the recovery raised to 10,000.00
     accounting_date: 2027-01-31
     payload: { document: { kind: progress_billing, contract: P1, cumulative: 7500000, advance: 1000000 } }
@@ -183,10 +183,10 @@ expect:
     - { account: "411001", book: -11000000, parallel: -1358500000 }
     - { account: "421001", book: 0, parallel: -4200000 }
   open_items:
-    - { item: "2026/1", account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 0, book: 0, parallel: 0 }
-    - { item: "2027/1", account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 3050000, book: 3050000, parallel: 381250000 }
-    - { item: "2027/2", account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 2750000, book: 2750000, parallel: 357500000 }
-    - { item: "2027/2", account: "113002", dims: { client: C1, contract: P1 }, currency: USD, amount: 350000, book: 350000, parallel: 45500000 }
+    - { item: "مستخلص 2026/1", account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 0, book: 0, parallel: 0 }
+    - { item: "مستخلص 2027/1", account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 3050000, book: 3050000, parallel: 381250000 }
+    - { item: "مستخلص 2027/2", account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 2750000, book: 2750000, parallel: 357500000 }
+    - { item: "مستخلص 2027/2", account: "113002", dims: { client: C1, contract: P1 }, currency: USD, amount: 350000, book: 350000, parallel: 45500000 }
     - { item: C1, account: "212002", dims: { client: C1 }, currency: USD, amount: 0, book: 0, parallel: 0 }
   project_documents:
     - { kind: progress_billing, number: 1, date: 2026-12-31, contract: P1, client: C1, sequence: 1, entry: 2,
@@ -254,8 +254,8 @@ expect:
     - { account: "411001", book: -3000000, parallel: -375000000 }
   open_items:
     - { item: WIP-2026-12, account: "113001", dims: { client: C1, contract: P1 }, currency: USD, amount: 0, book: 0, parallel: 0 }
-    - { item: "2027/1", account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 2700000, book: 2700000, parallel: 337500000 }
-    - { item: "2027/1", account: "113002", dims: { client: C1, contract: P1 }, currency: USD, amount: 300000, book: 300000, parallel: 37500000 }
+    - { item: "مستخلص 2027/1", account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 2700000, book: 2700000, parallel: 337500000 }
+    - { item: "مستخلص 2027/1", account: "113002", dims: { client: C1, contract: P1 }, currency: USD, amount: 300000, book: 300000, parallel: 37500000 }
   project_documents:
     - { kind: progress_billing, number: 1, date: 2027-01-31, contract: P1, client: C1, sequence: 1, entry: 3,
         currency: USD, cumulative: 3000000, previous: 0, retention: 300000, advance: 0 }
@@ -427,8 +427,8 @@ expect:
     - { account: "113002", book: 0, parallel: 0 }
     - { account: "411001", book: 0, parallel: 0 }
   open_items:
-    - { item: "2026/1", account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 0, book: 0, parallel: 0 }
-    - { item: "2027/1", account: "113002", dims: { client: C1, contract: P1 }, currency: USD, amount: 0, book: 0, parallel: 0 }
+    - { item: "مستخلص 2026/1", account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 0, book: 0, parallel: 0 }
+    - { item: "مستخلص 2027/1", account: "113002", dims: { client: C1, contract: P1 }, currency: USD, amount: 0, book: 0, parallel: 0 }
     - { item: C1, account: "212002", dims: { client: C1 }, currency: USD, amount: -2000000, book: -2000000, parallel: -230000000 }
   project_documents:
     - { kind: progress_billing, number: 1, date: 2026-12-31, contract: P1, client: C1, sequence: 1, entry: 2,
@@ -495,8 +495,8 @@ expect:
     - { account: "212002", currency: TRY, amount: -42000000, book: -1272727, parallel: -142800000 }
     - { account: "411001", currency: TRY, amount: -90000000, book: -2644580, parallel: -313200000 }
   open_items:
-    - { item: "2026/1", account: "112001", dims: { client: C1, contract: P1 }, currency: TRY, amount: 63000000, book: 1836735, parallel: 220500000 }
-    - { item: "2026/1", account: "113002", dims: { client: C1, contract: P1 }, currency: TRY, amount: 9000000, book: 262391, parallel: 31500000 }
+    - { item: "مستخلص 2026/1", account: "112001", dims: { client: C1, contract: P1 }, currency: TRY, amount: 63000000, book: 1836735, parallel: 220500000 }
+    - { item: "مستخلص 2026/1", account: "113002", dims: { client: C1, contract: P1 }, currency: TRY, amount: 9000000, book: 262391, parallel: 31500000 }
     - { item: C1, account: "212002", dims: { client: C1 }, currency: TRY, amount: -42000000, book: -1272727, parallel: -142800000 }
   project_documents:
     - { kind: progress_billing, number: 1, date: 2026-12-31, contract: P1, client: C1, sequence: 1, entry: 2,
@@ -548,8 +548,8 @@ expect:
     - { account: "212002", currency: USD, amount: -1400000, book: -161000000 }
     - { account: "411001", book: -357000000 }
   open_items:
-    - { item: "2026/1", account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 2100000, book: 252000000 }
-    - { item: "2026/1", account: "113002", dims: { client: C1, contract: P1 }, currency: USD, amount: 300000, book: 36000000 }
+    - { item: "مستخلص 2026/1", account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 2100000, book: 252000000 }
+    - { item: "مستخلص 2026/1", account: "113002", dims: { client: C1, contract: P1 }, currency: USD, amount: 300000, book: 36000000 }
     - { item: C1, account: "212002", dims: { client: C1 }, currency: USD, amount: -1400000, book: -161000000 }
   project_documents:
     - { kind: progress_billing, number: 1, date: 2026-12-31, contract: P1, client: C1, sequence: 1, entry: 2,
@@ -597,8 +597,8 @@ expect:
     - { account: "212002", currency: USD, amount: -1400000, book: -161000000, parallel: -1400000 }
     - { account: "411001", book: -357000000, parallel: -3000000 }
   open_items:
-    - { item: "2026/1", account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 2100000, book: 252000000, parallel: 2100000 }
-    - { item: "2026/1", account: "113002", dims: { client: C1, contract: P1 }, currency: USD, amount: 300000, book: 36000000, parallel: 300000 }
+    - { item: "مستخلص 2026/1", account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 2100000, book: 252000000, parallel: 2100000 }
+    - { item: "مستخلص 2026/1", account: "113002", dims: { client: C1, contract: P1 }, currency: USD, amount: 300000, book: 36000000, parallel: 300000 }
     - { item: C1, account: "212002", dims: { client: C1 }, currency: USD, amount: -1400000, book: -161000000, parallel: -1400000 }
   project_documents:
     - { kind: progress_billing, number: 1, date: 2026-12-31, contract: P1, client: C1, sequence: 1, entry: 2,
@@ -688,8 +688,8 @@ expect:
   open_items:
     # one running item for C1 in USD: 20,000.00 left, 161,000,000 + 75,000,000 = 236,000,000
     - { item: C1, account: "212002", dims: { client: C1 }, currency: USD, amount: -2000000, book: -2000000, parallel: -236000000 }
-    - { item: "2026/1", account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 2100000, book: 2100000, parallel: 252000000 }
-    - { item: "2026/2", account: "112001", dims: { client: C1, contract: P2 }, currency: USD, amount: 1400000, book: 1400000, parallel: 168000000 }
+    - { item: "مستخلص 2026/1", account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 2100000, book: 2100000, parallel: 252000000 }
+    - { item: "مستخلص 2026/2", account: "112001", dims: { client: C1, contract: P2 }, currency: USD, amount: 1400000, book: 1400000, parallel: 168000000 }
   project_documents:
     # the refusal consumed no number; numbers run per kind and year, sequences per project
     - { kind: progress_billing, number: 1, date: 2026-12-31, contract: P1, client: C1, sequence: 1, entry: 3,
@@ -747,7 +747,7 @@ expect:
     # 11,000.00 USD left at 230,000,000 − 103,500,000 = 126,500,000
     - { account: "212002", book: -1100000, parallel: -126500000 }
   open_items:
-    - { item: "2026/1", account: "113002", dims: { client: C1, contract: P1 }, currency: USD, amount: 100000, book: 100000, parallel: 12000000 }
+    - { item: "مستخلص 2026/1", account: "113002", dims: { client: C1, contract: P1 }, currency: USD, amount: 100000, book: 100000, parallel: 12000000 }
   project_documents:
     - { kind: progress_billing, number: 1, date: 2026-12-31, contract: P1, client: C1, sequence: 1, entry: 2,
         currency: USD, cumulative: 1000000, previous: 0, retention: 100000, advance: 900000 }

@@ -2,7 +2,7 @@
 
 Status: Approved (owner, 2026-11-16)
 
-The expected entries of the six cases were approved by the owner on 2026-11-16 (the sixth after the accounting review). Two readings of S12 rules 19 and 20 were decided by the owner the same day, before the numbers: a supplier's retention is cleared at the average carrying amount of the project's own share of the supplier's running item on `211006` (the item's lines with this project), as a recovered advance is (rule 12); and the client's new receivable on `112001` is named `إفراج <fiscal year>/<number>`, since a release and a progress billing of the same fiscal year share a number and an item's reference is unique on its account (S04 rule 6). S12's second PR brought the billings and releases to the `project_document` executor, the project terms setup and the project documents reader, and switched the cases to `Approved` with no expected value changed.
+The expected entries of the six cases were approved by the owner on 2026-11-16 (the sixth after the accounting review). Two readings of S12 rules 19 and 20 were decided by the owner the same day, before the numbers: a supplier's retention is cleared at the average carrying amount of the project's own share of the supplier's running item on `211006` (the item's lines with this project), as a recovered advance is (rule 12); and the client's new receivable on `112001` is named `إفراج <fiscal year>/<number>`, since a release and a progress billing of the same fiscal year share a number and an item's reference is unique on its account (S04 rule 6). S12's second PR brought the billings and releases to the `project_document` executor, the project terms setup and the project documents reader, and switched the cases to `Approved` with no expected value changed. After the accounting review the owner decided on 2026-11-16 that a billing's items on `112001` and `113002` are named `مستخلص <fiscal year>/<number>`, the printed number with its kind, so a manual item's reference never blocks a billing's number; only the items' names changed.
 
 ## Rule
 
@@ -29,7 +29,7 @@ The company is the contracting client's shape unless a case says otherwise: `usd
 
 Project P1 (and P2 where a case names it) belongs to client C1; S2 is a subcontractor, a value of the `supplier` dimension. The projects' and subcontracts' recovery rate is 0, so the billings that make the retentions carry no advance (`projects/progress-billing.md` and `projects/subcontract-billing.md` own the recovery). Every rate and amount is synthetic. Thursday 31 December 2026, Sunday 31 January, Monday 1 February, Sunday 28 February and Sunday 7 March 2027 are publication days.
 
-A `project_document` step for a release is the document as the form sends it (S12 "Drafts"): `kind: retention_release`, the `side`, the `contract`, and on the client's side the retention items with the amount released of each (`retention_items`), on the supplier's side the `supplier` and the amount released (`retention`). Its currency is the project's or the subcontract's. It is saved as a draft and posted from it; its entry has the source `manual`. A billing's items on `112001` and `113002` are named by its printed number (`<fiscal year>/<number>`), a release's item on `112001` by `إفراج <fiscal year>/<number>`; the subcontractor's retention and payable are running items named by the supplier's code. `project_documents` states the exact set of the company's project documents; a release's row has its side, its supplier on the supplier's side, and the amount released as its `retention`.
+A `project_document` step for a release is the document as the form sends it (S12 "Drafts"): `kind: retention_release`, the `side`, the `contract`, and on the client's side the retention items with the amount released of each (`retention_items`), on the supplier's side the `supplier` and the amount released (`retention`). Its currency is the project's or the subcontract's. It is saved as a draft and posted from it; its entry has the source `manual`. A billing's items on `112001` and `113002` are named by its printed number (`مستخلص <fiscal year>/<number>`), a release's item on `112001` by `إفراج <fiscal year>/<number>`; the subcontractor's retention and payable are running items named by the supplier's code. `project_documents` states the exact set of the company's project documents; a release's row has its side, its supplier on the supplier's side, and the amount released as its `retention`.
 
 A difference line carries its amount in one ledger only, in that ledger's currency (ADR 0007).
 
@@ -64,7 +64,7 @@ steps:
   - project_document: the client's retentions of both billings released
     accounting_date: 2027-02-28
     payload: { document: { kind: retention_release, side: client, contract: P1,
-                           retention_items: [{ item: "2026/1", amount: 300000 }, { item: "2027/1", amount: 200000 }] } }
+                           retention_items: [{ item: "مستخلص 2026/1", amount: 300000 }, { item: "مستخلص 2027/1", amount: 200000 }] } }
   - voucher: client C1 pays the released retentions into the USD bank
     accounting_date: 2027-03-07
     payload: { voucher: { kind: receipt, cash_account: "111004", party_name: "العميل" },
@@ -113,11 +113,11 @@ expect:
     - { account: "411001", book: -5000000, parallel: -610000000 }
     - { account: "421001", book: 0, parallel: -5000000 }
   open_items:
-    - { item: "2026/1", account: "113002", dims: { client: C1, contract: P1 }, currency: USD, amount: 0, book: 0, parallel: 0 }
-    - { item: "2027/1", account: "113002", dims: { client: C1, contract: P1 }, currency: USD, amount: 0, book: 0, parallel: 0 }
+    - { item: "مستخلص 2026/1", account: "113002", dims: { client: C1, contract: P1 }, currency: USD, amount: 0, book: 0, parallel: 0 }
+    - { item: "مستخلص 2027/1", account: "113002", dims: { client: C1, contract: P1 }, currency: USD, amount: 0, book: 0, parallel: 0 }
     - { item: "إفراج 2027/1", account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 0, book: 0, parallel: 0 }
-    - { item: "2026/1", account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 2700000, book: 2700000, parallel: 324000000 }
-    - { item: "2027/1", account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 1800000, book: 1800000, parallel: 225000000 }
+    - { item: "مستخلص 2026/1", account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 2700000, book: 2700000, parallel: 324000000 }
+    - { item: "مستخلص 2027/1", account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 1800000, book: 1800000, parallel: 225000000 }
   project_documents:
     - { kind: progress_billing, number: 1, date: 2026-12-31, contract: P1, client: C1, sequence: 1, entry: 1,
         currency: USD, cumulative: 3000000, previous: 0, retention: 300000, advance: 0 }
@@ -149,21 +149,21 @@ steps:
   - project_document: a third of billing 1's retention released
     accounting_date: 2027-01-31
     payload: { document: { kind: retention_release, side: client, contract: P1,
-                           retention_items: [{ item: "2026/1", amount: 100000 }] } }
+                           retention_items: [{ item: "مستخلص 2026/1", amount: 100000 }] } }
   - reversal: 1
     accounting_date: 2027-02-01
     outcome: { status: refused, reason: OPEN_ITEM_HAS_SETTLEMENTS }
   - project_document: a release of 2,500.00 from the 2,000.00 left
     accounting_date: 2027-01-31
     payload: { document: { kind: retention_release, side: client, contract: P1,
-                           retention_items: [{ item: "2026/1", amount: 250000 }] } }
+                           retention_items: [{ item: "مستخلص 2026/1", amount: 250000 }] } }
     outcome: { status: refused, reason: RELEASE_EXCEEDS_BALANCE }
   - reversal: 2
     accounting_date: 2027-02-01
   - project_document: the whole retention of billing 1 released
     accounting_date: 2027-02-01
     payload: { document: { kind: retention_release, side: client, contract: P1,
-                           retention_items: [{ item: "2026/1", amount: 300000 }] } }
+                           retention_items: [{ item: "مستخلص 2026/1", amount: 300000 }] } }
 expect:
   entries:
     - source: manual
@@ -201,10 +201,10 @@ expect:
     - { account: "113002", book: 0, parallel: 0 }
     - { account: "421001", book: 0, parallel: -1800000 }
   open_items:
-    - { item: "2026/1", account: "113002", dims: { client: C1, contract: P1 }, currency: USD, amount: 0, book: 0, parallel: 0 }
+    - { item: "مستخلص 2026/1", account: "113002", dims: { client: C1, contract: P1 }, currency: USD, amount: 0, book: 0, parallel: 0 }
     - { item: "إفراج 2027/1", account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 0, book: 0, parallel: 0 }
     - { item: "إفراج 2027/2", account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 300000, book: 300000, parallel: 37800000 }
-    - { item: "2026/1", account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 2700000, book: 2700000, parallel: 324000000 }
+    - { item: "مستخلص 2026/1", account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 2700000, book: 2700000, parallel: 324000000 }
   project_documents:
     - { kind: progress_billing, number: 1, date: 2026-12-31, contract: P1, client: C1, sequence: 1, entry: 1,
         currency: USD, cumulative: 3000000, previous: 0, retention: 300000, advance: 0 }
@@ -237,7 +237,7 @@ steps:
   - project_document: billing 1's retention released
     accounting_date: 2027-01-31
     payload: { document: { kind: retention_release, side: client, contract: P1,
-                           retention_items: [{ item: "2026/1", amount: 6000000 }] } }
+                           retention_items: [{ item: "مستخلص 2026/1", amount: 6000000 }] } }
 expect:
   entries:
     - source: manual
@@ -266,7 +266,7 @@ expect:
     # 540,000.00 + 60,000.00 = 600,000.00 TRY; book 1,574,344 + 167,411; parallel 189,000,000 + 21,900,000
     - { account: "112001", currency: TRY, amount: 60000000, book: 1741755, parallel: 210900000 }
   open_items:
-    - { item: "2026/1", account: "113002", dims: { client: C1, contract: P1 }, currency: TRY, amount: 0, book: 0, parallel: 0 }
+    - { item: "مستخلص 2026/1", account: "113002", dims: { client: C1, contract: P1 }, currency: TRY, amount: 0, book: 0, parallel: 0 }
     - { item: "إفراج 2027/1", account: "112001", dims: { client: C1, contract: P1 }, currency: TRY, amount: 6000000, book: 167411, parallel: 21900000 }
   project_documents:
     - { kind: progress_billing, number: 1, date: 2026-12-31, contract: P1, client: C1, sequence: 1, entry: 1,
@@ -295,7 +295,7 @@ steps:
   - project_document: billing 1's retention released
     accounting_date: 2027-01-31
     payload: { document: { kind: retention_release, side: client, contract: P1,
-                           retention_items: [{ item: "2026/1", amount: 300000 }] } }
+                           retention_items: [{ item: "مستخلص 2026/1", amount: 300000 }] } }
 expect:
   entries:
     - source: manual
@@ -317,7 +317,7 @@ expect:
     - { account: "113002", book: 0 }
     - { account: "112001", currency: USD, amount: 3000000, book: 361500000 }
   open_items:
-    - { item: "2026/1", account: "113002", dims: { client: C1, contract: P1 }, currency: USD, amount: 0, book: 0 }
+    - { item: "مستخلص 2026/1", account: "113002", dims: { client: C1, contract: P1 }, currency: USD, amount: 0, book: 0 }
     - { item: "إفراج 2027/1", account: "112001", dims: { client: C1, contract: P1 }, currency: USD, amount: 300000, book: 37500000 }
   project_documents:
     - { kind: progress_billing, number: 1, date: 2026-12-31, contract: P1, client: C1, sequence: 1, entry: 1,

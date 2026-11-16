@@ -260,7 +260,7 @@ expect:
         # value and cumulative in the subcontract's USD; retention and advance carried for P1; paid in December
         - { supplier: S2, currency: USD, value: 5000000, cumulative: 1200000, retention: 120000, advance: 260000, paid: 500000 }
       billings:
-        # in the terms' USD; outstanding: billing 1's receivable "2026/1" on 112001 at 31 December
+        # in the terms' USD; outstanding: billing 1's receivable "مستخلص 2026/1" on 112001 at 31 December
         - { sequence: 1, number: "2026/1", date: 2026-12-31, cumulative: 3000000, previous: 0, period: 3000000,
             retention: 300000, advance: 600000, net: 2100000, state: posted, outstanding: 2100000 }
     # the bank's 10,000.00 USD is carried at 112,500,000 (230,000,000 − 57,500,000 − 60,000,000), not 120,000,000,
@@ -388,7 +388,7 @@ steps:
     accounting_date: 2027-01-07
     payload: { voucher: { kind: receipt, cash_account: "111004", party_name: "العميل" },
                lines: [{ account: "111004", currency: USD, amount: 2100000 },
-                       { account: "112001", currency: USD, amount: -2100000, item: "2026/1" }] }
+                       { account: "112001", currency: USD, amount: -2100000, item: "مستخلص 2026/1" }] }
   - reversal: 3
     accounting_date: 2027-01-12
   - project_document: progress billing 2 of P1, the recovery raised to 10,000.00
