@@ -1968,6 +1968,8 @@ async function projectDocumentLines(
       advance: {
         account: advancesAccount,
         dimensions: counterpartyDimensions,
+        // An advance paid to a supplier is a debit (S12 rule 12).
+        side: 1,
         shares:
           document.advanceMinor === null || document.advanceMinor === 0n
             ? []

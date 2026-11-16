@@ -505,6 +505,13 @@
       "when": 1794791382004,
       "tag": "0071_s12_project_guards",
       "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1794800124836,
+      "tag": "0072_s12_material_lock",
+      "breakpoints": true
     }
   ]
 }

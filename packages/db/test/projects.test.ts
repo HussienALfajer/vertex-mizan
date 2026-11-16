@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import {
   type CompanyLedgers,
   CURRENCY_CODES,
@@ -7,6 +8,7 @@ import {
   PROJECT_DOCUMENT_KINDS,
   RETENTION_SIDES,
 } from '@vertex-mizan/contracts';
+import { firstChainBreak } from '@vertex-mizan/ledger';
 import { asc, eq, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -20,17 +22,26 @@ import {
   createMaterial,
   createSubcontract,
   type DocumentLineSpec,
+  dimensionSets,
   dimensionTypes,
   entryDrafts,
+  entryNumberCounters,
+  journalEntries,
   journalLines,
+  ledgerHeads,
   lineQuantities,
+  openItemMovements,
+  openItems,
   type PersonActor,
   type ProjectDocumentSpec,
   post,
+  postingRequests,
   previewProjectDocument,
   projectDocumentKind,
+  projectDocumentSequences,
   projectDocuments,
   putProjectTerms,
+  readChain,
   readProjectDocument,
   readProjectDocuments,
   readProjectTerms,
@@ -420,7 +431,10 @@ describe('a project purchase invoice through the posting function (S12 rules 4�
     const backApplications = await inCompany(books.id, (tx) =>
       tx.select().from(advanceApplications).where(eq(advanceApplications.entryId, reversal.id)),
     );
-    expect(backApplications.map((a) => a.amountMinor).sort((a, b) => (a < b ? -1 : 1))).toEqual([-820926n, -679074n]);
+    expect(backApplications.map((a) => a.amountMinor).sort((a, b) => (a < b ? -1 : 1))).toEqual([
+      -820926n,
+      -679074n,
+    ]);
     const cancelled = await inCompany(books.id, (tx) =>
       readProjectDocuments(tx, { state: 'cancelled' }),
     );
@@ -783,5 +797,296 @@ describe('the guards on documents, quantities and applications (0071)', () => {
     await postDocument(books, '2026-12-03', purchaseOf(books));
     expect(await inCompany(other.id, (tx) => tx.select().from(projectDocuments))).toEqual([]);
     expect(await inCompany(other.id, (tx) => tx.select().from(lineQuantities))).toEqual([]);
+  });
+});
+
+/** A line written by hand, with the movement it claims on an item. */
+interface ForgedLine {
+  readonly code: string;
+  readonly setKey: string;
+  readonly amount: bigint;
+  readonly book: bigint;
+  readonly parallel: bigint;
+  readonly movement?: { readonly itemId: string; readonly kind: string };
+  /** `measured` by default; a clearing is `carried`. */
+  readonly kind?: string;
+}
+
+type Extra = (tx: Transaction, entryId: string, lineIds: readonly string[]) => Promise<void>;
+
+/**
+ * A TRY entry written by hand as the app role, as `post()` writes one, with `extra` writing the
+ * rows S12 adds while the entry is the one being posted (before the head moves past it); the
+ * guards must refuse each departure, at the statement or at commit.
+ */
+async function forge(
+  books: Books,
+  lines: readonly ForgedLine[],
+  extra: Extra = async () => {},
+): Promise<string> {
+  return inCompany(books.id, async (tx) => {
+    const [head] = await tx.select().from(ledgerHeads).for('update');
+    if (!head) throw new Error('no head');
+    const on = '2026-12-03';
+    const [counter] = await tx
+      .insert(entryNumberCounters)
+      .values({ companyId: books.id, fiscalYear: 2026, lastNumber: 1 })
+      .onConflictDoUpdate({
+        target: [entryNumberCounters.companyId, entryNumberCounters.fiscalYear],
+        set: { lastNumber: sql`${entryNumberCounters.lastNumber} + 1` },
+      })
+      .returning();
+    const [request] = await tx
+      .insert(postingRequests)
+      .values({
+        companyId: books.id,
+        client: 'manual',
+        idempotencyKey: uuidv7(),
+        payloadHash: '0'.repeat(64),
+      })
+      .returning();
+    const sets = new Map(
+      (await tx.select({ id: dimensionSets.id, key: dimensionSets.key }).from(dimensionSets)).map(
+        (row) => [row.key, row.id],
+      ),
+    );
+    const at = await tx.execute<{ at: string }>(
+      sql`select to_char(now() at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as at`,
+    );
+    const id = uuidv7();
+    const hash = createHash('sha256').update(id).digest('hex');
+    const sequence = head.entryCount + 1n;
+    await tx.insert(journalEntries).values({
+      id,
+      companyId: books.id,
+      requestId: request?.id as string,
+      sequence,
+      fiscalYear: 2026,
+      number: counter?.lastNumber as number,
+      entryDate: on,
+      postedAt: new Date(at.rows[0]?.at as string),
+      source: 'manual',
+      description: 'قيد مزوّر',
+      postedByUserId: personId,
+      lineCount: lines.length,
+      previousHash: head.lastHash,
+      hash,
+    });
+    const stored = await tx
+      .insert(journalLines)
+      .values(
+        lines.map((line, index) => ({
+          companyId: books.id,
+          entryId: id,
+          lineNo: index + 1,
+          accountId: account(books, line.code),
+          dimensionSetId: sets.get(line.setKey) as string,
+          kind: line.kind ?? 'measured',
+          ledger: null,
+          currency: 'TRY',
+          amountMinor: line.amount,
+          bookMinor: line.book,
+          parallelMinor: line.parallel,
+        })),
+      )
+      .returning({ id: journalLines.id });
+    for (const [index, line] of lines.entries()) {
+      if (line.movement === undefined) continue;
+      await tx.insert(openItemMovements).values({
+        companyId: books.id,
+        itemId: line.movement.itemId,
+        lineId: stored[index]?.id as string,
+        entryId: id,
+        entryDate: on,
+        kind: line.movement.kind,
+        adjusted: false,
+        amountMinor: line.amount,
+        bookMinor: line.book,
+        parallelMinor: line.parallel,
+      });
+    }
+    await extra(
+      tx,
+      id,
+      stored.map((row) => row.id),
+    );
+    await tx
+      .update(ledgerHeads)
+      .set({ entryCount: sequence, lastEntryId: id, lastHash: hash })
+      .where(eq(ledgerHeads.id, head.id));
+    return id;
+  });
+}
+
+describe('the S12 guards against writes the posting function never makes (0071–0072)', () => {
+  /** Books with the advance and a posted purchase, so the forgeries' dimension sets exist. */
+  async function forgeable() {
+    const books = await newBooks();
+    await advance(books);
+    const posted = await postDocument(books, '2026-12-03', purchaseOf(books, 1500000n));
+    const keys = await inCompany(books.id, (tx) =>
+      tx.select({ key: dimensionSets.key }).from(dimensionSets),
+    );
+    const keyOf = (...values: string[]) =>
+      keys.find(
+        (row) =>
+          values.every((value) => row.key.includes(value)) &&
+          row.key.split(',').length === values.length,
+      )?.key as string;
+    const [item] = await inCompany(books.id, (tx) =>
+      tx
+        .select({ id: openItems.id })
+        .from(openItems)
+        .where(eq(openItems.accountId, account(books, '114002'))),
+    );
+    return {
+      books,
+      posted,
+      project: keyOf(books.project),
+      advanceKey: keyOf(books.supplier, books.project),
+      advanceItem: item?.id as string,
+    };
+  }
+
+  const cost = (setKey: string, book = 9265n, parallel = 1102500n): ForgedLine => ({
+    code: '511001',
+    setKey,
+    amount: 315000n,
+    book,
+    parallel,
+  });
+  const owner313 = (amount = -315000n, book = -9265n, parallel = -1102500n): ForgedLine => ({
+    code: '313001',
+    setKey: '',
+    amount,
+    book,
+    parallel,
+  });
+  const quantityOf =
+    (books: Books, unitPrice: string): Extra =>
+    async (tx, entryId, lineIds) => {
+      await tx.insert(lineQuantities).values({
+        companyId: books.id,
+        entryId,
+        lineId: lineIds[0] as string,
+        materialId: books.cement,
+        unit: 'طن',
+        quantity: '1.000',
+        unitPrice,
+      });
+    };
+
+  it('lets a forged line with its quantity through, so each refusal below is its own', async () => {
+    const { books, project } = await forgeable();
+    await forge(books, [cost(project), owner313()], quantityOf(books, '3150.0000'));
+  });
+
+  it('refuses a materials line without its quantity, or one whose amount is not the product', async () => {
+    const { books, project } = await forgeable();
+    expect(await refusal(forge(books, [cost(project), owner313()]))).toMatch(
+      /names one and its quantity/,
+    );
+    expect(
+      await refusal(forge(books, [cost(project), owner313()], quantityOf(books, '3000.0000'))),
+    ).toMatch(/quantity times its unit price/);
+  });
+
+  it('refuses covered parts that do not equal their clearing line, at commit', async () => {
+    const { books, project, advanceKey, advanceItem } = await forgeable();
+    const lines: ForgedLine[] = [
+      cost(project, 9532n, 1072500n),
+      {
+        code: '114002',
+        setKey: advanceKey,
+        amount: -300000n,
+        book: -9091n,
+        parallel: -1020000n,
+        kind: 'carried',
+        movement: { itemId: advanceItem, kind: 'clear' },
+      },
+      owner313(-15000n, -441n, -52500n),
+    ];
+    const covering =
+      (book: bigint): Extra =>
+      async (tx, entryId, lineIds) => {
+        await quantityOf(books, '3150.0000')(tx, entryId, lineIds);
+        await tx.insert(advanceApplications).values({
+          companyId: books.id,
+          entryId,
+          advanceLineId: lineIds[1] as string,
+          lineId: lineIds[0] as string,
+          amountMinor: 300000n,
+          bookMinor: book,
+          parallelMinor: 1020000n,
+        });
+      };
+    expect(await refusal(forge(books, lines, covering(9000n)))).toMatch(/do not equal it/);
+    await forge(books, lines, covering(9091n));
+  });
+
+  it('refuses an application, a document or a number added outside the posting', async () => {
+    const { books, posted } = await forgeable();
+    const rows = await inCompany(books.id, (tx) =>
+      tx.select().from(journalLines).where(eq(journalLines.entryId, posted.entry.id)),
+    );
+    const line = (code: string) =>
+      rows.find((row) => row.accountId === account(books, code))?.id as string;
+    expect(
+      await refusal(
+        inCompany(books.id, (tx) =>
+          tx.insert(advanceApplications).values({
+            companyId: books.id,
+            entryId: posted.entry.id,
+            advanceLineId: line('114002'),
+            lineId: line('211001'),
+            amountMinor: -1n,
+            bookMinor: 0n,
+            parallelMinor: 0n,
+          }),
+        ),
+      ),
+    ).toMatch(/entry being posted/);
+    expect(
+      await refusal(
+        inCompany(books.id, (tx) =>
+          tx.insert(projectDocuments).values({
+            companyId: books.id,
+            kind: 'wage_sheet',
+            fiscalYear: 2026,
+            number: 1,
+            documentDate: '2026-12-03',
+            entryId: uuidv7(),
+            draftId: posted.draftId,
+            contractValueId: books.project,
+            currency: 'USD',
+            periodFrom: '2026-12-01',
+            periodTo: '2026-12-03',
+            totalMinor: 1n,
+          }),
+        ),
+      ),
+    ).toMatch(/as prepared/);
+    expect(
+      await refusal(
+        inCompany(books.id, (tx) =>
+          tx
+            .insert(projectDocumentSequences)
+            .values({ companyId: books.id, kind: 'wage_sheet', fiscalYear: 2026, lastNumber: 1 }),
+        ),
+      ),
+    ).toMatch(/was given but no document took it/);
+  });
+
+  it('keeps the chain intact over a purchase applying an advance and its reversal', async () => {
+    const { books, posted } = await forgeable();
+    await reverse(books, posted.entry.id, '2026-12-10');
+    const links = await inCompany(books.id, readChain);
+    expect(firstChainBreak(links)).toBeNull();
+    expect(links.some((link) => link.entry.lines.some((line) => line.covered != null))).toBe(true);
+    expect(
+      links.some((link) =>
+        link.entry.lines.some((line) => line.quantity?.quantity.startsWith('-') === true),
+      ),
+    ).toBe(true);
   });
 });

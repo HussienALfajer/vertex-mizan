@@ -118,6 +118,11 @@ export interface PurchaseLine extends TypedQuantityLine {
 export interface AdvanceShares {
   readonly account: string;
   readonly dimensions: Dimensions;
+  /**
+   * The side an advance is held on: 1 for an advance paid (`114002`, a debit), −1 for one received
+   * (`212002`, a credit). A share on the other side holds no advance.
+   */
+  readonly side: 1 | -1;
   readonly shares: readonly ItemState[];
 }
 
@@ -182,10 +187,6 @@ function lineOf(target: RunningTarget, amount: Money): ManualLine {
   return { account: target.account, dimensions: target.dimensions, amount, item: target.item };
 }
 
-function abs(value: bigint): bigint {
-  return value < 0n ? -value : value;
-}
-
 /**
  * The project's share of the counterparty's advance in the document's currency, refusing an advance
  * held only in another currency (`ADVANCE_CURRENCY_MISMATCH`, S12 answer 6 and edge case 4) and more
@@ -197,11 +198,17 @@ function advanceShare(
   currency: CurrencyCode,
   amountMinor: bigint,
 ): ItemState {
+  // Only a balance on the advance's own side is advance held: a share on the other side (an
+  // advance account credited for this project by hand) holds none, so nothing is cleared from it
+  // and nothing is measured anew on it (IAS 21.23(b), IFRIC 22.8).
+  const heldIn = (item: ItemState) => {
+    const signed = BigInt(advance.side) * item.balance.transaction.amountMinor;
+    return signed > 0n ? signed : 0n;
+  };
   const share = advance.shares.find((item) => item.balance.transaction.currency === currency);
-  const held = share === undefined ? 0n : abs(share.balance.transaction.amountMinor);
+  const held = share === undefined ? 0n : heldIn(share);
   const elsewhere = advance.shares.some(
-    (item) =>
-      item.balance.transaction.currency !== currency && item.balance.transaction.amountMinor !== 0n,
+    (item) => item.balance.transaction.currency !== currency && heldIn(item) > 0n,
   );
   if (held === 0n && elsewhere) {
     throw new DomainError(
@@ -291,7 +298,7 @@ function purchase(document: PurchaseDocument, context: MeasureContext): BuiltDoc
     // The clearing line, as `manualEntry()` will build it again from the same share.
     const moved = moveItem(share, target, credit, context);
     const [line] = moved.lines;
-    if (moved.lines.length !== 1 || line === undefined) {
+    if (moved.lines.length !== 1 || line === undefined || line.item?.movement !== 'clear') {
       throw new TypeError('An advance applied within its share clears it in one line');
     }
     covered = coveredParts(

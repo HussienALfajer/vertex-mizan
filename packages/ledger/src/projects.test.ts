@@ -105,6 +105,7 @@ function purchase(
     advance: {
       account: '114002',
       dimensions: { supplier: 'S1', contract: 'P1' },
+      side: 1,
       shares: [advanceOf(ledgers)],
     },
     ...input,
@@ -300,7 +301,7 @@ describe('a project purchase invoice (S12 rules 7–8, 12)', () => {
           purchase({
             lines: [cement, steel],
             advanceMinor: 1_000_000n,
-            advance: { account: '114002', dimensions: {}, shares: [] },
+            advance: { account: '114002', dimensions: {}, side: 1, shares: [] },
           }),
           at(client),
         ),
@@ -328,6 +329,37 @@ describe('a project purchase invoice (S12 rules 7–8, 12)', () => {
         ),
       ),
     ).toBe('VALIDATION_FAILED');
+  });
+
+  it('refuses an advance from a project whose share is on the other side (a credit)', () => {
+    const credited = running('S1-advance', {
+      transaction: money(-2_000_000n, 'TRY'),
+      bookMinor: -60_000n,
+      parallelMinor: -6_800_000n,
+    });
+    const document = purchase({ lines: [cement, steel], advanceMinor: 1_000_000n });
+    expect(
+      refusal(() =>
+        buildProjectDocument(
+          { ...document, advance: { ...document.advance, shares: [credited] } },
+          at(client),
+        ),
+      ),
+    ).toBe('RELEASE_EXCEEDS_BALANCE');
+    // Held only on the other side in another currency is no advance in another currency either.
+    const usdCredit = running('S1-usd', {
+      transaction: money(-10_000n, 'USD'),
+      bookMinor: -10_000n,
+      parallelMinor: -1_200_000n,
+    });
+    expect(
+      refusal(() =>
+        buildProjectDocument(
+          { ...document, advance: { ...document.advance, shares: [usdCredit] } },
+          at(client),
+        ),
+      ),
+    ).toBe('RELEASE_EXCEEDS_BALANCE');
   });
 
   it('puts the advance back at exactly what it cleared when reversed', () => {
@@ -369,6 +401,7 @@ describe('the covered parts (S12 rule 12, IFRIC 22.8)', () => {
             advance: {
               account: '114002',
               dimensions: {},
+              side: 1,
               shares: [
                 running('A', {
                   transaction: money(held, 'TRY'),

@@ -3190,7 +3190,8 @@ BEGIN
   IF NEW.material_id IS NOT NULL THEN
     SELECT m.unit INTO material_unit
     FROM public.materials m
-    WHERE m.company_id = NEW.company_id AND m.id = NEW.material_id;
+    WHERE m.company_id = NEW.company_id AND m.id = NEW.material_id
+    FOR SHARE;
     IF material_unit IS DISTINCT FROM NEW.unit THEN
       RAISE EXCEPTION 'line_quantities: a material''s line is in the material''s unit'
         USING ERRCODE = 'restrict_violation';

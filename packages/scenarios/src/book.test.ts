@@ -1073,7 +1073,7 @@ describe('a case', () => {
     expect(
       stated('currency: SYP,\n        period_from: 2026-12-01, period_to: 2026-12-14 }'),
     ).toContain("A wage sheet is dated its period's last day");
-    expect(stated('currency: SYP, supplier: S1,\n        ' + period)).toContain('supplier');
+    expect(stated(`currency: SYP, supplier: S1,\n        ${period}`)).toContain('supplier');
     expect(stated('currency: SYP }')).toContain('period_from');
     expect(
       refusal(
