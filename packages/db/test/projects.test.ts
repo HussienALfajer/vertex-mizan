@@ -897,6 +897,52 @@ describe('retention releases through the posting function (S12 rules 19–20)', 
     expect((await codeOf(reverse(books, second.entry.id, '2026-12-20'))).code).toBe('none');
   });
 
+  it('holds a billing while a later difference entry across zero stands on its retention', async () => {
+    const books = await newBooks();
+    await inCompany(books.id, async (tx) => {
+      await createSubcontract(
+        tx,
+        books.id,
+        {
+          contractValueId: books.project,
+          supplierValueId: books.supplier,
+          currency: 'USD',
+          valueMinor: null,
+          retentionBp: 1000,
+          advanceRecoveryBp: 0,
+        },
+        actor(),
+      );
+      await recordRate(tx, books.id, actor(), {
+        effectiveOn: '2026-12-17',
+        base: 'USD',
+        quote: 'SYP',
+        rate: '125.0000',
+        type: 'bulletin',
+        source: 'manual',
+      });
+    });
+    const billing = await postDocument(books, '2026-12-15', {
+      document: {
+        ...billingOf(books, 0n).document,
+        kind: 'subcontract_billing',
+        counterpartyValueId: books.supplier,
+        cumulativeMinor: 100000n,
+      },
+      lines: [],
+    });
+    // A manual debit of 300.00 across the 100.00 retention, reversed later at another rate: its
+    // difference entry clears and adds on the item with no project on its lines.
+    const across = await postManual(books, '2026-12-15', [
+      ['211006', [books.supplier, books.project], 'USD', 30000n],
+      ['313001', [], 'USD', -30000n],
+    ]);
+    await reverse(books, across.id, '2026-12-17');
+    expect((await codeOf(reverse(books, billing.entry.id, '2026-12-17'))).code).toBe(
+      'OPEN_ITEM_HAS_SETTLEMENTS',
+    );
+  });
+
   it('holds a billing whose net crossed a debit balance once the supplier is credited again', async () => {
     const books = await newBooks();
     await inCompany(books.id, (tx) =>

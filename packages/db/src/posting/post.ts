@@ -1477,8 +1477,14 @@ async function checkExactCancellation(
           select 1 from ${journalEntries} r
           where r.company_id = e.company_id and r.reverses_entry_id = e.id)
         and (
-          -- An S04 rule 13 difference, which carries no project, always.
+          -- An S04 rule 13 difference, which carries no project, always: its own kind, or any
+          -- movement of a difference entry (across zero it clears and adds), posted under its
+          -- reversal's key followed by ':difference'.
           m.kind = 'difference'
+          or exists (
+            select 1 from ${postingRequests} p
+            where p.company_id = e.company_id and p.id = e.request_id
+              and p.idempotency_key like '%:difference')
           -- A clearing: of a project's share only when its line carries the project.
           or (m.kind = 'clear' and (a.code not in ('211006', '114002', '212002') or exists (
             select 1 from ${dimensionSetValues} v
