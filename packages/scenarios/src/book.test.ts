@@ -10,6 +10,7 @@ import {
   CORRECTION,
   PURCHASE,
   REPORTS,
+  RETENTION_RELEASE,
   SUBCONTRACT_BILLING,
   SYP_ONLY,
   WAGE_SHEET,
@@ -956,6 +957,71 @@ describe('a case', () => {
       'Billing 1 of P1 by S2 is stated twice',
     );
     expect(stated(document.replace(' supplier: S2,', ''))).toContain('supplier');
+  });
+
+  it("reads a client's and a supplier's retention release among the documents (S12)", () => {
+    const releases = parseCase(RETENTION_RELEASE).expect.projectDocuments ?? [];
+    expect(releases.slice(2)).toEqual([
+      {
+        kind: 'retention_release',
+        number: 1,
+        date: '2026-11-30',
+        contract: 'P1',
+        client: 'C1',
+        side: 'client',
+        supplier: null,
+        entry: 3,
+        currency: 'SYP',
+        retention: 10000n,
+        cancelledBy: null,
+      },
+      {
+        kind: 'retention_release',
+        number: 2,
+        date: '2026-11-30',
+        contract: 'P1',
+        client: 'C1',
+        side: 'supplier',
+        supplier: 'S2',
+        entry: 4,
+        currency: 'SYP',
+        retention: 10000n,
+        cancelledBy: null,
+      },
+    ]);
+
+    const client =
+      '{ kind: retention_release, number: 1, date: 2026-11-30, contract: P1, client: C1, side: client, entry: 3,\n' +
+      '        currency: SYP, retention: 10000 }';
+    const supplier =
+      '{ kind: retention_release, number: 2, date: 2026-11-30, contract: P1, client: C1, side: supplier, supplier: S2,\n' +
+      '        entry: 4, currency: SYP, retention: 10000 }';
+    const withClient = (row: string) => refusal(RETENTION_RELEASE.replace(client, row));
+    const withSupplier = (row: string) => refusal(RETENTION_RELEASE.replace(supplier, row));
+    // A release is above zero, names the supplier on the supplier's side only, and is not a billing.
+    expect(withClient(client.replace('retention: 10000', 'retention: 0'))).toContain(
+      'A release is above zero',
+    );
+    expect(withClient(client.replace('side: client,', 'side: client, supplier: S2,'))).toContain(
+      "A client's release names no supplier",
+    );
+    expect(withSupplier(supplier.replace(' supplier: S2,', ''))).toContain(
+      "A supplier's release names the supplier",
+    );
+    expect(withClient(client.replace('entry: 3,', 'entry: 3, sequence: 1,'))).toContain('sequence');
+    // The client's side is in the project's terms' currency, the supplier's in the subcontract's.
+    expect(withClient(client.replace('currency: SYP', 'currency: USD'))).toContain(
+      "P1's terms are in SYP",
+    );
+    expect(withSupplier(supplier.replace('currency: SYP', 'currency: USD'))).toContain(
+      "S2's subcontract on P1 is in SYP",
+    );
+    expect(withSupplier(supplier.replace('supplier: S2', 'supplier: S3'))).toContain(
+      'S3 has no subcontract on P1',
+    );
+    expect(withClient(client.replace('entry: 3', 'entry: 4'))).toContain(
+      'Entry 4 is another document',
+    );
   });
 
   it('reads a wage sheet among the project documents, its period within one month (S12)', () => {

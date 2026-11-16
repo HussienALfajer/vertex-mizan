@@ -181,6 +181,14 @@ function describeProjectDocument(document: ExpectedProjectDocument): string {
       `advance ${document.advance}${cancelled}`
     );
   }
+  if (document.kind === 'retention_release') {
+    const side =
+      document.supplier === null ? document.side : `${document.side} ${document.supplier}`;
+    return (
+      `${head}${document.contract} of ${document.client}, ${side}: entry ${document.entry}, ` +
+      `${document.currency} released ${document.retention}${cancelled}`
+    );
+  }
   if (document.kind === 'wage_sheet') {
     return (
       `${head}${document.contract} of ${document.client} for ${document.periodFrom}–${document.periodTo}: ` +
