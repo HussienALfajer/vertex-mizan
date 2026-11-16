@@ -12,7 +12,7 @@ Four PRs, in order. Each PR switches its scenario files to `Approved (owner, 202
 - [x] scenarios: the `project_document` executor, the `materials` and `subcontracts` setups, the `projectDocuments` and `quantities` readers; `projects/purchase-invoice.md` and `projects/wage-sheet.md` switched to `Approved` and run
 - [x] api: `/api/materials`, `/api/projects/:valueId/terms`, `/api/subcontracts`; `requiresMaterial` on the account sheet; drafts, preview and posting of purchases and wage sheets; `GET /api/project-documents` and `/:id`; tests (success, 401, 403, another company, idempotent replay)
 - [x] bridge: build, OpenAPI export
-- [ ] docs: ROADMAP, glossary rows, folder CLAUDE.md files
+- [x] docs: ROADMAP, glossary rows, folder CLAUDE.md files
 - [ ] checks and reviewers (reviewer and accountant-reviewer), PR with auto-merge and Auto-fix
 
 ### PR 2 — billings and retention releases (branch `feat/s12-billings`)
