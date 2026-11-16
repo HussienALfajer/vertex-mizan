@@ -17,6 +17,7 @@ import type { ReactNode } from 'react';
 import { formatDay } from '../../lib/format';
 import { useCompany } from '../../lib/session';
 import { EntryNumberText, HubDocumentText, useFiscalYearStartMonth } from '../entries/entry-parts';
+import { useMaterials } from '../projects/project-queries';
 import {
   type LinesSearch,
   ReportAccountName,
@@ -66,6 +67,11 @@ export function LinesPage() {
           )}
           {search.side && <Fact label={t.columns.side}>{t.lines.side[search.side]}</Fact>}
           {search.openingEntry && <Fact label={t.filters.label}>{t.lines.openingEntry}</Fact>}
+          {search.material && (
+            <Fact label={t.materialQuantities.material}>
+              <MaterialName id={search.material} />
+            </Fact>
+          )}
           {first && (
             <>
               <Fact label={t.lines.sum}>
@@ -177,3 +183,14 @@ function Fact({ label, children }: { label: string; children: ReactNode }) {
 }
 
 export type { LinesSearch };
+
+/** The material a drill-down filters by (S12): its code and name from the catalogue. */
+function MaterialName({ id }: { id: string }) {
+  const { companyId } = useCompany();
+  const material = useMaterials(companyId).byId.get(id);
+  return material ? (
+    <span>
+      <bdi dir="ltr">{material.code}</bdi> <bdi>{material.name}</bdi>
+    </span>
+  ) : null;
+}

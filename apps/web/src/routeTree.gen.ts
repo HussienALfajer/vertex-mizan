@@ -19,6 +19,7 @@ import { Route as AuthResetPasswordRouteImport } from './routes/_auth/reset-pass
 import { Route as AppCompanyIndexRouteImport } from './routes/_app/_company/index'
 import { Route as AppCompanyDimensionsRouteImport } from './routes/_app/_company/dimensions'
 import { Route as AppCompanyIntegrityRouteImport } from './routes/_app/_company/integrity'
+import { Route as AppCompanyMaterialsRouteImport } from './routes/_app/_company/materials'
 import { Route as AppCompanyOpeningRouteImport } from './routes/_app/_company/opening'
 import { Route as AppCompanyRevaluationRouteImport } from './routes/_app/_company/revaluation'
 import { Route as AppAccountSecurityRouteImport } from './routes/_app/account/security'
@@ -40,6 +41,7 @@ import { Route as AppCompanyEntriesNewRouteImport } from './routes/_app/_company
 import { Route as AppCompanyOpenItemsIdRouteImport } from './routes/_app/_company/open-items/$id'
 import { Route as AppCompanyPeriodsIndexRouteImport } from './routes/_app/_company/periods/index'
 import { Route as AppCompanyPeriodsPeriodRouteImport } from './routes/_app/_company/periods/$period'
+import { Route as AppCompanyProjectsIndexRouteImport } from './routes/_app/_company/projects/index'
 import { Route as AppCompanyRatesIndexRouteImport } from './routes/_app/_company/rates/index'
 import { Route as AppCompanyRatesCalendarRouteImport } from './routes/_app/_company/rates/calendar'
 import { Route as AppCompanyReceivablesIndexRouteImport } from './routes/_app/_company/receivables/index'
@@ -49,6 +51,7 @@ import { Route as AppCompanyReportsGeneralLedgerRouteImport } from './routes/_ap
 import { Route as AppCompanyReportsIncomeStatementRouteImport } from './routes/_app/_company/reports/income-statement'
 import { Route as AppCompanyReportsJournalRouteImport } from './routes/_app/_company/reports/journal'
 import { Route as AppCompanyReportsLinesRouteImport } from './routes/_app/_company/reports/lines'
+import { Route as AppCompanyReportsMaterialQuantitiesRouteImport } from './routes/_app/_company/reports/material-quantities'
 import { Route as AppCompanyReportsProfitabilityRouteImport } from './routes/_app/_company/reports/profitability'
 import { Route as AppCompanyReportsTrialBalanceRouteImport } from './routes/_app/_company/reports/trial-balance'
 import { Route as AppCompanySettingsAuditRouteImport } from './routes/_app/_company/settings/audit'
@@ -58,10 +61,14 @@ import { Route as AppCompanySettingsMembersRouteImport } from './routes/_app/_co
 import { Route as AppCompanyAccountsIdLinesRouteImport } from './routes/_app/_company/accounts/$id/lines'
 import { Route as AppCompanyCashVouchersIndexRouteImport } from './routes/_app/_company/cash/vouchers/index'
 import { Route as AppCompanyCashVouchersIdRouteImport } from './routes/_app/_company/cash/vouchers/$id'
+import { Route as AppCompanyProjectsValueIdIndexRouteImport } from './routes/_app/_company/projects/$valueId/index'
+import { Route as AppCompanyProjectsValueIdTermsRouteImport } from './routes/_app/_company/projects/$valueId/terms'
+import { Route as AppCompanyProjectsDocumentsIndexRouteImport } from './routes/_app/_company/projects/documents/index'
 import { Route as AppCompanyReceivablesClientsValueIdRouteImport } from './routes/_app/_company/receivables/clients/$valueId'
 import { Route as AppCompanyReportsAccountsIdRouteImport } from './routes/_app/_company/reports/accounts/$id'
 import { Route as AppCompanyReportsJournalBookPrintsRouteImport } from './routes/_app/_company/reports/journal-book/prints'
 import { Route as AppCompanyCashVouchersNewKindRouteImport } from './routes/_app/_company/cash/vouchers/new/$kind'
+import { Route as AppCompanyProjectsDocumentsNewKindRouteImport } from './routes/_app/_company/projects/documents/new/$kind'
 
 const AppRoute = AppRouteImport.update({
   id: '/_app',
@@ -108,6 +115,11 @@ const AppCompanyDimensionsRoute = AppCompanyDimensionsRouteImport.update({
 const AppCompanyIntegrityRoute = AppCompanyIntegrityRouteImport.update({
   id: '/integrity',
   path: '/integrity',
+  getParentRoute: () => AppCompanyRoute,
+} as any)
+const AppCompanyMaterialsRoute = AppCompanyMaterialsRouteImport.update({
+  id: '/materials',
+  path: '/materials',
   getParentRoute: () => AppCompanyRoute,
 } as any)
 const AppCompanyOpeningRoute = AppCompanyOpeningRouteImport.update({
@@ -216,6 +228,11 @@ const AppCompanyPeriodsPeriodRoute = AppCompanyPeriodsPeriodRouteImport.update({
   path: '/periods/$period',
   getParentRoute: () => AppCompanyRoute,
 } as any)
+const AppCompanyProjectsIndexRoute = AppCompanyProjectsIndexRouteImport.update({
+  id: '/projects/',
+  path: '/projects/',
+  getParentRoute: () => AppCompanyRoute,
+} as any)
 const AppCompanyRatesIndexRoute = AppCompanyRatesIndexRouteImport.update({
   id: '/rates/',
   path: '/rates/',
@@ -266,6 +283,12 @@ const AppCompanyReportsLinesRoute = AppCompanyReportsLinesRouteImport.update({
   path: '/reports/lines',
   getParentRoute: () => AppCompanyRoute,
 } as any)
+const AppCompanyReportsMaterialQuantitiesRoute =
+  AppCompanyReportsMaterialQuantitiesRouteImport.update({
+    id: '/reports/material-quantities',
+    path: '/reports/material-quantities',
+    getParentRoute: () => AppCompanyRoute,
+  } as any)
 const AppCompanyReportsProfitabilityRoute =
   AppCompanyReportsProfitabilityRouteImport.update({
     id: '/reports/profitability',
@@ -319,6 +342,24 @@ const AppCompanyCashVouchersIdRoute =
     path: '/cash/vouchers/$id',
     getParentRoute: () => AppCompanyRoute,
   } as any)
+const AppCompanyProjectsValueIdIndexRoute =
+  AppCompanyProjectsValueIdIndexRouteImport.update({
+    id: '/projects/$valueId/',
+    path: '/projects/$valueId/',
+    getParentRoute: () => AppCompanyRoute,
+  } as any)
+const AppCompanyProjectsValueIdTermsRoute =
+  AppCompanyProjectsValueIdTermsRouteImport.update({
+    id: '/projects/$valueId/terms',
+    path: '/projects/$valueId/terms',
+    getParentRoute: () => AppCompanyRoute,
+  } as any)
+const AppCompanyProjectsDocumentsIndexRoute =
+  AppCompanyProjectsDocumentsIndexRouteImport.update({
+    id: '/projects/documents/',
+    path: '/projects/documents/',
+    getParentRoute: () => AppCompanyRoute,
+  } as any)
 const AppCompanyReceivablesClientsValueIdRoute =
   AppCompanyReceivablesClientsValueIdRouteImport.update({
     id: '/receivables/clients/$valueId',
@@ -343,6 +384,12 @@ const AppCompanyCashVouchersNewKindRoute =
     path: '/cash/vouchers/new/$kind',
     getParentRoute: () => AppCompanyRoute,
   } as any)
+const AppCompanyProjectsDocumentsNewKindRoute =
+  AppCompanyProjectsDocumentsNewKindRouteImport.update({
+    id: '/projects/documents/new/$kind',
+    path: '/projects/documents/new/$kind',
+    getParentRoute: () => AppCompanyRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AppCompanyIndexRoute
@@ -352,6 +399,7 @@ export interface FileRoutesByFullPath {
   '/reset-password': typeof AuthResetPasswordRoute
   '/dimensions': typeof AppCompanyDimensionsRoute
   '/integrity': typeof AppCompanyIntegrityRoute
+  '/materials': typeof AppCompanyMaterialsRoute
   '/opening': typeof AppCompanyOpeningRoute
   '/revaluation': typeof AppCompanyRevaluationRoute
   '/account/security': typeof AppAccountSecurityRoute
@@ -374,6 +422,7 @@ export interface FileRoutesByFullPath {
   '/reports/income-statement': typeof AppCompanyReportsIncomeStatementRoute
   '/reports/journal': typeof AppCompanyReportsJournalRoute
   '/reports/lines': typeof AppCompanyReportsLinesRoute
+  '/reports/material-quantities': typeof AppCompanyReportsMaterialQuantitiesRoute
   '/reports/profitability': typeof AppCompanyReportsProfitabilityRoute
   '/reports/trial-balance': typeof AppCompanyReportsTrialBalanceRoute
   '/settings/audit': typeof AppCompanySettingsAuditRoute
@@ -385,16 +434,21 @@ export interface FileRoutesByFullPath {
   '/drafts/': typeof AppCompanyDraftsIndexRoute
   '/entries/': typeof AppCompanyEntriesIndexRoute
   '/periods/': typeof AppCompanyPeriodsIndexRoute
+  '/projects/': typeof AppCompanyProjectsIndexRoute
   '/rates/': typeof AppCompanyRatesIndexRoute
   '/receivables/': typeof AppCompanyReceivablesIndexRoute
   '/reports/': typeof AppCompanyReportsIndexRoute
   '/accounts/$id/lines': typeof AppCompanyAccountsIdLinesRoute
   '/cash/vouchers/$id': typeof AppCompanyCashVouchersIdRoute
+  '/projects/$valueId/terms': typeof AppCompanyProjectsValueIdTermsRoute
   '/receivables/clients/$valueId': typeof AppCompanyReceivablesClientsValueIdRoute
   '/reports/accounts/$id': typeof AppCompanyReportsAccountsIdRoute
   '/reports/journal-book/prints': typeof AppCompanyReportsJournalBookPrintsRoute
   '/cash/vouchers/': typeof AppCompanyCashVouchersIndexRoute
+  '/projects/$valueId/': typeof AppCompanyProjectsValueIdIndexRoute
+  '/projects/documents/': typeof AppCompanyProjectsDocumentsIndexRoute
   '/cash/vouchers/new/$kind': typeof AppCompanyCashVouchersNewKindRoute
+  '/projects/documents/new/$kind': typeof AppCompanyProjectsDocumentsNewKindRoute
 }
 export interface FileRoutesByTo {
   '/': typeof AppCompanyIndexRoute
@@ -404,6 +458,7 @@ export interface FileRoutesByTo {
   '/reset-password': typeof AuthResetPasswordRoute
   '/dimensions': typeof AppCompanyDimensionsRoute
   '/integrity': typeof AppCompanyIntegrityRoute
+  '/materials': typeof AppCompanyMaterialsRoute
   '/opening': typeof AppCompanyOpeningRoute
   '/revaluation': typeof AppCompanyRevaluationRoute
   '/account/security': typeof AppAccountSecurityRoute
@@ -426,6 +481,7 @@ export interface FileRoutesByTo {
   '/reports/income-statement': typeof AppCompanyReportsIncomeStatementRoute
   '/reports/journal': typeof AppCompanyReportsJournalRoute
   '/reports/lines': typeof AppCompanyReportsLinesRoute
+  '/reports/material-quantities': typeof AppCompanyReportsMaterialQuantitiesRoute
   '/reports/profitability': typeof AppCompanyReportsProfitabilityRoute
   '/reports/trial-balance': typeof AppCompanyReportsTrialBalanceRoute
   '/settings/audit': typeof AppCompanySettingsAuditRoute
@@ -437,16 +493,21 @@ export interface FileRoutesByTo {
   '/drafts': typeof AppCompanyDraftsIndexRoute
   '/entries': typeof AppCompanyEntriesIndexRoute
   '/periods': typeof AppCompanyPeriodsIndexRoute
+  '/projects': typeof AppCompanyProjectsIndexRoute
   '/rates': typeof AppCompanyRatesIndexRoute
   '/receivables': typeof AppCompanyReceivablesIndexRoute
   '/reports': typeof AppCompanyReportsIndexRoute
   '/accounts/$id/lines': typeof AppCompanyAccountsIdLinesRoute
   '/cash/vouchers/$id': typeof AppCompanyCashVouchersIdRoute
+  '/projects/$valueId/terms': typeof AppCompanyProjectsValueIdTermsRoute
   '/receivables/clients/$valueId': typeof AppCompanyReceivablesClientsValueIdRoute
   '/reports/accounts/$id': typeof AppCompanyReportsAccountsIdRoute
   '/reports/journal-book/prints': typeof AppCompanyReportsJournalBookPrintsRoute
   '/cash/vouchers': typeof AppCompanyCashVouchersIndexRoute
+  '/projects/$valueId': typeof AppCompanyProjectsValueIdIndexRoute
+  '/projects/documents': typeof AppCompanyProjectsDocumentsIndexRoute
   '/cash/vouchers/new/$kind': typeof AppCompanyCashVouchersNewKindRoute
+  '/projects/documents/new/$kind': typeof AppCompanyProjectsDocumentsNewKindRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -459,6 +520,7 @@ export interface FileRoutesById {
   '/_auth/reset-password': typeof AuthResetPasswordRoute
   '/_app/_company/dimensions': typeof AppCompanyDimensionsRoute
   '/_app/_company/integrity': typeof AppCompanyIntegrityRoute
+  '/_app/_company/materials': typeof AppCompanyMaterialsRoute
   '/_app/_company/opening': typeof AppCompanyOpeningRoute
   '/_app/_company/revaluation': typeof AppCompanyRevaluationRoute
   '/_app/account/security': typeof AppAccountSecurityRoute
@@ -482,6 +544,7 @@ export interface FileRoutesById {
   '/_app/_company/reports/income-statement': typeof AppCompanyReportsIncomeStatementRoute
   '/_app/_company/reports/journal': typeof AppCompanyReportsJournalRoute
   '/_app/_company/reports/lines': typeof AppCompanyReportsLinesRoute
+  '/_app/_company/reports/material-quantities': typeof AppCompanyReportsMaterialQuantitiesRoute
   '/_app/_company/reports/profitability': typeof AppCompanyReportsProfitabilityRoute
   '/_app/_company/reports/trial-balance': typeof AppCompanyReportsTrialBalanceRoute
   '/_app/_company/settings/audit': typeof AppCompanySettingsAuditRoute
@@ -493,16 +556,21 @@ export interface FileRoutesById {
   '/_app/_company/drafts/': typeof AppCompanyDraftsIndexRoute
   '/_app/_company/entries/': typeof AppCompanyEntriesIndexRoute
   '/_app/_company/periods/': typeof AppCompanyPeriodsIndexRoute
+  '/_app/_company/projects/': typeof AppCompanyProjectsIndexRoute
   '/_app/_company/rates/': typeof AppCompanyRatesIndexRoute
   '/_app/_company/receivables/': typeof AppCompanyReceivablesIndexRoute
   '/_app/_company/reports/': typeof AppCompanyReportsIndexRoute
   '/_app/_company/accounts/$id/lines': typeof AppCompanyAccountsIdLinesRoute
   '/_app/_company/cash/vouchers/$id': typeof AppCompanyCashVouchersIdRoute
+  '/_app/_company/projects/$valueId/terms': typeof AppCompanyProjectsValueIdTermsRoute
   '/_app/_company/receivables/clients/$valueId': typeof AppCompanyReceivablesClientsValueIdRoute
   '/_app/_company/reports/accounts/$id': typeof AppCompanyReportsAccountsIdRoute
   '/_app/_company/reports/journal-book/prints': typeof AppCompanyReportsJournalBookPrintsRoute
   '/_app/_company/cash/vouchers/': typeof AppCompanyCashVouchersIndexRoute
+  '/_app/_company/projects/$valueId/': typeof AppCompanyProjectsValueIdIndexRoute
+  '/_app/_company/projects/documents/': typeof AppCompanyProjectsDocumentsIndexRoute
   '/_app/_company/cash/vouchers/new/$kind': typeof AppCompanyCashVouchersNewKindRoute
+  '/_app/_company/projects/documents/new/$kind': typeof AppCompanyProjectsDocumentsNewKindRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -514,6 +582,7 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/dimensions'
     | '/integrity'
+    | '/materials'
     | '/opening'
     | '/revaluation'
     | '/account/security'
@@ -536,6 +605,7 @@ export interface FileRouteTypes {
     | '/reports/income-statement'
     | '/reports/journal'
     | '/reports/lines'
+    | '/reports/material-quantities'
     | '/reports/profitability'
     | '/reports/trial-balance'
     | '/settings/audit'
@@ -547,16 +617,21 @@ export interface FileRouteTypes {
     | '/drafts/'
     | '/entries/'
     | '/periods/'
+    | '/projects/'
     | '/rates/'
     | '/receivables/'
     | '/reports/'
     | '/accounts/$id/lines'
     | '/cash/vouchers/$id'
+    | '/projects/$valueId/terms'
     | '/receivables/clients/$valueId'
     | '/reports/accounts/$id'
     | '/reports/journal-book/prints'
     | '/cash/vouchers/'
+    | '/projects/$valueId/'
+    | '/projects/documents/'
     | '/cash/vouchers/new/$kind'
+    | '/projects/documents/new/$kind'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -566,6 +641,7 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/dimensions'
     | '/integrity'
+    | '/materials'
     | '/opening'
     | '/revaluation'
     | '/account/security'
@@ -588,6 +664,7 @@ export interface FileRouteTypes {
     | '/reports/income-statement'
     | '/reports/journal'
     | '/reports/lines'
+    | '/reports/material-quantities'
     | '/reports/profitability'
     | '/reports/trial-balance'
     | '/settings/audit'
@@ -599,16 +676,21 @@ export interface FileRouteTypes {
     | '/drafts'
     | '/entries'
     | '/periods'
+    | '/projects'
     | '/rates'
     | '/receivables'
     | '/reports'
     | '/accounts/$id/lines'
     | '/cash/vouchers/$id'
+    | '/projects/$valueId/terms'
     | '/receivables/clients/$valueId'
     | '/reports/accounts/$id'
     | '/reports/journal-book/prints'
     | '/cash/vouchers'
+    | '/projects/$valueId'
+    | '/projects/documents'
     | '/cash/vouchers/new/$kind'
+    | '/projects/documents/new/$kind'
   id:
     | '__root__'
     | '/_app'
@@ -620,6 +702,7 @@ export interface FileRouteTypes {
     | '/_auth/reset-password'
     | '/_app/_company/dimensions'
     | '/_app/_company/integrity'
+    | '/_app/_company/materials'
     | '/_app/_company/opening'
     | '/_app/_company/revaluation'
     | '/_app/account/security'
@@ -643,6 +726,7 @@ export interface FileRouteTypes {
     | '/_app/_company/reports/income-statement'
     | '/_app/_company/reports/journal'
     | '/_app/_company/reports/lines'
+    | '/_app/_company/reports/material-quantities'
     | '/_app/_company/reports/profitability'
     | '/_app/_company/reports/trial-balance'
     | '/_app/_company/settings/audit'
@@ -654,16 +738,21 @@ export interface FileRouteTypes {
     | '/_app/_company/drafts/'
     | '/_app/_company/entries/'
     | '/_app/_company/periods/'
+    | '/_app/_company/projects/'
     | '/_app/_company/rates/'
     | '/_app/_company/receivables/'
     | '/_app/_company/reports/'
     | '/_app/_company/accounts/$id/lines'
     | '/_app/_company/cash/vouchers/$id'
+    | '/_app/_company/projects/$valueId/terms'
     | '/_app/_company/receivables/clients/$valueId'
     | '/_app/_company/reports/accounts/$id'
     | '/_app/_company/reports/journal-book/prints'
     | '/_app/_company/cash/vouchers/'
+    | '/_app/_company/projects/$valueId/'
+    | '/_app/_company/projects/documents/'
     | '/_app/_company/cash/vouchers/new/$kind'
+    | '/_app/_company/projects/documents/new/$kind'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -742,6 +831,13 @@ declare module '@tanstack/react-router' {
       path: '/integrity'
       fullPath: '/integrity'
       preLoaderRoute: typeof AppCompanyIntegrityRouteImport
+      parentRoute: typeof AppCompanyRoute
+    }
+    '/_app/_company/materials': {
+      id: '/_app/_company/materials'
+      path: '/materials'
+      fullPath: '/materials'
+      preLoaderRoute: typeof AppCompanyMaterialsRouteImport
       parentRoute: typeof AppCompanyRoute
     }
     '/_app/_company/opening': {
@@ -891,6 +987,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppCompanyPeriodsPeriodRouteImport
       parentRoute: typeof AppCompanyRoute
     }
+    '/_app/_company/projects/': {
+      id: '/_app/_company/projects/'
+      path: '/projects'
+      fullPath: '/projects/'
+      preLoaderRoute: typeof AppCompanyProjectsIndexRouteImport
+      parentRoute: typeof AppCompanyRoute
+    }
     '/_app/_company/rates/': {
       id: '/_app/_company/rates/'
       path: '/rates'
@@ -952,6 +1055,13 @@ declare module '@tanstack/react-router' {
       path: '/reports/lines'
       fullPath: '/reports/lines'
       preLoaderRoute: typeof AppCompanyReportsLinesRouteImport
+      parentRoute: typeof AppCompanyRoute
+    }
+    '/_app/_company/reports/material-quantities': {
+      id: '/_app/_company/reports/material-quantities'
+      path: '/reports/material-quantities'
+      fullPath: '/reports/material-quantities'
+      preLoaderRoute: typeof AppCompanyReportsMaterialQuantitiesRouteImport
       parentRoute: typeof AppCompanyRoute
     }
     '/_app/_company/reports/profitability': {
@@ -1017,6 +1127,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppCompanyCashVouchersIdRouteImport
       parentRoute: typeof AppCompanyRoute
     }
+    '/_app/_company/projects/$valueId/': {
+      id: '/_app/_company/projects/$valueId/'
+      path: '/projects/$valueId'
+      fullPath: '/projects/$valueId/'
+      preLoaderRoute: typeof AppCompanyProjectsValueIdIndexRouteImport
+      parentRoute: typeof AppCompanyRoute
+    }
+    '/_app/_company/projects/$valueId/terms': {
+      id: '/_app/_company/projects/$valueId/terms'
+      path: '/projects/$valueId/terms'
+      fullPath: '/projects/$valueId/terms'
+      preLoaderRoute: typeof AppCompanyProjectsValueIdTermsRouteImport
+      parentRoute: typeof AppCompanyRoute
+    }
+    '/_app/_company/projects/documents/': {
+      id: '/_app/_company/projects/documents/'
+      path: '/projects/documents'
+      fullPath: '/projects/documents/'
+      preLoaderRoute: typeof AppCompanyProjectsDocumentsIndexRouteImport
+      parentRoute: typeof AppCompanyRoute
+    }
     '/_app/_company/receivables/clients/$valueId': {
       id: '/_app/_company/receivables/clients/$valueId'
       path: '/receivables/clients/$valueId'
@@ -1045,12 +1176,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppCompanyCashVouchersNewKindRouteImport
       parentRoute: typeof AppCompanyRoute
     }
+    '/_app/_company/projects/documents/new/$kind': {
+      id: '/_app/_company/projects/documents/new/$kind'
+      path: '/projects/documents/new/$kind'
+      fullPath: '/projects/documents/new/$kind'
+      preLoaderRoute: typeof AppCompanyProjectsDocumentsNewKindRouteImport
+      parentRoute: typeof AppCompanyRoute
+    }
   }
 }
 
 interface AppCompanyRouteChildren {
   AppCompanyDimensionsRoute: typeof AppCompanyDimensionsRoute
   AppCompanyIntegrityRoute: typeof AppCompanyIntegrityRoute
+  AppCompanyMaterialsRoute: typeof AppCompanyMaterialsRoute
   AppCompanyOpeningRoute: typeof AppCompanyOpeningRoute
   AppCompanyRevaluationRoute: typeof AppCompanyRevaluationRoute
   AppCompanyIndexRoute: typeof AppCompanyIndexRoute
@@ -1068,6 +1207,7 @@ interface AppCompanyRouteChildren {
   AppCompanyReportsIncomeStatementRoute: typeof AppCompanyReportsIncomeStatementRoute
   AppCompanyReportsJournalRoute: typeof AppCompanyReportsJournalRoute
   AppCompanyReportsLinesRoute: typeof AppCompanyReportsLinesRoute
+  AppCompanyReportsMaterialQuantitiesRoute: typeof AppCompanyReportsMaterialQuantitiesRoute
   AppCompanyReportsProfitabilityRoute: typeof AppCompanyReportsProfitabilityRoute
   AppCompanyReportsTrialBalanceRoute: typeof AppCompanyReportsTrialBalanceRoute
   AppCompanySettingsAuditRoute: typeof AppCompanySettingsAuditRoute
@@ -1079,21 +1219,27 @@ interface AppCompanyRouteChildren {
   AppCompanyDraftsIndexRoute: typeof AppCompanyDraftsIndexRoute
   AppCompanyEntriesIndexRoute: typeof AppCompanyEntriesIndexRoute
   AppCompanyPeriodsIndexRoute: typeof AppCompanyPeriodsIndexRoute
+  AppCompanyProjectsIndexRoute: typeof AppCompanyProjectsIndexRoute
   AppCompanyRatesIndexRoute: typeof AppCompanyRatesIndexRoute
   AppCompanyReceivablesIndexRoute: typeof AppCompanyReceivablesIndexRoute
   AppCompanyReportsIndexRoute: typeof AppCompanyReportsIndexRoute
   AppCompanyAccountsIdLinesRoute: typeof AppCompanyAccountsIdLinesRoute
   AppCompanyCashVouchersIdRoute: typeof AppCompanyCashVouchersIdRoute
+  AppCompanyProjectsValueIdTermsRoute: typeof AppCompanyProjectsValueIdTermsRoute
   AppCompanyReceivablesClientsValueIdRoute: typeof AppCompanyReceivablesClientsValueIdRoute
   AppCompanyReportsAccountsIdRoute: typeof AppCompanyReportsAccountsIdRoute
   AppCompanyReportsJournalBookPrintsRoute: typeof AppCompanyReportsJournalBookPrintsRoute
   AppCompanyCashVouchersIndexRoute: typeof AppCompanyCashVouchersIndexRoute
+  AppCompanyProjectsValueIdIndexRoute: typeof AppCompanyProjectsValueIdIndexRoute
+  AppCompanyProjectsDocumentsIndexRoute: typeof AppCompanyProjectsDocumentsIndexRoute
   AppCompanyCashVouchersNewKindRoute: typeof AppCompanyCashVouchersNewKindRoute
+  AppCompanyProjectsDocumentsNewKindRoute: typeof AppCompanyProjectsDocumentsNewKindRoute
 }
 
 const AppCompanyRouteChildren: AppCompanyRouteChildren = {
   AppCompanyDimensionsRoute: AppCompanyDimensionsRoute,
   AppCompanyIntegrityRoute: AppCompanyIntegrityRoute,
+  AppCompanyMaterialsRoute: AppCompanyMaterialsRoute,
   AppCompanyOpeningRoute: AppCompanyOpeningRoute,
   AppCompanyRevaluationRoute: AppCompanyRevaluationRoute,
   AppCompanyIndexRoute: AppCompanyIndexRoute,
@@ -1111,6 +1257,8 @@ const AppCompanyRouteChildren: AppCompanyRouteChildren = {
   AppCompanyReportsIncomeStatementRoute: AppCompanyReportsIncomeStatementRoute,
   AppCompanyReportsJournalRoute: AppCompanyReportsJournalRoute,
   AppCompanyReportsLinesRoute: AppCompanyReportsLinesRoute,
+  AppCompanyReportsMaterialQuantitiesRoute:
+    AppCompanyReportsMaterialQuantitiesRoute,
   AppCompanyReportsProfitabilityRoute: AppCompanyReportsProfitabilityRoute,
   AppCompanyReportsTrialBalanceRoute: AppCompanyReportsTrialBalanceRoute,
   AppCompanySettingsAuditRoute: AppCompanySettingsAuditRoute,
@@ -1122,18 +1270,24 @@ const AppCompanyRouteChildren: AppCompanyRouteChildren = {
   AppCompanyDraftsIndexRoute: AppCompanyDraftsIndexRoute,
   AppCompanyEntriesIndexRoute: AppCompanyEntriesIndexRoute,
   AppCompanyPeriodsIndexRoute: AppCompanyPeriodsIndexRoute,
+  AppCompanyProjectsIndexRoute: AppCompanyProjectsIndexRoute,
   AppCompanyRatesIndexRoute: AppCompanyRatesIndexRoute,
   AppCompanyReceivablesIndexRoute: AppCompanyReceivablesIndexRoute,
   AppCompanyReportsIndexRoute: AppCompanyReportsIndexRoute,
   AppCompanyAccountsIdLinesRoute: AppCompanyAccountsIdLinesRoute,
   AppCompanyCashVouchersIdRoute: AppCompanyCashVouchersIdRoute,
+  AppCompanyProjectsValueIdTermsRoute: AppCompanyProjectsValueIdTermsRoute,
   AppCompanyReceivablesClientsValueIdRoute:
     AppCompanyReceivablesClientsValueIdRoute,
   AppCompanyReportsAccountsIdRoute: AppCompanyReportsAccountsIdRoute,
   AppCompanyReportsJournalBookPrintsRoute:
     AppCompanyReportsJournalBookPrintsRoute,
   AppCompanyCashVouchersIndexRoute: AppCompanyCashVouchersIndexRoute,
+  AppCompanyProjectsValueIdIndexRoute: AppCompanyProjectsValueIdIndexRoute,
+  AppCompanyProjectsDocumentsIndexRoute: AppCompanyProjectsDocumentsIndexRoute,
   AppCompanyCashVouchersNewKindRoute: AppCompanyCashVouchersNewKindRoute,
+  AppCompanyProjectsDocumentsNewKindRoute:
+    AppCompanyProjectsDocumentsNewKindRoute,
 }
 
 const AppCompanyRouteWithChildren = AppCompanyRoute._addFileChildren(

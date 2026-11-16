@@ -39,6 +39,7 @@ export const projects = {
     documents: 'سجل مستندات المشاريع',
     quantities: 'كميات المواد',
     pickProject: 'اختر المشروع',
+    keywords: 'مشروع مشاريع مقاولات',
   },
   /** `/projects`. */
   list: {
@@ -179,9 +180,6 @@ export const projects = {
       state: 'الحالة',
       actions: 'إجراءات',
     },
-    cancelTitle: 'إلغاء {document}',
-    cancelDescription:
-      'يُلغى المستند بقيد عكسي بتاريخ تختاره، ويبقى رقمه ويُطبع «ملغى» مع رقم القيد العكسي.',
   },
   /** `/projects/documents/new/:kind` and a document draft on `/drafts/:id`. */
   form: {

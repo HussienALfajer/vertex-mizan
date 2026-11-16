@@ -1,6 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link, type LinkProps, useRouter } from '@tanstack/react-router';
-import { type Me, type Permission, VOUCHER_KINDS } from '@vertex-mizan/contracts';
+import {
+  type Me,
+  type Permission,
+  PROJECT_DOCUMENT_KINDS,
+  VOUCHER_KINDS,
+} from '@vertex-mizan/contracts';
 import { ar } from '@vertex-mizan/i18n';
 import {
   Badge,
@@ -33,6 +38,7 @@ import {
   ArrowLeftIcon,
   ArrowLeftRightIcon,
   BookOpenIcon,
+  BoxesIcon,
   BuildingIcon,
   CalendarCheckIcon,
   CalendarDaysIcon,
@@ -42,6 +48,7 @@ import {
   FilePenLineIcon,
   FlagIcon,
   FolderTreeIcon,
+  HardHatIcon,
   HashIcon,
   HourglassIcon,
   HouseIcon,
@@ -105,6 +112,7 @@ const navItems: NavItem[] = [
   { to: '/entries', label: ar.entries.nav, icon: BookOpenIcon, permission: 'entries.read' },
   { to: '/drafts', label: ar.drafts.nav, icon: FilePenLineIcon, permission: 'drafts.read' },
   { to: '/cash', label: ar.cash.title, icon: WalletIcon, permission: 'reports.read' },
+  { to: '/projects', label: ar.projects.nav, icon: HardHatIcon, permission: 'reports.read' },
   {
     to: '/receivables',
     label: ar.openItems.ageing.nav,
@@ -377,6 +385,41 @@ function useShellCommands(me: Me | null | undefined): PaletteCommand[] {
           icon: <WalletIcon />,
           run: () => void router.navigate({ to: '/cash/vouchers/new/$kind', params: { kind } }),
         }))
+      : []),
+    ...(me && can(me, 'drafts.manage')
+      ? PROJECT_DOCUMENT_KINDS.map((kind) => ({
+          id: `new-project-document-${kind}`,
+          label: ar.projects.newDocument[kind],
+          group: ar.projects.palette.group,
+          keywords: [ar.projects.kinds[kind], ar.projects.palette.keywords, `project ${kind}`],
+          icon: <HardHatIcon />,
+          run: () =>
+            void router.navigate({ to: '/projects/documents/new/$kind', params: { kind } }),
+        }))
+      : []),
+    ...(me && can(me, 'reports.read')
+      ? [
+          {
+            id: 'project-report',
+            label: ar.projects.palette.report,
+            group: ar.projects.palette.group,
+            keywords: [ar.projects.palette.keywords, 'project report'],
+            icon: <HardHatIcon />,
+            run: () => void router.navigate({ to: '/projects', search: { find: 'project' } }),
+          },
+        ]
+      : []),
+    ...(me && can(me, 'dimensions.read')
+      ? [
+          {
+            id: 'materials',
+            label: ar.projects.palette.materials,
+            group: ar.projects.palette.group,
+            keywords: [ar.projects.palette.keywords, 'materials catalogue', 'مواد'],
+            icon: <BoxesIcon />,
+            run: () => void router.navigate({ to: '/materials' }),
+          },
+        ]
       : []),
     ...(me && can(me, 'reports.read')
       ? [

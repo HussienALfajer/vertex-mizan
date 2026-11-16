@@ -21,13 +21,13 @@ import {
   AmountInput,
   AscentLines,
   Badge,
+  BillingSummary,
+  BudgetVarianceBar,
   Button,
   Card,
   CardDescription,
   CardHeader,
   CardTitle,
-  BillingSummary,
-  BudgetVarianceBar,
   CashAccountPicker,
   type CashAccountPickerOption,
   type CellEdit,
@@ -66,6 +66,7 @@ import {
   PeriodBadge,
   PoweredBy,
   QrCode,
+  QuantityCell,
   RateInput,
   ReportMarks,
   ReportTable,
@@ -91,11 +92,11 @@ import {
   ToggleGroupItem,
   useDensity,
   VertexMizanLogo,
-  QuantityCell,
   VoucherHeader,
 } from '@vertex-mizan/ui';
 import { CheckIcon, DownloadIcon, SearchIcon } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
+import { billingSummaryLabels } from '../projects/project-parts';
 
 const t = ar.designSystem;
 const { accounting, common } = ar;
@@ -1247,17 +1248,6 @@ function ProjectsSample() {
     </div>
   );
 }
-
-/** `BillingSummary`'s labels, shared with the document form. */
-const billingSummaryLabels = {
-  cumulative: ar.projects.form.cumulative,
-  previous: ar.projects.preview.previous,
-  period: ar.projects.preview.period,
-  retention: ar.projects.preview.retention,
-  recovery: ar.reports.project.columns.recovery,
-  net: ar.reports.project.columns.net,
-  unknown: ar.projects.form.notComputed,
-};
 
 function DimensionPickerSample() {
   const [client, setClient] = useState<string | null>('c1');
