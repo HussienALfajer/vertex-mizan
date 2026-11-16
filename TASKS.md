@@ -31,7 +31,7 @@ Four PRs, in order. Each PR switches its scenario files to `Approved (owner, 202
 - [x] api: `GET /api/projects`, `/api/projects/:valueId/report`, `/api/reports/material-quantities`, their xlsx exports (audited); tests
 - [x] worker: the PDFs of the five documents (billings A4 with the net in words, purchase A5, wage sheet A4 landscape), the project report and material quantities
 - [x] docs: ROADMAP, folder CLAUDE.md files
-- [ ] checks and reviewers (reviewer and accountant-reviewer), PR with auto-merge and Auto-fix
+- [x] checks and reviewers (reviewer: a reversed payment counted as paid, every route tested as another company's member; accountant-reviewer: a payment on account, a subcontractor's revalued retentions shared over its projects, a billing's terms kept as posted, `0075`–`0076`), PR with auto-merge and Auto-fix
 
 ### PR 4 — the screens (branch `feat/s12-screens`)
 
