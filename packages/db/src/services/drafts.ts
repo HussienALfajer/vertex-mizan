@@ -3,6 +3,9 @@ import {
   type DraftInput,
   type DraftLine,
   type DraftLineInput,
+  isZeroQuantity,
+  lineAmount,
+  type ProjectDocumentHeaderInput,
   type VoucherHeaderInput,
 } from '@vertex-mizan/contracts';
 import { and, eq, inArray, isNull } from 'drizzle-orm';
@@ -10,8 +13,10 @@ import { v7 as uuidv7 } from 'uuid';
 import { writeCompanyAudit } from '../audit.js';
 import type { Transaction } from '../client.js';
 import { chartAccounts } from '../schema/chart.js';
+import { dimensionValues } from '../schema/dimensions.js';
 import { entryAttachments, entryDraftLines, entryDrafts } from '../schema/drafts.js';
 import { openItems } from '../schema/open-items.js';
+import { materials } from '../schema/projects.js';
 import type { PersonActor } from './rates.js';
 
 // The drafts' writes that the API's drafts and entries modules and the scenario book's `draft` and
@@ -28,6 +33,14 @@ export const auditedLines = (lines: readonly (DraftLine | DraftLineInput)[]) =>
     memo: line.memo,
     openItemId: line.openItemId,
     newItem: line.newItem,
+    // S12: present only on a line with a quantity or a covered part, as earlier drafts were audited.
+    ...(line.quantity !== null && {
+      materialId: line.materialId,
+      unit: line.unit,
+      quantity: line.quantity,
+      unitPrice: line.unitPrice,
+    }),
+    ...(line.advanceMinor !== null && { advanceMinor: line.advanceMinor }),
   }));
 
 /**
@@ -84,6 +97,28 @@ export async function writeLines(
   if (unknownItems.length > 0) {
     throw new DomainError('VALIDATION_FAILED', 'Unknown open item', { issues: unknownItems });
   }
+  // A material of another company, or none, likewise (S12); a line with a material takes its unit.
+  const materialIds = [
+    ...new Set(lines.flatMap((line) => (line.materialId === null ? [] : [line.materialId]))),
+  ];
+  const unitOf = new Map(
+    materialIds.length === 0
+      ? []
+      : (
+          await tx
+            .select({ id: materials.id, unit: materials.unit })
+            .from(materials)
+            .where(inArray(materials.id, materialIds))
+        ).map((row) => [row.id, row.unit]),
+  );
+  const unknownMaterials = lines.flatMap((line, index) =>
+    line.materialId !== null && !unitOf.has(line.materialId)
+      ? [{ path: ['lines', index, 'materialId'], message: 'Unknown material' }]
+      : [],
+  );
+  if (unknownMaterials.length > 0) {
+    throw new DomainError('VALIDATION_FAILED', 'Unknown material', { issues: unknownMaterials });
+  }
   const rows = await tx.select().from(entryDraftLines).where(eq(entryDraftLines.draftId, draftId));
   const byNumber = new Map(rows.map((row) => [row.lineNo, row]));
   for (const [index, line] of lines.entries()) {
@@ -96,6 +131,10 @@ export async function writeLines(
       openItemId: line.openItemId,
       newItemReference: line.newItem?.reference ?? null,
       newItemDueOn: line.newItem?.dueOn ?? null,
+      ...quantityColumns(
+        line,
+        line.materialId === null ? null : (unitOf.get(line.materialId) ?? null),
+      ),
       archivedAt: null,
     };
     const row = byNumber.get(index + 1);
@@ -115,6 +154,100 @@ export async function writeLines(
         .where(eq(entryDraftLines.id, row.id));
     }
   }
+}
+
+/**
+ * A line's quantity as stored (S12 rules 4–6): the material's unit when the line names one, and
+ * with a quantity other than zero and its unit price the amount their product (`lineAmount()`),
+ * whatever amount was typed; a price adjustment or a line without a quantity keeps its typed
+ * amount. Whether the line needs one is the posting's check.
+ */
+function quantityColumns(line: DraftLineInput, materialUnit: string | null) {
+  const { quantity, unitPrice, currency } = line;
+  const computed =
+    quantity !== null && unitPrice !== null && currency !== null && !isZeroQuantity(quantity)
+      ? lineAmount(quantity, unitPrice, currency).amountMinor
+      : null;
+  return {
+    materialId: line.materialId,
+    unit: materialUnit ?? line.unit,
+    quantity,
+    unitPrice,
+    advanceMinor: line.advanceMinor === null ? null : BigInt(line.advanceMinor),
+    // A product of zero is kept as no amount: the posting refuses the line (S12 edge case 2).
+    ...(computed !== null && { amountMinor: computed === 0n ? null : computed }),
+  };
+}
+
+/**
+ * A project document draft's header as stored (S12 "Drafts"), its project and counterparty checked
+ * to be the company's values (`VALIDATION_FAILED`, rather than their foreign keys); every column
+ * null on any other draft. Whether the project is a project and the counterparty a supplier is the
+ * posting's check. A client release's items wait for S12's billings.
+ */
+export async function projectDocumentColumns(
+  tx: Transaction,
+  header: ProjectDocumentHeaderInput | null | undefined,
+) {
+  if (header === null || header === undefined) {
+    return {
+      projectDocumentKind: null,
+      contractValueId: null,
+      counterpartyValueId: null,
+      documentCurrency: null,
+      side: null,
+      periodFrom: null,
+      periodTo: null,
+      cumulativeMinor: null,
+      retentionMinor: null,
+      advanceMinor: null,
+      supplierReference: null,
+    };
+  }
+  if (header.kind !== 'purchase' && header.kind !== 'wage_sheet') {
+    throw new DomainError(
+      'VALIDATION_FAILED',
+      'This kind of project document is not available yet',
+      {
+        issues: [{ path: ['projectDocument', 'kind'], message: 'Not available yet' }],
+      },
+    );
+  }
+  const ids = [
+    header.contractValueId,
+    ...(header.counterpartyValueId === null ? [] : [header.counterpartyValueId]),
+  ];
+  const known = new Set(
+    (
+      await tx
+        .select({ id: dimensionValues.id })
+        .from(dimensionValues)
+        .where(inArray(dimensionValues.id, ids))
+    ).map((row) => row.id),
+  );
+  const unknown = (['contractValueId', 'counterpartyValueId'] as const).flatMap((field) => {
+    const id = header[field];
+    return id !== null && !known.has(id)
+      ? [{ path: ['projectDocument', field], message: 'Unknown dimension value' }]
+      : [];
+  });
+  if (unknown.length > 0) {
+    throw new DomainError('VALIDATION_FAILED', 'Unknown dimension value', { issues: unknown });
+  }
+  const minor = (text: string | null) => (text === null ? null : BigInt(text));
+  return {
+    projectDocumentKind: header.kind,
+    contractValueId: header.contractValueId,
+    counterpartyValueId: header.counterpartyValueId,
+    documentCurrency: header.currency,
+    side: header.side,
+    periodFrom: header.periodFrom,
+    periodTo: header.periodTo,
+    cumulativeMinor: minor(header.cumulativeMinor),
+    retentionMinor: minor(header.retentionMinor),
+    advanceMinor: minor(header.advanceMinor),
+    supplierReference: header.supplierReference,
+  };
 }
 
 /**
@@ -192,6 +325,7 @@ export async function insertDraft(
     copiedFromEntryId: origin.copiedFromEntryId ?? null,
     preparedByUserId: actor.userId,
     ...(await voucherColumns(tx, input.voucher)),
+    ...(await projectDocumentColumns(tx, input.projectDocument)),
   });
   await writeLines(tx, companyId, id, input.lines);
   await writeCompanyAudit(tx, companyId, actor, {
@@ -206,6 +340,7 @@ export async function insertDraft(
       dealtRates: input.dealtRates,
       lines: auditedLines(input.lines),
       ...(input.voucher != null && { voucher: input.voucher }),
+      ...(input.projectDocument != null && { projectDocument: input.projectDocument }),
       ...(origin.reversesEntryId && { reversesEntryId: origin.reversesEntryId }),
       ...(origin.copiedFromEntryId && { copiedFromEntryId: origin.copiedFromEntryId }),
     },

@@ -46,6 +46,7 @@ export function auditedAccountOf(row: AccountRow, requiredDimensionTypeIds: read
     itemKind: row.itemKind,
     counterpartyType: row.counterpartyType,
     cashKind: row.cashKind,
+    requiresMaterial: row.requiresMaterial,
     isMonetary: row.isMonetary,
     requiredDimensionTypeIds: [...requiredDimensionTypeIds],
   };
@@ -194,6 +195,7 @@ export async function createAccount(
     itemKind: input.itemKind,
     counterpartyType: input.counterpartyType,
     cashKind: input.cashKind,
+    requiresMaterial: input.requiresMaterial,
     isMonetary: input.isMonetary,
     requiredDimensionCount: input.requiredDimensionTypeIds.length,
   });
@@ -219,6 +221,7 @@ export async function createAccount(
           itemKind: input.itemKind,
           counterpartyType: input.counterpartyType,
           cashKind: input.cashKind,
+          requiresMaterial: input.requiresMaterial,
           isMonetary: input.isMonetary,
         })
         .returning(),
@@ -308,6 +311,7 @@ export async function applyChart(
       itemKind: account.itemKind,
       counterpartyType: account.counterpartyType,
       cashKind: account.cashKind,
+      requiresMaterial: account.requiresMaterial,
       isMonetary: account.isMonetary,
     };
   });
@@ -390,6 +394,7 @@ export async function appendPreOpeningResultAccount(
       itemKind: template.itemKind,
       counterpartyType: template.counterpartyType,
       cashKind: template.cashKind,
+      requiresMaterial: template.requiresMaterial,
       isMonetary: template.isMonetary,
       requiredDimensionTypeIds: [],
     },

@@ -10,6 +10,8 @@ export * from './email.js';
 export * from './ledger.js';
 export * from './open-items.js';
 export * from './opening.js';
+export * from './project-documents.js';
+export * from './projects.js';
 export * from './rates.js';
 export * from './reports.js';
 export * from './trust.js';

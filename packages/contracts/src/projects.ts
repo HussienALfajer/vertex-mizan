@@ -307,4 +307,3 @@ export const projectDocumentSchema = z
   .meta({ id: 'ProjectDocument' });
 
 export type ProjectDocument = z.infer<typeof projectDocumentSchema>;
-

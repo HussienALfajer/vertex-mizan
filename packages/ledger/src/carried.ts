@@ -110,6 +110,7 @@ export function reverseLines(lines: readonly Line[]): Line[] {
     bookMinor: -line.bookMinor,
     parallelMinor: line.parallelMinor === null ? null : -line.parallelMinor,
     // A covered part goes back with its line, at exactly what it took (S12 rule 22).
-    ...(line.kind === 'measured' && line.covered !== undefined && { covered: negate(line.covered) }),
+    ...(line.kind === 'measured' &&
+      line.covered !== undefined && { covered: negate(line.covered) }),
   }));
 }

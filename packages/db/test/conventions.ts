@@ -304,10 +304,10 @@ BEGIN
       AND (
         (NEW.code, NEW.parent_id, NEW.level, NEW.kind, NEW.class, NEW.normal_balance,
           NEW.currency, NEW.is_control, NEW.item_kind, NEW.counterparty_type, NEW.cash_kind,
-          NEW.is_monetary)
+          NEW.requires_material, NEW.is_monetary)
           IS DISTINCT FROM (OLD.code, OLD.parent_id, OLD.level, OLD.kind, OLD.class,
             OLD.normal_balance, OLD.currency, OLD.is_control, OLD.item_kind,
-            OLD.counterparty_type, OLD.cash_kind, OLD.is_monetary)
+            OLD.counterparty_type, OLD.cash_kind, OLD.requires_material, OLD.is_monetary)
         OR (OLD.first_posted_at IS NOT NULL
           AND NEW.first_posted_at IS DISTINCT FROM OLD.first_posted_at)
       ) THEN
@@ -1505,10 +1505,15 @@ BEGIN
   IF OLD.state = 'submitted'
     AND (NEW.entry_date, NEW.description, NEW.reference, NEW.dealt_rates, NEW.archived_at,
       NEW.voucher_kind, NEW.cash_account_id, NEW.counter_cash_account_id, NEW.party_name,
-      NEW.counted_minor)
+      NEW.counted_minor, NEW.project_document_kind, NEW.contract_value_id,
+      NEW.counterparty_value_id, NEW.document_currency, NEW.side, NEW.period_from, NEW.period_to,
+      NEW.cumulative_minor, NEW.retention_minor, NEW.advance_minor, NEW.supplier_reference)
       IS DISTINCT FROM (OLD.entry_date, OLD.description, OLD.reference, OLD.dealt_rates,
         OLD.archived_at, OLD.voucher_kind, OLD.cash_account_id, OLD.counter_cash_account_id,
-        OLD.party_name, OLD.counted_minor) THEN
+        OLD.party_name, OLD.counted_minor, OLD.project_document_kind, OLD.contract_value_id,
+        OLD.counterparty_value_id, OLD.document_currency, OLD.side, OLD.period_from,
+        OLD.period_to, OLD.cumulative_minor, OLD.retention_minor, OLD.advance_minor,
+        OLD.supplier_reference) THEN
     RAISE EXCEPTION 'entry_drafts: draft % is submitted and read only', OLD.id
       USING ERRCODE = 'restrict_violation';
   END IF;
@@ -1518,6 +1523,14 @@ BEGIN
       AND v.entry_id IS NOT DISTINCT FROM NEW.posted_entry_id
   ) THEN
     RAISE EXCEPTION 'entry_drafts: voucher draft % posts only with its voucher', OLD.id
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF NEW.state = 'posted' AND NEW.project_document_kind IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM public.project_documents p
+    WHERE p.company_id = NEW.company_id AND p.draft_id = NEW.id
+      AND p.entry_id = NEW.posted_entry_id
+  ) THEN
+    RAISE EXCEPTION 'entry_drafts: project document draft % posts only with its document', OLD.id
       USING ERRCODE = 'restrict_violation';
   END IF;
   IF NEW.state = 'posted' AND NEW.posted_entry_id IS NOT NULL AND NOT EXISTS (
@@ -2854,6 +2867,497 @@ BEGIN
 END
 `,
     },
+    {
+      name: 'currency_exponent',
+      arguments: 'code text',
+      returns: 'integer',
+      language: 'sql',
+      volatility: 'i',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+  SELECT CASE code WHEN 'USD' THEN 2 WHEN 'SYP' THEN 2 WHEN 'TRY' THEN 2 WHEN 'EUR' THEN 2 END
+`,
+    },
+    {
+      name: 'material_rules',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+BEGIN
+  IF (NEW.id, NEW.company_id, NEW.created_at) IS DISTINCT FROM (OLD.id, OLD.company_id, OLD.created_at)
+  THEN
+    RAISE EXCEPTION 'materials: a material keeps its id and company'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF NEW.unit IS DISTINCT FROM OLD.unit AND EXISTS (
+    SELECT 1 FROM public.line_quantities q
+    WHERE q.company_id = OLD.company_id AND q.material_id = OLD.id
+  ) THEN
+    RAISE EXCEPTION 'materials: the unit of material % is locked since its first use', OLD.code
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  RETURN NEW;
+END
+`,
+    },
+    {
+      name: 'project_terms_rules',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+BEGIN
+  IF TG_OP = 'UPDATE' THEN
+    IF (NEW.id, NEW.company_id, NEW.contract_value_id, NEW.created_at)
+      IS DISTINCT FROM (OLD.id, OLD.company_id, OLD.contract_value_id, OLD.created_at) THEN
+      RAISE EXCEPTION 'project_terms: the terms keep their project'
+        USING ERRCODE = 'restrict_violation';
+    END IF;
+    IF NEW.currency IS DISTINCT FROM OLD.currency AND EXISTS (
+      SELECT 1 FROM public.project_documents d
+      WHERE d.company_id = OLD.company_id AND d.contract_value_id = OLD.contract_value_id
+        AND d.kind = 'progress_billing'
+    ) THEN
+      RAISE EXCEPTION 'project_terms: the currency is locked since the project''s first billing'
+        USING ERRCODE = 'restrict_violation';
+    END IF;
+    RETURN NEW;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM public.dimension_values v
+    JOIN public.dimension_types t ON t.company_id = v.company_id AND t.id = v.type_id
+    WHERE v.company_id = NEW.company_id AND v.id = NEW.contract_value_id
+      AND t.builtin AND t.code = 'contract' AND v.contract_kind = 'project'
+  ) THEN
+    RAISE EXCEPTION 'project_terms: terms are of a contract value of kind project'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  RETURN NEW;
+END
+`,
+    },
+    {
+      name: 'project_budget_rules',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+BEGIN
+  IF TG_OP = 'UPDATE' AND (NEW.id, NEW.company_id, NEW.contract_value_id, NEW.account_id,
+      NEW.created_at)
+    IS DISTINCT FROM (OLD.id, OLD.company_id, OLD.contract_value_id, OLD.account_id, OLD.created_at)
+  THEN
+    RAISE EXCEPTION 'project_budgets: a budget line keeps its project and account'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM public.chart_accounts a
+    WHERE a.company_id = NEW.company_id AND a.id = NEW.account_id
+      AND a.kind = 'postable' AND a.statement_line = 'is.direct_costs'
+  ) THEN
+    RAISE EXCEPTION 'project_budgets: a budget is on a postable direct-cost account'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  RETURN NEW;
+END
+`,
+    },
+    {
+      name: 'subcontract_rules',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+BEGIN
+  IF TG_OP = 'UPDATE' THEN
+    IF (NEW.id, NEW.company_id, NEW.contract_value_id, NEW.supplier_value_id, NEW.created_at)
+      IS DISTINCT FROM (OLD.id, OLD.company_id, OLD.contract_value_id, OLD.supplier_value_id,
+        OLD.created_at) THEN
+      RAISE EXCEPTION 'subcontracts: a subcontract keeps its project and supplier'
+        USING ERRCODE = 'restrict_violation';
+    END IF;
+    IF NEW.currency IS DISTINCT FROM OLD.currency AND EXISTS (
+      SELECT 1 FROM public.project_documents d
+      WHERE d.company_id = OLD.company_id AND d.contract_value_id = OLD.contract_value_id
+        AND d.counterparty_value_id = OLD.supplier_value_id AND d.kind = 'subcontract_billing'
+    ) THEN
+      RAISE EXCEPTION 'subcontracts: the currency is locked since the subcontract''s first billing'
+        USING ERRCODE = 'restrict_violation';
+    END IF;
+    RETURN NEW;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM public.dimension_values v
+    JOIN public.dimension_types t ON t.company_id = v.company_id AND t.id = v.type_id
+    WHERE v.company_id = NEW.company_id AND v.id = NEW.contract_value_id
+      AND t.builtin AND t.code = 'contract' AND v.contract_kind = 'project'
+  ) OR NOT EXISTS (
+    SELECT 1 FROM public.dimension_values v
+    JOIN public.dimension_types t ON t.company_id = v.company_id AND t.id = v.type_id
+    WHERE v.company_id = NEW.company_id AND v.id = NEW.supplier_value_id
+      AND t.builtin AND t.code = 'supplier'
+  ) THEN
+    RAISE EXCEPTION 'subcontracts: a subcontract pairs a project and a supplier'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  RETURN NEW;
+END
+`,
+    },
+    {
+      name: 'project_document_sequence_rules',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    IF NEW.last_number <> 1 THEN
+      RAISE EXCEPTION 'project_document_sequences: a kind''s numbers in a fiscal year start at 1'
+        USING ERRCODE = 'restrict_violation';
+    END IF;
+    RETURN NEW;
+  END IF;
+  IF (NEW.id, NEW.company_id, NEW.kind, NEW.fiscal_year, NEW.created_at)
+      IS DISTINCT FROM (OLD.id, OLD.company_id, OLD.kind, OLD.fiscal_year, OLD.created_at)
+    OR NEW.last_number IS DISTINCT FROM OLD.last_number + 1 THEN
+    RAISE EXCEPTION 'project_document_sequences: a sequence moves by one number at a time'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  RETURN NEW;
+END
+`,
+    },
+    {
+      name: 'project_document_sequence_used',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM public.project_documents d
+    WHERE d.company_id = NEW.company_id AND d.kind = NEW.kind
+      AND d.fiscal_year = NEW.fiscal_year AND d.number = NEW.last_number
+  ) THEN
+    RAISE EXCEPTION '% document number % of fiscal year % was given but no document took it',
+      NEW.kind, NEW.last_number, NEW.fiscal_year
+      USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NULL;
+END
+`,
+    },
+    {
+      name: 'project_document_rules',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+DECLARE
+  draft record;
+  given integer;
+  entry record;
+BEGIN
+  SELECT d.state, d.archived_at, d.entry_date, d.project_document_kind, d.contract_value_id,
+    d.counterparty_value_id, d.side, d.period_from, d.period_to, d.supplier_reference,
+    d.document_currency
+  INTO draft
+  FROM public.entry_drafts d
+  WHERE d.company_id = NEW.company_id AND d.id = NEW.draft_id
+  FOR SHARE;
+  IF NOT FOUND OR draft.state = 'posted' OR draft.archived_at IS NOT NULL
+    OR draft.project_document_kind IS DISTINCT FROM NEW.kind
+    OR draft.entry_date IS DISTINCT FROM NEW.document_date
+    OR (draft.contract_value_id, draft.counterparty_value_id, draft.side, draft.period_from,
+      draft.period_to, draft.supplier_reference)
+      IS DISTINCT FROM (NEW.contract_value_id, NEW.counterparty_value_id, NEW.side,
+        NEW.period_from, NEW.period_to, NEW.supplier_reference)
+    OR (draft.document_currency IS NOT NULL AND draft.document_currency <> NEW.currency) THEN
+    RAISE EXCEPTION 'project_documents: a document is its own project document draft''s, as prepared'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  SELECT s.last_number INTO given
+  FROM public.project_document_sequences s
+  WHERE s.company_id = NEW.company_id AND s.kind = NEW.kind AND s.fiscal_year = NEW.fiscal_year;
+  IF given IS DISTINCT FROM NEW.number THEN
+    RAISE EXCEPTION 'project_documents: a document takes the number its sequence just gave'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  SELECT e.draft_id, e.entry_date, e.fiscal_year, e.source, e.reverses_entry_id INTO entry
+  FROM public.journal_entries e
+  WHERE e.company_id = NEW.company_id AND e.id = NEW.entry_id;
+  IF NOT FOUND OR entry.draft_id IS DISTINCT FROM NEW.draft_id
+    OR entry.entry_date <> NEW.document_date OR entry.fiscal_year <> NEW.fiscal_year
+    OR entry.source <> 'manual' OR entry.reverses_entry_id IS NOT NULL THEN
+    RAISE EXCEPTION 'project_documents: a document''s entry is posted from its draft, on its date'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  RETURN NEW;
+END
+`,
+    },
+    {
+      name: 'line_quantity_rules',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+DECLARE
+  line record;
+  material_unit text;
+  original record;
+BEGIN
+  SELECT l.entry_id, l.line_no, l.kind, l.currency, l.amount_minor, a.requires_material,
+    e.sequence, e.reverses_entry_id, h.entry_count
+  INTO line
+  FROM public.journal_lines l
+  JOIN public.journal_entries e ON e.company_id = l.company_id AND e.id = l.entry_id
+  JOIN public.ledger_heads h ON h.company_id = e.company_id
+  JOIN public.chart_accounts a ON a.company_id = l.company_id AND a.id = l.account_id
+  WHERE l.company_id = NEW.company_id AND l.id = NEW.line_id;
+  IF NOT FOUND OR line.entry_id <> NEW.entry_id OR line.kind <> 'measured'
+    OR line.sequence <> line.entry_count + 1 THEN
+    RAISE EXCEPTION 'line_quantities: a quantity is added only to a measured line of the entry being posted'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF (NEW.material_id IS NOT NULL) <> line.requires_material THEN
+    RAISE EXCEPTION 'line_quantities: a line names a material exactly when its account requires one'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF NEW.material_id IS NOT NULL THEN
+    SELECT m.unit INTO material_unit
+    FROM public.materials m
+    WHERE m.company_id = NEW.company_id AND m.id = NEW.material_id;
+    IF material_unit IS DISTINCT FROM NEW.unit THEN
+      RAISE EXCEPTION 'line_quantities: a material''s line is in the material''s unit'
+        USING ERRCODE = 'restrict_violation';
+    END IF;
+  END IF;
+  IF NEW.quantity <> 0 AND line.amount_minor
+    <> round(NEW.quantity * NEW.unit_price * power(10::numeric, public.currency_exponent(line.currency)))
+  THEN
+    RAISE EXCEPTION 'line_quantities: a line''s amount is its quantity times its unit price, rounded'
+      USING ERRCODE = 'check_violation';
+  END IF;
+  IF line.reverses_entry_id IS NOT NULL THEN
+    SELECT q.material_id, q.unit, q.quantity, q.unit_price INTO original
+    FROM public.journal_lines o
+    JOIN public.line_quantities q ON q.company_id = o.company_id AND q.line_id = o.id
+    WHERE o.company_id = NEW.company_id AND o.entry_id = line.reverses_entry_id
+      AND o.line_no = line.line_no;
+    IF NOT FOUND OR (original.material_id, original.unit, -original.quantity, original.unit_price)
+      IS DISTINCT FROM (NEW.material_id, NEW.unit, NEW.quantity, NEW.unit_price) THEN
+      RAISE EXCEPTION 'line_quantities: a reversal''s line carries its original''s quantity negated'
+        USING ERRCODE = 'restrict_violation';
+    END IF;
+  END IF;
+  RETURN NEW;
+END
+`,
+    },
+    {
+      name: 'journal_line_quantity_required',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+DECLARE
+  line record;
+BEGIN
+  SELECT l.kind, l.line_no, e.reverses_entry_id, a.requires_material,
+    EXISTS (SELECT 1 FROM public.line_quantities q
+      WHERE q.company_id = l.company_id AND q.line_id = l.id) AS has_quantity
+  INTO line
+  FROM public.journal_lines l
+  JOIN public.journal_entries e ON e.company_id = l.company_id AND e.id = l.entry_id
+  JOIN public.chart_accounts a ON a.company_id = l.company_id AND a.id = l.account_id
+  WHERE l.company_id = NEW.company_id AND l.id = NEW.id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'journal_lines: line % cannot be checked for its quantity', NEW.id
+      USING ERRCODE = 'check_violation';
+  END IF;
+  IF line.reverses_entry_id IS NOT NULL THEN
+    IF line.has_quantity <> EXISTS (
+      SELECT 1 FROM public.journal_lines o
+      JOIN public.line_quantities q ON q.company_id = o.company_id AND q.line_id = o.id
+      WHERE o.company_id = NEW.company_id AND o.entry_id = line.reverses_entry_id
+        AND o.line_no = line.line_no
+    ) THEN
+      RAISE EXCEPTION 'journal_lines: a reversal''s line has a quantity exactly when its original has'
+        USING ERRCODE = 'check_violation';
+    END IF;
+  ELSIF line.requires_material AND line.kind NOT IN ('difference', 'rounding')
+    AND NOT line.has_quantity THEN
+    RAISE EXCEPTION 'journal_lines: a line on an account that requires a material names one and its quantity'
+      USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NULL;
+END
+`,
+    },
+    {
+      name: 'advance_application_rules',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+DECLARE
+  advance record;
+  covered record;
+BEGIN
+  SELECT l.entry_id, l.currency, l.amount_minor, e.sequence, h.entry_count INTO advance
+  FROM public.journal_lines l
+  JOIN public.journal_entries e ON e.company_id = l.company_id AND e.id = l.entry_id
+  JOIN public.ledger_heads h ON h.company_id = e.company_id
+  WHERE l.company_id = NEW.company_id AND l.id = NEW.advance_line_id;
+  SELECT l.entry_id, l.currency, l.amount_minor, l.kind INTO covered
+  FROM public.journal_lines l
+  WHERE l.company_id = NEW.company_id AND l.id = NEW.line_id;
+  IF advance.entry_id IS NULL OR covered.entry_id IS NULL
+    OR advance.entry_id <> NEW.entry_id OR covered.entry_id <> NEW.entry_id
+    OR advance.sequence <> advance.entry_count + 1 THEN
+    RAISE EXCEPTION 'advance_applications: an application ties two lines of the entry being posted'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF advance.currency <> covered.currency OR covered.kind <> 'measured'
+    OR NOT EXISTS (
+      SELECT 1 FROM public.open_item_movements m
+      JOIN public.open_items i ON i.company_id = m.company_id AND i.id = m.item_id
+      WHERE m.company_id = NEW.company_id AND m.line_id = NEW.advance_line_id
+        AND i.kind = 'running'
+    )
+    OR EXISTS (
+      SELECT 1 FROM public.open_item_movements m
+      WHERE m.company_id = NEW.company_id AND m.line_id = NEW.line_id
+    ) THEN
+    RAISE EXCEPTION 'advance_applications: an advance''s running item covers a measured line of its currency'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF sign(NEW.amount_minor) <> sign(covered.amount_minor)
+    OR abs(NEW.amount_minor) > abs(covered.amount_minor)
+    OR sign(NEW.amount_minor) = sign(advance.amount_minor) THEN
+    RAISE EXCEPTION 'advance_applications: a covered part within its line, against its advance'
+      USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NEW;
+END
+`,
+    },
+    {
+      name: 'advance_applications_agree',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+DECLARE
+  advance record;
+  parts record;
+BEGIN
+  SELECT l.amount_minor, l.book_minor, l.parallel_minor INTO advance
+  FROM public.journal_lines l
+  WHERE l.company_id = NEW.company_id AND l.id = NEW.advance_line_id;
+  SELECT sum(a.amount_minor) AS amount, sum(a.book_minor) AS book,
+    sum(a.parallel_minor) AS parallel, count(*) FILTER (WHERE a.parallel_minor IS NULL) AS no_parallel,
+    count(*) AS applications
+  INTO parts
+  FROM public.advance_applications a
+  WHERE a.company_id = NEW.company_id AND a.advance_line_id = NEW.advance_line_id;
+  IF advance.amount_minor IS NULL OR parts.amount <> -advance.amount_minor
+    OR parts.book <> -advance.book_minor
+    OR (advance.parallel_minor IS NULL) <> (parts.no_parallel = parts.applications)
+    OR (advance.parallel_minor IS NOT NULL
+      AND (parts.no_parallel <> 0 OR parts.parallel <> -advance.parallel_minor)) THEN
+    RAISE EXCEPTION 'advance_applications: the covered parts of line % do not equal it', NEW.advance_line_id
+      USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NULL;
+END
+`,
+    },
   ],
   triggers: [
     // The settings lock (S01 rule 11): before every update of a company's ledger settings.
@@ -3779,6 +4283,196 @@ END
       name: 'open_item_reference_rules',
       function: 'open_item_reference_rules',
       deferred: false,
+      on: ['INSERT'],
+    },
+    // S12's projects (0071): master data, project documents, quantities, advance applications.
+    {
+      table: 'materials',
+      name: 'materials_refuse_delete',
+      function: 'refuse_delete',
+      deferred: false,
+      on: ['DELETE'],
+    },
+    {
+      table: 'materials',
+      name: 'materials_refuse_truncate',
+      function: 'refuse_delete',
+      deferred: false,
+      on: ['TRUNCATE'],
+    },
+    {
+      table: 'project_terms',
+      name: 'project_terms_refuse_delete',
+      function: 'refuse_delete',
+      deferred: false,
+      on: ['DELETE'],
+    },
+    {
+      table: 'project_terms',
+      name: 'project_terms_refuse_truncate',
+      function: 'refuse_delete',
+      deferred: false,
+      on: ['TRUNCATE'],
+    },
+    {
+      table: 'project_budgets',
+      name: 'project_budgets_refuse_delete',
+      function: 'refuse_delete',
+      deferred: false,
+      on: ['DELETE'],
+    },
+    {
+      table: 'project_budgets',
+      name: 'project_budgets_refuse_truncate',
+      function: 'refuse_delete',
+      deferred: false,
+      on: ['TRUNCATE'],
+    },
+    {
+      table: 'subcontracts',
+      name: 'subcontracts_refuse_delete',
+      function: 'refuse_delete',
+      deferred: false,
+      on: ['DELETE'],
+    },
+    {
+      table: 'subcontracts',
+      name: 'subcontracts_refuse_truncate',
+      function: 'refuse_delete',
+      deferred: false,
+      on: ['TRUNCATE'],
+    },
+    {
+      table: 'project_document_sequences',
+      name: 'project_document_sequences_refuse_delete',
+      function: 'refuse_delete',
+      deferred: false,
+      on: ['DELETE'],
+    },
+    {
+      table: 'project_document_sequences',
+      name: 'project_document_sequences_refuse_truncate',
+      function: 'refuse_delete',
+      deferred: false,
+      on: ['TRUNCATE'],
+    },
+    {
+      table: 'project_documents',
+      name: 'project_documents_refuse_change',
+      function: 'refuse_change',
+      deferred: false,
+      on: ['UPDATE', 'DELETE'],
+    },
+    {
+      table: 'project_documents',
+      name: 'project_documents_refuse_truncate',
+      function: 'refuse_change',
+      deferred: false,
+      on: ['TRUNCATE'],
+    },
+    {
+      table: 'line_quantities',
+      name: 'line_quantities_refuse_change',
+      function: 'refuse_change',
+      deferred: false,
+      on: ['UPDATE', 'DELETE'],
+    },
+    {
+      table: 'line_quantities',
+      name: 'line_quantities_refuse_truncate',
+      function: 'refuse_change',
+      deferred: false,
+      on: ['TRUNCATE'],
+    },
+    {
+      table: 'advance_applications',
+      name: 'advance_applications_refuse_change',
+      function: 'refuse_change',
+      deferred: false,
+      on: ['UPDATE', 'DELETE'],
+    },
+    {
+      table: 'advance_applications',
+      name: 'advance_applications_refuse_truncate',
+      function: 'refuse_change',
+      deferred: false,
+      on: ['TRUNCATE'],
+    },
+    {
+      table: 'materials',
+      name: 'material_rules',
+      function: 'material_rules',
+      deferred: false,
+      on: ['UPDATE'],
+    },
+    {
+      table: 'project_terms',
+      name: 'project_terms_rules',
+      function: 'project_terms_rules',
+      deferred: false,
+      on: ['INSERT', 'UPDATE'],
+    },
+    {
+      table: 'project_budgets',
+      name: 'project_budget_rules',
+      function: 'project_budget_rules',
+      deferred: false,
+      on: ['INSERT', 'UPDATE'],
+    },
+    {
+      table: 'subcontracts',
+      name: 'subcontract_rules',
+      function: 'subcontract_rules',
+      deferred: false,
+      on: ['INSERT', 'UPDATE'],
+    },
+    {
+      table: 'project_document_sequences',
+      name: 'project_document_sequence_rules',
+      function: 'project_document_sequence_rules',
+      deferred: false,
+      on: ['INSERT', 'UPDATE'],
+    },
+    {
+      table: 'project_document_sequences',
+      name: 'project_document_sequence_used',
+      function: 'project_document_sequence_used',
+      deferred: true,
+      on: ['INSERT', 'UPDATE'],
+    },
+    {
+      table: 'project_documents',
+      name: 'project_document_rules',
+      function: 'project_document_rules',
+      deferred: false,
+      on: ['INSERT'],
+    },
+    {
+      table: 'line_quantities',
+      name: 'line_quantity_rules',
+      function: 'line_quantity_rules',
+      deferred: false,
+      on: ['INSERT'],
+    },
+    {
+      table: 'journal_lines',
+      name: 'journal_lines_quantity_required',
+      function: 'journal_line_quantity_required',
+      deferred: true,
+      on: ['INSERT'],
+    },
+    {
+      table: 'advance_applications',
+      name: 'advance_application_rules',
+      function: 'advance_application_rules',
+      deferred: false,
+      on: ['INSERT'],
+    },
+    {
+      table: 'advance_applications',
+      name: 'advance_applications_agree',
+      function: 'advance_applications_agree',
+      deferred: true,
       on: ['INSERT'],
     },
   ],

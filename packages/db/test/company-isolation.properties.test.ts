@@ -23,6 +23,7 @@ import {
   exchangeRates,
   journalBookPrints,
   journalEntries,
+  materials,
   openingLines,
   openings,
   periods,
@@ -30,9 +31,12 @@ import {
   postRevaluation,
   postVoucher,
   previewRevaluation,
+  projectBudgets,
+  projectTerms,
   ratePairs,
   reportFiles,
   serviceDepartments,
+  subcontracts,
   type Transaction,
   tableRegistry,
   users,
@@ -86,6 +90,14 @@ const COVERED = [
   'opening_lines',
   'voucher_sequences',
   'cash_vouchers',
+  'materials',
+  'project_terms',
+  'project_budgets',
+  'subcontracts',
+  'project_document_sequences',
+  'project_documents',
+  'line_quantities',
+  'advance_applications',
 ];
 
 const auditRow = fc.record({
@@ -369,34 +381,50 @@ async function seedLedger(tx: Transaction, companyId: string, userId: string, da
   }
 }
 
-/** The entries `seedOpening`, `seedLedger` and `seedRevaluation` post, each with one audit row. */
-const POSTED = 7;
+/**
+ * The entries `seedOpening`, `seedLedger`, `seedRevaluation` and `seedProjects` post, each with one
+ * audit row.
+ */
+const POSTED = 9;
 
 /** The rows each S02, S03 and S04 table holds for a company seeded with `data`. */
 const expectedRows = (data: CompanyData): Record<string, number> => ({
   // S07 a monetary account and the unrealised gain and loss accounts.
   // S10 adds two headers and a postable account under assets and under equity for the opening.
   // S11 adds a box under `111` (and `11` when the headers lack it).
+  // S12 adds 114 and 114002, 211 and 211001 (and 21 when the headers lack it), 51, 511 and 511001.
   chart_accounts:
-    5 + data.headers.length + 3 + 4 + 3 + 3 + 6 + 2 + (data.headers.includes('11') ? 0 : 1),
-  // S11: the receivable control account requires its client.
-  account_required_dimensions: 2,
+    5 +
+    data.headers.length +
+    3 +
+    4 +
+    3 +
+    3 +
+    6 +
+    2 +
+    (data.headers.includes('11') ? 0 : 1) +
+    7 +
+    (data.headers.includes('21') ? 0 : 1),
+  // S11: the receivable control account requires its client; S12: both supplier accounts theirs.
+  account_required_dimensions: 4,
   account_roles: 3,
   dimension_types: 6,
   // The clients, S04's value, S09's service and department, and the invoice's client (S11).
-  dimension_values: data.clients.length + 1 + 2 + 1,
+  // S12: a project and a supplier.
+  dimension_values: data.clients.length + 1 + 2 + 1 + 2,
   rate_pairs: data.bookCurrency === 'SYP' ? 1 : 2,
   exchange_rates: data.rates.length + 2,
   bulletin_holidays: data.holidays.length,
   posting_requests: POSTED,
   journal_entries: POSTED,
-  // S10's opening: two stated lines.
-  journal_lines: 14,
+  // S10's opening: two stated lines; S12's advance two lines and its purchase three.
+  journal_lines: 19,
   // The expense's and S07's cash entry's two lines convert into the book currency; the reversal
   // carries its amounts, the invoice is in the book currency and a revaluation converts nothing.
   line_conversions: 4,
-  dimension_sets: 3,
-  dimension_set_values: 2,
+  // S12: the supplier and the project, the supplier alone (its items), the project alone.
+  dimension_sets: 6,
+  dimension_set_values: 6,
   ledger_heads: 1,
   // The revaluation's reversal falls in the next fiscal year when it starts in December.
   entry_number_counters:
@@ -410,17 +438,19 @@ const expectedRows = (data: CompanyData): Record<string, number> => ({
   // account in the foreign currency and the gain account in the book currency, in November and
   // again in December.
   // S10's opening: its two accounts in November.
-  period_balances: 10,
-  // S11's count draft beside S03's.
-  entry_drafts: 2,
+  // S12: the advance on 114002, the purchase's cost on 511001 and its credit on 211001.
+  period_balances: 13,
+  // S11's count draft beside S03's, and S12's purchase.
+  entry_drafts: 3,
   entry_draft_lines: 2,
   entry_attachments: 2,
   chain_anchors: 1,
   company_exports: 1,
-  open_items: 1,
-  open_item_movements: 1,
+  // S12: the supplier's advance and its running item, moved three times.
+  open_items: 3,
+  open_item_movements: 4,
   open_item_due_dates: 1,
-  open_item_balances: 1,
+  open_item_balances: 3,
   revaluations: 1,
   period_events: 1,
   service_departments: 1,
@@ -433,7 +463,211 @@ const expectedRows = (data: CompanyData): Record<string, number> => ({
   // S11: a count of the box that matched, recorded with its number and no entry.
   voucher_sequences: 1,
   cash_vouchers: 1,
+  // S12: a material, a project's terms with one budget line, a subcontract, and a purchase applying
+  // an advance with its number, its line's quantity and its covered part.
+  materials: 1,
+  project_terms: 1,
+  project_budgets: 1,
+  subcontracts: 1,
+  project_document_sequences: 1,
+  project_documents: 1,
+  line_quantities: 1,
+  advance_applications: 1,
 });
+
+/**
+ * S12's rows: the master data written directly, then an advance of 10.00 paid to a supplier for a
+ * project and a purchase of 1.000 of a material at 7.0000 applying 3.00 of it, posted through the
+ * posting function from its draft, all in the book currency.
+ */
+async function seedProjects(tx: Transaction, companyId: string, userId: string, data: CompanyData) {
+  const typeOf = async (code: string) => {
+    const [type] = await tx
+      .select({ id: dimensionTypes.id })
+      .from(dimensionTypes)
+      .where(and(eq(dimensionTypes.companyId, companyId), eq(dimensionTypes.code, code)));
+    return type?.id as string;
+  };
+  const supplierType = await typeOf('supplier');
+  const [project] = await tx
+    .insert(dimensionValues)
+    .values({
+      companyId,
+      typeId: await typeOf('contract'),
+      code: 'P1',
+      name: 'مشروع مولّد',
+      contractKind: 'project',
+    })
+    .returning({ id: dimensionValues.id });
+  const [supplier] = await tx
+    .insert(dimensionValues)
+    .values({ companyId, typeId: supplierType, code: 'S1', name: 'مورّد مولّد' })
+    .returning({ id: dimensionValues.id });
+  const projectId = project?.id as string;
+  const supplierId = supplier?.id as string;
+  await addAccount(tx, companyId, '11', { code: '114' });
+  const advances = await addAccount(tx, companyId, '114', {
+    code: '114002',
+    kind: 'postable',
+    statementLine: 'bs.other_current_assets',
+    isControl: true,
+    itemKind: 'running',
+    counterpartyType: 'supplier',
+  });
+  if (!data.headers.includes('21')) await addAccount(tx, companyId, '2', { code: '21' });
+  await addAccount(tx, companyId, '21', { code: '211' });
+  const suppliers = await addAccount(tx, companyId, '211', {
+    code: '211001',
+    kind: 'postable',
+    statementLine: 'bs.trade_payables',
+    isControl: true,
+    itemKind: 'running',
+    counterpartyType: 'supplier',
+    isMonetary: true,
+  });
+  for (const accountId of [advances, suppliers]) {
+    await tx
+      .insert(accountRequiredDimensions)
+      .values({ companyId, accountId, dimensionTypeId: supplierType });
+  }
+  await addAccount(tx, companyId, '5', { code: '51' });
+  await addAccount(tx, companyId, '51', { code: '511' });
+  const materialsAccount = await addAccount(tx, companyId, '511', {
+    code: '511001',
+    kind: 'postable',
+    statementLine: 'is.direct_costs',
+    requiresMaterial: true,
+  });
+  const [material] = await tx
+    .insert(materials)
+    .values({ companyId, code: 'M1', name: 'مادة مولّدة', unit: 'طن' })
+    .returning({ id: materials.id });
+  await tx.insert(projectTerms).values({
+    companyId,
+    contractValueId: projectId,
+    currency: data.bookCurrency,
+    contractValueMinor: 100_000n,
+    retentionBp: 1000,
+    advanceRecoveryBp: 2000,
+  });
+  await tx.insert(projectBudgets).values({
+    companyId,
+    contractValueId: projectId,
+    accountId: materialsAccount,
+    amountMinor: 50_000n,
+  });
+  await tx.insert(subcontracts).values({
+    companyId,
+    contractValueId: projectId,
+    supplierValueId: supplierId,
+    currency: data.bookCurrency,
+    retentionBp: 500,
+    advanceRecoveryBp: 0,
+  });
+  const actor: AuditActor = {
+    kind: 'person',
+    userId,
+    name: 'شخص مولّد',
+    sessionId: null,
+    requestId: 'request-generated',
+    ipAddress: null,
+    userAgent: null,
+  };
+  const common = {
+    client: 'manual',
+    description: 'قيد مولّد',
+    reference: null,
+    preparedByUserId: userId,
+    approvedByUserId: null,
+    actor,
+  };
+  const [credit] = await tx
+    .select({ id: chartAccounts.id })
+    .from(chartAccounts)
+    .where(and(eq(chartAccounts.companyId, companyId), eq(chartAccounts.code, '591002')));
+  await post(tx, {
+    ...common,
+    idempotencyKey: `generated-advance-${companyId}`,
+    entryDate: '2026-11-10',
+    draftId: null,
+    content: {
+      kind: 'manual',
+      today: '2026-11-30',
+      dealtRates: [],
+      lines: [
+        {
+          accountId: advances,
+          dimensionValueIds: [supplierId, projectId],
+          currency: data.bookCurrency,
+          amountMinor: 1_000n,
+          memo: null,
+        },
+        {
+          accountId: credit?.id as string,
+          dimensionValueIds: [],
+          currency: data.bookCurrency,
+          amountMinor: -1_000n,
+          memo: null,
+        },
+      ],
+    },
+  });
+  const draftId = uuidv7();
+  const document = {
+    kind: 'purchase' as const,
+    contractValueId: projectId,
+    counterpartyValueId: supplierId,
+    currency: data.bookCurrency,
+    periodFrom: null,
+    periodTo: null,
+    advanceMinor: 300n,
+    supplierReference: 'F-1',
+  };
+  await tx.insert(entryDrafts).values({
+    id: draftId,
+    companyId,
+    state: 'draft',
+    entryDate: '2026-11-11',
+    description: 'فاتورة مولّدة',
+    preparedByUserId: userId,
+    projectDocumentKind: 'purchase',
+    contractValueId: projectId,
+    counterpartyValueId: supplierId,
+    documentCurrency: data.bookCurrency,
+    advanceMinor: 300n,
+    supplierReference: 'F-1',
+  });
+  const entry = await post(tx, {
+    ...common,
+    idempotencyKey: draftId,
+    entryDate: '2026-11-11',
+    draftId,
+    content: {
+      kind: 'project_document',
+      today: '2026-11-30',
+      document,
+      lines: [
+        {
+          accountId: materialsAccount,
+          dimensionValueIds: [],
+          amountMinor: null,
+          memo: null,
+          quantity: {
+            materialId: material?.id as string,
+            unit: 'طن',
+            quantity: '1.000',
+            unitPrice: '7.0000',
+          },
+          advanceMinor: null,
+        },
+      ],
+    },
+  });
+  await tx
+    .update(entryDrafts)
+    .set({ state: 'posted', postedEntryId: entry.id })
+    .where(eq(entryDrafts.id, draftId));
+}
 
 /**
  * S11's rows: a box in the book currency, and a count of it that matched (rule 13), posted through
@@ -828,6 +1062,7 @@ async function seed(userId: string, data: CompanyData): Promise<string> {
     await tx.insert(companyExports).values({ companyId: row.id, requestedByUserId: userId });
     await seedServiceDepartment(tx, row.id, userId);
     await seedVoucher(tx, row.id, userId, data);
+    await seedProjects(tx, row.id, userId, data);
     // S07's period history: November closed, as the posting function writes a close.
     await writePeriodTransition(tx, {
       companyId: row.id,

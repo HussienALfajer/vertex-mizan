@@ -165,7 +165,7 @@ export function measuredLine(
     covered.transaction.currency !== amount.currency ||
     (covered.parallelMinor === null) !== (context.ledgers.parallel === null) ||
     coveredMinor === 0n ||
-    (coveredMinor < 0n) !== (amount.amountMinor < 0n) ||
+    coveredMinor < 0n !== amount.amountMinor < 0n ||
     (coveredMinor < 0n ? -coveredMinor : coveredMinor) >
       (amount.amountMinor < 0n ? -amount.amountMinor : amount.amountMinor)
   ) {

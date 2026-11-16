@@ -118,6 +118,8 @@ export const chartAccounts = pgTable(
     counterpartyType: counterpartyType(),
     /** A cash account's kind (S11 rule 7): a box, which never goes below zero, or a bank. */
     cashKind: cashKind(),
+    /** Every line on it names a material and a quantity (S12 rule 4); a postable expense only. */
+    requiresMaterial: boolean().notNull().default(false),
     isMonetary: boolean().notNull().default(false),
     blockedAt: timestamptz(),
     blockedReason: text(),
@@ -196,6 +198,11 @@ export const chartAccounts = pgTable(
       sql`${t.cashKind} is null or (${t.kind} = 'postable' and ${t.class} = 'asset'
         and ${t.level} = 4 and left(${t.code}, 3) = '111' and ${t.currency} is not null
         and ${t.isMonetary} and not ${t.isControl} and ${t.statementLine} = 'bs.cash')`,
+    ),
+    // S12 "The chart": only a postable expense account requires a material.
+    check(
+      'chart_accounts_requires_material',
+      sql`not ${t.requiresMaterial} or (${t.kind} = 'postable' and ${t.class} = 'expense')`,
     ),
     check(
       'chart_accounts_currency',

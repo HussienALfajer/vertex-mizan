@@ -31,6 +31,7 @@ export function accountOf(
     itemKind: row.itemKind as Account['itemKind'],
     counterpartyType: row.counterpartyType,
     cashKind: row.cashKind,
+    requiresMaterial: row.requiresMaterial,
     isMonetary: row.isMonetary,
     requiredDimensionTypeIds: [...requiredDimensionTypeIds],
     roles: [...roles],
