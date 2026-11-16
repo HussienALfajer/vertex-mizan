@@ -523,8 +523,12 @@ async function projectSubcontracts(
             join open_items i on i.company_id = m.company_id and i.id = m.item_id
             join journal_entries e on e.company_id = m.company_id and e.id = m.entry_id
             where i.account_id = ${chart.byCode.payable}::uuid and m.kind = 'clear'
-              and e.reverses_entry_id is null
               and m.entry_date between ${range.from} and ${range.to}
+              -- A reversed payment nets out with its reversal; a document of the project (a
+              -- billing crediting a debit balance) or its reversal is no payment.
+              and not exists (select 1 from project_documents d
+                where d.company_id = e.company_id
+                  and (d.entry_id = e.id or d.entry_id = e.reverses_entry_id))
             group by i.counterparty_value_id`)
         ).rows;
   const cumulatives = await latestCumulatives(tx, 'subcontract_billing', range.to);

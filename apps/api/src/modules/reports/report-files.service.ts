@@ -142,9 +142,14 @@ export class ReportFilesService {
           text: SHEET_TEXT,
           fiscalYearStartMonth: await fiscalYearStartMonth(tx),
         });
-        if (sheet.rows.length > REPORT_EXCEL_ROW_LIMIT) {
+        // Every table's rows: the first and its parts (S12's project report).
+        const rows = [sheet, ...(sheet.parts ?? [])].reduce(
+          (count, table) => count + table.rows.length,
+          0,
+        );
+        if (rows > REPORT_EXCEL_ROW_LIMIT) {
           throw new CodedException('REPORT_TOO_LARGE', 'The report is too large for Excel', [], {
-            rows: String(sheet.rows.length),
+            rows: String(rows),
             limit: String(REPORT_EXCEL_ROW_LIMIT),
           });
         }

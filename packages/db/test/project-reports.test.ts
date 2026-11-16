@@ -12,6 +12,7 @@ import {
   createCompanyBooks,
   createDimensionValue,
   createMaterial,
+  createSubcontract,
   type DocumentLineSpec,
   dimensionTypes,
   entryDrafts,
@@ -21,6 +22,7 @@ import {
   putProjectTerms,
   readMaterialQuantities,
   readProfitability,
+  readProjectDocumentPrint,
   readProjectList,
   readProjectReport,
   readReportLines,
@@ -443,6 +445,74 @@ describe('the project report (S12 "Reports")', () => {
     expect(steel.rows.map((row) => row.ledgerAmount)).toEqual(['140000']);
   });
 
+  it("counts a subcontractor's payments: a reversed one nets out, a billing clearing its debit is none", async () => {
+    const books = await newBooks();
+    await inCompany(books.id, (tx) =>
+      createSubcontract(
+        tx,
+        books.id,
+        {
+          contractValueId: books.project,
+          supplierValueId: books.supplier,
+          currency: 'USD',
+          valueMinor: '1000000',
+          retentionBp: 1000,
+          advanceRecoveryBp: 0,
+        },
+        actor(),
+      ),
+    );
+    const pay = (amountMinor: bigint) =>
+      inCompany(books.id, (tx) =>
+        post(
+          tx,
+          request('2026-12-31', {
+            kind: 'manual',
+            today: TODAY,
+            dealtRates: [],
+            lines: [
+              {
+                accountId: account(books, '211002'),
+                dimensionValueIds: [books.supplier],
+                currency: 'USD',
+                amountMinor,
+                memo: null,
+              },
+              {
+                accountId: account(books, '111004'),
+                dimensionValueIds: [],
+                currency: 'USD',
+                amountMinor: -amountMinor,
+                memo: null,
+              },
+            ],
+          }),
+        ),
+      );
+    // An overpayment of 200.00 leaves S1 a debit, which the billing's net then clears.
+    await pay(20000n);
+    await postDocument(
+      books,
+      '2026-12-31',
+      {
+        ...header(books, 'subcontract_billing'),
+        counterpartyValueId: books.supplier,
+        cumulativeMinor: 300000n,
+      },
+      [],
+    );
+    await pay(100000n);
+    const cancelled = await pay(50000n);
+    await inCompany(books.id, (tx) =>
+      post(tx, request('2026-12-31', { kind: 'reversal', entryId: cancelled.id, today: TODAY })),
+    );
+    const report = await reportOf(books, 'book');
+    expect(report.subcontracts).toMatchObject([
+      { cumulativeMinor: '300000', retention: '30000', paid: '100000' },
+    ]);
+    expect((await reportOf(books, 'parallel')).subcontracts[0]?.paid).toBe('12000000');
+  });
+
   it("refuses anything but a project, and never reads another company's", async () => {
     const { books } = await december();
     const other = await newBooks();
@@ -453,6 +523,23 @@ describe('the project report (S12 "Reports")', () => {
       );
     expect(await codeOf(reportOf(books, 'book', books.client))).toBe('NOT_FOUND');
     expect(await codeOf(reportOf(other, 'book', books.project))).toBe('NOT_FOUND');
+    const [document] = (
+      await inCompany(books.id, (tx) =>
+        tx.execute<{ id: string }>(sql`select id from project_documents limit 1`),
+      )
+    ).rows;
+    expect(
+      await codeOf(
+        inCompany(other.id, (tx) => readProjectDocumentPrint(tx, document?.id as string)),
+      ),
+    ).toBe('NOT_FOUND');
+    expect(
+      (
+        await inCompany(other.id, (tx) =>
+          readMaterialQuantities(tx, { ...DECEMBER, ledger: 'book', contract: books.project }, NOW),
+        )
+      ).rows,
+    ).toEqual([]);
     const list = await inCompany(other.id, (tx) =>
       readProjectList(tx, { ledger: 'book', archived: false }, TODAY, NOW),
     );

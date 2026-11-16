@@ -170,7 +170,7 @@ describe('the guard on the project reports', () => {
 describe('the project reports (S12 "Reports")', () => {
   it('lists the project and reads its report and quantities, as a viewer', async () => {
     const books = await contractor();
-    await purchase(books);
+    const document = await purchase(books);
     const viewer = await joinCompany(app, db, books.companyId, 'viewer');
 
     const list = await viewer.browser.get('/api/projects');
@@ -252,6 +252,34 @@ describe('the project reports (S12 "Reports")', () => {
         (row: { project: { id: string } }) => row.project.id,
       ),
     ).toEqual([stranger.project]);
+    expect(
+      (
+        await stranger.browser.get(`/api/projects/${books.project}/report/export`, {
+          ...month(),
+          format: 'xlsx',
+        })
+      ).body.code,
+    ).toBe('NOT_FOUND');
+    const theirs = await stranger.browser.get('/api/reports/material-quantities', {
+      ...month(),
+      contract: books.project,
+    });
+    expect(theirs.status, JSON.stringify(theirs.body)).toBe(200);
+    expect(theirs.body).toMatchObject({ rows: [], ledgerTotal: '0' });
+    const theirExport = await stranger.browser.download('/api/reports/material-quantities/export', {
+      ...month(),
+      format: 'xlsx',
+      material: books.cement,
+    });
+    expect(theirExport.status).toBe(200);
+    expect((await workbookRows(theirExport.body as Buffer)).flat()).not.toContain('CEM');
+    for (const [file, params] of [
+      ['project_report', { contract: books.project, ...month() }],
+      ['project_document', { document }],
+    ] as const) {
+      const refused = await stranger.browser.post('/api/reports/files', { report: file, params });
+      expect(refused.body.code, file).toBe('NOT_FOUND');
+    }
   });
 
   it('exports the report and the quantities to Excel, audited, and queues their PDFs and a print', async () => {
