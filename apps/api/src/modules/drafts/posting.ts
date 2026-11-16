@@ -9,6 +9,7 @@ import {
   type PostingContent,
   post,
   postVoucher,
+  projectDocumentContentOf,
   type Transaction,
   type VoucherSpec,
 } from '@vertex-mizan/db';
@@ -40,6 +41,30 @@ export function missingOf(draft: DraftRow, lines: readonly DraftLine[]): Posting
     });
   }
   if (draft.reversesEntryId !== null) return refusals;
+  // S12: a project document's lines are its cost or wage lines, from which its entry is derived;
+  // each has its amount, or a quantity with its unit price (rule 6).
+  if (draft.projectDocumentKind !== null) {
+    for (const line of lines) {
+      const priced = line.quantity !== null && line.unitPrice !== null;
+      if (line.amountMinor === null && !priced) {
+        refusals.push({
+          code: 'VALIDATION_FAILED',
+          message: 'A line with no amount',
+          lineNo: line.lineNo,
+          details: { field: 'amountMinor' },
+        });
+      }
+    }
+    if (lines.length === 0) {
+      refusals.push({
+        code: 'VALIDATION_FAILED',
+        message: 'A document has a line',
+        lineNo: null,
+        details: { field: 'lines' },
+      });
+    }
+    return refusals;
+  }
   // S11 rule 13: a count has no lines of its own, only the cash counted.
   if (draft.voucherKind === 'count') {
     // Its lines come from its difference at posting: typed ones are refused, never dropped.
@@ -141,7 +166,31 @@ export function manualLinesOf(lines: readonly DraftLine[]): ManualLineSpec[] {
     memo: line.memo,
     openItemId: line.openItemId,
     newItem: line.newItem,
+    // S12 rule 4: the line's material and quantity, checked by the posting function.
+    quantity:
+      line.quantity === null || line.unit === null
+        ? null
+        : {
+            materialId: line.materialId,
+            unit: line.unit,
+            quantity: line.quantity,
+            unitPrice: line.unitPrice,
+          },
   }));
+}
+
+/**
+ * What a draft posts (S12 rule 21): a project document draft its document, read back from what the
+ * draft holds; any other its typed lines or its original reversed (`contentOf()`).
+ */
+export async function draftContentOf(
+  tx: Transaction,
+  draft: DraftRow,
+  lines: readonly DraftLine[],
+  today: string,
+): Promise<PostingContent> {
+  if (draft.projectDocumentKind === null) return contentOf(draft, lines, today);
+  return { kind: 'project_document', today, ...(await projectDocumentContentOf(tx, draft.id)) };
 }
 
 /**
@@ -204,7 +253,12 @@ export async function postDraft(
   const voucher = voucherSpecOf(draft, options.expectedMinor);
   const entryId =
     voucher === null
-      ? (await post(tx, { ...request, content: contentOf(draft, lines, options.today) })).id
+      ? (
+          await post(tx, {
+            ...request,
+            content: await draftContentOf(tx, draft, lines, options.today),
+          })
+        ).id
       : ((
           await postVoucher(tx, {
             ...request,

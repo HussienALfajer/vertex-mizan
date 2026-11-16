@@ -115,6 +115,11 @@ export const line = (
   memo,
   openItemId: null,
   newItem: null,
+  materialId: null,
+  unit: null,
+  quantity: null,
+  unitPrice: null,
+  advanceMinor: null,
 });
 
 /**

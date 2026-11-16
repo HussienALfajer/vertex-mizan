@@ -307,3 +307,8 @@ export const projectDocumentSchema = z
   .meta({ id: 'ProjectDocument' });
 
 export type ProjectDocument = z.infer<typeof projectDocumentSchema>;
+
+/** `/api/projects/:valueId/*`: the project's contract value. */
+export const projectParamsSchema = z.object({ valueId: z.uuid() }).meta({ id: 'ProjectParams' });
+
+export type ProjectParams = z.infer<typeof projectParamsSchema>;

@@ -1487,7 +1487,13 @@
                 "cash_count.recorded",
                 "export.cash_statement",
                 "export.cash_position",
-                "export.voucher"
+                "export.voucher",
+                "material.created",
+                "material.updated",
+                "material.archived",
+                "project_terms.updated",
+                "subcontract.created",
+                "subcontract.updated"
               ]
             }
           },
@@ -6954,6 +6960,981 @@
         ]
       }
     },
+    "/api/materials": {
+      "get": {
+        "operationId": "MaterialsController_list",
+        "parameters": [
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            }
+          },
+          {
+            "name": "archived",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ]
+            }
+          },
+          {
+            "name": "cursor",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of materials by code",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MaterialPage"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "TWO_FACTOR_REQUIRED, FORBIDDEN",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "COMPANY_NOT_SELECTED, COMPANY_SWITCHED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_FAILED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "projects"
+        ]
+      },
+      "post": {
+        "operationId": "MaterialsController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateMaterial"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The new material",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Material"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "TWO_FACTOR_REQUIRED, FORBIDDEN",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "COMPANY_NOT_SELECTED, COMPANY_SWITCHED, COMPANY_ARCHIVED, DIMENSION_CODE_TAKEN",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_FAILED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/api/materials/{id}": {
+      "patch": {
+        "operationId": "MaterialsController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateMaterial"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The changed material",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Material"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "TWO_FACTOR_REQUIRED, FORBIDDEN",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "COMPANY_NOT_SELECTED, COMPANY_SWITCHED, COMPANY_ARCHIVED, DIMENSION_CODE_TAKEN, MATERIAL_LOCKED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_FAILED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/api/materials/{id}/archive": {
+      "post": {
+        "operationId": "MaterialsController_archive",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The archived material",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Material"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "TWO_FACTOR_REQUIRED, FORBIDDEN",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "COMPANY_NOT_SELECTED, COMPANY_SWITCHED, COMPANY_ARCHIVED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_FAILED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/api/projects/{valueId}/terms": {
+      "get": {
+        "operationId": "ProjectTermsController_terms",
+        "parameters": [
+          {
+            "name": "valueId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The project and its terms",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectTermsView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "TWO_FACTOR_REQUIRED, FORBIDDEN",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "COMPANY_NOT_SELECTED, COMPANY_SWITCHED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "projects"
+        ]
+      },
+      "put": {
+        "operationId": "ProjectTermsController_putTerms",
+        "parameters": [
+          {
+            "name": "valueId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectTermsInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The terms as saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectTermsView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "TWO_FACTOR_REQUIRED, FORBIDDEN",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "COMPANY_NOT_SELECTED, COMPANY_SWITCHED, COMPANY_ARCHIVED, PROJECT_TERMS_LOCKED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_FAILED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/api/subcontracts": {
+      "get": {
+        "operationId": "SubcontractsController_list",
+        "parameters": [
+          {
+            "name": "contract",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          },
+          {
+            "name": "supplier",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          },
+          {
+            "name": "archived",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The subcontracts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubcontractList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "TWO_FACTOR_REQUIRED, FORBIDDEN",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "COMPANY_NOT_SELECTED, COMPANY_SWITCHED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_FAILED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "projects"
+        ]
+      },
+      "post": {
+        "operationId": "SubcontractsController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSubcontract"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The new subcontract",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Subcontract"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "TWO_FACTOR_REQUIRED, FORBIDDEN",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "COMPANY_NOT_SELECTED, COMPANY_SWITCHED, COMPANY_ARCHIVED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_FAILED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/api/subcontracts/{id}": {
+      "patch": {
+        "operationId": "SubcontractsController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSubcontract"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The changed subcontract",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Subcontract"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "TWO_FACTOR_REQUIRED, FORBIDDEN",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "COMPANY_NOT_SELECTED, COMPANY_SWITCHED, COMPANY_ARCHIVED, PROJECT_TERMS_LOCKED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_FAILED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/api/project-documents": {
+      "get": {
+        "operationId": "ProjectDocumentsController_list",
+        "parameters": [
+          {
+            "name": "kind",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "purchase",
+                "wage_sheet",
+                "progress_billing",
+                "subcontract_billing",
+                "retention_release"
+              ]
+            }
+          },
+          {
+            "name": "contract",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          },
+          {
+            "name": "counterparty",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          },
+          {
+            "name": "from",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            }
+          },
+          {
+            "name": "to",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            }
+          },
+          {
+            "name": "state",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "posted",
+                "cancelled"
+              ]
+            }
+          },
+          {
+            "name": "cursor",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of project documents, newest first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectDocumentPage"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "TWO_FACTOR_REQUIRED, FORBIDDEN",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "COMPANY_NOT_SELECTED, COMPANY_SWITCHED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_FAILED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/api/project-documents/{id}": {
+      "get": {
+        "operationId": "ProjectDocumentsController_get",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The document with its entry, quantities and covered parts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectDocument"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "TWO_FACTOR_REQUIRED, FORBIDDEN",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "COMPANY_NOT_SELECTED, COMPANY_SWITCHED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "projects"
+        ]
+      }
+    },
     "/api/integrity/check": {
       "post": {
         "operationId": "IntegrityController_check",
@@ -11438,7 +12419,14 @@
           "BOOKS_START_LOCKED",
           "CASH_BOX_NEGATIVE",
           "CASH_COUNT_STALE",
-          "CASH_ACCOUNT_INVALID"
+          "CASH_ACCOUNT_INVALID",
+          "PROJECT_TERMS_MISSING",
+          "PROJECT_TERMS_LOCKED",
+          "MATERIAL_REQUIRED",
+          "MATERIAL_LOCKED",
+          "ADVANCE_CURRENCY_MISMATCH",
+          "BILLING_NOT_INCREASING",
+          "PROJECT_DOCUMENT_NOT_LATEST"
         ]
       },
       "PageQuery": {
@@ -12226,7 +13214,13 @@
           "cash_count.recorded",
           "export.cash_statement",
           "export.cash_position",
-          "export.voucher"
+          "export.voucher",
+          "material.created",
+          "material.updated",
+          "material.archived",
+          "project_terms.updated",
+          "subcontract.created",
+          "subcontract.updated"
         ]
       },
       "AuditPage": {
@@ -12431,6 +13425,9 @@
               }
             ]
           },
+          "requiresMaterial": {
+            "type": "boolean"
+          },
           "isMonetary": {
             "type": "boolean"
           },
@@ -12514,6 +13511,7 @@
           "itemKind",
           "counterpartyType",
           "cashKind",
+          "requiresMaterial",
           "isMonetary",
           "requiredDimensionTypeIds",
           "roles",
@@ -12664,6 +13662,10 @@
               }
             ]
           },
+          "requiresMaterial": {
+            "default": false,
+            "type": "boolean"
+          },
           "isMonetary": {
             "default": false,
             "type": "boolean"
@@ -12777,6 +13779,9 @@
                 "$ref": "#/components/schemas/CashKind"
               }
             ]
+          },
+          "requiresMaterial": {
+            "type": "boolean"
           },
           "isMonetary": {
             "type": "boolean"
@@ -14257,6 +15262,37 @@
             ],
             "additionalProperties": false
           },
+          "projectDocument": {
+            "nullable": true,
+            "type": "object",
+            "properties": {
+              "kind": {
+                "$ref": "#/components/schemas/ProjectDocumentKind"
+              },
+              "fiscalYear": {
+                "type": "integer",
+                "minimum": 2000,
+                "maximum": 9999
+              },
+              "number": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "id": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              }
+            },
+            "required": [
+              "kind",
+              "fiscalYear",
+              "number",
+              "id"
+            ],
+            "additionalProperties": false
+          },
           "attachments": {
             "type": "array",
             "items": {
@@ -14293,6 +15329,7 @@
           "parallelCurrency",
           "lines",
           "voucher",
+          "projectDocument",
           "attachments",
           "previousHash",
           "hash"
@@ -14392,6 +15429,22 @@
                 "$ref": "#/components/schemas/EntryLineItem"
               }
             ]
+          },
+          "quantity": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LineQuantity"
+              }
+            ]
+          },
+          "covered": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CoveredPart"
+              }
+            ]
           }
         },
         "required": [
@@ -14408,7 +15461,9 @@
           "parallelMinor",
           "memo",
           "conversions",
-          "item"
+          "item",
+          "quantity",
+          "covered"
         ],
         "additionalProperties": false
       },
@@ -14525,6 +15580,59 @@
           "revaluation"
         ]
       },
+      "LineQuantity": {
+        "type": "object",
+        "properties": {
+          "materialId": {
+            "nullable": true,
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "unit": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "string"
+          },
+          "unitPrice": {
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "materialId",
+          "unit",
+          "quantity",
+          "unitPrice"
+        ],
+        "additionalProperties": false
+      },
+      "CoveredPart": {
+        "type": "object",
+        "properties": {
+          "amountMinor": {
+            "$ref": "#/components/schemas/MinorUnits"
+          },
+          "bookMinor": {
+            "$ref": "#/components/schemas/MinorUnits"
+          },
+          "parallelMinor": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MinorUnits"
+              }
+            ]
+          }
+        },
+        "required": [
+          "amountMinor",
+          "bookMinor",
+          "parallelMinor"
+        ],
+        "additionalProperties": false
+      },
       "VoucherKind": {
         "type": "string",
         "enum": [
@@ -14532,6 +15640,16 @@
           "payment",
           "transfer",
           "count"
+        ]
+      },
+      "ProjectDocumentKind": {
+        "type": "string",
+        "enum": [
+          "purchase",
+          "wage_sheet",
+          "progress_billing",
+          "subcontract_billing",
+          "retention_release"
         ]
       },
       "Attachment": {
@@ -14700,6 +15818,14 @@
               }
             ]
           },
+          "projectDocument": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ProjectDocumentHeader"
+              }
+            ]
+          },
           "preparedBy": {
             "$ref": "#/components/schemas/PersonRef"
           },
@@ -14799,6 +15925,7 @@
           "copiedFromEntryId",
           "lines",
           "voucher",
+          "projectDocument",
           "preparedBy",
           "submitted",
           "rejected",
@@ -14894,6 +16021,32 @@
                 "$ref": "#/components/schemas/NewItem"
               }
             ]
+          },
+          "materialId": {
+            "nullable": true,
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "unit": {
+            "nullable": true,
+            "type": "string"
+          },
+          "quantity": {
+            "nullable": true,
+            "type": "string"
+          },
+          "unitPrice": {
+            "nullable": true,
+            "type": "string"
+          },
+          "advanceMinor": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MinorUnits"
+              }
+            ]
           }
         },
         "required": [
@@ -14904,7 +16057,12 @@
           "amountMinor",
           "memo",
           "openItemId",
-          "newItem"
+          "newItem",
+          "materialId",
+          "unit",
+          "quantity",
+          "unitPrice",
+          "advanceMinor"
         ],
         "additionalProperties": false
       },
@@ -14966,6 +16124,132 @@
           "counterCashAccountId",
           "partyName",
           "countedMinor"
+        ],
+        "additionalProperties": false
+      },
+      "ProjectDocumentHeader": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/ProjectDocumentKind"
+          },
+          "contractValueId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "counterpartyValueId": {
+            "nullable": true,
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "currency": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CurrencyCode"
+              }
+            ]
+          },
+          "side": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RetentionSide"
+              }
+            ]
+          },
+          "periodFrom": {
+            "nullable": true,
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          },
+          "periodTo": {
+            "nullable": true,
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          },
+          "cumulativeMinor": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MinorUnits"
+              }
+            ]
+          },
+          "retentionMinor": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MinorUnits"
+              }
+            ]
+          },
+          "advanceMinor": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MinorUnits"
+              }
+            ]
+          },
+          "supplierReference": {
+            "nullable": true,
+            "type": "string"
+          },
+          "retentionItems": {
+            "nullable": true,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RetentionItemRelease"
+            }
+          }
+        },
+        "required": [
+          "kind",
+          "contractValueId",
+          "counterpartyValueId",
+          "currency",
+          "side",
+          "periodFrom",
+          "periodTo",
+          "cumulativeMinor",
+          "retentionMinor",
+          "advanceMinor",
+          "supplierReference",
+          "retentionItems"
+        ],
+        "additionalProperties": false
+      },
+      "RetentionSide": {
+        "type": "string",
+        "enum": [
+          "client",
+          "supplier"
+        ]
+      },
+      "RetentionItemRelease": {
+        "type": "object",
+        "properties": {
+          "itemId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "amountMinor": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MinorUnits"
+              }
+            ]
+          }
+        },
+        "required": [
+          "itemId",
+          "amountMinor"
         ],
         "additionalProperties": false
       },
@@ -15242,6 +16526,14 @@
               }
             ]
           },
+          "projectDocumentKind": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ProjectDocumentKind"
+              }
+            ]
+          },
           "lineCount": {
             "type": "integer",
             "minimum": 0,
@@ -15286,6 +16578,7 @@
           "reference",
           "reversesEntryId",
           "voucherKind",
+          "projectDocumentKind",
           "lineCount",
           "preparedBy",
           "submitted",
@@ -15325,7 +16618,6 @@
             }
           },
           "lines": {
-            "default": [],
             "maxItems": 500,
             "type": "array",
             "items": {
@@ -15337,6 +16629,14 @@
             "allOf": [
               {
                 "$ref": "#/components/schemas/VoucherHeaderInput"
+              }
+            ]
+          },
+          "projectDocument": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ProjectDocumentHeaderInput"
               }
             ]
           }
@@ -15402,6 +16702,39 @@
                 "$ref": "#/components/schemas/NewItem"
               }
             ]
+          },
+          "materialId": {
+            "default": null,
+            "nullable": true,
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "unit": {
+            "default": null,
+            "nullable": true,
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20
+          },
+          "quantity": {
+            "nullable": true,
+            "type": "string",
+            "pattern": "^-?\\d{1,11}(\\.\\d{1,3})?$"
+          },
+          "unitPrice": {
+            "nullable": true,
+            "type": "string",
+            "pattern": "^\\d{1,14}(\\.\\d{1,4})?$"
+          },
+          "advanceMinor": {
+            "default": null,
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MinorUnits"
+              }
+            ]
           }
         },
         "required": [
@@ -15450,6 +16783,105 @@
           "cashAccountId"
         ]
       },
+      "ProjectDocumentHeaderInput": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/ProjectDocumentKind"
+          },
+          "contractValueId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "counterpartyValueId": {
+            "default": null,
+            "nullable": true,
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "currency": {
+            "default": null,
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CurrencyCode"
+              }
+            ]
+          },
+          "side": {
+            "default": null,
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RetentionSide"
+              }
+            ]
+          },
+          "periodFrom": {
+            "default": null,
+            "nullable": true,
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          },
+          "periodTo": {
+            "default": null,
+            "nullable": true,
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          },
+          "cumulativeMinor": {
+            "default": null,
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MinorUnits"
+              }
+            ]
+          },
+          "retentionMinor": {
+            "default": null,
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MinorUnits"
+              }
+            ]
+          },
+          "advanceMinor": {
+            "default": null,
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MinorUnits"
+              }
+            ]
+          },
+          "supplierReference": {
+            "default": null,
+            "nullable": true,
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 60
+          },
+          "retentionItems": {
+            "default": null,
+            "nullable": true,
+            "maxItems": 100,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RetentionItemRelease"
+            }
+          }
+        },
+        "required": [
+          "kind",
+          "contractValueId"
+        ]
+      },
       "UpdateDraft": {
         "type": "object",
         "properties": {
@@ -15481,7 +16913,6 @@
             }
           },
           "lines": {
-            "default": [],
             "maxItems": 500,
             "type": "array",
             "items": {
@@ -15493,6 +16924,14 @@
             "allOf": [
               {
                 "$ref": "#/components/schemas/VoucherHeaderInput"
+              }
+            ]
+          },
+          "projectDocument": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ProjectDocumentHeaderInput"
               }
             ]
           },
@@ -15546,6 +16985,14 @@
               }
             ]
           },
+          "projectDocument": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ProjectDocumentPreview"
+              }
+            ]
+          },
           "refusals": {
             "type": "array",
             "items": {
@@ -15560,6 +17007,7 @@
           "lines",
           "items",
           "voucher",
+          "projectDocument",
           "refusals"
         ],
         "additionalProperties": false
@@ -15686,6 +17134,95 @@
         ],
         "additionalProperties": false
       },
+      "ProjectDocumentPreview": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/ProjectDocumentKind"
+          },
+          "currency": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CurrencyCode"
+              }
+            ]
+          },
+          "totalMinor": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MinorUnits"
+              }
+            ]
+          },
+          "previousMinor": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MinorUnits"
+              }
+            ]
+          },
+          "periodValueMinor": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MinorUnits"
+              }
+            ]
+          },
+          "retentionMinor": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MinorUnits"
+              }
+            ]
+          },
+          "advanceMinor": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MinorUnits"
+              }
+            ]
+          },
+          "netMinor": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MinorUnits"
+              }
+            ]
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProjectDocumentWarning"
+            }
+          }
+        },
+        "required": [
+          "kind",
+          "currency",
+          "totalMinor",
+          "previousMinor",
+          "periodValueMinor",
+          "retentionMinor",
+          "advanceMinor",
+          "netMinor",
+          "warnings"
+        ],
+        "additionalProperties": false
+      },
+      "ProjectDocumentWarning": {
+        "type": "string",
+        "enum": [
+          "duplicate_supplier_reference",
+          "cumulative_above_contract_value"
+        ]
+      },
       "PostingRefusal": {
         "type": "object",
         "properties": {
@@ -15775,12 +17312,44 @@
               "id"
             ],
             "additionalProperties": false
+          },
+          "projectDocument": {
+            "nullable": true,
+            "type": "object",
+            "properties": {
+              "kind": {
+                "$ref": "#/components/schemas/ProjectDocumentKind"
+              },
+              "fiscalYear": {
+                "type": "integer",
+                "minimum": 2000,
+                "maximum": 9999
+              },
+              "number": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "id": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              }
+            },
+            "required": [
+              "kind",
+              "fiscalYear",
+              "number",
+              "id"
+            ],
+            "additionalProperties": false
           }
         },
         "required": [
           "entry",
           "draft",
-          "voucher"
+          "voucher",
+          "projectDocument"
         ],
         "additionalProperties": false
       },
@@ -16781,6 +18350,986 @@
           "approvedBy",
           "entryDetail",
           "createdAt"
+        ],
+        "additionalProperties": false
+      },
+      "MaterialQuery": {
+        "type": "object",
+        "properties": {
+          "q": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "archived": {
+            "type": "string",
+            "enum": [
+              "true",
+              "false"
+            ]
+          },
+          "cursor": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Cursor"
+              }
+            ]
+          }
+        }
+      },
+      "MaterialPage": {
+        "type": "object",
+        "properties": {
+          "materials": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Material"
+            }
+          },
+          "nextCursor": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Cursor"
+              }
+            ]
+          }
+        },
+        "required": [
+          "materials",
+          "nextCursor"
+        ],
+        "additionalProperties": false
+      },
+      "Material": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "nameLatin": {
+            "nullable": true,
+            "type": "string"
+          },
+          "unit": {
+            "type": "string"
+          },
+          "used": {
+            "type": "boolean"
+          },
+          "archivedAt": {
+            "nullable": true,
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+          }
+        },
+        "required": [
+          "id",
+          "code",
+          "name",
+          "nameLatin",
+          "unit",
+          "used",
+          "archivedAt",
+          "createdAt",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "CreateMaterial": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 30
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "nameLatin": {
+            "default": null,
+            "nullable": true,
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "unit": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20
+          }
+        },
+        "required": [
+          "code",
+          "name",
+          "unit"
+        ]
+      },
+      "UpdateMaterial": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 30
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "nameLatin": {
+            "nullable": true,
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "unit": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20
+          }
+        }
+      },
+      "ProjectParams": {
+        "type": "object",
+        "properties": {
+          "valueId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          }
+        },
+        "required": [
+          "valueId"
+        ]
+      },
+      "ProjectTermsView": {
+        "type": "object",
+        "properties": {
+          "contractValueId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "clientValueId": {
+            "nullable": true,
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "terms": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ProjectTerms"
+              }
+            ]
+          }
+        },
+        "required": [
+          "contractValueId",
+          "code",
+          "name",
+          "clientValueId",
+          "terms"
+        ],
+        "additionalProperties": false
+      },
+      "ProjectTerms": {
+        "type": "object",
+        "properties": {
+          "currency": {
+            "$ref": "#/components/schemas/CurrencyCode"
+          },
+          "contractValueMinor": {
+            "$ref": "#/components/schemas/MinorUnits"
+          },
+          "retentionBp": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10000
+          },
+          "advanceRecoveryBp": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10000
+          },
+          "budget": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BudgetLine"
+            }
+          },
+          "currencyLocked": {
+            "type": "boolean"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+          }
+        },
+        "required": [
+          "currency",
+          "contractValueMinor",
+          "retentionBp",
+          "advanceRecoveryBp",
+          "budget",
+          "currencyLocked",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "BudgetLine": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "amountMinor": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MinorUnits"
+              }
+            ]
+          }
+        },
+        "required": [
+          "accountId",
+          "amountMinor"
+        ],
+        "additionalProperties": false
+      },
+      "ProjectTermsInput": {
+        "type": "object",
+        "properties": {
+          "currency": {
+            "$ref": "#/components/schemas/CurrencyCode"
+          },
+          "contractValueMinor": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MinorUnits"
+              }
+            ]
+          },
+          "retentionBp": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10000
+          },
+          "advanceRecoveryBp": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10000
+          },
+          "budget": {
+            "default": [],
+            "maxItems": 50,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BudgetLine"
+            }
+          }
+        },
+        "required": [
+          "currency",
+          "contractValueMinor",
+          "retentionBp",
+          "advanceRecoveryBp"
+        ]
+      },
+      "SubcontractQuery": {
+        "type": "object",
+        "properties": {
+          "contract": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "supplier": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "archived": {
+            "type": "string",
+            "enum": [
+              "true",
+              "false"
+            ]
+          }
+        }
+      },
+      "SubcontractList": {
+        "type": "object",
+        "properties": {
+          "subcontracts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Subcontract"
+            }
+          }
+        },
+        "required": [
+          "subcontracts"
+        ],
+        "additionalProperties": false
+      },
+      "Subcontract": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "contractValueId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "supplierValueId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "currency": {
+            "$ref": "#/components/schemas/CurrencyCode"
+          },
+          "valueMinor": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MinorUnits"
+              }
+            ]
+          },
+          "retentionBp": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10000
+          },
+          "advanceRecoveryBp": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10000
+          },
+          "currencyLocked": {
+            "type": "boolean"
+          },
+          "archivedAt": {
+            "nullable": true,
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+          }
+        },
+        "required": [
+          "id",
+          "contractValueId",
+          "supplierValueId",
+          "currency",
+          "valueMinor",
+          "retentionBp",
+          "advanceRecoveryBp",
+          "currencyLocked",
+          "archivedAt",
+          "createdAt",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "CreateSubcontract": {
+        "type": "object",
+        "properties": {
+          "contractValueId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "supplierValueId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "currency": {
+            "$ref": "#/components/schemas/CurrencyCode"
+          },
+          "valueMinor": {
+            "default": null,
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MinorUnits"
+              }
+            ]
+          },
+          "retentionBp": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10000
+          },
+          "advanceRecoveryBp": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10000
+          }
+        },
+        "required": [
+          "contractValueId",
+          "supplierValueId",
+          "currency",
+          "retentionBp",
+          "advanceRecoveryBp"
+        ]
+      },
+      "UpdateSubcontract": {
+        "type": "object",
+        "properties": {
+          "currency": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CurrencyCode"
+              }
+            ]
+          },
+          "valueMinor": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MinorUnits"
+              }
+            ]
+          },
+          "retentionBp": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10000
+          },
+          "advanceRecoveryBp": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10000
+          },
+          "archived": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ProjectDocumentQuery": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ProjectDocumentKind"
+              }
+            ]
+          },
+          "contract": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "counterparty": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "from": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          },
+          "to": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "posted",
+              "cancelled"
+            ]
+          },
+          "cursor": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Cursor"
+              }
+            ]
+          }
+        }
+      },
+      "ProjectDocumentPage": {
+        "type": "object",
+        "properties": {
+          "documents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProjectDocumentSummary"
+            }
+          },
+          "nextCursor": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Cursor"
+              }
+            ]
+          }
+        },
+        "required": [
+          "documents",
+          "nextCursor"
+        ],
+        "additionalProperties": false
+      },
+      "ProjectDocumentSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ProjectDocumentKind"
+          },
+          "fiscalYear": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "number": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "projectSequence": {
+            "nullable": true,
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "documentDate": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          },
+          "contractValueId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "counterpartyValueId": {
+            "nullable": true,
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "side": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RetentionSide"
+              }
+            ]
+          },
+          "currency": {
+            "$ref": "#/components/schemas/CurrencyCode"
+          },
+          "totalMinor": {
+            "$ref": "#/components/schemas/MinorUnits"
+          },
+          "supplierReference": {
+            "nullable": true,
+            "type": "string"
+          },
+          "entry": {
+            "type": "object",
+            "properties": {
+              "fiscalYear": {
+                "type": "integer",
+                "minimum": 2000,
+                "maximum": 9999
+              },
+              "number": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "id": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              }
+            },
+            "required": [
+              "fiscalYear",
+              "number",
+              "id"
+            ],
+            "additionalProperties": false
+          },
+          "cancelledBy": {
+            "nullable": true,
+            "type": "object",
+            "properties": {
+              "fiscalYear": {
+                "type": "integer",
+                "minimum": 2000,
+                "maximum": 9999
+              },
+              "number": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "id": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              }
+            },
+            "required": [
+              "fiscalYear",
+              "number",
+              "id"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "fiscalYear",
+          "number",
+          "projectSequence",
+          "documentDate",
+          "contractValueId",
+          "counterpartyValueId",
+          "side",
+          "currency",
+          "totalMinor",
+          "supplierReference",
+          "entry",
+          "cancelledBy"
+        ],
+        "additionalProperties": false
+      },
+      "ProjectDocument": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ProjectDocumentKind"
+          },
+          "fiscalYear": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "number": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "projectSequence": {
+            "nullable": true,
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "documentDate": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          },
+          "contractValueId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "counterpartyValueId": {
+            "nullable": true,
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "side": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RetentionSide"
+              }
+            ]
+          },
+          "currency": {
+            "$ref": "#/components/schemas/CurrencyCode"
+          },
+          "totalMinor": {
+            "$ref": "#/components/schemas/MinorUnits"
+          },
+          "supplierReference": {
+            "nullable": true,
+            "type": "string"
+          },
+          "entry": {
+            "type": "object",
+            "properties": {
+              "fiscalYear": {
+                "type": "integer",
+                "minimum": 2000,
+                "maximum": 9999
+              },
+              "number": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "id": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              }
+            },
+            "required": [
+              "fiscalYear",
+              "number",
+              "id"
+            ],
+            "additionalProperties": false
+          },
+          "cancelledBy": {
+            "nullable": true,
+            "type": "object",
+            "properties": {
+              "fiscalYear": {
+                "type": "integer",
+                "minimum": 2000,
+                "maximum": 9999
+              },
+              "number": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "id": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              }
+            },
+            "required": [
+              "fiscalYear",
+              "number",
+              "id"
+            ],
+            "additionalProperties": false
+          },
+          "periodFrom": {
+            "nullable": true,
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          },
+          "periodTo": {
+            "nullable": true,
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          },
+          "cumulativeMinor": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MinorUnits"
+              }
+            ]
+          },
+          "previousMinor": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MinorUnits"
+              }
+            ]
+          },
+          "retentionMinor": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MinorUnits"
+              }
+            ]
+          },
+          "advanceMinor": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MinorUnits"
+              }
+            ]
+          },
+          "entryDetail": {
+            "$ref": "#/components/schemas/Entry"
+          },
+          "quantities": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DocumentQuantity"
+            }
+          },
+          "applications": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdvanceApplication"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "fiscalYear",
+          "number",
+          "projectSequence",
+          "documentDate",
+          "contractValueId",
+          "counterpartyValueId",
+          "side",
+          "currency",
+          "totalMinor",
+          "supplierReference",
+          "entry",
+          "cancelledBy",
+          "periodFrom",
+          "periodTo",
+          "cumulativeMinor",
+          "previousMinor",
+          "retentionMinor",
+          "advanceMinor",
+          "entryDetail",
+          "quantities",
+          "applications"
+        ],
+        "additionalProperties": false
+      },
+      "DocumentQuantity": {
+        "type": "object",
+        "properties": {
+          "lineNo": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "materialId": {
+            "nullable": true,
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "unit": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "string"
+          },
+          "unitPrice": {
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "lineNo",
+          "materialId",
+          "unit",
+          "quantity",
+          "unitPrice"
+        ],
+        "additionalProperties": false
+      },
+      "AdvanceApplication": {
+        "type": "object",
+        "properties": {
+          "advanceLineNo": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "lineNo": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "amountMinor": {
+            "$ref": "#/components/schemas/MinorUnits"
+          },
+          "bookMinor": {
+            "$ref": "#/components/schemas/MinorUnits"
+          },
+          "parallelMinor": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MinorUnits"
+              }
+            ]
+          }
+        },
+        "required": [
+          "advanceLineNo",
+          "lineNo",
+          "amountMinor",
+          "bookMinor",
+          "parallelMinor"
         ],
         "additionalProperties": false
       },

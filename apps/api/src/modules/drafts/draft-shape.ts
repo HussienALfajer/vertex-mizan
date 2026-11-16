@@ -5,6 +5,7 @@ import type {
   DraftLine,
   DraftState,
   DraftSummary,
+  ProjectDocumentHeader,
   VoucherHeader,
 } from '@vertex-mizan/contracts';
 import { entryAttachments, entryDraftLines, entryDrafts, type Transaction } from '@vertex-mizan/db';
@@ -50,6 +51,30 @@ function lineOf(row: LineRow): DraftLine {
       row.newItemReference === null
         ? null
         : { reference: row.newItemReference, dueOn: row.newItemDueOn },
+    materialId: row.materialId,
+    unit: row.unit,
+    quantity: row.quantity,
+    unitPrice: row.unitPrice,
+    advanceMinor: row.advanceMinor?.toString() ?? null,
+  };
+}
+
+/** A project document draft's header as stored (S12), null on any other draft. */
+export function projectDocumentOf(row: DraftRow): ProjectDocumentHeader | null {
+  if (row.projectDocumentKind === null || row.contractValueId === null) return null;
+  return {
+    kind: row.projectDocumentKind,
+    contractValueId: row.contractValueId,
+    counterpartyValueId: row.counterpartyValueId,
+    currency: row.documentCurrency as CurrencyCode | null,
+    side: row.side,
+    periodFrom: row.periodFrom,
+    periodTo: row.periodTo,
+    cumulativeMinor: row.cumulativeMinor?.toString() ?? null,
+    retentionMinor: row.retentionMinor?.toString() ?? null,
+    advanceMinor: row.advanceMinor?.toString() ?? null,
+    supplierReference: row.supplierReference,
+    retentionItems: null,
   };
 }
 
@@ -91,6 +116,7 @@ export async function readDraft(tx: Transaction, id: string): Promise<Draft> {
     copiedFromEntryId: row.copiedFromEntryId,
     lines,
     voucher: voucherOf(row),
+    projectDocument: projectDocumentOf(row),
     preparedBy: personOf(people, row.preparedByUserId),
     submitted:
       row.submittedByUserId && row.submittedAt
@@ -128,6 +154,7 @@ export function summaryOf(
     reference: row.reference,
     reversesEntryId: row.reversesEntryId,
     voucherKind: row.voucherKind,
+    projectDocumentKind: row.projectDocumentKind,
     lineCount,
     preparedBy: personOf(people, row.preparedByUserId),
     submitted:
@@ -144,6 +171,7 @@ export {
   auditedLines,
   type DraftOrigin,
   insertDraft,
+  projectDocumentColumns,
   voucherColumns,
   writeLines,
 } from '@vertex-mizan/db';
