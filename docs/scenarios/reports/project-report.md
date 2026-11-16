@@ -7,11 +7,11 @@ The project report reads what S12's documents posted; it posts nothing. The figu
 ## Rule
 
 The project report presents one project for a range and a ledger (book by default), from the ledger's stored amounts, with nothing converted and nothing rounded except its percentages:
-- **Summary:** the contract value and the cumulative certified to `to` (the latest posted, uncancelled billing dated on or before it) in the terms' currency, and the cumulative's share of the contract value; the range's revenue (`is.revenue` lines with the project), direct costs (`is.direct_costs` lines with the project), contribution and margin, exactly as S09's profitability by contract; and at `to`, the balances carried for the project of the client's retentions (`113002`), the client's advance (`212002`), the subcontractors' retentions (`211006`) and the advances paid to suppliers and subcontractors (`114002`), each positive on its own side. A subcontractor's retentions are one running item over all its projects, and the month-end revaluation posts on the supplier alone: what the item carries with no project is shared over its projects in proportion to each project's balance in the item's currency on the item's side, with cumulative rounding (owner, 2026-11-16), so each project's retention is at the item's carrying amounts.
+- **Summary:** the contract value and the cumulative certified to `to` (the latest posted, uncancelled billing dated on or before it) in the terms' currency, and the cumulative's share of the contract value; the range's revenue (`is.revenue` lines with the project), direct costs (`is.direct_costs` lines with the project), contribution and margin, exactly as S09's profitability by contract; and at `to`, the balances carried for the project of the client's retentions (`113002`), the client's advance (`212002`), the subcontractors' retentions (`211006`) and the advances paid to suppliers and subcontractors (`114002`), each positive on its own side. A subcontractor's retentions are one running item over all its projects, and the month-end revaluation posts on the supplier alone: what the item carries with no project is shared over its projects in proportion to each project's balance in the item's currency on the item's side, with cumulative rounding (owner, 2026-11-16), so the projects' retentions add up to the item's carrying amount; each project's share is at the closing rate when the projects' retentions were taken at one rate.
 - **Costs and budget:** each direct-cost account with a budget or a line of the project, its cost in the range and to `to`, and its budget; the variance (budget less cost to date) and the share of the budget used only when the terms' currency is the book currency and the ledger is the book (S12 answer 15), otherwise the budget alone.
 - **Materials:** per material and transaction currency, the range's lines of the project on an account that requires a material: the net quantity, the amount in the transaction currency and in the ledger, and the average unit cost; a price adjustment counts in the amounts and not in the quantity.
 - **Wages:** per worker with a wage-sheet line on the project in the range: the days, the lump sums and the amount, and the worker's running balance at `to`.
-- **Subcontracts:** each subcontract of the project: its value and the cumulative certified to `to` in its currency, the retention held (with its share of the item's revaluation, as in the summary) and the advance carried for the project at `to`, and the supplier's payments in the range: the clearing movements of its running payable, a reversed payment netting out with its reversal and a project document's movements left out.
+- **Subcontracts:** each subcontract of the project: its value and the cumulative certified to `to` in its currency, the retention held (with its share of the item's revaluation, as in the summary) and the advance carried for the project at `to`, and the supplier's payments in the range: every debit to its running payable, a payment on account included, a reversed payment netting out with its reversal and a project document's movements left out.
 - **Billings:** every billing of the project dated on or before `to`, with its cumulative, previous, period's value, retention, recovery, net, state and what remains of its receivable at `to`.
 
 Its revenue and direct costs equal S09's profitability by contract for the same range and ledger, and its contract balances are the parts of the balance sheet's contract position for the project (S09 rule 17).
@@ -663,9 +663,9 @@ expect:
 
 ### syp-usd: a subcontractor's retentions on two projects, revalued at the month end
 
-The accounting review of S12's third PR found that a subcontractor's retentions on `211006` are one running item per supplier and currency over all its projects, and that the month-end revaluation posts on the supplier alone, with no project. The owner decided on 2026-11-16 that the project report shares what the item carries with no project over its projects, in proportion to each project's balance in the item's currency, with cumulative rounding, so each project's retention is at the closing rate and the projects' retentions add up to the item (IAS 21.23).
+The accounting review of S12's third PR found that a subcontractor's retentions on `211006` are one running item per supplier and currency over all its projects, and that the month-end revaluation posts on the supplier alone, with no project. The owner decided on 2026-11-16 that the project report shares what the item carries with no project over its projects, in proportion to each project's balance in the item's currency, with cumulative rounding, so the projects' retentions add up to the item at its closing amount (IAS 21.23); a project's share is at the closing rate when its retentions were taken at the same rate as the others'.
 
-Vertex Media's shape: SYP books at the bulletin and a USD parallel ledger. S2 holds a USD subcontract on P1 and another on P2, each retaining 10% with no advance. On 17 December, at 121, S2's first billing on P1 certifies 12,000.00 USD and its first on P2 5,000.00 USD. The book is revalued for December at the closing bulletin of 120: S2's retentions of 1,700.00 USD, carried at 20,570,000.00 SYP, are brought to 20,400,000.00, and its payable of 15,300.00 USD from 185,130,000.00 to 183,600,000.00. The revaluation's 170,000 on the retentions carries no project; P1 takes 1,200.00 / 1,700.00 of it and P2 the rest, so each project's retention is its USD balance at 120. The USD parallel ledger holds nothing in another currency.
+Vertex Media's shape: SYP books at the bulletin and a USD parallel ledger. S2 holds a USD subcontract on P1 and another on P2, each retaining 10% with no advance. On 17 December, at 121, S2's first billing on P1 certifies 12,000.00 USD and its first on P2 5,000.00 USD. The book is revalued for December at the closing bulletin of 120: S2's retentions of 1,700.00 USD, carried at 205,700.00 SYP, are brought to 204,000.00, and its payable of 15,300.00 USD from 1,851,300.00 to 1,836,000.00. The revaluation's 1,700.00 SYP on the retentions carries no project; P1 takes 1,200.00 / 1,700.00 of it and P2 the rest, so, both billings having been taken at 121, each project's retention is its USD balance at 120. The USD parallel ledger holds nothing in another currency.
 
 ```yaml
 case: syp-usd; S2's retentions on P1 and P2 revalued at the month end, shared over the projects by their USD balances
@@ -710,10 +710,10 @@ expect:
     - source: revaluation
       date: 2026-12-31
       lines:
-        # S2's retentions: 1,700.00 USD × 120 = 20,400,000.00; carried 20,570,000.00; +1,700.00 SYP to the item
+        # S2's retentions: 1,700.00 USD × 120 = 204,000.00 SYP; carried 205,700.00; +1,700.00 SYP to the item
         - { account: "211006", dims: { supplier: S2 }, currency: USD, amount: 0, book: 170000, parallel: 0 }
         - { account: "421002", currency: SYP, amount: -170000, book: -170000, parallel: 0 }
-        # S2's payable: 15,300.00 USD × 120 = 183,600,000.00; carried 185,130,000.00; +15,300.00 SYP
+        # S2's payable: 15,300.00 USD × 120 = 1,836,000.00 SYP; carried 1,851,300.00; +15,300.00 SYP
         - { account: "211002", dims: { supplier: S2 }, currency: USD, amount: 0, book: 1530000, parallel: 0 }
         - { account: "421002", currency: SYP, amount: -1530000, book: -1530000, parallel: 0 }
     - source: reversal
@@ -734,7 +734,7 @@ expect:
       params: { contract: P1, from: 2026-12-01, to: 2026-12-31, ledger: book }
       marks: [period_open]
       # P1's own retention 14,520,000 and its share of the revaluation, 170,000 × 1,200 / 1,700 = 120,000:
-      #   14,400,000.00 SYP = 1,200.00 × 120
+      #   144,000.00 SYP = 1,200.00 USD × 120
       summary: { currency: USD, contract_value: 10000000, cumulative: 0, billed: "0.0",
                  revenue: 0, direct_costs: 145200000, contribution: -145200000, margin: null,
                  retention_receivable: 0, client_advance: 0,
@@ -751,8 +751,8 @@ expect:
     - report: project_report
       params: { contract: P2, from: 2026-12-01, to: 2026-12-31, ledger: book }
       marks: [period_open]
-      # P2's 6,050,000 and the rest of the revaluation, 50,000: 6,000,000.00 SYP = 500.00 × 120;
-      #   with P1's, 20,400,000.00, S2's retentions in the book
+      # P2's 6,050,000 and the rest of the revaluation, 50,000: 60,000.00 SYP = 500.00 USD × 120;
+      #   with P1's, 204,000.00 SYP, S2's retentions in the book
       summary: { currency: USD, contract_value: 4000000, cumulative: 0, billed: "0.0",
                  revenue: 0, direct_costs: 60500000, contribution: -60500000, margin: null,
                  retention_receivable: 0, client_advance: 0,

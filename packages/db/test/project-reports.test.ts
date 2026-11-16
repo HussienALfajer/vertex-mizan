@@ -502,7 +502,7 @@ describe('the project report (S12 "Reports")', () => {
     expect(steel.rows.map((row) => row.ledgerAmount)).toEqual(['140000']);
   });
 
-  it("counts a subcontractor's payments: a reversed one nets out, a billing clearing its debit is none", async () => {
+  it("counts a subcontractor's payments, one on account too: a reversed one nets out, a billing is none", async () => {
     const books = await newBooks();
     await inCompany(books.id, (tx) =>
       createSubcontract(
@@ -519,7 +519,7 @@ describe('the project report (S12 "Reports")', () => {
         actor(),
       ),
     );
-    const pay = (amountMinor: bigint) =>
+    const pay = (paid: bigint) =>
       inCompany(books.id, (tx) =>
         post(
           tx,
@@ -532,14 +532,14 @@ describe('the project report (S12 "Reports")', () => {
                 accountId: account(books, '211002'),
                 dimensionValueIds: [books.supplier],
                 currency: 'USD',
-                amountMinor,
+                amountMinor: paid,
                 memo: null,
               },
               {
                 accountId: account(books, '111004'),
                 dimensionValueIds: [],
                 currency: 'USD',
-                amountMinor: -amountMinor,
+                amountMinor: -paid,
                 memo: null,
               },
             ],
@@ -565,9 +565,10 @@ describe('the project report (S12 "Reports")', () => {
     );
     const report = await reportOf(books, 'book');
     expect(report.subcontracts).toMatchObject([
-      { cumulativeMinor: '300000', retention: '30000', paid: '100000' },
+      { cumulativeMinor: '300000', retention: '30000', paid: '120000' },
     ]);
-    expect((await reportOf(books, 'parallel')).subcontracts[0]?.paid).toBe('12000000');
+    // 200.00 on account and 1,000.00, at 120; the 500.00 reversed nets out.
+    expect((await reportOf(books, 'parallel')).subcontracts[0]?.paid).toBe('14400000');
   });
 
   it("refuses anything but a project, and never reads another company's", async () => {

@@ -539,7 +539,7 @@ async function subcontractRetentions(
  * Each subcontract of the project: its value and cumulative to `to`, the retention held for the
  * project at `to` (`subcontractRetentions()`), the advance carried for it (lines with the project
  * and the supplier), and the supplier's payments in the range: the clearing movements of its
- * running payable, net of their reversals, a project document's left out.
+ * running payable (a payment on account included), net of their reversals, a project document's left out.
  */
 async function projectSubcontracts(
   tx: Transaction,
@@ -593,10 +593,14 @@ async function projectSubcontracts(
             from open_item_movements m
             join open_items i on i.company_id = m.company_id and i.id = m.item_id
             join journal_entries e on e.company_id = m.company_id and e.id = m.entry_id
-            where i.account_id = ${chart.byCode.payable}::uuid and m.kind = 'clear'
+            where i.account_id = ${chart.byCode.payable}::uuid
               and m.entry_date between ${range.from} and ${range.to}
-              -- A reversed payment nets out with its reversal; a document of the project (a
-              -- billing crediting a debit balance) or its reversal is no payment.
+              -- What was paid: every debit to the payable, clearing it or taking it into debit (a
+              -- payment on account), and a reversed debit netting out with its reversal's credit;
+              -- a credit (what the supplier is owed) is none, nor a document of the project or
+              -- its reversal.
+              and ((e.reverses_entry_id is null and m.amount_minor > 0)
+                or (e.reverses_entry_id is not null and m.amount_minor < 0))
               and not exists (select 1 from project_documents d
                 where d.company_id = e.company_id
                   and (d.entry_id = e.id or d.entry_id = e.reverses_entry_id))
