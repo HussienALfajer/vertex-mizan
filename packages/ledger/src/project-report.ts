@@ -1,4 +1,5 @@
 import { type CurrencyCode, currencies, divideHalfAwayFromZero } from '@vertex-mizan/contracts';
+import { allocate } from './allocation.js';
 
 /**
  * The project report's presentation (S12 "Reports", `docs/scenarios/reports/project-report.md`):
@@ -125,4 +126,35 @@ export function onItsSide(netDebit: bigint, side: 'debit' | 'credit'): bigint {
 export function basisPointsText(basisPoints: number): string {
   const text = decimalShare(BigInt(basisPoints), 100n, 2) ?? '0';
   return text.replace(/\.?0+$/, '');
+}
+
+/**
+ * A running item's remeasurement shared over its projects (owner, 2026-11-16; IAS 21.23): a
+ * running item (a subcontractor's retentions on `211006`) is held per counterparty and currency
+ * over all its projects, and its month-end revaluation is posted on the counterparty alone, with
+ * no project. What the item carries beyond its projects' own lines (`unassigned`) is shared over
+ * the projects in proportion to each project's balance in the item's currency on the item's side,
+ * with cumulative rounding in the order given (`allocate()`), so the shares sum to it exactly.
+ * A project with no balance on that side takes none; with none at all, nothing is shared.
+ */
+export function shareRunningRemeasurement(
+  unassigned: bigint,
+  balances: readonly { readonly key: string; readonly amount: bigint }[],
+): Map<string, bigint> {
+  const shares = new Map<string, bigint>();
+  const total = balances.reduce((sum, balance) => sum + balance.amount, 0n);
+  if (unassigned === 0n || total === 0n) return shares;
+  const weights = balances.map((balance) =>
+    balance.amount > 0n === total > 0n && balance.amount !== 0n
+      ? balance.amount > 0n
+        ? balance.amount
+        : -balance.amount
+      : 0n,
+  );
+  if (weights.every((weight) => weight === 0n)) return shares;
+  const parts = allocate(unassigned, weights);
+  balances.forEach((balance, index) => {
+    shares.set(balance.key, parts[index] ?? 0n);
+  });
+  return shares;
 }

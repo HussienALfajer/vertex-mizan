@@ -24,6 +24,7 @@ import {
   profitability,
   projectCosts,
   quantityText,
+  shareRunningRemeasurement,
   showsVariance,
 } from '@vertex-mizan/ledger';
 import { type SQL, sql } from 'drizzle-orm';
@@ -466,10 +467,79 @@ async function projectWages(
 }
 
 /**
- * Each subcontract of the project: its value and cumulative to `to`, the retention held and the
- * advance carried for the project at `to` (lines with the project and the supplier), and the
- * supplier's payments in the range: the clearing movements of its running payable, reversals
- * left out.
+ * Each supplier's retentions held for the project at `to`, as a net debit in the ledger: the
+ * project's own lines on `211006`, and its share of what the supplier's running item carries with
+ * no project, its month-end revaluation (owner, 2026-11-16; IAS 21.23), shared by
+ * `shareRunningRemeasurement()` over the item's projects per currency, in project id order.
+ */
+async function subcontractRetentions(
+  tx: Transaction,
+  ledger: Ledger,
+  to: string,
+  chart: Chart,
+  contractType: string,
+  projectId: string,
+): Promise<Map<string, bigint>> {
+  const held = new Map<string, bigint>();
+  const account = chart.byCode.subcontractRetention;
+  if (account === undefined) return held;
+  const supplierType = await builtinDimensionTypeId(tx, 'supplier');
+  const rows = (
+    await tx.execute<{
+      supplier_id: string;
+      currency: string;
+      project_id: string | null;
+      net: string;
+      amount: string;
+    }>(sql`
+      select s.value_id as supplier_id, l.currency, v.value_id as project_id,
+        sum(${ledgerAmount(ledger)})::text as net, sum(l.amount_minor)::text as amount
+      from journal_lines l
+      join journal_entries e on e.company_id = l.company_id and e.id = l.entry_id
+      join dimension_set_values s on s.company_id = l.company_id
+        and s.set_id = l.dimension_set_id and s.type_id = ${supplierType}::uuid
+      left join dimension_set_values v on v.company_id = l.company_id
+        and v.set_id = l.dimension_set_id and v.type_id = ${contractType}::uuid
+      where l.account_id = ${account}::uuid and e.entry_date <= ${to}
+        and s.value_id in (
+          select ps.value_id from journal_lines pl
+          join journal_entries pe on pe.company_id = pl.company_id and pe.id = pl.entry_id
+          join dimension_set_values ps on ps.company_id = pl.company_id
+            and ps.set_id = pl.dimension_set_id and ps.type_id = ${supplierType}::uuid
+          join dimension_set_values pv on pv.company_id = pl.company_id
+            and pv.set_id = pl.dimension_set_id and pv.value_id = ${projectId}::uuid
+          where pl.account_id = ${account}::uuid and pe.entry_date <= ${to})
+      group by s.value_id, l.currency, v.value_id
+      order by s.value_id, l.currency, v.value_id`)
+  ).rows;
+  const items = new Map<string, typeof rows>();
+  for (const row of rows) {
+    const key = `${row.supplier_id}/${row.currency}`;
+    items.set(key, [...(items.get(key) ?? []), row]);
+  }
+  for (const item of items.values()) {
+    const supplierId = item[0]?.supplier_id;
+    if (supplierId === undefined) continue;
+    const projects = item.filter((row) => row.project_id !== null);
+    const own = projects.find((row) => row.project_id === projectId);
+    const unassigned = item
+      .filter((row) => row.project_id === null)
+      .reduce((sum, row) => sum + BigInt(row.net), 0n);
+    const shares = shareRunningRemeasurement(
+      unassigned,
+      projects.map((row) => ({ key: row.project_id as string, amount: BigInt(row.amount) })),
+    );
+    const figure = big(own?.net) + (shares.get(projectId) ?? 0n);
+    held.set(supplierId, (held.get(supplierId) ?? 0n) + figure);
+  }
+  return held;
+}
+
+/**
+ * Each subcontract of the project: its value and cumulative to `to`, the retention held for the
+ * project at `to` (`subcontractRetentions()`), the advance carried for it (lines with the project
+ * and the supplier), and the supplier's payments in the range: the clearing movements of its
+ * running payable, net of their reversals, a project document's left out.
  */
 async function projectSubcontracts(
   tx: Transaction,
@@ -478,6 +548,7 @@ async function projectSubcontracts(
   chart: Chart,
   contractType: string,
   projectId: string,
+  retentions: ReadonlyMap<string, bigint>,
 ) {
   const supplierType = await builtinDimensionTypeId(tx, 'supplier');
   const subcontracts = (
@@ -547,10 +618,7 @@ async function projectSubcontracts(
       currency: row.currency as CurrencyCode,
       valueMinor: row.value_minor,
       cumulativeMinor: cumulatives.get(`${projectId}/${row.supplier_value_id}`) ?? '0',
-      retention: onItsSide(
-        heldOn(chart.byCode.subcontractRetention, row.supplier_value_id),
-        'credit',
-      ).toString(),
+      retention: onItsSide(retentions.get(row.supplier_value_id) ?? 0n, 'credit').toString(),
       advance: onItsSide(
         heldOn(chart.byCode.advancePaid, row.supplier_value_id),
         'debit',
@@ -656,13 +724,19 @@ export async function readProjectReport(
   );
   const balanceIds = [
     ...balanceAccounts(chart),
-    ...[chart.byCode.subcontractRetention, chart.byCode.advancePaid].filter(
-      (id): id is string => id !== undefined,
-    ),
+    ...[chart.byCode.advancePaid].filter((id): id is string => id !== undefined),
   ];
   const balances = await contractSums(tx, context.ledger, toDate, balanceIds, contractType, [
     projectId,
   ]);
+  const retentions = await subcontractRetentions(
+    tx,
+    context.ledger,
+    query.to,
+    chart,
+    contractType,
+    projectId,
+  );
   const budget = (
     await tx.execute<{ account_id: string; amount: string }>(sql`
       select account_id, amount_minor::text as amount from project_budgets
@@ -718,7 +792,7 @@ export async function readProjectReport(
       ...figuresByProject(chart, inRange)(projectId),
       ...balancesOf(chart, balances, projectId),
       subcontractRetention: onItsSide(
-        netOf(balances, chart.byCode.subcontractRetention, projectId),
+        [...retentions.values()].reduce((sum, held) => sum + held, 0n),
         'credit',
       ).toString(),
       subcontractAdvance: onItsSide(
@@ -739,6 +813,7 @@ export async function readProjectReport(
       chart,
       contractType,
       projectId,
+      retentions,
     ),
     billings: await projectBillings(tx, query.to, chart, projectId),
   };

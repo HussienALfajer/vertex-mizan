@@ -9,6 +9,7 @@ import {
   percentOf,
   projectCosts,
   quantityText,
+  shareRunningRemeasurement,
   showsVariance,
 } from './project-report.js';
 
@@ -111,5 +112,59 @@ describe('the project report (S12 "Reports", reports/project-report.md)', () => 
     ).toEqual({ period: 4_500_000n, net: 3_050_000n });
     expect(onItsSide(-1_400_000n, 'credit')).toBe(1_400_000n);
     expect(onItsSide(300_000n, 'debit')).toBe(300_000n);
+  });
+
+  it("shares a running item's remeasurement over its projects (owner, 2026-11-16)", () => {
+    // S2's retentions: P1 1,200.00 and P2 500.00 USD, carried at 121; revalued at 120: +170,000.
+    expect(
+      shareRunningRemeasurement(170_000n, [
+        { key: 'P1', amount: -120_000n },
+        { key: 'P2', amount: -50_000n },
+      ]),
+    ).toEqual(
+      new Map([
+        ['P1', 120_000n],
+        ['P2', 50_000n],
+      ]),
+    );
+    // Cumulative rounding: 100 over three equal balances, 33 + 34 + 33.
+    expect([
+      ...shareRunningRemeasurement(100n, [
+        { key: 'a', amount: -1n },
+        { key: 'b', amount: -1n },
+        { key: 'c', amount: -1n },
+      ]).values(),
+    ]).toEqual([33n, 34n, 33n]);
+    // A project on the other side takes nothing; with no balance, nothing is shared.
+    expect(
+      shareRunningRemeasurement(10n, [
+        { key: 'a', amount: -30n },
+        { key: 'b', amount: 10n },
+      ]),
+    ).toEqual(
+      new Map([
+        ['a', 10n],
+        ['b', 0n],
+      ]),
+    );
+    expect(shareRunningRemeasurement(10n, [{ key: 'a', amount: 0n }]).size).toBe(0);
+    expect(shareRunningRemeasurement(0n, [{ key: 'a', amount: -5n }]).size).toBe(0);
+  });
+
+  it('shares exactly what is unassigned, under any balances on one side', () => {
+    fc.assert(
+      fc.property(
+        fc.bigInt({ min: -(10n ** 9n), max: 10n ** 9n }),
+        fc.array(fc.bigInt({ min: 1n, max: 10n ** 9n }), { minLength: 1, maxLength: 6 }),
+        (unassigned, magnitudes) => {
+          const shares = shareRunningRemeasurement(
+            unassigned,
+            magnitudes.map((amount, index) => ({ key: String(index), amount: -amount })),
+          );
+          const sum = [...shares.values()].reduce((a, b) => a + b, 0n);
+          expect(sum).toBe(unassigned === 0n ? 0n : unassigned);
+        },
+      ),
+    );
   });
 });
