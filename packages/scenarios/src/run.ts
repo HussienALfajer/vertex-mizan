@@ -275,7 +275,10 @@ export async function runCase(
         'subcontracts arrive with S12',
     );
   }
-  if (scenarioCase.company.contracts.some((contract) => contract.terms !== null) && !harness.terms) {
+  if (
+    scenarioCase.company.contracts.some((contract) => contract.terms !== null) &&
+    !harness.terms
+  ) {
     missing.push(
       'No project terms setup is registered (packages/scenarios/src/harness.ts); ' +
         'project terms arrive with S12',

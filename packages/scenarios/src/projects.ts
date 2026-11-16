@@ -258,7 +258,10 @@ async function retentionItemOf(tx: Transaction, reference: string): Promise<stri
     .from(openItems)
     .innerJoin(
       chartAccounts,
-      and(eq(chartAccounts.companyId, openItems.companyId), eq(chartAccounts.id, openItems.accountId)),
+      and(
+        eq(chartAccounts.companyId, openItems.companyId),
+        eq(chartAccounts.id, openItems.accountId),
+      ),
     )
     .where(and(eq(chartAccounts.code, '113002'), eq(openItems.reference, reference)));
   return row?.id ?? uuidv7();
@@ -500,9 +503,14 @@ export function projectDocuments(context: CaseContext): Promise<ObservedProjectD
           };
           return row.kind === 'progress_billing'
             ? { kind: 'progress_billing', ...billing }
-            : { kind: 'subcontract_billing', ...billing, supplier: codeOf(row.counterpartyValueId) };
+            : {
+                kind: 'subcontract_billing',
+                ...billing,
+                supplier: codeOf(row.counterpartyValueId),
+              };
         }
-        case 'retention_release':
+        default:
+          // A retention release, the last kind.
           return {
             kind: 'retention_release',
             ...common,

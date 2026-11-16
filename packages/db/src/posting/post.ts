@@ -2204,7 +2204,8 @@ async function projectDocumentLines(
       projectSequence: extras.projectSequence,
       cumulativeMinor: billing ? document.cumulativeMinor : null,
       previousMinor: billing ? built.previousMinor : null,
-      retentionMinor: billing || document.kind === 'retention_release' ? built.retentionMinor : null,
+      retentionMinor:
+        billing || document.kind === 'retention_release' ? built.retentionMinor : null,
       contractValueMinor: extras.contractValueMinor,
     },
   };
@@ -2475,7 +2476,11 @@ async function billingOrRelease(
       ? undefined
       : input.values.get(document.counterpartyValueId);
   if (supplier === undefined || supplier.typeCode !== 'supplier') {
-    refuse('VALIDATION_FAILED', 'A subcontract billing and a supplier release name the supplier', {});
+    refuse(
+      'VALIDATION_FAILED',
+      'A subcontract billing and a supplier release name the supplier',
+      {},
+    );
   }
   const [subcontract] = await tx
     .select()

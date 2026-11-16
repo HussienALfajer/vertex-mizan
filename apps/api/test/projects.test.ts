@@ -339,7 +339,11 @@ describe('project documents as drafts (S12 rules 4–8, 10, 21)', () => {
       const saved = await browser.post('/api/drafts', {
         entryDate: on,
         description: 'مستخلص تجريبي',
-        projectDocument: { kind: 'progress_billing', contractValueId: books.project, cumulativeMinor },
+        projectDocument: {
+          kind: 'progress_billing',
+          contractValueId: books.project,
+          cumulativeMinor,
+        },
       });
       expect(saved.status, JSON.stringify(saved.body)).toBe(201);
       return saved.body.id as string;
@@ -430,9 +434,9 @@ describe('project documents as drafts (S12 rules 4–8, 10, 21)', () => {
     expect((await cancel(posted.body.entry.id)).body.code).toBe('OPEN_ITEM_HAS_SETTLEMENTS');
 
     const stranger = await contractor();
-    expect(
-      (await stranger.browser.post(`/api/drafts/${release.body.id}/post`)).body.code,
-    ).toBe('NOT_FOUND');
+    expect((await stranger.browser.post(`/api/drafts/${release.body.id}/post`)).body.code).toBe(
+      'NOT_FOUND',
+    );
   });
 
   it('refuses a manual line on 511001 without a material (rule 4)', async () => {

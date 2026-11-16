@@ -247,9 +247,17 @@ export class DraftsService {
           row.projectDocumentKind !== 'wage_sheet';
         // S12: a billing's or a release's lines are its header's; left out, they stay as saved.
         if (derived) {
-          documentLines({ kind: row.projectDocumentKind } as ProjectDocumentHeaderInput, input.lines);
+          documentLines(
+            { kind: row.projectDocumentKind } as ProjectDocumentHeaderInput,
+            input.lines,
+          );
         } else {
-          await writeLines(tx, row.companyId, id, documentLines(input.projectDocument, input.lines));
+          await writeLines(
+            tx,
+            row.companyId,
+            id,
+            documentLines(input.projectDocument, input.lines),
+          );
         }
       }
       if (changed) {
