@@ -35,8 +35,8 @@ Four PRs, in order. Each PR switches its scenario files to `Approved (owner, 202
 
 ### PR 4 — the screens (branch `feat/s12-screens`)
 
-- [ ] ui: `QuantityCell`, `MaterialPicker`, `BillingSummary` and `BudgetVarianceBar` in `packages/ui`, tested, both densities, on the design-system page
-- [ ] i18n: namespaces `projects` and `materials`, the error codes' texts
+- [x] ui: `QuantityCell`, `MaterialPicker`, `BillingSummary` and `BudgetVarianceBar` in `packages/ui`, tested, both densities, on the design-system page
+- [x] i18n: namespaces `projects` and `materials`, the error codes' texts
 - [ ] web, documents: `/materials`, `/projects/:valueId/terms` with subcontracts, `/projects/documents`, `/projects/documents/new/:kind` and the document draft in `/drafts/:id` (preview with covered parts and warnings), cancel as a reversal, print; "يتطلب مادة" on the account sheet; quantities on manual entries and payment vouchers
 - [ ] web, reports: `/projects` and `/projects/:valueId` (the report's tabs, drill-down, Excel and PDF), `/reports/material-quantities`; the palette's entries
 - [ ] e2e: materials catalogue, a purchase invoice with quantities, a wage sheet, a billing with its print, the projects list and a project report; RTL screenshots light and dark at phone, tablet and desktop, looked at

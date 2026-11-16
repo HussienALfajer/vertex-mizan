@@ -26,6 +26,8 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
+  BillingSummary,
+  BudgetVarianceBar,
   CashAccountPicker,
   type CashAccountPickerOption,
   type CellEdit,
@@ -54,6 +56,8 @@ import {
   type KeymapAction,
   keymap,
   LedgerSwitch,
+  MaterialPicker,
+  type MaterialPickerOption,
   OpenItemPicker,
   type OpenItemPickerOption,
   OtpField,
@@ -87,6 +91,7 @@ import {
   ToggleGroupItem,
   useDensity,
   VertexMizanLogo,
+  QuantityCell,
   VoucherHeader,
 } from '@vertex-mizan/ui';
 import { CheckIcon, DownloadIcon, SearchIcon } from 'lucide-react';
@@ -1157,6 +1162,103 @@ function CashSample() {
   );
 }
 
+/** Three synthetic materials, one archived (S12). */
+const sampleMaterials: MaterialPickerOption[] = [
+  { id: 'cement', code: 'M-001', name: t.projects.cement, unit: 'طن' },
+  { id: 'steel', code: 'M-002', name: t.projects.steel, unit: 'طن' },
+  { id: 'sand', code: 'M-003', name: t.projects.sand, unit: 'م³', archived: true },
+];
+
+/** The project components (S12): a material, quantities, a billing and two budgets, in both densities. */
+function ProjectsSample() {
+  const [material, setMaterial] = useState<string | null>('cement');
+  const p = t.projects;
+  const unit = sampleMaterials.find((option) => option.id === material)?.unit ?? null;
+  return (
+    <div className="grid min-w-0 gap-6 lg:grid-cols-2">
+      {(['compact', 'comfortable'] as const).map((density) => (
+        <div
+          key={density}
+          data-density={density}
+          className="flex min-w-0 flex-col gap-3 text-control"
+        >
+          <p className="text-muted-foreground text-sm">{p[density]}</p>
+          <MaterialPicker
+            label={ar.materials.picker.placeholder}
+            materials={sampleMaterials}
+            value={material}
+            onValueChange={(next) => setMaterial(next.id)}
+            labels={ar.materials.picker}
+          />
+          <dl className="flex flex-wrap gap-x-6 gap-y-1">
+            <div className="flex items-baseline gap-2">
+              <dt className="text-muted-foreground">{p.quantityIn}</dt>
+              <dd>
+                <QuantityCell quantity="12.500" unit={unit} />
+              </dd>
+            </div>
+            <div className="flex items-baseline gap-2">
+              <dt className="text-muted-foreground">{p.quantityOut}</dt>
+              <dd>
+                <QuantityCell quantity="-2.000" unit={unit} />
+              </dd>
+            </div>
+            <div className="flex items-baseline gap-2">
+              <dt className="text-muted-foreground">{p.days}</dt>
+              <dd>
+                <QuantityCell quantity="6.500" unit="يوم" trim />
+              </dd>
+            </div>
+          </dl>
+          <BillingSummary
+            currency="USD"
+            labels={billingSummaryLabels}
+            retentionRate="10%"
+            recoveryRate="20%"
+            figures={{
+              cumulativeMinor: 3000000n,
+              previousMinor: density === 'compact' ? 0n : null,
+              periodMinor: 3000000n,
+              retentionMinor: 300000n,
+              recoveryMinor: 600000n,
+              netMinor: density === 'compact' ? 2100000n : null,
+            }}
+          />
+          <BudgetVarianceBar
+            label={p.materialsAccount}
+            currency="USD"
+            budgetMinor={4000000n}
+            actualMinor={255809n}
+            varianceMinor={3744191n}
+            used="6.4"
+            labels={ar.projects.report.budgetBar}
+          />
+          <BudgetVarianceBar
+            label={p.wagesAccount}
+            currency="USD"
+            budgetMinor={50000n}
+            actualMinor={55000n}
+            varianceMinor={-5000n}
+            used="110.0"
+            labels={ar.projects.report.budgetBar}
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** `BillingSummary`'s labels, shared with the document form. */
+const billingSummaryLabels = {
+  cumulative: ar.projects.form.cumulative,
+  previous: ar.projects.preview.previous,
+  period: ar.projects.preview.period,
+  retention: ar.projects.preview.retention,
+  recovery: ar.reports.project.columns.recovery,
+  net: ar.reports.project.columns.net,
+  unknown: ar.projects.form.notComputed,
+};
+
 function DimensionPickerSample() {
   const [client, setClient] = useState<string | null>('c1');
   const [rate, setRate] = useState<string | null>('120.0000');
@@ -1319,6 +1421,11 @@ export function DesignSystemPage() {
       <Section id="cash" title={t.cash.title}>
         <p className="text-muted-foreground">{t.cash.hint}</p>
         <CashSample />
+      </Section>
+
+      <Section id="projects" title={t.projects.title}>
+        <p className="text-muted-foreground">{t.projects.hint}</p>
+        <ProjectsSample />
       </Section>
 
       <Section id="reports" title={t.reports.title}>

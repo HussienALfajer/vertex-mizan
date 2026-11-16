@@ -77,6 +77,8 @@ interface AccountForm {
   /** A cash account's kind (S11 rule 7), offered on an account that can carry it. */
   cashKind: CashKind | null;
   isMonetary: boolean;
+  /** Every line names a material and a quantity (S12 rule 4): a postable expense only. */
+  requiresMaterial: boolean;
   requiredDimensionTypeIds: string[];
 }
 
@@ -110,6 +112,7 @@ function formOf(mode: AccountSheetMode, accounts: readonly Account[]): AccountFo
       counterpartyType: null,
       cashKind: null,
       isMonetary: false,
+      requiresMaterial: false,
       requiredDimensionTypeIds: [],
     };
   }
@@ -130,6 +133,7 @@ function formOf(mode: AccountSheetMode, accounts: readonly Account[]): AccountFo
     counterpartyType: account.counterpartyType,
     cashKind: account.cashKind,
     isMonetary: account.isMonetary,
+    requiresMaterial: account.requiresMaterial,
     requiredDimensionTypeIds: account.requiredDimensionTypeIds,
   };
 }
@@ -166,6 +170,11 @@ function cashKindFits(form: ResolvedForm, accountClass: AccountClass): boolean {
   });
 }
 
+/** Whether the form's account can require a material: a postable expense (S12 "Data"). */
+function requiresMaterialFits(form: ResolvedForm, accountClass: AccountClass): boolean {
+  return form.kind === 'postable' && accountClass === 'expense';
+}
+
 /** The fields a postable account sends, emptied on a header (S02 check 4). */
 function shaped(form: ResolvedForm, accountClass: AccountClass) {
   const postable = form.kind === 'postable';
@@ -178,6 +187,7 @@ function shaped(form: ResolvedForm, accountClass: AccountClass) {
     counterpartyType: flags && form.isControl ? form.counterpartyType : null,
     cashKind: cashKindFits(form, accountClass) ? form.cashKind : null,
     isMonetary: flags && form.isMonetary,
+    requiresMaterial: requiresMaterialFits(form, accountClass) && form.requiresMaterial,
     requiredDimensionTypeIds: postable ? form.requiredDimensionTypeIds : [],
   };
 }
@@ -201,6 +211,9 @@ function changes(account: Account, form: ResolvedForm, accountClass: AccountClas
   }
   if (next.cashKind !== account.cashKind) change.cashKind = next.cashKind;
   if (next.isMonetary !== account.isMonetary) change.isMonetary = next.isMonetary;
+  if (next.requiresMaterial !== account.requiresMaterial) {
+    change.requiresMaterial = next.requiresMaterial;
+  }
   const before = [...account.requiredDimensionTypeIds].sort().join();
   if ([...next.requiredDimensionTypeIds].sort().join() !== before) {
     change.requiredDimensionTypeIds = next.requiredDimensionTypeIds;
@@ -609,6 +622,15 @@ export function AccountSheet({
                   onValueChange={(value) =>
                     set('cashKind', value === noCashKind ? null : (value as CashKind))
                   }
+                />
+              )}
+              {requiresMaterialFits(resolved, accountClass) && (
+                <SwitchField
+                  label={s.requiresMaterial}
+                  description={s.requiresMaterialHint}
+                  checked={form.requiresMaterial}
+                  disabled={readOnly || used}
+                  onCheckedChange={(checked) => set('requiresMaterial', checked)}
                 />
               )}
               <fieldset className="flex flex-col gap-3">

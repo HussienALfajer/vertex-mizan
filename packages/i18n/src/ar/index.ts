@@ -15,11 +15,13 @@ import { errors } from './errors.js';
 import { exportData } from './export.js';
 import { grid } from './grid.js';
 import { integrity } from './integrity.js';
+import { materials } from './materials.js';
 import { members } from './members.js';
 import { openItems } from './open-items.js';
 import { opening } from './opening.js';
 import { periods } from './periods.js';
 import { permissions } from './permissions.js';
+import { projects } from './projects.js';
 import { rates } from './rates.js';
 import { reports } from './reports.js';
 import { revaluation } from './revaluation.js';
@@ -57,6 +59,8 @@ export const ar = {
   reports,
   opening,
   cash,
+  projects,
+  materials,
 };
 
 export type Catalog = typeof ar;
