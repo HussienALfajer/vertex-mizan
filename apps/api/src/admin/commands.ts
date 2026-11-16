@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { randomInt, randomUUID } from 'node:crypto';
 import { parseArgs } from 'node:util';
 import {
   booksStartSchema,
@@ -6,11 +6,14 @@ import {
   chartTemplateIdSchema,
   createCompanySchema,
   emailSchema,
+  personNameSchema,
   reasonSchema,
 } from '@vertex-mizan/contracts';
 import {
+  accounts,
   createCompanyBooks,
   type Database,
+  memberships,
   sessions,
   twoFactors,
   users,
@@ -18,8 +21,14 @@ import {
 } from '@vertex-mizan/db';
 import { eq } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
-import { type AuditActor, SYSTEM_NAME, writePlatformAudit } from '../core/audit/audit.js';
+import {
+  type AuditActor,
+  SYSTEM_NAME,
+  writeCompanyAudit,
+  writePlatformAudit,
+} from '../core/audit/audit.js';
 import { queueEmail } from '../core/email/outbox.js';
+import { hashPassword } from '../modules/auth/password.js';
 import { dropWaitingAuthenticator } from '../modules/auth/two-factor.js';
 import { createInvitation } from '../modules/invitations/invitations.service.js';
 
@@ -44,44 +53,49 @@ export interface CreateCompanyCommand {
   booksStart: string | null;
 }
 
+/** The options of a company that both commands take (S01 rules 9–10). */
+const COMPANY_OPTIONS = {
+  name: { type: 'string' },
+  'name-latin': { type: 'string' },
+  'book-currency': { type: 'string', default: 'SYP' },
+  'book-rate-type': { type: 'string', default: 'bulletin' },
+  'book-accepts-transaction-rate': { type: 'boolean' },
+  'no-book-accepts-transaction-rate': { type: 'boolean' },
+  'parallel-currency': { type: 'string', default: 'USD' },
+  'parallel-rate-type': { type: 'string', default: 'market' },
+  'parallel-accepts-transaction-rate': { type: 'boolean' },
+  'no-parallel-accepts-transaction-rate': { type: 'boolean' },
+  'no-parallel': { type: 'boolean', default: false },
+  'fiscal-year-start-month': { type: 'string', default: '1' },
+  'policy-note': { type: 'string' },
+  template: { type: 'string', default: 'general' },
+  'books-start': { type: 'string' },
+} as const;
+
 /**
- * `admin:create-company` arguments: the company, its ledgers and the first owner's email. Vertex
- * Media's shape is the default (S01 rule 10): SYP books at bulletin, USD parallel at market
- * accepting the transaction's rate, January, and the general chart (S02 rule 1, ADR 0021);
- * `--template contracting` the contracting chart (S11, N5), `--template none` the five roots alone; `--books-start YYYY-MM-DD` (the first day of a
- * month) gives it a books start, so it posts nothing before its opening (S10 rules 1, 3).
+ * A command's company: Vertex Media's shape by default (S01 rule 10): SYP books at bulletin, USD
+ * parallel at market, January, and the general chart (S02 rule 1, ADR 0021); `--template
+ * contracting` the contracting chart (S11, N5), `--template none` the five roots alone;
+ * `--books-start YYYY-MM-DD` (the first day of a month) gives it a books start, so it posts nothing
+ * before its opening (S10 rules 1, 3). A ledger accepts the transaction's rate by default only at
+ * `market`, the one policy that may (S01 edge case 8); `--no-…-accepts-transaction-rate` refuses it.
  */
-export function parseCreateCompany(argv: string[]): CreateCompanyCommand {
-  const { values } = parseArgs({
-    args: argv,
-    options: {
-      name: { type: 'string' },
-      'name-latin': { type: 'string' },
-      'book-currency': { type: 'string', default: 'SYP' },
-      'book-rate-type': { type: 'string', default: 'bulletin' },
-      'book-accepts-transaction-rate': { type: 'boolean', default: false },
-      'parallel-currency': { type: 'string', default: 'USD' },
-      'parallel-rate-type': { type: 'string', default: 'market' },
-      'parallel-accepts-transaction-rate': { type: 'boolean', default: true },
-      'no-parallel': { type: 'boolean', default: false },
-      'fiscal-year-start-month': { type: 'string', default: '1' },
-      'policy-note': { type: 'string' },
-      'owner-email': { type: 'string' },
-      template: { type: 'string', default: 'general' },
-      'books-start': { type: 'string' },
-    },
-    strict: true,
-  });
+function companyOf(values: Record<string, string | boolean | undefined>): {
+  company: CreateCompany;
+  booksStart: string | null;
+} {
+  const accepts = (ledger: 'book' | 'parallel') => {
+    if (values[`no-${ledger}-accepts-transaction-rate`] === true) return false;
+    if (values[`${ledger}-accepts-transaction-rate`] === true) return true;
+    return values[`${ledger}-rate-type`] === 'market';
+  };
   const company = createCompanySchema.parse({
     name: values.name,
     nameLatin: values['name-latin'] ?? null,
     ledgers: {
       book: {
         currency: values['book-currency'],
-        ratePolicy: {
-          rateType: values['book-rate-type'],
-          acceptsTransactionRate: values['book-accepts-transaction-rate'],
-        },
+        ratePolicy: { rateType: values['book-rate-type'], acceptsTransactionRate: accepts('book') },
       },
       parallel: values['no-parallel']
         ? null
@@ -89,7 +103,7 @@ export function parseCreateCompany(argv: string[]): CreateCompanyCommand {
             currency: values['parallel-currency'],
             ratePolicy: {
               rateType: values['parallel-rate-type'],
-              acceptsTransactionRate: values['parallel-accepts-transaction-rate'],
+              acceptsTransactionRate: accepts('parallel'),
             },
           },
     },
@@ -97,12 +111,21 @@ export function parseCreateCompany(argv: string[]): CreateCompanyCommand {
     policyNote: values['policy-note'],
     template: values.template === 'none' ? null : chartTemplateIdSchema.parse(values.template),
   });
+  const booksStart = values['books-start'];
   return {
     company,
-    ownerEmail: emailSchema.parse(values['owner-email']),
-    booksStart:
-      values['books-start'] === undefined ? null : booksStartSchema.parse(values['books-start']),
+    booksStart: booksStart === undefined ? null : booksStartSchema.parse(booksStart),
   };
+}
+
+/** `admin:create-company` arguments: the company, its ledgers and the first owner's email. */
+export function parseCreateCompany(argv: string[]): CreateCompanyCommand {
+  const { values } = parseArgs({
+    args: argv,
+    options: { ...COMPANY_OPTIONS, 'owner-email': { type: 'string' } },
+    strict: true,
+  });
+  return { ...companyOf(values), ownerEmail: emailSchema.parse(values['owner-email']) };
 }
 
 /**
@@ -134,6 +157,121 @@ export async function createCompanyWithOwner(
     });
     return { companyId, invitationId: invitation.id };
   });
+}
+
+/** `admin:create-account` arguments (S01 rule 9, owner 2026-11-16): a company, its owner's email and name. */
+export interface CreateAccountCommand {
+  company: CreateCompany;
+  booksStart: string | null;
+  email: string;
+  personName: string;
+}
+
+export function parseCreateAccount(argv: string[]): CreateAccountCommand {
+  const { values } = parseArgs({
+    args: argv,
+    options: {
+      ...COMPANY_OPTIONS,
+      email: { type: 'string' },
+      'person-name': { type: 'string' },
+    },
+    strict: true,
+  });
+  return {
+    ...companyOf(values),
+    email: emailSchema.parse(values.email),
+    personName: personNameSchema.parse(values['person-name']),
+  };
+}
+
+/** The characters from `first` to `last`, by code point. */
+function charRange(first: string, last: string): string[] {
+  const from = first.charCodeAt(0);
+  return Array.from({ length: last.charCodeAt(0) - from + 1 }, (_, i) =>
+    String.fromCharCode(from + i),
+  );
+}
+
+/** Letters and digits without the look-alikes (0 O o, 1 I l): 56 characters. */
+const PASSWORD_ALPHABET = [...charRange('A', 'Z'), ...charRange('a', 'z'), ...charRange('2', '9')]
+  .filter((character) => !'IOlo'.includes(character))
+  .join('');
+
+/** A password of 24 characters drawn without bias: about 139 bits (S01 rule 9). */
+export function generatePassword(length = 24): string {
+  let password = '';
+  for (let i = 0; i < length; i += 1) {
+    password += PASSWORD_ALPHABET[randomInt(PASSWORD_ALPHABET.length)];
+  }
+  return password;
+}
+
+/**
+ * Creates an exempt person with a generated password, a company and the person's owner
+ * membership, in one transaction, with no invitation (S01 rules 2 and 9, owner 2026-11-16). An
+ * email that already belongs to a person is refused before anything is written. The password is
+ * returned once, for the command to print; it is never logged or audited.
+ */
+export async function createAccountWithCompany(
+  db: Database,
+  input: CreateAccountCommand,
+  actor = commandActor('admin:create-account'),
+): Promise<{ personId: string; companyId: string; password: string }> {
+  const [existing] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.email, input.email));
+  if (existing) throw new Error('A person with that email exists: use admin:create-company');
+  const password = generatePassword();
+  const hash = await hashPassword(password);
+  const companyId = uuidv7();
+  const personId = await withCompany(db, companyId, async (tx) => {
+    const [person] = await tx
+      .insert(users)
+      .values({
+        email: input.email,
+        name: input.personName,
+        emailVerified: true,
+        twoFactorExempt: true,
+      })
+      .returning({ id: users.id });
+    if (!person) throw new Error('The person was not created');
+    await tx.insert(accounts).values({
+      userId: person.id,
+      providerId: 'credential',
+      accountId: person.id,
+      password: hash,
+    });
+    await writePlatformAudit(tx, {
+      action: 'user.created',
+      actor,
+      email: input.email,
+      details: { twoFactorExempt: true },
+    });
+    await createCompanyBooks(
+      tx,
+      companyId,
+      { ...input.company, createdByUserId: null, booksStart: input.booksStart },
+      actor,
+    );
+    const [membership] = await tx
+      .insert(memberships)
+      .values({ userId: person.id, scopeCompanyId: companyId, role: 'owner' })
+      .returning();
+    if (!membership) throw new Error('The membership was not created');
+    await writeCompanyAudit(tx, companyId, actor, {
+      action: 'membership.created',
+      entityType: 'membership',
+      entityId: membership.id,
+      after: {
+        userId: person.id,
+        role: membership.role,
+        canClosePeriods: membership.canClosePeriods,
+      },
+    });
+    return person.id;
+  });
+  return { personId, companyId, password };
 }
 
 /** `admin:reset-two-factor` arguments: the person's email and the written reason. */

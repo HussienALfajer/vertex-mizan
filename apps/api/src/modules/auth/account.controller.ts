@@ -35,6 +35,7 @@ export class AccountController {
     'UNAUTHENTICATED',
     'TWO_FACTOR_REQUIRED',
     'INVALID_TWO_FACTOR_CODE',
+    'INVALID_CREDENTIALS',
     'RATE_LIMITED',
     'VALIDATION_FAILED',
   )
@@ -42,7 +43,9 @@ export class AccountController {
     @Access() access: RequestAccess,
     @Body({ schema: reauthenticateSchema }) body: Reauthenticate,
   ): Promise<void> {
-    await this.account.reauthenticate(signedIn(access), body.code);
+    await ('password' in body
+      ? this.account.reauthenticateWithPassword(signedIn(access), body.password)
+      : this.account.reauthenticate(signedIn(access), body.code));
   }
 
   @Post('two-factor/generate-backup-codes')

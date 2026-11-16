@@ -19,9 +19,9 @@ import { DATABASE } from '../../core/database/database.module.js';
 import { queueEmail } from '../../core/email/outbox.js';
 import { CodedException } from '../../core/errors/coded-exception.js';
 import { linkWithToken, newLinkToken, tokenIdentifier } from '../../core/http/link-tokens.js';
-import { consumeLimit, LIMITS } from '../../core/limits/limits.js';
-import { TOTP_ISSUER } from './auth.js';
-import { hashPassword, verifyPassword } from './password.js';
+import { clearLimit, consumeLimit, LIMITS, limitReached } from '../../core/limits/limits.js';
+import { failuresKey, TOTP_ISSUER } from './auth.js';
+import { hashPassword, verifyDecoy, verifyPassword } from './password.js';
 import {
   claimCode,
   encryptBackupCodes,
@@ -90,6 +90,40 @@ export class AccountService {
       throw new CodedException('INVALID_TWO_FACTOR_CODE', 'Wrong or used code');
     }
     await resetCodeFailures(this.db, row);
+    await this.db
+      .update(sessions)
+      .set({ reauthenticatedAt: new Date() })
+      .where(eq(sessions.id, access.session.id));
+  }
+
+  /**
+   * A sensitive action confirmed by the password (S01 rule 2, owner 2026-11-16): only for an
+   * exempt person who has not enrolled; anyone else confirms with a code. A wrong password counts
+   * with sign-in's failures, so guesses here and at sign-in share one lock.
+   */
+  async reauthenticateWithPassword(access: SignedInAccess, password: string): Promise<void> {
+    const { person } = access;
+    if (!person.twoFactorExempt || person.twoFactorEnabled) {
+      throw new CodedException('VALIDATION_FAILED', 'Confirm with an authenticator code', [
+        { path: ['code'], message: 'Required' },
+      ]);
+    }
+    if (!(await consumeLimit(this.db, `reauthenticate:${person.id}`, LIMITS.perIpPerMinute))) {
+      throw new CodedException('RATE_LIMITED', 'Too many attempts');
+    }
+    if (await limitReached(this.db, failuresKey(person.email), LIMITS.signInFailures)) {
+      await verifyDecoy(password);
+      throw new CodedException('INVALID_CREDENTIALS', 'Wrong password');
+    }
+    const [account] = await this.db
+      .select({ password: accounts.password })
+      .from(accounts)
+      .where(and(eq(accounts.userId, person.id), eq(accounts.providerId, 'credential')));
+    if (!account?.password || !(await verifyPassword({ hash: account.password, password }))) {
+      await consumeLimit(this.db, failuresKey(person.email), LIMITS.signInFailures);
+      throw new CodedException('INVALID_CREDENTIALS', 'Wrong password');
+    }
+    await clearLimit(this.db, failuresKey(person.email));
     await this.db
       .update(sessions)
       .set({ reauthenticatedAt: new Date() })

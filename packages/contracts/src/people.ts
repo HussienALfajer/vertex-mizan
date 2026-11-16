@@ -38,9 +38,15 @@ export const signInSchema = z
 
 export type SignIn = z.infer<typeof signInSchema>;
 
-/** A fresh authenticator code for a sensitive action (`POST /api/auth/reauthenticate`). */
+/**
+ * Confirmation of a sensitive action (`POST /api/auth/reauthenticate`): a fresh authenticator
+ * code, or the password for an exempt person who has not enrolled (S01 rule 2, owner 2026-11-16).
+ */
 export const reauthenticateSchema = z
-  .object({ code: z.union([totpCodeSchema, backupCodeSchema]) })
+  .union([
+    z.object({ code: z.union([totpCodeSchema, backupCodeSchema]) }).strict(),
+    z.object({ password: z.string().min(1).max(128) }).strict(),
+  ])
   .meta({ id: 'Reauthenticate' });
 
 export type Reauthenticate = z.infer<typeof reauthenticateSchema>;
@@ -149,6 +155,8 @@ export const meSchema = z
       name: z.string(),
       email: z.string(),
       twoFactorEnabled: z.boolean(),
+      /** Made by `admin:create-account`: signs in without two-factor until enrolled (S01 rule 2). */
+      twoFactorExempt: z.boolean(),
     }),
     memberships: z.array(myMembershipSchema),
     activeCompanyId: z.uuid().nullable(),

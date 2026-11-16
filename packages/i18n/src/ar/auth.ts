@@ -158,6 +158,7 @@ export const auth = {
     'company.created': 'إنشاء شركة',
     'user.two_factor_reset': 'إعادة تعيين المصادقة الثنائية',
     'user.other_sessions_revoked': 'تسجيل الخروج من الجلسات الأخرى',
+    'user.created': 'إنشاء الحساب من فيرتكس',
   } satisfies Record<PlatformAuditAction, string>,
   nav: 'أمان الحساب',
 };

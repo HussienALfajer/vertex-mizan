@@ -15,7 +15,9 @@ import {
 import { and, desc, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
+  createAccountWithCompany,
   createCompanyWithOwner,
+  parseCreateAccount,
   parseCreateCompany,
   parseResetTwoFactor,
   resetTwoFactorByVertex,
@@ -186,6 +188,160 @@ describe('admin:create-company', () => {
         { action: 'membership.created', actorKind: 'person' },
       ]),
     );
+  });
+});
+
+describe('admin:create-account (S01 rules 2 and 9, owner 2026-11-16)', () => {
+  const company = [
+    '--name',
+    'شركة اختبار',
+    '--name-latin',
+    'Test Company',
+    '--book-currency',
+    'USD',
+    '--book-rate-type',
+    'market',
+    '--parallel-currency',
+    'SYP',
+    '--parallel-rate-type',
+    'bulletin',
+    '--template',
+    'contracting',
+    '--policy-note',
+    'مذكرة سياسة تجريبية.',
+  ];
+
+  it('accepts the transaction rate by default only at market, and parses the person', () => {
+    const input = parseCreateAccount([
+      ...company,
+      '--email',
+      'Client.Owner@Example.TEST',
+      '--person-name',
+      'زبون تجريبي',
+    ]);
+    expect(input).toMatchObject({
+      email: 'client.owner@example.test',
+      personName: 'زبون تجريبي',
+      booksStart: null,
+      company: {
+        ledgers: {
+          book: {
+            currency: 'USD',
+            ratePolicy: { rateType: 'market', acceptsTransactionRate: true },
+          },
+          parallel: {
+            currency: 'SYP',
+            ratePolicy: { rateType: 'bulletin', acceptsTransactionRate: false },
+          },
+        },
+        template: 'contracting',
+      },
+    });
+    const person = ['--email', 'a@example.test', '--person-name', 'x'];
+    expect(
+      parseCreateAccount([...company, ...person, '--no-book-accepts-transaction-rate']).company
+        .ledgers.book.ratePolicy.acceptsTransactionRate,
+    ).toBe(false);
+    expect(
+      parseCreateAccount([...company, ...person, '--no-parallel']).company.ledgers.parallel,
+    ).toBeNull();
+    // The same default for admin:create-company: a bulletin parallel ledger needs no other flag.
+    expect(
+      parseCreateCompany([...company, '--owner-email', 'a@example.test']).company.ledgers.parallel
+        ?.ratePolicy.acceptsTransactionRate,
+    ).toBe(false);
+    expect(() => parseCreateAccount([...company, '--email', 'a@example.test'])).toThrow();
+    expect(() => parseCreateAccount([...company, ...person, '--password', 'chosen'])).toThrow();
+  });
+
+  it('makes an owner who signs in with the password alone and confirms with it', async () => {
+    const email = `client.owner.${Date.now()}@example.test`;
+    const created = await createAccountWithCompany(
+      db,
+      parseCreateAccount([...company, '--email', email, '--person-name', 'زبون تجريبي']),
+    );
+    expect(created.password).toMatch(/^[A-HJ-NP-Za-km-np-z2-9]{24}$/);
+
+    const browser = new Browser(app);
+    const first = await browser.post('/api/auth/sign-in/email', {
+      email,
+      password: created.password,
+    });
+    expect(first.status).toBe(200);
+    expect(first.body).toEqual({ twoFactorRequired: false });
+    const me = await browser.get('/api/me');
+    expect(me.body.person).toMatchObject({ twoFactorEnabled: false, twoFactorExempt: true });
+    expect(me.body.activeCompanyId).toBe(created.companyId);
+    expect(me.body.memberships).toEqual([
+      expect.objectContaining({
+        role: 'owner',
+        company: expect.objectContaining({ id: created.companyId }),
+      }),
+    ]);
+    // Company routes answer with no second step.
+    const read = await browser.get('/api/company');
+    expect(read.status).toBe(200);
+    expect(read.body.ledgers.book.currency).toBe('USD');
+
+    // A sensitive action is confirmed by the password, never by a guess.
+    const wrong = await browser.post('/api/auth/reauthenticate', { password: 'not the password' });
+    expect(wrong.status).toBe(401);
+    expect(wrong.body.code).toBe('INVALID_CREDENTIALS');
+    expect(
+      (await browser.post('/api/auth/reauthenticate', { password: created.password })).status,
+    ).toBe(204);
+
+    // Audited as the system, with no password anywhere.
+    const [platform] = await db
+      .select()
+      .from(platformAuditEntries)
+      .where(
+        and(eq(platformAuditEntries.action, 'user.created'), eq(platformAuditEntries.email, email)),
+      );
+    expect(platform).toMatchObject({ actorKind: 'system', details: { twoFactorExempt: true } });
+    expect(JSON.stringify(platform)).not.toContain(created.password);
+    const log = await withCompany(db, created.companyId, (tx) =>
+      tx
+        .select({ action: auditEntries.action, actorKind: auditEntries.actorKind })
+        .from(auditEntries),
+    );
+    expect(log).toContainEqual({ action: 'membership.created', actorKind: 'system' });
+
+    // Once enrolled, the person signs in and confirms with the code, as anyone.
+    const person = {
+      id: created.personId,
+      email,
+      name: 'زبون تجريبي',
+      password: created.password,
+      secret: null,
+      backupCodes: [],
+    };
+    await enrol(browser, person);
+    const again = new Browser(app);
+    const step = await again.post('/api/auth/sign-in/email', { email, password: created.password });
+    expect(step.body).toEqual({ twoFactorRequired: true });
+    expect((await again.get('/api/company')).status).toBe(401);
+    await signIn(again, person);
+    const byPassword = await again.post('/api/auth/reauthenticate', { password: created.password });
+    expect(byPassword.status).toBe(422);
+  });
+
+  it('refuses an email that already has a person, before writing anything', async () => {
+    const { person } = await signedInPerson(app, db);
+    const before = await db.select({ id: companies.id }).from(companies);
+    await expect(
+      createAccountWithCompany(
+        db,
+        parseCreateAccount([...company, '--email', person.email, '--person-name', 'x']),
+      ),
+    ).rejects.toThrow(/exists/);
+    expect(await db.select({ id: companies.id }).from(companies)).toHaveLength(before.length);
+  });
+
+  it('never confirms by password for a person who is not exempt', async () => {
+    const { browser, person } = await signedInPerson(app, db);
+    const refused = await browser.post('/api/auth/reauthenticate', { password: person.password });
+    expect(refused.status).toBe(422);
   });
 });
 
