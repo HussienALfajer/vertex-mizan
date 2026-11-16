@@ -19,7 +19,12 @@ import {
 } from '@vertex-mizan/db';
 import { and, asc, eq, gt, isNull, lte, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
-import { actorOf, type CompanyRouteAccess, type RequestAccess } from '../../core/access/access.js';
+import {
+  actorOf,
+  type CompanyRouteAccess,
+  passedSignIn,
+  type RequestAccess,
+} from '../../core/access/access.js';
 import { lockCompanyForWrite } from '../../core/access/company-lock.js';
 import { type AuditActor, writeCompanyAudit } from '../../core/audit/audit.js';
 import type { Config } from '../../core/config/config.js';
@@ -250,7 +255,7 @@ export class InvitationsService {
       if (!access.person || !access.session) {
         throw new CodedException('UNAUTHENTICATED', 'Sign in first');
       }
-      if (!access.session.twoFactorVerifiedAt) {
+      if (!passedSignIn(access.person, access.session)) {
         throw new CodedException('TWO_FACTOR_REQUIRED', 'Enrol two-factor authentication first');
       }
       if (access.person.id !== existing.id) {

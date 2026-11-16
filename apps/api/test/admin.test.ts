@@ -10,19 +10,22 @@ import {
   invitations,
   platformAuditEntries,
   twoFactors,
+  users,
   withCompany,
 } from '@vertex-mizan/db';
 import { and, desc, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
+  createAccountWithCompany,
   createCompanyWithOwner,
+  parseCreateAccount,
   parseCreateCompany,
   parseResetTwoFactor,
   resetTwoFactorByVertex,
 } from '../src/admin/commands.js';
 import { createTestApp } from './app.js';
 import { Browser } from './browser.js';
-import { enrol, signedInPerson, signIn, testDatabase } from './people.js';
+import { createPerson, enrol, signedInPerson, signIn, testDatabase } from './people.js';
 
 // The server commands (S01 rules 9 and 21), as the app role. All values are synthetic.
 
@@ -186,6 +189,267 @@ describe('admin:create-company', () => {
         { action: 'membership.created', actorKind: 'person' },
       ]),
     );
+  });
+});
+
+describe('admin:create-account (S01 rules 2 and 9, owner 2026-11-16)', () => {
+  const company = [
+    '--name',
+    'شركة اختبار',
+    '--name-latin',
+    'Test Company',
+    '--book-currency',
+    'USD',
+    '--book-rate-type',
+    'market',
+    '--parallel-currency',
+    'SYP',
+    '--parallel-rate-type',
+    'bulletin',
+    '--template',
+    'contracting',
+    '--policy-note',
+    'مذكرة سياسة تجريبية.',
+  ];
+
+  it('accepts the transaction rate by default only at market, and parses the person', () => {
+    const input = parseCreateAccount([
+      ...company,
+      '--email',
+      'Client.Owner@Example.TEST',
+      '--person-name',
+      'زبون تجريبي',
+    ]);
+    expect(input).toMatchObject({
+      email: 'client.owner@example.test',
+      personName: 'زبون تجريبي',
+      booksStart: null,
+      company: {
+        ledgers: {
+          book: {
+            currency: 'USD',
+            ratePolicy: { rateType: 'market', acceptsTransactionRate: true },
+          },
+          parallel: {
+            currency: 'SYP',
+            ratePolicy: { rateType: 'bulletin', acceptsTransactionRate: false },
+          },
+        },
+        template: 'contracting',
+      },
+    });
+    const person = ['--email', 'a@example.test', '--person-name', 'x'];
+    expect(
+      parseCreateAccount([...company, ...person, '--no-book-accepts-transaction-rate']).company
+        .ledgers.book.ratePolicy.acceptsTransactionRate,
+    ).toBe(false);
+    expect(
+      parseCreateAccount([...company, ...person, '--no-parallel']).company.ledgers.parallel,
+    ).toBeNull();
+    // The same default for admin:create-company: a bulletin parallel ledger needs no other flag.
+    expect(
+      parseCreateCompany([...company, '--owner-email', 'a@example.test']).company.ledgers.parallel
+        ?.ratePolicy.acceptsTransactionRate,
+    ).toBe(false);
+    expect(() => parseCreateAccount([...company, '--email', 'a@example.test'])).toThrow();
+    expect(() => parseCreateAccount([...company, ...person, '--password', 'chosen'])).toThrow();
+  });
+
+  it('makes an owner who signs in with the password alone and confirms with it', async () => {
+    const email = `client.owner.${Date.now()}@example.test`;
+    const created = await createAccountWithCompany(
+      db,
+      parseCreateAccount([...company, '--email', email, '--person-name', 'زبون تجريبي']),
+    );
+    expect(created.password).toMatch(/^[A-HJ-NP-Za-km-np-z2-9]{24}$/);
+
+    const browser = new Browser(app);
+    const first = await browser.post('/api/auth/sign-in/email', {
+      email,
+      password: created.password,
+    });
+    expect(first.status).toBe(200);
+    expect(first.body).toEqual({ twoFactorRequired: false });
+    const me = await browser.get('/api/me');
+    expect(me.body.person).toMatchObject({ twoFactorEnabled: false, twoFactorExempt: true });
+    expect(me.body.activeCompanyId).toBe(created.companyId);
+    expect(me.body.memberships).toEqual([
+      expect.objectContaining({
+        role: 'owner',
+        company: expect.objectContaining({ id: created.companyId }),
+      }),
+    ]);
+    // Company routes answer with no second step.
+    const read = await browser.get('/api/company');
+    expect(read.status).toBe(200);
+    expect(read.body.ledgers.book.currency).toBe('USD');
+
+    // A sensitive action is confirmed by the password, never by a guess.
+    const wrong = await browser.post('/api/auth/reauthenticate', { password: 'not the password' });
+    expect(wrong.status).toBe(401);
+    expect(wrong.body.code).toBe('INVALID_CREDENTIALS');
+    expect(
+      (await browser.post('/api/auth/reauthenticate', { password: created.password })).status,
+    ).toBe(204);
+
+    // Audited as the system, with no password anywhere.
+    const [platform] = await db
+      .select()
+      .from(platformAuditEntries)
+      .where(
+        and(eq(platformAuditEntries.action, 'user.created'), eq(platformAuditEntries.email, email)),
+      );
+    expect(platform).toMatchObject({ actorKind: 'system', details: { twoFactorExempt: true } });
+    expect(JSON.stringify(platform)).not.toContain(created.password);
+    const log = await withCompany(db, created.companyId, (tx) =>
+      tx
+        .select({ action: auditEntries.action, actorKind: auditEntries.actorKind })
+        .from(auditEntries),
+    );
+    expect(log).toContainEqual({ action: 'membership.created', actorKind: 'system' });
+
+    // Once enrolled, the person signs in and confirms with the code, as anyone.
+    const person = {
+      id: created.personId,
+      email,
+      name: 'زبون تجريبي',
+      password: created.password,
+      secret: null,
+      backupCodes: [],
+    };
+    await enrol(browser, person);
+    const entered = () =>
+      withCompany(db, created.companyId, (tx) =>
+        tx
+          .select({ id: auditEntries.id })
+          .from(auditEntries)
+          .where(eq(auditEntries.action, 'session.company_entered')),
+      );
+    const enteredBefore = (await entered()).length;
+    const again = new Browser(app);
+    const step = await again.post('/api/auth/sign-in/email', { email, password: created.password });
+    expect(step.body).toEqual({ twoFactorRequired: true });
+    expect((await again.get('/api/company')).status).toBe(401);
+    // The password alone entered nothing: the second step is still to pass.
+    expect(await entered()).toHaveLength(enteredBefore);
+    await signIn(again, person);
+    const byPassword = await again.post('/api/auth/reauthenticate', { password: created.password });
+    expect(byPassword.status).toBe(422);
+  });
+
+  /** A new exempt account and its company, from the command. */
+  async function account(label: string) {
+    const email = `${label}.${Date.now()}@example.test`;
+    const created = await createAccountWithCompany(
+      db,
+      parseCreateAccount([...company, '--email', email, '--person-name', 'زبون تجريبي']),
+    );
+    return { ...created, email };
+  }
+
+  it('returns an enrolled exempt person to the password alone after a reset (edge case 14)', async () => {
+    const created = await account('reset.exempt');
+    const browser = new Browser(app);
+    const person = {
+      id: created.personId,
+      email: created.email,
+      name: 'زبون تجريبي',
+      password: created.password,
+      secret: null,
+      backupCodes: [],
+    };
+    await signIn(browser, person);
+    await enrol(browser, person);
+    await resetTwoFactorByVertex(db, { email: created.email, reason: 'فقد الهاتف والرموز' });
+
+    const again = new Browser(app);
+    const step = await again.post('/api/auth/sign-in/email', {
+      email: created.email,
+      password: created.password,
+    });
+    expect(step.body).toEqual({ twoFactorRequired: false });
+    expect((await again.get('/api/company')).status).toBe(200);
+  });
+
+  it('leaves a reset person who is not exempt with enrolment only (edge case 14)', async () => {
+    const { person } = await signedInPerson(app, db);
+    await resetTwoFactorByVertex(db, { email: person.email, reason: 'فقد الهاتف والرموز' });
+    const browser = new Browser(app);
+    await browser.post('/api/auth/sign-in/email', {
+      email: person.email,
+      password: person.password,
+    });
+    const me = await browser.get('/api/me/sign-ins');
+    expect(me.body.code).toBe('TWO_FACTOR_REQUIRED');
+  });
+
+  it('counts wrong passwords at confirmation with sign-in failures, both ways (rule 2)', async () => {
+    const first = await account('lock.confirm');
+    const browser = new Browser(app);
+    await browser.post('/api/auth/sign-in/email', {
+      email: first.email,
+      password: first.password,
+    });
+    for (let i = 0; i < 10; i += 1) {
+      const wrong = await browser.post('/api/auth/reauthenticate', { password: `wrong ${i}` });
+      expect(wrong.body.code).toBe('INVALID_CREDENTIALS');
+    }
+    // Locked: the right password is refused, at confirmation and at sign-in.
+    const locked = await browser.post('/api/auth/reauthenticate', { password: first.password });
+    expect(locked.body.code).toBe('INVALID_CREDENTIALS');
+    const signInLocked = await new Browser(app).post('/api/auth/sign-in/email', {
+      email: first.email,
+      password: first.password,
+    });
+    expect(signInLocked.status).toBe(401);
+
+    const second = await account('lock.signin');
+    const signedIn = new Browser(app);
+    await signedIn.post('/api/auth/sign-in/email', {
+      email: second.email,
+      password: second.password,
+    });
+    for (let i = 0; i < 10; i += 1) {
+      await new Browser(app).post('/api/auth/sign-in/email', {
+        email: second.email,
+        password: `wrong ${i}`,
+      });
+    }
+    const afterSignIns = await signedIn.post('/api/auth/reauthenticate', {
+      password: second.password,
+    });
+    expect(afterSignIns.body.code).toBe('INVALID_CREDENTIALS');
+  });
+
+  it('refuses the email of an archived person too (edge case 15)', async () => {
+    const archived = await createPerson(db, {
+      email: `archived.person.${Date.now()}@example.test`,
+    });
+    await db.update(users).set({ archivedAt: new Date() }).where(eq(users.id, archived.id));
+    await expect(
+      createAccountWithCompany(
+        db,
+        parseCreateAccount([...company, '--email', archived.email, '--person-name', 'x']),
+      ),
+    ).rejects.toThrow(/exists/);
+  });
+
+  it('refuses an email that already has a person, before writing anything', async () => {
+    const { person } = await signedInPerson(app, db);
+    const before = await db.select({ id: companies.id }).from(companies);
+    await expect(
+      createAccountWithCompany(
+        db,
+        parseCreateAccount([...company, '--email', person.email, '--person-name', 'x']),
+      ),
+    ).rejects.toThrow(/exists/);
+    expect(await db.select({ id: companies.id }).from(companies)).toHaveLength(before.length);
+  });
+
+  it('never confirms by password for a person who is not exempt', async () => {
+    const { browser, person } = await signedInPerson(app, db);
+    const refused = await browser.post('/api/auth/reauthenticate', { password: person.password });
+    expect(refused.status).toBe(422);
   });
 });
 

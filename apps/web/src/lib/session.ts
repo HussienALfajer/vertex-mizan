@@ -62,10 +62,13 @@ export async function requireSession({ context, location }: GuardArgs): Promise<
   return me;
 }
 
-/** A person with two-factor enrolled (S01 rule 2): anyone else reaches only enrolment. */
+/**
+ * A person with two-factor enrolled, or exempt (S01 rule 2, owner 2026-11-16): anyone else reaches
+ * only enrolment.
+ */
 export async function requireEnrolled(args: GuardArgs): Promise<Me> {
   const me = await requireSession(args);
-  if (!me.person.twoFactorEnabled) {
+  if (!me.person.twoFactorEnabled && !me.person.twoFactorExempt) {
     throw redirect({ to: '/two-factor/enrol', search: { redirect: args.location.href } });
   }
   return me;

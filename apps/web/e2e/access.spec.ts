@@ -1,6 +1,13 @@
 import type { Request } from '@playwright/test';
 import { ar } from '@vertex-mizan/i18n';
-import { linkToken, newPersonInvitation, notEnrolled, setup, signIns } from './access-mocks';
+import {
+  exempt,
+  linkToken,
+  newPersonInvitation,
+  notEnrolled,
+  setup,
+  signIns,
+} from './access-mocks';
 import { expect, fieldError, refusal, signedIn, test } from './test';
 
 /*
@@ -48,6 +55,36 @@ test.describe('sign-in', () => {
       await page.keyboard.type('123456');
       await expect(page.getByRole('heading', { level: 1 })).toHaveText(t.security.title);
       expect(sent).toEqual([{ email: 'Owner@Example.test', password }, { code: '123456' }]);
+    });
+  });
+
+  test.describe('an exempt person (S01 rule 2)', () => {
+    let session = false;
+    test.use({
+      api: {
+        'GET /api/me': () =>
+          session ? { status: 200, json: exempt } : refusal(401, 'UNAUTHENTICATED'),
+        'POST /api/auth/sign-in/email': () => {
+          session = true;
+          return { status: 200, json: { twoFactorRequired: false } };
+        },
+        'GET /api/me/sign-ins': { status: 200, json: signIns },
+      },
+    });
+
+    test('signs in with email and password alone, back to the page asked for', async ({ page }) => {
+      await page.goto('/account/security');
+      await page.getByLabel(t.fields.email).fill('owner@example.test');
+      await page.getByLabel(t.fields.password, { exact: true }).fill(password);
+      await page.getByRole('button', { name: t.signIn.submit }).click();
+      await expect(page.getByRole('heading', { level: 1 })).toHaveText(t.security.title);
+      // Two-factor offered, not required; no backup codes before it is enrolled.
+      await expect(page.getByText(t.security.notEnrolled.title)).toBeVisible();
+      await expect(page.getByRole('link', { name: t.security.notEnrolled.action })).toHaveAttribute(
+        'href',
+        /\/two-factor\/enrol/,
+      );
+      await expect(page.getByText(t.security.backupCodes.title)).toHaveCount(0);
     });
   });
 
@@ -522,6 +559,48 @@ test.describe('account security', () => {
       await page.keyboard.type('654321');
       await expect(page.getByRole('heading', { level: 1 })).toHaveText(t.signIn.title);
       expect(code).toBe('654321');
+      expect(attempts).toBe(2);
+    });
+  });
+
+  test.describe('confirmed by the password, for an exempt person (S01 rule 2)', () => {
+    let attempts = 0;
+    let body: Record<string, unknown> = {};
+    test.use({
+      me: exempt,
+      api: {
+        'GET /api/me/sign-ins': { status: 200, json: signIns },
+        'POST /api/me/password': () => {
+          attempts += 1;
+          return attempts === 1 ? refusal(403, 'REAUTHENTICATION_REQUIRED') : { status: 204 };
+        },
+        'POST /api/auth/reauthenticate': (request) => {
+          body = bodyOf(request);
+          return { status: 204 };
+        },
+      },
+    });
+
+    test('asks for the password instead of a code, then runs again', async ({ page }) => {
+      await page.goto('/account/security');
+      await page.getByLabel(t.fields.currentPassword).fill('the-old-passphrase');
+      await page.getByLabel(t.fields.newPassword).fill(password);
+      await page.getByLabel(t.fields.confirmPassword).fill(password);
+      await page.getByRole('button', { name: t.security.password.submit }).click();
+      const dialog = page.getByRole('dialog', { name: t.reauth.title });
+      await expect(dialog.getByText(t.reauth.passwordDescription)).toBeVisible();
+      await expect(dialog.getByRole('button', { name: t.twoFactor.useBackup })).toHaveCount(0);
+      await page.route('**/api/me', (route) =>
+        route.fulfill({
+          status: 401,
+          json: { statusCode: 401, code: 'UNAUTHENTICATED', message: '' },
+        }),
+      );
+      await dialog.getByLabel(t.fields.password, { exact: true }).fill(' the-old-passphrase ');
+      await dialog.getByRole('button', { name: t.reauth.submit }).click();
+      await expect(page.getByRole('heading', { level: 1 })).toHaveText(t.signIn.title);
+      // Sent as typed: a password is never trimmed.
+      expect(body).toEqual({ password: ' the-old-passphrase ' });
       expect(attempts).toBe(2);
     });
   });

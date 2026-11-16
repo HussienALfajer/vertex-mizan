@@ -15,6 +15,12 @@ export const notEnrolled: Me = {
   permissions: [],
 };
 
+/** A person made by `admin:create-account`, not enrolled (S01 rule 2, owner 2026-11-16). */
+export const exempt: Me = {
+  ...signedIn,
+  person: { ...signedIn.person, twoFactorEnabled: false, twoFactorExempt: true },
+};
+
 export const setup: TwoFactorSetup = {
   totpURI:
     'otpauth://totp/Vertex%20Mizan:owner%40example.test?secret=JBSWY3DPEHPK3PXP&issuer=Vertex%20Mizan',

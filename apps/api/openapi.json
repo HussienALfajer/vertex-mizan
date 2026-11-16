@@ -12202,7 +12202,7 @@
             "description": "Sensitive actions are open for 5 minutes"
           },
           "401": {
-            "description": "UNAUTHENTICATED, INVALID_TWO_FACTOR_CODE",
+            "description": "UNAUTHENTICATED, INVALID_TWO_FACTOR_CODE, INVALID_CREDENTIALS",
             "content": {
               "application/json": {
                 "schema": {
@@ -12727,13 +12727,17 @@
               },
               "twoFactorEnabled": {
                 "type": "boolean"
+              },
+              "twoFactorExempt": {
+                "type": "boolean"
               }
             },
             "required": [
               "id",
               "name",
               "email",
-              "twoFactorEnabled"
+              "twoFactorEnabled",
+              "twoFactorExempt"
             ],
             "additionalProperties": false
           },
@@ -13122,7 +13126,8 @@
           "user.backup_codes_regenerated",
           "company.created",
           "user.two_factor_reset",
-          "user.other_sessions_revoked"
+          "user.other_sessions_revoked",
+          "user.created"
         ]
       },
       "ChangePassword": {
@@ -25439,21 +25444,40 @@
         "additionalProperties": {}
       },
       "Reauthenticate": {
-        "type": "object",
-        "properties": {
-          "code": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/TotpCode"
-              },
-              {
-                "$ref": "#/components/schemas/BackupCode"
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "code": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/TotpCode"
+                  },
+                  {
+                    "$ref": "#/components/schemas/BackupCode"
+                  }
+                ]
               }
-            ]
+            },
+            "required": [
+              "code"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "password": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              }
+            },
+            "required": [
+              "password"
+            ],
+            "additionalProperties": false
           }
-        },
-        "required": [
-          "code"
         ]
       },
       "TotpCode": {

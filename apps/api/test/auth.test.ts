@@ -647,7 +647,13 @@ describe('re-enrolment needs a fresh code, keyed on the person', () => {
           ipAddress: null,
           userAgent: null,
           company: null,
-          person: { id: person.id, name: person.name, email: person.email, twoFactorEnabled: true },
+          person: {
+            id: person.id,
+            name: person.name,
+            email: person.email,
+            twoFactorEnabled: true,
+            twoFactorExempt: false,
+          },
           session: {
             id: live.id,
             activeCompanyId: null,

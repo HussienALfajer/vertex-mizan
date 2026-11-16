@@ -60,6 +60,8 @@ export interface Person {
   name: string;
   email: string;
   twoFactorEnabled: boolean;
+  /** S01 rule 2 (owner, 2026-11-16): made by `admin:create-account`. */
+  twoFactorExempt: boolean;
 }
 
 export interface SessionState {
@@ -67,6 +69,16 @@ export interface SessionState {
   activeCompanyId: string | null;
   twoFactorVerifiedAt: Date | null;
   reauthenticatedAt: Date | null;
+}
+
+/**
+ * Whether the session passed sign-in (S01 rules 1–2): its second step, or an exempt person who
+ * has not enrolled, whose password alone signs in. An enrolled exempt person needs the code.
+ */
+export function passedSignIn(person: Person, session: SessionState): boolean {
+  return (
+    session.twoFactorVerifiedAt !== null || (person.twoFactorExempt && !person.twoFactorEnabled)
+  );
 }
 
 /** The active company of a company route, as the guard found it on this request. */

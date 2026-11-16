@@ -67,7 +67,7 @@ const invalidCredentials = () =>
     message: 'Wrong email or password',
   });
 
-const failuresKey = (email: string) => `sign-in-failures:${email}`;
+export const failuresKey = (email: string) => `sign-in-failures:${email}`;
 
 /** 20 attempts per IP per minute on the sign-in steps (S01 rule 8), in Better Auth's terms. */
 const perIp = { window: LIMITS.perIpPerMinute.windowSeconds, max: LIMITS.perIpPerMinute.max };
@@ -396,14 +396,27 @@ export function createAuth(db: Database, config: Config) {
             return;
           }
           await clearLimit(db, failuresKey(email));
-          // A person not yet enrolled gets a session that reaches only enrolment (S01 rule 1).
+          // A person not yet enrolled gets a session that reaches only enrolment (S01 rule 1);
+          // an exempt one is signed in by the password alone and enters their only company, as
+          // the second step does for anyone else (rules 2 and 20, owner 2026-11-16).
           const created = ctx.context.newSession;
           if (created) {
+            // An enrolled exempt person still has a second step to pass: not signed in yet.
+            const [person] = await db
+              .select({
+                twoFactorExempt: users.twoFactorExempt,
+                twoFactorEnabled: users.twoFactorEnabled,
+              })
+              .from(users)
+              .where(eq(users.id, created.user.id));
+            const exempt = person?.twoFactorExempt === true && !person.twoFactorEnabled;
+            const actor = await personActor(created.user.id, created.session.id, facts);
             await writePlatformAudit(db, {
               action: 'user.signed_in',
-              actor: await personActor(created.user.id, created.session.id, facts),
-              details: { twoFactor: 'not_enrolled' },
+              actor,
+              details: { twoFactor: exempt ? 'exempt' : 'not_enrolled' },
             });
+            if (exempt && actor.kind === 'person') await enterOnlyCompany(actor);
           }
           return;
         }

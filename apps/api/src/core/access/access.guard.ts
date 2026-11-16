@@ -14,6 +14,7 @@ import {
   type AccessRule,
   type CompanyAccess,
   type Person,
+  passedSignIn,
   REAUTHENTICATED,
   type RequestWithAccess,
   type SessionState,
@@ -77,7 +78,7 @@ export class AccessGuard implements CanActivate {
     if (!signedIn) throw new CodedException('UNAUTHENTICATED', 'Sign in first');
     const { person, session } = signedIn;
     const enrolmentOnly = rule.kind === 'signed-in' && rule.beforeEnrolment;
-    if (!session.twoFactorVerifiedAt && !enrolmentOnly) {
+    if (!passedSignIn(person, session) && !enrolmentOnly) {
       throw new CodedException('TWO_FACTOR_REQUIRED', 'Enrol two-factor authentication first');
     }
 
@@ -133,6 +134,7 @@ export class AccessGuard implements CanActivate {
           name: users.name,
           email: users.email,
           twoFactorEnabled: users.twoFactorEnabled,
+          twoFactorExempt: users.twoFactorExempt,
         },
         archivedAt: users.archivedAt,
         session: {

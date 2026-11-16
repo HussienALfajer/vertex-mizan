@@ -2,12 +2,13 @@ import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:f
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import pg from 'pg';
 import { v7 as uuidv7 } from 'uuid';
 import { afterAll, beforeAll, describe, expect, inject, it } from 'vitest';
-import { createCompanyBooks, createDatabase, users, withCompany } from '../src/index.js';
+import { createCompanyBooks, createDatabase, withCompany } from '../src/index.js';
 
 // S11 PR 1 (ADR 0022) over a company that holds data from before it: migrated up to 0061, a
 // control account with no required dimension and five custom dimension types make 0063 refuse,
@@ -92,10 +93,12 @@ describe('migrations 0062–0064 over an existing company (S11, ADR 0022)', () =
     const app = createDatabase(at(inject('appUrl')));
     const companyId = uuidv7();
     try {
-      const [person] = await app
-        .insert(users)
-        .values({ email: 's11.migration@example.test', name: 'محاسب تجريبي' })
-        .returning({ id: users.id });
+      // Named columns only: the database is migrated to an earlier version than the schema.
+      const {
+        rows: [person],
+      } = await app.execute<{ id: string }>(
+        sql`INSERT INTO public.users (id, email, name) VALUES (${uuidv7()}, 's11.migration@example.test', 'محاسب تجريبي') RETURNING id`,
+      );
       if (!person) throw new Error('no user inserted');
       await withCompany(app, companyId, (tx) =>
         createCompanyBooks(

@@ -43,6 +43,11 @@ describe('people schemas', () => {
     expect(backupCodeSchema.safeParse('abcde-12345').success).toBe(true);
     expect(reauthenticateSchema.safeParse({ code: '123456' }).success).toBe(true);
     expect(reauthenticateSchema.safeParse({ code: '' }).success).toBe(false);
+    // An exempt person confirms with the password (S01 rule 2); never both, never neither.
+    expect(reauthenticateSchema.safeParse({ password: 'x'.repeat(12) }).success).toBe(true);
+    expect(reauthenticateSchema.safeParse({ password: '' }).success).toBe(false);
+    expect(reauthenticateSchema.safeParse({ code: '123456', password: 'x' }).success).toBe(false);
+    expect(reauthenticateSchema.safeParse({}).success).toBe(false);
   });
 
   it('describe the signed-in person with permissions from the map only', () => {
@@ -52,6 +57,7 @@ describe('people schemas', () => {
         name: 'شخص تجريبي',
         email: 'person@example.test',
         twoFactorEnabled: true,
+        twoFactorExempt: false,
       },
       memberships: [],
       activeCompanyId: null,
