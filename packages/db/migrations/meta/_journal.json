@@ -540,6 +540,20 @@
       "when": 1794812649358,
       "tag": "0076_s12_billing_terms",
       "breakpoints": true
+    },
+    {
+      "idx": 77,
+      "version": "7",
+      "when": 1794825262680,
+      "tag": "0077_confused_forge",
+      "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1794825264777,
+      "tag": "0078_s01_two_factor_exempt_guard",
+      "breakpoints": true
     }
   ]
 }

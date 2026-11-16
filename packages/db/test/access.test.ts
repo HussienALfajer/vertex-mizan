@@ -225,6 +225,46 @@ describe('the settings lock', () => {
   });
 });
 
+describe('the two-factor exemption (S01 rule 2, owner 2026-11-16)', () => {
+  const EXEMPTION = /the two-factor exemption is set only when a person is created/;
+
+  it('is set when a person is inserted, and may be cleared later', async () => {
+    const [row] = await app
+      .insert(users)
+      .values({ email: 'exempt.person@example.test', name: 'شخص تجريبي', twoFactorExempt: true })
+      .returning({ id: users.id, twoFactorExempt: users.twoFactorExempt });
+    expect(row?.twoFactorExempt).toBe(true);
+    if (!row) throw new Error('no user inserted');
+    await app.update(users).set({ twoFactorExempt: false }).where(eq(users.id, row.id));
+    const [after] = await app
+      .select({ twoFactorExempt: users.twoFactorExempt })
+      .from(users)
+      .where(eq(users.id, row.id));
+    expect(after?.twoFactorExempt).toBe(false);
+  });
+
+  it('is never set on an existing person, by the app role, the owner or in a replica session', async () => {
+    const id = await person('not.exempt@example.test');
+    const exempt = (db: Database) =>
+      db.update(users).set({ twoFactorExempt: true }).where(eq(users.id, id));
+    expect(await refusal(exempt(app))).toMatch(EXEMPTION);
+    expect(await refusal(exempt(owner))).toMatch(EXEMPTION);
+    const client: pg.PoolClient = await superuser.connect();
+    try {
+      await client.query('begin');
+      await client.query("set local session_replication_role = 'replica'");
+      expect(
+        await refusal(
+          client.query('update users set two_factor_exempt = true where id = $1', [id]),
+        ),
+      ).toMatch(EXEMPTION);
+    } finally {
+      await client.query('rollback');
+      client.release();
+    }
+  });
+});
+
 describe('the settings checks', () => {
   const invalid: [string, Partial<typeof companySettings.$inferInsert>][] = [
     ['a currency outside the money module', { bookCurrency: 'JPY' }],

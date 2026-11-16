@@ -224,6 +224,29 @@ BEGIN
 END
 `,
     },
+    // S01 rule 2 (owner, 2026-11-16): the exemption is set only when the person is inserted.
+    {
+      name: 'users_two_factor_exempt_rule',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+BEGIN
+  IF NEW.two_factor_exempt AND NOT OLD.two_factor_exempt THEN
+    RAISE EXCEPTION 'users: the two-factor exemption is set only when a person is created'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  RETURN NEW;
+END
+`,
+    },
     {
       name: 'refuse_delete',
       arguments: '',
@@ -3462,6 +3485,14 @@ END
     },
   ],
   triggers: [
+    // The two-factor exemption (S01 rule 2): never set on an existing person.
+    {
+      table: 'users',
+      name: 'users_two_factor_exempt_rule',
+      function: 'users_two_factor_exempt_rule',
+      deferred: false,
+      on: ['UPDATE'],
+    },
     // The settings lock (S01 rule 11): before every update of a company's ledger settings.
     {
       table: 'company_settings',

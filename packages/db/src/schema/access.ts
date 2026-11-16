@@ -43,6 +43,12 @@ export const users = pgTable(
     image: text(),
     /** Set by the two-factor plugin once the first code is verified. */
     twoFactorEnabled: boolean().notNull().default(false),
+    /**
+     * S01 rule 2 (owner, 2026-11-16): made by `admin:create-account` only; while not enrolled, the
+     * person signs in with the password alone. Set only when the row is inserted
+     * (`users_two_factor_exempt_rule()`).
+     */
+    twoFactorExempt: boolean().notNull().default(false),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
     archivedAt: archivedAt(),
