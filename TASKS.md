@@ -22,7 +22,7 @@ Four PRs, in order. Each PR switches its scenario files to `Approved (owner, 202
 - [x] scenarios: `projects/progress-billing.md`, `projects/subcontract-billing.md` and `projects/retention-release.md` switched to `Approved` and run (owner, 2026-11-16, after the reviews: a billing's or release's cancellation is exact, with no S04 rule 13 difference, refused while a later payment or release stands; a billing's items named `مستخلص <fiscal year>/<number>`)
 - [x] api: drafts, preview and posting of the three kinds with their warnings; reversal refusals; tests
 - [x] docs: ROADMAP, folder CLAUDE.md files
-- [ ] checks and reviewers (reviewer and accountant-reviewer), PR with auto-merge and Auto-fix
+- [x] checks and reviewers (reviewer: the chain keyed by the project, the items' names, the guard's chain branch tested, exact cancellation held by later clearings, differences and a crossing's addition; accountant-reviewer: a subcontract billing cancelled after its release), PR with auto-merge and Auto-fix
 
 ### PR 3 — the project report, material quantities, exports and prints (branch `feat/s12-project-report`)
 
