@@ -256,6 +256,11 @@ test.describe('the entry screen with open items', () => {
         amountMinor: '-60000',
         openItemId: m1.id,
         newItem: null,
+        materialId: null,
+        unit: null,
+        quantity: null,
+        unitPrice: null,
+        advanceMinor: null,
       },
     ]);
   });
@@ -310,6 +315,11 @@ test.describe('the entry screen with open items', () => {
       dimensionValueIds: [hubClient.id],
       openItemId: null,
       newItem: null,
+      materialId: null,
+      unit: null,
+      quantity: null,
+      unitPrice: null,
+      advanceMinor: null,
     });
   });
 
@@ -360,6 +370,11 @@ test.describe('the entry screen with open items', () => {
       amountMinor: '100000',
       openItemId: null,
       newItem: { reference: 'M-2', dueOn: '2026-12-09' },
+      materialId: null,
+      unit: null,
+      quantity: null,
+      unitPrice: null,
+      advanceMinor: null,
     });
   });
 
@@ -379,6 +394,11 @@ test.describe('the entry screen with open items', () => {
             memo: null,
             openItemId: null,
             newItem: null,
+            materialId: null,
+            unit: null,
+            quantity: null,
+            unitPrice: null,
+            advanceMinor: null,
           },
           {
             accountId: accountOf('112001').id,
@@ -388,6 +408,11 @@ test.describe('the entry screen with open items', () => {
             memo: null,
             openItemId: m1.id,
             newItem: null,
+            materialId: null,
+            unit: null,
+            quantity: null,
+            unitPrice: null,
+            advanceMinor: null,
           },
         ],
       },
@@ -395,6 +420,7 @@ test.describe('the entry screen with open items', () => {
     );
     const preview: EntryPreview = {
       voucher: null,
+      projectDocument: null,
       entryDate: '2026-11-09',
       bookCurrency: 'SYP',
       parallelCurrency: 'USD',

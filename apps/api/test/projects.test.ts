@@ -231,7 +231,7 @@ describe('project documents as drafts (S12 rules 4–8, 10, 21)', () => {
     const again = await browser.post(`/api/drafts/${saved.body.id}/post`);
     expect(again.body.projectDocument.id).toBe(posted.body.projectDocument.id);
 
-    const register = await browser.get('/api/project-documents', { query: { kind: 'purchase' } });
+    const register = await browser.get('/api/project-documents', { kind: 'purchase' });
     expect(register.body.documents).toEqual([
       expect.objectContaining({ number: 1, totalMinor: '3937500', supplierReference: 'F-1024' }),
     ]);

@@ -117,6 +117,7 @@ test.describe('the chart', () => {
       itemKind: null,
       counterpartyType: null,
       cashKind: 'bank',
+      requiresMaterial: false,
       // Q12: a currency restriction turns the monetary flag on.
       isMonetary: true,
       requiredDimensionTypeIds: [],
@@ -169,6 +170,7 @@ test.describe('the chart', () => {
       counterpartyType: 'client',
       requiredDimensionTypeIds: [typeOf('client').id],
       cashKind: null,
+      requiresMaterial: false,
     });
   });
 

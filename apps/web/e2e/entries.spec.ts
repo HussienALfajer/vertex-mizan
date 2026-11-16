@@ -41,6 +41,7 @@ const posted = {
     entry: purchase,
     draft: { ...ownDraft, state: 'posted', postedEntryId: purchase.id },
     voucher: null,
+    projectDocument: null,
   },
 };
 
