@@ -34,12 +34,12 @@ The owner chose to build this inside Mizan, keep only what the client needs, and
    - the manual opening balances and the books start (S10, ADR 0019 without Hub);
    - deployment and backups (ADR 0020).
 4. **Both ledgers stay as they are** (owner, 2026-11-13): every line keeps its transaction, book and parallel amounts, and ADRs 0005 and 0007 are unchanged. Each company chooses its book currency and may run without a parallel ledger (`admin:create-company --book-currency <ISO> --no-parallel`).
-5. **Vertex Media's production company is archived, and its data kept** (owner, 2026-11-13). Ledger data is kept at least 10 years (`AGENTS.md`). Archiving a company is added with the removal if Mizan has no way to do it yet.
+5. **Vertex Media's production company is archived, and its data kept** (owner, 2026-11-13). Ledger data is kept at least 10 years (`AGENTS.md`). Its template's Hub slot mapping is not among the data kept (§6, owner 2026-11-16). Archiving a company is added with the removal if Mizan has no way to do it yet.
 6. **How the removal runs:**
    - one PR per layer: the screens, then the API and the worker, then the ledger, the database and the contracts, then the scenario book and the docs;
    - each PR keeps `pnpm verify --e2e-all` green;
    - no ledger invariant, trigger, grant or guard of the remaining tables is weakened;
-   - a migration that drops a table refuses to run while the table holds rows. Drizzle-kit drops a table with `CASCADE`; a migration does so only after the keys of the remaining tables to it are dropped, so `CASCADE` takes only the table's own triggers and policies (`migration-guard: allow drop-cascade`);
+   - a migration that drops a table refuses to run while the table holds rows, with one exception (owner, 2026-11-16): `posting_rule_accounts`, a chart template's mapping of Hub's slots to accounts, written when a company is made from a template, never sent by Hub and posting nothing, is dropped with its rows (Vertex Media's production company holds them; the backup each deploy takes before its migrations keeps them). No other table is dropped with rows. Drizzle-kit drops a table with `CASCADE`; a migration does so only after the keys of the remaining tables to it are dropped, so `CASCADE` takes only the table's own triggers and policies (`migration-guard: allow drop-cascade`);
    - the removal ships in one release (owner, 2026-11-13): the release before it does not run on the migrated database, so a rollback past it restores the database to before the deploy (`docs/deployment.md`);
    - an entry whose source was a Hub event stays readable, so the entry sources keep their values;
    - the error codes, permissions and audit actions of removed features stay in their registries as retired, never reused (ADR 0006's rule on codes outlives it);
