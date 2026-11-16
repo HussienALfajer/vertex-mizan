@@ -8,7 +8,7 @@ import {
 import { type RealisedTargets, realisedDifferenceLines } from './balance.js';
 import { reverseLines } from './carried.js';
 import { type ItemState, moveItem } from './items.js';
-import { type Dimensions, keptLedgers, type Line } from './lines.js';
+import { type CarriedAmounts, type Dimensions, keptLedgers, type Line } from './lines.js';
 import { type MeasureContext, measuredLine } from './measure.js';
 import { lastDayOfMonth, periodOf } from './periods.js';
 import { quotesPair } from './rates.js';
@@ -24,6 +24,11 @@ export interface ManualLine {
    * or new. Two lines may move one item: the second moves it from where the first left it.
    */
   readonly item?: ItemState;
+  /**
+   * The part an applied advance covers (S12 rule 12), at the advance's carried amounts: only on a
+   * line with no item, which it measures partly (`measuredLine()`).
+   */
+  readonly covered?: CarriedAmounts;
 }
 
 /** A manual entry's lines and the rates it was dealt at, one per currency pair (S03 rule 13). */
@@ -129,10 +134,11 @@ export function manualEntry(
   const typed: (number | null)[] = [];
   for (const [index, line] of entry.lines.entries()) {
     if (line.item === undefined) {
-      lines.push(measuredLine(line, at));
+      lines.push(onLine(index + 1, () => measuredLine(line, at)));
       typed.push(index);
       continue;
     }
+    if (line.covered !== undefined) throw new TypeError('A covered part on an item line');
     const item = items.get(line.item.id) ?? line.item;
     const moved = onLine(index + 1, () =>
       moveItem(item, { account: line.account, dimensions: line.dimensions ?? {} }, line.amount, at),

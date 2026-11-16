@@ -1,5 +1,5 @@
 import { DomainError, money } from '@vertex-mizan/contracts';
-import type { CarriedAmounts, Line } from './lines.js';
+import { type CarriedAmounts, type Line, negate } from './lines.js';
 import { abs, share } from './share.js';
 
 /**
@@ -109,5 +109,7 @@ export function reverseLines(lines: readonly Line[]): Line[] {
     transaction: money(-line.transaction.amountMinor, line.transaction.currency),
     bookMinor: -line.bookMinor,
     parallelMinor: line.parallelMinor === null ? null : -line.parallelMinor,
+    // A covered part goes back with its line, at exactly what it took (S12 rule 22).
+    ...(line.kind === 'measured' && line.covered !== undefined && { covered: negate(line.covered) }),
   }));
 }

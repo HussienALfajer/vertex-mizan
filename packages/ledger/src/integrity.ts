@@ -99,6 +99,24 @@ export interface ChainConversion {
 }
 
 /** A posted line, as stored (`journal_lines`), with its conversions. */
+/** A line's quantity as `line_quantities` stores it: decimals as `numeric` returns them. */
+export interface ChainQuantity {
+  readonly materialId: string | null;
+  readonly unit: string;
+  /** `numeric(14,3)`: three decimals (`"12.500"`). */
+  readonly quantity: string;
+  /** `numeric(18,4)`: four decimals; null on a price adjustment. */
+  readonly unitPrice: string | null;
+}
+
+/** A covered part as `advance_applications` stores it: the clearing line and the carried amounts. */
+export interface ChainCovered {
+  readonly advanceLineNo: number;
+  readonly amountMinor: bigint;
+  readonly bookMinor: bigint;
+  readonly parallelMinor: bigint | null;
+}
+
 export interface ChainLine {
   readonly lineNo: number;
   readonly accountId: string;
@@ -114,6 +132,13 @@ export interface ChainLine {
   readonly memo: string | null;
   /** The open item the line moves (S04); absent or null on a line that moves none. */
   readonly itemId?: string | null;
+  /**
+   * The line's material and quantity (S12 rule 4, `line_quantities`); absent or null on a line
+   * with none, so every entry posted before S12 hashes the same (S03 rule 18).
+   */
+  readonly quantity?: ChainQuantity | null;
+  /** The part an applied advance covers (S12 rule 12, `advance_applications`); as `quantity`. */
+  readonly covered?: ChainCovered | null;
   readonly conversions: readonly ChainConversion[];
 }
 
@@ -207,6 +232,24 @@ export function chainEntryValue(entry: ChainEntry): CanonicalValue {
       parallelMinor: line.parallelMinor,
       memo: line.memo,
       ...(line.itemId !== undefined && line.itemId !== null && { itemId: line.itemId }),
+      ...(line.quantity !== undefined &&
+        line.quantity !== null && {
+          quantity: {
+            materialId: line.quantity.materialId,
+            unit: line.quantity.unit,
+            quantity: line.quantity.quantity,
+            unitPrice: line.quantity.unitPrice,
+          },
+        }),
+      ...(line.covered !== undefined &&
+        line.covered !== null && {
+          covered: {
+            advanceLineNo: line.covered.advanceLineNo,
+            amountMinor: line.covered.amountMinor,
+            bookMinor: line.covered.bookMinor,
+            parallelMinor: line.covered.parallelMinor,
+          },
+        }),
       conversions: [...line.conversions]
         .sort((a, b) => LEDGER_ORDER[a.ledger] - LEDGER_ORDER[b.ledger] || a.quoteNo - b.quoteNo)
         .map((conversion) => ({

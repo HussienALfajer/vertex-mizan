@@ -170,10 +170,49 @@ function checkShape(line: Line, ledgers: CompanyLedgers): void {
 }
 
 /**
- * Checks a line's amount in one ledger against its kind, and returns its term in the exact
- * balance: the transaction amount with the rate it was converted at, or the amount as is.
- * Rounding lines have no term: the rounding they absorb is judged without them.
+ * Checks a line's amount in one ledger against its kind, and returns its terms in the exact
+ * balance: the transaction amount with the rate it was converted at, or the amount as is; a
+ * covered line's covered part as carried and its rest with its rate (S12 rule 12). Rounding lines
+ * have no term: the rounding they absorb is judged without them.
  */
+function termsIn(line: Line, ledger: Ledger, currency: CurrencyCode): ExactTerm[] {
+  if (line.kind !== 'measured' || line.covered === undefined) {
+    const term = termIn(line, ledger, currency);
+    return term === null ? [] : [term];
+  }
+  const covered = line.covered;
+  const coveredIn = ledgerAmount(covered, ledger);
+  if (coveredIn === null || covered.transaction.currency !== line.transaction.currency) {
+    throw new TypeError('A covered part that does not match its line');
+  }
+  const rest = money(
+    line.transaction.amountMinor - covered.transaction.amountMinor,
+    line.transaction.currency,
+  );
+  const restIn = amountIn(line, ledger) - coveredIn;
+  const asIs: ExactTerm = { amount: money(coveredIn, currency) };
+  if (rest.amountMinor === 0n) {
+    if (restIn !== 0n || line.conversions[ledger] !== null) {
+      throw new TypeError('A wholly covered line with a converted rest');
+    }
+    return [asIs];
+  }
+  const restTerm = termIn(
+    {
+      kind: 'measured',
+      account: line.account,
+      dimensions: line.dimensions,
+      transaction: rest,
+      bookMinor: ledger === 'book' ? restIn : 0n,
+      parallelMinor: ledger === 'parallel' ? restIn : line.parallelMinor === null ? null : 0n,
+      conversions: line.conversions,
+    },
+    ledger,
+    currency,
+  );
+  return restTerm === null ? [asIs] : [asIs, restTerm];
+}
+
 function termIn(line: Line, ledger: Ledger, currency: CurrencyCode): ExactTerm | null {
   const amount = amountIn(line, ledger);
   const asIs = { amount: money(amount, currency) }; // refuses an amount outside the stored range
@@ -245,10 +284,7 @@ export function balanceEntry(draft: EntryDraft): Line[] {
   // Every line is checked in every ledger before any balance is judged.
   const checked = keptLedgers(ledgers).map(([ledger, settings]) => {
     const terms: ExactTerm[] = [];
-    for (const line of lines) {
-      const term = termIn(line, ledger, settings.currency);
-      if (term !== null) terms.push(term);
-    }
+    for (const line of lines) terms.push(...termsIn(line, ledger, settings.currency));
     return { ledger, currency: settings.currency, terms };
   });
   checkOneCurrency(lines);

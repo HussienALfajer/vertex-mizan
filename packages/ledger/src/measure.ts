@@ -8,8 +8,9 @@ import {
   type Ledger,
   type LedgerSettings,
   type Money,
+  money,
 } from '@vertex-mizan/contracts';
-import type { Conversion, Dimensions, Line } from './lines.js';
+import type { CarriedAmounts, Conversion, Dimensions, Line } from './lines.js';
 import { type PublicationCalendar, policyRate, quotesPair } from './rates.js';
 
 /**
@@ -131,19 +132,65 @@ export function measure(amount: Money, context: MeasureContext): Measurement {
   };
 }
 
-/** A line that measures a new amount in each ledger (`measure()`). */
+/**
+ * A line that measures a new amount in each ledger (`measure()`). With `covered`, the part an
+ * applied advance pays for (S12 rule 12, IFRIC 22.8–9, ADR 0023), in the line's sign and currency
+ * and at most the line's amount: that part takes the advance's carried amounts, and only the rest is
+ * measured, so a line wholly covered reads no rate.
+ */
 export function measuredLine(
-  input: { readonly account: string; readonly dimensions?: Dimensions; readonly amount: Money },
+  input: {
+    readonly account: string;
+    readonly dimensions?: Dimensions;
+    readonly amount: Money;
+    readonly covered?: CarriedAmounts;
+  },
   context: MeasureContext,
 ): Line {
-  const measured = measure(input.amount, context);
+  const { amount, covered } = input;
+  if (covered === undefined) {
+    const measured = measure(amount, context);
+    return {
+      kind: 'measured',
+      account: input.account,
+      dimensions: input.dimensions ?? {},
+      transaction: amount,
+      bookMinor: measured.bookMinor,
+      parallelMinor: measured.parallelMinor,
+      conversions: measured.conversions,
+    };
+  }
+  const coveredMinor = covered.transaction.amountMinor;
+  if (
+    covered.transaction.currency !== amount.currency ||
+    (covered.parallelMinor === null) !== (context.ledgers.parallel === null) ||
+    coveredMinor === 0n ||
+    (coveredMinor < 0n) !== (amount.amountMinor < 0n) ||
+    (coveredMinor < 0n ? -coveredMinor : coveredMinor) >
+      (amount.amountMinor < 0n ? -amount.amountMinor : amount.amountMinor)
+  ) {
+    throw new RangeError("A covered part outside its line's amount, sign or currency");
+  }
+  const rest = money(amount.amountMinor - coveredMinor, amount.currency);
+  const measured =
+    rest.amountMinor === 0n
+      ? {
+          bookMinor: 0n,
+          parallelMinor: context.ledgers.parallel === null ? null : 0n,
+          conversions: { book: null, parallel: null },
+        }
+      : measure(rest, context);
   return {
     kind: 'measured',
     account: input.account,
     dimensions: input.dimensions ?? {},
-    transaction: input.amount,
-    bookMinor: measured.bookMinor,
-    parallelMinor: measured.parallelMinor,
+    transaction: amount,
+    bookMinor: covered.bookMinor + measured.bookMinor,
+    parallelMinor:
+      covered.parallelMinor === null || measured.parallelMinor === null
+        ? null
+        : covered.parallelMinor + measured.parallelMinor,
     conversions: measured.conversions,
+    covered,
   };
 }
