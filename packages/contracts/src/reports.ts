@@ -32,6 +32,9 @@ export const REPORTS = [
   'cash_position',
   'cash_statement',
   'voucher',
+  'project_report',
+  'material_quantities',
+  'project_document',
 ] as const;
 
 export const reportSchema = z.enum(REPORTS).meta({ id: 'Report' });
@@ -648,6 +651,317 @@ export const profitabilitySchema = z
 
 export type Profitability = z.infer<typeof profitabilitySchema>;
 
+// --- Projects (S12 "Reports") ---
+
+/** A percentage with one decimal ("30.0"), half away from zero; null ("—") without a base. */
+const percentSchema = z
+  .string()
+  .regex(/^-?\d+\.\d$/)
+  .nullable();
+
+/** A quantity as text with its 3 places ("12.500", "-5.000"). */
+const quantityTextSchema = z.string().regex(/^-?\d+\.\d{3}$/);
+
+/** An average unit cost with 4 places ("3150.0000"); null at a quantity of zero. */
+const averageSchema = z
+  .string()
+  .regex(/^-?\d+\.\d{4}$/)
+  .nullable();
+
+/** A project's contract balances at a date, in the report's ledger. */
+const projectBalancesShape = {
+  /** The client's retentions on `113002` for the project, positive as receivable. */
+  retentionReceivable: minorUnitsSchema,
+  /** The client's advance on `212002` for the project, positive as owed. */
+  clientAdvance: minorUnitsSchema,
+};
+
+/**
+ * `GET /api/projects`: every project (a contract value of kind `project`) with its figures from the
+ * start of the books to `asOf` (today by default) in a ledger (the book by default); archived
+ * projects only on request.
+ */
+export const projectListQuerySchema = z
+  .object({
+    asOf: dateSchema.optional(),
+    ledger: ledgerSchema.default('book'),
+    archived: flagSchema('false'),
+  })
+  .meta({ id: 'ProjectListQuery' });
+
+export type ProjectListQuery = z.infer<typeof projectListQuerySchema>;
+
+/** A project's terms as the reports show them (S12 "Data"). */
+export const projectReportTermsSchema = z
+  .object({
+    currency: currencyCodeSchema,
+    contractValueMinor: minorUnitsSchema,
+    retentionBp: z.int().min(0).max(10_000),
+    advanceRecoveryBp: z.int().min(0).max(10_000),
+  })
+  .meta({ id: 'ProjectReportTerms' });
+
+export type ProjectReportTerms = z.infer<typeof projectReportTermsSchema>;
+
+/** One row of the projects list: its life-to-date figures at `asOf`. */
+export const projectListRowSchema = z
+  .object({
+    project: reportValueSchema,
+    client: reportValueSchema.nullable(),
+    /** Null until the project's terms are set. */
+    terms: projectReportTermsSchema.nullable(),
+    /** The latest standing billing's cumulative at `asOf`, in the terms' currency. */
+    cumulativeMinor: minorUnitsSchema,
+    /** The cumulative's share of the contract value; null without a contract value. */
+    billed: percentSchema,
+    ...profitabilityFiguresSchema.shape,
+    ...projectBalancesShape,
+    /** The budget's total in the terms' currency; null without terms. */
+    budgetMinor: minorUnitsSchema.nullable(),
+  })
+  .meta({ id: 'ProjectListRow' });
+
+export type ProjectListRow = z.infer<typeof projectListRowSchema>;
+
+export const projectListSchema = z
+  .object({ header: reportHeaderSchema, projects: z.array(projectListRowSchema) })
+  .meta({ id: 'ProjectList' });
+
+export type ProjectList = z.infer<typeof projectListSchema>;
+
+const projectReportQueryShape = {
+  from: dateSchema,
+  to: dateSchema,
+  ledger: ledgerSchema.default('book'),
+};
+
+/** `GET /api/projects/:valueId/report`: a range and a ledger, the book by default. */
+export const projectReportQuerySchema = z
+  .object(projectReportQueryShape)
+  .superRefine(checkRange)
+  .meta({ id: 'ProjectReportQuery' });
+
+export type ProjectReportQuery = z.infer<typeof projectReportQuerySchema>;
+
+/** `GET /api/projects/:valueId/report/export`: the report's query and `format=xlsx`. */
+export const projectReportExportQuerySchema = z
+  .object({ ...projectReportQueryShape, format: z.enum(['xlsx']) })
+  .superRefine(checkRange)
+  .meta({ id: 'ProjectReportExportQuery' });
+
+export type ProjectReportExportQuery = z.infer<typeof projectReportExportQuerySchema>;
+
+/** The summary: S09's profitability of the project, its billing to `to` and its balances at `to`. */
+export const projectSummarySchema = z
+  .object({
+    /** The latest standing billing's cumulative at `to`, in the terms' currency. */
+    cumulativeMinor: minorUnitsSchema,
+    billed: percentSchema,
+    ...profitabilityFiguresSchema.shape,
+    ...projectBalancesShape,
+    /** The subcontractors' retentions on `211006` for the project, positive as owed. */
+    subcontractRetention: minorUnitsSchema,
+    /** The advances paid on `114002` for the project, positive as receivable. */
+    subcontractAdvance: minorUnitsSchema,
+  })
+  .meta({ id: 'ProjectSummary' });
+
+export type ProjectSummary = z.infer<typeof projectSummarySchema>;
+
+/**
+ * A direct cost against the budget: the range's cost, the cost to `to`, the budget in the terms'
+ * currency ("0" without one), and the variance (budget less cost to date) and share used only when
+ * the terms are in the book currency and the ledger is the book (S12 answer 15).
+ */
+export const projectCostFiguresSchema = z
+  .object({
+    inRange: minorUnitsSchema,
+    toDate: minorUnitsSchema,
+    budgetMinor: minorUnitsSchema,
+    variance: minorUnitsSchema.nullable(),
+    used: percentSchema,
+  })
+  .meta({ id: 'ProjectCostFigures' });
+
+export type ProjectCostFigures = z.infer<typeof projectCostFiguresSchema>;
+
+export const projectCostRowSchema = z
+  .object({ account: reportAccountSchema, ...projectCostFiguresSchema.shape })
+  .meta({ id: 'ProjectCostRow' });
+
+export type ProjectCostRow = z.infer<typeof projectCostRowSchema>;
+
+/** A material as the reports name it. */
+export const reportMaterialSchema = z
+  .object({
+    id: z.uuid(),
+    code: z.string(),
+    name: z.string(),
+    unit: z.string(),
+    archived: z.boolean(),
+  })
+  .meta({ id: 'ReportMaterial' });
+
+export type ReportMaterial = z.infer<typeof reportMaterialSchema>;
+
+/**
+ * A material in one transaction currency: the net quantity of the range's lines of the project, the
+ * amount in that currency and in the ledger, and the average unit cost in that currency. A price
+ * adjustment counts in the amounts only.
+ */
+export const projectMaterialRowSchema = z
+  .object({
+    material: reportMaterialSchema,
+    currency: currencyCodeSchema,
+    quantity: quantityTextSchema,
+    amountMinor: minorUnitsSchema,
+    ledgerAmount: minorUnitsSchema,
+    average: averageSchema,
+  })
+  .meta({ id: 'ProjectMaterialRow' });
+
+export type ProjectMaterialRow = z.infer<typeof projectMaterialRowSchema>;
+
+/**
+ * A worker with a wage-sheet line on the project in the range: the days, the lump sums and the
+ * amount in the ledger, and the worker's running balance at `to` (every project's), positive as
+ * owed to the worker.
+ */
+export const projectWageRowSchema = z
+  .object({
+    worker: reportValueSchema,
+    days: quantityTextSchema,
+    lumpSum: minorUnitsSchema,
+    amount: minorUnitsSchema,
+    balance: minorUnitsSchema,
+  })
+  .meta({ id: 'ProjectWageRow' });
+
+export type ProjectWageRow = z.infer<typeof projectWageRowSchema>;
+
+/**
+ * A subcontract of the project: its value and the cumulative certified to `to` in its currency,
+ * the retention held and the advance carried for the project at `to`, and the supplier's payments
+ * in the range, in the ledger.
+ */
+export const projectSubcontractRowSchema = z
+  .object({
+    subcontractId: z.uuid(),
+    supplier: reportValueSchema,
+    currency: currencyCodeSchema,
+    valueMinor: minorUnitsSchema.nullable(),
+    cumulativeMinor: minorUnitsSchema,
+    retention: minorUnitsSchema,
+    advance: minorUnitsSchema,
+    paid: minorUnitsSchema,
+  })
+  .meta({ id: 'ProjectSubcontractRow' });
+
+export type ProjectSubcontractRow = z.infer<typeof projectSubcontractRowSchema>;
+
+/** A client's billing of the project dated on or before `to`, in the terms' currency. */
+export const projectBillingRowSchema = z
+  .object({
+    documentId: z.uuid(),
+    entryId: z.uuid(),
+    projectSequence: z.int().min(1),
+    fiscalYear: z.int(),
+    number: z.int().min(1),
+    documentDate: dateSchema,
+    cumulativeMinor: minorUnitsSchema,
+    previousMinor: minorUnitsSchema,
+    periodMinor: minorUnitsSchema,
+    retentionMinor: minorUnitsSchema,
+    advanceMinor: minorUnitsSchema,
+    netMinor: minorUnitsSchema,
+    /** Cancelled once its entry is reversed on or before `to`. */
+    state: z.enum(['posted', 'cancelled']),
+    /** What remains of its receivable on `112001` at `to`, in the terms' currency. */
+    outstandingMinor: minorUnitsSchema,
+  })
+  .meta({ id: 'ProjectBillingRow' });
+
+export type ProjectBillingRow = z.infer<typeof projectBillingRowSchema>;
+
+/** `GET /api/projects/:valueId/report` (S12 "Reports"). */
+export const projectReportSchema = z
+  .object({
+    header: reportHeaderSchema,
+    project: reportValueSchema,
+    client: reportValueSchema.nullable(),
+    /** Null until the project's terms are set. */
+    terms: projectReportTermsSchema.nullable(),
+    summary: projectSummarySchema,
+    costs: z.object({ rows: z.array(projectCostRowSchema), totals: projectCostFiguresSchema }),
+    materials: z.array(projectMaterialRowSchema),
+    wages: z.array(projectWageRowSchema),
+    subcontracts: z.array(projectSubcontractRowSchema),
+    billings: z.array(projectBillingRowSchema),
+  })
+  .meta({ id: 'ProjectReport' });
+
+export type ProjectReport = z.infer<typeof projectReportSchema>;
+
+const materialQuantitiesQueryShape = {
+  from: dateSchema,
+  to: dateSchema,
+  contract: z.uuid().optional(),
+  material: z.uuid().optional(),
+  ledger: ledgerSchema.default('book'),
+};
+
+/** `GET /api/reports/material-quantities`: a range and a ledger, optionally a project or a material. */
+export const materialQuantitiesQuerySchema = z
+  .object(materialQuantitiesQueryShape)
+  .superRefine(checkRange)
+  .meta({ id: 'MaterialQuantitiesQuery' });
+
+export type MaterialQuantitiesQuery = z.infer<typeof materialQuantitiesQuerySchema>;
+
+/** `GET /api/reports/material-quantities/export`: the report's query and `format=xlsx`. */
+export const materialQuantitiesExportQuerySchema = z
+  .object({ ...materialQuantitiesQueryShape, format: z.enum(['xlsx']) })
+  .superRefine(checkRange)
+  .meta({ id: 'MaterialQuantitiesExportQuery' });
+
+export type MaterialQuantitiesExportQuery = z.infer<typeof materialQuantitiesExportQuerySchema>;
+
+/**
+ * A project's material in one transaction currency over the range: the quantities in (lines above
+ * zero), out (below zero, as a negative) and net, the amount in that currency, the average unit
+ * cost, and the ledger's amount.
+ */
+export const materialQuantityRowSchema = z
+  .object({
+    /** Null for lines with no project ("غير موزع"). */
+    project: reportValueSchema.nullable(),
+    material: reportMaterialSchema,
+    currency: currencyCodeSchema,
+    quantityIn: quantityTextSchema,
+    quantityOut: quantityTextSchema,
+    quantity: quantityTextSchema,
+    amountMinor: minorUnitsSchema,
+    average: averageSchema,
+    ledgerAmount: minorUnitsSchema,
+  })
+  .meta({ id: 'MaterialQuantityRow' });
+
+export type MaterialQuantityRow = z.infer<typeof materialQuantityRowSchema>;
+
+/**
+ * The rows by project then material code and currency; `ledgerTotal` equals the lines of the
+ * `requires_material` accounts in the range (S12 "Reports").
+ */
+export const materialQuantitiesSchema = z
+  .object({
+    header: reportHeaderSchema,
+    rows: z.array(materialQuantityRowSchema),
+    ledgerTotal: minorUnitsSchema,
+  })
+  .meta({ id: 'MaterialQuantities' });
+
+export type MaterialQuantities = z.infer<typeof materialQuantitiesSchema>;
+
 // --- The lines behind a figure (rule 6) ---
 
 /**
@@ -672,6 +986,8 @@ export const reportLinesQuerySchema = z
     dims: dimsQuerySchema,
     profitabilityBy: profitabilityDimensionSchema.optional(),
     profitabilityValue: z.uuid().optional(),
+    /** S12: only the lines whose quantity names this material. */
+    material: z.uuid().optional(),
     /**
      * S10 rule 32: only the opening entries' lines (source `opening`) up to `to`, the figure of
      * an opening column read from the opening entry. Without it, a range with `from` leaves them
@@ -901,6 +1217,20 @@ export const voucherFileQuerySchema = z
 
 export type VoucherFileQuery = z.infer<typeof voucherFileQuerySchema>;
 
+/** A project report's file names its project (S12 "Printing and legal books"). */
+export const projectReportFileQuerySchema = z
+  .intersection(z.object({ contract: z.uuid() }), projectReportQuerySchema)
+  .meta({ id: 'ProjectReportFileQuery' });
+
+export type ProjectReportFileQuery = z.infer<typeof projectReportFileQuerySchema>;
+
+/** A printed project document names its document (S12 "Printing and legal books"). */
+export const projectDocumentFileQuerySchema = z
+  .object({ document: z.uuid() })
+  .meta({ id: 'ProjectDocumentFileQuery' });
+
+export type ProjectDocumentFileQuery = z.infer<typeof projectDocumentFileQuerySchema>;
+
 /** The query of each report's Excel export, `format=xlsx` aside. */
 export const EXCEL_REPORT_QUERIES = {
   trial_balance: trialBalanceQuerySchema,
@@ -927,6 +1257,9 @@ export const REPORT_FILE_QUERIES = {
   cash_position: cashPositionQuerySchema,
   cash_statement: cashStatementFileQuerySchema,
   voucher: voucherFileQuerySchema,
+  project_report: projectReportFileQuerySchema,
+  material_quantities: materialQuantitiesQuerySchema,
+  project_document: projectDocumentFileQuerySchema,
 } as const satisfies Record<ActiveReport, z.ZodType>;
 
 export type ReportFileQuery<R extends ActiveReport> = z.output<(typeof REPORT_FILE_QUERIES)[R]>;

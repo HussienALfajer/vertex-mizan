@@ -1,0 +1,122 @@
+import { type CurrencyCode, currencies, divideHalfAwayFromZero } from '@vertex-mizan/contracts';
+
+/**
+ * The project report's presentation (S12 "Reports", `docs/scenarios/reports/project-report.md`):
+ * every figure is a sum of stored ledger amounts read in `packages/db`; this module only derives
+ * the variances, the shares and the averages, rounding nothing but those.
+ */
+
+/** `numerator / denominator` with `places` decimals, half away from zero; null over zero. */
+export function decimalShare(
+  numerator: bigint,
+  denominator: bigint,
+  places: number,
+): string | null {
+  if (denominator === 0n) return null;
+  const scale = 10n ** BigInt(places);
+  // The money module divides by a positive denominator: a negative one moves its sign up.
+  const units =
+    denominator > 0n
+      ? divideHalfAwayFromZero(numerator * scale, denominator)
+      : divideHalfAwayFromZero(-numerator * scale, -denominator);
+  const sign = units < 0n ? '-' : '';
+  const magnitude = units < 0n ? -units : units;
+  const fraction = (magnitude % scale).toString().padStart(places, '0');
+  return places === 0 ? `${sign}${magnitude}` : `${sign}${magnitude / scale}.${fraction}`;
+}
+
+/** A part's share of a whole as a percentage with one decimal ("30.0"); null without a whole. */
+export function percentOf(part: bigint, whole: bigint): string | null {
+  return decimalShare(part * 100n, whole, 1);
+}
+
+/** A quantity in thousandths as its text with 3 places ("12.500", "-5.000", "0.000"). */
+export function quantityText(thousandths: bigint): string {
+  const sign = thousandths < 0n ? '-' : '';
+  const magnitude = thousandths < 0n ? -thousandths : thousandths;
+  return `${sign}${magnitude / 1000n}.${(magnitude % 1000n).toString().padStart(3, '0')}`;
+}
+
+/**
+ * The average unit cost of a material in its transaction currency, with 4 places: the amount over
+ * the net quantity, half away from zero; null at a net quantity of zero.
+ */
+export function averageUnitCost(
+  amountMinor: bigint,
+  currency: CurrencyCode,
+  quantityThousandths: bigint,
+): string | null {
+  const minor = 10n ** BigInt(currencies[currency].exponent);
+  return decimalShare(amountMinor * 1000n, minor * quantityThousandths, 4);
+}
+
+/** A direct cost's figures against its budget (S12 answer 15). */
+export interface ProjectCostInput {
+  readonly inRange: bigint;
+  readonly toDate: bigint;
+  /** The budget in the terms' currency, zero without one. */
+  readonly budget: bigint;
+}
+
+export interface ProjectCostFiguresValue extends ProjectCostInput {
+  /** The budget less the cost to date; null when no variance is shown. */
+  readonly variance: bigint | null;
+  /** The cost to date over the budget, one decimal; null when no variance is shown or no budget. */
+  readonly used: string | null;
+}
+
+/**
+ * Whether the budget is compared with the actual costs: only when the terms are in the book
+ * currency and the report reads the book ledger (S12 answer 15), never in a parallel ledger even
+ * in the terms' currency.
+ */
+export function showsVariance(input: {
+  readonly termsCurrency: CurrencyCode | null;
+  readonly bookCurrency: CurrencyCode;
+  readonly ledger: 'book' | 'parallel';
+}): boolean {
+  return input.ledger === 'book' && input.termsCurrency === input.bookCurrency;
+}
+
+function costFigures(row: ProjectCostInput, variance: boolean): ProjectCostFiguresValue {
+  return {
+    ...row,
+    variance: variance ? row.budget - row.toDate : null,
+    used: variance ? percentOf(row.toDate, row.budget) : null,
+  };
+}
+
+/** Each direct-cost account's figures and their totals, which sum the rows. */
+export function projectCosts<T extends ProjectCostInput>(
+  rows: readonly T[],
+  variance: boolean,
+): { rows: (T & ProjectCostFiguresValue)[]; totals: ProjectCostFiguresValue } {
+  let inRange = 0n;
+  let toDate = 0n;
+  let budget = 0n;
+  for (const row of rows) {
+    inRange += row.inRange;
+    toDate += row.toDate;
+    budget += row.budget;
+  }
+  return {
+    rows: rows.map((row) => ({ ...row, ...costFigures(row, variance) })),
+    totals: costFigures({ inRange, toDate, budget }, variance),
+  };
+}
+
+/** A billing's net due: its period's value less its retention and its recovery (S12 rule 15). */
+export function billingNet(input: {
+  readonly cumulative: bigint;
+  readonly previous: bigint;
+  readonly retention: bigint;
+  readonly advance: bigint;
+}): { period: bigint; net: bigint } {
+  const period = input.cumulative - input.previous;
+  return { period, net: period - input.retention - input.advance };
+}
+
+/** A balance read as a net debit, shown positive on its own side: a credit balance negated. */
+export function onItsSide(netDebit: bigint, side: 'debit' | 'credit'): bigint {
+  return side === 'debit' ? netDebit : -netDebit;
+}

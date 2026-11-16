@@ -28,6 +28,9 @@ export const reports = {
     cash_position: 'المركز النقدي',
     cash_statement: 'كشف صندوق',
     voucher: 'سند',
+    project_report: 'تقرير المشروع',
+    material_quantities: 'كميات المواد',
+    project_document: 'مستند مشروع',
   } satisfies Record<Report, string>,
   /** The journal of `/reports/journal` (rule 12), the journal book's Excel. */
   journal: 'اليومية العامة',
