@@ -31,6 +31,7 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
+  DateRangeField,
   DimensionPicker,
   EmptyState,
   Field,
@@ -582,29 +583,23 @@ export function ProjectDocumentEditor({
           />
         )}
         {kind === 'wage_sheet' ? (
-          <Field id="document-period" invalid={problems.period !== undefined}>
-            <FieldLabel>{f.period}</FieldLabel>
-            <div className="grid grid-cols-2 gap-2">
-              <Input
-                type="date"
-                dir="ltr"
-                aria-label={f.periodFrom}
-                value={header.periodFrom}
-                readOnly={!editable}
-                onChange={(event) => setHeader({ periodFrom: event.target.value })}
-              />
-              <Input
-                type="date"
-                dir="ltr"
-                aria-label={f.periodTo}
-                value={header.periodTo}
-                readOnly={!editable}
-                onChange={(event) => setHeader({ periodTo: event.target.value })}
-              />
-            </div>
-            <FieldDescription>{f.periodHint}</FieldDescription>
-            <FieldError match={problems.period !== undefined}>{problems.period}</FieldError>
-          </Field>
+          <div className="flex min-w-0 flex-col gap-1">
+            <DateRangeField
+              id="document-period"
+              tabIndex={-1}
+              value={{ from: header.periodFrom, to: header.periodTo }}
+              onValueChange={(range) => setHeader({ periodFrom: range.from, periodTo: range.to })}
+              label={f.period}
+              fromLabel={f.periodFrom}
+              toLabel={f.periodTo}
+              orderError={f.periodOrder}
+              disabled={!editable}
+            />
+            <p className="text-control text-muted-foreground">{f.periodHint}</p>
+            {problems.period && problems.period !== f.periodOrder && (
+              <p className="text-control text-destructive-text">{problems.period}</p>
+            )}
+          </div>
         ) : (
           <Field id="document-date" invalid={problems.date !== undefined}>
             <FieldLabel>{f.date}</FieldLabel>
@@ -1215,7 +1210,7 @@ function PurchaseLines({
                   dir="ltr"
                   inputMode="decimal"
                   value={line.unitPrice}
-                  readOnly={!editable || !computed}
+                  readOnly={!editable}
                   onChange={(event) => onChange(line.key, { unitPrice: event.target.value })}
                 />
               </Field>

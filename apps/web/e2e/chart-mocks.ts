@@ -65,42 +65,46 @@ export const roots: Account[] = ROOT_ACCOUNTS.map((root) => ({
   createdAt: created,
 }));
 
-const template = CHART_TEMPLATES.find((candidate) => candidate.id === 'general');
+/** The roots with a template applied, as `GET /api/accounts` answers for a company made from it. */
+export function chartOf(templateId: string): Account[] {
+  const template = CHART_TEMPLATES.find((candidate) => candidate.id === templateId);
+  return [
+    ...roots,
+    // The template lists the roots too; the company has them already.
+    ...(template?.accounts ?? [])
+      .filter((account) => account.code.length > 1)
+      .map(
+        (account): Account => ({
+          id: idOf(account.code),
+          code: account.code,
+          level: accountCodeLevel(account.code) ?? 1,
+          parentId: idOf(parentAccountCode(account.code) ?? ''),
+          kind: account.kind,
+          class: accountClassOfCode(account.code),
+          name: account.name,
+          nameLatin: account.nameLatin,
+          normalBalance: account.normalBalance,
+          statementLine: account.statementLine,
+          currency: account.currency,
+          isControl: account.isControl,
+          itemKind: account.itemKind,
+          counterpartyType: account.counterpartyType,
+          cashKind: account.cashKind,
+          requiresMaterial: account.requiresMaterial,
+          isMonetary: account.isMonetary,
+          requiredDimensionTypeIds: account.requiredDimensions.map(typeId),
+          roles: account.role ? [account.role] : [],
+          blocked: null,
+          archived: null,
+          firstPostedAt: null,
+          createdAt: created,
+        }),
+      ),
+  ];
+}
 
-/** The roots with the general template applied, as `GET /api/accounts` answers. */
-export const chart: Account[] = [
-  ...roots,
-  // The template lists the roots too; the company has them already.
-  ...(template?.accounts ?? [])
-    .filter((account) => account.code.length > 1)
-    .map(
-      (account): Account => ({
-        id: idOf(account.code),
-        code: account.code,
-        level: accountCodeLevel(account.code) ?? 1,
-        parentId: idOf(parentAccountCode(account.code) ?? ''),
-        kind: account.kind,
-        class: accountClassOfCode(account.code),
-        name: account.name,
-        nameLatin: account.nameLatin,
-        normalBalance: account.normalBalance,
-        statementLine: account.statementLine,
-        currency: account.currency,
-        isControl: account.isControl,
-        itemKind: account.itemKind,
-        counterpartyType: account.counterpartyType,
-        cashKind: account.cashKind,
-        requiresMaterial: false,
-        isMonetary: account.isMonetary,
-        requiredDimensionTypeIds: account.requiredDimensions.map(typeId),
-        roles: account.role ? [account.role] : [],
-        blocked: null,
-        archived: null,
-        firstPostedAt: null,
-        createdAt: created,
-      }),
-    ),
-];
+/** The roots with the general template applied. */
+export const chart: Account[] = chartOf('general');
 
 /**
  * Contract assets and client money held: two control accounts the reports' mocks present, which the
