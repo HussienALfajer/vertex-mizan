@@ -142,12 +142,14 @@ async function seed(target: Database, amounts: readonly bigint[]): Promise<void>
   }
 }
 
+// Each `drop()` waits up to 10 s for the runtime roles' connections to leave (`createTestDatabase`),
+// so the hook takes longer than Vitest's default 10 s, as its `beforeAll` does.
 afterAll(async () => {
   await Promise.all(
     [db, jobs, emptyDb, emptyJobs, otherDb, otherJobs].map((pool) => pool.$client.end()),
   );
   await Promise.all([empty.drop(), other.drop()]);
-});
+}, 60_000);
 
 const sound = (): DrillDatabases => ({
   production: db,
