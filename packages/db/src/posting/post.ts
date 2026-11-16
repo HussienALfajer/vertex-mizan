@@ -1441,7 +1441,9 @@ async function checkLatestBilling(tx: Transaction, entryId: string): Promise<voi
  * is refused (`OPEN_ITEM_HAS_SETTLEMENTS`) while a later clearing of a running item it moved stands
  * uncancelled: a payment of the supplier on `211002`, or a release or recovery of the same
  * project's share on `211006`, `114002` or `212002` (as a client's billing with a receipt is,
- * S12 rule 22). Answers whether the entry is such a document's.
+ * S12 rule 22); also a later S04 rule 13 difference on such an item, and a later addition to
+ * `211002` after the document itself cleared it (a net across the supplier's debit balance).
+ * Answers whether the entry is such a document's.
  */
 async function checkExactCancellation(
   tx: Transaction,
@@ -1469,15 +1471,26 @@ async function checkExactCancellation(
       join ${openItemMovements} m on m.company_id = i.company_id and m.item_id = i.id
       join ${journalEntries} e on e.company_id = m.company_id and e.id = m.entry_id
       join ${journalLines} l on l.company_id = m.company_id and l.id = m.line_id
-      where mine.entry_id = ${entryId} and i.kind = 'running' and m.kind = 'clear'
+      where mine.entry_id = ${entryId} and i.kind = 'running'
         and e.sequence > ${sequence} and e.reverses_entry_id is null
         and not exists (
           select 1 from ${journalEntries} r
           where r.company_id = e.company_id and r.reverses_entry_id = e.id)
-        and (a.code not in ('211006', '114002', '212002') or exists (
-          select 1 from ${dimensionSetValues} v
-          where v.company_id = l.company_id and v.set_id = l.dimension_set_id
-            and v.value_id = ${document.contractValueId}))
+        and (
+          -- An S04 rule 13 difference, which carries no project, always.
+          m.kind = 'difference'
+          -- A clearing: of a project's share only when its line carries the project.
+          or (m.kind = 'clear' and (a.code not in ('211006', '114002', '212002') or exists (
+            select 1 from ${dimensionSetValues} v
+            where v.company_id = l.company_id and v.set_id = l.dimension_set_id
+              and v.value_id = ${document.contractValueId})))
+          -- An addition after the document itself cleared the item (a net across a supplier's
+          -- debit balance): the exact reversal would leave the item off its rule 3 amounts.
+          or (m.kind = 'add' and a.code not in ('211006', '114002', '212002') and exists (
+            select 1 from ${openItemMovements} own
+            where own.company_id = mine.company_id and own.entry_id = ${entryId}
+              and own.item_id = i.id and own.kind = 'clear'))
+        )
     ) as later`);
   if (result.rows[0]?.later === true) {
     refuse('OPEN_ITEM_HAS_SETTLEMENTS', 'Reverse the later payments or releases first', {

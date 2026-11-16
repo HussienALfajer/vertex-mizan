@@ -879,6 +879,63 @@ describe('retention releases through the posting function (S12 rules 19–20)', 
     // Exact: every account back at zero in both ledgers, with no difference entry.
     expect(sums.rows.every((row) => row.book === '0' && row.parallel === '0')).toBe(true);
     expect(sums.rows.map((row) => row.code)).not.toContain('541001');
+
+    // A later payment of the supplier on 211002 holds the cancellation until it is reversed.
+    const second = await postDocument(
+      books,
+      '2026-12-15',
+      supplierDocument('subcontract_billing', { cumulativeMinor: 3000000n }),
+    );
+    const payment = await postManual(books, '2026-12-15', [
+      ['211002', [books.supplier], 'USD', 100000n],
+      ['313001', [], 'USD', -100000n],
+    ]);
+    expect((await codeOf(reverse(books, second.entry.id, '2026-12-20'))).code).toBe(
+      'OPEN_ITEM_HAS_SETTLEMENTS',
+    );
+    await reverse(books, payment.id, '2026-12-20');
+    expect((await codeOf(reverse(books, second.entry.id, '2026-12-20'))).code).toBe('none');
+  });
+
+  it('holds a billing whose net crossed a debit balance once the supplier is credited again', async () => {
+    const books = await newBooks();
+    await inCompany(books.id, (tx) =>
+      createSubcontract(
+        tx,
+        books.id,
+        {
+          contractValueId: books.project,
+          supplierValueId: books.supplier,
+          currency: 'USD',
+          valueMinor: null,
+          retentionBp: 0,
+          advanceRecoveryBp: 0,
+        },
+        actor(),
+      ),
+    );
+    // The supplier holds a debit balance of 500.00 USD at 115 (paid ahead).
+    await postManual(books, '2026-11-02', [
+      ['211002', [books.supplier], 'USD', 50000n],
+      ['313001', [], 'USD', -50000n],
+    ]);
+    const billing = await postDocument(books, '2026-12-15', {
+      document: {
+        ...billingOf(books, 0n).document,
+        kind: 'subcontract_billing',
+        counterpartyValueId: books.supplier,
+        cumulativeMinor: 100000n,
+      },
+      lines: [],
+    });
+    // A later credit to the supplier: an addition after the billing cleared the debit balance.
+    await postManual(books, '2026-12-15', [
+      ['313001', [], 'USD', 50000n],
+      ['211002', [books.supplier], 'USD', -50000n],
+    ]);
+    expect((await codeOf(reverse(books, billing.entry.id, '2026-12-20'))).code).toBe(
+      'OPEN_ITEM_HAS_SETTLEMENTS',
+    );
   });
 });
 
