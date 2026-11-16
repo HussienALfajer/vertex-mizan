@@ -161,12 +161,18 @@ describe('runCase', () => {
     const stated = parseCase(BILLING);
     const { fake } = harness(asPosted(stated));
     const done = async () => ({ status: 'done' as const });
-    const withExecutor = { ...fake, executors: { ...fake.executors, project_document: done } };
+    const withExecutor = {
+      ...fake,
+      executors: { ...fake.executors, project_document: done },
+      terms: async () => {},
+    };
     expect(await differences(runCase(stated, fake, database))).toEqual([
       'step 1 (project document "progress billing 1 of P1" on 2026-11-03): no executor for ' +
         'project_document steps; project documents arrive with S12',
       'No project document reader is registered (packages/scenarios/src/harness.ts); ' +
         'project documents arrive with S12',
+      'No project terms setup is registered (packages/scenarios/src/harness.ts); ' +
+        'project terms arrive with S12',
     ]);
     const [billing] = stated.expect.projectDocuments ?? [];
     if (!billing) throw new Error('expected a project document');

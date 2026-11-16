@@ -223,8 +223,11 @@ function purchaseOf(books: Books, advanceMinor: bigint | null = null) {
     contractValueId: books.project,
     counterpartyValueId: books.supplier,
     currency: 'TRY',
+    side: null,
     periodFrom: null,
     periodTo: null,
+    cumulativeMinor: null,
+    retentionMinor: null,
     advanceMinor,
     supplierReference: 'F-1024',
   };
@@ -266,8 +269,11 @@ async function postDocument(
       contractValueId: document.contractValueId,
       counterpartyValueId: document.counterpartyValueId,
       documentCurrency: document.currency,
+      side: document.side,
       periodFrom: document.periodFrom,
       periodTo: document.periodTo,
+      cumulativeMinor: document.cumulativeMinor,
+      retentionMinor: document.retentionMinor,
       advanceMinor: document.advanceMinor,
       supplierReference: document.supplierReference,
     });
@@ -549,8 +555,11 @@ describe('a project purchase invoice through the posting function (S12 rules 4�
         contractValueId: books.project,
         counterpartyValueId: null,
         currency: 'USD',
+        side: null,
         periodFrom: '2026-12-01',
         periodTo: '2026-12-15',
+        cumulativeMinor: null,
+        retentionMinor: null,
         advanceMinor: null,
         supplierReference: null,
       },
@@ -581,6 +590,219 @@ describe('a project purchase invoice through the posting function (S12 rules 4�
       ['wage_sheet', 2],
     ]);
     expect(await linesOfEntry(books, purchase.entry.id)).toHaveLength(3);
+  });
+});
+
+/** A progress billing of P1 as its draft holds it (S12 rules 14–16). */
+const billingOf = (
+  books: Books,
+  cumulativeMinor: bigint,
+  deductions: { retentionMinor?: bigint; advanceMinor?: bigint } = {},
+): { document: ProjectDocumentSpec; lines: DocumentLineSpec[] } => ({
+  document: {
+    kind: 'progress_billing',
+    contractValueId: books.project,
+    counterpartyValueId: null,
+    currency: null,
+    side: null,
+    periodFrom: null,
+    periodTo: null,
+    cumulativeMinor,
+    retentionMinor: deductions.retentionMinor ?? null,
+    advanceMinor: deductions.advanceMinor ?? null,
+    supplierReference: null,
+  },
+  lines: [],
+});
+
+/** P1's terms (USD, 100,000.00, retention 10%, recovery 20%) and C1's 20,000.00 USD advance. */
+async function billable(books: Books) {
+  await inCompany(books.id, (tx) =>
+    putProjectTerms(
+      tx,
+      books.id,
+      books.project,
+      {
+        currency: 'USD',
+        contractValueMinor: '10000000',
+        retentionBp: 1000,
+        advanceRecoveryBp: 2000,
+        budget: [],
+      },
+      actor(),
+    ),
+  );
+  await postManual(books, '2026-11-02', [
+    ['313001', [], 'USD', 2000000n],
+    ['212002', [books.client, books.project], 'USD', -2000000n],
+  ]);
+}
+
+describe('progress billings through the posting function (S12 rules 14–16, 21–22)', () => {
+  it("posts the scenario's billing with its covered revenue, numbered in its project", async () => {
+    const books = await newBooks();
+    expect((await codeOf(postDocument(books, '2026-12-15', billingOf(books, 3000000n)))).code).toBe(
+      'PROJECT_TERMS_MISSING',
+    );
+    await billable(books);
+    const preview = await inCompany(books.id, (tx) =>
+      previewProjectDocument(tx, {
+        entryDate: '2026-12-15',
+        content: { kind: 'project_document', today: TODAY, ...billingOf(books, 12000000n) },
+      }),
+    );
+    expect([preview.previousMinor, preview.retentionMinor, preview.netMinor]).toEqual([
+      0n,
+      1200000n,
+      8800000n,
+    ]);
+    expect(preview.warnings).toEqual(['cumulative_above_contract_value']);
+    const first = await postDocument(books, '2026-12-15', billingOf(books, 3000000n));
+    expect(await linesOfEntry(books, first.entry.id)).toEqual([
+      { code: '112001', amount: 2100000n, book: 2100000n, parallel: 252000000n },
+      { code: '113002', amount: 300000n, book: 300000n, parallel: 36000000n },
+      { code: '212002', amount: 600000n, book: 600000n, parallel: 69000000n },
+      { code: '411001', amount: -3000000n, book: -3000000n, parallel: -357000000n },
+    ]);
+    const items = await inCompany(books.id, (tx) =>
+      tx
+        .select({ reference: openItems.reference, client: openItems.counterpartyValueId })
+        .from(openItems)
+        .where(eq(openItems.kind, 'document')),
+    );
+    expect(items).toEqual([
+      { reference: '2026/1', client: books.client },
+      { reference: '2026/1', client: books.client },
+    ]);
+    const [row] = await inCompany(books.id, (tx) => tx.select().from(projectDocuments));
+    expect(row).toMatchObject({
+      kind: 'progress_billing',
+      number: 1,
+      projectSequence: 1,
+      counterpartyValueId: books.client,
+      currency: 'USD',
+      totalMinor: 3000000n,
+      cumulativeMinor: 3000000n,
+      previousMinor: 0n,
+      retentionMinor: 300000n,
+      advanceMinor: 600000n,
+    });
+    expect((await codeOf(postDocument(books, '2026-12-15', billingOf(books, 3000000n)))).code).toBe(
+      'BILLING_NOT_INCREASING',
+    );
+    expect((await codeOf(postDocument(books, '2026-12-03', billingOf(books, 4000000n)))).code).toBe(
+      'VALIDATION_FAILED',
+    );
+    expect(
+      (
+        await codeOf(
+          postDocument(books, '2026-12-15', billingOf(books, 6000000n, { advanceMinor: 1500000n })),
+        )
+      ).code,
+    ).toBe('RELEASE_EXCEEDS_BALANCE');
+  });
+
+  it('serialises two billings of one project, each reading the other’s cumulative', async () => {
+    const books = await newBooks();
+    await billable(books);
+    await postDocument(books, '2026-12-15', billingOf(books, 3000000n));
+    const results = await Promise.all(
+      [4000000n, 5000000n].map((cumulative) =>
+        codeOf(postDocument(books, '2026-12-15', billingOf(books, cumulative))),
+      ),
+    );
+    const rows = await inCompany(books.id, (tx) =>
+      tx.select().from(projectDocuments).orderBy(asc(projectDocuments.projectSequence)),
+    );
+    // Both post in either order unless the larger posts first, then the smaller is refused.
+    expect(results.every(({ code }) => code === 'none' || code === 'BILLING_NOT_INCREASING')).toBe(
+      true,
+    );
+    expect(rows.map((row) => row.projectSequence)).toEqual(rows.map((_, index) => index + 1));
+    expect(rows.map((row) => row.number)).toEqual(rows.map((_, index) => index + 1));
+    for (const [index, row] of rows.entries()) {
+      expect(row.previousMinor).toBe(index === 0 ? 0n : rows[index - 1]?.cumulativeMinor);
+    }
+  });
+
+  it('cancels only the latest billing, and a reversal puts the advance back exactly', async () => {
+    const books = await newBooks();
+    await billable(books);
+    const first = await postDocument(books, '2026-12-15', billingOf(books, 3000000n));
+    const second = await postDocument(books, '2026-12-15', billingOf(books, 5000000n));
+    expect((await codeOf(reverse(books, first.entry.id, '2026-12-20'))).code).toBe(
+      'PROJECT_DOCUMENT_NOT_LATEST',
+    );
+    await reverse(books, second.entry.id, '2026-12-20');
+    await reverse(books, first.entry.id, '2026-12-20');
+    const [balance] = await inCompany(books.id, (tx) =>
+      tx.execute<{ amount: string; book: string; parallel: string }>(sql`
+        select sum(l.amount_minor)::text as amount, sum(l.book_minor)::text as book,
+          sum(l.parallel_minor)::text as parallel
+        from journal_lines l join chart_accounts a on a.id = l.account_id
+        where a.code = '212002'`),
+    ).then((result) => result.rows);
+    expect(balance).toEqual({ amount: '-2000000', book: '-2000000', parallel: '-230000000' });
+    // A billing after the cancellations starts the chain again, its number within the project the
+    // third.
+    await postDocument(books, '2026-12-15', billingOf(books, 1000000n));
+    const rows = await inCompany(books.id, (tx) =>
+      tx.select().from(projectDocuments).orderBy(asc(projectDocuments.projectSequence)),
+    );
+    expect(rows.map((row) => [row.projectSequence, row.previousMinor])).toEqual([
+      [1, 0n],
+      [2, 3000000n],
+      [3, 0n],
+    ]);
+  });
+});
+
+describe('retention releases through the posting function (S12 rules 19–20)', () => {
+  it("moves a client's retention to a new receivable named apart from the billing's", async () => {
+    const books = await newBooks();
+    await billable(books);
+    await postDocument(books, '2026-12-15', billingOf(books, 3000000n));
+    const [retention] = await inCompany(books.id, (tx) =>
+      tx
+        .select({ id: openItems.id })
+        .from(openItems)
+        .where(eq(openItems.accountId, account(books, '113002'))),
+    );
+    const release = (amountMinor: bigint) => ({
+      document: {
+        ...billingOf(books, 0n).document,
+        kind: 'retention_release' as const,
+        side: 'client' as const,
+        cumulativeMinor: null,
+      },
+      lines: [
+        {
+          accountId: null,
+          dimensionValueIds: [],
+          amountMinor,
+          memo: null,
+          quantity: null,
+          advanceMinor: null,
+          openItemId: retention?.id as string,
+        },
+      ],
+    });
+    expect((await codeOf(postDocument(books, '2026-12-15', release(400000n)))).code).toBe(
+      'RELEASE_EXCEEDS_BALANCE',
+    );
+    const posted = await postDocument(books, '2026-12-15', release(100000n));
+    expect(await linesOfEntry(books, posted.entry.id)).toEqual([
+      { code: '112001', amount: 100000n, book: 100000n, parallel: 12000000n },
+      { code: '113002', amount: -100000n, book: -100000n, parallel: -12000000n },
+    ]);
+    const references = await inCompany(books.id, (tx) =>
+      tx
+        .select({ reference: openItems.reference })
+        .from(openItems)
+        .where(eq(openItems.accountId, account(books, '112001')))
+        .orderBy(asc(openItems.reference)),
+    );
+    expect(references.map((row) => row.reference)).toEqual(['2026/1', 'إفراج 2026/1']);
   });
 });
 
@@ -1075,6 +1297,56 @@ describe('the S12 guards against writes the posting function never makes (0071�
         ),
       ),
     ).toMatch(/was given but no document took it/);
+  });
+
+  it('refuses a billing written by hand out of its chain, and a reversal out of order', async () => {
+    const books = await newBooks();
+    await billable(books);
+    const first = await postDocument(books, '2026-12-15', billingOf(books, 3000000n));
+    await postDocument(books, '2026-12-15', billingOf(books, 5000000n));
+    const [stored] = await inCompany(books.id, (tx) =>
+      tx.select().from(projectDocuments).where(eq(projectDocuments.entryId, first.entry.id)),
+    );
+    if (stored === undefined) throw new Error('no billing');
+    const { id: _id, createdAt: _at, ...row } = stored;
+    expect(
+      await refusal(
+        inCompany(books.id, (tx) =>
+          tx.insert(projectDocuments).values({ ...row, number: 99, projectSequence: 7 }),
+        ),
+      ),
+    ).toMatch(/as prepared|sequence just gave|latest billing/);
+    // The first billing's entry reversed by hand while the second stands.
+    const [original] = await inCompany(books.id, (tx) =>
+      tx.select().from(journalEntries).where(eq(journalEntries.id, first.entry.id)),
+    );
+    if (original === undefined) throw new Error('no entry');
+    expect(
+      await refusal(
+        inCompany(books.id, async (tx) => {
+          const [head] = await tx.select().from(ledgerHeads).for('update');
+          const [request] = await tx
+            .insert(postingRequests)
+            .values({
+              companyId: books.id,
+              client: 'manual',
+              idempotencyKey: `reversal:${original.id}`,
+              payloadHash: '0'.repeat(64),
+            })
+            .returning();
+          await tx.insert(journalEntries).values({
+            ...original,
+            id: uuidv7(),
+            requestId: request?.id as string,
+            sequence: (head?.entryCount ?? 0n) + 1n,
+            number: original.number + 10,
+            draftId: null,
+            reversesEntryId: original.id,
+            previousHash: head?.lastHash ?? null,
+          });
+        }),
+      ),
+    ).toMatch(/project's latest/);
   });
 
   it('keeps the chain intact over a purchase applying an advance and its reversal', async () => {

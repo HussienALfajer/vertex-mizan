@@ -12,8 +12,10 @@ import {
   journalLines,
   lineQuantities,
   materials as materialsTable,
+  openItems,
   post,
   projectDocumentContentOf,
+  putProjectTerms,
   type Transaction,
   withCompany,
 } from '@vertex-mizan/db';
@@ -73,6 +75,58 @@ export async function materials(
         tx,
         context.companyId,
         { code: row.code, name: row.name, nameLatin: null, unit: row.unit },
+        actor,
+      );
+    }
+  });
+}
+
+/**
+ * The terms and budget of each project the case names that states them (S12 rule 1), through the
+ * service the API uses; a project the case never names is not made, so has no terms.
+ */
+export async function terms(
+  context: CaseContext,
+  contracts: CaseCompany['contracts'],
+): Promise<void> {
+  const actor = bookkeeperOf(context.companyId);
+  await withCompany(context.database.app, context.companyId, async (tx) => {
+    const accounts = new Map(
+      (await tx.select({ id: chartAccounts.id, code: chartAccounts.code }).from(chartAccounts)).map(
+        (row) => [row.code, row.id],
+      ),
+    );
+    const named = new Set(
+      (
+        await tx
+          .select({ code: dimensionValues.code })
+          .from(dimensionValues)
+          .innerJoin(
+            dimensionTypes,
+            and(
+              eq(dimensionTypes.companyId, dimensionValues.companyId),
+              eq(dimensionTypes.id, dimensionValues.typeId),
+            ),
+          )
+          .where(eq(dimensionTypes.code, 'contract'))
+      ).map((row) => row.code),
+    );
+    for (const contract of contracts) {
+      if (contract.terms === null || !named.has(contract.code)) continue;
+      await putProjectTerms(
+        tx,
+        context.companyId,
+        await valueIdOf(tx, 'contract', contract.code),
+        {
+          currency: contract.terms.currency,
+          contractValueMinor: contract.terms.value.toString(),
+          retentionBp: contract.terms.retentionBp,
+          advanceRecoveryBp: contract.terms.advanceRecoveryBp,
+          budget: contract.terms.budget.map((row) => ({
+            accountId: accounts.get(row.account) ?? uuidv7(),
+            amountMinor: row.amount.toString(),
+          })),
+        },
         actor,
       );
     }
@@ -155,7 +209,60 @@ const wageSheetPayloadSchema = z.strictObject({
     .min(1),
 });
 
-const payloadSchema = z.union([purchasePayloadSchema, wageSheetPayloadSchema]);
+/**
+ * A client's or a subcontractor's billing as the document form sends it
+ * (`projects/progress-billing.md`, `projects/subcontract-billing.md`): the cumulative value, and
+ * the deductions only where the accountant changed them.
+ */
+const billingPayloadSchema = z.strictObject({
+  description: z.string().trim().min(1).max(500).optional(),
+  document: z.strictObject({
+    kind: z.enum(['progress_billing', 'subcontract_billing']),
+    contract: z.string().min(1),
+    supplier: z.string().min(1).optional(),
+    cumulative: z.bigint(),
+    retention: z.bigint().optional(),
+    advance: z.bigint().optional(),
+  }),
+});
+
+/**
+ * A retention release as the document form sends it (`projects/retention-release.md`): the client's
+ * retention items by reference with the amount released of each, or the supplier and the amount.
+ */
+const releasePayloadSchema = z.strictObject({
+  description: z.string().trim().min(1).max(500).optional(),
+  document: z.strictObject({
+    kind: z.literal('retention_release'),
+    side: z.enum(['client', 'supplier']),
+    contract: z.string().min(1),
+    supplier: z.string().min(1).optional(),
+    retention: z.bigint().optional(),
+    retention_items: z
+      .array(z.strictObject({ item: z.string().min(1), amount: z.bigint() }))
+      .optional(),
+  }),
+});
+
+const payloadSchema = z.union([
+  purchasePayloadSchema,
+  wageSheetPayloadSchema,
+  billingPayloadSchema,
+  releasePayloadSchema,
+]);
+
+/** A retention item on `113002` by its reference; an unknown one is the posting's to refuse. */
+async function retentionItemOf(tx: Transaction, reference: string): Promise<string> {
+  const [row] = await tx
+    .select({ id: openItems.id })
+    .from(openItems)
+    .innerJoin(
+      chartAccounts,
+      and(eq(chartAccounts.companyId, openItems.companyId), eq(chartAccounts.id, openItems.accountId)),
+    )
+    .where(and(eq(chartAccounts.code, '113002'), eq(openItems.reference, reference)));
+  return row?.id ?? uuidv7();
+}
 
 /** A refusal is the step's outcome; a draft the form would not save is the case's failure. */
 function refusedOnSave(error: unknown): StepResult {
@@ -182,6 +289,50 @@ export async function projectDocument(
     input = await withCompany(context.database.app, context.companyId, async (tx) => {
       const { document } = payload;
       const contractValueId = await valueIdOf(tx, 'contract', document.contract);
+      if (document.kind === 'progress_billing' || document.kind === 'subcontract_billing') {
+        return {
+          entryDate: step.accountingDate,
+          description,
+          projectDocument: {
+            kind: document.kind,
+            contractValueId,
+            counterpartyValueId:
+              document.supplier === undefined
+                ? null
+                : await valueIdOf(tx, 'supplier', document.supplier),
+            cumulativeMinor: document.cumulative.toString(),
+            retentionMinor: document.retention?.toString() ?? null,
+            advanceMinor: document.advance?.toString() ?? null,
+          },
+          lines: [],
+        };
+      }
+      if (document.kind === 'retention_release') {
+        return {
+          entryDate: step.accountingDate,
+          description,
+          projectDocument: {
+            kind: 'retention_release',
+            side: document.side,
+            contractValueId,
+            counterpartyValueId:
+              document.supplier === undefined
+                ? null
+                : await valueIdOf(tx, 'supplier', document.supplier),
+            retentionMinor: document.retention?.toString() ?? null,
+            retentionItems:
+              document.retention_items === undefined
+                ? null
+                : await Promise.all(
+                    document.retention_items.map(async (item) => ({
+                      itemId: await retentionItemOf(tx, item.item),
+                      amountMinor: item.amount.toString(),
+                    })),
+                  ),
+          },
+          lines: [],
+        };
+      }
       if (document.kind === 'purchase') {
         const purchase = payload as z.infer<typeof purchasePayloadSchema>;
         const accounts = new Map(
@@ -215,21 +366,22 @@ export async function projectDocument(
           ),
         };
       }
+      const sheet = (payload as z.infer<typeof wageSheetPayloadSchema>).document;
       return {
         entryDate: step.accountingDate,
         description,
         projectDocument: {
           kind: 'wage_sheet',
           contractValueId,
-          currency: document.currency,
-          periodFrom: document.period_from,
-          periodTo: document.period_to,
+          currency: sheet.currency,
+          periodFrom: sheet.period_from,
+          periodTo: sheet.period_to,
         },
         lines: await Promise.all(
           (payload as z.infer<typeof wageSheetPayloadSchema>).lines.map(async (line) => ({
             accountId: null,
             dimensionValueIds: [await valueIdOf(tx, 'worker', line.worker)],
-            currency: document.currency,
+            currency: sheet.currency,
             amountMinor: line.amount?.toString() ?? null,
             memo: line.description ?? null,
             ...(line.days !== undefined && {
@@ -336,8 +488,28 @@ export function projectDocuments(context: CaseContext): Promise<ObservedProjectD
             periodFrom: row.periodFrom ?? '',
             periodTo: row.periodTo ?? '',
           };
-        default:
-          throw new Error(`The book reads ${row.kind} documents with S12's billings`);
+        case 'progress_billing':
+        case 'subcontract_billing': {
+          const billing = {
+            ...common,
+            sequence: row.projectSequence ?? 0,
+            cumulative: row.cumulativeMinor ?? 0n,
+            previous: row.previousMinor ?? 0n,
+            retention: row.retentionMinor ?? 0n,
+            advance: row.advanceMinor ?? 0n,
+          };
+          return row.kind === 'progress_billing'
+            ? { kind: 'progress_billing', ...billing }
+            : { kind: 'subcontract_billing', ...billing, supplier: codeOf(row.counterpartyValueId) };
+        }
+        case 'retention_release':
+          return {
+            kind: 'retention_release',
+            ...common,
+            side: row.side ?? 'client',
+            supplier: row.side === 'supplier' ? codeOf(row.counterpartyValueId) : null,
+            retention: row.retentionMinor ?? 0n,
+          };
       }
     });
   });

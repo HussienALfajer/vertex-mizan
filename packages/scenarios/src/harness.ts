@@ -18,6 +18,7 @@ import {
   projectDocuments,
   quantities,
   subcontracts,
+  terms,
 } from './projects.js';
 import type { ExpectedReport } from './report-format.js';
 import { reports, serviceDepartment } from './reports.js';
@@ -149,6 +150,11 @@ export type ScenarioHarness = {
    */
   subcontracts?: (context: CaseContext, subcontracts: CaseCompany['subcontracts']) => Promise<void>;
   /**
+   * Sets the terms and budget of each project the case names that states them (S12 rule 1),
+   * through the service the API uses; a case with a project's terms needs it.
+   */
+  terms?: (context: CaseContext, contracts: CaseCompany['contracts']) => Promise<void>;
+  /**
    * Reads every line quantity the company holds (S12 rules 4–6), its entry by its place in posting
    * order; a case that states its quantities needs it.
    */
@@ -198,5 +204,6 @@ export const bookHarness: ScenarioHarness = {
   projectDocuments,
   materials,
   subcontracts,
+  terms,
   quantities,
 };

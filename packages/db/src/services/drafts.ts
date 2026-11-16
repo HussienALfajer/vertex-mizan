@@ -183,7 +183,8 @@ function quantityColumns(line: DraftLineInput, materialUnit: string | null) {
  * A project document draft's header as stored (S12 "Drafts"), its project and counterparty checked
  * to be the company's values (`VALIDATION_FAILED`, rather than their foreign keys); every column
  * null on any other draft. Whether the project is a project and the counterparty a supplier is the
- * posting's check. A client release's items wait for S12's billings.
+ * posting's check. A client's release keeps its retention items as its lines
+ * (`documentLines()`).
  */
 export async function projectDocumentColumns(
   tx: Transaction,
@@ -203,15 +204,6 @@ export async function projectDocumentColumns(
       advanceMinor: null,
       supplierReference: null,
     };
-  }
-  if (header.kind !== 'purchase' && header.kind !== 'wage_sheet') {
-    throw new DomainError(
-      'VALIDATION_FAILED',
-      'This kind of project document is not available yet',
-      {
-        issues: [{ path: ['projectDocument', 'kind'], message: 'Not available yet' }],
-      },
-    );
   }
   const ids = [
     header.contractValueId,
@@ -248,6 +240,37 @@ export async function projectDocumentColumns(
     advanceMinor: minor(header.advanceMinor),
     supplierReference: header.supplierReference,
   };
+}
+
+/**
+ * The lines a draft stores (S12 "Drafts"): as typed, except a client's retention release, whose
+ * retention items (`retentionItems`) are its lines, each naming its item and the amount released;
+ * a billing and a supplier's release have none (`VALIDATION_FAILED` for lines typed on them).
+ */
+export function documentLines(
+  header: ProjectDocumentHeaderInput | null | undefined,
+  lines: readonly DraftLineInput[],
+): readonly DraftLineInput[] {
+  if (header == null || header.kind === 'purchase' || header.kind === 'wage_sheet') return lines;
+  if (lines.length > 0) {
+    throw new DomainError('VALIDATION_FAILED', "A billing's or a release's lines are derived", {
+      issues: [{ path: ['lines'], message: 'Derived from the document' }],
+    });
+  }
+  return (header.retentionItems ?? []).map((item) => ({
+    accountId: null,
+    dimensionValueIds: [],
+    currency: null,
+    amountMinor: item.amountMinor,
+    memo: null,
+    openItemId: item.itemId,
+    newItem: null,
+    materialId: null,
+    unit: null,
+    quantity: null,
+    unitPrice: null,
+    advanceMinor: null,
+  }));
 }
 
 /**
@@ -327,7 +350,7 @@ export async function insertDraft(
     ...(await voucherColumns(tx, input.voucher)),
     ...(await projectDocumentColumns(tx, input.projectDocument)),
   });
-  await writeLines(tx, companyId, id, input.lines);
+  await writeLines(tx, companyId, id, documentLines(input.projectDocument, input.lines));
   await writeCompanyAudit(tx, companyId, actor, {
     action: 'draft.created',
     entityType: 'entry_draft',

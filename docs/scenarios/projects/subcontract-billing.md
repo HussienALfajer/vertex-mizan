@@ -1,8 +1,8 @@
 # A subcontractor's billing
 
-Status: Proposed
+Status: Approved (owner, 2026-11-16)
 
-The expected entries of the eight cases were approved by the owner on 2026-11-16, with two readings of S12 rules 12, 15 and 18: the subcontractor's net on `211002`, like the retention on `211006`, carries the project, as a purchase's credit does; and while the supplier's advance for the project is held only in another currency, a typed recovery is refused (`ADVANCE_CURRENCY_MISMATCH`) and the computed one is capped at zero, as when there is no advance. They stay `Proposed` until S12's slice brings the `project_document` executor, the subcontracts setup and the project documents reader.
+The expected entries of the eight cases were approved by the owner on 2026-11-16, with two readings of S12 rules 12, 15 and 18: the subcontractor's net on `211002`, like the retention on `211006`, carries the project, as a purchase's credit does; and while the supplier's advance for the project is held only in another currency, a typed recovery is refused (`ADVANCE_CURRENCY_MISMATCH`) and the computed one is capped at zero, as when there is no advance. S12's second PR brought the billings and releases to the `project_document` executor, the project terms setup and the project documents reader, and switched the cases to `Approved` with no expected value changed.
 
 ## Rule
 

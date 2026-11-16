@@ -108,7 +108,7 @@ import {
   projectDocumentSequences,
   projectDocuments,
 } from '../schema/project-documents.js';
-import { materials } from '../schema/projects.js';
+import { materials, projectTerms, subcontracts } from '../schema/projects.js';
 import { exchangeRates, ratePairs } from '../schema/rates.js';
 import { ledgersOf } from '../services/companies.js';
 import { exchangeRateOf, publicationCalendar, rateSuperseded } from '../services/rates.js';
@@ -215,15 +215,22 @@ export type PostingContent =
 
 /** A project document's header as it posts (S12 "Drafts"). */
 export interface ProjectDocumentSpec {
-  readonly kind: Extract<ProjectDocumentKind, 'purchase' | 'wage_sheet'>;
+  readonly kind: ProjectDocumentKind;
   /** The project: a value of the `contract` dimension of kind `project`. */
   readonly contractValueId: string;
-  /** A purchase's supplier; null on a wage sheet. */
+  /** The supplier of a purchase, a subcontract billing or a supplier's release; null otherwise. */
   readonly counterpartyValueId: string | null;
-  readonly currency: CurrencyCode;
+  /** A purchase's or a wage sheet's; a billing's and a release's are their terms' (null here). */
+  readonly currency: CurrencyCode | null;
+  /** A retention release's side (S12 rules 19–20); null on other kinds. */
+  readonly side: 'client' | 'supplier' | null;
   readonly periodFrom: string | null;
   readonly periodTo: string | null;
-  /** The advance a purchase applies; null for none. */
+  /** A billing's cumulative certified value (S12 rule 14). */
+  readonly cumulativeMinor: bigint | null;
+  /** A billing's retention as typed, or a supplier's release's amount (S12 rules 15, 20). */
+  readonly retentionMinor: bigint | null;
+  /** The advance a purchase applies or a billing recovers, as typed; null for none or computed. */
   readonly advanceMinor: bigint | null;
   readonly supplierReference: string | null;
 }
@@ -241,6 +248,8 @@ export interface DocumentLineSpec {
   readonly quantity: LineQuantity | null;
   /** A purchase line's covered part as typed (S12 rule 12). */
   readonly advanceMinor: bigint | null;
+  /** A client's release line: the retention item released, its amount the line's (S12 rule 19). */
+  readonly openItemId?: string | null;
 }
 
 /**
@@ -360,15 +369,31 @@ interface Built {
 interface BuiltDocumentRow {
   readonly kind: ProjectDocumentKind;
   readonly contractValueId: string;
+  /** The supplier, or the project's client on a progress billing and a client's release. */
   readonly counterpartyValueId: string | null;
   readonly currency: CurrencyCode;
+  readonly side: 'client' | 'supplier' | null;
   readonly periodFrom: string | null;
   readonly periodTo: string | null;
+  /** A purchase's or a sheet's lines summed; a billing's period's value; a release's amount. */
   readonly totalMinor: bigint;
   readonly advanceMinor: bigint | null;
-  /** What the counterparties are credited: the total less the advance applied. */
+  /** What the counterparties are credited or charged: the total less the deductions. */
   readonly netMinor: bigint;
   readonly supplierReference: string | null;
+  /** A billing's number within its project or subcontract (S12 rule 16). */
+  readonly projectSequence: number | null;
+  readonly cumulativeMinor: bigint | null;
+  readonly previousMinor: bigint | null;
+  readonly retentionMinor: bigint | null;
+  /** The contract's or the subcontract's value, for the preview's warning (S12 rule 14). */
+  readonly contractValueMinor: bigint | null;
+}
+
+/** A project document's number in its kind and fiscal year, taken before its lines (S12 rule 21). */
+interface DocumentNumber {
+  readonly fiscalYear: number;
+  readonly number: number;
 }
 
 type Role =
@@ -1385,6 +1410,30 @@ function negatedQuantity(quantity: LineQuantity): LineQuantity {
   return { ...quantity, quantity: negated };
 }
 
+/**
+ * S12 rule 22: a billing is cancelled only while it is the latest uncancelled billing of its
+ * project or subcontract (`PROJECT_DOCUMENT_NOT_LATEST`), so the cumulative chain stays true.
+ */
+async function checkLatestBilling(tx: Transaction, entryId: string): Promise<void> {
+  const result = await tx.execute<{ later: boolean }>(sql`
+    select exists (
+      select 1 from ${projectDocuments} d
+      join ${projectDocuments} l on l.company_id = d.company_id and l.kind = d.kind
+        and l.contract_value_id = d.contract_value_id
+        and l.counterparty_value_id = d.counterparty_value_id
+        and l.project_sequence > d.project_sequence
+      where d.entry_id = ${entryId} and d.project_sequence is not null
+        and not exists (
+          select 1 from ${journalEntries} r
+          where r.company_id = l.company_id and r.reverses_entry_id = l.entry_id)
+    ) as later`);
+  if (result.rows[0]?.later === true) {
+    refuse('PROJECT_DOCUMENT_NOT_LATEST', 'Cancel the later billings of the project first', {
+      entryId,
+    });
+  }
+}
+
 async function reversalLines(
   tx: Transaction,
   content: Extract<PostingContent, { kind: 'reversal' }>,
@@ -1426,6 +1475,7 @@ async function reversalLines(
     rounding: { account: roleTarget('conversion_rounding') },
   });
   if (balanced.length !== negated.length) throw new Error('A reversal needed a rounding line');
+  await checkLatestBilling(tx, original.id);
   const items = await itemsOf(
     tx,
     movements.map((movement) => movement.itemId),
@@ -1651,7 +1701,9 @@ function checkDates(on: string, content: PostingContent, ledgers: CompanyLedgers
       onLine(index + 1, () => checkCurrencyDate(line.currency, on));
     }
   }
-  if (content.kind === 'project_document') checkCurrencyDate(content.document.currency, on);
+  if (content.kind === 'project_document' && content.document.currency !== null) {
+    checkCurrencyDate(content.document.currency, on);
+  }
 }
 
 /**
@@ -1666,6 +1718,7 @@ async function buildLines(
   ledgers: CompanyLedgers,
   daysOff: readonly number[],
   lock: boolean,
+  documentNumber: DocumentNumber | null = null,
 ): Promise<Built> {
   switch (content.kind) {
     case 'manual':
@@ -1679,7 +1732,7 @@ async function buildLines(
     case 'opening_reversal':
       return openingReversalLines(tx, content, on, ledgers, lock);
     case 'project_document':
-      return projectDocumentLines(tx, content, on, ledgers, daysOff, lock);
+      return projectDocumentLines(tx, content, on, ledgers, daysOff, lock, documentNumber);
   }
 }
 
@@ -1690,10 +1743,17 @@ async function buildLines(
  * "Accounting treatment"), with the counterparty type each running account is kept by.
  */
 const DOCUMENT_ACCOUNTS = {
-  suppliers: { code: '211001', counterparty: 'supplier' },
-  supplierAdvances: { code: '114002', counterparty: 'supplier' },
-  workers: { code: '211007', counterparty: 'worker' },
-  wages: { code: '511002', counterparty: null },
+  suppliers: { code: '211001', item: 'running', counterparty: 'supplier' },
+  supplierAdvances: { code: '114002', item: 'running', counterparty: 'supplier' },
+  workers: { code: '211007', item: 'running', counterparty: 'worker' },
+  wages: { code: '511002', item: null, counterparty: null },
+  receivables: { code: '112001', item: 'document', counterparty: 'client' },
+  retentionsReceivable: { code: '113002', item: 'document', counterparty: 'client' },
+  clientAdvances: { code: '212002', item: 'running', counterparty: 'client' },
+  revenue: { code: '411001', item: null, counterparty: null },
+  subcontractors: { code: '211002', item: 'running', counterparty: 'supplier' },
+  retentionsPayable: { code: '211006', item: 'running', counterparty: 'supplier' },
+  subcontracting: { code: '511003', item: null, counterparty: null },
 } as const;
 
 type DocumentAccount = (typeof DOCUMENT_ACCOUNTS)[keyof typeof DOCUMENT_ACCOUNTS];
@@ -1716,9 +1776,9 @@ async function documentAccount(tx: Transaction, account: DocumentAccount): Promi
   const fits =
     row !== undefined &&
     row.kind === 'postable' &&
-    (account.counterparty === null
+    (account.item === null
       ? row.itemKind === null
-      : row.itemKind === 'running' && row.counterpartyType === account.counterparty);
+      : row.itemKind === account.item && row.counterpartyType === account.counterparty);
   if (!fits) {
     refuse(
       'VALIDATION_FAILED',
@@ -1862,10 +1922,10 @@ async function projectDocumentLines(
   ledgers: CompanyLedgers,
   daysOff: readonly number[],
   lock: boolean,
+  documentNumber: DocumentNumber | null,
 ): Promise<Built> {
   const origin = 'manual';
   const { document } = content;
-  const { currency } = document;
   const keepsParallel = ledgers.parallel !== null;
   const project = await projectOf(tx, document.contractValueId);
   const projectDimension = { [project.typeId]: project.id };
@@ -1884,7 +1944,34 @@ async function projectDocumentLines(
     rates,
     calendar: await publicationCalendar(tx, daysOff),
   };
-  let input: ProjectDocumentInput;
+  let input: ProjectDocumentInput | undefined;
+  let extras: DocumentExtras;
+  if (document.kind === 'purchase' || document.kind === 'wage_sheet') {
+    if (document.currency === null) {
+      refuse('VALIDATION_FAILED', 'A purchase and a wage sheet name their currency', {});
+    }
+    extras = {
+      counterpartyValueId: document.counterpartyValueId,
+      currency: document.currency,
+      projectSequence: null,
+      contractValueMinor: null,
+    };
+  } else {
+    if (documentNumber === null) throw new TypeError('A billing or a release needs its number');
+    const prepared = await billingOrRelease(tx, {
+      content,
+      project,
+      values,
+      on,
+      keepsParallel,
+      lock,
+      documentNumber,
+      newItems,
+    });
+    input = prepared.input;
+    extras = prepared.extras;
+  }
+  const { currency } = extras;
   if (document.kind === 'purchase') {
     const supplier =
       document.counterpartyValueId === null ? undefined : values.get(document.counterpartyValueId);
@@ -1983,7 +2070,7 @@ async function projectDocumentLines(
               ),
       },
     };
-  } else {
+  } else if (document.kind === 'wage_sheet') {
     const { periodFrom, periodTo } = document;
     if (periodFrom === null || periodTo === null) {
       refuse('VALIDATION_FAILED', 'A wage sheet has its period', {});
@@ -2036,6 +2123,7 @@ async function projectDocumentLines(
       workers,
     };
   }
+  if (input === undefined) throw new TypeError('A project document of no kind');
   const built = buildProjectDocument(input, context);
   await checkMaterials(tx, built.quantities);
   const roles = await roleAccounts(tx);
@@ -2053,9 +2141,30 @@ async function projectDocumentLines(
     roles,
   );
   const typedOf = (index: number) => entry.typed[index] ?? null;
+  const billing = isBilling(document.kind);
   // Every line is checked as a manual line: the cost lines with the project, the running lines with
-  // their counterparty and the project, the differences and rounding on the role accounts.
-  await checkAgainstChart(tx, balanced, origin);
+  // their counterparty and the project, a billing's or a release's document items with the item
+  // they open or clear, the differences and rounding on the role accounts.
+  const chartAccountsUsed = await chartOf(tx, [...new Set(balanced.map((line) => line.account))]);
+  const lineValues = await dimensionValuesOf(tx, [
+    ...new Set(balanced.flatMap((line) => Object.values(line.dimensions))),
+  ]);
+  const made = new Set(newItems.map((item) => item.id));
+  for (const line of balanced) {
+    const account = chartAccountsUsed.get(line.account);
+    checkLineAgainstChart({
+      account,
+      currency: line.transaction.currency,
+      dimensions: Object.values(line.dimensions).map(
+        (id) => lineValues.get(id) as LineDimensionValue,
+      ),
+      origin,
+      ...(account?.itemKind === 'document' &&
+        line.item !== undefined && { item: made.has(line.item.id) ? 'new' : 'existing' }),
+    });
+  }
+  // An item made for a line that does not post (a net or a retention of zero) is not made.
+  const posting = newItems.filter((item) => balanced.some((line) => line.item?.id === item.id));
   const advanceLine =
     built.advanceLine === null
       ? -1
@@ -2069,7 +2178,7 @@ async function projectDocumentLines(
       return { line, memo: typed === null ? null : memoOf(typed), adjusted: false };
     }),
     rateIds: ids,
-    newItems,
+    newItems: posting,
     voided: [],
     quantities: balanced.map((_, index) => {
       const typed = typedOf(index);
@@ -2079,16 +2188,388 @@ async function projectDocumentLines(
     document: {
       kind: document.kind,
       contractValueId: project.id,
-      counterpartyValueId: document.counterpartyValueId,
+      counterpartyValueId: extras.counterpartyValueId,
       currency,
+      side: document.kind === 'retention_release' ? document.side : null,
       periodFrom: document.periodFrom,
       periodTo: document.periodTo,
       totalMinor: built.totalMinor,
-      advanceMinor:
-        document.kind === 'purchase' && document.advanceMinor !== null ? built.advanceMinor : null,
+      advanceMinor: billing
+        ? built.advanceMinor
+        : document.kind === 'purchase' && document.advanceMinor !== null
+          ? built.advanceMinor
+          : null,
       netMinor: built.netMinor,
       supplierReference: document.supplierReference,
+      projectSequence: extras.projectSequence,
+      cumulativeMinor: billing ? document.cumulativeMinor : null,
+      previousMinor: billing ? built.previousMinor : null,
+      retentionMinor: billing || document.kind === 'retention_release' ? built.retentionMinor : null,
+      contractValueMinor: extras.contractValueMinor,
     },
+  };
+}
+
+/** What a project document's row takes besides its build (S12 "Data"). */
+interface DocumentExtras {
+  readonly counterpartyValueId: string | null;
+  readonly currency: CurrencyCode;
+  readonly projectSequence: number | null;
+  readonly contractValueMinor: bigint | null;
+}
+
+const isBilling = (kind: ProjectDocumentKind) =>
+  kind === 'progress_billing' || kind === 'subcontract_billing';
+
+/**
+ * A new document item a billing or a release opens on a document control account (S12 rules 16,
+ * 19): named by the document's printed number, free on its account (`OPEN_ITEM_REFERENCE_TAKEN`),
+ * opening as a debit, the made one added to `newItems`.
+ */
+async function newDocumentItem(
+  tx: Transaction,
+  input: {
+    readonly accountId: string;
+    readonly reference: string;
+    readonly dimensions: Dimensions;
+    readonly counterpartyValueId: string;
+    readonly currency: CurrencyCode;
+    readonly on: string;
+    readonly keepsParallel: boolean;
+  },
+  newItems: NewItem[],
+): Promise<RunningTarget> {
+  const [taken] = await tx
+    .select({ id: openItems.id })
+    .from(openItems)
+    .where(
+      and(
+        eq(openItems.kind, 'document'),
+        eq(openItems.accountId, input.accountId),
+        eq(openItems.reference, input.reference),
+      ),
+    );
+  if (taken !== undefined) {
+    refuse('OPEN_ITEM_REFERENCE_TAKEN', 'The reference is used on this account', {
+      reference: input.reference,
+    });
+  }
+  const id = uuidv7();
+  newItems.push({
+    id,
+    accountId: input.accountId,
+    kind: 'document',
+    reference: input.reference,
+    dimensions: input.dimensions,
+    counterpartyValueId: input.counterpartyValueId,
+    currency: input.currency,
+    dueOn: null,
+    documentDate: input.on,
+  });
+  return {
+    account: input.accountId,
+    dimensions: input.dimensions,
+    item: {
+      id,
+      kind: 'document',
+      direction: null,
+      opensAs: 1,
+      balance: emptyBalance(input.currency, input.keepsParallel),
+    },
+  };
+}
+
+/**
+ * The latest posted, uncancelled billing of a project (or a supplier's subcontract on it) and the
+ * next number within it (S12 rules 14, 16): the numbers run through cancelled billings too. The
+ * ledger head, locked first by every posting, serialises two billings of one project, so the second
+ * reads the first's cumulative.
+ */
+async function billingChain(
+  tx: Transaction,
+  kind: 'progress_billing' | 'subcontract_billing',
+  contractValueId: string,
+  counterpartyValueId: string,
+): Promise<{ previous: { cumulativeMinor: bigint; on: string } | null; sequence: number }> {
+  const result = await tx.execute<{ cumulative: string | null; on: string | null; next: number }>(
+    sql`
+    select
+      (select d.cumulative_minor::text from ${projectDocuments} d
+        where d.kind = ${kind} and d.contract_value_id = ${contractValueId}
+          and d.counterparty_value_id = ${counterpartyValueId}
+          and not exists (
+            select 1 from ${journalEntries} r
+            where r.company_id = d.company_id and r.reverses_entry_id = d.entry_id)
+        order by d.project_sequence desc limit 1) as cumulative,
+      (select d.document_date::text from ${projectDocuments} d
+        where d.kind = ${kind} and d.contract_value_id = ${contractValueId}
+          and d.counterparty_value_id = ${counterpartyValueId}
+          and not exists (
+            select 1 from ${journalEntries} r
+            where r.company_id = d.company_id and r.reverses_entry_id = d.entry_id)
+        order by d.project_sequence desc limit 1) as on,
+      (select coalesce(max(d.project_sequence), 0) + 1 from ${projectDocuments} d
+        where d.kind = ${kind} and d.contract_value_id = ${contractValueId}
+          and d.counterparty_value_id = ${counterpartyValueId})::int as next`,
+  );
+  const row = result.rows[0];
+  return {
+    previous:
+      row?.cumulative == null || row.on == null
+        ? null
+        : { cumulativeMinor: BigInt(row.cumulative), on: row.on },
+    sequence: Number(row?.next ?? 1),
+  };
+}
+
+/**
+ * A billing's or a retention release's input to `buildProjectDocument()` (S12 rules 14–20), read
+ * after the ledger head: the project's terms or the supplier's subcontract (`PROJECT_TERMS_MISSING`),
+ * which give the currency and the rates; the billing chain; the advance's or the retention's
+ * project share; the running items and the new document items, named by the document's number.
+ */
+async function billingOrRelease(
+  tx: Transaction,
+  input: {
+    readonly content: Extract<PostingContent, { kind: 'project_document' }>;
+    readonly project: LineDimensionValue;
+    readonly values: ReadonlyMap<string, LineDimensionValue>;
+    readonly on: string;
+    readonly keepsParallel: boolean;
+    readonly lock: boolean;
+    readonly documentNumber: DocumentNumber;
+    readonly newItems: NewItem[];
+  },
+): Promise<{ input: ProjectDocumentInput; extras: DocumentExtras }> {
+  const { content, project, on, keepsParallel, lock, documentNumber, newItems } = input;
+  const { document } = content;
+  const printed = `${documentNumber.fiscalYear}/${documentNumber.number}`;
+  const projectDimension = { [project.typeId]: project.id };
+  const clientSide =
+    document.kind === 'progress_billing' ||
+    (document.kind === 'retention_release' && document.side === 'client');
+  if (clientSide) {
+    if (document.counterpartyValueId !== null) {
+      refuse('VALIDATION_FAILED', "A client's document names no supplier", {});
+    }
+    const clientId = project.parentValueId;
+    const client =
+      clientId === null ? undefined : (await dimensionValuesOf(tx, [clientId])).get(clientId);
+    if (client === undefined) refuse('VALIDATION_FAILED', 'A project has its client', {});
+    const [terms] = await tx
+      .select()
+      .from(projectTerms)
+      .where(eq(projectTerms.contractValueId, project.id));
+    if (terms === undefined) {
+      refuse('PROJECT_TERMS_MISSING', 'The project has no terms', { contractValueId: project.id });
+    }
+    const currency = terms.currency as CurrencyCode;
+    checkCurrencyDate(currency, on);
+    const dimensions = { [client.typeId]: client.id, ...projectDimension } as Dimensions;
+    const receivables = await documentAccount(tx, DOCUMENT_ACCOUNTS.receivables);
+    const retentions = await documentAccount(tx, DOCUMENT_ACCOUNTS.retentionsReceivable);
+    const extras = (projectSequence: number | null): DocumentExtras => ({
+      counterpartyValueId: client.id,
+      currency,
+      projectSequence,
+      contractValueMinor: terms.contractValueMinor,
+    });
+    if (document.kind === 'progress_billing') {
+      if (document.cumulativeMinor === null) {
+        refuse('VALIDATION_FAILED', 'A billing has its cumulative value', {});
+      }
+      const advances = await documentAccount(tx, DOCUMENT_ACCOUNTS.clientAdvances);
+      const chain = await billingChain(tx, 'progress_billing', project.id, client.id);
+      const target = { counterpartyValueId: client.id, currency, on, keepsParallel, dimensions };
+      return {
+        input: {
+          kind: 'progress_billing',
+          currency,
+          on,
+          cumulativeMinor: document.cumulativeMinor,
+          previous: chain.previous,
+          retentionBp: terms.retentionBp,
+          advanceRecoveryBp: terms.advanceRecoveryBp,
+          retentionMinor: document.retentionMinor,
+          advanceMinor: document.advanceMinor,
+          value: {
+            account: await documentAccount(tx, DOCUMENT_ACCOUNTS.revenue),
+            dimensions,
+          },
+          net: await newDocumentItem(
+            tx,
+            { ...target, accountId: receivables, reference: printed },
+            newItems,
+          ),
+          retention: await newDocumentItem(
+            tx,
+            { ...target, accountId: retentions, reference: printed },
+            newItems,
+          ),
+          // An advance received from the client is a credit (S12 rule 12).
+          advance: {
+            account: advances,
+            dimensions,
+            side: -1,
+            shares: await advanceShares(tx, advances, client.id, project.id, keepsParallel, lock),
+          },
+        },
+        extras: extras(chain.sequence),
+      };
+    }
+    // A client's release (rule 19): each retention item of the project on `113002`.
+    const items = await itemsOf(
+      tx,
+      content.lines.flatMap((line) => (line.openItemId == null ? [] : [line.openItemId])),
+      lock,
+    );
+    const released = content.lines.map((line, index) => {
+      const lineNo = index + 1;
+      const stored = line.openItemId == null ? undefined : items.get(line.openItemId);
+      if (
+        stored === undefined ||
+        stored.accountId !== retentions ||
+        stored.state.kind !== 'document' ||
+        stored.dimensions[project.typeId] !== project.id
+      ) {
+        refuse('VALIDATION_FAILED', "A release names a retention item of the project's", {
+          lineNo,
+        });
+      }
+      if (line.amountMinor === null) {
+        refuse('VALIDATION_FAILED', 'A release names the amount released', { lineNo });
+      }
+      return {
+        target: { account: stored.accountId, dimensions: stored.dimensions, item: stored.state },
+        amountMinor: line.amountMinor,
+      };
+    });
+    return {
+      input: {
+        kind: 'retention_release',
+        side: 'client',
+        currency,
+        items: released,
+        // Named apart from a billing of the same year and number, which names its own item
+        // `<fiscal year>/<number>` on `112001` (owner, 2026-11-16).
+        receivable: await newDocumentItem(
+          tx,
+          {
+            accountId: receivables,
+            reference: `إفراج ${printed}`,
+            dimensions,
+            counterpartyValueId: client.id,
+            currency,
+            on,
+            keepsParallel,
+          },
+          newItems,
+        ),
+      },
+      extras: extras(null),
+    };
+  }
+  // The supplier's side: a subcontractor's billing (rule 18) or a supplier's release (rule 20).
+  const supplier =
+    document.counterpartyValueId === null
+      ? undefined
+      : input.values.get(document.counterpartyValueId);
+  if (supplier === undefined || supplier.typeCode !== 'supplier') {
+    refuse('VALIDATION_FAILED', 'A subcontract billing and a supplier release name the supplier', {});
+  }
+  const [subcontract] = await tx
+    .select()
+    .from(subcontracts)
+    .where(
+      and(
+        eq(subcontracts.contractValueId, project.id),
+        eq(subcontracts.supplierValueId, supplier.id),
+        isNull(subcontracts.archivedAt),
+      ),
+    );
+  if (subcontract === undefined) {
+    refuse('PROJECT_TERMS_MISSING', 'The supplier has no subcontract on the project', {
+      contractValueId: project.id,
+      supplierValueId: supplier.id,
+    });
+  }
+  const currency = subcontract.currency as CurrencyCode;
+  checkCurrencyDate(currency, on);
+  const dimensions = { [supplier.typeId]: supplier.id, ...projectDimension } as Dimensions;
+  const running = async (account: DocumentAccount) =>
+    runningTarget(
+      tx,
+      {
+        accountId: await documentAccount(tx, account),
+        counterparty: supplier,
+        currency,
+        dimensions,
+        on,
+        keepsParallel,
+        lock,
+      },
+      newItems,
+    );
+  const extras = (projectSequence: number | null): DocumentExtras => ({
+    counterpartyValueId: supplier.id,
+    currency,
+    projectSequence,
+    contractValueMinor: subcontract.valueMinor,
+  });
+  if (document.kind === 'subcontract_billing') {
+    if (document.cumulativeMinor === null) {
+      refuse('VALIDATION_FAILED', 'A billing has its cumulative value', {});
+    }
+    const advances = await documentAccount(tx, DOCUMENT_ACCOUNTS.supplierAdvances);
+    const chain = await billingChain(tx, 'subcontract_billing', project.id, supplier.id);
+    return {
+      input: {
+        kind: 'subcontract_billing',
+        currency,
+        on,
+        cumulativeMinor: document.cumulativeMinor,
+        previous: chain.previous,
+        retentionBp: subcontract.retentionBp,
+        advanceRecoveryBp: subcontract.advanceRecoveryBp,
+        retentionMinor: document.retentionMinor,
+        advanceMinor: document.advanceMinor,
+        value: {
+          account: await documentAccount(tx, DOCUMENT_ACCOUNTS.subcontracting),
+          dimensions,
+        },
+        net: await running(DOCUMENT_ACCOUNTS.subcontractors),
+        retention: await running(DOCUMENT_ACCOUNTS.retentionsPayable),
+        // An advance paid to the subcontractor is a debit (S12 rule 12).
+        advance: {
+          account: advances,
+          dimensions,
+          side: 1,
+          shares: await advanceShares(tx, advances, supplier.id, project.id, keepsParallel, lock),
+        },
+      },
+      extras: extras(chain.sequence),
+    };
+  }
+  if (document.kind !== 'retention_release' || document.retentionMinor === null) {
+    refuse('VALIDATION_FAILED', "A supplier's release names the amount released", {});
+  }
+  const retentions = await documentAccount(tx, DOCUMENT_ACCOUNTS.retentionsPayable);
+  return {
+    input: {
+      kind: 'retention_release',
+      side: 'supplier',
+      currency,
+      amountMinor: document.retentionMinor,
+      // The supplier's retention is a credit, cleared at the project's share's average (rule 20).
+      retention: {
+        account: retentions,
+        dimensions,
+        side: -1,
+        shares: await advanceShares(tx, retentions, supplier.id, project.id, keepsParallel, lock),
+      },
+      payable: await running(DOCUMENT_ACCOUNTS.subcontractors),
+    },
+    extras: extras(null),
   };
 }
 
@@ -2520,7 +3001,23 @@ async function previewBuilt(
   if (isClosedPeriod(await readClosedPeriods(tx), period)) {
     refuse('PERIOD_CLOSED', `The period ${period} is closed`, { period });
   }
-  const built = await buildLines(tx, content, on, ledgers, settings.bulletinDaysOff, false);
+  const documentNumber =
+    content.kind === 'project_document'
+      ? await nextDocumentNumber(
+          tx,
+          content.document.kind,
+          fiscalYearOf(on, settings.fiscalYearStartMonth),
+        )
+      : null;
+  const built = await buildLines(
+    tx,
+    content,
+    on,
+    ledgers,
+    settings.bulletinDaysOff,
+    false,
+    documentNumber,
+  );
   await checkBoxes(tx, built.lines, on, false);
   const made = new Map(built.newItems.map((item) => [item.id, item]));
   const lines = built.lines.map(
@@ -2577,8 +3074,11 @@ export interface ProjectDocumentPreviewResult {
   readonly currency: CurrencyCode;
   readonly totalMinor: bigint;
   readonly advanceMinor: bigint | null;
-  /** The supplier's or the workers' credit: the total less the advance applied. */
+  /** The counterparty's credit or charge: the total less the deductions. */
   readonly netMinor: bigint;
+  /** A billing's previous cumulative and retention, a release's amount; null otherwise. */
+  readonly previousMinor: bigint | null;
+  readonly retentionMinor: bigint | null;
   readonly warnings: ProjectDocumentWarning[];
 }
 
@@ -2614,14 +3114,23 @@ export async function previewProjectDocument(
       ) as taken`);
     if (result.rows[0]?.taken === true) warnings.push('duplicate_supplier_reference');
   }
-  const advanceMinor = row.advanceMinor;
+  // S12 rule 14: a cumulative above the contract's (or subcontract's) value is a variation.
+  if (
+    row.cumulativeMinor !== null &&
+    row.contractValueMinor !== null &&
+    row.cumulativeMinor > row.contractValueMinor
+  ) {
+    warnings.push('cumulative_above_contract_value');
+  }
   return {
     lines,
     kind: row.kind,
     currency: row.currency,
     totalMinor: row.totalMinor,
-    advanceMinor,
+    advanceMinor: row.advanceMinor,
     netMinor: row.netMinor,
+    previousMinor: row.previousMinor,
+    retentionMinor: row.retentionMinor,
     warnings,
   };
 }
@@ -3094,7 +3603,21 @@ export async function post(tx: Transaction, request: PostingRequest): Promise<Po
   const fiscalYear = fiscalYearOf(on, settings.fiscalYearStartMonth);
   const periodId = await openPeriod(tx, companyId, on, fiscalYear);
 
-  const built = await buildLines(tx, content, on, ledgers, settings.bulletinDaysOff, true);
+  // S12 rule 21: a project document's number, taken before its lines so that a billing's and a
+  // release's new items carry it, and its entry's reference; a refusal rolls it back.
+  const documentNumber =
+    content.kind === 'project_document'
+      ? await takeDocumentNumber(tx, companyId, content.document.kind, fiscalYear)
+      : null;
+  const built = await buildLines(
+    tx,
+    content,
+    on,
+    ledgers,
+    settings.bulletinDaysOff,
+    true,
+    documentNumber === null ? null : { fiscalYear, number: documentNumber },
+  );
   // S11 rule 8: every entry, of any source, leaves each box at or above zero at every date.
   await checkBoxes(tx, built.lines, on, true);
   const reversesEntryId =
@@ -3115,14 +3638,10 @@ export async function post(tx: Transaction, request: PostingRequest): Promise<Po
           spec: request.voucher,
           number: await takeVoucherNumber(tx, companyId, request.voucher.kind, fiscalYear),
         };
-  // S12 rule 21: a project document's number, taken here so that its entry's reference carries it.
   const document =
-    built.document === undefined
+    built.document === undefined || documentNumber === null
       ? null
-      : {
-          row: built.document,
-          number: await takeDocumentNumber(tx, companyId, built.document.kind, fiscalYear),
-        };
+      : { row: built.document, number: documentNumber };
   const posted = await writeEntry(tx, companyId, head, at, request.actor, {
     requestId: created.id,
     description: request.description,
@@ -3151,20 +3670,20 @@ export async function post(tx: Transaction, request: PostingRequest): Promise<Po
       kind: document.row.kind,
       fiscalYear,
       number: document.number,
-      projectSequence: null,
+      projectSequence: document.row.projectSequence,
       documentDate: on,
       entryId: posted.id,
       draftId: request.draftId,
       contractValueId: document.row.contractValueId,
       counterpartyValueId: document.row.counterpartyValueId,
-      side: null,
+      side: document.row.side,
       currency: document.row.currency,
       periodFrom: document.row.periodFrom,
       periodTo: document.row.periodTo,
       totalMinor: document.row.totalMinor,
-      cumulativeMinor: null,
-      previousMinor: null,
-      retentionMinor: null,
+      cumulativeMinor: document.row.cumulativeMinor,
+      previousMinor: document.row.previousMinor,
+      retentionMinor: document.row.retentionMinor,
       advanceMinor: document.row.advanceMinor,
       supplierReference: document.row.supplierReference,
     });
@@ -3330,6 +3849,24 @@ const DOCUMENT_LABELS: { readonly [Kind in ProjectDocumentKind]: string } = {
 /** The reference a document's entry takes when the accountant left it empty: `كشف أجور 2026/3`. */
 function documentReference(kind: ProjectDocumentKind, fiscalYear: number, number: number): string {
   return `${DOCUMENT_LABELS[kind]} ${fiscalYear}/${number}`;
+}
+
+/** The number a document of a kind would take now in a fiscal year, for a preview: no lock. */
+async function nextDocumentNumber(
+  tx: Transaction,
+  kind: ProjectDocumentKind,
+  fiscalYear: number,
+): Promise<DocumentNumber> {
+  const [row] = await tx
+    .select({ lastNumber: projectDocumentSequences.lastNumber })
+    .from(projectDocumentSequences)
+    .where(
+      and(
+        eq(projectDocumentSequences.kind, kind),
+        eq(projectDocumentSequences.fiscalYear, fiscalYear),
+      ),
+    );
+  return { fiscalYear, number: (row?.lastNumber ?? 0) + 1 };
 }
 
 /**

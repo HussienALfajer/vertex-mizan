@@ -800,8 +800,8 @@ export async function readProjectDocument(
 /**
  * The posting content of a project document draft (S12 rules 4–13): its header and its lines as
  * stored, read back the way `post()` takes them, so the API's posting and the scenario book's post
- * exactly what the draft holds. `VALIDATION_FAILED` for a draft that is not a project document,
- * or a kind that is not available yet.
+ * exactly what the draft holds; a client's release's lines are its retention items. `VALIDATION_FAILED`
+ * for a draft that is not a project document.
  */
 export async function projectDocumentContentOf(
   tx: Transaction,
@@ -810,10 +810,10 @@ export async function projectDocumentContentOf(
   const [draft] = await tx.select().from(entryDrafts).where(eq(entryDrafts.id, draftId));
   if (!draft) throw new DomainError('NOT_FOUND', 'No such draft');
   const kind = draft.projectDocumentKind;
-  if (kind !== 'purchase' && kind !== 'wage_sheet') {
-    throw new DomainError('VALIDATION_FAILED', 'Not a project document draft of an available kind');
+  if (kind === null || draft.contractValueId === null) {
+    throw new DomainError('VALIDATION_FAILED', 'Not a project document draft');
   }
-  if (draft.contractValueId === null || draft.documentCurrency === null) {
+  if ((kind === 'purchase' || kind === 'wage_sheet') && draft.documentCurrency === null) {
     throw new DomainError('VALIDATION_FAILED', 'A project document names its project and currency');
   }
   const rows = await tx
@@ -826,9 +826,12 @@ export async function projectDocumentContentOf(
       kind,
       contractValueId: draft.contractValueId,
       counterpartyValueId: draft.counterpartyValueId,
-      currency: draft.documentCurrency as CurrencyCode,
+      currency: draft.documentCurrency as CurrencyCode | null,
+      side: draft.side,
       periodFrom: draft.periodFrom,
       periodTo: draft.periodTo,
+      cumulativeMinor: draft.cumulativeMinor,
+      retentionMinor: draft.retentionMinor,
       advanceMinor: draft.advanceMinor,
       supplierReference: draft.supplierReference,
     },
@@ -847,6 +850,7 @@ export async function projectDocumentContentOf(
               unitPrice: row.unitPrice,
             },
       advanceMinor: row.advanceMinor,
+      openItemId: row.openItemId,
     })),
   };
 }

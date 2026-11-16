@@ -1,8 +1,8 @@
 # A client's progress billing
 
-Status: Proposed
+Status: Approved (owner, 2026-11-16)
 
-The expected entries of the first eight cases were approved by the owner on 2026-11-16; after the accounting review the owner decided the same day that a recovery clears at the average of the project's own share of the client's advance (S12 rule 12, ADR 0023), and the last two cases were added for it and for S12 edge cases 7 and 8. They stay `Proposed` until S12's slice brings the `project_document` executor and the project documents reader.
+The expected entries of the first eight cases were approved by the owner on 2026-11-16; after the accounting review the owner decided the same day that a recovery clears at the average of the project's own share of the client's advance (S12 rule 12, ADR 0023), and the last two cases were added for it and for S12 edge cases 7 and 8. S12's second PR brought the billings and releases to the `project_document` executor, the project terms setup and the project documents reader, and switched the cases to `Approved` with no expected value changed.
 
 ## Rule
 
