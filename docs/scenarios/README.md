@@ -163,6 +163,16 @@ steps:                              # in order; a manual entry, a reversal, a ra
                                     #   the cumulative typed, and retention and advance (the
                                     #   recovery) only where the accountant changed the computed
                                     #   amount, as a client's billing
+  - project_document: <what it records>  # a retention release (S12 rules 19–20): the side and the
+    accounting_date: 2027-02-28     #   project; on the client's side each retention item of the
+    payload: { document: { kind: retention_release, side: client, contract: P1,
+                           retention_items: [{ item: "2026/1", amount: 300000 }] } }
+                                    #   project on 113002 by its reference, with the amount released
+                                    #   (at most its open amount); on the supplier's side the supplier
+                                    #   and the amount released as retention (side: supplier,
+                                    #   supplier: S2, retention: 300000); the currency is the
+                                    #   project's or the subcontract's; the client's new receivable
+                                    #   on 112001 is the item "إفراج <fiscal year>/<number>"
   - project_document: <what it records>  # a wage sheet (S12 rules 10–11), dated its period's last day:
     accounting_date: 2026-12-15     #   the currency and the period (period_from, period_to, within
     payload: { document: { kind: wage_sheet, contract: P1, currency: USD, period_from: 2026-12-01,
@@ -214,6 +224,12 @@ expect:
         period_from: 2026-12-01, period_to: 2026-12-15 }
                                     # a wage sheet: its period, within one calendar month and ending
                                     #   on its date; no terms, no counterparty
+    - { kind: retention_release, number: 1, date: 2027-02-28, contract: P1, client: C1, side: supplier,
+        supplier: S2, entry: 3, currency: USD, retention: 300000 }
+                                    # a retention release: its side (client or supplier), the
+                                    #   supplier on the supplier's side only, its entry and cancelling
+                                    #   reversal, the currency of the project's terms or of the
+                                    #   subcontract, and the amount released (retention, above zero)
   quantities:                       # optional (S12 rules 4–6): the exact set of the line quantities
     - { entry: 1, account: "511001", currency: TRY, amount: 3937500, material: CEM, unit: "طن",
         quantity: "12.500", unit_price: "3150.0000" }

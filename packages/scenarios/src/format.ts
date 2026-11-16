@@ -1078,12 +1078,50 @@ const wageSheetSchema = z
     cancelledBy: cancelled_by ?? null,
   }));
 
+/**
+ * A retention release the company holds (S12 rules 19–21): its number in its kind and fiscal year,
+ * its date, project and the project's client, its side (`client` or `supplier`, with the supplier
+ * on the supplier's side only), the entry it posted and the reversal that cancelled it (posting
+ * order, rule 22), its currency and the amount released (`retention`, above zero).
+ */
+const retentionReleaseSchema = z
+  .strictObject({
+    kind: z.literal('retention_release'),
+    number: countSchema(1),
+    date: dateSchema,
+    contract: z.string().min(1),
+    client: z.string().min(1),
+    side: z.enum(['client', 'supplier']),
+    supplier: z.string().min(1).optional(),
+    entry: countSchema(1),
+    currency: currencyCodeSchema,
+    retention: amountSchema,
+    cancelled_by: countSchema(1).optional(),
+  })
+  .superRefine((document, context) => {
+    const issue = (message: string, path: PropertyKey[]) =>
+      context.addIssue({ code: 'custom', message, path });
+    if (document.retention <= 0n) issue('A release is above zero', ['retention']);
+    if (document.side === 'supplier' && document.supplier === undefined) {
+      issue("A supplier's release names the supplier", ['supplier']);
+    }
+    if (document.side === 'client' && document.supplier !== undefined) {
+      issue("A client's release names no supplier", ['supplier']);
+    }
+  })
+  .transform(({ cancelled_by, supplier, ...document }) => ({
+    ...document,
+    supplier: supplier ?? null,
+    cancelledBy: cancelled_by ?? null,
+  }));
+
 /** A project document the company holds (S12 rule 21), by its kind. */
 const projectDocumentSchema = z.discriminatedUnion('kind', [
   progressBillingSchema,
   subcontractBillingSchema,
   purchaseSchema,
   wageSheetSchema,
+  retentionReleaseSchema,
 ]);
 
 export type ExpectedProjectDocument = z.output<typeof projectDocumentSchema>;
@@ -1380,9 +1418,22 @@ export const caseSchema = z
           const message = `${document.supplier}'s subcontract on ${document.contract} is in ${subcontract.currency}`;
           issue(message, [...path, 'currency']);
         }
-      } else if (document.kind !== 'progress_billing') {
+      } else if (document.kind === 'retention_release' && document.supplier !== null) {
+        // Rule 20: a supplier's release is in its subcontract's currency.
+        const subcontract = subcontracts.find(
+          (s) => s.contract === document.contract && s.supplier === document.supplier,
+        );
+        if (subcontract === undefined) {
+          const message = `${document.supplier} has no subcontract on ${document.contract}`;
+          issue(message, [...path, 'supplier']);
+        } else if (subcontract.currency !== document.currency) {
+          const message = `${document.supplier}'s subcontract on ${document.contract} is in ${subcontract.currency}`;
+          issue(message, [...path, 'currency']);
+        }
+      } else if (document.kind !== 'progress_billing' && document.kind !== 'retention_release') {
         // A purchase or a wage sheet needs no terms, and may be in any currency (rules 7, 10).
       } else if (contract.terms === null) {
+        // A client's billing, and a client's release of its retentions (rule 19), need the terms.
         issue(`A billing needs the terms of ${document.contract}`, [...path, 'contract']);
       } else if (contract.terms.currency !== document.currency) {
         const message = `${document.contract}'s terms are in ${contract.terms.currency}`;

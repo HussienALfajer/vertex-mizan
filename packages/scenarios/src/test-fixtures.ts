@@ -174,6 +174,62 @@ expect:
         entry: 1, currency: SYP, cumulative: 100000, previous: 0, retention: 10000, advance: 0 }
 `;
 
+/** S12: a client's and a subcontractor's retention released, and the documents they hold. */
+export const RETENTION_RELEASE = `
+case: retention releases
+company: { shape: syp, book: SYP, rate_policy: { book: bulletin }, template: contracting,
+           contracts: [{ code: P1, kind: project, client: C1,
+                         terms: { currency: SYP, value: 1000000, retention_bp: 1000, advance_recovery_bp: 0 } }],
+           subcontracts: [{ contract: P1, supplier: S2, currency: SYP, retention_bp: 1000, advance_recovery_bp: 0 }] }
+steps:
+  - project_document: progress billing 1 of P1
+    accounting_date: 2026-11-03
+    payload: { document: { kind: progress_billing, contract: P1, cumulative: 100000 } }
+  - project_document: S2's billing 1 on P1
+    accounting_date: 2026-11-03
+    payload: { document: { kind: subcontract_billing, contract: P1, supplier: S2, cumulative: 100000 } }
+  - project_document: the client's retention released
+    accounting_date: 2026-11-30
+    payload: { document: { kind: retention_release, side: client, contract: P1,
+                           retention_items: [{ item: "2026/1", amount: 10000 }] } }
+  - project_document: S2's retention released
+    accounting_date: 2026-11-30
+    payload: { document: { kind: retention_release, side: supplier, contract: P1, supplier: S2, retention: 10000 } }
+expect:
+  entries:
+    - source: manual
+      date: 2026-11-03
+      lines:
+        - { account: "112001", dims: { client: C1, contract: P1 }, currency: SYP, amount: 90000, book: 90000 }
+        - { account: "113002", dims: { client: C1, contract: P1 }, currency: SYP, amount: 10000, book: 10000 }
+        - { account: "411001", dims: { client: C1, contract: P1 }, currency: SYP, amount: -100000, book: -100000 }
+    - source: manual
+      date: 2026-11-03
+      lines:
+        - { account: "511003", dims: { contract: P1, supplier: S2 }, currency: SYP, amount: 100000, book: 100000 }
+        - { account: "211006", dims: { supplier: S2, contract: P1 }, currency: SYP, amount: -10000, book: -10000 }
+        - { account: "211002", dims: { supplier: S2, contract: P1 }, currency: SYP, amount: -90000, book: -90000 }
+    - source: manual
+      date: 2026-11-30
+      lines:
+        - { account: "112001", dims: { client: C1, contract: P1 }, currency: SYP, amount: 10000, book: 10000 }
+        - { account: "113002", dims: { client: C1, contract: P1 }, currency: SYP, amount: -10000, book: -10000 }
+    - source: manual
+      date: 2026-11-30
+      lines:
+        - { account: "211006", dims: { supplier: S2, contract: P1 }, currency: SYP, amount: 10000, book: 10000 }
+        - { account: "211002", dims: { supplier: S2, contract: P1 }, currency: SYP, amount: -10000, book: -10000 }
+  project_documents:
+    - { kind: progress_billing, number: 1, date: 2026-11-03, contract: P1, client: C1, sequence: 1, entry: 1,
+        currency: SYP, cumulative: 100000, previous: 0, retention: 10000, advance: 0 }
+    - { kind: subcontract_billing, number: 1, date: 2026-11-03, contract: P1, client: C1, supplier: S2, sequence: 1,
+        entry: 2, currency: SYP, cumulative: 100000, previous: 0, retention: 10000, advance: 0 }
+    - { kind: retention_release, number: 1, date: 2026-11-30, contract: P1, client: C1, side: client, entry: 3,
+        currency: SYP, retention: 10000 }
+    - { kind: retention_release, number: 2, date: 2026-11-30, contract: P1, client: C1, side: supplier, supplier: S2,
+        entry: 4, currency: SYP, retention: 10000 }
+`;
+
 /** S12: a wage sheet with a days line and a lump sum, and the document it holds. */
 export const WAGE_SHEET = `
 case: a wage sheet
