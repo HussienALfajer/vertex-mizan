@@ -2,6 +2,7 @@ import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import {
   averageUnitCost,
+  basisPointsText,
   billingNet,
   decimalShare,
   onItsSide,
@@ -87,6 +88,16 @@ describe('the project report (S12 "Reports", reports/project-report.md)', () => 
         expect(costs.totals.variance).toBe(sum(costs.rows.map((r) => r.variance ?? 0n)));
       }),
     );
+  });
+
+  it('writes basis points as a percentage with up to 2 decimals', () => {
+    expect([1000, 1250, 1, 0, 10_000].map(basisPointsText)).toEqual([
+      '10',
+      '12.5',
+      '0.01',
+      '0',
+      '100',
+    ]);
   });
 
   it("nets a billing's deductions and shows a balance on its own side", () => {

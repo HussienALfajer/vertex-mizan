@@ -5,6 +5,7 @@ import {
   type Ledger,
   type MaterialQuantities,
   type MaterialQuantitiesQuery,
+  type ProjectDocumentKind,
   type ProjectList,
   type ProjectListQuery,
   type ProjectReport,
@@ -15,6 +16,7 @@ import {
 } from '@vertex-mizan/contracts';
 import {
   averageUnitCost,
+  basisPointsText,
   billingNet,
   onItsSide,
   type ProfitabilityAmount,
@@ -832,5 +834,282 @@ export async function readMaterialQuantities(
       })
       .sort((a, b) => (sortKey(a) < sortKey(b) ? -1 : 1)),
     ledgerTotal: total?.total ?? '0',
+  };
+}
+
+// ——— A project document as it prints ———
+
+/** A line of a printed project document: a purchase's or a sheet's line, or a released retention. */
+export interface ProjectDocumentPrintLine {
+  readonly lineNo: number;
+  readonly account: { readonly code: string; readonly name: string };
+  readonly currency: CurrencyCode;
+  /** A magnitude for a released retention; the line's signed amount otherwise. */
+  readonly amountMinor: string;
+  readonly material: { readonly code: string; readonly name: string } | null;
+  readonly worker: string | null;
+  readonly quantity: string | null;
+  readonly unit: string | null;
+  readonly unitPrice: string | null;
+  /** A lump sum's description, or a line's memo. */
+  readonly memo: string | null;
+  /** The open item a released retention clears. */
+  readonly item: string | null;
+}
+
+/**
+ * A project document as it prints (S12 "Printing and legal books"): its kind and numbers, its
+ * project, client and counterparty by name, its figures (a billing's cumulative, previous, period,
+ * deductions and net), the rates of its terms or subcontract, its lines, its entry, who prepared
+ * and approved it, and the reversal that cancelled it.
+ */
+export interface ProjectDocumentPrint {
+  readonly id: string;
+  readonly kind: ProjectDocumentKind;
+  readonly fiscalYear: number;
+  readonly number: number;
+  readonly projectSequence: number | null;
+  readonly documentDate: string;
+  readonly currency: CurrencyCode;
+  readonly project: { readonly code: string | null; readonly name: string };
+  readonly client: { readonly code: string | null; readonly name: string } | null;
+  readonly counterparty: { readonly code: string | null; readonly name: string } | null;
+  readonly side: 'client' | 'supplier' | null;
+  readonly supplierReference: string | null;
+  readonly periodFrom: string | null;
+  readonly periodTo: string | null;
+  /** The contract's (or subcontract's) value and rates, for a billing. */
+  readonly contractValueMinor: string | null;
+  readonly retentionBp: number | null;
+  readonly advanceRecoveryBp: number | null;
+  /** The two rates as printed percentages ("10", "12.5"). */
+  readonly retentionRate: string | null;
+  readonly advanceRecoveryRate: string | null;
+  readonly totalMinor: string;
+  readonly cumulativeMinor: string | null;
+  readonly previousMinor: string | null;
+  readonly retentionMinor: string | null;
+  readonly advanceMinor: string | null;
+  /** What the document comes to: a billing's net due, the total otherwise. */
+  readonly netMinor: string;
+  readonly lines: readonly ProjectDocumentPrintLine[];
+  /** A wage sheet's total per worker, in the order of their first line. */
+  readonly workerTotals: readonly { readonly worker: string; readonly amountMinor: string }[];
+  readonly entry: { readonly fiscalYear: number; readonly number: number };
+  readonly cancelledBy: { readonly fiscalYear: number; readonly number: number } | null;
+  readonly preparedBy: string | null;
+  readonly approvedBy: string | null;
+}
+
+/** The document `id` as it prints (`NOT_FOUND` for none in the company). */
+export async function readProjectDocumentPrint(
+  tx: Transaction,
+  id: string,
+): Promise<ProjectDocumentPrint> {
+  const [row] = (
+    await tx.execute<{
+      id: string;
+      kind: ProjectDocumentKind;
+      fiscal_year: number;
+      number: number;
+      project_sequence: number | null;
+      document_date: string;
+      currency: string;
+      contract_value_id: string;
+      counterparty_value_id: string | null;
+      side: 'client' | 'supplier' | null;
+      supplier_reference: string | null;
+      period_from: string | null;
+      period_to: string | null;
+      total: string;
+      cumulative: string | null;
+      previous: string | null;
+      retention: string | null;
+      advance: string | null;
+      entry_id: string;
+      entry_fiscal_year: number;
+      entry_number: number;
+      prepared_by: string | null;
+      approved_by: string | null;
+      reversal_fiscal_year: number | null;
+      reversal_number: number | null;
+      terms_value: string | null;
+      terms_retention: number | null;
+      terms_recovery: number | null;
+    }>(sql`
+      select d.id, d.kind, d.fiscal_year, d.number, d.project_sequence,
+        to_char(d.document_date, 'YYYY-MM-DD') as document_date, d.currency, d.contract_value_id,
+        d.counterparty_value_id, d.side, d.supplier_reference,
+        to_char(d.period_from, 'YYYY-MM-DD') as period_from,
+        to_char(d.period_to, 'YYYY-MM-DD') as period_to,
+        d.total_minor::text as total, d.cumulative_minor::text as cumulative,
+        d.previous_minor::text as previous, d.retention_minor::text as retention,
+        d.advance_minor::text as advance, d.entry_id,
+        e.fiscal_year as entry_fiscal_year, e.number as entry_number,
+        (select u.name from public.users u where u.id = e.prepared_by_user_id) as prepared_by,
+        (select u.name from public.users u where u.id = e.approved_by_user_id) as approved_by,
+        r.fiscal_year as reversal_fiscal_year, r.number as reversal_number,
+        case d.kind
+          when 'progress_billing' then t.contract_value_minor::text
+          when 'subcontract_billing' then s.value_minor::text
+        end as terms_value,
+        case d.kind
+          when 'progress_billing' then t.retention_bp
+          when 'subcontract_billing' then s.retention_bp
+        end as terms_retention,
+        case d.kind
+          when 'progress_billing' then t.advance_recovery_bp
+          when 'subcontract_billing' then s.advance_recovery_bp
+        end as terms_recovery
+      from project_documents d
+      join journal_entries e on e.company_id = d.company_id and e.id = d.entry_id
+      left join journal_entries r on r.company_id = d.company_id and r.reverses_entry_id = d.entry_id
+      left join project_terms t on t.company_id = d.company_id
+        and t.contract_value_id = d.contract_value_id and t.archived_at is null
+      left join subcontracts s on s.company_id = d.company_id
+        and s.contract_value_id = d.contract_value_id
+        and s.supplier_value_id = d.counterparty_value_id and s.archived_at is null
+      where d.id = ${id}::uuid`)
+  ).rows;
+  if (row === undefined) throw new DomainError('NOT_FOUND', 'No such project document');
+  const workerType = await builtinDimensionTypeId(tx, 'worker');
+  const lines = (
+    await tx.execute<{
+      line_no: number;
+      code: string;
+      name: string;
+      is_control: boolean;
+      currency: string;
+      amount: string;
+      magnitude: string;
+      memo: string | null;
+      worker: string | null;
+      material_code: string | null;
+      material_name: string | null;
+      quantity: string | null;
+      unit: string | null;
+      unit_price: string | null;
+      item: string | null;
+    }>(sql`
+      select l.line_no, a.code, a.name, a.is_control, l.currency, l.amount_minor::text as amount,
+        abs(l.amount_minor)::text as magnitude, l.memo,
+        (select v.name from dimension_set_values w
+          join dimension_values v on v.company_id = w.company_id and v.id = w.value_id
+          where w.company_id = l.company_id and w.set_id = l.dimension_set_id
+            and w.type_id = ${workerType}::uuid) as worker,
+        m.code as material_code, m.name as material_name, q.quantity::text as quantity, q.unit,
+        q.unit_price::text as unit_price,
+        (select i.reference from open_item_movements mv
+          join open_items i on i.company_id = mv.company_id and i.id = mv.item_id
+          where mv.company_id = l.company_id and mv.line_id = l.id) as item
+      from journal_lines l
+      join chart_accounts a on a.company_id = l.company_id and a.id = l.account_id
+      left join line_quantities q on q.company_id = l.company_id and q.line_id = l.id
+      left join materials m on m.company_id = q.company_id and m.id = q.material_id
+      where l.entry_id = ${row.entry_id}::uuid and l.kind not in ('difference', 'rounding')
+      order by l.line_no`)
+  ).rows;
+  // A purchase's and a sheet's own lines are its costs; a release's, the retentions it clears.
+  const released = new Set([CODES.retention, CODES.subcontractRetention] as string[]);
+  const printed = lines.filter((line) =>
+    row.kind === 'purchase' || row.kind === 'wage_sheet'
+      ? !line.is_control
+      : row.kind === 'retention_release'
+        ? released.has(line.code)
+        : false,
+  );
+  const values = await reportValuesById(
+    tx,
+    [row.contract_value_id, row.counterparty_value_id].filter((value) => value !== null),
+  );
+  const named = (valueId: string | null) => {
+    const value = valueId === null ? undefined : values.get(valueId);
+    return value === undefined ? null : { code: value.code, name: value.name };
+  };
+  const project = named(row.contract_value_id);
+  if (project === null) throw new Error('A document of a project that is not there');
+  const [parent] = (
+    await tx.execute<{ parent_value_id: string | null }>(sql`
+      select parent_value_id from dimension_values where id = ${row.contract_value_id}::uuid`)
+  ).rows;
+  const clientId = parent?.parent_value_id ?? null;
+  const client =
+    clientId === null ? null : ((await reportValuesById(tx, [clientId])).get(clientId) ?? null);
+  const billing = row.kind === 'progress_billing' || row.kind === 'subcontract_billing';
+  const workerTotals =
+    row.kind !== 'wage_sheet'
+      ? []
+      : (
+          await tx.execute<{ worker: string; amount: string }>(sql`
+            select v.name as worker, sum(l.amount_minor)::text as amount
+            from journal_lines l
+            join chart_accounts a on a.company_id = l.company_id and a.id = l.account_id
+            join dimension_set_values w on w.company_id = l.company_id
+              and w.set_id = l.dimension_set_id and w.type_id = ${workerType}::uuid
+            join dimension_values v on v.company_id = w.company_id and v.id = w.value_id
+            where l.entry_id = ${row.entry_id}::uuid and not a.is_control
+              and l.kind not in ('difference', 'rounding')
+            group by v.id, v.name
+            order by min(l.line_no)`)
+        ).rows.map((total) => ({ worker: total.worker, amountMinor: total.amount }));
+  return {
+    id: row.id,
+    kind: row.kind,
+    fiscalYear: row.fiscal_year,
+    number: row.number,
+    projectSequence: row.project_sequence,
+    documentDate: row.document_date,
+    currency: row.currency as CurrencyCode,
+    project,
+    client: client === null ? null : { code: client.code, name: client.name },
+    counterparty: named(row.counterparty_value_id),
+    side: row.side,
+    supplierReference: row.supplier_reference,
+    periodFrom: row.period_from,
+    periodTo: row.period_to,
+    contractValueMinor: billing ? row.terms_value : null,
+    retentionBp: billing ? row.terms_retention : null,
+    advanceRecoveryBp: billing ? row.terms_recovery : null,
+    retentionRate:
+      billing && row.terms_retention !== null ? basisPointsText(row.terms_retention) : null,
+    advanceRecoveryRate:
+      billing && row.terms_recovery !== null ? basisPointsText(row.terms_recovery) : null,
+    totalMinor: row.total,
+    cumulativeMinor: row.cumulative,
+    previousMinor: row.previous,
+    retentionMinor: row.retention,
+    advanceMinor: row.advance,
+    netMinor: billing
+      ? billingNet({
+          cumulative: big(row.cumulative),
+          previous: big(row.previous),
+          retention: big(row.retention),
+          advance: big(row.advance),
+        }).net.toString()
+      : row.total,
+    lines: printed.map((line) => ({
+      lineNo: Number(line.line_no),
+      account: { code: line.code, name: line.name },
+      currency: line.currency as CurrencyCode,
+      amountMinor: row.kind === 'retention_release' ? line.magnitude : line.amount,
+      material:
+        line.material_code === null || line.material_name === null
+          ? null
+          : { code: line.material_code, name: line.material_name },
+      worker: line.worker,
+      quantity: line.quantity,
+      unit: line.unit,
+      unitPrice: line.unit_price,
+      memo: line.memo,
+      item: line.item,
+    })),
+    workerTotals,
+    entry: { fiscalYear: row.entry_fiscal_year, number: row.entry_number },
+    cancelledBy:
+      row.reversal_fiscal_year === null || row.reversal_number === null
+        ? null
+        : { fiscalYear: row.reversal_fiscal_year, number: row.reversal_number },
+    preparedBy: row.prepared_by,
+    approvedBy: row.approved_by,
   };
 }

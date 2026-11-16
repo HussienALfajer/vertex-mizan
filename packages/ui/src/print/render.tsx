@@ -5,6 +5,11 @@ import {
   ReportPrint,
   type ReportPrintProps,
 } from './document.js';
+import {
+  ProjectDocumentPrint,
+  type ProjectDocumentPrintProps,
+  projectDocumentStyles,
+} from './project-document.js';
 import type { SheetColumn } from './sheet.js';
 import { journalBookStyles, printStyles } from './styles.js';
 import { VoucherPrint, type VoucherPrintProps, voucherStyles } from './voucher.js';
@@ -77,5 +82,18 @@ export function renderJournalBookHtml(
     print.text.title,
     `${fontFaces}\n${printStyles()}\n${journalBookStyles()}\n${columnWidthRules('.book-rows', JOURNAL_BOOK_WIDTHS)}`,
     renderToStaticMarkup(<JournalBookPrint {...print} />),
+  );
+}
+
+/** A printed project document as a whole document (S12 "Printing and legal books"). */
+export function renderProjectDocumentHtml(
+  props: ProjectDocumentPrintProps & { readonly fontFaces: string },
+): string {
+  const { fontFaces, ...print } = props;
+  const { document } = print;
+  return documentOf(
+    `${print.text.kinds[document.kind]} ${document.fiscalYear}/${document.number}`,
+    `${fontFaces}\n${projectDocumentStyles(document.kind)}`,
+    renderToStaticMarkup(<ProjectDocumentPrint {...print} />),
   );
 }

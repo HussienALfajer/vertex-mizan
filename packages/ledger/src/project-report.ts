@@ -120,3 +120,9 @@ export function billingNet(input: {
 export function onItsSide(netDebit: bigint, side: 'debit' | 'credit'): bigint {
   return side === 'debit' ? netDebit : -netDebit;
 }
+
+/** A rate in basis points as a percentage with up to 2 decimals, no trailing zero ("10", "12.5"). */
+export function basisPointsText(basisPoints: number): string {
+  const text = decimalShare(BigInt(basisPoints), 100n, 2) ?? '0';
+  return text.replace(/\.?0+$/, '');
+}

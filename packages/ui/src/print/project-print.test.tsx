@@ -1,8 +1,9 @@
 import type { MaterialQuantities, ProjectReport, ReportHeader } from '@vertex-mizan/contracts';
-import { ar } from '@vertex-mizan/i18n';
+import { amountInWords, ar } from '@vertex-mizan/i18n';
 import { describe, expect, it } from 'vitest';
-import { renderReportHtml } from './render.js';
-import { reportSheet } from './sheets.js';
+import type { ProjectDocumentPrintData } from './project-document.js';
+import { renderProjectDocumentHtml, renderReportHtml } from './render.js';
+import { printedCurrency, reportSheet } from './sheets.js';
 
 // The project prints of S12 on synthetic data (`reports/project-report.md`'s December): the
 // project report as one sheet with its parts, and the material quantities. Chromium's page checks
@@ -243,5 +244,158 @@ describe('the material quantities as a sheet', () => {
       ar.reports.totals.total,
     ]);
     expect(sheet.rows.at(-1)?.cells.ledgerAmount).toBe('106309');
+  });
+});
+
+const documentData = (
+  overrides: Partial<ProjectDocumentPrintData> = {},
+): ProjectDocumentPrintData => ({
+  kind: 'progress_billing',
+  fiscalYear: 2026,
+  number: 1,
+  projectSequence: 1,
+  documentDate: '2026-12-31',
+  currency: 'USD',
+  project: { code: 'P1', name: 'مشروع البناء التجريبي' },
+  client: { code: 'C1', name: 'العميل التجريبي' },
+  counterparty: null,
+  side: null,
+  supplierReference: null,
+  periodFrom: null,
+  periodTo: null,
+  contractValueMinor: '10000000',
+  retentionRate: '10',
+  advanceRecoveryRate: '20',
+  totalMinor: '3000000',
+  cumulativeMinor: '3000000',
+  previousMinor: '0',
+  retentionMinor: '300000',
+  advanceMinor: '600000',
+  netMinor: '2100000',
+  lines: [],
+  workerTotals: [],
+  entry: { fiscalYear: 2026, number: 11 },
+  cancelledBy: null,
+  preparedBy: 'محاسب تجريبي',
+  approvedBy: null,
+  ...overrides,
+});
+
+const printOf = (document: ProjectDocumentPrintData) =>
+  renderProjectDocumentHtml({
+    company: 'شركة مقاولات تجريبية',
+    document,
+    text: ar.reports.projectDocument,
+    amountInWords: amountInWords(BigInt(document.netMinor), document.currency),
+    currencyName: (currency) => printedCurrency(currency, text),
+    fiscalYearStartMonth: 1,
+    fontFaces: '',
+  });
+
+describe('the printed project documents (S12 "Printing and legal books")', () => {
+  it('prints a billing on A4 with its number in the project, deductions, rates and the net in words', () => {
+    const html = printOf(documentData());
+    expect(html).toContain('size: A4 portrait');
+    expect(html).toContain(ar.reports.projectDocument.kinds.progress_billing);
+    expect(html).toContain('2026/1');
+    expect(html).toContain('21,000.00');
+    expect(html).toContain('(10%)');
+    expect(html).toContain('(20%)');
+    expect(html).toContain(amountInWords(2100000n, 'USD'));
+    for (const label of ar.reports.projectDocument.signatures.billing)
+      expect(html).toContain(label);
+  });
+
+  it('prints a purchase on A5 with its lines, quantities and SYP as the new pound', () => {
+    const html = printOf(
+      documentData({
+        kind: 'purchase',
+        projectSequence: null,
+        currency: 'SYP',
+        counterparty: { code: 'S1', name: 'المورد التجريبي' },
+        supplierReference: 'F-1024',
+        contractValueMinor: null,
+        retentionRate: null,
+        advanceRecoveryRate: null,
+        cumulativeMinor: null,
+        previousMinor: null,
+        retentionMinor: null,
+        advanceMinor: null,
+        totalMinor: '13781250',
+        netMinor: '13781250',
+        lines: [
+          {
+            lineNo: 1,
+            account: { code: '511001', name: 'مواد مباشرة' },
+            currency: 'SYP',
+            amountMinor: '13781250',
+            material: { code: 'CEM', name: 'أسمنت بورتلاندي' },
+            worker: null,
+            quantity: '12.500',
+            unit: 'طن',
+            unitPrice: '11025.0000',
+            memo: null,
+            item: null,
+          },
+        ],
+      }),
+    );
+    expect(html).toContain('size: A5 portrait');
+    expect(html).toContain('F-1024');
+    expect(html).toContain('12.500');
+    expect(html).toContain('11025.0000');
+    expect(html).toContain('الليرة السورية الجديدة');
+    expect(html).not.toContain(ar.reports.projectDocument.advanceApplied);
+  });
+
+  it('prints a wage sheet in landscape with a signature column and each worker total', () => {
+    const line = (lineNo: number, worker: string, extra: object) => ({
+      lineNo,
+      account: { code: '511002', name: 'أجور مباشرة' },
+      currency: 'USD' as const,
+      material: null,
+      worker,
+      quantity: null,
+      unit: null,
+      unitPrice: null,
+      memo: null,
+      item: null,
+      amountMinor: '0',
+      ...extra,
+    });
+    const html = printOf(
+      documentData({
+        kind: 'wage_sheet',
+        projectSequence: null,
+        periodFrom: '2026-12-01',
+        periodTo: '2026-12-15',
+        totalMinor: '55000',
+        netMinor: '55000',
+        lines: [
+          line(1, 'عامل', {
+            quantity: '6.000',
+            unit: 'يوم',
+            unitPrice: '25.0000',
+            amountMinor: '15000',
+          }),
+          line(2, 'حرفي', { memo: 'نجارة قوالب الطابق الأول', amountMinor: '40000' }),
+        ],
+        workerTotals: [
+          { worker: 'عامل', amountMinor: '15000' },
+          { worker: 'حرفي', amountMinor: '40000' },
+        ],
+      }),
+    );
+    expect(html).toContain('size: A4 landscape');
+    expect(html).toContain(ar.reports.projectDocument.workerSignature);
+    expect(html).toContain('نجارة قوالب الطابق الأول');
+    expect(html).toContain(ar.reports.projectDocument.workerTotals);
+    expect(html).toContain('2026-12-01 – 2026-12-15');
+  });
+
+  it('prints "ملغى" with the reversal\'s number on a cancelled document', () => {
+    const html = printOf(documentData({ cancelledBy: { fiscalYear: 2027, number: 3 } }));
+    expect(html).toContain('document-cancelled');
+    expect(html).toContain('2027/3');
   });
 });
