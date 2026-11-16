@@ -35,6 +35,8 @@ body {
 .report-parameters b { color: ${ink}; font-weight: 400; }
 .report-marks { display: flex; flex-wrap: wrap; gap: 2mm; margin-block-start: 2mm; }
 .report-mark { border: 0.6pt solid ${negative}; color: ${negative}; padding-inline: 2mm; font-weight: 700; }
+.report-part { margin-block-start: 6mm; }
+.report-part-title { font-size: 10.5pt; font-weight: 700; color: ${brand}; margin-block: 0 2mm; break-after: avoid; }
 table { inline-size: 100%; border-collapse: collapse; table-layout: fixed; }
 thead { display: table-header-group; }
 tr { break-inside: avoid; }

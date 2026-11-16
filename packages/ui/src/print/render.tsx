@@ -43,9 +43,16 @@ export const JOURNAL_BOOK_WIDTHS = [68, 94, 50, 300, 300, 124, 124] as const;
 export function renderReportHtml(props: ReportPrintProps & { readonly fontFaces: string }): string {
   const { fontFaces, ...print } = props;
   const widths = print.sheet.columns.map((column: SheetColumn) => column.width);
+  // A part's rules name its table, so they win over the first table's.
+  const parts = (print.sheet.parts ?? []).map((part, at) =>
+    columnWidthRules(
+      `main table.part-${at}`,
+      part.columns.map((column) => column.width),
+    ),
+  );
   return documentOf(
     print.sheet.title,
-    `${fontFaces}\n${printStyles()}\n${columnWidthRules('main', widths)}`,
+    `${fontFaces}\n${printStyles()}\n${[columnWidthRules('main', widths), ...parts].join('\n')}`,
     renderToStaticMarkup(<ReportPrint {...print} />),
   );
 }

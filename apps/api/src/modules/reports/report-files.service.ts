@@ -23,6 +23,8 @@ import {
   parseReportFileParams,
   readCashAccount,
   readJournalBookPrints,
+  readProjectDocument,
+  readProjectTerms,
   readReportAnswer,
   readReportFiles,
   readVoucherRows,
@@ -197,6 +199,13 @@ export class ReportFilesService {
       if (request.report === 'voucher') {
         const [voucher] = await readVoucherRows(tx, { id: params.voucher as string }, 1);
         if (voucher === undefined) throw new CodedException('NOT_FOUND', 'No such voucher');
+      }
+      // S12: a project report of a project, a document of the company's register.
+      if (request.report === 'project_report')
+        await readProjectTerms(tx, params.contract as string);
+      if (request.report === 'project_document') {
+        const document = await readProjectDocument(tx, { id: params.document as string });
+        if (document === null) throw new CodedException('NOT_FOUND', 'No such project document');
       }
       if (request.official) {
         if (params.ledger !== 'book') {

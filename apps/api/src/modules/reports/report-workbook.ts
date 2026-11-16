@@ -22,8 +22,6 @@ export async function reportWorkbook(
   const ws = workbook.addWorksheet(sheet.title.slice(0, 31).replace(/[\\/?*[\]:]/g, ' '), {
     views: [{ rightToLeft: true }],
   });
-  const columns = sheet.columns;
-  const width = columns.length + 1;
   const titled = (value: string, bold: boolean) => {
     const row = ws.addRow([value]);
     row.font = { bold };
@@ -34,49 +32,58 @@ export async function reportWorkbook(
   for (const mark of sheet.marks) titled(mark, true);
   ws.addRow([]);
 
-  if (columns.some((column) => column.group !== undefined)) {
-    const groups = ws.addRow(columns.map((column) => column.group ?? ''));
-    groups.font = { bold: true };
-  }
-  const heading = ws.addRow([...columns.map((column) => column.label), labels.currency]);
-  heading.font = { bold: true };
-  ws.columns.forEach((column, index) => {
-    column.width = Math.max(8, (columns[index]?.width ?? 24) + 2);
-  });
-  for (const [index, column] of columns.entries()) {
-    if (column.kind === 'code' || column.kind === 'date') ws.getColumn(index + 1).numFmt = '@';
-  }
-
-  for (const row of sheet.rows) {
-    let hasAmount = false;
-    const values = columns.map((column) => {
-      const value = cellValue(
-        column,
-        row.cells[column.key],
-        row.cells,
-        sheet.currency,
-        labels.none,
-      );
-      // A ledger amount, as a number or as exact text: the row names the report's currency.
-      if (
-        column.kind === 'amount' &&
-        column.currencyKey === undefined &&
-        isText(row.cells[column.key])
-      ) {
-        hasAmount = true;
+  const table = (columns: readonly SheetColumn[], rows: ReportSheet['rows']) => {
+    if (columns.some((column) => column.group !== undefined)) {
+      const groups = ws.addRow(columns.map((column) => column.group ?? ''));
+      groups.font = { bold: true };
+    }
+    const heading = ws.addRow([...columns.map((column) => column.label), labels.currency]);
+    heading.font = { bold: true };
+    for (const row of rows) {
+      let hasAmount = false;
+      const values = columns.map((column) => {
+        const value = cellValue(
+          column,
+          row.cells[column.key],
+          row.cells,
+          sheet.currency,
+          labels.none,
+        );
+        // A ledger amount, as a number or as exact text: the row names the report's currency.
+        if (
+          column.kind === 'amount' &&
+          column.currencyKey === undefined &&
+          isText(row.cells[column.key])
+        ) {
+          hasAmount = true;
+        }
+        return value;
+      });
+      const added = ws.addRow([...values, hasAmount ? sheet.currencyLabel : '']);
+      if (row.emphasis === 'section' || row.emphasis === 'subtotal' || row.emphasis === 'total') {
+        added.font = { bold: true };
       }
-      return value;
-    });
-    const added = ws.addRow([...values, hasAmount ? sheet.currencyLabel : '']);
-    if (row.emphasis === 'section' || row.emphasis === 'subtotal' || row.emphasis === 'total') {
-      added.font = { bold: true };
+      if (row.level) added.getCell(1).alignment = { indent: row.level, readingOrder: 'rtl' };
+      for (const [index, column] of columns.entries()) {
+        const cell = added.getCell(index + 1);
+        if (column.kind === 'code' || column.kind === 'date') cell.numFmt = '@';
+        if (column.kind !== 'amount') continue;
+        cell.numFmt = amountFormat(currencyOf(column, row.cells, sheet.currency));
+      }
     }
-    if (row.level) added.getCell(1).alignment = { indent: row.level, readingOrder: 'rtl' };
-    for (const [index, column] of columns.entries()) {
-      if (column.kind !== 'amount') continue;
-      const code = currencyOf(column, row.cells, sheet.currency);
-      added.getCell(index + 1).numFmt = amountFormat(code);
-    }
+  };
+  table(sheet.columns, sheet.rows);
+  // S12's project report: each part below, under its title.
+  for (const part of sheet.parts ?? []) {
+    ws.addRow([]);
+    titled(part.title, true);
+    table(part.columns, part.rows);
+  }
+  const tables = [sheet.columns, ...(sheet.parts ?? []).map((part) => part.columns)];
+  const width = Math.max(...tables.map((list) => list.length)) + 1;
+  for (let index = 0; index < width - 1; index += 1) {
+    const widest = Math.max(...tables.map((list) => list[index]?.width ?? 0));
+    ws.getColumn(index + 1).width = Math.max(8, (widest || 24) + 2);
   }
   ws.getColumn(width).width = 24;
   return Buffer.from(await workbook.xlsx.writeBuffer());

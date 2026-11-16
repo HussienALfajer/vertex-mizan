@@ -28,7 +28,7 @@ Four PRs, in order. Each PR switches its scenario files to `Approved (owner, 202
 
 - [x] contracts and db: the project list, the project report and the material quantities reads; `REPORTS` gains `project_report`, `material_quantities`, `project_document`; the `material` filter of `/api/reports/lines`; reconciliation tests against S09's profitability
 - [x] scenarios: the `project_report` reader; `reports/project-report.md` switched to `Approved` and run
-- [ ] api: `GET /api/projects`, `/api/projects/:valueId/report`, `/api/reports/material-quantities`, their xlsx exports (audited); tests
+- [x] api: `GET /api/projects`, `/api/projects/:valueId/report`, `/api/reports/material-quantities`, their xlsx exports (audited); tests
 - [ ] worker: the PDFs of the five documents (billings A4 with the net in words, purchase A5, wage sheet A4 landscape), the project report and material quantities
 - [ ] docs: ROADMAP, folder CLAUDE.md files
 - [ ] checks and reviewers (reviewer and accountant-reviewer), PR with auto-merge and Auto-fix

@@ -12,8 +12,10 @@ import {
   type IncomeStatement,
   type Journal,
   type Ledger,
+  type MaterialQuantities,
   type Profitability,
   type ProfitabilityFigures,
+  type ProjectReport,
   type ReportHeader,
   type ReportMark,
   type ReportValue,
@@ -22,7 +24,14 @@ import {
   type VoucherKind,
 } from '@vertex-mizan/contracts';
 import { type Catalog, displayTimeZone, formatLocale } from '@vertex-mizan/i18n';
-import type { ReportSheet, SheetCell, SheetColumn, SheetParameter, SheetRow } from './sheet.js';
+import type {
+  ReportSheet,
+  SheetCell,
+  SheetColumn,
+  SheetParameter,
+  SheetPart,
+  SheetRow,
+} from './sheet.js';
 
 export type {
   ReportSheet,
@@ -31,6 +40,7 @@ export type {
   SheetColumn,
   SheetEmphasis,
   SheetParameter,
+  SheetPart,
   SheetRow,
 } from './sheet.js';
 
@@ -69,7 +79,9 @@ export type SheetInput =
       readonly report: 'cash_statement';
       readonly data: CashStatement;
       readonly producedAt: string;
-    };
+    }
+  | { readonly report: 'project_report'; readonly data: ProjectReport }
+  | { readonly report: 'material_quantities'; readonly data: MaterialQuantities };
 
 /** The sheet of a report (S09 rules 35, 36). */
 export function reportSheet(input: SheetInput, context: SheetContext): ReportSheet {
@@ -98,6 +110,10 @@ export function reportSheet(input: SheetInput, context: SheetContext): ReportShe
       return cashPositionSheet(input.data, input.producedAt, context);
     case 'cash_statement':
       return cashStatementSheet(input.data, input.producedAt, context);
+    case 'project_report':
+      return projectReportSheet(input.data, context);
+    case 'material_quantities':
+      return materialQuantitiesSheet(input.data, context);
   }
 }
 
@@ -1127,6 +1143,261 @@ function cashStatementSheet(
       context,
     ),
     columns,
+    rows,
+  };
+}
+
+// --- Projects (S12 "Reports") ---
+
+/** A share already rounded by the report, with its percent sign; null prints "—". */
+const share = (value: string | null): SheetCell => (value === null ? null : `${value}%`);
+
+const percentColumn = (key: string, label: string): SheetColumn => ({
+  key,
+  label,
+  kind: 'percent',
+  width: 10,
+});
+
+/** An amount in a currency the row names, not the report's. */
+const amountIn = (key: string, label: string, currencyKey: string, width = 16): SheetColumn => ({
+  ...amount(key, label, width),
+  currencyKey,
+});
+
+const documentNumber = (fiscalYear: number, number: number) => `${fiscalYear}/${number}`;
+
+function projectReportSheet(data: ProjectReport, context: SheetContext): ReportSheet {
+  const t = context.text.reports;
+  const p = t.project;
+  const c = p.columns;
+  const terms = data.terms;
+  const termsCurrency = terms?.currency;
+  // The summary: an item, its value (in the terms' currency or the ledger's) and its share.
+  const summary: SheetRow[] = [
+    {
+      cells: {
+        item: p.summary.contractValue,
+        value: terms?.contractValueMinor ?? null,
+        currency: termsCurrency,
+      },
+    },
+    {
+      cells: {
+        item: p.summary.cumulative,
+        value: terms === null ? null : data.summary.cumulativeMinor,
+        currency: termsCurrency,
+        share: share(data.summary.billed),
+      },
+    },
+    { cells: { item: p.summary.revenue, value: data.summary.revenue } },
+    { cells: { item: p.summary.directCosts, value: data.summary.directCosts } },
+    {
+      emphasis: 'subtotal',
+      cells: {
+        item: p.summary.contribution,
+        value: data.summary.contribution,
+        share: share(data.summary.margin),
+      },
+    },
+    { cells: { item: p.summary.retentionReceivable, value: data.summary.retentionReceivable } },
+    { cells: { item: p.summary.clientAdvance, value: data.summary.clientAdvance } },
+    { cells: { item: p.summary.subcontractRetention, value: data.summary.subcontractRetention } },
+    { cells: { item: p.summary.subcontractAdvance, value: data.summary.subcontractAdvance } },
+  ];
+  if (terms === null) summary.unshift({ emphasis: 'note', cells: { item: p.summary.noTerms } });
+  const costFigures = (figures: ProjectReport['costs']['totals']) => ({
+    inRange: figures.inRange,
+    toDate: figures.toDate,
+    budget: figures.budgetMinor,
+    termsCurrency,
+    variance: figures.variance,
+    used: share(figures.used),
+  });
+  const costs: SheetPart = {
+    title: p.sections.costs,
+    columns: [
+      code('code', t.columns.code, 10),
+      text('account', t.columns.account, 30),
+      amount('inRange', c.inRange),
+      amount('toDate', c.toDate),
+      amountIn('budget', c.budget, 'termsCurrency'),
+      amount('variance', c.variance),
+      percentColumn('used', c.used),
+    ],
+    rows: [
+      ...data.costs.rows.map((row) => ({
+        cells: {
+          code: row.account.code,
+          account: named(row.account.name, row.account.archived, context.text),
+          ...costFigures(row),
+        },
+      })),
+      {
+        emphasis: 'total' as const,
+        cells: { account: t.totals.total, ...costFigures(data.costs.totals) },
+      },
+    ],
+  };
+  const materials: SheetPart = {
+    title: p.sections.materials,
+    columns: [
+      code('code', t.columns.code, 10),
+      text('material', c.material, 26),
+      text('unit', c.unit, 8),
+      code('currency', t.columns.currency, 8),
+      code('quantity', c.quantity, 12),
+      amountIn('amount', c.amount, 'currency'),
+      amount('ledgerAmount', c.ledgerAmount),
+      code('average', c.average, 14),
+    ],
+    rows: data.materials.map((row) => ({
+      cells: {
+        code: row.material.code,
+        material: named(row.material.name, row.material.archived, context.text),
+        unit: row.material.unit,
+        currency: row.currency,
+        quantity: row.quantity,
+        amount: row.amountMinor,
+        ledgerAmount: row.ledgerAmount,
+        average: row.average,
+      },
+    })),
+  };
+  const wages: SheetPart = {
+    title: p.sections.wages,
+    columns: [
+      text('worker', c.worker, 30),
+      code('days', c.days, 10),
+      amount('lumpSum', c.lumpSum),
+      amount('amount', t.columns.amount),
+      amount('balance', c.balance),
+    ],
+    rows: data.wages.map((row) => ({
+      cells: {
+        worker: valueName(row.worker, context.text),
+        days: row.days,
+        lumpSum: row.lumpSum,
+        amount: row.amount,
+        balance: row.balance,
+      },
+    })),
+  };
+  const subcontracts: SheetPart = {
+    title: p.sections.subcontracts,
+    columns: [
+      text('supplier', c.supplier, 26),
+      code('currency', t.columns.currency, 8),
+      amountIn('value', c.subcontractValue, 'currency'),
+      amountIn('cumulative', c.cumulative, 'currency'),
+      amount('retention', c.retention),
+      amount('advance', c.advance),
+      amount('paid', c.paid),
+    ],
+    rows: data.subcontracts.map((row) => ({
+      cells: {
+        supplier: valueName(row.supplier, context.text),
+        currency: row.currency,
+        value: row.valueMinor,
+        cumulative: row.cumulativeMinor,
+        retention: row.retention,
+        advance: row.advance,
+        paid: row.paid,
+      },
+    })),
+  };
+  const billings: SheetPart = {
+    title: p.sections.billings,
+    columns: [
+      code('number', c.number, 10),
+      date('date', t.columns.date),
+      amountIn('cumulative', c.cumulative, 'termsCurrency', 14),
+      amountIn('previous', c.previous, 'termsCurrency', 14),
+      amountIn('period', c.period, 'termsCurrency', 14),
+      amountIn('retention', c.retention, 'termsCurrency', 14),
+      amountIn('advance', c.recovery, 'termsCurrency', 14),
+      amountIn('net', c.net, 'termsCurrency', 14),
+      text('state', c.state, 8),
+      amountIn('outstanding', c.outstanding, 'termsCurrency', 14),
+    ],
+    rows: data.billings.map((row) => ({
+      cells: {
+        number: documentNumber(row.fiscalYear, row.number),
+        date: row.documentDate,
+        termsCurrency,
+        cumulative: row.cumulativeMinor,
+        previous: row.previousMinor,
+        period: row.periodMinor,
+        retention: row.retentionMinor,
+        advance: row.advanceMinor,
+        net: row.netMinor,
+        state: p.states[row.state],
+        outstanding: row.outstandingMinor,
+      },
+    })),
+  };
+  const parameters: SheetParameter[] = [
+    { label: p.project, value: valueName(data.project, context.text) },
+  ];
+  if (data.client !== null) {
+    parameters.push({ label: p.client, value: valueName(data.client, context.text) });
+  }
+  return {
+    report: 'project_report',
+    title: t.names.project_report,
+    ...headerParts(data.header, context, parameters),
+    columns: [
+      text('item', c.item, 36),
+      amountIn('value', c.value, 'currency', 18),
+      percentColumn('share', c.share),
+    ],
+    rows: summary,
+    parts: [costs, materials, wages, subcontracts, billings],
+  };
+}
+
+function materialQuantitiesSheet(data: MaterialQuantities, context: SheetContext): ReportSheet {
+  const t = context.text.reports;
+  const c = t.project.columns;
+  const rows: SheetRow[] = data.rows.map((row) => ({
+    cells: {
+      project:
+        row.project === null
+          ? t.materialQuantities.unassigned
+          : valueName(row.project, context.text),
+      code: row.material.code,
+      material: named(row.material.name, row.material.archived, context.text),
+      unit: row.material.unit,
+      currency: row.currency,
+      quantityIn: row.quantityIn,
+      quantityOut: row.quantityOut,
+      quantity: row.quantity,
+      amount: row.amountMinor,
+      average: row.average,
+      ledgerAmount: row.ledgerAmount,
+    },
+  }));
+  rows.push({
+    emphasis: 'total',
+    cells: { project: t.totals.total, ledgerAmount: data.ledgerTotal },
+  });
+  return {
+    report: 'material_quantities',
+    title: t.names.material_quantities,
+    ...headerParts(data.header, context),
+    columns: [
+      text('project', t.project.project, 20),
+      code('code', t.columns.code, 10),
+      text('material', c.material, 22),
+      text('unit', c.unit, 8),
+      code('currency', t.columns.currency, 8),
+      code('quantityIn', c.quantityIn, 11),
+      code('quantityOut', c.quantityOut, 11),
+      code('quantity', c.quantity, 11),
+      amountIn('amount', c.amount, 'currency'),
+      code('average', c.average, 13),
+      amount('ledgerAmount', c.ledgerAmount),
+    ],
     rows,
   };
 }
