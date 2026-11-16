@@ -3,6 +3,10 @@
 -- lost by a deploy. The company tables are counted in each company's context, since forced RLS
 -- hides their rows from the owner outside it (ADR 0003). The previous release does not run on the
 -- migrated database (owner, 2026-11-13: the removal in one release; docs/deployment.md).
+-- `posting_rule_accounts` is not counted (owner, 2026-11-16): its rows are the chart template's
+-- mapping of Hub's slots to accounts, written when a company is created, not data Hub sent, and
+-- they post nothing; a company made from a template before the removal (Vertex Media's, in
+-- production) holds them, and 0060 drops them with the table.
 DO $$
 DECLARE
   company uuid;
@@ -16,7 +20,6 @@ BEGIN
   FOR company IN SELECT c.id FROM public.companies c ORDER BY c.id LOOP
     PERFORM set_config('app.company_id', company::text, true);
     FOREACH hub_table IN ARRAY ARRAY[
-      'posting_rule_accounts',
       'inbound_events',
       'inbound_event_states',
       'inbound_event_actions',
