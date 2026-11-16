@@ -55,6 +55,14 @@ declare module '@tanstack/react-router' {
 
 document.title = ar.common.productName;
 
+// The installable app (apps/web/pwa.ts): the build's service worker, which only shows the offline
+// page for a page load without a connection. A failed registration leaves the app as it was.
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => undefined);
+  });
+}
+
 const root = document.getElementById('root');
 if (!root) throw new Error('Missing #root element');
 

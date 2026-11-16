@@ -13,9 +13,11 @@ Visual identity rules: [identity.md](identity.md).
 | `logo/svg/vertex-mizan-{logo,mark}-{green,gold,white}.svg` | Fixed-color variants | Printed books, PDFs, anywhere CSS color is unavailable |
 | `logo/svg/favicon.svg` | Sand mark on a green rounded square | Browser favicon |
 | `logo/svg/app-icon.svg` | Sand mark on a Vertex Green square | Source of the home-screen icons (the platform rounds the corners) |
+| `logo/svg/app-icon-maskable.svg` | `app-icon.svg` with the mark inside the maskable safe zone (the inner 80% circle) | Source of the maskable icon |
 | `logo/png/vertex-mizan-logo-{green,gold,white}.png` | 1024 px wide, transparent | Tools that don't support SVG |
 | `logo/png/vertex-mizan-mark-{green,gold,white}.png` | 512 px wide, transparent | Same |
-| `logo/png/icon-192.png`, `icon-512.png`, `apple-touch-icon.png` | `app-icon.svg` at 192, 512 and 180 px | Home-screen icons of the web app (PR 8) |
+| `logo/png/icon-192.png`, `icon-512.png`, `apple-touch-icon.png` | `app-icon.svg` at 192, 512 and 180 px | Home-screen icons of the web app (the manifest, `apps/web/pwa.ts`) |
+| `logo/png/icon-maskable-512.png` | `app-icon-maskable.svg` at 512 px | The manifest's maskable icon (Android's adaptive icons) |
 
 ## Provenance
 

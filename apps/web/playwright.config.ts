@@ -20,6 +20,9 @@ export default defineConfig({
     // A trace for every test made Hub's suite 30% slower and kept the antivirus scanning each
     // trace file. CI records the retry of a failed test; locally pass `--trace on` to debug.
     trace: 'on-first-retry',
+    // The build registers a service worker (pwa.ts); only `e2e/pwa.spec.ts` lets it run, so it
+    // never stands between another spec's page and its mocked API.
+    serviceWorkers: 'block',
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   // Serves the production build: `pnpm verify` and CI build it first. Never a server already on

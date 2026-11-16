@@ -6,5 +6,5 @@
     // `.ts` files (Vite loads it in Node).
     "allowImportingTsExtensions": true
   },
-  "include": ["src", "e2e", "playwright.config.ts", "vite.config.ts"]
+  "include": ["src", "e2e", "playwright.config.ts", "vite.config.ts", "pwa.ts"]
 }

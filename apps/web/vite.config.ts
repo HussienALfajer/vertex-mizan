@@ -5,6 +5,7 @@ import { tanstackRouter } from '@tanstack/router-plugin/vite';
 import { vertexMizanWeb } from '@vertex-mizan/ui/vite';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
+import { vertexMizanPwa } from './pwa.ts';
 
 // The API address from the root .env, read without Vite's loadEnv, which would also apply the
 // file's NODE_ENV to this build. Nothing from that file reaches the browser bundle.
@@ -21,6 +22,8 @@ export default defineConfig({
     tailwindcss(),
     // theme-init.js before the first paint and the first screen's fonts preloaded (packages/ui).
     vertexMizanWeb(),
+    // The installable app: manifest, icons, offline page and service worker (build only).
+    vertexMizanPwa(),
   ],
   server: {
     host: '127.0.0.1',
