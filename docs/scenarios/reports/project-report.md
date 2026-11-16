@@ -1,8 +1,8 @@
 # The project report
 
-Status: Proposed
+Status: Approved (owner, 2026-11-16)
 
-The project report reads what S12's documents posted; it posts nothing. The figures of the four cases were approved by the owner on 2026-11-16, with five readings of S12 "Reports": the billings are every billing of the project up to `to`, each with what remains of its receivable; a worker's balance and a subcontractor's payments are the counterparty's running item, every project's, since a payment carries no project; materials are one row per material and transaction currency; the share of the budget used is the cost to date over the budget; and the variance shows only in the book ledger when the terms are in the book currency (S12 answer 15), not in a parallel ledger in the terms' currency. The cases stay `Proposed` until S12's slice brings the `project_document` executor, the subcontracts and materials setup, a project's budget in its terms, and the project report's reader.
+The project report reads what S12's documents posted; it posts nothing. The figures of the four cases were approved by the owner on 2026-11-16, with five readings of S12 "Reports": the billings are every billing of the project up to `to`, each with what remains of its receivable; a worker's balance and a subcontractor's payments are the counterparty's running item, every project's, since a payment carries no project; materials are one row per material and transaction currency; the share of the budget used is the cost to date over the budget; and the variance shows only in the book ledger when the terms are in the book currency (S12 answer 15), not in a parallel ledger in the terms' currency. S12's third PR brought the project report's reader and switched the cases to `Approved` with no expected value changed.
 
 ## Rule
 
@@ -69,7 +69,6 @@ rates:
   - { date: 2026-12-17, base: USD, quote: SYP, rate: "121.0000", type: bulletin }
   - { date: 2026-12-31, base: USD, quote: SYP, rate: "120.0000", type: bulletin }
   - { date: 2026-12-31, base: TRY, quote: SYP, rate: "3.5000", type: bulletin }
-  - { date: 2026-12-31, base: USD, quote: TRY, rate: "34.0000", type: market }
 steps:
   - voucher: client C1 pays an advance on P1 into the USD bank
     accounting_date: 2026-11-02
@@ -364,7 +363,6 @@ rates:
   - { date: 2026-12-31, base: USD, quote: SYP, rate: "120.0000", type: bulletin }
   - { date: 2027-01-07, base: USD, quote: SYP, rate: "122.0000", type: bulletin }
   - { date: 2027-01-31, base: USD, quote: SYP, rate: "125.0000", type: bulletin }
-  - { date: 2027-01-31, base: USD, quote: TRY, rate: "34.0000", type: market }
 steps:
   - voucher: client C1 pays an advance on P1 into the USD bank
     accounting_date: 2026-11-02

@@ -26,8 +26,8 @@ Four PRs, in order. Each PR switches its scenario files to `Approved (owner, 202
 
 ### PR 3 — the project report, material quantities, exports and prints (branch `feat/s12-project-report`)
 
-- [ ] contracts and db: the project list, the project report and the material quantities reads; `REPORTS` gains `project_report`, `material_quantities`, `project_document`; the `material` filter of `/api/reports/lines`; reconciliation tests against S09's profitability
-- [ ] scenarios: the `project_report` reader; `reports/project-report.md` switched to `Approved` and run
+- [x] contracts and db: the project list, the project report and the material quantities reads; `REPORTS` gains `project_report`, `material_quantities`, `project_document`; the `material` filter of `/api/reports/lines`; reconciliation tests against S09's profitability
+- [x] scenarios: the `project_report` reader; `reports/project-report.md` switched to `Approved` and run
 - [ ] api: `GET /api/projects`, `/api/projects/:valueId/report`, `/api/reports/material-quantities`, their xlsx exports (audited); tests
 - [ ] worker: the PDFs of the five documents (billings A4 with the net in words, purchase A5, wage sheet A4 landscape), the project report and material quantities
 - [ ] docs: ROADMAP, folder CLAUDE.md files

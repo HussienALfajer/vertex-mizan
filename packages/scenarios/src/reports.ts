@@ -9,6 +9,7 @@ import {
   readIncomeStatement,
   readJournalBook,
   readProfitability,
+  readProjectReport,
   readTrialBalance,
   setServiceDepartment,
   type Transaction,
@@ -496,9 +497,140 @@ export async function reports(
           break;
         }
         case 'project_report': {
-          // S12's slice brings the project report's reader; until then a stated project report
-          // fails rather than pass unread.
-          diff.note("the project report's reader arrives with S12's slice");
+          const { params } = stated;
+          const read = await readProjectReport(
+            tx,
+            await valueIdOf(tx, 'contract', params.contract),
+            { from: params.from, to: params.to, ledger: params.ledger ?? 'book' },
+            now,
+          );
+          diff.marks('the', read.header.current.marks, stated.marks);
+          // The summary: the terms, the billing to `to`, profitability's figures, the balances.
+          const { summary } = stated;
+          const got = read.summary;
+          diff.equal('the currency', read.terms?.currency ?? null, summary.currency);
+          diff.equal(
+            'the contract value',
+            big(read.terms?.contractValueMinor ?? null),
+            summary.contractValue,
+          );
+          diff.equal('the cumulative', BigInt(got.cumulativeMinor), summary.cumulative);
+          diff.equal('billed', got.billed, summary.billed);
+          diff.equal('revenue', BigInt(got.revenue), summary.revenue);
+          diff.equal('direct costs', BigInt(got.directCosts), summary.directCosts);
+          diff.equal('contribution', BigInt(got.contribution), summary.contribution);
+          diff.equal('margin', got.margin, summary.margin);
+          diff.equal(
+            'the retention receivable',
+            BigInt(got.retentionReceivable),
+            summary.retentionReceivable,
+          );
+          diff.equal('the client advance', BigInt(got.clientAdvance), summary.clientAdvance);
+          diff.equal(
+            'the subcontract retention',
+            BigInt(got.subcontractRetention),
+            summary.subcontractRetention,
+          );
+          diff.equal(
+            'the subcontract advance',
+            BigInt(got.subcontractAdvance),
+            summary.subcontractAdvance,
+          );
+          // Costs against the budget: the exact set of accounts, in code order.
+          const costFigures = (
+            what: string,
+            row: (typeof read)['costs']['totals'],
+            want: (typeof stated)['costsTotals'],
+          ) => {
+            diff.equal(`${what} in range`, BigInt(row.inRange), want.inRange);
+            diff.equal(`${what} to date`, BigInt(row.toDate), want.toDate);
+            diff.equal(`${what} budget`, BigInt(row.budgetMinor), want.budget);
+            diff.equal(`${what} variance`, big(row.variance), want.variance);
+            diff.equal(`${what} used`, row.used, want.used);
+          };
+          diff.equal(
+            'the cost accounts',
+            read.costs.rows.map((row) => row.account.code).join(','),
+            stated.costs.map((row) => row.account).join(','),
+          );
+          for (const row of stated.costs) {
+            const found = read.costs.rows.find((cost) => cost.account.code === row.account);
+            if (found !== undefined) costFigures(`cost ${row.account}`, found, row);
+          }
+          costFigures('the costs totals', read.costs.totals, stated.costsTotals);
+          // Materials per material and transaction currency.
+          const materialKey = (code: string, currency: string) => `${code}/${currency}`;
+          diff.equal(
+            'the materials',
+            read.materials.map((row) => materialKey(row.material.code, row.currency)).join(','),
+            stated.materials.map((row) => materialKey(row.material, row.currency)).join(','),
+          );
+          for (const row of stated.materials) {
+            const found = read.materials.find(
+              (material) =>
+                material.material.code === row.material && material.currency === row.currency,
+            );
+            if (found === undefined) continue;
+            const what = `material ${materialKey(row.material, row.currency)}`;
+            diff.equal(`${what} quantity`, found.quantity, row.quantity);
+            diff.equal(`${what} amount`, BigInt(found.amountMinor), row.amount);
+            diff.equal(`${what} ledger amount`, BigInt(found.ledgerAmount), row.ledgerAmount);
+            diff.equal(`${what} average`, found.average, row.average);
+          }
+          // Wages per worker.
+          diff.equal(
+            'the workers',
+            read.wages.map((row) => nameOf(row.worker)).join(','),
+            stated.wages.map((row) => row.worker).join(','),
+          );
+          for (const row of stated.wages) {
+            const found = read.wages.find((wage) => nameOf(wage.worker) === row.worker);
+            if (found === undefined) continue;
+            const what = `worker ${row.worker}`;
+            diff.equal(`${what} days`, found.days, row.days);
+            diff.equal(`${what} lump sum`, BigInt(found.lumpSum), row.lumpSum);
+            diff.equal(`${what} amount`, BigInt(found.amount), row.amount);
+            diff.equal(`${what} balance`, BigInt(found.balance), row.balance);
+          }
+          // Subcontracts per supplier.
+          diff.equal(
+            'the subcontracts',
+            read.subcontracts.map((row) => nameOf(row.supplier)).join(','),
+            stated.subcontracts.map((row) => row.supplier).join(','),
+          );
+          for (const row of stated.subcontracts) {
+            const found = read.subcontracts.find(
+              (subcontract) => nameOf(subcontract.supplier) === row.supplier,
+            );
+            if (found === undefined) continue;
+            const what = `subcontract ${row.supplier}`;
+            diff.equal(`${what} currency`, found.currency, row.currency);
+            diff.equal(`${what} value`, big(found.valueMinor), row.value);
+            diff.equal(`${what} cumulative`, BigInt(found.cumulativeMinor), row.cumulative);
+            diff.equal(`${what} retention`, BigInt(found.retention), row.retention);
+            diff.equal(`${what} advance`, BigInt(found.advance), row.advance);
+            diff.equal(`${what} paid`, BigInt(found.paid), row.paid);
+          }
+          // Billings in their sequence within the project.
+          diff.equal('the billing count', read.billings.length, stated.billings.length);
+          for (const row of stated.billings) {
+            const found = read.billings.find((billing) => billing.projectSequence === row.sequence);
+            const what = `billing ${row.sequence}`;
+            if (found === undefined) {
+              diff.note(`no ${what}`);
+              continue;
+            }
+            diff.equal(`${what} number`, `${found.fiscalYear}/${found.number}`, row.number);
+            diff.equal(`${what} date`, found.documentDate, row.date);
+            diff.equal(`${what} cumulative`, BigInt(found.cumulativeMinor), row.cumulative);
+            diff.equal(`${what} previous`, BigInt(found.previousMinor), row.previous);
+            diff.equal(`${what} period`, BigInt(found.periodMinor), row.period);
+            diff.equal(`${what} retention`, BigInt(found.retentionMinor), row.retention);
+            diff.equal(`${what} advance`, BigInt(found.advanceMinor), row.advance);
+            diff.equal(`${what} net`, BigInt(found.netMinor), row.net);
+            diff.equal(`${what} state`, found.state, row.state);
+            diff.equal(`${what} outstanding`, BigInt(found.outstandingMinor), row.outstanding);
+          }
           break;
         }
       }
