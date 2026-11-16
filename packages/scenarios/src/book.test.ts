@@ -3,11 +3,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { parseCase, parseScenario, readBook, ScenarioFormatError, yamlBlocks } from './book.js';
-import { marginOf } from './report-format.js';
+import { decimalOf, marginOf } from './report-format.js';
 import {
   BILLING,
   CASE,
   CORRECTION,
+  PROJECT_REPORT,
   PURCHASE,
   REPORTS,
   RETENTION_RELEASE,
@@ -700,7 +701,13 @@ describe('a case', () => {
         code: 'P1',
         kind: 'project',
         client: 'C1',
-        terms: { currency: 'SYP', value: 1000000n, retentionBp: 1000, advanceRecoveryBp: 2000 },
+        terms: {
+          currency: 'SYP',
+          value: 1000000n,
+          retentionBp: 1000,
+          advanceRecoveryBp: 2000,
+          budget: [],
+        },
       },
     ]);
     expect(billing.steps[0]).toEqual({
@@ -1373,6 +1380,93 @@ describe('a case', () => {
     expect(parseCase(voided).expect.reports[3]).toMatchObject({
       rows: [{ value: 'design', revenue: -50000n, directCosts: -10000n, contribution: -40000n }],
     });
+  });
+
+  it("reads a project's budget and the project report a case states (S12)", () => {
+    const report = parseCase(PROJECT_REPORT);
+    expect(report.company.contracts[0]?.terms?.budget).toEqual([
+      { account: '511002', amount: 50000n },
+    ]);
+    expect(report.expect.reports[0]).toMatchObject({
+      report: 'project_report',
+      params: { contract: 'P1', from: '2026-11-01', to: '2026-11-30', ledger: 'book' },
+      summary: { contractValue: 1000000n, billed: '10.0', directCosts: 0n, margin: '100.0' },
+      costs: [{ account: '511002', inRange: 0n, budget: 50000n, variance: 50000n, used: '0.0' }],
+      costsTotals: { toDate: 0n, budget: 50000n },
+      billings: [{ sequence: 1, number: '2026/1', net: 90000n, state: 'posted' }],
+    });
+
+    const costs =
+      '{ account: "511002", in_range: 0, to_date: 0, budget: 50000, variance: 50000, used: "0.0" }';
+    const totals = '{ in_range: 0, to_date: 0, budget: 50000, variance: 50000, used: "0.0" }';
+    expect(refusal(PROJECT_REPORT.replace('billed: "10.0"', 'billed: "10.1"'))).toContain(
+      'billed is 10.0',
+    );
+    expect(refusal(PROJECT_REPORT.replace('margin: "100.0"', 'margin: "99.0"'))).toContain(
+      'The margin is 100.0',
+    );
+    expect(
+      refusal(PROJECT_REPORT.replace(costs, costs.replace('variance: 50000', 'variance: 1'))),
+    ).toContain('The variance is 50000');
+    expect(
+      refusal(
+        PROJECT_REPORT.replace(
+          costs,
+          costs.replace('variance: 50000, used: "0.0"', 'variance: null, used: "0.0"'),
+        ),
+      ),
+    ).toContain('used goes with a variance');
+    expect(
+      refusal(PROJECT_REPORT.replace(totals, totals.replace('budget: 50000', 'budget: 40000'))),
+    ).toContain('The rows add up to 50000 for budget');
+    expect(
+      refusal(
+        // the row and its totals agree, but not with the terms' budget
+        PROJECT_REPORT.replaceAll(
+          'budget: 50000, variance: 50000, used: "0.0" }',
+          'budget: 40000, variance: 40000, used: "0.0" }',
+        ),
+      ),
+    ).toContain("511002's budget is 50000");
+    expect(
+      refusal(
+        PROJECT_REPORT.replace(
+          'contract_value: 1000000, cumulative: 100000, billed: "10.0"',
+          'contract_value: 2000000, cumulative: 100000, billed: "5.0"',
+        ),
+      ),
+    ).toContain('The contract value is 1000000');
+    expect(refusal(PROJECT_REPORT.replace('contract: P1, from', 'contract: P2, from'))).toContain(
+      'P2 is not a project with terms',
+    );
+    expect(refusal(PROJECT_REPORT.replace('net: 90000', 'net: 80000'))).toContain(
+      'The net is the period less the retention and the recovery',
+    );
+    expect(
+      refusal(
+        PROJECT_REPORT.replace(
+          'materials: []',
+          'materials: [{ material: CEM, currency: SYP, quantity: "2.000", amount: 100, ledger_amount: 100, average: "0.5000" }]',
+        ),
+      ),
+    ).toContain('CEM is not a material in company.materials');
+    expect(
+      refusal(
+        PROJECT_REPORT.replace(
+          'materials: []',
+          'materials: [{ material: CEM, currency: SYP, quantity: "3.000", amount: 100, ledger_amount: 100, average: "0.3000" }]',
+        ),
+      ),
+    ).toContain('The average is 0.3333');
+  });
+
+  it('writes a ratio with fixed places, half away from zero, and none over zero (S12 "Reports")', () => {
+    expect(decimalOf(39375n * 1000n, 100n * 12500n, 4)).toBe('31.5000');
+    expect(decimalOf(-45000n * 1000n, 100n * -5000n, 4)).toBe('90.0000');
+    expect(decimalOf(300809n * 100n, 4000000n, 1)).toBe('7.5');
+    expect(decimalOf(1n, 8n, 2)).toBe('0.13');
+    expect(decimalOf(-1n, 8n, 2)).toBe('-0.13');
+    expect(decimalOf(5n, 0n, 1)).toBeNull();
   });
 
   it('gives the margin with one decimal, half away from zero, and none without revenue (S09 rule 21)', () => {

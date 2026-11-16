@@ -495,6 +495,12 @@ export async function reports(
           }
           break;
         }
+        case 'project_report': {
+          // S12's slice brings the project report's reader; until then a stated project report
+          // fails rather than pass unread.
+          diff.note("the project report's reader arrives with S12's slice");
+          break;
+        }
       }
       return diff.list;
     },
