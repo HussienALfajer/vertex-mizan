@@ -121,6 +121,13 @@ export const auth = {
         'غيّرت هاتفك؟ أضف حسابك إلى تطبيق المصادقة من جديد. يبقى التطبيق الحالي فعّالًا حتى تتحقق من الجديد.',
       action: 'أعد إعداد التطبيق',
     },
+    /** An exempt person who has not enrolled (S01 rule 2, owner 2026-11-16). */
+    notEnrolled: {
+      title: 'المصادقة الثنائية غير مفعّلة',
+      description:
+        'تدخل إلى حسابك بكلمة المرور وحدها. فعّل المصادقة الثنائية لحماية أقوى: بعدها يُطلب رمز من تطبيق المصادقة عند كل دخول.',
+      action: 'فعّل المصادقة الثنائية',
+    },
     otherSessions: {
       title: 'الجلسات الأخرى',
       description: 'ينهي جلساتك على الأجهزة والمتصفحات الأخرى، وتبقى هذه الجلسة.',
@@ -142,6 +149,8 @@ export const auth = {
   reauth: {
     title: 'أكّد هويتك',
     description: 'هذا إجراء حساس. أدخل الرمز الحالي من تطبيق المصادقة.',
+    /** An exempt person who has not enrolled confirms with the password (S01 rule 2). */
+    passwordDescription: 'هذا إجراء حساس. أدخل كلمة المرور للمتابعة.',
     submit: 'تأكيد',
     cancel: 'إلغاء',
   },

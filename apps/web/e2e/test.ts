@@ -29,6 +29,7 @@ export const signedIn: Me = {
     name: 'مستخدم تجريبي',
     email: 'owner@example.test',
     twoFactorEnabled: true,
+    twoFactorExempt: false,
   },
   memberships: [
     {

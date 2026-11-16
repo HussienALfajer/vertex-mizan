@@ -37,7 +37,7 @@ const t = ar.auth.security;
 const { fields } = ar.auth;
 
 /** `/account/security` (S01): the person's password, two-factor and recent sign-ins. */
-export function AccountSecurityPage({ email }: { email: string }) {
+export function AccountSecurityPage({ email, enrolled }: { email: string; enrolled: boolean }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const signOut = useMutation({
@@ -64,14 +64,18 @@ export function AccountSecurityPage({ email }: { email: string }) {
       <div className="grid gap-6 lg:grid-cols-2 [&>*]:min-w-0">
         <ChangePassword email={email} />
         <div className="flex flex-col gap-6">
-          <BackupCodes />
-          <Section title={t.authenticator.title} description={t.authenticator.description}>
+          {enrolled && <BackupCodes />}
+          {/* An exempt person signs in without it until they enrol (S01 rule 2). */}
+          <Section
+            title={enrolled ? t.authenticator.title : t.notEnrolled.title}
+            description={enrolled ? t.authenticator.description : t.notEnrolled.description}
+          >
             <Button
               variant="secondary"
               className="w-fit"
               render={<Link to="/two-factor/enrol" search={{ redirect: '/account/security' }} />}
             >
-              {t.authenticator.action}
+              {enrolled ? t.authenticator.action : t.notEnrolled.action}
             </Button>
           </Section>
           <OtherSessions />

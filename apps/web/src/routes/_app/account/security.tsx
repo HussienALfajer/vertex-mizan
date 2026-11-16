@@ -3,6 +3,7 @@ import { AccountSecurityPage } from '../../../features/auth/account-security-pag
 
 export const Route = createFileRoute('/_app/account/security')({
   component: function AccountSecurity() {
-    return <AccountSecurityPage email={Route.useRouteContext().me.person.email} />;
+    const { person } = Route.useRouteContext().me;
+    return <AccountSecurityPage email={person.email} enrolled={person.twoFactorEnabled} />;
   },
 });

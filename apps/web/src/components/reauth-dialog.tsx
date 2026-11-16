@@ -1,4 +1,4 @@
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { ar } from '@vertex-mizan/i18n';
 import {
   Button,
@@ -12,9 +12,11 @@ import {
   FieldLabel,
   Input,
   OtpField,
+  PasswordInput,
 } from '@vertex-mizan/ui';
 import { type ReactNode, useRef, useState } from 'react';
 import { api, hasCode } from '../lib/api';
+import { meQuery } from '../lib/session';
 import { FormError } from './form-error';
 
 const t = ar.auth;
@@ -83,8 +85,14 @@ function ReauthDialog({
   const [mode, setMode] = useState<'app' | 'backup'>('app');
   const [code, setCode] = useState('');
   const submitted = useRef(false);
+  // An exempt person who has not enrolled confirms with the password (S01 rule 2).
+  const { data: me } = useQuery(meQuery);
+  const byPassword = me?.person.twoFactorExempt === true && !me.person.twoFactorEnabled;
   const confirm = useMutation({
-    mutationFn: (value: string) => api('POST', '/auth/reauthenticate', { body: { code: value } }),
+    mutationFn: (value: string) =>
+      api('POST', '/auth/reauthenticate', {
+        body: byPassword ? { password: value } : { code: value.trim() },
+      }),
     onSuccess: () => {
       clear();
       onConfirmed();
@@ -93,7 +101,7 @@ function ReauthDialog({
       submitted.current = false;
     },
   });
-  const ready = mode === 'app' ? code.length === 6 : code.trim() !== '';
+  const ready = !byPassword && mode === 'app' ? code.length === 6 : code.trim() !== '';
 
   function clear() {
     setCode('');
@@ -102,10 +110,10 @@ function ReauthDialog({
   }
 
   function submit(value: string) {
-    const complete = mode === 'app' ? value.length === 6 : value.trim() !== '';
+    const complete = !byPassword && mode === 'app' ? value.length === 6 : value.trim() !== '';
     if (!complete || submitted.current) return;
     submitted.current = true;
-    confirm.mutate(value.trim());
+    confirm.mutate(value);
   }
 
   return (
@@ -130,10 +138,26 @@ function ReauthDialog({
           <DialogHeader>
             <DialogTitle>{t.reauth.title}</DialogTitle>
             <DialogDescription>
-              {mode === 'app' ? t.reauth.description : t.twoFactor.backupDescription}
+              {byPassword
+                ? t.reauth.passwordDescription
+                : mode === 'app'
+                  ? t.reauth.description
+                  : t.twoFactor.backupDescription}
             </DialogDescription>
           </DialogHeader>
-          {mode === 'app' ? (
+          {byPassword ? (
+            <Field>
+              <FieldLabel>{t.fields.password}</FieldLabel>
+              <PasswordInput
+                autoComplete="current-password"
+                showLabel={t.fields.showPassword}
+                hideLabel={t.fields.hidePassword}
+                value={code}
+                onChange={(event) => setCode(event.target.value)}
+                autoFocus
+              />
+            </Field>
+          ) : mode === 'app' ? (
             <OtpField
               aria-label={t.fields.code}
               slotLabel={(position) => `${t.fields.slot} ${position}`}
@@ -157,18 +181,20 @@ function ReauthDialog({
             </Field>
           )}
           <FormError error={confirm.error} />
-          <Button
-            type="button"
-            variant="link"
-            className="self-start px-0"
-            onClick={() => {
-              setMode(mode === 'app' ? 'backup' : 'app');
-              setCode('');
-              confirm.reset();
-            }}
-          >
-            {mode === 'app' ? t.twoFactor.useBackup : t.twoFactor.useApp}
-          </Button>
+          {!byPassword && (
+            <Button
+              type="button"
+              variant="link"
+              className="self-start px-0"
+              onClick={() => {
+                setMode(mode === 'app' ? 'backup' : 'app');
+                setCode('');
+                confirm.reset();
+              }}
+            >
+              {mode === 'app' ? t.twoFactor.useBackup : t.twoFactor.useApp}
+            </Button>
+          )}
           <DialogFooter>
             <Button type="submit" loading={confirm.isPending} disabled={!ready}>
               {t.reauth.submit}

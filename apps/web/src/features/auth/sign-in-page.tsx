@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Link, useNavigate } from '@tanstack/react-router';
+import { Link, useNavigate, useRouter } from '@tanstack/react-router';
 import { signInResultSchema } from '@vertex-mizan/contracts';
 import { ar } from '@vertex-mizan/i18n';
 import { Button, Field, FieldError, FieldLabel, Input, PasswordInput } from '@vertex-mizan/ui';
@@ -15,6 +15,7 @@ const t = ar.auth;
 /** `/sign-in`: the first step, email and password (S01 rule 1). */
 export function SignInPage({ redirect }: { redirect: string | undefined }) {
   const navigate = useNavigate();
+  const router = useRouter();
   const queryClient = useQueryClient();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -35,8 +36,14 @@ export function SignInPage({ redirect }: { redirect: string | undefined }) {
         await navigate({ to: '/sign-in/two-factor', search: { redirect } });
         return;
       }
-      // Not enrolled yet: the session reaches only enrolment (S01 rule 2).
+      // Not enrolled yet: the session reaches only enrolment (S01 rule 2), unless the person is
+      // exempt and signs in by the password alone.
       await queryClient.resetQueries({ queryKey: meQuery.queryKey });
+      const me = await queryClient.fetchQuery(meQuery);
+      if (me?.person.twoFactorExempt) {
+        await router.navigate({ href: redirect ?? '/' });
+        return;
+      }
       await navigate({ to: '/two-factor/enrol', search: { redirect } });
     },
   });
