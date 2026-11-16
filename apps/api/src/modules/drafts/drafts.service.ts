@@ -15,6 +15,7 @@ import {
   type PostDraft,
   type PostedDraft,
   type PreviewItem,
+  type ProjectDocumentHeaderInput,
   type ProjectDocumentPreview,
   type UpdateDraft,
   type VoucherPreview,
@@ -25,6 +26,7 @@ import {
   checkVoucher,
   type Database,
   discardDraft,
+  documentLines,
   entryAttachments,
   entryDraftLines,
   entryDrafts,
@@ -189,7 +191,7 @@ export class DraftsService {
           lines: auditedLines(lines),
           ...(input.voucher !== undefined && { voucher: voucherOf(row) }),
           ...(input.projectDocument !== undefined && {
-            projectDocument: projectDocumentOf(row),
+            projectDocument: projectDocumentOf(row, lines),
           }),
         },
         {
@@ -237,7 +239,19 @@ export class DraftsService {
           updatedAt: new Date(),
         })
         .where(eq(entryDrafts.id, id));
-      if (row.reversesEntryId === null) await writeLines(tx, row.companyId, id, input.lines);
+      if (row.reversesEntryId === null) {
+        const derived =
+          input.projectDocument === undefined &&
+          row.projectDocumentKind !== null &&
+          row.projectDocumentKind !== 'purchase' &&
+          row.projectDocumentKind !== 'wage_sheet';
+        // S12: a billing's or a release's lines are its header's; left out, they stay as saved.
+        if (derived) {
+          documentLines({ kind: row.projectDocumentKind } as ProjectDocumentHeaderInput, input.lines);
+        } else {
+          await writeLines(tx, row.companyId, id, documentLines(input.projectDocument, input.lines));
+        }
+      }
       if (changed) {
         await writeCompanyAudit(tx, row.companyId, actor, {
           action: 'draft.updated',
@@ -310,9 +324,11 @@ export class DraftsService {
             kind: previewed.kind,
             currency: previewed.currency,
             totalMinor: previewed.totalMinor.toString(),
-            previousMinor: null,
-            periodValueMinor: null,
-            retentionMinor: null,
+            previousMinor: previewed.previousMinor?.toString() ?? null,
+            // A billing's total is its period's value (S12 rule 14).
+            periodValueMinor:
+              previewed.previousMinor === null ? null : previewed.totalMinor.toString(),
+            retentionMinor: previewed.retentionMinor?.toString() ?? null,
             advanceMinor: previewed.advanceMinor?.toString() ?? null,
             netMinor: previewed.netMinor.toString(),
             warnings: previewed.warnings,

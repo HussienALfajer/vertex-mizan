@@ -60,7 +60,10 @@ function lineOf(row: LineRow): DraftLine {
 }
 
 /** A project document draft's header as stored (S12), null on any other draft. */
-export function projectDocumentOf(row: DraftRow): ProjectDocumentHeader | null {
+export function projectDocumentOf(
+  row: DraftRow,
+  lines: readonly DraftLine[],
+): ProjectDocumentHeader | null {
   if (row.projectDocumentKind === null || row.contractValueId === null) return null;
   return {
     kind: row.projectDocumentKind,
@@ -74,7 +77,15 @@ export function projectDocumentOf(row: DraftRow): ProjectDocumentHeader | null {
     retentionMinor: row.retentionMinor?.toString() ?? null,
     advanceMinor: row.advanceMinor?.toString() ?? null,
     supplierReference: row.supplierReference,
-    retentionItems: null,
+    // A client's release keeps its retention items as its lines (S12 "Drafts").
+    retentionItems:
+      row.projectDocumentKind === 'retention_release' && row.side === 'client'
+        ? lines.flatMap((line) =>
+            line.openItemId === null || line.amountMinor === null
+              ? []
+              : [{ itemId: line.openItemId, amountMinor: line.amountMinor }],
+          )
+        : null,
   };
 }
 
@@ -116,7 +127,7 @@ export async function readDraft(tx: Transaction, id: string): Promise<Draft> {
     copiedFromEntryId: row.copiedFromEntryId,
     lines,
     voucher: voucherOf(row),
-    projectDocument: projectDocumentOf(row),
+    projectDocument: projectDocumentOf(row, lines),
     preparedBy: personOf(people, row.preparedByUserId),
     submitted:
       row.submittedByUserId && row.submittedAt

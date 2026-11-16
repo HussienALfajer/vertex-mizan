@@ -106,6 +106,8 @@ export class EntriesController {
     // S04 rule 13: an opening whose settlements stand; a void's difference measured on its date.
     'OPEN_ITEM_HAS_SETTLEMENTS',
     'RATE_MISSING',
+    // S12 rule 22: a billing cancelled while a later one of its project stands.
+    'PROJECT_DOCUMENT_NOT_LATEST',
   )
   async reverse(
     @Access() access: RequestAccess,

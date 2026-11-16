@@ -41,8 +41,9 @@ export function missingOf(draft: DraftRow, lines: readonly DraftLine[]): Posting
     });
   }
   if (draft.reversesEntryId !== null) return refusals;
-  // S12: a project document's lines are its cost or wage lines, from which its entry is derived;
-  // each has its amount, or a quantity with its unit price (rule 6).
+  // S12: a project document's lines are its cost or wage lines, or a client's release's retention
+  // items, from which its entry is derived; each has its amount, or a quantity with its unit price
+  // (rule 6).
   if (draft.projectDocumentKind !== null) {
     for (const line of lines) {
       const priced = line.quantity !== null && line.unitPrice !== null;
@@ -55,7 +56,12 @@ export function missingOf(draft: DraftRow, lines: readonly DraftLine[]): Posting
         });
       }
     }
-    if (lines.length === 0) {
+    // A billing and a supplier's release derive every line from their header (rules 14–20).
+    const derived =
+      draft.projectDocumentKind === 'progress_billing' ||
+      draft.projectDocumentKind === 'subcontract_billing' ||
+      (draft.projectDocumentKind === 'retention_release' && draft.side === 'supplier');
+    if (lines.length === 0 && !derived) {
       refusals.push({
         code: 'VALIDATION_FAILED',
         message: 'A document has a line',
