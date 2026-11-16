@@ -15,6 +15,7 @@ import {
   type PostDraft,
   type PostedDraft,
   type PreviewItem,
+  type ProjectDocumentPreview,
   type UpdateDraft,
   type VoucherPreview,
 } from '@vertex-mizan/contracts';
@@ -31,7 +32,10 @@ import {
   type PersonActor,
   type PreviewLine,
   previewPosting,
+  previewProjectDocument,
   previewVoucher,
+  projectDocumentContentOf,
+  projectDocuments,
   readItemBalances,
   type Transaction,
   withCompany,
@@ -63,6 +67,8 @@ import {
   draftLines,
   draftRow,
   insertDraft,
+  projectDocumentColumns,
+  projectDocumentOf,
   readDraft,
   summaryOf,
   voucherColumns,
@@ -182,6 +188,9 @@ export class DraftsService {
           })),
           lines: auditedLines(lines),
           ...(input.voucher !== undefined && { voucher: voucherOf(row) }),
+          ...(input.projectDocument !== undefined && {
+            projectDocument: projectDocumentOf(row),
+          }),
         },
         {
           entryDate: input.entryDate,
@@ -190,8 +199,24 @@ export class DraftsService {
           dealtRates: input.dealtRates,
           lines: auditedLines(input.lines),
           ...(input.voucher !== undefined && { voucher: input.voucher }),
+          ...(input.projectDocument !== undefined && { projectDocument: input.projectDocument }),
         },
       );
+      if (row.reversesEntryId !== null && input.projectDocument != null) {
+        throw new CodedException('VALIDATION_FAILED', 'A reversal is not a project document', [
+          { path: ['projectDocument'], message: 'A reversal is not a project document' },
+        ]);
+      }
+      const voucherAfter = input.voucher === undefined ? row.voucherKind : input.voucher;
+      const documentAfter =
+        input.projectDocument === undefined ? row.projectDocumentKind : input.projectDocument;
+      if (voucherAfter != null && documentAfter != null) {
+        throw new CodedException(
+          'VALIDATION_FAILED',
+          'A draft is a voucher or a project document',
+          [{ path: ['projectDocument'], message: 'A draft is a voucher or a project document' }],
+        );
+      }
       if (row.reversesEntryId !== null && input.voucher != null) {
         throw new CodedException('VALIDATION_FAILED', 'A reversal is not a voucher', [
           { path: ['voucher'], message: 'A reversal is not a voucher' },
@@ -206,6 +231,9 @@ export class DraftsService {
           dealtRates: input.dealtRates,
           // S11: left out keeps the voucher header, null removes it.
           ...(input.voucher !== undefined && (await voucherColumns(tx, input.voucher))),
+          // S12: left out keeps the project document's header, null removes it.
+          ...(input.projectDocument !== undefined &&
+            (await projectDocumentColumns(tx, input.projectDocument))),
           updatedAt: new Date(),
         })
         .where(eq(entryDrafts.id, id));
@@ -232,6 +260,20 @@ export class DraftsService {
       const lines = await draftLines(tx, id);
       const currencies = await ledgerCurrencies(tx);
       const voucher = voucherSpecOf(row, null);
+      let documentPreview: ProjectDocumentPreview | null =
+        row.projectDocumentKind === null
+          ? null
+          : {
+              kind: row.projectDocumentKind,
+              currency: row.documentCurrency as CurrencyCode | null,
+              totalMinor: null,
+              previousMinor: null,
+              periodValueMinor: null,
+              retentionMinor: null,
+              advanceMinor: null,
+              netMinor: null,
+              warnings: [],
+            };
       let voucherPreview: VoucherPreview | null =
         voucher === null
           ? null
@@ -247,13 +289,36 @@ export class DraftsService {
         lines: built,
         items,
         voucher: voucherPreview,
+        projectDocument: documentPreview,
         refusals,
       });
       const missing = missingOf(row, lines);
       if (missing.length > 0) return answer(missing);
       try {
         let built: PreviewLine[];
-        if (voucher === null) {
+        if (row.projectDocumentKind !== null) {
+          // S12 "API": the document's figures, each covered part and the warnings.
+          const previewed = await previewProjectDocument(tx, {
+            entryDate: row.entryDate,
+            content: {
+              kind: 'project_document',
+              today: todayInDamascus(),
+              ...(await projectDocumentContentOf(tx, row.id)),
+            },
+          });
+          documentPreview = {
+            kind: previewed.kind,
+            currency: previewed.currency,
+            totalMinor: previewed.totalMinor.toString(),
+            previousMinor: null,
+            periodValueMinor: null,
+            retentionMinor: null,
+            advanceMinor: previewed.advanceMinor?.toString() ?? null,
+            netMinor: previewed.netMinor.toString(),
+            warnings: previewed.warnings,
+          };
+          built = previewed.lines;
+        } else if (voucher === null) {
           built = await previewPosting(tx, {
             entryDate: row.entryDate,
             content: contentOf(row, lines, todayInDamascus()),
@@ -304,6 +369,15 @@ export class DraftsService {
                     reference: items.find((item) => item.id === line.item?.id)?.reference ?? '',
                     movement: line.item.movement,
                     adjusted: line.item.adjusted,
+                  },
+            quantity: line.quantity,
+            covered:
+              line.covered === null
+                ? null
+                : {
+                    amountMinor: line.covered.amountMinor.toString(),
+                    bookMinor: line.covered.bookMinor.toString(),
+                    parallelMinor: line.covered.parallelMinor?.toString() ?? null,
                   },
           })),
           items,
@@ -564,10 +638,20 @@ export class DraftsService {
       })
       .from(cashVouchers)
       .where(eq(cashVouchers.draftId, draftId));
+    const [document] = await tx
+      .select({
+        id: projectDocuments.id,
+        kind: projectDocuments.kind,
+        fiscalYear: projectDocuments.fiscalYear,
+        number: projectDocuments.number,
+      })
+      .from(projectDocuments)
+      .where(eq(projectDocuments.draftId, draftId));
     return {
       entry: entryId === null ? null : await readEntry(tx, entryId),
       draft: await readDraft(tx, draftId),
       voucher: voucher ?? null,
+      projectDocument: document ?? null,
     };
   }
 }

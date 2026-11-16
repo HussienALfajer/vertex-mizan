@@ -1,8 +1,8 @@
 # A wage sheet
 
-Status: Proposed
+Status: Approved (owner, 2026-11-16)
 
-The expected entries of the seven cases were approved by the owner on 2026-11-16, with four readings of S12 rule 10: each line of the sheet is converted on its own and the residual is conversion rounding (S03 rule 14), not a credit computed from the converted debits; a sheet dated other than its period's last day is refused, not redated; days with more than one decimal place are refused; and a lump sum needs its description. They stay `Proposed` until S12's slice brings the `project_document` executor and the project documents' and quantities' readers.
+The expected entries of the seven cases were approved by the owner on 2026-11-16, with four readings of S12 rule 10: each line of the sheet is converted on its own and the residual is conversion rounding (S03 rule 14), not a credit computed from the converted debits; a sheet dated other than its period's last day is refused, not redated; days with more than one decimal place are refused; and a lump sum needs its description. S12's first PR brought the `project_document` executor and the project documents' and quantities' readers and switched them to `Approved` with no expected value changed.
 
 ## Rule
 

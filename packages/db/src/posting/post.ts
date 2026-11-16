@@ -14,6 +14,7 @@ import {
   type Ledger,
   type MovementKind,
   money,
+  type ProjectDocumentKind,
   type RateSource,
   type RateType,
   type VoucherKind,
@@ -23,9 +24,11 @@ import {
   balanceEntry,
   balancingLine,
   boxShortfall,
+  buildProjectDocument,
   type CanonicalValue,
   type CarriedAmounts,
   type ChainConversion,
+  type ChainCovered,
   type ChainEntry,
   type ChartAccount,
   type ChartLine,
@@ -52,6 +55,7 @@ import {
   keptLedgers,
   type Line,
   type LineDimensionValue,
+  type LineQuantity,
   type MeasureContext,
   manualEntry,
   manualReversalLines,
@@ -59,8 +63,11 @@ import {
   moveItem,
   movementOn,
   netChanges,
+  type ProjectDocumentInput,
   periodOf,
   type RevaluedBalance,
+  type RunningTarget,
+  resolveLineAmount,
   revaluationLines,
   revaluationReversalLines,
   reverseLines,
@@ -95,6 +102,13 @@ import {
   openItems,
 } from '../schema/open-items.js';
 import { openings } from '../schema/opening.js';
+import {
+  advanceApplications,
+  lineQuantities,
+  projectDocumentSequences,
+  projectDocuments,
+} from '../schema/project-documents.js';
+import { materials } from '../schema/projects.js';
 import { exchangeRates, ratePairs } from '../schema/rates.js';
 import { ledgersOf } from '../services/companies.js';
 import { exchangeRateOf, publicationCalendar, rateSuperseded } from '../services/rates.js';
@@ -121,6 +135,11 @@ export interface ManualLineSpec {
   readonly openItemId?: string | null;
   /** The manual document item the line opens (S04 rule 6): its reference and due date. */
   readonly newItem?: { readonly reference: string; readonly dueOn: string | null } | null;
+  /**
+   * The line's material and quantity (S12 rules 4–6): required on an account that requires a
+   * material, its amount then their product; never on a line that moves an item.
+   */
+  readonly quantity?: LineQuantity | null;
 }
 
 /** The rate a manual entry was dealt at for a pair, quoted in the company's orientation of it. */
@@ -180,7 +199,49 @@ export type PostingContent =
    * The opening's whole reversal (S10 rule 25): the opening entry negated line by line on the books
    * start, each item moved back; no rate read. Its source is `opening`.
    */
-  | { readonly kind: 'opening_reversal'; readonly entryId: string; readonly today: string };
+  | { readonly kind: 'opening_reversal'; readonly entryId: string; readonly today: string }
+  /**
+   * A project document (S12 rules 4–13, 21; ADR 0023): its header and lines as the draft holds
+   * them; `buildProjectDocument()` derives the entry under the head lock, from the accounts of
+   * `contracting@1` and the items it reads, and the posting numbers the document per kind and
+   * fiscal year and writes it with its quantities and advance applications.
+   */
+  | {
+      readonly kind: 'project_document';
+      readonly document: ProjectDocumentSpec;
+      readonly lines: readonly DocumentLineSpec[];
+      readonly today: string;
+    };
+
+/** A project document's header as it posts (S12 "Drafts"). */
+export interface ProjectDocumentSpec {
+  readonly kind: Extract<ProjectDocumentKind, 'purchase' | 'wage_sheet'>;
+  /** The project: a value of the `contract` dimension of kind `project`. */
+  readonly contractValueId: string;
+  /** A purchase's supplier; null on a wage sheet. */
+  readonly counterpartyValueId: string | null;
+  readonly currency: CurrencyCode;
+  readonly periodFrom: string | null;
+  readonly periodTo: string | null;
+  /** The advance a purchase applies; null for none. */
+  readonly advanceMinor: bigint | null;
+  readonly supplierReference: string | null;
+}
+
+/**
+ * A project document's line as typed: a purchase's cost line on its account, or a wage sheet's
+ * line (its account the wages account, its one dimension value the worker). Its amount is typed
+ * only on a price adjustment, a lump sum or a line with no quantity.
+ */
+export interface DocumentLineSpec {
+  readonly accountId: string | null;
+  readonly dimensionValueIds: readonly string[];
+  readonly amountMinor: bigint | null;
+  readonly memo: string | null;
+  readonly quantity: LineQuantity | null;
+  /** A purchase line's covered part as typed (S12 rule 12). */
+  readonly advanceMinor: bigint | null;
+}
 
 /**
  * A line of the opening entry (S10 rules 14–17): the accountant's. A measured line on a document
@@ -287,6 +348,27 @@ interface Built {
   readonly newItems: readonly NewItem[];
   /** The running items a reversal moves, for the difference entry of S04 rule 13. */
   readonly voided: readonly VoidedRunningItem[];
+  /** Each line's material and quantity (S12 rule 4), by line; absent when none has one. */
+  readonly quantities?: readonly (LineQuantity | null)[];
+  /** The line that clears an applied advance, which the covered lines name (S12 rule 12). */
+  readonly advanceLine?: number | null;
+  /** The project document the lines post (S12 rule 21). */
+  readonly document?: BuiltDocumentRow;
+}
+
+/** What a project document's row takes from its build (S12 "Data"). */
+interface BuiltDocumentRow {
+  readonly kind: ProjectDocumentKind;
+  readonly contractValueId: string;
+  readonly counterpartyValueId: string | null;
+  readonly currency: CurrencyCode;
+  readonly periodFrom: string | null;
+  readonly periodTo: string | null;
+  readonly totalMinor: bigint;
+  readonly advanceMinor: bigint | null;
+  /** What the counterparties are credited: the total less the advance applied. */
+  readonly netMinor: bigint;
+  readonly supplierReference: string | null;
 }
 
 type Role =
@@ -331,7 +413,17 @@ function linesPayload(lines: readonly ManualLineSpec[]): CanonicalValue {
     ...(line.newItem && {
       newItem: { reference: line.newItem.reference, dueOn: line.newItem.dueOn },
     }),
+    ...(line.quantity && { quantity: quantityPayload(line.quantity) }),
   }));
+}
+
+function quantityPayload(quantity: LineQuantity): CanonicalValue {
+  return {
+    materialId: quantity.materialId,
+    unit: quantity.unit,
+    quantity: quantity.quantity,
+    unitPrice: quantity.unitPrice,
+  };
 }
 
 /** What a request posts, as its payload hash covers it. */
@@ -388,6 +480,19 @@ function contentPayload(content: PostingContent): CanonicalValue {
       };
     case 'opening_reversal':
       return { kind: content.kind, entryId: content.entryId };
+    case 'project_document':
+      return {
+        kind: content.kind,
+        document: { ...content.document },
+        lines: content.lines.map((line) => ({
+          accountId: line.accountId,
+          dimensionValueIds: [...line.dimensionValueIds].sort(),
+          amountMinor: line.amountMinor,
+          memo: line.memo,
+          quantity: line.quantity === null ? null : quantityPayload(line.quantity),
+          advanceMinor: line.advanceMinor,
+        })),
+      };
   }
 }
 
@@ -475,6 +580,62 @@ async function chartOf(
       },
     ]),
   );
+}
+
+/** The accounts of `ids` that require a material (S12 rule 4). */
+async function requiringMaterial(tx: Transaction, ids: readonly string[]): Promise<Set<string>> {
+  if (ids.length === 0) return new Set();
+  const rows = await tx
+    .select({ id: chartAccounts.id })
+    .from(chartAccounts)
+    .where(and(inArray(chartAccounts.id, [...ids]), eq(chartAccounts.requiresMaterial, true)));
+  return new Set(rows.map((row) => row.id));
+}
+
+/**
+ * Checks the materials of lines' quantities (S12 rules 3–4): each the company's, not archived
+ * (`MATERIAL_REQUIRED`, naming it), and the line in its unit (`VALIDATION_FAILED`). Refusals name
+ * the line.
+ */
+async function checkMaterials(
+  tx: Transaction,
+  quantities: readonly (LineQuantity | null)[],
+): Promise<void> {
+  const ids = [
+    ...new Set(
+      quantities.flatMap((q) => (q === null || q.materialId === null ? [] : [q.materialId])),
+    ),
+  ];
+  const rows =
+    ids.length === 0
+      ? []
+      : await tx
+          .select({
+            id: materials.id,
+            code: materials.code,
+            unit: materials.unit,
+            archivedAt: materials.archivedAt,
+          })
+          .from(materials)
+          .where(inArray(materials.id, ids));
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  for (const [index, quantity] of quantities.entries()) {
+    if (quantity === null || quantity.materialId === null) continue;
+    const material = byId.get(quantity.materialId);
+    if (material === undefined || material.archivedAt !== null) {
+      refuse('MATERIAL_REQUIRED', 'The line names an archived or unknown material', {
+        lineNo: index + 1,
+        materialId: quantity.materialId,
+        ...(material !== undefined && { material: material.code }),
+      });
+    }
+    if (material.unit !== quantity.unit) {
+      refuse('VALIDATION_FAILED', "A material's line is in the material's unit", {
+        lineNo: index + 1,
+        unit: material.unit,
+      });
+    }
+  }
 }
 
 /** The dimension values of `ids` with their types; an unknown one is `NOT_FOUND`. */
@@ -827,6 +988,30 @@ async function manualLines(
     ]),
   ]);
   const chart = await chartOf(tx, [...new Set(specs.map((spec) => spec.accountId))]);
+  const requiring = await requiringMaterial(tx, [...new Set(specs.map((spec) => spec.accountId))]);
+  // S12 rules 4–6: every line's quantity, on any manual entry or voucher.
+  const typedQuantities = specs.map((spec, index) => {
+    const lineNo = index + 1;
+    const { quantity } = onLine(lineNo, () =>
+      resolveLineAmount(
+        {
+          requiresMaterial: requiring.has(spec.accountId),
+          currency: spec.currency,
+          amountMinor: spec.amountMinor,
+          quantity: spec.quantity ?? null,
+        },
+        lineNo,
+      ),
+    );
+    if (
+      quantity !== null &&
+      (spec.openItemId || spec.newItem || chart.get(spec.accountId)?.isControl)
+    ) {
+      refuse('VALIDATION_FAILED', 'A line that moves an item carries no quantity', { lineNo });
+    }
+    return quantity;
+  });
+  await checkMaterials(tx, typedQuantities);
   const keepsParallel = ledgers.parallel !== null;
   const newItems: NewItem[] = [];
   const running = new Map<string, ItemState>();
@@ -1054,6 +1239,12 @@ async function manualLines(
     rateIds: ids,
     newItems,
     voided: [],
+    ...(typedQuantities.some((quantity) => quantity !== null) && {
+      quantities: balanced.map((_, index) => {
+        const typed = typedOf(index);
+        return typed === null ? null : (typedQuantities[typed] ?? null);
+      }),
+    }),
   };
 }
 
@@ -1117,6 +1308,30 @@ async function storedEntry(tx: Transaction, entryId: string) {
     .where(
       inArray(dimensionSetValues.setId, [...new Set(stored.map((line) => line.dimensionSetId))]),
     );
+  // S12: the lines' quantities and the advance's covered parts, which a reversal carries back.
+  const quantityRows = await tx
+    .select()
+    .from(lineQuantities)
+    .where(eq(lineQuantities.entryId, original.id));
+  const applicationRows = await tx
+    .select()
+    .from(advanceApplications)
+    .where(eq(advanceApplications.entryId, original.id));
+  const quantities = stored.map((row): LineQuantity | null => {
+    const found = quantityRows.find((candidate) => candidate.lineId === row.id);
+    return found === undefined
+      ? null
+      : {
+          materialId: found.materialId,
+          unit: found.unit,
+          quantity: found.quantity,
+          unitPrice: found.unitPrice,
+        };
+  });
+  const advanceIds = [...new Set(applicationRows.map((row) => row.advanceLineId))];
+  if (advanceIds.length > 1) throw new Error('An entry with two advance lines');
+  const advanceLine =
+    advanceIds[0] === undefined ? null : stored.findIndex((row) => row.id === advanceIds[0]);
   const lines = stored.map((row): Line => {
     const movement = movements.find((candidate) => candidate.lineId === row.id);
     const fields = {
@@ -1142,13 +1357,32 @@ async function storedEntry(tx: Transaction, entryId: string) {
         conversions.filter((c) => c.lineId === row.id && c.ledger === ledger),
         original.entryDate,
       );
+    const application = applicationRows.find((candidate) => candidate.lineId === row.id);
     return {
       ...fields,
       kind: 'measured',
       conversions: { book: of('book'), parallel: of('parallel') },
+      ...(application !== undefined && {
+        covered: {
+          transaction: money(application.amountMinor, row.currency as CurrencyCode),
+          bookMinor: application.bookMinor,
+          parallelMinor: application.parallelMinor,
+        },
+      }),
     };
   });
-  return { original, stored, lines, movements };
+  return { original, stored, lines, movements, quantities, advanceLine };
+}
+
+/** A quantity negated, as a reversal carries it (S12 rule 4): `"12.500"` → `"-12.500"`. */
+function negatedQuantity(quantity: LineQuantity): LineQuantity {
+  const text = quantity.quantity;
+  const negated = text.startsWith('-')
+    ? text.slice(1)
+    : /^0(\.0+)?$/.test(text)
+      ? text
+      : `-${text}`;
+  return { ...quantity, quantity: negated };
 }
 
 async function reversalLines(
@@ -1158,7 +1392,10 @@ async function reversalLines(
   ledgers: CompanyLedgers,
   lock: boolean,
 ): Promise<Built> {
-  const { original, stored, lines, movements } = await storedEntry(tx, content.entryId);
+  const { original, stored, lines, movements, quantities, advanceLine } = await storedEntry(
+    tx,
+    content.entryId,
+  );
   const [reversal] = await tx
     .select({ id: journalEntries.id })
     .from(journalEntries)
@@ -1230,6 +1467,13 @@ async function reversalLines(
     rateIds: new Map(),
     newItems: [],
     voided,
+    // S12: the reversal carries its original's quantities negated and its covered parts back.
+    ...(quantities.some((quantity) => quantity !== null) && {
+      quantities: quantities.map((quantity) =>
+        quantity === null ? null : negatedQuantity(quantity),
+      ),
+    }),
+    advanceLine,
   };
 }
 
@@ -1407,6 +1651,7 @@ function checkDates(on: string, content: PostingContent, ledgers: CompanyLedgers
       onLine(index + 1, () => checkCurrencyDate(line.currency, on));
     }
   }
+  if (content.kind === 'project_document') checkCurrencyDate(content.document.currency, on);
 }
 
 /**
@@ -1433,7 +1678,418 @@ async function buildLines(
       return openingLines(tx, content, on, ledgers, daysOff, lock);
     case 'opening_reversal':
       return openingReversalLines(tx, content, on, ledgers, lock);
+    case 'project_document':
+      return projectDocumentLines(tx, content, on, ledgers, daysOff, lock);
   }
+}
+
+// Project documents (S12 rules 4–13, 21; ADR 0023).
+
+/**
+ * The `contracting@1` accounts a project document posts to besides its cost lines (S12
+ * "Accounting treatment"), with the counterparty type each running account is kept by.
+ */
+const DOCUMENT_ACCOUNTS = {
+  suppliers: { code: '211001', counterparty: 'supplier' },
+  supplierAdvances: { code: '114002', counterparty: 'supplier' },
+  workers: { code: '211007', counterparty: 'worker' },
+  wages: { code: '511002', counterparty: null },
+} as const;
+
+type DocumentAccount = (typeof DOCUMENT_ACCOUNTS)[keyof typeof DOCUMENT_ACCOUNTS];
+
+/**
+ * The id of a document account (S12): the company's postable account of that code, a running
+ * control account of its counterparty type where it keeps one; otherwise `VALIDATION_FAILED`, the
+ * chart not being `contracting@1`'s.
+ */
+async function documentAccount(tx: Transaction, account: DocumentAccount): Promise<string> {
+  const [row] = await tx
+    .select({
+      id: chartAccounts.id,
+      kind: chartAccounts.kind,
+      itemKind: chartAccounts.itemKind,
+      counterpartyType: chartAccounts.counterpartyType,
+    })
+    .from(chartAccounts)
+    .where(eq(chartAccounts.code, account.code));
+  const fits =
+    row !== undefined &&
+    row.kind === 'postable' &&
+    (account.counterparty === null
+      ? row.itemKind === null
+      : row.itemKind === 'running' && row.counterpartyType === account.counterparty);
+  if (!fits) {
+    refuse(
+      'VALIDATION_FAILED',
+      `A project document needs the account ${account.code} of contracting@1`,
+      { account: account.code },
+    );
+  }
+  return row.id;
+}
+
+/**
+ * The counterparty's running item on an account in a currency as a line moves it (S04 rule 3):
+ * found and read with its balance row (`FOR UPDATE` when posting), or made, the made one added to
+ * `newItems`; the line keeps `dimensions`, the item its counterparty alone.
+ */
+async function runningTarget(
+  tx: Transaction,
+  input: {
+    readonly accountId: string;
+    readonly counterparty: LineDimensionValue;
+    readonly currency: CurrencyCode;
+    readonly dimensions: Dimensions;
+    readonly on: string;
+    readonly keepsParallel: boolean;
+    readonly lock: boolean;
+  },
+  newItems: NewItem[],
+): Promise<RunningTarget> {
+  const { accountId, counterparty, currency } = input;
+  const id = await runningItemOf(tx, accountId, counterparty.id, currency);
+  let item: ItemState;
+  if (id !== null) {
+    const stored = (await itemsOf(tx, [id], input.lock)).get(id);
+    if (stored === undefined) throw new Error('A running item read and lost');
+    item = stored.state;
+  } else {
+    const [code] = await tx
+      .select({ code: dimensionValues.code })
+      .from(dimensionValues)
+      .where(eq(dimensionValues.id, counterparty.id));
+    const made = uuidv7();
+    newItems.push({
+      id: made,
+      accountId,
+      kind: 'running',
+      reference: code?.code ?? counterparty.id,
+      dimensions: { [counterparty.typeId]: counterparty.id },
+      counterpartyValueId: counterparty.id,
+      currency,
+      dueOn: null,
+      documentDate: input.on,
+    });
+    item = {
+      id: made,
+      kind: 'running',
+      direction: null,
+      balance: emptyBalance(currency, input.keepsParallel),
+    };
+  }
+  return { account: accountId, dimensions: input.dimensions, item };
+}
+
+/**
+ * The project's share of a counterparty's advance (S12 rule 12; owner, 2026-11-16): each of its
+ * running items on the advance account, one per currency, read with its balance row (`FOR UPDATE`
+ * when posting), as the sum of the item's movements on lines carrying the project, so an advance for
+ * another project never measures this one. Advances are non-monetary and never revalued.
+ */
+async function advanceShares(
+  tx: Transaction,
+  accountId: string,
+  counterpartyId: string,
+  contractValueId: string,
+  keepsParallel: boolean,
+  lock: boolean,
+): Promise<ItemState[]> {
+  const items = await tx
+    .select({ id: openItems.id })
+    .from(openItems)
+    .where(
+      and(
+        eq(openItems.kind, 'running'),
+        eq(openItems.accountId, accountId),
+        eq(openItems.counterpartyValueId, counterpartyId),
+      ),
+    );
+  const stored = await itemsOf(
+    tx,
+    items.map((item) => item.id),
+    lock,
+  );
+  const shares: ItemState[] = [];
+  for (const [id, item] of stored) {
+    const result = await tx.execute<{ amount: string; book: string; parallel: string }>(sql`
+      select coalesce(sum(m.amount_minor), 0)::text as amount,
+        coalesce(sum(m.book_minor), 0)::text as book,
+        coalesce(sum(m.parallel_minor), 0)::text as parallel
+      from ${openItemMovements} m
+      join ${journalLines} l on l.company_id = m.company_id and l.id = m.line_id
+      join ${dimensionSetValues} v on v.company_id = l.company_id and v.set_id = l.dimension_set_id
+      where m.item_id = ${id} and m.kind <> 'revaluation' and v.value_id = ${contractValueId}`);
+    const row = result.rows[0];
+    shares.push({
+      id,
+      kind: 'running',
+      direction: null,
+      balance: {
+        transaction: money(BigInt(row?.amount ?? '0'), item.currency),
+        bookMinor: BigInt(row?.book ?? '0'),
+        parallelMinor: keepsParallel ? BigInt(row?.parallel ?? '0') : null,
+      },
+    });
+  }
+  return shares;
+}
+
+/** The project of a document: a `contract` value of kind `project` (S12 rule 1). */
+async function projectOf(tx: Transaction, contractValueId: string): Promise<LineDimensionValue> {
+  const project = (await dimensionValuesOf(tx, [contractValueId])).get(contractValueId);
+  const [row] = await tx
+    .select({ kind: dimensionValues.contractKind })
+    .from(dimensionValues)
+    .where(eq(dimensionValues.id, contractValueId));
+  if (project === undefined || project.typeCode !== 'contract' || row?.kind !== 'project') {
+    refuse('VALIDATION_FAILED', 'A project document names a project', { contractValueId });
+  }
+  return project;
+}
+
+/**
+ * A project document's lines (S12 rules 4–13): the header's project and counterparty checked, the
+ * accounts of `contracting@1` found, the running items and the advance's project share read after
+ * the ledger head and the period, then `buildProjectDocument()` and `manualEntry()`, each line
+ * checked against the chart as a manual line, and `balanceEntry()` on the role accounts. A
+ * refusal of one typed line names it in `details.lineNo`.
+ */
+async function projectDocumentLines(
+  tx: Transaction,
+  content: Extract<PostingContent, { kind: 'project_document' }>,
+  on: string,
+  ledgers: CompanyLedgers,
+  daysOff: readonly number[],
+  lock: boolean,
+): Promise<Built> {
+  const origin = 'manual';
+  const { document } = content;
+  const { currency } = document;
+  const keepsParallel = ledgers.parallel !== null;
+  const project = await projectOf(tx, document.contractValueId);
+  const projectDimension = { [project.typeId]: project.id };
+  const values = await dimensionValuesOf(tx, [
+    ...new Set([
+      project.id,
+      ...(document.counterpartyValueId === null ? [] : [document.counterpartyValueId]),
+      ...content.lines.flatMap((line) => line.dimensionValueIds),
+    ]),
+  ]);
+  const newItems: NewItem[] = [];
+  const { rates, ids } = await ratesOn(tx, on);
+  const context: MeasureContext = {
+    ledgers,
+    on,
+    rates,
+    calendar: await publicationCalendar(tx, daysOff),
+  };
+  let input: ProjectDocumentInput;
+  if (document.kind === 'purchase') {
+    const supplier =
+      document.counterpartyValueId === null ? undefined : values.get(document.counterpartyValueId);
+    if (supplier === undefined || supplier.typeCode !== 'supplier') {
+      refuse('VALIDATION_FAILED', 'A purchase names its supplier', {});
+    }
+    const suppliersAccount = await documentAccount(tx, DOCUMENT_ACCOUNTS.suppliers);
+    const advancesAccount = await documentAccount(tx, DOCUMENT_ACCOUNTS.supplierAdvances);
+    const accountIds = [
+      ...new Set(
+        content.lines.flatMap((line) => (line.accountId === null ? [] : [line.accountId])),
+      ),
+    ];
+    const chart = await chartOf(tx, accountIds);
+    const classes = new Map(
+      accountIds.length === 0
+        ? []
+        : (
+            await tx
+              .select({ id: chartAccounts.id, class: chartAccounts.class })
+              .from(chartAccounts)
+              .where(inArray(chartAccounts.id, accountIds))
+          ).map((row) => [row.id, row.class]),
+    );
+    const requiring = await requiringMaterial(tx, accountIds);
+    const counterpartyDimensions = { [supplier.typeId]: supplier.id, ...projectDimension };
+    const lines = content.lines.map((line, index) => {
+      const lineNo = index + 1;
+      const accountId = line.accountId;
+      if (accountId === null) {
+        refuse('VALIDATION_FAILED', 'A cost line has its account', { lineNo });
+      }
+      const named = line.dimensionValueIds.map((id) => values.get(id) as LineDimensionValue);
+      if (named.some((value) => value.typeId === project.typeId && value.id !== project.id)) {
+        refuse('VALIDATION_FAILED', "A cost line carries the document's project", { lineNo });
+      }
+      const dimensions = Object.fromEntries([
+        ...named.map((value) => [value.typeId, value.id]),
+        [project.typeId, project.id],
+      ]) as Dimensions;
+      onLine(lineNo, () =>
+        checkLineAgainstChart({
+          account: chart.get(accountId),
+          currency,
+          dimensions: Object.values(dimensions).map((id) => values.get(id) as LineDimensionValue),
+          origin,
+        }),
+      );
+      // S12 rule 7: a cost line is on a postable expense account.
+      if (classes.get(accountId) !== 'expense' || chart.get(accountId)?.isControl) {
+        refuse('VALIDATION_FAILED', 'A cost line is on an expense account', { lineNo });
+      }
+      return {
+        account: accountId,
+        dimensions,
+        currency,
+        requiresMaterial: requiring.has(accountId),
+        amountMinor: line.amountMinor,
+        quantity: line.quantity,
+        advanceMinor: line.advanceMinor,
+      };
+    });
+    input = {
+      kind: 'purchase',
+      currency,
+      advanceMinor: document.advanceMinor,
+      lines,
+      supplier: await runningTarget(
+        tx,
+        {
+          accountId: suppliersAccount,
+          counterparty: supplier,
+          currency,
+          dimensions: counterpartyDimensions,
+          on,
+          keepsParallel,
+          lock,
+        },
+        newItems,
+      ),
+      advance: {
+        account: advancesAccount,
+        dimensions: counterpartyDimensions,
+        // An advance paid to a supplier is a debit (S12 rule 12).
+        side: 1,
+        shares:
+          document.advanceMinor === null || document.advanceMinor === 0n
+            ? []
+            : await advanceShares(
+                tx,
+                advancesAccount,
+                supplier.id,
+                project.id,
+                keepsParallel,
+                lock,
+              ),
+      },
+    };
+  } else {
+    const { periodFrom, periodTo } = document;
+    if (periodFrom === null || periodTo === null) {
+      refuse('VALIDATION_FAILED', 'A wage sheet has its period', {});
+    }
+    const wagesAccount = await documentAccount(tx, DOCUMENT_ACCOUNTS.wages);
+    const workersAccount = await documentAccount(tx, DOCUMENT_ACCOUNTS.workers);
+    const workers = new Map<string, RunningTarget>();
+    const lines = [];
+    for (const [index, line] of content.lines.entries()) {
+      const lineNo = index + 1;
+      const named = line.dimensionValueIds.map((id) => values.get(id) as LineDimensionValue);
+      const worker = named.find((value) => value.typeCode === 'worker');
+      if (worker === undefined || named.length !== 1) {
+        refuse('VALIDATION_FAILED', "A wage sheet's line names its worker", { lineNo });
+      }
+      if (!workers.has(worker.id)) {
+        workers.set(
+          worker.id,
+          await runningTarget(
+            tx,
+            {
+              accountId: workersAccount,
+              counterparty: worker,
+              currency,
+              dimensions: { [worker.typeId]: worker.id, ...projectDimension },
+              on,
+              keepsParallel,
+              lock,
+            },
+            newItems,
+          ),
+        );
+      }
+      lines.push({
+        worker: worker.id,
+        dimensions: { ...projectDimension, [worker.typeId]: worker.id } as Dimensions,
+        quantity: line.quantity,
+        amountMinor: line.amountMinor,
+        memo: line.memo,
+      });
+    }
+    input = {
+      kind: 'wage_sheet',
+      currency,
+      on,
+      periodFrom,
+      periodTo,
+      wagesAccount,
+      lines,
+      workers,
+    };
+  }
+  const built = buildProjectDocument(input, context);
+  await checkMaterials(tx, built.quantities);
+  const roles = await roleAccounts(tx);
+  const entry = manualEntry(built.entry, context, {
+    gain: { account: roleTarget('fx_realised_gain') },
+    loss: { account: roleTarget('fx_realised_loss') },
+  });
+  const balanced = withRoleAccounts(
+    balanceEntry({
+      on,
+      ledgers,
+      lines: entry.lines,
+      rounding: { account: roleTarget('conversion_rounding') },
+    }),
+    roles,
+  );
+  const typedOf = (index: number) => entry.typed[index] ?? null;
+  // Every line is checked as a manual line: the cost lines with the project, the running lines with
+  // their counterparty and the project, the differences and rounding on the role accounts.
+  await checkAgainstChart(tx, balanced, origin);
+  const advanceLine =
+    built.advanceLine === null
+      ? -1
+      : balanced.findIndex((_, index) => typedOf(index) === built.advanceLine);
+  const memoOf = (typed: number): string | null =>
+    built.memos[typed] ??
+    (typed < content.lines.length ? (content.lines[typed]?.memo ?? null) : null);
+  return {
+    lines: balanced.map((line, index) => {
+      const typed = typedOf(index);
+      return { line, memo: typed === null ? null : memoOf(typed), adjusted: false };
+    }),
+    rateIds: ids,
+    newItems,
+    voided: [],
+    quantities: balanced.map((_, index) => {
+      const typed = typedOf(index);
+      return typed === null ? null : (built.quantities[typed] ?? null);
+    }),
+    advanceLine: advanceLine === -1 ? null : advanceLine,
+    document: {
+      kind: document.kind,
+      contractValueId: project.id,
+      counterpartyValueId: document.counterpartyValueId,
+      currency,
+      periodFrom: document.periodFrom,
+      periodTo: document.periodTo,
+      totalMinor: built.totalMinor,
+      advanceMinor:
+        document.kind === 'purchase' && document.advanceMinor !== null ? built.advanceMinor : null,
+      netMinor: built.netMinor,
+      supplierReference: document.supplierReference,
+    },
+  };
 }
 
 /**
@@ -1825,6 +2481,14 @@ export interface PreviewLine {
     readonly isNew: boolean;
     readonly reference: string | null;
   } | null;
+  /** The line's material and quantity (S12 rule 4); null on a line with none. */
+  readonly quantity: LineQuantity | null;
+  /** The part an applied advance covers, at its carried amounts (S12 rule 12); null otherwise. */
+  readonly covered: {
+    readonly amountMinor: bigint;
+    readonly bookMinor: bigint;
+    readonly parallelMinor: bigint | null;
+  } | null;
 }
 
 /**
@@ -1838,6 +2502,13 @@ export async function previewPosting(
   tx: Transaction,
   request: Pick<PostingRequest, 'entryDate' | 'content'>,
 ): Promise<PreviewLine[]> {
+  return (await previewBuilt(tx, request)).lines;
+}
+
+async function previewBuilt(
+  tx: Transaction,
+  request: Pick<PostingRequest, 'entryDate' | 'content'>,
+): Promise<{ lines: PreviewLine[]; built: Built }> {
   const [settings] = await tx.select().from(companySettings);
   if (!settings) throw new Error('A company without its settings');
   const ledgers = ledgersOf(settings);
@@ -1852,32 +2523,107 @@ export async function previewPosting(
   const built = await buildLines(tx, content, on, ledgers, settings.bulletinDaysOff, false);
   await checkBoxes(tx, built.lines, on, false);
   const made = new Map(built.newItems.map((item) => [item.id, item]));
-  return built.lines.map(({ line, memo, adjusted }, index) => ({
-    lineNo: index + 1,
-    accountId: line.account,
-    dimensionValueIds: Object.values(line.dimensions),
-    kind: line.kind,
-    ledger: line.kind === 'difference' || line.kind === 'rounding' ? line.ledger : null,
-    currency: line.transaction.currency,
-    amountMinor: line.transaction.amountMinor,
-    bookMinor: line.bookMinor,
-    parallelMinor: line.parallelMinor,
-    memo,
-    conversions: conversionsOf(
-      line,
-      built.rateIds,
-      content.kind === 'manual' || content.kind === 'opening',
-    ),
-    item:
-      line.item === undefined
-        ? null
-        : {
-            ...line.item,
-            adjusted,
-            isNew: made.has(line.item.id),
-            reference: made.get(line.item.id)?.reference ?? null,
-          },
-  }));
+  const lines = built.lines.map(
+    ({ line, memo, adjusted }, index): PreviewLine => ({
+      lineNo: index + 1,
+      accountId: line.account,
+      dimensionValueIds: Object.values(line.dimensions),
+      kind: line.kind,
+      ledger: line.kind === 'difference' || line.kind === 'rounding' ? line.ledger : null,
+      currency: line.transaction.currency,
+      amountMinor: line.transaction.amountMinor,
+      bookMinor: line.bookMinor,
+      parallelMinor: line.parallelMinor,
+      memo,
+      conversions: conversionsOf(
+        line,
+        built.rateIds,
+        content.kind === 'manual' ||
+          content.kind === 'opening' ||
+          content.kind === 'project_document',
+      ),
+      item:
+        line.item === undefined
+          ? null
+          : {
+              ...line.item,
+              adjusted,
+              isNew: made.has(line.item.id),
+              reference: made.get(line.item.id)?.reference ?? null,
+            },
+      quantity: built.quantities?.[index] ?? null,
+      covered:
+        line.kind === 'measured' && line.covered !== undefined
+          ? {
+              amountMinor: line.covered.transaction.amountMinor,
+              bookMinor: line.covered.bookMinor,
+              parallelMinor: line.covered.parallelMinor,
+            }
+          : null,
+    }),
+  );
+  return { lines, built };
+}
+
+/** The warnings a project document's preview shows and its posting accepts (S12 rules 8, 14). */
+export type ProjectDocumentWarning =
+  | 'duplicate_supplier_reference'
+  | 'cumulative_above_contract_value';
+
+/** A project document's preview (S12 "API"): its lines, figures and warnings. */
+export interface ProjectDocumentPreviewResult {
+  readonly lines: PreviewLine[];
+  readonly kind: ProjectDocumentKind;
+  readonly currency: CurrencyCode;
+  readonly totalMinor: bigint;
+  readonly advanceMinor: bigint | null;
+  /** The supplier's or the workers' credit: the total less the advance applied. */
+  readonly netMinor: bigint;
+  readonly warnings: ProjectDocumentWarning[];
+}
+
+/**
+ * What a project document draft would post now (S12 "API"), with no write and no lock: its lines as
+ * `post()` would build them, its figures, and the warnings: a purchase whose supplier's reference
+ * an uncancelled purchase of the same supplier already carries (rule 8).
+ */
+export async function previewProjectDocument(
+  tx: Transaction,
+  request: Pick<PostingRequest, 'entryDate'> & {
+    readonly content: Extract<PostingContent, { kind: 'project_document' }>;
+  },
+): Promise<ProjectDocumentPreviewResult> {
+  const { lines, built } = await previewBuilt(tx, request);
+  const row = built.document;
+  if (row === undefined) throw new Error('A project document built without its row');
+  const warnings: ProjectDocumentWarning[] = [];
+  if (
+    row.kind === 'purchase' &&
+    row.supplierReference !== null &&
+    row.counterpartyValueId !== null
+  ) {
+    const result = await tx.execute<{ taken: boolean }>(sql`
+      select exists (
+        select 1 from ${projectDocuments} d
+        where d.kind = 'purchase' and d.counterparty_value_id = ${row.counterpartyValueId}
+          and d.supplier_reference = ${row.supplierReference}
+          and not exists (
+            select 1 from ${journalEntries} r
+            where r.company_id = d.company_id and r.reverses_entry_id = d.entry_id
+          )
+      ) as taken`);
+    if (result.rows[0]?.taken === true) warnings.push('duplicate_supplier_reference');
+  }
+  const advanceMinor = row.advanceMinor;
+  return {
+    lines,
+    kind: row.kind,
+    currency: row.currency,
+    totalMinor: row.totalMinor,
+    advanceMinor,
+    netMinor: row.netMinor,
+    warnings,
+  };
 }
 
 /** The company's ledger head as a posting moves it, entry by entry. */
@@ -1903,6 +2649,35 @@ interface EntryToWrite {
   readonly source: EntrySource;
   /** The voucher it posts (S11 rule 9), named in its audit row. */
   readonly voucher?: { readonly kind: VoucherKind; readonly number: number };
+  /** The project document it posts (S12 rule 21), named in its audit row. */
+  readonly projectDocument?: { readonly kind: ProjectDocumentKind; readonly number: number };
+}
+
+/**
+ * A line's quantity and covered part as the chain hashes and the posting stores them (S12): each
+ * only when the line has one; a covered part names its clearing line by number.
+ */
+function quantityAndCoveredOf(
+  built: Built,
+  line: Line,
+  index: number,
+): { quantity?: LineQuantity; covered?: ChainCovered } {
+  const quantity = built.quantities?.[index] ?? null;
+  const covered = line.kind === 'measured' ? line.covered : undefined;
+  if (covered !== undefined && (built.advanceLine === undefined || built.advanceLine === null)) {
+    throw new Error('A covered line without its advance line');
+  }
+  return {
+    ...(quantity !== null && { quantity }),
+    ...(covered !== undefined && {
+      covered: {
+        advanceLineNo: (built.advanceLine as number) + 1,
+        amountMinor: covered.transaction.amountMinor,
+        bookMinor: covered.bookMinor,
+        parallelMinor: covered.parallelMinor,
+      },
+    }),
+  };
 }
 
 /**
@@ -1967,6 +2742,8 @@ async function writeEntry(
     memo,
     // The item a line moves joins its hashed value only when it has one (S04).
     ...(line.item !== undefined && { itemId: line.item.id }),
+    // So do its quantity and covered part (S12), so earlier entries hash the same.
+    ...quantityAndCoveredOf(built, line, index),
     // A reversal carries amounts: it used no rate (S02 rule 15 lists the entries that did).
     conversions: conversionsOf(line, built.rateIds, reversesEntryId === null),
   }));
@@ -2073,6 +2850,41 @@ async function writeEntry(
         ],
   );
   if (movements.length > 0) await tx.insert(openItemMovements).values(movements);
+  // S12: the lines' quantities and the advance's covered parts, after the lines and movements and
+  // before the head moves past the entry, which their guards read as the entry being posted.
+  const quantities = lines.flatMap((line) =>
+    line.quantity === undefined
+      ? []
+      : [
+          {
+            companyId,
+            entryId,
+            lineId: line.id,
+            materialId: line.quantity.materialId,
+            unit: line.quantity.unit,
+            quantity: line.quantity.quantity,
+            unitPrice: line.quantity.unitPrice,
+          },
+        ],
+  );
+  if (quantities.length > 0) await tx.insert(lineQuantities).values(quantities);
+  const applications = lines.flatMap((line) => {
+    if (line.covered === undefined) return [];
+    const advance = lines[line.covered.advanceLineNo - 1];
+    if (advance === undefined) throw new Error('A covered part without its advance line');
+    return [
+      {
+        companyId,
+        entryId,
+        advanceLineId: advance.id,
+        lineId: line.id,
+        amountMinor: line.covered.amountMinor,
+        bookMinor: line.covered.bookMinor,
+        parallelMinor: line.covered.parallelMinor,
+      },
+    ];
+  });
+  if (applications.length > 0) await tx.insert(advanceApplications).values(applications);
   const items = built.lines.flatMap(({ line }, index) =>
     line.item === undefined
       ? []
@@ -2095,6 +2907,13 @@ async function writeEntry(
       ...(entry.follows !== null && { follows: entry.follows }),
       ...(entry.voucher !== undefined && {
         voucher: { kind: entry.voucher.kind, fiscalYear, number: entry.voucher.number },
+      }),
+      ...(entry.projectDocument !== undefined && {
+        projectDocument: {
+          kind: entry.projectDocument.kind,
+          fiscalYear,
+          number: entry.projectDocument.number,
+        },
       }),
     },
   });
@@ -2296,12 +3115,23 @@ export async function post(tx: Transaction, request: PostingRequest): Promise<Po
           spec: request.voucher,
           number: await takeVoucherNumber(tx, companyId, request.voucher.kind, fiscalYear),
         };
+  // S12 rule 21: a project document's number, taken here so that its entry's reference carries it.
+  const document =
+    built.document === undefined
+      ? null
+      : {
+          row: built.document,
+          number: await takeDocumentNumber(tx, companyId, built.document.kind, fiscalYear),
+        };
   const posted = await writeEntry(tx, companyId, head, at, request.actor, {
     requestId: created.id,
     description: request.description,
     reference:
       request.reference ??
-      (voucher === null ? null : voucherReference(voucher.spec.kind, fiscalYear, voucher.number)),
+      (voucher === null ? null : voucherReference(voucher.spec.kind, fiscalYear, voucher.number)) ??
+      (document === null
+        ? null
+        : documentReference(document.row.kind, fiscalYear, document.number)),
     reversesEntryId,
     draftId: request.draftId,
     preparedByUserId: request.preparedByUserId,
@@ -2310,7 +3140,35 @@ export async function post(tx: Transaction, request: PostingRequest): Promise<Po
     follows: null,
     source,
     ...(voucher !== null && { voucher: { kind: voucher.spec.kind, number: voucher.number } }),
+    ...(document !== null && {
+      projectDocument: { kind: document.row.kind, number: document.number },
+    }),
   });
+  if (document !== null) {
+    if (request.draftId === null) throw new TypeError('A project document posts from its draft');
+    await tx.insert(projectDocuments).values({
+      companyId,
+      kind: document.row.kind,
+      fiscalYear,
+      number: document.number,
+      projectSequence: null,
+      documentDate: on,
+      entryId: posted.id,
+      draftId: request.draftId,
+      contractValueId: document.row.contractValueId,
+      counterpartyValueId: document.row.counterpartyValueId,
+      side: null,
+      currency: document.row.currency,
+      periodFrom: document.row.periodFrom,
+      periodTo: document.row.periodTo,
+      totalMinor: document.row.totalMinor,
+      cumulativeMinor: null,
+      previousMinor: null,
+      retentionMinor: null,
+      advanceMinor: document.row.advanceMinor,
+      supplierReference: document.row.supplierReference,
+    });
+  }
   if (voucher !== null) {
     if (request.draftId === null) throw new TypeError('A voucher posts from its draft');
     await writeVoucher(tx, companyId, {
@@ -2456,6 +3314,48 @@ export async function writePeriodTransition(
   });
   await tx.update(periods).set({ state: kind }).where(eq(periods.id, row.id));
   return row.id;
+}
+
+// Project documents' numbers (S12 rule 21).
+
+/** How a document's kind reads in its entry's reference, before its number (S12 "Arabic strings"). */
+const DOCUMENT_LABELS: { readonly [Kind in ProjectDocumentKind]: string } = {
+  purchase: 'فاتورة مشتريات',
+  wage_sheet: 'كشف أجور',
+  progress_billing: 'مستخلص',
+  subcontract_billing: 'مستخلص مقاول باطن',
+  retention_release: 'إفراج عن محتجزات',
+};
+
+/** The reference a document's entry takes when the accountant left it empty: `كشف أجور 2026/3`. */
+function documentReference(kind: ProjectDocumentKind, fiscalYear: number, number: number): string {
+  return `${DOCUMENT_LABELS[kind]} ${fiscalYear}/${number}`;
+}
+
+/**
+ * The next number of a document kind in a fiscal year (S12 rule 21), under the sequence row's lock,
+ * after the ledger head: gapless, since a refusal rolls the transaction back.
+ */
+async function takeDocumentNumber(
+  tx: Transaction,
+  companyId: string,
+  kind: ProjectDocumentKind,
+  fiscalYear: number,
+): Promise<number> {
+  const [sequence] = await tx
+    .insert(projectDocumentSequences)
+    .values({ companyId, kind, fiscalYear, lastNumber: 1 })
+    .onConflictDoUpdate({
+      target: [
+        projectDocumentSequences.companyId,
+        projectDocumentSequences.kind,
+        projectDocumentSequences.fiscalYear,
+      ],
+      set: { lastNumber: sql`${projectDocumentSequences.lastNumber} + 1`, updatedAt: sql`now()` },
+    })
+    .returning({ lastNumber: projectDocumentSequences.lastNumber });
+  if (!sequence) throw new Error('No project document number');
+  return sequence.lastNumber;
 }
 
 // Cash vouchers (S11 rules 8–14).

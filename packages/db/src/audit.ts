@@ -74,6 +74,8 @@ export const AUDITED_FIELDS = {
     'itemKind',
     'counterpartyType',
     'cashKind',
+    // S12 rule 4: its lines name a material and a quantity.
+    'requiresMaterial',
     'isMonetary',
     'requiredDimensionTypeIds',
     'blockedReason',
@@ -113,6 +115,8 @@ export const AUDITED_FIELDS = {
     'schedules',
     // S11 rule 9: the voucher it posted, its kind and number.
     'voucher',
+    // S12 rule 21: the project document it posted, its kind and number.
+    'projectDocument',
   ],
   // S11 rule 13: a cash count recorded with no entry.
   cash_voucher: [
@@ -138,6 +142,8 @@ export const AUDITED_FIELDS = {
     'postedEntryId',
     // S11: a voucher draft's header.
     'voucher',
+    // S12: a project document draft's header.
+    'projectDocument',
     'rejectedReason',
     'archivedReason',
   ],
@@ -236,6 +242,25 @@ export const AUDITED_FIELDS = {
     'from',
     'to',
     'currency',
+  ],
+  // S12: the materials catalogue, a project's terms and budget, subcontracts.
+  material: ['code', 'name', 'nameLatin', 'unit', 'archived'],
+  project_terms: [
+    'contractValueId',
+    'currency',
+    'contractValueMinor',
+    'retentionBp',
+    'advanceRecoveryBp',
+    'budget',
+  ],
+  subcontract: [
+    'contractValueId',
+    'supplierValueId',
+    'currency',
+    'valueMinor',
+    'retentionBp',
+    'advanceRecoveryBp',
+    'archived',
   ],
 } as const satisfies Record<string, readonly string[]>;
 

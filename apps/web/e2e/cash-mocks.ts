@@ -280,6 +280,7 @@ export function postedVoucher(
         }
       : null,
     voucher: { ...voucher, fiscalYear: 2026 },
+    projectDocument: null,
   };
 }
 

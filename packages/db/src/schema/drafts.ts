@@ -7,6 +7,7 @@ import {
   index,
   integer,
   jsonb,
+  numeric,
   pgEnum,
   pgTable,
   smallint,
@@ -26,8 +27,10 @@ import {
   updatedAt,
 } from './columns.js';
 import { companies, SETTINGS_CURRENCY_CODES } from './companies.js';
+import { dimensionValues } from './dimensions.js';
 import { journalEntries } from './ledger.js';
 import { openItems } from './open-items.js';
+import { materials, projectDocumentKind, retentionSide } from './projects.js';
 
 // The drafts module (S03 PR 2, ADR 0005 "drafts are not ledger"): the accountant's drafts of
 // manual entries and their lines, which change until they post, and the files attached to a draft
@@ -89,6 +92,20 @@ export const entryDrafts = pgTable(
     counterCashAccountId: uuid(),
     partyName: text(),
     countedMinor: bigint({ mode: 'bigint' }),
+    // S12 "Drafts": a project document draft's header, from which `buildProjectDocument()` derives
+    // the entry at preview and at posting. The billings' and releases' fields come into use with
+    // S12's billings.
+    projectDocumentKind: projectDocumentKind(),
+    contractValueId: uuid(),
+    counterpartyValueId: uuid(),
+    documentCurrency: text(),
+    side: retentionSide(),
+    periodFrom: date(),
+    periodTo: date(),
+    cumulativeMinor: bigint({ mode: 'bigint' }),
+    retentionMinor: bigint({ mode: 'bigint' }),
+    advanceMinor: bigint({ mode: 'bigint' }),
+    supplierReference: text(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
     archivedAt: archivedAt(),
@@ -123,6 +140,18 @@ export const entryDrafts = pgTable(
       columns: [t.companyId, t.counterCashAccountId],
       foreignColumns: [chartAccounts.companyId, chartAccounts.id],
     }),
+    foreignKey({
+      name: 'entry_drafts_contract_value_fk',
+      columns: [t.companyId, t.contractValueId],
+      foreignColumns: [dimensionValues.companyId, dimensionValues.id],
+    }),
+    foreignKey({
+      name: 'entry_drafts_counterparty_value_fk',
+      columns: [t.companyId, t.counterpartyValueId],
+      foreignColumns: [dimensionValues.companyId, dimensionValues.id],
+    }),
+    index('entry_drafts_company_contract_value_idx').on(t.companyId, t.contractValueId),
+    index('entry_drafts_company_counterparty_value_idx').on(t.companyId, t.counterpartyValueId),
     index('entry_drafts_company_cash_account_idx').on(t.companyId, t.cashAccountId),
     index('entry_drafts_company_counter_cash_account_idx').on(t.companyId, t.counterCashAccountId),
     index('entry_drafts_company_state_idx').on(t.companyId, t.state, t.updatedAt),
@@ -150,6 +179,22 @@ export const entryDrafts = pgTable(
         and (${t.countedMinor} is null or (${t.voucherKind} = 'count' and ${t.countedMinor} >= 0))
         and (${t.partyName} is null or (${t.voucherKind} is not null
           and char_length(${t.partyName}) between 1 and 200))`,
+    ),
+    // A project document's header (S12 "Drafts"): never with a voucher's or on a reversal's draft;
+    // a project and its kind's fields; amounts never below zero but a billing's cumulative.
+    check(
+      'entry_drafts_project_document',
+      sql`(${t.projectDocumentKind} is null) = (${t.contractValueId} is null)
+        and (${t.projectDocumentKind} is null or (${t.voucherKind} is null and ${t.reversesEntryId} is null))
+        and (${t.projectDocumentKind} is not null or (${t.counterpartyValueId} is null
+          and ${t.documentCurrency} is null and ${t.side} is null and ${t.periodFrom} is null
+          and ${t.periodTo} is null and ${t.cumulativeMinor} is null and ${t.retentionMinor} is null
+          and ${t.advanceMinor} is null and ${t.supplierReference} is null))
+        and (${t.documentCurrency} is null or ${t.documentCurrency} in (${listed(SETTINGS_CURRENCY_CODES)}))
+        and (${t.retentionMinor} is null or ${t.retentionMinor} >= 0)
+        and (${t.advanceMinor} is null or ${t.advanceMinor} >= 0)
+        and (${t.periodFrom} is null or ${t.periodTo} is null or ${t.periodFrom} <= ${t.periodTo})
+        and (${t.supplierReference} is null or char_length(${t.supplierReference}) between 1 and 60)`,
     ),
     check(
       'entry_drafts_description_length',
@@ -204,6 +249,13 @@ export const entryDraftLines = pgTable(
     /** The manual document item the line opens (S04 rule 6): its reference and due date. */
     newItemReference: text(),
     newItemDueOn: date(),
+    // S12 rules 4–6, 12: the line's material, unit, quantity and unit price, and the part an
+    // applied advance covers as the accountant typed it.
+    materialId: uuid(),
+    unit: text(),
+    quantity: numeric({ precision: 14, scale: 3 }),
+    unitPrice: numeric({ precision: 18, scale: 4 }),
+    advanceMinor: bigint({ mode: 'bigint' }),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
     archivedAt: archivedAt(),
@@ -228,6 +280,21 @@ export const entryDraftLines = pgTable(
       foreignColumns: [openItems.companyId, openItems.id],
     }),
     index('entry_draft_lines_company_open_item_idx').on(t.companyId, t.openItemId),
+    foreignKey({
+      name: 'entry_draft_lines_material_fk',
+      columns: [t.companyId, t.materialId],
+      foreignColumns: [materials.companyId, materials.id],
+    }),
+    index('entry_draft_lines_company_material_idx').on(t.companyId, t.materialId),
+    // S12: a material, a unit or a unit price comes with a quantity; a covered part above zero.
+    check(
+      'entry_draft_lines_quantity',
+      sql`(${t.quantity} is not null or (${t.materialId} is null and ${t.unit} is null
+          and ${t.unitPrice} is null))
+        and (${t.unit} is null or char_length(${t.unit}) between 1 and 20)
+        and (${t.unitPrice} is null or ${t.unitPrice} >= 0)
+        and (${t.advanceMinor} is null or ${t.advanceMinor} > 0)`,
+    ),
     // A line moves an item or opens one, never both; a due date only with a new item's reference.
     check(
       'entry_draft_lines_item',

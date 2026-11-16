@@ -31,6 +31,20 @@ export interface EditLine {
    */
   readonly openItemId: string | null;
   readonly newItem: { readonly reference: string; readonly dueOn: string | null } | null;
+  /**
+   * The line's material and quantity, and the part an advance covers (S12), kept as the draft
+   * holds them so a save never drops them; the entry screen does not edit them yet.
+   */
+  readonly quantity: LineQuantityFields | null;
+  readonly advanceMinor: string | null;
+}
+
+/** A draft line's quantity fields (S12 rules 4–6). */
+export interface LineQuantityFields {
+  readonly materialId: string | null;
+  readonly unit: string | null;
+  readonly quantity: string;
+  readonly unitPrice: string | null;
 }
 
 /** A dealt rate as typed, for a pair the entry has (rule 13): `null` when none is given. */
@@ -80,6 +94,8 @@ export function emptyLine(): EditLine {
     memo: '',
     openItemId: null,
     newItem: null,
+    quantity: null,
+    advanceMinor: null,
   };
 }
 
@@ -189,6 +205,16 @@ export function editDraftOf(draft: Draft): EditDraft {
             memo: line.memo ?? '',
             openItemId: line.openItemId,
             newItem: line.newItem,
+            quantity:
+              line.quantity === null
+                ? null
+                : {
+                    materialId: line.materialId,
+                    unit: line.unit,
+                    quantity: line.quantity,
+                    unitPrice: line.unitPrice,
+                  },
+            advanceMinor: line.advanceMinor,
           })),
     voucher:
       draft.voucher === null
@@ -264,6 +290,11 @@ export function draftInputOf(
             memo: text(line.memo),
             openItemId: line.openItemId,
             newItem: line.newItem,
+            materialId: line.quantity?.materialId ?? null,
+            unit: line.quantity?.unit ?? null,
+            quantity: line.quantity?.quantity ?? null,
+            unitPrice: line.quantity?.unitPrice ?? null,
+            advanceMinor: line.advanceMinor,
           })),
     // A voucher's header goes with every save; an entry sends none, which keeps it an entry.
     ...(edit.voucher === null || edit.voucher.cashAccountId === null

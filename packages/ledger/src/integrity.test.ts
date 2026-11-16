@@ -229,6 +229,13 @@ describe('chainEntryValue', () => {
     expect(canonicalJson(chainEntryValue(reordered))).toBe(canonicalJson(chainEntryValue(entry)));
   });
 
+  it('is the same with no quantity or covered part, null or absent (S12)', () => {
+    const lines = entry.lines.map((line) => ({ ...line, quantity: null, covered: null }));
+    expect(canonicalJson(chainEntryValue({ ...entry, lines }))).toBe(
+      canonicalJson(chainEntryValue(entry)),
+    );
+  });
+
   it('changes with every field of the header, the lines and the conversions', () => {
     const base = canonicalJson(chainEntryValue(entry));
     const [first, ...others] = entry.lines;
@@ -274,6 +281,9 @@ describe('chainEntryValue', () => {
           { conversions: [{ ...conversion, rateSource: 'hub' }] },
           { conversions: [{ ...conversion, effectiveOn: '2026-11-05' }] },
           { conversions: [{ ...conversion, base: 'SYP', quote: 'USD' }] },
+          // S12: a quantity and a covered part join the value only when present.
+          { quantity: { materialId: null, unit: 'يوم', quantity: '6.000', unitPrice: '25.0000' } },
+          { covered: { advanceLineNo: 1, amountMinor: 1n, bookMinor: 1n, parallelMinor: null } },
         ] as Partial<ChainEntry['lines'][number]>[]
       ).map((change) => ({ ...entry, lines: [{ ...line, ...change }, ...others] })),
       { ...entry, lines: others },

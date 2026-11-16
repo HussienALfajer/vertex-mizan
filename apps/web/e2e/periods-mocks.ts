@@ -315,6 +315,8 @@ export const revaluationEntry: Entry = {
       memo: null,
       conversions: [],
       item: null,
+      quantity: null,
+      covered: null,
     },
     {
       lineNo: 2,
@@ -331,6 +333,8 @@ export const revaluationEntry: Entry = {
       memo: null,
       conversions: [],
       item: null,
+      quantity: null,
+      covered: null,
     },
   ],
 };

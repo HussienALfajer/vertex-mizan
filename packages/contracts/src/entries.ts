@@ -3,9 +3,11 @@ import { cursorSchema } from './audit.js';
 import {
   currencyCodeSchema,
   ledgerSchema,
+  quantitySchema,
   rateSourceSchema,
   rateTypeSchema,
   rateValueSchema,
+  unitPriceSchema,
 } from './money.js';
 import {
   itemAmountsSchema,
@@ -13,6 +15,15 @@ import {
   itemReferenceSchema,
   movementKindSchema,
 } from './open-items.js';
+import {
+  coveredPartSchema,
+  lineQuantitySchema,
+  projectDocumentHeaderInputSchema,
+  projectDocumentHeaderSchema,
+  projectDocumentNumberSchema,
+  projectDocumentPreviewSchema,
+  unitSchema,
+} from './project-documents.js';
 import {
   voucherHeaderInputSchema,
   voucherHeaderSchema,
@@ -155,11 +166,31 @@ export const draftLineInputSchema = z
     openItemId: z.uuid().nullable().default(null),
     /** The manual document item the line opens (S04 rule 6). */
     newItem: newItemSchema.nullable().default(null),
+    /**
+     * The line's material, unit, quantity and unit price (S12 rules 4–6): required on an account
+     * that requires a material; a wage sheet's days have the unit "يوم" and no material. With a
+     * quantity other than zero the amount is their product (`lineAmount()`), computed on save.
+     */
+    materialId: z.uuid().nullable().default(null),
+    unit: unitSchema.nullable().default(null),
+    quantity: quantitySchema.nullable().default(null),
+    unitPrice: unitPriceSchema.nullable().default(null),
+    /** The part of the line an applied advance covers, as typed on a purchase (S12 rule 12). */
+    advanceMinor: minorUnitsSchema
+      .refine((text) => !text.startsWith('-'), 'Never below zero')
+      .nullable()
+      .default(null),
   })
   .refine((line) => line.openItemId === null || line.newItem === null, {
     message: 'A line moves an item or opens one, not both',
     path: ['newItem'],
   })
+  .refine(
+    (line) =>
+      line.quantity !== null ||
+      (line.materialId === null && line.unit === null && line.unitPrice === null),
+    { message: 'A material, a unit or a unit price comes with a quantity', path: ['quantity'] },
+  )
   .meta({ id: 'DraftLineInput' });
 
 export type DraftLineInput = z.infer<typeof draftLineInputSchema>;
@@ -189,6 +220,15 @@ export const draftInputSchema = z
      * left out keeps the draft's header and null removes it.
      */
     voucher: voucherHeaderInputSchema.nullable().optional(),
+    /**
+     * A project document draft's header (S12 "Drafts"): as `voucher`, left out on a save keeps it
+     * and null removes it. A draft has at most one of the two.
+     */
+    projectDocument: projectDocumentHeaderInputSchema.nullable().optional(),
+  })
+  .refine((draft) => !(draft.voucher != null && draft.projectDocument != null), {
+    message: 'A draft is a voucher or a project document, not both',
+    path: ['projectDocument'],
   })
   .meta({ id: 'DraftInput' });
 
@@ -212,6 +252,11 @@ export const draftLineSchema = z
     memo: z.string().nullable(),
     openItemId: z.uuid().nullable(),
     newItem: newItemSchema.nullable(),
+    materialId: z.uuid().nullable(),
+    unit: z.string().nullable(),
+    quantity: z.string().nullable(),
+    unitPrice: z.string().nullable(),
+    advanceMinor: minorUnitsSchema.nullable(),
   })
   .meta({ id: 'DraftLine' });
 
@@ -251,6 +296,8 @@ export const draftSchema = z
     lines: z.array(draftLineSchema),
     /** A voucher draft's header (S11); null on any other draft. */
     voucher: voucherHeaderSchema.nullable(),
+    /** A project document draft's header (S12); null on any other draft. */
+    projectDocument: projectDocumentHeaderSchema.nullable(),
     preparedBy: personRefSchema,
     submitted: happenedSchema.nullable(),
     /** The last rejection, shown until the draft is submitted again. */
@@ -288,6 +335,8 @@ export const draftSummarySchema = z
     reversesEntryId: z.uuid().nullable(),
     /** A voucher draft's kind (S11); null on any other draft. */
     voucherKind: voucherHeaderSchema.shape.kind.nullable(),
+    /** A project document draft's kind (S12); null on any other draft. */
+    projectDocumentKind: projectDocumentHeaderSchema.shape.kind.nullable(),
     lineCount: z.int().min(0),
     preparedBy: personRefSchema,
     submitted: happenedSchema.nullable(),
@@ -366,6 +415,10 @@ export const entryLineSchema = z
     conversions: z.array(lineConversionSchema),
     /** The open item a line on a control account moves, and how (S04); null on other lines. */
     item: entryLineItemSchema.nullable(),
+    /** The line's material and quantity (S12 rule 4); null on a line with none. */
+    quantity: lineQuantitySchema.nullable(),
+    /** The part an applied advance covers at its carried amounts (S12 rule 12); null otherwise. */
+    covered: coveredPartSchema.nullable(),
   })
   .meta({ id: 'EntryLine' });
 
@@ -417,6 +470,8 @@ export const entryPreviewSchema = z
     items: z.array(previewItemSchema),
     /** A voucher draft's derived rate or count (S11 "API"); null on any other draft. */
     voucher: voucherPreviewSchema.nullable(),
+    /** A project document draft's figures and warnings (S12 "API"); null on any other draft. */
+    projectDocument: projectDocumentPreviewSchema.nullable(),
     refusals: z.array(postingRefusalSchema),
   })
   .meta({ id: 'EntryPreview' });
@@ -456,6 +511,8 @@ export const entrySchema = z
     lines: z.array(entryLineSchema),
     /** The voucher the entry posted (S11 rule 9), cancelled when the entry is reversed. */
     voucher: voucherNumberSchema.extend({ id: z.uuid() }).nullable(),
+    /** The project document the entry posted (S12 rule 21), cancelled when it is reversed. */
+    projectDocument: projectDocumentNumberSchema.extend({ id: z.uuid() }).nullable(),
     attachments: z.array(attachmentSchema),
     previousHash: z.string().nullable(),
     hash: z.string(),
@@ -535,6 +592,8 @@ export const postedDraftSchema = z
     entry: entrySchema.nullable(),
     draft: draftSchema,
     voucher: voucherNumberSchema.extend({ id: z.uuid() }).nullable(),
+    /** A project document draft's document with its number (S12 rule 21). */
+    projectDocument: projectDocumentNumberSchema.extend({ id: z.uuid() }).nullable(),
   })
   .meta({ id: 'PostedDraft' });
 

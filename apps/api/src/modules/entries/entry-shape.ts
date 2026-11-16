@@ -16,6 +16,7 @@ import type {
   RateType,
 } from '@vertex-mizan/contracts';
 import {
+  advanceApplications,
   cashVouchers,
   chartAccounts,
   companySettings,
@@ -25,8 +26,10 @@ import {
   journalLines,
   ledgersOf,
   lineConversions,
+  lineQuantities,
   openItemMovements,
   openItems,
+  projectDocuments,
   rateText,
   type Transaction,
   users,
@@ -208,6 +211,21 @@ export async function readEntry(tx: Transaction, id: string): Promise<Entry> {
     })
     .from(cashVouchers)
     .where(eq(cashVouchers.entryId, id));
+  // S12: the project document it posted, and its lines' quantities and covered parts.
+  const [projectDocument] = await tx
+    .select({
+      id: projectDocuments.id,
+      kind: projectDocuments.kind,
+      fiscalYear: projectDocuments.fiscalYear,
+      number: projectDocuments.number,
+    })
+    .from(projectDocuments)
+    .where(eq(projectDocuments.entryId, id));
+  const quantities = await tx.select().from(lineQuantities).where(eq(lineQuantities.entryId, id));
+  const covered = await tx
+    .select()
+    .from(advanceApplications)
+    .where(eq(advanceApplications.entryId, id));
   return {
     id: row.id,
     fiscalYear: row.fiscalYear,
@@ -223,6 +241,7 @@ export async function readEntry(tx: Transaction, id: string): Promise<Entry> {
     reverses: link(linked.find((entry) => entry.id === row.reversesEntryId)),
     reversedBy: link(linked.find((entry) => entry.reversesEntryId === id)),
     voucher: voucher ?? null,
+    projectDocument: projectDocument ?? null,
     draftId: row.draftId,
     preparedBy: personOrNull(people, row.preparedByUserId),
     approvedBy: personOrNull(people, row.approvedByUserId),
@@ -247,12 +266,37 @@ export async function readEntry(tx: Transaction, id: string): Promise<Entry> {
           .filter((conversion) => conversion.lineId === line.id)
           .map(conversionOf),
         item: items.get(line.id) ?? null,
+        quantity: quantityOf(quantities.find((row) => row.lineId === line.id)),
+        covered: coveredOf(covered.find((row) => row.lineId === line.id)),
       }),
     ),
     attachments: attachments.map((attachment) => attachmentOf(attachment, people)),
     previousHash: row.previousHash,
     hash: row.hash,
   };
+}
+
+/** A line's quantity as the API answers it (S12 rule 4); null on a line with none. */
+function quantityOf(row: typeof lineQuantities.$inferSelect | undefined) {
+  return row === undefined
+    ? null
+    : {
+        materialId: row.materialId,
+        unit: row.unit,
+        quantity: row.quantity,
+        unitPrice: row.unitPrice,
+      };
+}
+
+/** A line's covered part as the API answers it (S12 rule 12); null on a line with none. */
+function coveredOf(row: typeof advanceApplications.$inferSelect | undefined) {
+  return row === undefined
+    ? null
+    : {
+        amountMinor: row.amountMinor.toString(),
+        bookMinor: row.bookMinor.toString(),
+        parallelMinor: row.parallelMinor?.toString() ?? null,
+      };
 }
 
 /** The columns of a journal row: an entry with its debit totals and reversal links. */

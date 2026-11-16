@@ -81,7 +81,8 @@ rates:                              # company rate table rows, recorded by hand 
 steps:                              # in order; a manual entry, a reversal, a rate, a revaluation …
   - manual: <what it records>       # a manual entry; payload as the manual-entry form sends it (S03):
     accounting_date: 2026-11-03     # { description?, reference?, dealt_rates?, lines: [{ account,
-    payload: { ... }                #   dims?, currency, amount, memo?, open_item?, item? }] };
+    payload: { ... }                #   dims?, currency, amount, memo?, open_item?, item?,
+                                    #   material?, quantity?, unit_price? }] };
     outcome: { status: refused, reason: PERIOD_CLOSED }
                                     # optional on any step: its answer when received (refused, a
                                     #   reason and an optional detail)
@@ -266,6 +267,7 @@ Writing the YAML:
 - A scenario file has no fence but its cases: each opens with exactly `` ```yaml `` and closes with `` ``` ``, both at the start of a line. Any other fence (no language, `yml`, indented, in a list or a quote, tildes, unclosed) is an error, so no case is hidden. A payload holds no decimal number.
 - An added account (`accounts`) is a code not already in the case's template. A `header` is a level-3 code under one of the template's level-2 headers, with no statement line or flag. A postable account (the default) sits under a header of the template or one added before it, with a statement line of its class; `currency` restricts it, `monetary` marks it monetary, `control` (`document` or `running`) with `counterparty_type` (`client`, `supplier` or `worker`) makes it a control account (S04, S11 rule 5), and `required` lists the dimension types it requires (S02). The chart's services check the rest. It needs a `template`.
 - On a line or an open item, no `dims` means no dimensions. On a balance, `dims` filters: the balance over every dimension set holding the stated pairs, so no `dims` is the whole account; with a `currency`, only that currency's lines, and its `amount` may be stated.
+- **Quantities** (S12 rules 4–6): a manual or voucher line on an account that requires a material (`511001` in `contracting@1`) names it with `material: CEM`, `quantity: "3.000"` and `unit_price: "3400.0000"` (quoted decimals); its `amount` may be left out, being the rounded product, or stated, and then must equal it. The case's company lists the material in `materials`.
 - **Items** (S04): a manual line on a `document` control account opens an item with `open_item: { ref: M-1, due: 2026-12-03 }` (`due` optional) or moves one with `item: M-1` (its reference). It then takes the item's dimensions, so it states no `dims`. A line on a `running` account names the client in `dims` and neither field. An expected line on an item carries the item's dimensions, and a running item is named in `open_items` by the client's code.
 - `parallel` is stated on every line, balance and open item exactly when the company keeps a parallel ledger. In a ledger's own currency, that ledger's amount is the transaction amount (ADR 0007): a SYP line in SYP books has `book` equal to `amount`.
 - Each expected entry balances in both ledgers, and has at least two lines; a `third` case names a line or a rate in a third currency.

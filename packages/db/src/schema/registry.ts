@@ -103,6 +103,14 @@ export const tableRegistry = {
   // opening (S10, ADR 0019 as amended by ADR 0021): the opening and each version's lines.
   openings: { module: 'opening', scope: 'company', kind: 'draft' },
   opening_lines: { module: 'opening', scope: 'company', kind: 'append-only' },
+  materials: { module: 'projects', scope: 'company', kind: 'business' },
+  project_terms: { module: 'projects', scope: 'company', kind: 'business' },
+  project_budgets: { module: 'projects', scope: 'company', kind: 'business' },
+  subcontracts: { module: 'projects', scope: 'company', kind: 'business' },
+  project_document_sequences: { module: 'ledger', scope: 'company', kind: 'ledger-state' },
+  project_documents: { module: 'ledger', scope: 'company', kind: 'append-only' },
+  line_quantities: { module: 'ledger', scope: 'company', kind: 'append-only' },
+  advance_applications: { module: 'ledger', scope: 'company', kind: 'append-only' },
 } as const satisfies Record<string, TableInfo>;
 
 export type TableScope = 'company' | 'platform';

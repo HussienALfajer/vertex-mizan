@@ -27,6 +27,7 @@ import {
   journalEntries,
   journalLines,
   lineConversions,
+  lineQuantities,
   onUniqueViolation,
   post,
   previewPosting,
@@ -214,6 +215,35 @@ export class EntriesService {
                   eq(lineConversions.basis, 'transaction'),
                 ),
               );
+      const quantityRows =
+        lines.length === 0
+          ? []
+          : await tx
+              .select()
+              .from(lineQuantities)
+              .where(
+                inArray(
+                  lineQuantities.lineId,
+                  lines.map((line) => line.id),
+                ),
+              );
+      const quantities = new Map(
+        quantityRows.map((row) => [
+          row.lineId,
+          {
+            materialId: row.materialId,
+            unit: row.unit,
+            quantity: row.quantity,
+            unitPrice: row.unitPrice,
+          },
+        ]),
+      );
+      const noQuantity = {
+        materialId: null as string | null,
+        unit: null as string | null,
+        quantity: null as string | null,
+        unitPrice: null as string | null,
+      };
       const draftId = await insertDraft(
         tx,
         companyId,
@@ -239,7 +269,9 @@ export class EntriesService {
             // and the posting refuses a control-account line without one (S04 rule 5).
             openItemId: null,
             newItem: null,
-            scheduleId: null,
+            // S12: a copy keeps the line's quantity, so a material's line stays complete.
+            ...(quantities.get(line.id) ?? noQuantity),
+            advanceMinor: null,
           })),
         },
         { copiedFromEntryId: id },

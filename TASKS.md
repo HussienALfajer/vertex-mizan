@@ -1,51 +1,47 @@
 # TASKS
 
-## S11 The contracting chart and cash boxes (`docs/specs/S11-contracting-chart-cash.md`)
+## S12 Project costs (`docs/specs/S12-project-costs.md`)
 
-Four PRs, in order. PR 4 needs only PR 1 and may run beside PRs 2 and 3.
+Four PRs, in order. Each PR switches its scenario files to `Approved (owner, 2026-11-16)` with no expected value changed.
 
-### PR 1 — counterparties, cash kinds and `contracting@1` (branch `feat/s11-counterparties-template`)
+### PR 1 — materials, project terms, purchase invoices and wage sheets (branch `feat/s12-project-documents`)
 
-- [x] contracts: `contracting@1` in `chart-templates.ts` and `CHART_TEMPLATE_IDS`; `supplier` and `worker` in `BUILTIN_DIMENSION_TYPES`; `COUNTERPARTY_TYPES`, `CASH_KINDS`, `counterpartyType` and `cashKind` on the account schemas and `checkAccountShape` (`canBeCashAccount`); the three S11 error codes appended in the spec's order with their Arabic text; template data tests (statement lines, roles, control accounts with their counterparty type, cash kinds only on eligible accounts, codes, names)
-- [x] ledger: rule 4 (`counterpartyOf()`, `OPEN_ITEM_MISMATCH` for a counterparty of another type; a running line may carry a contract) with tests; the cash-kind eligibility is contracts' `canBeCashAccount()`, rule 5's required dimension the services'
-- [x] db (`/db-migration`, 0062–0064): enums `counterparty_type` and `cash_kind`, the two columns with their checks and the first-use lock; existing control accounts set to `client`; `supplier` and `worker` built-in types for every company (audit `dimension_type.created`, actor `system`); `open_items.client_value_id` → `counterparty_value_id`, its unique key, the counterparty-type guard pinned in `GUARDS`; template application of `contracting@1`; the posting function and item reads on the renamed column; conventions, invariants and new tests; the running item's movement guard and the rename's exception (owner, 2026-11-14, ADR 0022); the contracts' S04 schemas renamed to counterparty with the db reads
-- [x] scenarios: the runner accepts `template: contracting`; the book still passes (100 run, 24 skipped)
-- [x] api: the open-items module on the renamed contracts; `PATCH /api/accounts/:id` with `counterpartyType` and `cashKind` (audited before/after); `GET /api/chart/templates` lists `contracting@1`; S04 endpoints renamed (`/api/running-balances`, `/api/counterparties/:valueId/statement`, `counterparty` and `counterpartyType` filters); `admin:create-company --template contracting`; tests with another company and a missing permission
-- [x] bridge: `openapi.json` regenerated (no breaking-change guard since ADR 0021; the web app reads the contracts, no generated types); the worker needed no change
-- [x] web: the account sheet's counterparty type and cash kind (locked after first use); `/receivables/clients/:valueId` → `/counterparties/:valueId` with a redirect; the receivables screens on the renamed endpoints with the type filter; the template choice in company creation; i18n (`chart`, `dimensions`, `open-items`)
-- [x] e2e: the account sheet and the counterparty statement specs updated; screenshots looked at
-- [x] docs: ROADMAP, glossary rows (counterparty, counterparty type, supplier, worker, subcontractor, retention, progress billing, advance from a client), AGENTS.md command (`--template contracting`), folder CLAUDE.md files
-- [x] review findings (owner, 2026-11-15): an unused control account turned into a header; the balance sheet per counterparty and the opening's non-monetary running items, their scenarios approved by the owner, migration `0066`
-- [x] checks and reviewers, PR with auto-merge and Auto-fix
+- [x] contracts: `projects.ts` (materials, project terms and budget, subcontracts, the project document header and kinds, the document read); drafts gain `projectDocument` and the lines' `materialId`, `unit`, `quantity`, `unitPrice`, `advanceMinor`; `requiresMaterial` on accounts and on `511001` of `contracting@1`; the seven error codes appended with their Arabic text; audit actions; `lineAmount()` in the money module with its tests
+- [x] ledger: `buildProjectDocument()` for `purchase` and `wage_sheet` (rules 4–11), the IFRIC 22 covered amounts of an applied advance (rule 12, cumulative rounding per ledger); property tests (balance in both ledgers, covered amounts sum to the clearing line, no residual from the advance, reversal nets to zero)
+- [x] db (`/db-migration`, `0070`–`0071`): enum `project_document_kind`; `materials`, `project_terms`, `project_budgets`, `subcontracts`; `chart_accounts.requires_material` with its check, lock and the `contracting@1` companies set; `line_quantities`, `advance_applications`, `project_documents`, `project_document_sequences` (append-only, RLS, composite keys, registry, guards); the drafts' columns; `post()` numbers documents per kind and fiscal year, writes quantities and applications, enforces rule 4 on every entry and the deferred guard of rule 12; `chainEntryValue()` unchanged for entries without quantities; conventions, invariants, isolation and concurrency tests (gapless numbers)
+- [x] scenarios: the `project_document` executor, the `materials` and `subcontracts` setups, the `projectDocuments` and `quantities` readers; `projects/purchase-invoice.md` and `projects/wage-sheet.md` switched to `Approved` and run
+- [x] api: `/api/materials`, `/api/projects/:valueId/terms`, `/api/subcontracts`; `requiresMaterial` on the account sheet; drafts, preview and posting of purchases and wage sheets; `GET /api/project-documents` and `/:id`; tests (success, 401, 403, another company, idempotent replay)
+- [x] bridge: build, OpenAPI export
+- [x] docs: ROADMAP, glossary rows, folder CLAUDE.md files
+- [x] checks and reviewers (reviewer and accountant-reviewer: an advance held only on its own side; the material read `FOR SHARE`, migration `0072`; the guards tested against forged writes and the chain checked), PR with auto-merge and Auto-fix
 
-### PR 2 — vouchers and the box rule (branch `feat/s11-vouchers`)
+### PR 2 — billings and retention releases (branch `feat/s12-billings`)
 
-- [x] contracts: `cash.ts` (voucher header, voucher, cash position, statement), drafts gain `voucher`, audit actions (`cash_count.recorded`, `export.cash_statement`, `export.cash_position`, `export.voucher`)
-- [x] ledger: the voucher shapes (rules 10–13), the derived dealt rate (rule 12, 10 decimals, half away from zero), the count's difference lines, the box check's arithmetic (the minimum running balance from a date); property tests (balance in both ledgers, differences in one ledger, reversal nets to zero, the box never negative at any date under any order of back-dated postings and reversals)
-- [x] db (`/db-migration`, `0067`–`0068`): enum `voucher_kind`; `voucher_sequences` and `cash_vouchers` (append-only, RLS, composite keys, registry, guards); the drafts' voucher columns; `post()` takes the voucher number (gapless, per kind and fiscal year), writes the voucher, sets the reference, builds a count's lines and refuses a stale one, and takes a per-box lock after the head lock for rule 8 on every entry; the integrity check's voucher comparisons; concurrency tests (gapless numbers, two payments from one box)
-- [x] scenarios: the `voucher` executor (receipt, payment, transfer, count) and the `vouchers` reader; the three `cash/` files switched to `Approved (owner, 2026-11-14)` and run, with no expected value changed
-- [x] api: drafts with the voucher header, preview with the derived rate and a count's expected amount and difference, post and approve; `GET /api/cash/accounts`, `/api/cash/accounts/:id/statement`, `GET /api/vouchers`, `GET /api/vouchers/:id`; tests (success, 401, 403, another company, idempotent replay)
-- [x] bridge: build, OpenAPI export and its check, client types
-- [x] docs: ROADMAP, glossary rows (cash account, box, voucher, receipt, payment, transfer voucher, currency exchange, cash count, cash shortage and overage, derived dealt rate), folder CLAUDE.md files
-- [x] checks and reviewers (reviewer and accountant-reviewer: a count's accounts by meaning, a count's typed lines refused, archived and blocked cash accounts, the shape at submission, the replay after the head lock), PR with auto-merge and Auto-fix
+- [ ] ledger: `buildProjectDocument()` for `progress_billing`, `subcontract_billing` and `retention_release` (rules 14–20: the cumulative chain, deductions, recovery capped at the project's share, the release cleared at the project's share); property tests (deductions sum to the period's value, the net never negative)
+- [ ] db: `project_sequence` per project or subcontract under lock; `PROJECT_TERMS_LOCKED` after the first billing; the cancellation order (rule 22, `PROJECT_DOCUMENT_NOT_LATEST`); concurrency tests (two billings of one project)
+- [ ] scenarios: `projects/progress-billing.md`, `projects/subcontract-billing.md` and `projects/retention-release.md` switched to `Approved` and run
+- [ ] api: drafts, preview and posting of the three kinds with their warnings; reversal refusals; tests
+- [ ] docs: ROADMAP, folder CLAUDE.md files
+- [ ] checks and reviewers (reviewer and accountant-reviewer), PR with auto-merge and Auto-fix
 
-### PR 3 — cash screens, printing and exports (branch `feat/s11-cash-screens`)
+### PR 3 — the project report, material quantities, exports and prints (branch `feat/s12-project-report`)
 
-- [x] i18n: `amountInWords(minor, currency)` with its table of tests; the `cash` namespace (the palette's entries in it; their wiring with the screens)
-- [x] worker: the voucher PDF (A5, Arabic, amount in words, signature lines, "ملغى" with the reversal's number) and the cash statement PDF, and the cash position's (reports `cash_position`, `cash_statement`, `voucher`, migration `0069`)
-- [x] api: `/api/cash/accounts/export` and `/api/cash/accounts/:id/statement/export` (xlsx), the PDFs as report files (`POST /api/reports/files`, the spec's API table amended), audited; tests
-- [x] ui: `VoucherHeader` and `CashAccountPicker` in `packages/ui`, tested, both densities, on the design-system page
-- [x] web: `/cash`, `/cash/:accountId`, `/cash/vouchers`, `/cash/vouchers/:id`, `/cash/vouchers/new/:kind` and the voucher draft in `/drafts/:id`; cancel as a reversal; S09's account statement gains the voucher column (screen and export); the palette's entries
-- [x] e2e: the cash position, a receipt, an exchange, a count, a statement, a printed voucher; RTL screenshots light and dark at phone, tablet and desktop, looked at
-- [x] docs: ROADMAP, folder CLAUDE.md files
-- [x] checks and reviewers (reviewer and accountant-reviewer: the printed exchange net of its fee at its own pair's derived rate, every printed figure with its currency's printed name, the register's date filter and row cancel), PR with auto-merge and Auto-fix
+- [ ] contracts and db: the project list, the project report and the material quantities reads; `REPORTS` gains `project_report`, `material_quantities`, `project_document`; the `material` filter of `/api/reports/lines`; reconciliation tests against S09's profitability
+- [ ] scenarios: the `project_report` reader; `reports/project-report.md` switched to `Approved` and run
+- [ ] api: `GET /api/projects`, `/api/projects/:valueId/report`, `/api/reports/material-quantities`, their xlsx exports (audited); tests
+- [ ] worker: the PDFs of the five documents (billings A4 with the net in words, purchase A5, wage sheet A4 landscape), the project report and material quantities
+- [ ] docs: ROADMAP, folder CLAUDE.md files
+- [ ] checks and reviewers (reviewer and accountant-reviewer), PR with auto-merge and Auto-fix
 
-### PR 4 — the scenario book on `contracting@1` (branch `test/s11-book-on-contracting`)
+### PR 4 — the screens (branch `feat/s12-screens`)
 
-- [x] The 13 files naming `template: service-agency` switched to `template: contracting` per the spec's mapping table, each case creating the accounts the template lacks; no expected amount changed
-- [x] `packages/scenarios/src/agency-chart.ts` deleted; the book passes (126 run); the added accounts gain a header and a control account's flags
-- [x] The owner approves the mapping and the moved files (owner, 2026-11-16) (quoted in the PR); docs: ROADMAP, `packages/scenarios/CLAUDE.md`
-- [x] checks and reviewers, PR (auto-merge only after the owner's approval)
+- [ ] ui: `QuantityCell`, `MaterialPicker`, `BillingSummary` and `BudgetVarianceBar` in `packages/ui`, tested, both densities, on the design-system page
+- [ ] i18n: namespaces `projects` and `materials`, the error codes' texts
+- [ ] web, documents: `/materials`, `/projects/:valueId/terms` with subcontracts, `/projects/documents`, `/projects/documents/new/:kind` and the document draft in `/drafts/:id` (preview with covered parts and warnings), cancel as a reversal, print; "يتطلب مادة" on the account sheet; quantities on manual entries and payment vouchers
+- [ ] web, reports: `/projects` and `/projects/:valueId` (the report's tabs, drill-down, Excel and PDF), `/reports/material-quantities`; the palette's entries
+- [ ] e2e: materials catalogue, a purchase invoice with quantities, a wage sheet, a billing with its print, the projects list and a project report; RTL screenshots light and dark at phone, tablet and desktop, looked at
+- [ ] docs: ROADMAP (S12 done), folder CLAUDE.md files
+- [ ] checks and reviewer, PR with auto-merge and Auto-fix; `TASKS.md` reset to its stub
 
 ## Carried over
 

@@ -178,6 +178,7 @@ describe('checkAccountShape (S02 checks 2–4)', () => {
     itemKind: null,
     counterpartyType: null,
     cashKind: null,
+    requiresMaterial: false,
     isMonetary: true,
     requiredDimensionCount: 0,
   };
@@ -218,6 +219,7 @@ describe('checkAccountShape (S02 checks 2–4)', () => {
       { itemKind: 'document' },
       { counterpartyType: 'client' },
       { cashKind: 'box' },
+      { requiresMaterial: true },
       { isMonetary: true },
       { requiredDimensionCount: 1 },
     ] as const) {
@@ -310,6 +312,21 @@ describe('checkAccountShape (S02 checks 2–4)', () => {
       false,
     );
   });
+
+  it('lets only a postable expense account require a material (S12)', () => {
+    const expense: AccountShape = {
+      ...postable,
+      code: '511001',
+      class: 'expense',
+      statementLine: 'is.direct_costs',
+      currency: null,
+      isMonetary: false,
+    };
+    expect(codeOf(() => checkAccountShape({ ...expense, requiresMaterial: true }))).toBe('none');
+    expect(codeOf(() => checkAccountShape({ ...postable, requiresMaterial: true }))).toBe(
+      'VALIDATION_FAILED',
+    );
+  });
 });
 
 describe('accountRoleFits (S02 rule 7)', () => {
@@ -357,6 +374,7 @@ describe('the account schemas', () => {
       itemKind: null,
       counterpartyType: null,
       cashKind: null,
+      requiresMaterial: false,
       isMonetary: false,
       requiredDimensionTypeIds: [],
     });

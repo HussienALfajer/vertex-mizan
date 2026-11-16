@@ -104,6 +104,11 @@ export class AccountsService {
               ? row.counterpartyType
               : null,
         cashKind: change.cashKind === undefined ? row.cashKind : change.cashKind,
+        // S12: a header requires no material.
+        requiresMaterial:
+          (change.kind ?? row.kind) === 'header'
+            ? false
+            : (change.requiresMaterial ?? row.requiresMaterial),
         isMonetary: change.isMonetary ?? row.isMonetary,
         name: change.name ?? row.name,
         nameLatin: change.nameLatin === undefined ? row.nameLatin : change.nameLatin,
@@ -121,6 +126,7 @@ export class AccountsService {
         next.itemKind !== row.itemKind ||
         next.counterpartyType !== row.counterpartyType ||
         next.cashKind !== row.cashKind ||
+        next.requiresMaterial !== row.requiresMaterial ||
         next.isMonetary !== row.isMonetary;
       if (
         row.level === 1 &&
@@ -164,6 +170,7 @@ export class AccountsService {
           itemKind: next.itemKind,
           counterpartyType: next.counterpartyType,
           cashKind: next.cashKind,
+          requiresMaterial: next.requiresMaterial,
           isMonetary: next.isMonetary,
           requiredDimensionCount: next.requiredDimensionTypeIds.length,
         });
@@ -217,6 +224,7 @@ export class AccountsService {
               itemKind: next.itemKind,
               counterpartyType: next.counterpartyType,
               cashKind: next.cashKind,
+              requiresMaterial: next.requiresMaterial,
               isMonetary: next.isMonetary,
             })
             .where(eq(chartAccounts.id, id))

@@ -26,6 +26,7 @@ import {
   periods,
 } from '../schema/ledger.js';
 import { openItemMovements } from '../schema/open-items.js';
+import { advanceApplications, lineQuantities } from '../schema/project-documents.js';
 import { chainAnchors } from '../schema/trust.js';
 
 // Reads of the ledger as stored, in the caller's company context: the chain as the integrity
@@ -75,6 +76,30 @@ export async function readChain(tx: Transaction): Promise<StoredChainLink[]> {
     });
     conversionsByLine.set(row.lineId, list);
   }
+  // S12: a line's quantity and covered part join its hashed value when it has them.
+  const quantityByLine = new Map(
+    (await tx.select().from(lineQuantities)).map((row) => [
+      row.lineId,
+      {
+        materialId: row.materialId,
+        unit: row.unit,
+        quantity: row.quantity,
+        unitPrice: row.unitPrice,
+      },
+    ]),
+  );
+  const lineNoById = new Map(lines.map(({ line }) => [line.id, line.lineNo]));
+  const coveredByLine = new Map(
+    (await tx.select().from(advanceApplications)).map((row) => [
+      row.lineId,
+      {
+        advanceLineNo: lineNoById.get(row.advanceLineId) ?? 0,
+        amountMinor: row.amountMinor,
+        bookMinor: row.bookMinor,
+        parallelMinor: row.parallelMinor,
+      },
+    ]),
+  );
   const linesByEntry = new Map<string, ChainLine[]>();
   for (const { line, key, itemId } of lines) {
     const list = linesByEntry.get(line.entryId) ?? [];
@@ -90,6 +115,8 @@ export async function readChain(tx: Transaction): Promise<StoredChainLink[]> {
       parallelMinor: line.parallelMinor,
       memo: line.memo,
       itemId,
+      quantity: quantityByLine.get(line.id) ?? null,
+      covered: coveredByLine.get(line.id) ?? null,
       conversions: conversionsByLine.get(line.id) ?? [],
     });
     linesByEntry.set(line.entryId, list);

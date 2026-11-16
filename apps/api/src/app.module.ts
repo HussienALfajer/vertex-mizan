@@ -32,6 +32,7 @@ import { MembersModule } from './modules/members/members.module.js';
 import { OpenItemsModule } from './modules/open-items/open-items.module.js';
 import { OpeningModule } from './modules/opening/opening.module.js';
 import { PeriodsModule } from './modules/periods/periods.module.js';
+import { ProjectsModule } from './modules/projects/projects.module.js';
 import { RatesModule } from './modules/rates/rates.module.js';
 import { ReportsModule } from './modules/reports/reports.module.js';
 
@@ -80,6 +81,7 @@ export class AppModule {
         EntriesModule,
         DraftsModule,
         CashModule,
+        ProjectsModule,
         IntegrityModule,
         ExportsModule,
         OpenItemsModule,

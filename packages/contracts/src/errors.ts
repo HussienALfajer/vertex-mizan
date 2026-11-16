@@ -254,6 +254,21 @@ export const errorStatus = {
   CASH_COUNT_STALE: 409,
   /** Not a cash account, a transfer to itself, a voucher's lines breaking rules 10–13, or a cash kind an account cannot carry (S11). */
   CASH_ACCOUNT_INVALID: 422,
+  // S12 (project documents, quantities and advances):
+  /** A billing on a project without terms, or a subcontract billing without its subcontract (S12 rules 1–2). */
+  PROJECT_TERMS_MISSING: 422,
+  /** A project's or subcontract's currency changed after its first posted billing (S12 rule 1). */
+  PROJECT_TERMS_LOCKED: 409,
+  /** A line on an account that requires a material lacks one or its quantity, or names an archived material (S12 rules 3–4; details: lineNo). */
+  MATERIAL_REQUIRED: 422,
+  /** A material's unit changed after its first use (S12 rule 3). */
+  MATERIAL_LOCKED: 409,
+  /** An advance applied in another currency than the document's (S12 rule 12). */
+  ADVANCE_CURRENCY_MISMATCH: 422,
+  /** A billing's cumulative is not above the previous cumulative (S12 rule 14). */
+  BILLING_NOT_INCREASING: 422,
+  /** A billing cancelled while a later uncancelled billing of its project or subcontract exists (S12 rule 22). */
+  PROJECT_DOCUMENT_NOT_LATEST: 409,
 } as const satisfies Record<string, number>;
 
 export type ErrorCode = keyof typeof errorStatus;

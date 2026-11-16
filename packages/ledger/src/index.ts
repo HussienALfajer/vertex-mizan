@@ -13,6 +13,7 @@ export * from './manual.js';
 export * from './measure.js';
 export * from './opening.js';
 export * from './periods.js';
+export * from './projects.js';
 export * from './rates.js';
 export * from './reports.js';
 export * from './revaluation.js';

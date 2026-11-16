@@ -47,6 +47,11 @@ describe('draftLineInputSchema', () => {
       memo: null,
       openItemId: null,
       newItem: null,
+      materialId: null,
+      unit: null,
+      quantity: null,
+      unitPrice: null,
+      advanceMinor: null,
     });
   });
 

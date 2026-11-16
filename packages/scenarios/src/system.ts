@@ -7,6 +7,8 @@ import {
   DomainError,
   draftInputSchema,
   type ExchangeRate,
+  quantitySchema,
+  unitPriceSchema,
 } from '@vertex-mizan/contracts';
 import {
   addBulletinHoliday,
@@ -30,6 +32,7 @@ import {
   journalLines,
   ledgerHeads,
   lockedAccount,
+  materials,
   openItemBalances,
   openItems,
   type PersonActor,
@@ -61,7 +64,17 @@ import type {
   ScenarioDatabase,
   StepResult,
 } from './harness.js';
+import { amountOfQuantity, materialIdOf } from './projects.js';
 import type { NamedValue } from './run.js';
+
+/** A material's unit by its code, the unit its lines take (S12 rule 4). */
+async function materialUnitOf(tx: Transaction, code: string): Promise<string> {
+  const [row] = await tx
+    .select({ unit: materials.unit })
+    .from(materials)
+    .where(eq(materials.code, code));
+  return row?.unit ?? '';
+}
 
 // The parts of the book that run through the system itself (S03): the case's company made by the
 // company, chart and rate services the API and the server commands use, the manual, reversal and
@@ -249,8 +262,19 @@ const manualPayloadSchema = z.strictObject({
         account: z.string().regex(/^[1-5][0-9]{0,5}$/),
         dims: z.record(z.string(), z.string()).default({}),
         currency: currencyCodeSchema,
-        amount: z.bigint(),
+        // S12 rule 6: a line with a quantity and its unit price states no amount.
+        amount: z.bigint().optional(),
         memo: z.string().trim().min(1).max(300).optional(),
+        // S12 rule 4: a line on an account that requires a material names it, with its quantity.
+        material: z.string().min(1).optional(),
+        quantity: z
+          .string()
+          .regex(/^-?\d+(\.\d+)?$/)
+          .optional(),
+        unit_price: z
+          .string()
+          .regex(/^\d+(\.\d+)?$/)
+          .optional(),
         // S04: the document item a line opens, or the item it moves by its reference.
         open_item: z
           .strictObject({
@@ -314,13 +338,30 @@ async function manualLines(tx: Transaction, payload: z.infer<typeof manualPayloa
   const lines = [];
   for (const line of payload.lines) {
     const accountId = accounts.get(line.account);
+    // S12: a quantity as the form writes it, its amount the product (`lineAmount()`).
+    const quantity =
+      line.quantity === undefined
+        ? null
+        : {
+            materialId: line.material === undefined ? null : await materialIdOf(tx, line.material),
+            unit: line.material === undefined ? 'يوم' : await materialUnitOf(tx, line.material),
+            quantity: quantitySchema.parse(line.quantity),
+            unitPrice:
+              line.unit_price === undefined ? null : unitPriceSchema.parse(line.unit_price),
+          };
+    const amountMinor =
+      line.amount ??
+      (quantity?.unitPrice == null
+        ? 0n
+        : amountOfQuantity(quantity.quantity, quantity.unitPrice, line.currency));
     lines.push({
       // An unknown code is the posting function's to refuse (`NOT_FOUND`).
       accountId: accountId ?? uuidv7(),
       dimensionValueIds: await dimensionValueIds(tx, line.dims),
       currency: line.currency,
-      amountMinor: line.amount,
+      amountMinor,
       memo: line.memo ?? null,
+      ...(quantity !== null && { quantity }),
       ...(line.open_item !== undefined && {
         newItem: { reference: line.open_item.ref, dueOn: line.open_item.due ?? null },
       }),
@@ -441,6 +482,12 @@ export async function voucher(
             memo: line.memo,
             openItemId: line.openItemId ?? null,
             newItem: line.newItem ?? null,
+            ...(line.quantity !== undefined && {
+              materialId: line.quantity.materialId,
+              unit: line.quantity.unit,
+              quantity: line.quantity.quantity,
+              unitPrice: line.quantity.unitPrice,
+            }),
           })),
           voucher: {
             kind: header.kind,
@@ -628,6 +675,12 @@ export function draft(
             memo: line.memo,
             openItemId: line.openItemId ?? null,
             newItem: line.newItem ?? null,
+            ...(line.quantity !== undefined && {
+              materialId: line.quantity.materialId,
+              unit: line.quantity.unit,
+              quantity: line.quantity.quantity,
+              unitPrice: line.quantity.unitPrice,
+            }),
           })),
         }),
       );

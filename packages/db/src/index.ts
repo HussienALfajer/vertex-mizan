@@ -47,6 +47,7 @@ export {
   checkVoucher,
   type DealtRateSpec,
   type DerivedRate,
+  type DocumentLineSpec,
   type ManualLineSpec,
   type OpeningLineSpec,
   openingIsPosted,
@@ -55,9 +56,13 @@ export {
   type PostingContent,
   type PostingRequest,
   type PreviewLine,
+  type ProjectDocumentPreviewResult,
+  type ProjectDocumentSpec,
+  type ProjectDocumentWarning,
   post,
   postVoucher,
   previewPosting,
+  previewProjectDocument,
   previewVoucher,
   type VoucherPreviewResult,
   type VoucherRequest,
@@ -93,6 +98,7 @@ export * from './services/dimensions.js';
 export * from './services/drafts.js';
 export * from './services/opening.js';
 export * from './services/periods.js';
+export * from './services/projects.js';
 export * from './services/rates.js';
 export * from './services/receivables-reads.js';
 export * from './services/report-files.js';

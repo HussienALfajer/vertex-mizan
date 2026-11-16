@@ -454,6 +454,8 @@ export interface AccountShape {
   readonly counterpartyType: CounterpartyType | null;
   /** Only on an account that can be a cash account (S11 "Data"). */
   readonly cashKind: CashKind | null;
+  /** Only on a postable expense account (S12 "The chart"). */
+  readonly requiresMaterial: boolean;
   readonly isMonetary: boolean;
   readonly requiredDimensionCount: number;
 }
@@ -485,6 +487,7 @@ export function checkAccountShape(account: AccountShape): void {
       account.itemKind !== null ||
       account.counterpartyType !== null ||
       account.cashKind !== null ||
+      account.requiresMaterial ||
       account.isMonetary ||
       account.requiredDimensionCount > 0
     ) {
@@ -517,6 +520,9 @@ export function checkAccountShape(account: AccountShape): void {
       'A cash account is a postable, monetary asset under 111 in one currency on bs.cash, not a control account',
       { cashKind: account.cashKind },
     );
+  }
+  if (account.requiresMaterial && account.class !== 'expense') {
+    invalid('Only a postable expense account requires a material');
   }
 }
 
@@ -594,6 +600,8 @@ export const accountSchema = z
     counterpartyType: counterpartyTypeSchema.nullable(),
     /** A cash account's kind (S11 rule 7); null on any other account. */
     cashKind: cashKindSchema.nullable(),
+    /** Every line on it names a material and a quantity (S12 rule 4); a postable expense only. */
+    requiresMaterial: z.boolean(),
     isMonetary: z.boolean(),
     requiredDimensionTypeIds: z.array(z.uuid()),
     roles: z.array(accountRoleSchema),
@@ -638,6 +646,7 @@ export const createAccountSchema = z
     itemKind: itemKindSchema.nullable().default(null),
     counterpartyType: counterpartyTypeSchema.nullable().default(null),
     cashKind: cashKindSchema.nullable().default(null),
+    requiresMaterial: z.boolean().default(false),
     isMonetary: z.boolean().default(false),
     requiredDimensionTypeIds: requiredDimensionTypeIdsSchema.default([]),
   })
@@ -663,6 +672,7 @@ export const updateAccountSchema = z
     itemKind: itemKindSchema.nullable().optional(),
     counterpartyType: counterpartyTypeSchema.nullable().optional(),
     cashKind: cashKindSchema.nullable().optional(),
+    requiresMaterial: z.boolean().optional(),
     isMonetary: z.boolean().optional(),
     requiredDimensionTypeIds: requiredDimensionTypeIdsSchema.optional(),
   })

@@ -58,7 +58,10 @@ interface LineFields extends CarriedAmounts {
 /**
  * A journal line. Its `kind` says how its ledger amounts were obtained:
  * - `measured`: a new amount, converted per ledger (`conversions`, null in a ledger whose currency
- *   is the transaction currency: the amount is used as is);
+ *   is the transaction currency: the amount is used as is); when an applied advance covers part of
+ *   it (`covered`, S12 rule 12, IFRIC 22.8–9, ADR 0023), that part takes the advance's carried
+ *   amounts and only the rest is converted, so each ledger amount is the covered part's plus the
+ *   rest's conversion;
  * - `carried`: releases, clears or settles an existing balance at that balance's own amounts,
  *   never converted again (IAS 21.23(b), IFRIC 22);
  * - `difference`: an exchange difference, with an amount in `ledger` only;
@@ -73,6 +76,8 @@ export type Line =
         readonly book: Conversion | null;
         readonly parallel: Conversion | null;
       };
+      /** The part an applied advance covers, in the line's sign and currency (S12 rule 12). */
+      readonly covered?: CarriedAmounts;
     })
   | (LineFields & { readonly kind: 'carried' | 'stated' })
   | (LineFields & { readonly kind: 'difference' | 'rounding'; readonly ledger: Ledger });
