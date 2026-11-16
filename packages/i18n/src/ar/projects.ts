@@ -205,6 +205,7 @@ export const projects = {
     periodHint: 'الفترة داخل شهر واحد، والكشف مؤرخ بآخر يوم منها.',
     periodMissing: 'أدخل الفترة',
     periodOrder: 'تنتهي الفترة قبل أن تبدأ',
+    periodOneMonth: 'تقع فترة كشف الأجور في شهر تقويمي واحد',
     description: 'البيان',
     descriptionHint: 'يظهر على القيد؛ يُكتب تلقائيًا إن تُرك فارغًا.',
     side: 'الجهة',

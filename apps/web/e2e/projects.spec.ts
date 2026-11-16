@@ -16,6 +16,7 @@ import {
   purchaseDocument,
   purchaseDocumentPreview,
   purchaseEntry,
+  retentionItem,
   supplier,
   terms,
   workerOne,
@@ -250,19 +251,53 @@ test.describe('the document form', () => {
     await expect(page).toHaveURL(/\/entries\//);
   });
 
-  test('a wage sheet across two months and an incomplete line are refused before saving', async ({
+  test('a wage sheet across two months, or reversed, is refused before saving', async ({
     page,
   }) => {
     const created = await answer(page, 'POST', '/drafts', { status: 500 });
     await page.goto(`/projects/documents/new/wage_sheet?project=${project.id}`);
-    await page.getByLabel(f.periodFrom, { exact: true }).fill('2026-11-09');
-    await page.getByLabel(f.periodTo, { exact: true }).fill('2026-11-01');
+    // S12 edge case 12: from 25 October to 5 November.
+    await page.getByLabel(f.periodFrom, { exact: true }).fill('2026-10-25');
+    await page.getByLabel(f.periodTo, { exact: true }).fill('2026-11-05');
     await page.getByRole('button', { name: f.post }).click();
     const summary = page.getByRole('region', { name: ar.common.errorSummary });
     await expect(summary).toBeFocused();
-    await expect(summary).toContainText(f.periodOrder);
+    await expect(summary).toContainText(f.periodOneMonth);
     await expect(summary).toContainText(f.currencyMissing);
+    await page.getByLabel(f.periodFrom, { exact: true }).fill('2026-11-09');
+    await page.getByLabel(f.periodTo, { exact: true }).fill('2026-11-01');
+    await page.getByRole('button', { name: f.post }).click();
+    await expect(summary).toContainText(f.periodOrder);
     expect(created).toHaveLength(0);
+  });
+
+  test("a client's release lists the project's own retentions and sends the amounts released", async ({
+    page,
+  }) => {
+    const items = await answer(page, 'GET', '/open-items', {
+      status: 200,
+      json: { items: [retentionItem], nextCursor: null },
+    });
+    const { created, previews } = await draftFlow(page, billingPreview);
+    await page.goto(`/projects/documents/new/retention_release?project=${project.id}`);
+    const table = page.getByRole('table', { name: f.retentions });
+    await expect(table).toContainText(retentionItem.reference);
+    const query = new URL(items[0]?.url() ?? '').searchParams;
+    expect(query.get('account')).toBe(accountOfContracting('113002').id);
+    expect(query.get('counterparty')).toBe(manualClient.id);
+    expect(query.get('contract')).toBe(project.id);
+    await page.getByRole('button', { name: f.releaseAll }).click();
+    await page.getByRole('button', { name: f.preview }).click();
+    await expect.poll(() => previews.length).toBe(1);
+    expect(created[0]?.postDataJSON()).toMatchObject({
+      lines: [],
+      projectDocument: {
+        kind: 'retention_release',
+        side: 'client',
+        counterpartyValueId: null,
+        retentionItems: [{ itemId: retentionItem.id, amountMinor: '300000' }],
+      },
+    });
   });
 
   test('a billing: the cumulative typed, the summary from the preview with its covered part', async ({

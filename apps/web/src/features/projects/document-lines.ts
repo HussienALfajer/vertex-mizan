@@ -293,7 +293,7 @@ export function documentInputOf(edit: EditDocument): DraftInput {
               openItemId: null,
               newItem: null,
               materialId: quantity === null ? null : line.materialId,
-              unit: quantity === null ? null : line.unit,
+              unit: quantity === null || line.materialId === null ? null : line.unit,
               quantity,
               unitPrice: counted ? unitPriceOf(line.unitPrice) : null,
               advanceMinor: minor(line.advanceMinor),

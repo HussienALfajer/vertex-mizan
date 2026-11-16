@@ -134,6 +134,8 @@ export const openItemQuerySchema = z
     account: z.uuid().optional(),
     counterparty: z.uuid().optional(),
     counterpartyType: counterpartyTypeSchema.optional(),
+    /** S12: the items whose dimension set names this contract (a project's retentions). */
+    contract: z.uuid().optional(),
     state: z.enum([...OPEN_ITEM_STATES, 'all']).default('open'),
     text: z.string().trim().min(1).max(100).optional(),
     asOf: isoDate().optional(),

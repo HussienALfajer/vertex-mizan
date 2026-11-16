@@ -225,6 +225,8 @@ export function ProjectDocumentEditor({
     ...openItemsQuery(companyId, {
       account: retentionAccount?.id,
       counterparty: clientId ?? undefined,
+      // S12 rule 19: the project's own retentions, not the client's other projects'.
+      contract: header.projectId ?? undefined,
       state: 'open',
     }),
     enabled:
@@ -278,6 +280,10 @@ export function ProjectDocumentEditor({
     if (kind === 'wage_sheet') {
       if (header.periodFrom === '' || header.periodTo === '') found.period = f.periodMissing;
       else if (header.periodFrom > header.periodTo) found.period = f.periodOrder;
+      // S12 rule 10: the period lies in one calendar month.
+      else if (header.periodFrom.slice(0, 7) !== header.periodTo.slice(0, 7)) {
+        found.period = f.periodOneMonth;
+      }
     } else if (edit.entryDate === '') {
       found.date = ar.drafts.editor.validation.date;
     }
@@ -539,7 +545,14 @@ export function ProjectDocumentEditor({
           label={f.project}
           values={pickerValues(projectCatalog.projects)}
           value={header.projectId}
-          onValueChange={(id) => setHeader({ projectId: id })}
+          onValueChange={(id) =>
+            // A release's amounts belong to the project's items: a new project starts them over.
+            setEdit((current) => ({
+              ...current,
+              header: { ...current.header, projectId: id },
+              releases: {},
+            }))
+          }
           labels={dimensionPickerLabels}
           required
           disabled={!editable}
@@ -553,7 +566,16 @@ export function ProjectDocumentEditor({
             options={RETENTION_SIDES.map((side) => ({ value: side, label: t.sides[side] }))}
             disabled={!editable}
             onValueChange={(side) =>
-              setHeader({ side: side as RetentionSide, counterpartyId: null, retentionMinor: null })
+              setEdit((current) => ({
+                ...current,
+                header: {
+                  ...current.header,
+                  side: side as RetentionSide,
+                  counterpartyId: null,
+                  retentionMinor: null,
+                },
+                releases: {},
+              }))
             }
           />
         )}
@@ -1176,7 +1198,15 @@ function PurchaseLines({
                 value={line.accountId}
                 labels={accountPickerLabels}
                 disabled={!editable}
-                onValueChange={(accountId) => onChange(line.key, { accountId })}
+                onValueChange={(accountId) =>
+                  // S12 rule 4: a material only on an account that requires one.
+                  onChange(
+                    line.key,
+                    accountsById.get(accountId)?.requiresMaterial
+                      ? { accountId }
+                      : { accountId, materialId: null, unit: null },
+                  )
+                }
               />
               {requires && (
                 <MaterialPicker

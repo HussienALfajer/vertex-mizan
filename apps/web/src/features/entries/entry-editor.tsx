@@ -295,10 +295,13 @@ export function EntryEditor({
    */
   function withAccount(line: EditLine, account: Account | null): EditLine {
     const item = account?.id === line.accountId ? {} : { openItemId: null, newItem: null };
-    if (!account) return { ...line, ...item, accountId: null };
+    // S12 rule 4: a material and its quantity only on an account that requires one.
+    const quantity = account?.requiresMaterial ? {} : { quantity: null };
+    if (!account) return { ...line, ...item, ...quantity, accountId: null };
     return {
       ...line,
       ...item,
+      ...quantity,
       accountId: account.id,
       currency: line.currency ?? account.currency ?? bookCurrency,
     };

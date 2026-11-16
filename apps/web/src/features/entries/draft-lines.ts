@@ -290,10 +290,12 @@ export function draftInputOf(
             memo: text(line.memo),
             openItemId: line.openItemId,
             newItem: line.newItem,
-            materialId: line.quantity?.materialId ?? null,
-            unit: line.quantity?.unit ?? null,
-            quantity: line.quantity?.quantity ?? null,
-            unitPrice: line.quantity?.unitPrice ?? null,
+            // A material or a price typed before its quantity waits on the screen: the draft
+            // takes them with their quantity only (S12 rules 4-6).
+            materialId: line.quantity?.quantity ? line.quantity.materialId : null,
+            unit: line.quantity?.quantity ? line.quantity.unit : null,
+            quantity: line.quantity?.quantity || null,
+            unitPrice: line.quantity?.quantity ? line.quantity.unitPrice : null,
             advanceMinor: line.advanceMinor,
           })),
     // A voucher's header goes with every save; an entry sends none, which keeps it an entry.

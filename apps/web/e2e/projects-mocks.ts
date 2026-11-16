@@ -7,6 +7,7 @@ import type {
   EntryPreview,
   Material,
   MaterialQuantities,
+  OpenItemSummary,
   PostedDraft,
   ProjectDocumentSummary,
   ProjectList,
@@ -18,6 +19,7 @@ import type {
 import { chartOf } from './chart-mocks';
 import { manualClient, typeOf, valuesPage } from './dimension-mocks';
 import { draftOf, entryReads, purchase } from './entry-mocks';
+import { m1 } from './receivables-mocks';
 
 /*
  * Synthetic answers of the project screens (S12) in the company's shape of the other specs (SYP
@@ -425,6 +427,22 @@ export const materialQuantities: MaterialQuantities = {
     },
   ],
   ledgerTotal: '13897080',
+};
+
+/** Billing 1's retention on `113002`: 3,000.00 USD open, the item a client's release clears. */
+export const retentionItem: OpenItemSummary = {
+  ...m1,
+  id: '01900000-0000-7000-8013-000000000001',
+  account: {
+    id: accountOfContracting('113002').id,
+    code: '113002',
+    name: accountOfContracting('113002').name,
+  },
+  reference: 'مستخلص 2026/1',
+  currency: 'USD',
+  documentDate: '2026-11-08',
+  dueOn: null,
+  amounts: { openMinor: '300000', bookMinor: '36000000', parallelMinor: '300000' },
 };
 
 /** A project document draft as the API returns it, from typed input. */
