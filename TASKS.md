@@ -21,7 +21,7 @@ Four PRs, in order. Each PR switches its scenario files to `Approved (owner, 202
 - [x] db (`0073`): `project_sequence` per project or subcontract under lock; `PROJECT_TERMS_LOCKED` after the first billing; the cancellation order (rule 22, `PROJECT_DOCUMENT_NOT_LATEST`); concurrency tests (two billings of one project)
 - [ ] scenarios: `projects/progress-billing.md`, `projects/subcontract-billing.md` and `projects/retention-release.md` switched to `Approved` and run (all cases pass but one: the subcontract case "Refused billings, and the cancellations in order" expects no difference entry, while S04 rule 13 posts one when billing 2's reversal clears S2's running payable and retention against their balance; the owner decides)
 - [x] api: drafts, preview and posting of the three kinds with their warnings; reversal refusals; tests
-- [ ] docs: ROADMAP, folder CLAUDE.md files
+- [x] docs: ROADMAP, folder CLAUDE.md files
 - [ ] checks and reviewers (reviewer and accountant-reviewer), PR with auto-merge and Auto-fix
 
 ### PR 3 — the project report, material quantities, exports and prints (branch `feat/s12-project-report`)
