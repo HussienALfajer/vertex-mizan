@@ -3,6 +3,13 @@ export const common = {
   productName: 'فيرتكس ميزان',
   poweredBy: 'بدعم من فيرتكس ميزان',
   retry: 'إعادة المحاولة',
+  /** The installed web app: its manifest's description and the offline page (apps/web/pwa.ts). */
+  app: {
+    description: 'نظام محاسبة احترافي متعدد الشركات من فيرتكس.',
+    offlineTitle: 'لا يوجد اتصال بالإنترنت',
+    offlineBody:
+      'يعمل ميزان مع الخادم مباشرة ولا يحفظ بيانات الشركة على هذا الجهاز. تحقق من اتصالك ثم أعد المحاولة.',
+  },
   close: 'إغلاق',
   cancel: 'تراجع',
   save: 'احفظ',
