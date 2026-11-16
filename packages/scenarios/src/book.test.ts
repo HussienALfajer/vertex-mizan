@@ -1442,6 +1442,81 @@ describe('a case', () => {
     expect(refusal(PROJECT_REPORT.replace('net: 90000', 'net: 80000'))).toContain(
       'The net is the period less the retention and the recovery',
     );
+    const billing =
+      '{ sequence: 1, number: "2026/1", date: 2026-11-03, cumulative: 100000, previous: 0, period: 100000,';
+    expect(
+      refusal(PROJECT_REPORT.replace('previous: 0, period: 100000', 'previous: 0, period: 90000')),
+    ).toContain('The period is the cumulative less the previous, above zero');
+    expect(refusal(PROJECT_REPORT.replace('outstanding: 90000', 'outstanding: 95000'))).toContain(
+      'What remains is at most the net',
+    );
+    expect(
+      refusal(
+        PROJECT_REPORT.replace(
+          'state: posted, outstanding: 90000',
+          'state: cancelled, outstanding: 90000',
+        ),
+      ),
+    ).toContain('nothing of a cancelled billing');
+    expect(
+      refusal(PROJECT_REPORT.replace(billing, billing.replace('sequence: 1', 'sequence: 2'))),
+    ).toContain("The billings are the project's, numbered 1, 2, … in order");
+    expect(
+      refusal(
+        PROJECT_REPORT.replace(billing, billing.replace('date: 2026-11-03', 'date: 2026-12-01')),
+      ),
+    ).toContain('A billing is dated on or before to');
+    // the range's costs alone disagree with the summary's direct costs
+    expect(
+      refusal(
+        PROJECT_REPORT.replaceAll(
+          'in_range: 0, to_date: 0, budget: 50000',
+          'in_range: 1, to_date: 0, budget: 50000',
+        ),
+      ),
+    ).toContain("The range's costs are the summary's direct costs");
+    expect(
+      refusal(
+        PROJECT_REPORT.replace(
+          costs,
+          costs.replace('variance: 50000, used: "0.0"', 'variance: null, used: null'),
+        ),
+      ),
+    ).toContain('A variance shows on every row and the totals, or on none');
+    expect(
+      refusal(PROJECT_REPORT.replace('summary: { currency: SYP', 'summary: { currency: USD')),
+    ).toContain('The terms are in SYP');
+    expect(
+      refusal(
+        PROJECT_REPORT.replace(`costs:\n        - ${costs}`, 'costs: []').replace(
+          totals,
+          '{ in_range: 0, to_date: 0, budget: 0, variance: 0, used: null }',
+        ),
+      ),
+    ).toContain('The budgeted 511002 is a row');
+
+    // S12 rule 2: the rows are the project's subcontracts, each with its currency and value.
+    const withSubcontract = (row: string) =>
+      PROJECT_REPORT.replace(
+        'amount: 50000 }] } }] }',
+        'amount: 50000 }] } }],\n           subcontracts: [{ contract: P1, supplier: S2, currency: SYP, value: 500000,\n                            retention_bp: 1000, advance_recovery_bp: 2000 }] }',
+      ).replace('subcontracts: []', `subcontracts: [${row}]`);
+    const subcontract =
+      '{ supplier: S2, currency: SYP, value: 500000, cumulative: 0, retention: 0, advance: 0, paid: 0 }';
+    expect(parseCase(withSubcontract(subcontract)).expect.reports[0]).toMatchObject({
+      subcontracts: [{ supplier: 'S2', currency: 'SYP', value: 500000n }],
+    });
+    expect(
+      refusal(withSubcontract(subcontract.replace('currency: SYP', 'currency: USD'))),
+    ).toContain('S2 is a subcontract of the project, with its currency and value');
+    expect(refusal(withSubcontract(subcontract.replace('value: 500000', 'value: 1')))).toContain(
+      'S2 is a subcontract of the project, with its currency and value',
+    );
+    expect(refusal(withSubcontract(subcontract.replace('supplier: S2', 'supplier: S3')))).toContain(
+      'S3 is a subcontract of the project',
+    );
+    // the project's subcontract left out
+    expect(refusal(withSubcontract(''))).toContain("The rows are the project's subcontracts");
     expect(
       refusal(
         PROJECT_REPORT.replace(
