@@ -405,6 +405,63 @@ describe('the project report (S12 "Reports")', () => {
     });
   });
 
+  it('prints a billing with the terms it was posted under, after the terms change (0075)', async () => {
+    const { books, billing } = await december();
+    await inCompany(books.id, (tx) =>
+      putProjectTerms(
+        tx,
+        books.id,
+        books.project,
+        {
+          currency: 'USD',
+          contractValueMinor: '12000000',
+          retentionBp: 500,
+          advanceRecoveryBp: 1250,
+          budget: [],
+        },
+        actor(),
+      ),
+    );
+    const [document] = (
+      await inCompany(books.id, (tx) =>
+        tx.execute<{ id: string; contract_value_minor: string; retention_bp: number }>(sql`
+          select id, contract_value_minor::text, retention_bp from project_documents
+          where entry_id = ${billing}::uuid`),
+      )
+    ).rows;
+    expect(document).toMatchObject({ contract_value_minor: '10000000', retention_bp: 1000 });
+    const print = await inCompany(books.id, (tx) =>
+      readProjectDocumentPrint(tx, document?.id as string),
+    );
+    expect(print).toMatchObject({
+      kind: 'progress_billing',
+      projectSequence: 1,
+      contractValueMinor: '10000000',
+      retentionRate: '10',
+      advanceRecoveryRate: '20',
+      totalMinor: '3000000',
+      netMinor: '2100000',
+      client: { code: 'C1' },
+      lines: [],
+    });
+    // The purchase prints its lines with their quantities, and no terms.
+    const [purchase] = (
+      await inCompany(books.id, (tx) =>
+        tx.execute<{ id: string }>(sql`select id from project_documents where kind = 'purchase'`),
+      )
+    ).rows;
+    const invoice = await inCompany(books.id, (tx) =>
+      readProjectDocumentPrint(tx, purchase?.id as string),
+    );
+    expect(invoice).toMatchObject({ retentionRate: null, contractValueMinor: null });
+    expect(
+      invoice.lines.map((line) => [line.account.code, line.quantity, line.material?.code]),
+    ).toEqual([
+      ['511001', '12.500', 'CEM'],
+      ['511001', '2.000', 'STL'],
+    ]);
+  });
+
   it('lists the projects with their life-to-date figures, equal to the report from the start', async () => {
     const { books } = await december();
     const list = await inCompany(books.id, (tx) =>

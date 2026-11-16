@@ -953,26 +953,12 @@ export async function readProjectDocumentPrint(
         (select u.name from public.users u where u.id = e.prepared_by_user_id) as prepared_by,
         (select u.name from public.users u where u.id = e.approved_by_user_id) as approved_by,
         r.fiscal_year as reversal_fiscal_year, r.number as reversal_number,
-        case d.kind
-          when 'progress_billing' then t.contract_value_minor::text
-          when 'subcontract_billing' then s.value_minor::text
-        end as terms_value,
-        case d.kind
-          when 'progress_billing' then t.retention_bp
-          when 'subcontract_billing' then s.retention_bp
-        end as terms_retention,
-        case d.kind
-          when 'progress_billing' then t.advance_recovery_bp
-          when 'subcontract_billing' then s.advance_recovery_bp
-        end as terms_recovery
+        -- The terms the billing was posted under (0075); none on a billing posted before.
+        d.contract_value_minor::text as terms_value, d.retention_bp as terms_retention,
+        d.advance_recovery_bp as terms_recovery
       from project_documents d
       join journal_entries e on e.company_id = d.company_id and e.id = d.entry_id
       left join journal_entries r on r.company_id = d.company_id and r.reverses_entry_id = d.entry_id
-      left join project_terms t on t.company_id = d.company_id
-        and t.contract_value_id = d.contract_value_id and t.archived_at is null
-      left join subcontracts s on s.company_id = d.company_id
-        and s.contract_value_id = d.contract_value_id
-        and s.supplier_value_id = d.counterparty_value_id and s.archived_at is null
       where d.id = ${id}::uuid`)
   ).rows;
   if (row === undefined) throw new DomainError('NOT_FOUND', 'No such project document');
