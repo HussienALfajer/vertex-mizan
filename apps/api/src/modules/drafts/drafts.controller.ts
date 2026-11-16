@@ -85,6 +85,12 @@ const POSTING_ERRORS = [
   'CASH_BOX_NEGATIVE',
   'CASH_COUNT_STALE',
   'CASH_ACCOUNT_INVALID',
+  // S12: project documents (rules 1, 4, 12, 14).
+  'PROJECT_TERMS_MISSING',
+  'MATERIAL_REQUIRED',
+  'ADVANCE_CURRENCY_MISMATCH',
+  'BILLING_NOT_INCREASING',
+  'OPEN_ITEM_REFERENCE_TAKEN',
 ] as const;
 
 /** `/api/drafts`: the drafts of manual entries and the approval queue (S03 rules 4–11, 17). */

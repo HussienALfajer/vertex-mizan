@@ -17,12 +17,12 @@ Four PRs, in order. Each PR switches its scenario files to `Approved (owner, 202
 
 ### PR 2 — billings and retention releases (branch `feat/s12-billings`)
 
-- [ ] ledger: `buildProjectDocument()` for `progress_billing`, `subcontract_billing` and `retention_release` (rules 14–20: the cumulative chain, deductions, recovery capped at the project's share, the release cleared at the project's share); property tests (deductions sum to the period's value, the net never negative)
-- [ ] db: `project_sequence` per project or subcontract under lock; `PROJECT_TERMS_LOCKED` after the first billing; the cancellation order (rule 22, `PROJECT_DOCUMENT_NOT_LATEST`); concurrency tests (two billings of one project)
-- [ ] scenarios: `projects/progress-billing.md`, `projects/subcontract-billing.md` and `projects/retention-release.md` switched to `Approved` and run
-- [ ] api: drafts, preview and posting of the three kinds with their warnings; reversal refusals; tests
-- [ ] docs: ROADMAP, folder CLAUDE.md files
-- [ ] checks and reviewers (reviewer and accountant-reviewer), PR with auto-merge and Auto-fix
+- [x] ledger: `buildProjectDocument()` for `progress_billing`, `subcontract_billing` and `retention_release` (rules 14–20: the cumulative chain, deductions, recovery capped at the project's share, the release cleared at the project's share); property tests (deductions sum to the period's value, the net never negative)
+- [x] db (`0073`): `project_sequence` per project or subcontract under lock; `PROJECT_TERMS_LOCKED` after the first billing; the cancellation order (rule 22, `PROJECT_DOCUMENT_NOT_LATEST`); concurrency tests (two billings of one project)
+- [x] scenarios: `projects/progress-billing.md`, `projects/subcontract-billing.md` and `projects/retention-release.md` switched to `Approved` and run (owner, 2026-11-16, after the reviews: a billing's or release's cancellation is exact, with no S04 rule 13 difference, refused while a later payment or release stands; a billing's items named `مستخلص <fiscal year>/<number>`)
+- [x] api: drafts, preview and posting of the three kinds with their warnings; reversal refusals; tests
+- [x] docs: ROADMAP, folder CLAUDE.md files
+- [x] checks and reviewers (reviewer: the chain keyed by the project, the items' names, the guard's chain branch tested, exact cancellation held by later clearings, differences and a crossing's addition; accountant-reviewer: a subcontract billing cancelled after its release), PR with auto-merge and Auto-fix
 
 ### PR 3 — the project report, material quantities, exports and prints (branch `feat/s12-project-report`)
 

@@ -9,10 +9,11 @@ import type { Browser } from './browser.js';
 import { expectGuarded } from './guards.js';
 import { joinCompany, newCompany, signedInPerson, testDatabase } from './people.js';
 
-// S12 PR 1 through the API: the materials catalogue, a project's terms and budget, subcontracts,
-// a project purchase invoice and a wage sheet saved, previewed and posted as drafts, the register
-// of documents, rule 4 on a manual draft, and each route as a viewer, as another company's member
-// and without a session. Every value is synthetic.
+// S12 through the API: the materials catalogue, a project's terms and budget, subcontracts, a
+// project purchase invoice, a wage sheet, progress billings and a client's retention release saved,
+// previewed and posted as drafts, the cancellation order of billings, the register of documents,
+// rule 4 on a manual draft, and each route as a viewer, as another company's member and without a
+// session. Every value is synthetic.
 
 let app: INestApplication;
 let db: Database;
@@ -30,6 +31,7 @@ interface Contractor {
   browser: Browser;
   companyId: string;
   accounts: Map<string, string>;
+  client: string;
   project: string;
   supplier: string;
   worker: string;
@@ -93,6 +95,7 @@ async function contractor(): Promise<Contractor> {
     browser,
     companyId: company.id,
     accounts: new Map(chart.map((account) => [account.code, account.id])),
+    client,
     project,
     supplier,
     worker,
@@ -258,7 +261,7 @@ describe('project documents as drafts (S12 rules 4–8, 10, 21)', () => {
     ).toBe('NOT_FOUND');
   });
 
-  it('posts a wage sheet of days and refuses a kind that comes with S12’s billings', async () => {
+  it('posts a wage sheet of days, and refuses a billing of a project without terms', async () => {
     const books = await contractor();
     const { browser } = books;
     const on = today();
@@ -292,13 +295,148 @@ describe('project documents as drafts (S12 rules 4–8, 10, 21)', () => {
     ).toEqual(['511002', '211007']);
     const billing = await browser.post('/api/drafts', {
       entryDate: on,
+      description: 'مستخلص تجريبي',
       projectDocument: {
         kind: 'progress_billing',
         contractValueId: books.project,
         cumulativeMinor: '100',
       },
     });
-    expect(billing.body.code).toBe('VALIDATION_FAILED');
+    expect(billing.status, JSON.stringify(billing.body)).toBe(201);
+    const refused = await browser.post(`/api/drafts/${billing.body.id}/preview`);
+    expect(refused.body.refusals).toEqual([
+      expect.objectContaining({ code: 'PROJECT_TERMS_MISSING' }),
+    ]);
+  });
+
+  it('previews and posts billings, cancels them in order, and releases a retention', async () => {
+    const books = await contractor();
+    const { browser } = books;
+    const on = today();
+    const terms = await browser.put(`/api/projects/${books.project}/terms`, {
+      currency: 'USD',
+      contractValueMinor: '10000000',
+      retentionBp: 1000,
+      advanceRecoveryBp: 2000,
+      budget: [],
+    });
+    expect(terms.status, JSON.stringify(terms.body)).toBe(200);
+    const advance = await browser.post('/api/drafts', {
+      entryDate: on,
+      description: 'دفعة مقدمة من العميل',
+      lines: [
+        { accountId: books.accounts.get('313001'), currency: 'USD', amountMinor: '2000000' },
+        {
+          accountId: books.accounts.get('212002'),
+          dimensionValueIds: [books.client, books.project],
+          currency: 'USD',
+          amountMinor: '-2000000',
+        },
+      ],
+    });
+    expect((await browser.post(`/api/drafts/${advance.body.id}/post`)).status).toBe(200);
+    const billing = async (cumulativeMinor: string) => {
+      const saved = await browser.post('/api/drafts', {
+        entryDate: on,
+        description: 'مستخلص تجريبي',
+        projectDocument: {
+          kind: 'progress_billing',
+          contractValueId: books.project,
+          cumulativeMinor,
+        },
+      });
+      expect(saved.status, JSON.stringify(saved.body)).toBe(201);
+      return saved.body.id as string;
+    };
+    const first = await billing('3000000');
+    const preview = await browser.post(`/api/drafts/${first}/preview`);
+    expect(preview.body.refusals).toEqual([]);
+    expect(preview.body.projectDocument).toMatchObject({
+      kind: 'progress_billing',
+      currency: 'USD',
+      previousMinor: '0',
+      periodValueMinor: '3000000',
+      retentionMinor: '300000',
+      advanceMinor: '600000',
+      netMinor: '2100000',
+      warnings: [],
+    });
+    expect(preview.body.lines.map((line: { accountCode: string }) => line.accountCode)).toEqual([
+      '112001',
+      '113002',
+      '212002',
+      '411001',
+    ]);
+    // The revenue's covered part at the advance's carrying amount (IFRIC 22.8).
+    expect(preview.body.lines[3].covered).toMatchObject({ amountMinor: '-600000' });
+    const posted = await browser.post(`/api/drafts/${first}/post`);
+    expect(posted.status, JSON.stringify(posted.body)).toBe(200);
+    expect(posted.body.projectDocument).toMatchObject({ kind: 'progress_billing', number: 1 });
+    expect(posted.body.entry.reference).toMatch(/^مستخلص \d{4}\/1$/);
+    const replay = await browser.post(`/api/drafts/${first}/post`);
+    expect(replay.body.projectDocument.id).toBe(posted.body.projectDocument.id);
+
+    const second = await billing('12000000');
+    const above = await browser.post(`/api/drafts/${second}/preview`);
+    expect(above.body.projectDocument.warnings).toEqual(['cumulative_above_contract_value']);
+    const secondPosted = await browser.post(`/api/drafts/${second}/post`);
+    expect(secondPosted.status, JSON.stringify(secondPosted.body)).toBe(200);
+    const notIncreasing = await billing('12000000');
+    expect((await browser.post(`/api/drafts/${notIncreasing}/post`)).body.code).toBe(
+      'BILLING_NOT_INCREASING',
+    );
+    const detail = await browser.get(
+      `/api/project-documents/${secondPosted.body.projectDocument.id}`,
+    );
+    expect(detail.body).toMatchObject({
+      projectSequence: 2,
+      counterpartyValueId: books.client,
+      cumulativeMinor: '12000000',
+      previousMinor: '3000000',
+      retentionMinor: '900000',
+      advanceMinor: '1400000',
+    });
+
+    // Rule 22: the first is cancelled only after the second.
+    const cancel = (entryId: string) =>
+      browser.post(`/api/entries/${entryId}/reverse`, { date: on, description: 'إلغاء مستخلص' });
+    expect((await cancel(posted.body.entry.id)).body.code).toBe('PROJECT_DOCUMENT_NOT_LATEST');
+    expect((await cancel(secondPosted.body.entry.id)).status).toBe(200);
+    expect(
+      (await browser.get('/api/project-documents', { state: 'cancelled' })).body.documents,
+    ).toHaveLength(1);
+
+    // A client's release of the first billing's retention, by its item.
+    const items = await browser.get('/api/open-items', {
+      account: books.accounts.get('113002') as string,
+    });
+    const [retention] = items.body.items as { id: string }[];
+    const release = await browser.post('/api/drafts', {
+      entryDate: on,
+      description: 'إفراج عن محتجزات',
+      projectDocument: {
+        kind: 'retention_release',
+        side: 'client',
+        contractValueId: books.project,
+        retentionItems: [{ itemId: retention?.id, amountMinor: '100000' }],
+      },
+    });
+    expect(release.status, JSON.stringify(release.body)).toBe(201);
+    expect(release.body.projectDocument.retentionItems).toEqual([
+      { itemId: retention?.id, amountMinor: '100000' },
+    ]);
+    const released = await browser.post(`/api/drafts/${release.body.id}/post`);
+    expect(released.status, JSON.stringify(released.body)).toBe(200);
+    expect(
+      released.body.entry.lines.map((line: { accountCode: string }) => line.accountCode),
+    ).toEqual(['112001', '113002']);
+    // A release's item now stands on the billing's retention: the billing is not cancelled.
+    expect((await cancel(posted.body.entry.id)).body.code).toBe('OPEN_ITEM_HAS_SETTLEMENTS');
+
+    const stranger = await contractor();
+    expect((await stranger.browser.post(`/api/drafts/${release.body.id}/post`)).body.code).toBe(
+      'NOT_FOUND',
+    );
   });
 
   it('refuses a manual line on 511001 without a material (rule 4)', async () => {

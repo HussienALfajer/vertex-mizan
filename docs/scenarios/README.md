@@ -169,7 +169,7 @@ steps:                              # in order; a manual entry, a reversal, a ra
   - project_document: <what it records>  # a retention release (S12 rules 19–20): the side and the
     accounting_date: 2027-02-28     #   project; on the client's side each retention item of the
     payload: { document: { kind: retention_release, side: client, contract: P1,
-                           retention_items: [{ item: "2026/1", amount: 300000 }] } }
+                           retention_items: [{ item: "مستخلص 2026/1", amount: 300000 }] } }
                                     #   project on 113002 by its reference, with the amount released
                                     #   (at most its open amount); on the supplier's side the supplier
                                     #   and the amount released as retention (side: supplier,

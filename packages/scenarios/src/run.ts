@@ -275,6 +275,15 @@ export async function runCase(
         'subcontracts arrive with S12',
     );
   }
+  if (
+    scenarioCase.company.contracts.some((contract) => contract.terms !== null) &&
+    !harness.terms
+  ) {
+    missing.push(
+      'No project terms setup is registered (packages/scenarios/src/harness.ts); ' +
+        'project terms arrive with S12',
+    );
+  }
   if (scenarioCase.expect.quantities !== null && !harness.quantities) {
     missing.push(
       'No quantity reader is registered (packages/scenarios/src/harness.ts); ' +
@@ -294,6 +303,9 @@ export async function runCase(
   if (company.materials.length > 0) await harness.materials?.(context, company.materials);
   if (company.subcontracts.length > 0) {
     await harness.subcontracts?.(context, company.subcontracts);
+  }
+  if (company.contracts.some((contract) => contract.terms !== null)) {
+    await harness.terms?.(context, company.contracts);
   }
   const differences: string[] = [];
   const corrections = new Map(expect.corrections.map((c) => [c.step, c.usedBy]));

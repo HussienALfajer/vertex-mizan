@@ -2,6 +2,7 @@ import {
   type CurrencyCode,
   DAYS_UNIT,
   DomainError,
+  divideHalfAwayFromZero,
   isZeroQuantity,
   lineAmount,
   type Money,
@@ -166,7 +167,73 @@ export interface WageSheetDocument {
   readonly workers: ReadonlyMap<string, RunningTarget>;
 }
 
-export type ProjectDocumentInput = PurchaseDocument | WageSheetDocument;
+/** The latest posted, uncancelled billing of the project or subcontract (S12 rule 14). */
+export interface PreviousBilling {
+  readonly cumulativeMinor: bigint;
+  readonly on: string;
+}
+
+/**
+ * A client's progress billing or a subcontractor's billing as typed (S12 rules 14–16, 18): the
+ * cumulative certified value, the deductions as changed by the accountant (null for the computed
+ * ones), the terms' rates, and where each line goes as the posting function read it.
+ */
+export interface BillingDocument {
+  readonly kind: 'progress_billing' | 'subcontract_billing';
+  readonly currency: CurrencyCode;
+  readonly on: string;
+  readonly cumulativeMinor: bigint;
+  readonly previous: PreviousBilling | null;
+  /** The terms' (or subcontract's) rates in basis points (0–10000). */
+  readonly retentionBp: number;
+  readonly advanceRecoveryBp: number;
+  /** The deductions as typed; null for the computed ones. */
+  readonly retentionMinor: bigint | null;
+  readonly advanceMinor: bigint | null;
+  /** The revenue line (`411001`, a credit) or the cost line (`511003`, a debit). */
+  readonly value: { readonly account: string; readonly dimensions: Dimensions };
+  /** The net: a new document item on `112001`, or the supplier's running item on `211002`. */
+  readonly net: RunningTarget;
+  /** The retention: a new document item on `113002`, or the supplier's running item on `211006`. */
+  readonly retention: RunningTarget;
+  /** The advance: the client's on `212002` (side −1) or the supplier's on `114002` (side 1). */
+  readonly advance: AdvanceShares;
+}
+
+/** A client's retention item released, as the posting function read it (S12 rule 19). */
+export interface ReleasedItem {
+  readonly target: RunningTarget;
+  readonly amountMinor: bigint;
+}
+
+/** A client's retention release as typed (S12 rule 19). */
+export interface ClientReleaseDocument {
+  readonly kind: 'retention_release';
+  readonly side: 'client';
+  readonly currency: CurrencyCode;
+  readonly items: readonly ReleasedItem[];
+  /** The new document item on `112001` for their sum. */
+  readonly receivable: RunningTarget;
+}
+
+/** A subcontractor's retention release as typed (S12 rule 20). */
+export interface SupplierReleaseDocument {
+  readonly kind: 'retention_release';
+  readonly side: 'supplier';
+  readonly currency: CurrencyCode;
+  readonly amountMinor: bigint;
+  /** The supplier's retention on `211006`, the project's share (a credit balance, side −1). */
+  readonly retention: AdvanceShares;
+  /** The supplier's running item on `211002`, with the project on the line. */
+  readonly payable: RunningTarget;
+}
+
+export type ProjectDocumentInput =
+  | PurchaseDocument
+  | WageSheetDocument
+  | BillingDocument
+  | ClientReleaseDocument
+  | SupplierReleaseDocument;
 
 /** A document's entry before `manualEntry()`, with what the posting function stores beside it. */
 export interface BuiltDocument {
@@ -181,6 +248,10 @@ export interface BuiltDocument {
   readonly totalMinor: bigint;
   readonly advanceMinor: bigint;
   readonly netMinor: bigint;
+  /** A billing's previous cumulative (S12 rule 14); 0 for other kinds. */
+  readonly previousMinor: bigint;
+  /** A billing's retention, or a release's amount (S12 rules 15, 19–20); 0 for other kinds. */
+  readonly retentionMinor: bigint;
 }
 
 function lineOf(target: RunningTarget, amount: Money): ManualLine {
@@ -340,6 +411,8 @@ function purchase(document: PurchaseDocument, context: MeasureContext): BuiltDoc
     totalMinor,
     advanceMinor,
     netMinor,
+    previousMinor: 0n,
+    retentionMinor: 0n,
   };
 }
 
@@ -403,6 +476,157 @@ function wageSheet(document: WageSheetDocument): BuiltDocument {
     totalMinor,
     advanceMinor: 0n,
     netMinor: totalMinor,
+    previousMinor: 0n,
+    retentionMinor: 0n,
+  };
+}
+
+/** What the share holds on the advance's own side in a currency (S12 rule 12); 0 for none. */
+function heldOnSide(advance: AdvanceShares, currency: CurrencyCode): bigint {
+  const share = advance.shares.find((item) => item.balance.transaction.currency === currency);
+  if (share === undefined) return 0n;
+  const signed = BigInt(advance.side) * share.balance.transaction.amountMinor;
+  return signed > 0n ? signed : 0n;
+}
+
+/** `value × bp ÷ 10000`, rounded half away from zero (S12 rule 15). */
+function rateOf(valueMinor: bigint, bp: number): bigint {
+  if (!Number.isInteger(bp) || bp < 0 || bp > 10000) {
+    throw new RangeError('A rate in basis points between 0 and 10000');
+  }
+  return divideHalfAwayFromZero(valueMinor * BigInt(bp), 10000n);
+}
+
+/**
+ * The clearing line of an advance (or a supplier's retention) applied within the project's share,
+ * and the carried amounts it takes, in the clearing line's own sign (S12 rules 12, 20).
+ */
+function clearShare(
+  shares: AdvanceShares,
+  currency: CurrencyCode,
+  amountMinor: bigint,
+  context: MeasureContext,
+): { readonly line: ManualLine; readonly carried: CarriedAmounts } {
+  const share = advanceShare(shares, currency, amountMinor);
+  // The clearing moves the share toward zero: a debit on a credit balance, and the reverse.
+  const amount = money(-BigInt(shares.side) * amountMinor, currency);
+  const target = { account: shares.account, dimensions: shares.dimensions };
+  const moved = moveItem(share, target, amount, context);
+  const [line] = moved.lines;
+  if (moved.lines.length !== 1 || line === undefined || line.item?.movement !== 'clear') {
+    throw new TypeError('A share applied within its balance clears it in one line');
+  }
+  return { line: { ...target, amount, item: share }, carried: line };
+}
+
+function billing(document: BillingDocument, context: MeasureContext): BuiltDocument {
+  const { currency, previous } = document;
+  const previousMinor = previous?.cumulativeMinor ?? 0n;
+  const periodMinor = document.cumulativeMinor - previousMinor;
+  if (periodMinor <= 0n) {
+    throw new DomainError(
+      'BILLING_NOT_INCREASING',
+      `A cumulative of ${document.cumulativeMinor} is not above the previous ${previousMinor}`,
+      { previousMinor: previousMinor.toString() },
+    );
+  }
+  if (previous !== null && document.on < previous.on) {
+    invalid('A billing is dated on or after the latest billing', 1, { latestOn: previous.on });
+  }
+  const retentionMinor = document.retentionMinor ?? rateOf(periodMinor, document.retentionBp);
+  const computedAdvance = rateOf(periodMinor, document.advanceRecoveryBp);
+  const held = heldOnSide(document.advance, currency);
+  const advanceMinor = document.advanceMinor ?? (computedAdvance < held ? computedAdvance : held);
+  if (retentionMinor < 0n || advanceMinor < 0n) invalid('A deduction is never below zero', 1);
+  const netMinor = periodMinor - retentionMinor - advanceMinor;
+  if (netMinor < 0n) {
+    invalid('The deductions are at most the period’s value', 1, {
+      periodValueMinor: periodMinor.toString(),
+    });
+  }
+  // The client's billing debits the net, the retention and the advance and credits revenue; the
+  // subcontractor's is its mirror (S12 rules 16, 18).
+  const sign = document.kind === 'progress_billing' ? 1n : -1n;
+  const clearing =
+    advanceMinor > 0n ? clearShare(document.advance, currency, advanceMinor, context) : null;
+  const valueLine: ManualLine = {
+    account: document.value.account,
+    dimensions: document.value.dimensions,
+    amount: money(-sign * periodMinor, currency),
+    // The covered part of the value line takes the advance's carried amounts (IFRIC 22.8).
+    ...(clearing !== null && { covered: negate(clearing.carried) }),
+  };
+  const netLine = netMinor === 0n ? null : lineOf(document.net, money(sign * netMinor, currency));
+  const retentionLine =
+    retentionMinor === 0n
+      ? null
+      : lineOf(document.retention, money(sign * retentionMinor, currency));
+  const ordered: (ManualLine | null)[] =
+    document.kind === 'progress_billing'
+      ? [netLine, retentionLine, clearing?.line ?? null, valueLine]
+      : [valueLine, retentionLine, clearing?.line ?? null, netLine];
+  const lines = ordered.filter((line): line is ManualLine => line !== null);
+  return {
+    entry: { lines, dealtRates: [] },
+    quantities: lines.map(() => null),
+    memos: lines.map(() => null),
+    advanceLine: clearing === null ? null : lines.indexOf(clearing.line),
+    totalMinor: periodMinor,
+    advanceMinor,
+    netMinor,
+    previousMinor,
+    retentionMinor,
+  };
+}
+
+function clientRelease(document: ClientReleaseDocument): BuiltDocument {
+  if (document.items.length === 0) invalid('A release names a retention item', 1);
+  let totalMinor = 0n;
+  const released: ManualLine[] = [];
+  for (const [index, { target, amountMinor }] of document.items.entries()) {
+    const lineNo = index + 1;
+    if (amountMinor <= 0n) invalid('An amount released is above zero', lineNo);
+    if (target.item.balance.transaction.currency !== document.currency) {
+      invalid('Every retention released is in the document’s currency', lineNo);
+    }
+    if (document.items.slice(0, index).some((other) => other.target.item.id === target.item.id)) {
+      invalid('A retention item is released once in a document', lineNo);
+    }
+    released.push(lineOf(target, money(-amountMinor, document.currency)));
+    totalMinor += amountMinor;
+  }
+  const lines = [lineOf(document.receivable, money(totalMinor, document.currency)), ...released];
+  return {
+    entry: { lines, dealtRates: [] },
+    quantities: lines.map(() => null),
+    memos: lines.map(() => null),
+    advanceLine: null,
+    totalMinor,
+    advanceMinor: 0n,
+    netMinor: totalMinor,
+    previousMinor: 0n,
+    retentionMinor: totalMinor,
+  };
+}
+
+function supplierRelease(
+  document: SupplierReleaseDocument,
+  context: MeasureContext,
+): BuiltDocument {
+  const { amountMinor, currency } = document;
+  if (amountMinor <= 0n) invalid('An amount released is above zero', 1);
+  const clearing = clearShare(document.retention, currency, amountMinor, context);
+  const lines = [clearing.line, lineOf(document.payable, money(-amountMinor, currency))];
+  return {
+    entry: { lines, dealtRates: [] },
+    quantities: lines.map(() => null),
+    memos: lines.map(() => null),
+    advanceLine: null,
+    totalMinor: amountMinor,
+    advanceMinor: 0n,
+    netMinor: amountMinor,
+    previousMinor: 0n,
+    retentionMinor: amountMinor,
   };
 }
 
@@ -416,7 +640,18 @@ function wageSheet(document: WageSheetDocument): BuiltDocument {
  *   on the wages account with the project and the worker, days (at most one decimal, unit "يوم")
  *   times the daily rate or a lump sum with its description; one credit per worker on the worker's
  *   running item for the sum of the worker's lines.
- * Refusals name the line in `details.lineNo`. The billings and releases come with S12's next part.
+ * - a progress billing or a subcontractor's billing (rules 14–16, 18): the period's value the
+ *   cumulative less the previous billing's (`BILLING_NOT_INCREASING` at or below it; dated before it
+ *   `VALIDATION_FAILED`), the retention and the recovery each the period's value at the terms' rate
+ *   rounded half away from zero unless typed, the computed recovery capped at the project's share
+ *   of the advance in the document's currency, the net the remainder (never below zero); the value
+ *   line's covered part at the recovery's carried amounts, the rest a new measurement; a deduction
+ *   or a net of zero posts no line;
+ * - a client's retention release (rule 19): each item credited for its amount released (cleared in
+ *   proportion to what remains, S04 rule 4), one new receivable debited for their sum;
+ * - a supplier's retention release (rule 20): the project's share of the retention debited, cleared
+ *   at its average carrying amount, the supplier's running payable credited, newly measured.
+ * Refusals name the line in `details.lineNo`.
  */
 export function buildProjectDocument(
   document: ProjectDocumentInput,
@@ -427,5 +662,12 @@ export function buildProjectDocument(
       return purchase(document, context);
     case 'wage_sheet':
       return wageSheet(document);
+    case 'progress_billing':
+    case 'subcontract_billing':
+      return billing(document, context);
+    case 'retention_release':
+      return document.side === 'client'
+        ? clientRelease(document)
+        : supplierRelease(document, context);
   }
 }
