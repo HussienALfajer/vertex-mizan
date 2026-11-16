@@ -31,8 +31,10 @@ import {
 } from 'drizzle-orm';
 import { type AuditActor, writeCompanyAudit } from '../audit.js';
 import type { Transaction } from '../client.js';
+import type { DocumentLineSpec, ProjectDocumentSpec } from '../posting/post.js';
 import { chartAccounts } from '../schema/chart.js';
 import { dimensionTypes, dimensionValues } from '../schema/dimensions.js';
+import { entryDraftLines, entryDrafts } from '../schema/drafts.js';
 import { journalEntries, journalLines } from '../schema/ledger.js';
 import {
   advanceApplications,
@@ -790,5 +792,61 @@ export async function readProjectDocument(
         advanceLineNo: lineNoOf(row.advanceLineId),
       }))
       .sort((a, b) => a.lineNo - b.lineNo),
+  };
+}
+
+// ——— A project document draft as it posts (S12 "Drafts") ———
+
+/**
+ * The posting content of a project document draft (S12 rules 4–13): its header and its lines as
+ * stored, read back the way `post()` takes them, so the API's posting and the scenario book's post
+ * exactly what the draft holds. `VALIDATION_FAILED` for a draft that is not a project document,
+ * or a kind that is not available yet.
+ */
+export async function projectDocumentContentOf(
+  tx: Transaction,
+  draftId: string,
+): Promise<{ document: ProjectDocumentSpec; lines: DocumentLineSpec[] }> {
+  const [draft] = await tx.select().from(entryDrafts).where(eq(entryDrafts.id, draftId));
+  if (!draft) throw new DomainError('NOT_FOUND', 'No such draft');
+  const kind = draft.projectDocumentKind;
+  if (kind !== 'purchase' && kind !== 'wage_sheet') {
+    throw new DomainError('VALIDATION_FAILED', 'Not a project document draft of an available kind');
+  }
+  if (draft.contractValueId === null || draft.documentCurrency === null) {
+    throw new DomainError('VALIDATION_FAILED', 'A project document names its project and currency');
+  }
+  const rows = await tx
+    .select()
+    .from(entryDraftLines)
+    .where(and(eq(entryDraftLines.draftId, draftId), isNull(entryDraftLines.archivedAt)))
+    .orderBy(asc(entryDraftLines.lineNo));
+  return {
+    document: {
+      kind,
+      contractValueId: draft.contractValueId,
+      counterpartyValueId: draft.counterpartyValueId,
+      currency: draft.documentCurrency as CurrencyCode,
+      periodFrom: draft.periodFrom,
+      periodTo: draft.periodTo,
+      advanceMinor: draft.advanceMinor,
+      supplierReference: draft.supplierReference,
+    },
+    lines: rows.map((row) => ({
+      accountId: row.accountId,
+      dimensionValueIds: row.dimensionValueIds,
+      amountMinor: row.amountMinor,
+      memo: row.memo,
+      quantity:
+        row.quantity === null || row.unit === null
+          ? null
+          : {
+              materialId: row.materialId,
+              unit: row.unit,
+              quantity: row.quantity,
+              unitPrice: row.unitPrice,
+            },
+      advanceMinor: row.advanceMinor,
+    })),
   };
 }

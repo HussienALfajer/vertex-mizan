@@ -1,8 +1,8 @@
 # A project purchase invoice
 
-Status: Proposed
+Status: Approved (owner, 2026-11-16)
 
-The expected entries of the eight cases were approved by the owner on 2026-11-16, with three readings of S12 rule 12 and its edge case 4: an advance's carried amounts are allocated across the covered lines in proportion to their covered amounts; `ADVANCE_CURRENCY_MISMATCH` refuses an advance applied while the supplier's advance for the project is held only in another currency (none at all, or too little, is `RELEASE_EXCEEDS_BALANCE`); and the supplier's credit on `211001` carries the project. They stay `Proposed` until S12's slice brings the `project_document` executor, the materials setup and the project documents' and quantities' readers.
+The expected entries of the eight cases were approved by the owner on 2026-11-16, with three readings of S12 rule 12 and its edge case 4: an advance's carried amounts are allocated across the covered lines in proportion to their covered amounts; `ADVANCE_CURRENCY_MISMATCH` refuses an advance applied while the supplier's advance for the project is held only in another currency (none at all, or too little, is `RELEASE_EXCEEDS_BALANCE`); and the supplier's credit on `211001` carries the project. S12's first PR brought the `project_document` executor, the materials setup and the project documents' and quantities' readers and switched them to `Approved` with no expected value changed.
 
 ## Rule
 

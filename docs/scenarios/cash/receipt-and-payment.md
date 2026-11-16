@@ -299,7 +299,8 @@ Supplier S1 invoiced 10,200.00 TRY of materials on 24 November, when the market 
 case: 6,800.00 TRY paid to S1 against a 10,200.00 TRY balance at 32 and 3.4; a book gain and a parallel loss
 company: { shape: usd-syp, book: USD, parallel: SYP, template: contracting,
            rate_policy: { book: market, book_accepts_transaction_rate: true, parallel: bulletin },
-           contracts: [{ code: P1, kind: project, client: C1 }] }
+           contracts: [{ code: P1, kind: project, client: C1 }],
+           materials: [{ code: CEM, name: "أسمنت بورتلاندي", unit: "طن" }] }
 rates:
   - { date: 2026-11-24, base: TRY, quote: SYP, rate: "3.4000", type: bulletin }
   - { date: 2026-11-24, base: USD, quote: TRY, rate: "32.0000", type: market }
@@ -309,7 +310,8 @@ rates:
 steps:
   - manual: supplier S1's invoice for materials on contract P1
     accounting_date: 2026-11-24
-    payload: { lines: [{ account: "511001", dims: { contract: P1 }, currency: TRY, amount: 1020000 },
+    payload: { lines: [{ account: "511001", dims: { contract: P1 }, currency: TRY, amount: 1020000,
+                         material: CEM, quantity: "3.000", unit_price: "3400.0000" },
                        { account: "211001", dims: { supplier: S1 }, currency: TRY, amount: -1020000 }] }
   - voucher: the owner pays 6,800.00 TRY into the TRY box
     accounting_date: 2026-12-03
@@ -365,7 +367,8 @@ The same invoice and payment in Vertex Media's ledgers: SYP books at the bulleti
 case: SYP books and a USD parallel ledger; 6,800.00 TRY paid to S1; a book loss and a parallel gain
 company: { shape: third, book: SYP, parallel: USD, template: contracting,
            rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true },
-           contracts: [{ code: P1, kind: project, client: C1 }] }
+           contracts: [{ code: P1, kind: project, client: C1 }],
+           materials: [{ code: CEM, name: "أسمنت بورتلاندي", unit: "طن" }] }
 rates:
   - { date: 2026-11-24, base: TRY, quote: SYP, rate: "3.4000", type: bulletin }
   - { date: 2026-11-24, base: USD, quote: TRY, rate: "32.0000", type: market }
@@ -374,7 +377,8 @@ rates:
 steps:
   - manual: supplier S1's invoice for materials on contract P1
     accounting_date: 2026-11-24
-    payload: { lines: [{ account: "511001", dims: { contract: P1 }, currency: TRY, amount: 1020000 },
+    payload: { lines: [{ account: "511001", dims: { contract: P1 }, currency: TRY, amount: 1020000,
+                         material: CEM, quantity: "3.000", unit_price: "3400.0000" },
                        { account: "211001", dims: { supplier: S1 }, currency: TRY, amount: -1020000 }] }
   - voucher: the owner pays 6,800.00 TRY into the TRY box
     accounting_date: 2026-12-03

@@ -12,6 +12,13 @@ import type {
   StepKind,
 } from './format.js';
 import { opening, reverse as reverseOpening } from './opening.js';
+import {
+  materials,
+  projectDocument,
+  projectDocuments,
+  quantities,
+  subcontracts,
+} from './projects.js';
 import type { ExpectedReport } from './report-format.js';
 import { reports, serviceDepartment } from './reports.js';
 import type { NamedValue } from './run.js';
@@ -163,7 +170,9 @@ export type ObservedQuantity = ExpectedQuantity;
  * S07's `revalue` and
  * `block` (its first PR), then `close`, `reopen`, `draft` and `discard` and the setup's closed
  * periods through the close service (its second); S09's `service_department` and the `reports`
- * reader (`reports.ts`); S11's `voucher` executor and `vouchers` reader.
+ * reader (`reports.ts`); S11's `voucher` executor and `vouchers` reader; S12's `project_document`
+ * executor, its `materials` and `subcontracts` setups and its `projectDocuments` and `quantities`
+ * readers (`projects.ts`).
  */
 export const bookHarness: ScenarioHarness = {
   setUp,
@@ -181,8 +190,13 @@ export const bookHarness: ScenarioHarness = {
     opening,
     reverse_opening: reverseOpening,
     voucher,
+    project_document: projectDocument,
   },
   ledger,
   reports,
   vouchers,
+  projectDocuments,
+  materials,
+  subcontracts,
+  quantities,
 };

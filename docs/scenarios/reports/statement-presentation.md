@@ -240,7 +240,8 @@ S11 rule 6 and the template's notes (ADR 0022; owner, 2026-11-15, after the acco
 case: contracting@1; a supplier and a worker in debit reclassified to receivables, each counterparty on its own side; book and parallel
 company: { shape: syp-usd, book: SYP, parallel: USD, template: contracting,
            rate_policy: { book: bulletin, parallel: market, parallel_accepts_transaction_rate: true },
-           contracts: [{ code: P1, kind: project, client: C1 }] }
+           contracts: [{ code: P1, kind: project, client: C1 }],
+           materials: [{ code: CEM, name: "أسمنت بورتلاندي", unit: "طن" }] }
 rates:
   - { date: 2026-12-01, base: USD, quote: SYP, rate: "120.0000", type: bulletin }
   - { date: 2026-12-01, base: USD, quote: SYP, rate: "125.0000", type: market }
@@ -252,7 +253,8 @@ steps:
                        { account: "311001", currency: SYP, amount: -200000000 }] }
   - manual: materials for P1 bought on credit from S1
     accounting_date: 2026-12-01
-    payload: { lines: [{ account: "511001", dims: { contract: P1 }, currency: SYP, amount: 100000000 },
+    payload: { lines: [{ account: "511001", dims: { contract: P1 }, currency: SYP, amount: 100000000,
+                         material: CEM, quantity: "100.000", unit_price: "10000.0000" },
                        { account: "211001", dims: { supplier: S1 }, currency: SYP, amount: -100000000 }] }
   - manual: S2 paid ahead of any supply
     accounting_date: 2026-12-01
@@ -637,6 +639,7 @@ case: December's income statement in USD books with operating profit, profit bef
 company: { shape: usd-syp, book: USD, parallel: SYP, template: contracting,
            rate_policy: { book: bulletin, parallel: market },
            contracts: [{ code: P1, kind: project, client: C1 }],
+           materials: [{ code: CEM, name: "أسمنت بورتلاندي", unit: "طن" }],
            accounts: [{ code: "211092", name: "مصاريف مشاريع بانتظار مصدر الدفع",
                         name_latin: "Project expenses awaiting payment source",
                         statement_line: bs.trade_payables, monetary: true }] }
@@ -660,7 +663,8 @@ steps:
                        { account: "422001", currency: USD, amount: -20000 }] }
   - manual: project cost awaiting its payment source
     accounting_date: 2026-12-10
-    payload: { lines: [{ account: "511001", dims: { client: C1, contract: P1, department: design }, currency: USD, amount: 150000 },
+    payload: { lines: [{ account: "511001", dims: { client: C1, contract: P1, department: design }, currency: USD, amount: 150000,
+                         material: CEM, quantity: "15.000", unit_price: "100.0000" },
                        { account: "211092", currency: USD, amount: -150000 }] }
   - manual: December salaries
     accounting_date: 2026-12-15
