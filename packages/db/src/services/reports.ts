@@ -1436,6 +1436,11 @@ export async function readReportLines(
     ...[query.client, query.contract, ...query.dims].flatMap((id) =>
       id === undefined ? [] : [has(id)],
     ),
+    // S12: the lines whose quantity names the material.
+    query.material === undefined
+      ? sql`true`
+      : sql`exists (select 1 from line_quantities q where q.company_id = l.company_id
+          and q.line_id = l.id and q.material_id = ${query.material}::uuid)`,
   ];
   let departmentLines: Set<string> | null = null;
   if (query.profitabilityBy !== undefined) {
@@ -1667,3 +1672,12 @@ export async function readJournalBook(
     })),
   };
 }
+
+// The helpers the project reports share (`project-reports.ts`, S12 "Reports").
+export {
+  builtinTypeId as builtinDimensionTypeId,
+  contextOf as reportContextOf,
+  headerOf as reportHeaderOf,
+  readChart as readReportChart,
+  valuesById as reportValuesById,
+};

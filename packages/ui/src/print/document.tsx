@@ -76,9 +76,8 @@ export interface ReportPrintProps {
   readonly draft?: string;
 }
 
-/** A report's printed table (rule 36). */
+/** A report's printed table (rule 36), and its parts' tables after it (S12's project report). */
 export function ReportPrint({ company, sheet, none, draft }: ReportPrintProps) {
-  const groups = groupsOf(sheet.columns);
   return (
     <main data-slot="report-print" data-report={sheet.report}>
       {draft === undefined ? null : <div className="draft">{draft}</div>}
@@ -88,62 +87,83 @@ export function ReportPrint({ company, sheet, none, draft }: ReportPrintProps) {
         parameters={sheet.parameters}
         marks={draft === undefined ? sheet.marks : [draft, ...sheet.marks]}
       />
-      <table>
-        <colgroup>
-          {sheet.columns.map((column) => (
-            <col key={column.key} span={1} />
-          ))}
-        </colgroup>
-        <thead>
-          {groups.some((group) => group.label !== undefined) ? (
-            <tr>
-              {groups.map((group) =>
-                group.label === undefined ? (
-                  <th key={group.key} rowSpan={2} className={headClass(group.columns[0])}>
-                    {group.columns[0]?.label}
-                  </th>
-                ) : (
-                  <th key={group.key} colSpan={group.columns.length} className="group">
-                    {group.label}
-                  </th>
-                ),
-              )}
-            </tr>
-          ) : null}
+      <SheetTable columns={sheet.columns} rows={sheet.rows} currency={sheet.currency} none={none} />
+      {keyed(sheet.parts ?? []).map(({ key, item: part }, at) => (
+        <section key={key} className="report-part">
+          <h2 className="report-part-title">{part.title}</h2>
+          <SheetTable
+            className={`part-${at}`}
+            columns={part.columns}
+            rows={part.rows}
+            currency={sheet.currency}
+            none={none}
+          />
+        </section>
+      ))}
+    </main>
+  );
+}
+
+interface SheetTableProps {
+  readonly className?: string;
+  readonly columns: ReportSheet['columns'];
+  readonly rows: ReportSheet['rows'];
+  readonly currency: ReportSheet['currency'];
+  readonly none: string;
+}
+
+function SheetTable({ className, columns, rows, currency, none }: SheetTableProps) {
+  const groups = groupsOf(columns);
+  return (
+    <table className={className}>
+      <colgroup>
+        {columns.map((column) => (
+          <col key={column.key} span={1} />
+        ))}
+      </colgroup>
+      <thead>
+        {groups.some((group) => group.label !== undefined) ? (
           <tr>
-            {groups.flatMap((group) =>
-              groups.some((candidate) => candidate.label !== undefined) && group.label === undefined
-                ? []
-                : group.columns.map((column) => (
-                    <th key={column.key} className={headClass(column)}>
-                      {column.label}
-                    </th>
-                  )),
+            {groups.map((group) =>
+              group.label === undefined ? (
+                <th key={group.key} rowSpan={2} className={headClass(group.columns[0])}>
+                  {group.columns[0]?.label}
+                </th>
+              ) : (
+                <th key={group.key} colSpan={group.columns.length} className="group">
+                  {group.label}
+                </th>
+              ),
             )}
           </tr>
-        </thead>
-        <tbody>
-          {keyed(sheet.rows).map(({ key, item: row }) => (
-            <tr key={key} className={row.emphasis}>
-              {sheet.columns.map((column, position) => {
-                const value = cellText(
-                  column,
-                  row.cells[column.key],
-                  row.cells,
-                  sheet.currency,
-                  none,
-                );
-                return (
-                  <td key={column.key} className={cellClass(column, value)}>
-                    {position === 0 && row.level ? indent(row.level, value) : wrap(column, value)}
-                  </td>
-                );
-              })}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </main>
+        ) : null}
+        <tr>
+          {groups.flatMap((group) =>
+            groups.some((candidate) => candidate.label !== undefined) && group.label === undefined
+              ? []
+              : group.columns.map((column) => (
+                  <th key={column.key} className={headClass(column)}>
+                    {column.label}
+                  </th>
+                )),
+          )}
+        </tr>
+      </thead>
+      <tbody>
+        {keyed(rows).map(({ key, item: row }) => (
+          <tr key={key} className={row.emphasis}>
+            {columns.map((column, position) => {
+              const value = cellText(column, row.cells[column.key], row.cells, currency, none);
+              return (
+                <td key={column.key} className={cellClass(column, value)}>
+                  {position === 0 && row.level ? indent(row.level, value) : wrap(column, value)}
+                </td>
+              );
+            })}
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 

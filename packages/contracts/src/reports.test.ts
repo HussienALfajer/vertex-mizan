@@ -19,8 +19,18 @@ import {
   journalBookPrintSchema,
   journalBookQuerySchema,
   journalBookSchema,
+  materialQuantitiesExportQuerySchema,
+  materialQuantitiesQuerySchema,
+  materialQuantitiesSchema,
   profitabilityQuerySchema,
   profitabilitySchema,
+  projectDocumentFileQuerySchema,
+  projectListQuerySchema,
+  projectListSchema,
+  projectReportExportQuerySchema,
+  projectReportFileQuerySchema,
+  projectReportQuerySchema,
+  projectReportSchema,
   REPORT_FILE_QUERIES,
   REPORT_MARKS,
   REPORTS,
@@ -56,6 +66,9 @@ describe('the report identities and marks', () => {
       'cash_position',
       'cash_statement',
       'voucher',
+      'project_report',
+      'material_quantities',
+      'project_document',
     ]);
     // S10 rules 32–33's marks appended after rule 4's two.
     expect(REPORT_MARKS).toEqual([
@@ -254,5 +267,85 @@ describe('the exports and files', () => {
     expect(voucherFileQuerySchema.parse({ voucher: account })).toEqual({ voucher: account });
     expect(issuePaths(voucherFileQuerySchema, { voucher: 'x' })).toEqual(['voucher']);
     expect(REPORT_FILE_QUERIES.cash_position.parse({})).toEqual({});
+  });
+
+  it('reads the files of S12: a project report with its project, a document by its id', () => {
+    const contract = '019a0000-0000-7000-8000-000000000002';
+    expect(
+      projectReportFileQuerySchema.parse({ contract, from: '2026-12-01', to: '2026-12-31' }),
+    ).toEqual({ contract, from: '2026-12-01', to: '2026-12-31', ledger: 'book' });
+    expect(
+      issuePaths(projectReportFileQuerySchema, { from: '2026-12-01', to: '2026-12-31' }),
+    ).toEqual(['contract']);
+    expect(projectDocumentFileQuerySchema.parse({ document: contract })).toEqual({
+      document: contract,
+    });
+    expect(REPORT_FILE_QUERIES.project_document).toBe(projectDocumentFileQuerySchema);
+    expect(REPORT_FILE_QUERIES.material_quantities).toBe(materialQuantitiesQuerySchema);
+  });
+});
+
+describe('the project reports (S12 "Reports")', () => {
+  it('defaults to the book ledger and refuses a range out of order', () => {
+    expect(projectReportQuerySchema.parse({ from: '2026-12-01', to: '2026-12-31' })).toEqual({
+      from: '2026-12-01',
+      to: '2026-12-31',
+      ledger: 'book',
+    });
+    expect(issuePaths(projectReportQuerySchema, { from: '2026-12-31', to: '2026-12-01' })).toEqual([
+      'from',
+    ]);
+    expect(
+      issuePaths(projectReportExportQuerySchema, { from: '2026-12-01', to: '2026-12-31' }),
+    ).toEqual(['format']);
+    expect(projectListQuerySchema.parse({})).toEqual({ ledger: 'book', archived: false });
+    expect(projectListQuerySchema.parse({ archived: 'true', asOf: '2026-12-31' })).toEqual({
+      ledger: 'book',
+      archived: true,
+      asOf: '2026-12-31',
+    });
+    expect(
+      materialQuantitiesExportQuerySchema.parse({
+        from: '2026-12-01',
+        to: '2026-12-31',
+        format: 'xlsx',
+      }),
+    ).toEqual({ from: '2026-12-01', to: '2026-12-31', ledger: 'book', format: 'xlsx' });
+    expect(
+      issuePaths(materialQuantitiesQuerySchema, {
+        from: '2026-12-01',
+        to: '2026-12-31',
+        material: 'x',
+      }),
+    ).toEqual(['material']);
+  });
+
+  it('takes the material filter on the lines behind a figure', () => {
+    const material = '019a0000-0000-7000-8000-000000000003';
+    expect(
+      reportLinesQuerySchema.parse({
+        to: '2026-12-31',
+        statementLine: 'is.direct_costs',
+        material,
+      }),
+    ).toMatchObject({ material });
+    expect(
+      issuePaths(reportLinesQuerySchema, {
+        to: '2026-12-31',
+        statementLine: 'is.direct_costs',
+        material: 'x',
+      }),
+    ).toEqual(['material']);
+  });
+
+  it('converts each answer to JSON Schema with its id', () => {
+    for (const [schema, id] of [
+      [projectListSchema, 'ProjectList'],
+      [projectReportSchema, 'ProjectReport'],
+      [materialQuantitiesSchema, 'MaterialQuantities'],
+    ] as const) {
+      expect(z.toJSONSchema(schema, { io: 'input', unrepresentable: 'any' })).toBeTruthy();
+      expect(z.globalRegistry.get(schema)?.id).toBe(id);
+    }
   });
 });

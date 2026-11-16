@@ -22,6 +22,7 @@ import {
   journalBookPrints,
   readJournalBook,
   readJournalBookTotals,
+  readProjectDocumentPrint,
   readRangePeriods,
   readReportAnswer,
   readVoucherPrint,
@@ -37,6 +38,7 @@ import {
   printedCurrency,
   printFontFaces,
   renderJournalBookHtml,
+  renderProjectDocumentHtml,
   renderReportHtml,
   renderVoucherHtml,
   reportSheet,
@@ -247,6 +249,21 @@ export class ReportsRenderJob implements QueueWorker {
             fontFaces: this.fontFaces(),
           });
           pdf = await this.printer.print(html, { pageNumbers: null });
+        } else if (report === 'project_document') {
+          // A printed project document (S12 "Printing and legal books"): its own page size by
+          // kind; a long wage sheet runs over pages, numbered.
+          const params = REPORT_FILE_QUERIES.project_document.parse(row.params);
+          const document = await readProjectDocumentPrint(tx, params.document);
+          const html = renderProjectDocumentHtml({
+            company: company.name,
+            document,
+            text: ar.reports.projectDocument,
+            amountInWords: amountInWords(BigInt(document.netMinor), document.currency),
+            currencyName: (currency) => printedCurrency(currency, SHEET_TEXT),
+            fiscalYearStartMonth: settings.startMonth,
+            fontFaces: this.fontFaces(),
+          });
+          pdf = await this.printer.print(html, { pageNumbers: ar.reports.pageOf });
         } else {
           const params = REPORT_FILE_QUERIES[report].parse(row.params);
           const answer = await readReportAnswer(tx, report, params, now, todayInDamascus());

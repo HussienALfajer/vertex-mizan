@@ -57,4 +57,16 @@ export interface ReportSheet {
   readonly currencyLabel: string;
   readonly columns: readonly SheetColumn[];
   readonly rows: readonly SheetRow[];
+  /**
+   * Further tables after the first, each under its title (S12's project report: costs, materials,
+   * wages, subcontracts, billings); the Excel writes them below it, the PDF after it.
+   */
+  readonly parts?: readonly SheetPart[];
+}
+
+/** A titled table of a sheet, after its first. */
+export interface SheetPart {
+  readonly title: string;
+  readonly columns: readonly SheetColumn[];
+  readonly rows: readonly SheetRow[];
 }

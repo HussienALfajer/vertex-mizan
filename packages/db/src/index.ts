@@ -98,6 +98,7 @@ export * from './services/dimensions.js';
 export * from './services/drafts.js';
 export * from './services/opening.js';
 export * from './services/periods.js';
+export * from './services/project-reports.js';
 export * from './services/projects.js';
 export * from './services/rates.js';
 export * from './services/receivables-reads.js';

@@ -10,8 +10,14 @@ import type {
   IncomeStatementQuery,
   Journal,
   JournalQuery,
+  MaterialQuantities,
+  MaterialQuantitiesQuery,
   Profitability,
   ProfitabilityQuery,
+  ProjectList,
+  ProjectListQuery,
+  ProjectReport,
+  ProjectReportQuery,
   ReportLines,
   ReportLinesQuery,
   TrialBalance,
@@ -24,13 +30,17 @@ import {
   readGeneralLedger,
   readIncomeStatement,
   readJournal,
+  readMaterialQuantities,
   readProfitability,
+  readProjectList,
+  readProjectReport,
   readReportLines,
   readTrialBalance,
   type Transaction,
   withCompany,
 } from '@vertex-mizan/db';
 import type { CompanyRouteAccess } from '../../core/access/access.js';
+import { todayInDamascus } from '../../core/clock/today.js';
 import { DATABASE } from '../../core/database/database.module.js';
 
 /**
@@ -89,5 +99,25 @@ export class ReportsService {
 
   lines(access: CompanyRouteAccess, query: ReportLinesQuery): Promise<ReportLines> {
     return this.#read(access, (tx, now) => readReportLines(tx, query, now));
+  }
+
+  /** S12: the projects list at `asOf`, today in Damascus by default. */
+  projects(access: CompanyRouteAccess, query: ProjectListQuery): Promise<ProjectList> {
+    return this.#read(access, (tx, now) => readProjectList(tx, query, todayInDamascus(), now));
+  }
+
+  project(
+    access: CompanyRouteAccess,
+    projectId: string,
+    query: ProjectReportQuery,
+  ): Promise<ProjectReport> {
+    return this.#read(access, (tx, now) => readProjectReport(tx, projectId, query, now));
+  }
+
+  materialQuantities(
+    access: CompanyRouteAccess,
+    query: MaterialQuantitiesQuery,
+  ): Promise<MaterialQuantities> {
+    return this.#read(access, (tx, now) => readMaterialQuantities(tx, query, now));
   }
 }

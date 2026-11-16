@@ -3116,6 +3116,7 @@ DECLARE
   client uuid;
   latest record;
   next_sequence integer;
+  terms record;
 BEGIN
   SELECT d.state, d.archived_at, d.entry_date, d.project_document_kind, d.contract_value_id,
     d.counterparty_value_id, d.side, d.period_from, d.period_to, d.supplier_reference,
@@ -3183,6 +3184,25 @@ BEGIN
       OR NEW.previous_minor IS DISTINCT FROM coalesce(latest.cumulative_minor, 0)
       OR NEW.document_date < latest.document_date THEN
       RAISE EXCEPTION 'project_documents: a billing follows the latest billing of its project'
+        USING ERRCODE = 'restrict_violation';
+    END IF;
+    -- 0075: a billing keeps the contract value and rates of its project's terms, or of its
+    -- subcontract, as they stand when it posts.
+    IF NEW.kind = 'progress_billing' THEN
+      SELECT t.contract_value_minor AS value_minor, t.retention_bp, t.advance_recovery_bp
+      INTO terms
+      FROM public.project_terms t
+      WHERE t.company_id = NEW.company_id AND t.contract_value_id = NEW.contract_value_id;
+    ELSE
+      SELECT s.value_minor, s.retention_bp, s.advance_recovery_bp INTO terms
+      FROM public.subcontracts s
+      WHERE s.company_id = NEW.company_id AND s.contract_value_id = NEW.contract_value_id
+        AND s.supplier_value_id = NEW.counterparty_value_id AND s.archived_at IS NULL;
+    END IF;
+    IF NOT FOUND OR NEW.retention_bp IS NULL OR NEW.advance_recovery_bp IS NULL
+      OR (NEW.contract_value_minor, NEW.retention_bp, NEW.advance_recovery_bp)
+        IS DISTINCT FROM (terms.value_minor, terms.retention_bp, terms.advance_recovery_bp) THEN
+      RAISE EXCEPTION 'project_documents: a billing keeps the terms it is posted under'
         USING ERRCODE = 'restrict_violation';
     END IF;
   END IF;

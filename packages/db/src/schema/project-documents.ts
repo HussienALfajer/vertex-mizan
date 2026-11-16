@@ -84,6 +84,14 @@ export const projectDocuments = pgTable(
     retentionMinor: bigint({ mode: 'bigint' }),
     advanceMinor: bigint({ mode: 'bigint' }),
     supplierReference: text(),
+    /**
+     * A billing's terms as posted (0075): its project's contract value and rates, or its
+     * subcontract's, so a reprint shows what it was billed under. Null on other documents, and on
+     * a billing posted before 0075.
+     */
+    contractValueMinor: bigint({ mode: 'bigint' }),
+    retentionBp: integer(),
+    advanceRecoveryBp: integer(),
     createdAt: createdAt(),
   },
   (t) => [
@@ -150,6 +158,15 @@ export const projectDocuments = pgTable(
         and (${t.side} is distinct from 'supplier' or ${t.counterpartyValueId} is not null)
         and (${t.supplierReference} is null or (${t.kind} = 'purchase'
           and char_length(${t.supplierReference}) between 1 and 60))`,
+    ),
+    check(
+      'project_documents_terms',
+      sql`(${t.kind} in ('progress_billing', 'subcontract_billing')
+          or (${t.contractValueMinor} is null and ${t.retentionBp} is null
+            and ${t.advanceRecoveryBp} is null))
+        and (${t.contractValueMinor} is null or ${t.contractValueMinor} >= 0)
+        and (${t.retentionBp} is null or ${t.retentionBp} between 0 and 10000)
+        and (${t.advanceRecoveryBp} is null or ${t.advanceRecoveryBp} between 0 and 10000)`,
     ),
     check(
       'project_documents_amounts',

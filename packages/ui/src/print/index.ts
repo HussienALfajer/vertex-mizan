@@ -12,9 +12,18 @@ export {
 } from './document.js';
 export { printFontFaces } from './fonts.js';
 export {
+  ProjectDocumentPrint,
+  type ProjectDocumentPrintData,
+  type ProjectDocumentPrintProps,
+  type ProjectDocumentPrintText,
+  projectDocumentPage,
+  projectDocumentStyles,
+} from './project-document.js';
+export {
   columnWidthRules,
   JOURNAL_BOOK_WIDTHS,
   renderJournalBookHtml,
+  renderProjectDocumentHtml,
   renderReportHtml,
   renderVoucherHtml,
 } from './render.js';
@@ -25,6 +34,7 @@ export type {
   SheetColumn,
   SheetEmphasis,
   SheetParameter,
+  SheetPart,
   SheetRow,
 } from './sheet.js';
 export {

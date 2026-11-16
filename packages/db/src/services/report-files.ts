@@ -13,7 +13,9 @@ import {
   type IncomeStatement,
   type Journal,
   type JournalQuery,
+  type MaterialQuantities,
   type Profitability,
+  type ProjectReport,
   REPORT_FILE_QUERIES,
   type ReportFileQuery,
   type TrialBalance,
@@ -27,6 +29,7 @@ import { journalBookPrints, reportFiles } from '../schema/reports.js';
 import { readCashPosition, readCashStatement } from './cash-reads.js';
 import { readChartAccounts } from './chart-reads.js';
 import { ledgersOf } from './companies.js';
+import { readMaterialQuantities, readProjectReport } from './project-reports.js';
 import { readAgeingReport, readCounterpartyStatementReport } from './receivables-reads.js';
 import {
   readAccountStatement,
@@ -70,13 +73,17 @@ export type ReportAnswer =
       readonly report: 'cash_statement';
       readonly data: CashStatement;
       readonly producedAt: string;
-    };
+    }
+  | { readonly report: 'project_report'; readonly data: ProjectReport }
+  | { readonly report: 'material_quantities'; readonly data: MaterialQuantities };
 
 /**
  * The reports a sheet is read for: every one but the journal book's print and the voucher, which
- * print their own pages, and the journal.
+ * print their own pages (a project document too), and the journal.
  */
-export type SheetReport = Exclude<ActiveReport, 'journal_book' | 'voucher'> | 'journal';
+export type SheetReport =
+  | Exclude<ActiveReport, 'journal_book' | 'voucher' | 'project_document'>
+  | 'journal';
 
 /**
  * Reads a report whole in the transaction's snapshot: the general ledger, the account statement
@@ -145,6 +152,12 @@ export async function readReportAnswer(
         producedAt: now.toISOString(),
       };
     }
+    case 'project_report': {
+      const { contract, ...rest } = query(report, params);
+      return { report, data: await readProjectReport(tx, contract, rest, now) };
+    }
+    case 'material_quantities':
+      return { report, data: await readMaterialQuantities(tx, query(report, params), now) };
   }
 }
 

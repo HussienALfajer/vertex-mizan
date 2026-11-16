@@ -1493,7 +1493,10 @@
                 "material.archived",
                 "project_terms.updated",
                 "subcontract.created",
-                "subcontract.updated"
+                "subcontract.updated",
+                "export.project_report",
+                "export.material_quantities",
+                "export.project_document"
               ]
             }
           },
@@ -9952,6 +9955,248 @@
         ]
       }
     },
+    "/api/reports/material-quantities": {
+      "get": {
+        "operationId": "MaterialQuantitiesController_quantities",
+        "parameters": [
+          {
+            "name": "from",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            }
+          },
+          {
+            "name": "to",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            }
+          },
+          {
+            "name": "contract",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          },
+          {
+            "name": "material",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          },
+          {
+            "name": "ledger",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": "book",
+              "type": "string",
+              "enum": [
+                "book",
+                "parallel"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Per project and material: quantities in, out and net, amounts, the average unit cost and the ledger's amount",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MaterialQuantities"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "TWO_FACTOR_REQUIRED, FORBIDDEN",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "COMPANY_NOT_SELECTED, COMPANY_SWITCHED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_FAILED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "reports"
+        ]
+      }
+    },
+    "/api/reports/material-quantities/export": {
+      "get": {
+        "operationId": "MaterialQuantitiesController_export",
+        "parameters": [
+          {
+            "name": "from",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            }
+          },
+          {
+            "name": "to",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            }
+          },
+          {
+            "name": "contract",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          },
+          {
+            "name": "material",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          },
+          {
+            "name": "ledger",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": "book",
+              "type": "string",
+              "enum": [
+                "book",
+                "parallel"
+              ]
+            }
+          },
+          {
+            "name": "format",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "xlsx"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The material quantities as an Excel workbook",
+            "content": {
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "TWO_FACTOR_REQUIRED, FORBIDDEN",
+            "content": {
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "COMPANY_NOT_SELECTED, COMPANY_SWITCHED",
+            "content": {
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_FAILED, REPORT_TOO_LARGE",
+            "content": {
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "reports"
+        ]
+      }
+    },
     "/api/reports/trial-balance": {
       "get": {
         "operationId": "ReportsController_trialBalance",
@@ -10994,6 +11239,16 @@
             }
           },
           {
+            "name": "material",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          },
+          {
             "name": "openingEntry",
             "required": false,
             "in": "query",
@@ -11081,6 +11336,346 @@
         },
         "tags": [
           "reports"
+        ]
+      }
+    },
+    "/api/projects": {
+      "get": {
+        "operationId": "ProjectReportsController_list",
+        "parameters": [
+          {
+            "name": "asOf",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            }
+          },
+          {
+            "name": "ledger",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": "book",
+              "type": "string",
+              "enum": [
+                "book",
+                "parallel"
+              ]
+            }
+          },
+          {
+            "name": "archived",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": "false",
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Every project with its contract value, billing to date, revenue, direct costs, contribution, retention and advance",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "TWO_FACTOR_REQUIRED, FORBIDDEN",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "COMPANY_NOT_SELECTED, COMPANY_SWITCHED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_FAILED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/api/projects/{valueId}/report/export": {
+      "get": {
+        "operationId": "ProjectReportsController_export",
+        "parameters": [
+          {
+            "name": "from",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            }
+          },
+          {
+            "name": "to",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            }
+          },
+          {
+            "name": "ledger",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": "book",
+              "type": "string",
+              "enum": [
+                "book",
+                "parallel"
+              ]
+            }
+          },
+          {
+            "name": "format",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "xlsx"
+              ]
+            }
+          },
+          {
+            "name": "valueId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The project report as an Excel workbook",
+            "content": {
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "TWO_FACTOR_REQUIRED, FORBIDDEN",
+            "content": {
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND",
+            "content": {
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "COMPANY_NOT_SELECTED, COMPANY_SWITCHED",
+            "content": {
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_FAILED, REPORT_TOO_LARGE",
+            "content": {
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/api/projects/{valueId}/report": {
+      "get": {
+        "operationId": "ProjectReportsController_report",
+        "parameters": [
+          {
+            "name": "from",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            }
+          },
+          {
+            "name": "to",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            }
+          },
+          {
+            "name": "ledger",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": "book",
+              "type": "string",
+              "enum": [
+                "book",
+                "parallel"
+              ]
+            }
+          },
+          {
+            "name": "valueId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A project's summary, costs against its budget, materials, wages, subcontracts and billings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectReport"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "TWO_FACTOR_REQUIRED, FORBIDDEN",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "COMPANY_NOT_SELECTED, COMPANY_SWITCHED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_FAILED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "projects"
         ]
       }
     },
@@ -13220,7 +13815,10 @@
           "material.archived",
           "project_terms.updated",
           "subcontract.created",
-          "subcontract.updated"
+          "subcontract.updated",
+          "export.project_report",
+          "export.material_quantities",
+          "export.project_document"
         ]
       },
       "AuditPage": {
@@ -22095,7 +22693,7 @@
           "reason"
         ]
       },
-      "TrialBalanceQuery": {
+      "MaterialQuantitiesQuery": {
         "type": "object",
         "properties": {
           "from": {
@@ -22108,6 +22706,16 @@
             "format": "date",
             "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
           },
+          "contract": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "material": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
           "ledger": {
             "default": "book",
             "allOf": [
@@ -22115,46 +22723,6 @@
                 "$ref": "#/components/schemas/Ledger"
               }
             ]
-          },
-          "level": {
-            "default": 4,
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 4
-          },
-          "codeFrom": {
-            "type": "string",
-            "pattern": "^\\d{1,12}$"
-          },
-          "codeTo": {
-            "type": "string",
-            "pattern": "^\\d{1,12}$"
-          },
-          "nonZero": {
-            "default": "true",
-            "type": "string",
-            "enum": [
-              "true",
-              "false"
-            ]
-          },
-          "compare": {
-            "default": "true",
-            "type": "string",
-            "enum": [
-              "true",
-              "false"
-            ]
-          },
-          "compareFrom": {
-            "type": "string",
-            "format": "date",
-            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
-          },
-          "compareTo": {
-            "type": "string",
-            "format": "date",
-            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
           }
         },
         "required": [
@@ -22162,7 +22730,7 @@
           "to"
         ]
       },
-      "TrialBalance": {
+      "MaterialQuantities": {
         "type": "object",
         "properties": {
           "header": {
@@ -22171,17 +22739,17 @@
           "rows": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/TrialBalanceRow"
+              "$ref": "#/components/schemas/MaterialQuantityRow"
             }
           },
-          "totals": {
-            "$ref": "#/components/schemas/TrialBalanceTotals"
+          "ledgerTotal": {
+            "$ref": "#/components/schemas/MinorUnits"
           }
         },
         "required": [
           "header",
           "rows",
-          "totals"
+          "ledgerTotal"
         ],
         "additionalProperties": false
       },
@@ -22277,6 +22845,255 @@
           "before_books_start",
           "pre_opening_result_in_equity"
         ]
+      },
+      "MaterialQuantityRow": {
+        "type": "object",
+        "properties": {
+          "project": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ReportValue"
+              }
+            ]
+          },
+          "material": {
+            "$ref": "#/components/schemas/ReportMaterial"
+          },
+          "currency": {
+            "$ref": "#/components/schemas/CurrencyCode"
+          },
+          "quantityIn": {
+            "type": "string",
+            "pattern": "^-?\\d+\\.\\d{3}$"
+          },
+          "quantityOut": {
+            "type": "string",
+            "pattern": "^-?\\d+\\.\\d{3}$"
+          },
+          "quantity": {
+            "type": "string",
+            "pattern": "^-?\\d+\\.\\d{3}$"
+          },
+          "amountMinor": {
+            "$ref": "#/components/schemas/MinorUnits"
+          },
+          "average": {
+            "nullable": true,
+            "type": "string",
+            "pattern": "^-?\\d+\\.\\d{4}$"
+          },
+          "ledgerAmount": {
+            "$ref": "#/components/schemas/MinorUnits"
+          }
+        },
+        "required": [
+          "project",
+          "material",
+          "currency",
+          "quantityIn",
+          "quantityOut",
+          "quantity",
+          "amountMinor",
+          "average",
+          "ledgerAmount"
+        ],
+        "additionalProperties": false
+      },
+      "ReportValue": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "typeCode": {
+            "type": "string"
+          },
+          "code": {
+            "nullable": true,
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "archived": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "typeCode",
+          "code",
+          "name",
+          "archived"
+        ],
+        "additionalProperties": false
+      },
+      "ReportMaterial": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "unit": {
+            "type": "string"
+          },
+          "archived": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "code",
+          "name",
+          "unit",
+          "archived"
+        ],
+        "additionalProperties": false
+      },
+      "MaterialQuantitiesExportQuery": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          },
+          "to": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          },
+          "contract": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "material": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "ledger": {
+            "default": "book",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Ledger"
+              }
+            ]
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "xlsx"
+            ]
+          }
+        },
+        "required": [
+          "from",
+          "to",
+          "format"
+        ]
+      },
+      "TrialBalanceQuery": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          },
+          "to": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          },
+          "ledger": {
+            "default": "book",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Ledger"
+              }
+            ]
+          },
+          "level": {
+            "default": 4,
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 4
+          },
+          "codeFrom": {
+            "type": "string",
+            "pattern": "^\\d{1,12}$"
+          },
+          "codeTo": {
+            "type": "string",
+            "pattern": "^\\d{1,12}$"
+          },
+          "nonZero": {
+            "default": "true",
+            "type": "string",
+            "enum": [
+              "true",
+              "false"
+            ]
+          },
+          "compare": {
+            "default": "true",
+            "type": "string",
+            "enum": [
+              "true",
+              "false"
+            ]
+          },
+          "compareFrom": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          },
+          "compareTo": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          }
+        },
+        "required": [
+          "from",
+          "to"
+        ]
+      },
+      "TrialBalance": {
+        "type": "object",
+        "properties": {
+          "header": {
+            "$ref": "#/components/schemas/ReportHeader"
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TrialBalanceRow"
+            }
+          },
+          "totals": {
+            "$ref": "#/components/schemas/TrialBalanceTotals"
+          }
+        },
+        "required": [
+          "header",
+          "rows",
+          "totals"
+        ],
+        "additionalProperties": false
       },
       "TrialBalanceRow": {
         "type": "object",
@@ -22645,37 +23462,6 @@
           "openItem",
           "hubDocument",
           "voucher"
-        ],
-        "additionalProperties": false
-      },
-      "ReportValue": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "typeCode": {
-            "type": "string"
-          },
-          "code": {
-            "nullable": true,
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "archived": {
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "id",
-          "typeCode",
-          "code",
-          "name",
-          "archived"
         ],
         "additionalProperties": false
       },
@@ -23564,6 +24350,11 @@
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
           },
+          "material": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
           "openingEntry": {
             "default": "false",
             "type": "string",
@@ -23720,6 +24511,618 @@
         ],
         "additionalProperties": false
       },
+      "ProjectListQuery": {
+        "type": "object",
+        "properties": {
+          "asOf": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          },
+          "ledger": {
+            "default": "book",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Ledger"
+              }
+            ]
+          },
+          "archived": {
+            "default": "false",
+            "type": "string",
+            "enum": [
+              "true",
+              "false"
+            ]
+          }
+        }
+      },
+      "ProjectList": {
+        "type": "object",
+        "properties": {
+          "header": {
+            "$ref": "#/components/schemas/ReportHeader"
+          },
+          "projects": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProjectListRow"
+            }
+          }
+        },
+        "required": [
+          "header",
+          "projects"
+        ],
+        "additionalProperties": false
+      },
+      "ProjectListRow": {
+        "type": "object",
+        "properties": {
+          "project": {
+            "$ref": "#/components/schemas/ReportValue"
+          },
+          "client": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ReportValue"
+              }
+            ]
+          },
+          "terms": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ProjectReportTerms"
+              }
+            ]
+          },
+          "cumulativeMinor": {
+            "$ref": "#/components/schemas/MinorUnits"
+          },
+          "billed": {
+            "nullable": true,
+            "type": "string",
+            "pattern": "^-?\\d+\\.\\d$"
+          },
+          "revenue": {
+            "$ref": "#/components/schemas/MinorUnits"
+          },
+          "directCosts": {
+            "$ref": "#/components/schemas/MinorUnits"
+          },
+          "contribution": {
+            "$ref": "#/components/schemas/MinorUnits"
+          },
+          "margin": {
+            "nullable": true,
+            "type": "string",
+            "pattern": "^-?\\d+\\.\\d$"
+          },
+          "retentionReceivable": {
+            "$ref": "#/components/schemas/MinorUnits"
+          },
+          "clientAdvance": {
+            "$ref": "#/components/schemas/MinorUnits"
+          },
+          "budgetMinor": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MinorUnits"
+              }
+            ]
+          }
+        },
+        "required": [
+          "project",
+          "client",
+          "terms",
+          "cumulativeMinor",
+          "billed",
+          "revenue",
+          "directCosts",
+          "contribution",
+          "margin",
+          "retentionReceivable",
+          "clientAdvance",
+          "budgetMinor"
+        ],
+        "additionalProperties": false
+      },
+      "ProjectReportTerms": {
+        "type": "object",
+        "properties": {
+          "currency": {
+            "$ref": "#/components/schemas/CurrencyCode"
+          },
+          "contractValueMinor": {
+            "$ref": "#/components/schemas/MinorUnits"
+          },
+          "retentionBp": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10000
+          },
+          "advanceRecoveryBp": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10000
+          }
+        },
+        "required": [
+          "currency",
+          "contractValueMinor",
+          "retentionBp",
+          "advanceRecoveryBp"
+        ],
+        "additionalProperties": false
+      },
+      "ProjectReportExportQuery": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          },
+          "to": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          },
+          "ledger": {
+            "default": "book",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Ledger"
+              }
+            ]
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "xlsx"
+            ]
+          }
+        },
+        "required": [
+          "from",
+          "to",
+          "format"
+        ]
+      },
+      "ProjectReportQuery": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          },
+          "to": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          },
+          "ledger": {
+            "default": "book",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Ledger"
+              }
+            ]
+          }
+        },
+        "required": [
+          "from",
+          "to"
+        ]
+      },
+      "ProjectReport": {
+        "type": "object",
+        "properties": {
+          "header": {
+            "$ref": "#/components/schemas/ReportHeader"
+          },
+          "project": {
+            "$ref": "#/components/schemas/ReportValue"
+          },
+          "client": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ReportValue"
+              }
+            ]
+          },
+          "terms": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ProjectReportTerms"
+              }
+            ]
+          },
+          "summary": {
+            "$ref": "#/components/schemas/ProjectSummary"
+          },
+          "costs": {
+            "type": "object",
+            "properties": {
+              "rows": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ProjectCostRow"
+                }
+              },
+              "totals": {
+                "$ref": "#/components/schemas/ProjectCostFigures"
+              }
+            },
+            "required": [
+              "rows",
+              "totals"
+            ],
+            "additionalProperties": false
+          },
+          "materials": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProjectMaterialRow"
+            }
+          },
+          "wages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProjectWageRow"
+            }
+          },
+          "subcontracts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProjectSubcontractRow"
+            }
+          },
+          "billings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProjectBillingRow"
+            }
+          }
+        },
+        "required": [
+          "header",
+          "project",
+          "client",
+          "terms",
+          "summary",
+          "costs",
+          "materials",
+          "wages",
+          "subcontracts",
+          "billings"
+        ],
+        "additionalProperties": false
+      },
+      "ProjectSummary": {
+        "type": "object",
+        "properties": {
+          "cumulativeMinor": {
+            "$ref": "#/components/schemas/MinorUnits"
+          },
+          "billed": {
+            "nullable": true,
+            "type": "string",
+            "pattern": "^-?\\d+\\.\\d$"
+          },
+          "revenue": {
+            "$ref": "#/components/schemas/MinorUnits"
+          },
+          "directCosts": {
+            "$ref": "#/components/schemas/MinorUnits"
+          },
+          "contribution": {
+            "$ref": "#/components/schemas/MinorUnits"
+          },
+          "margin": {
+            "nullable": true,
+            "type": "string",
+            "pattern": "^-?\\d+\\.\\d$"
+          },
+          "retentionReceivable": {
+            "$ref": "#/components/schemas/MinorUnits"
+          },
+          "clientAdvance": {
+            "$ref": "#/components/schemas/MinorUnits"
+          },
+          "subcontractRetention": {
+            "$ref": "#/components/schemas/MinorUnits"
+          },
+          "subcontractAdvance": {
+            "$ref": "#/components/schemas/MinorUnits"
+          }
+        },
+        "required": [
+          "cumulativeMinor",
+          "billed",
+          "revenue",
+          "directCosts",
+          "contribution",
+          "margin",
+          "retentionReceivable",
+          "clientAdvance",
+          "subcontractRetention",
+          "subcontractAdvance"
+        ],
+        "additionalProperties": false
+      },
+      "ProjectCostRow": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "$ref": "#/components/schemas/ReportAccount"
+          },
+          "inRange": {
+            "$ref": "#/components/schemas/MinorUnits"
+          },
+          "toDate": {
+            "$ref": "#/components/schemas/MinorUnits"
+          },
+          "budgetMinor": {
+            "$ref": "#/components/schemas/MinorUnits"
+          },
+          "variance": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MinorUnits"
+              }
+            ]
+          },
+          "used": {
+            "nullable": true,
+            "type": "string",
+            "pattern": "^-?\\d+\\.\\d$"
+          }
+        },
+        "required": [
+          "account",
+          "inRange",
+          "toDate",
+          "budgetMinor",
+          "variance",
+          "used"
+        ],
+        "additionalProperties": false
+      },
+      "ProjectCostFigures": {
+        "type": "object",
+        "properties": {
+          "inRange": {
+            "$ref": "#/components/schemas/MinorUnits"
+          },
+          "toDate": {
+            "$ref": "#/components/schemas/MinorUnits"
+          },
+          "budgetMinor": {
+            "$ref": "#/components/schemas/MinorUnits"
+          },
+          "variance": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MinorUnits"
+              }
+            ]
+          },
+          "used": {
+            "nullable": true,
+            "type": "string",
+            "pattern": "^-?\\d+\\.\\d$"
+          }
+        },
+        "required": [
+          "inRange",
+          "toDate",
+          "budgetMinor",
+          "variance",
+          "used"
+        ],
+        "additionalProperties": false
+      },
+      "ProjectMaterialRow": {
+        "type": "object",
+        "properties": {
+          "material": {
+            "$ref": "#/components/schemas/ReportMaterial"
+          },
+          "currency": {
+            "$ref": "#/components/schemas/CurrencyCode"
+          },
+          "quantity": {
+            "type": "string",
+            "pattern": "^-?\\d+\\.\\d{3}$"
+          },
+          "amountMinor": {
+            "$ref": "#/components/schemas/MinorUnits"
+          },
+          "ledgerAmount": {
+            "$ref": "#/components/schemas/MinorUnits"
+          },
+          "average": {
+            "nullable": true,
+            "type": "string",
+            "pattern": "^-?\\d+\\.\\d{4}$"
+          }
+        },
+        "required": [
+          "material",
+          "currency",
+          "quantity",
+          "amountMinor",
+          "ledgerAmount",
+          "average"
+        ],
+        "additionalProperties": false
+      },
+      "ProjectWageRow": {
+        "type": "object",
+        "properties": {
+          "worker": {
+            "$ref": "#/components/schemas/ReportValue"
+          },
+          "days": {
+            "type": "string",
+            "pattern": "^-?\\d+\\.\\d{3}$"
+          },
+          "lumpSum": {
+            "$ref": "#/components/schemas/MinorUnits"
+          },
+          "amount": {
+            "$ref": "#/components/schemas/MinorUnits"
+          },
+          "balance": {
+            "$ref": "#/components/schemas/MinorUnits"
+          }
+        },
+        "required": [
+          "worker",
+          "days",
+          "lumpSum",
+          "amount",
+          "balance"
+        ],
+        "additionalProperties": false
+      },
+      "ProjectSubcontractRow": {
+        "type": "object",
+        "properties": {
+          "subcontractId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "supplier": {
+            "$ref": "#/components/schemas/ReportValue"
+          },
+          "currency": {
+            "$ref": "#/components/schemas/CurrencyCode"
+          },
+          "valueMinor": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MinorUnits"
+              }
+            ]
+          },
+          "cumulativeMinor": {
+            "$ref": "#/components/schemas/MinorUnits"
+          },
+          "retention": {
+            "$ref": "#/components/schemas/MinorUnits"
+          },
+          "advance": {
+            "$ref": "#/components/schemas/MinorUnits"
+          },
+          "paid": {
+            "$ref": "#/components/schemas/MinorUnits"
+          }
+        },
+        "required": [
+          "subcontractId",
+          "supplier",
+          "currency",
+          "valueMinor",
+          "cumulativeMinor",
+          "retention",
+          "advance",
+          "paid"
+        ],
+        "additionalProperties": false
+      },
+      "ProjectBillingRow": {
+        "type": "object",
+        "properties": {
+          "documentId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "entryId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "projectSequence": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "fiscalYear": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "number": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "documentDate": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          },
+          "cumulativeMinor": {
+            "$ref": "#/components/schemas/MinorUnits"
+          },
+          "previousMinor": {
+            "$ref": "#/components/schemas/MinorUnits"
+          },
+          "periodMinor": {
+            "$ref": "#/components/schemas/MinorUnits"
+          },
+          "retentionMinor": {
+            "$ref": "#/components/schemas/MinorUnits"
+          },
+          "advanceMinor": {
+            "$ref": "#/components/schemas/MinorUnits"
+          },
+          "netMinor": {
+            "$ref": "#/components/schemas/MinorUnits"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "posted",
+              "cancelled"
+            ]
+          },
+          "outstandingMinor": {
+            "$ref": "#/components/schemas/MinorUnits"
+          }
+        },
+        "required": [
+          "documentId",
+          "entryId",
+          "projectSequence",
+          "fiscalYear",
+          "number",
+          "documentDate",
+          "cumulativeMinor",
+          "previousMinor",
+          "periodMinor",
+          "retentionMinor",
+          "advanceMinor",
+          "netMinor",
+          "state",
+          "outstandingMinor"
+        ],
+        "additionalProperties": false
+      },
       "ReportFile": {
         "type": "object",
         "properties": {
@@ -23808,7 +25211,10 @@
           "chart",
           "cash_position",
           "cash_statement",
-          "voucher"
+          "voucher",
+          "project_report",
+          "material_quantities",
+          "project_document"
         ]
       },
       "ReportFileState": {
@@ -23855,7 +25261,10 @@
           "chart",
           "cash_position",
           "cash_statement",
-          "voucher"
+          "voucher",
+          "project_report",
+          "material_quantities",
+          "project_document"
         ]
       },
       "JournalBookPrintsQuery": {

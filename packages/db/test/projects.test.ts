@@ -1030,12 +1030,22 @@ describe("a progress billing's chain is its project's (S12 rules 14, 16)", () =>
   });
 });
 
-describe('progress billings, written by hand (0073)', () => {
-  it('refuses a billing out of its chain', async () => {
+describe('progress billings, written by hand (0073, 0076)', () => {
+  it('refuses a billing out of its chain, or under other terms than its project', async () => {
     const books = await newBooks();
     await billable(books);
     await postDocument(books, '2026-12-15', billingOf(books, 3000000n));
-    const forged = (previousMinor: bigint, projectSequence: number) =>
+    // P1's terms when the billing posts: 100,000.00 USD, 10%, 20% (0075).
+    const posted = { contractValueMinor: 10000000n, retentionBp: 1000, advanceRecoveryBp: 2000 };
+    const forged = (
+      previousMinor: bigint,
+      projectSequence: number,
+      terms: {
+        contractValueMinor: bigint | null;
+        retentionBp: number | null;
+        advanceRecoveryBp: number | null;
+      } = posted,
+    ) =>
       inCompany(books.id, async (tx) => {
         const draftId = uuidv7();
         await tx.insert(entryDrafts).values({
@@ -1071,12 +1081,31 @@ describe('progress billings, written by hand (0073)', () => {
           previousMinor,
           retentionMinor: 0n,
           advanceMinor: 0n,
+          ...terms,
         });
       });
     expect(await refusal(forged(0n, 2))).toMatch(/follows the latest billing/);
     expect(await refusal(forged(3000000n, 1))).toMatch(/follows the latest billing/);
     // In its chain, it passes this check and stops at its entry.
     expect(await refusal(forged(3000000n, 2))).toMatch(/posted from its draft/);
+    // Another rate, another contract value or none: not the terms it posts under.
+    for (const terms of [
+      { ...posted, retentionBp: 500 },
+      { ...posted, contractValueMinor: 12000000n },
+      { contractValueMinor: null, retentionBp: null, advanceRecoveryBp: null },
+    ]) {
+      expect(await refusal(forged(3000000n, 2, terms))).toMatch(/keeps the terms/);
+    }
+    // A billing's stored terms never change afterwards (append-only).
+    expect(
+      await refusal(
+        inCompany(books.id, (tx) =>
+          tx.execute(
+            sql`update project_documents set retention_bp = 1000 where kind = 'progress_billing'`,
+          ),
+        ),
+      ),
+    ).toMatch(/append-only|refuse|not allowed|permission/i);
   });
 });
 

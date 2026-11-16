@@ -143,6 +143,10 @@ export const COMPANY_AUDIT_ACTIONS = [
   'project_terms.updated',
   'subcontract.created',
   'subcontract.updated',
+  // S12 PR 3: the project report's and material quantities' exports, and a document's print.
+  'export.project_report',
+  'export.material_quantities',
+  'export.project_document',
 ] as const;
 
 /**

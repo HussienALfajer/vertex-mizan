@@ -149,6 +149,9 @@ export const audit = {
     'project_terms.updated': 'عدّل شروط مشروع وموازنته',
     'subcontract.created': 'أضاف عقد مقاول باطن',
     'subcontract.updated': 'عدّل عقد مقاول باطن',
+    'export.project_report': 'صدّر تقرير مشروع',
+    'export.material_quantities': 'صدّر تقرير كميات المواد',
+    'export.project_document': 'طبع مستند مشروع',
   } satisfies Record<CompanyAuditAction, string>,
   /** The audited entities (`AUDITED_FIELDS` in `packages/db`). */
   entities: {

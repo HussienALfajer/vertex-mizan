@@ -5,6 +5,11 @@ import {
   ReportPrint,
   type ReportPrintProps,
 } from './document.js';
+import {
+  ProjectDocumentPrint,
+  type ProjectDocumentPrintProps,
+  projectDocumentStyles,
+} from './project-document.js';
 import type { SheetColumn } from './sheet.js';
 import { journalBookStyles, printStyles } from './styles.js';
 import { VoucherPrint, type VoucherPrintProps, voucherStyles } from './voucher.js';
@@ -43,9 +48,16 @@ export const JOURNAL_BOOK_WIDTHS = [68, 94, 50, 300, 300, 124, 124] as const;
 export function renderReportHtml(props: ReportPrintProps & { readonly fontFaces: string }): string {
   const { fontFaces, ...print } = props;
   const widths = print.sheet.columns.map((column: SheetColumn) => column.width);
+  // A part's rules name its table, so they win over the first table's.
+  const parts = (print.sheet.parts ?? []).map((part, at) =>
+    columnWidthRules(
+      `main table.part-${at}`,
+      part.columns.map((column) => column.width),
+    ),
+  );
   return documentOf(
     print.sheet.title,
-    `${fontFaces}\n${printStyles()}\n${columnWidthRules('main', widths)}`,
+    `${fontFaces}\n${printStyles()}\n${[columnWidthRules('main', widths), ...parts].join('\n')}`,
     renderToStaticMarkup(<ReportPrint {...print} />),
   );
 }
@@ -70,5 +82,18 @@ export function renderJournalBookHtml(
     print.text.title,
     `${fontFaces}\n${printStyles()}\n${journalBookStyles()}\n${columnWidthRules('.book-rows', JOURNAL_BOOK_WIDTHS)}`,
     renderToStaticMarkup(<JournalBookPrint {...print} />),
+  );
+}
+
+/** A printed project document as a whole document (S12 "Printing and legal books"). */
+export function renderProjectDocumentHtml(
+  props: ProjectDocumentPrintProps & { readonly fontFaces: string },
+): string {
+  const { fontFaces, ...print } = props;
+  const { document } = print;
+  return documentOf(
+    `${print.text.kinds[document.kind]} ${document.fiscalYear}/${document.number}`,
+    `${fontFaces}\n${projectDocumentStyles(document.kind)}`,
+    renderToStaticMarkup(<ProjectDocumentPrint {...print} />),
   );
 }

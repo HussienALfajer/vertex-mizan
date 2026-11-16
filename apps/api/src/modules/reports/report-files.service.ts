@@ -23,6 +23,8 @@ import {
   parseReportFileParams,
   readCashAccount,
   readJournalBookPrints,
+  readProjectDocument,
+  readProjectTerms,
   readReportAnswer,
   readReportFiles,
   readVoucherRows,
@@ -140,9 +142,14 @@ export class ReportFilesService {
           text: SHEET_TEXT,
           fiscalYearStartMonth: await fiscalYearStartMonth(tx),
         });
-        if (sheet.rows.length > REPORT_EXCEL_ROW_LIMIT) {
+        // Every table's rows: the first and its parts (S12's project report).
+        const rows = [sheet, ...(sheet.parts ?? [])].reduce(
+          (count, table) => count + table.rows.length,
+          0,
+        );
+        if (rows > REPORT_EXCEL_ROW_LIMIT) {
           throw new CodedException('REPORT_TOO_LARGE', 'The report is too large for Excel', [], {
-            rows: String(sheet.rows.length),
+            rows: String(rows),
             limit: String(REPORT_EXCEL_ROW_LIMIT),
           });
         }
@@ -197,6 +204,13 @@ export class ReportFilesService {
       if (request.report === 'voucher') {
         const [voucher] = await readVoucherRows(tx, { id: params.voucher as string }, 1);
         if (voucher === undefined) throw new CodedException('NOT_FOUND', 'No such voucher');
+      }
+      // S12: a project report of a project, a document of the company's register.
+      if (request.report === 'project_report')
+        await readProjectTerms(tx, params.contract as string);
+      if (request.report === 'project_document') {
+        const document = await readProjectDocument(tx, { id: params.document as string });
+        if (document === null) throw new CodedException('NOT_FOUND', 'No such project document');
       }
       if (request.official) {
         if (params.ledger !== 'book') {

@@ -388,6 +388,9 @@ interface BuiltDocumentRow {
   readonly retentionMinor: bigint | null;
   /** The contract's or the subcontract's value, for the preview's warning (S12 rule 14). */
   readonly contractValueMinor: bigint | null;
+  /** A billing's rates as its terms or subcontract state them, kept on the document (0075). */
+  readonly retentionBp: number | null;
+  readonly advanceRecoveryBp: number | null;
 }
 
 /** A project document's number in its kind and fiscal year, taken before its lines (S12 rule 21). */
@@ -2030,6 +2033,8 @@ async function projectDocumentLines(
       currency: document.currency,
       projectSequence: null,
       contractValueMinor: null,
+      retentionBp: null,
+      advanceRecoveryBp: null,
     };
   } else {
     if (documentNumber === null) throw new TypeError('A billing or a release needs its number');
@@ -2282,6 +2287,8 @@ async function projectDocumentLines(
       retentionMinor:
         billing || document.kind === 'retention_release' ? built.retentionMinor : null,
       contractValueMinor: extras.contractValueMinor,
+      retentionBp: extras.retentionBp,
+      advanceRecoveryBp: extras.advanceRecoveryBp,
     },
   };
 }
@@ -2292,6 +2299,8 @@ interface DocumentExtras {
   readonly currency: CurrencyCode;
   readonly projectSequence: number | null;
   readonly contractValueMinor: bigint | null;
+  readonly retentionBp: number | null;
+  readonly advanceRecoveryBp: number | null;
 }
 
 const isBilling = (kind: ProjectDocumentKind) =>
@@ -2459,6 +2468,8 @@ async function billingOrRelease(
       currency,
       projectSequence,
       contractValueMinor: terms.contractValueMinor,
+      retentionBp: terms.retentionBp,
+      advanceRecoveryBp: terms.advanceRecoveryBp,
     });
     if (document.kind === 'progress_billing') {
       if (document.cumulativeMinor === null) {
@@ -2605,6 +2616,8 @@ async function billingOrRelease(
     currency,
     projectSequence,
     contractValueMinor: subcontract.valueMinor,
+    retentionBp: subcontract.retentionBp,
+    advanceRecoveryBp: subcontract.advanceRecoveryBp,
   });
   if (document.kind === 'subcontract_billing') {
     if (document.cumulativeMinor === null) {
@@ -3776,6 +3789,14 @@ export async function post(tx: Transaction, request: PostingRequest): Promise<Po
       retentionMinor: document.row.retentionMinor,
       advanceMinor: document.row.advanceMinor,
       supplierReference: document.row.supplierReference,
+      // A billing keeps the terms it was posted under (0075).
+      ...(isBilling(document.row.kind)
+        ? {
+            contractValueMinor: document.row.contractValueMinor,
+            retentionBp: document.row.retentionBp,
+            advanceRecoveryBp: document.row.advanceRecoveryBp,
+          }
+        : {}),
     });
   }
   if (voucher !== null) {

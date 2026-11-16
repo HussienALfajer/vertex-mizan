@@ -9,15 +9,21 @@ import {
   chartAccounts,
   createCompanyBooks,
   createDatabase,
+  createDimensionValue,
+  createMaterial,
   type Database,
+  type DocumentLineSpec,
   dimensionTypes,
   dimensionValues,
   entryDrafts,
   journalBookPrints,
   type PersonActor,
+  type ProjectDocumentSpec,
   parseReportFileParams,
   post,
   postVoucher,
+  projectDocuments,
+  putProjectTerms,
   recordRate,
   reportFiles,
   users,
@@ -25,6 +31,7 @@ import {
   writePeriodTransition,
 } from '@vertex-mizan/db';
 import { closeMonthByHand } from '@vertex-mizan/db/testing';
+import { amountInWords, ar } from '@vertex-mizan/i18n';
 import { eq } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import { afterAll, beforeAll, describe, expect, inject, it } from 'vitest';
@@ -390,7 +397,11 @@ describe('reports.render', () => {
       client_statement: { client, from: '2026-10-01', to: '2026-10-31' },
       chart: {},
       // The cash reports print from a contracting company's vouchers: their own test below.
-    } satisfies Record<Exclude<ActiveReport, CashReport>, Record<string, string>>;
+      // The project reports print from a project's documents: their own test below.
+    } satisfies Record<
+      Exclude<ActiveReport, CashReport | ProjectReportFile>,
+      Record<string, string>
+    >;
     for (const [report, input] of Object.entries(asked) as [
       ActiveReport,
       Record<string, string>,
@@ -541,6 +552,253 @@ describe('reports.render of the cash reports (S11)', () => {
     expect(printed?.html).toContain('محاسب تجريبي');
     // The voucher numbers its own page: no footer.
     expect(printed?.options).toEqual({ pageNumbers: null });
+  });
+});
+
+type ProjectReportFile = 'project_report' | 'material_quantities' | 'project_document';
+
+/**
+ * A contracting company with project P1 (USD terms, a 511001 budget), C1's 20,000.00 USD advance
+ * on 2 November, S1's TRY invoice of cement on 3 December and billing 1 (cumulative 30,000.00) on
+ * the 31st: `reports/project-report.md`'s December in short.
+ */
+async function projectCompany(): Promise<{
+  id: string;
+  project: string;
+  purchase: string;
+  billing: string;
+}> {
+  const id = uuidv7();
+  return withCompany(db, id, async (tx) => {
+    await createCompanyBooks(
+      tx,
+      id,
+      {
+        name: 'شركة مقاولات تجريبية',
+        nameLatin: null,
+        ledgers: CLIENT,
+        fiscalYearStartMonth: 1,
+        policyNote: 'مذكرة سياسة تجريبية.',
+        template: 'contracting',
+        createdByUserId: person,
+      },
+      actor(),
+    );
+    for (const [effectiveOn, base, quote, rate, type] of [
+      ['2026-11-02', 'USD', 'SYP', '115.0000', 'bulletin'],
+      ['2026-12-03', 'TRY', 'SYP', '3.5000', 'bulletin'],
+      ['2026-12-03', 'USD', 'TRY', '34.0000', 'market'],
+      ['2026-12-31', 'USD', 'SYP', '120.0000', 'bulletin'],
+    ] as const) {
+      await recordRate(tx, id, actor(), { effectiveOn, base, quote, rate, type, source: 'manual' });
+    }
+    const types = new Map(
+      (
+        await tx.select({ id: dimensionTypes.id, code: dimensionTypes.code }).from(dimensionTypes)
+      ).map((row) => [row.code, row.id]),
+    );
+    const value = async (type: string, code: string, extra: object = {}) =>
+      (
+        await createDimensionValue(
+          tx,
+          id,
+          {
+            typeId: types.get(type) as string,
+            code,
+            name: `${code} تجريبي`,
+            nameLatin: null,
+            contractKind: null,
+            parentValueId: null,
+            ...extra,
+          },
+          actor(),
+        )
+      ).id;
+    const client = await value('client', 'C1');
+    const project = await value('contract', 'P1', {
+      contractKind: 'project',
+      parentValueId: client,
+    });
+    const supplier = await value('supplier', 'S1');
+    const cement = (
+      await createMaterial(
+        tx,
+        id,
+        { code: 'CEM', name: 'أسمنت بورتلاندي', nameLatin: null, unit: 'طن' },
+        actor(),
+      )
+    ).id;
+    const accounts = new Map(
+      (await tx.select({ id: chartAccounts.id, code: chartAccounts.code }).from(chartAccounts)).map(
+        (row) => [row.code, row.id],
+      ),
+    );
+    const account = (code: string) => accounts.get(code) as string;
+    await putProjectTerms(
+      tx,
+      id,
+      project,
+      {
+        currency: 'USD',
+        contractValueMinor: '10000000',
+        retentionBp: 1000,
+        advanceRecoveryBp: 2000,
+        budget: [{ accountId: account('511001'), amountMinor: '4000000' }],
+      },
+      actor(),
+    );
+    const request = (on: string, draftId: string | null) => ({
+      client: 'manual' as const,
+      idempotencyKey: draftId ?? uuidv7(),
+      entryDate: on,
+      description: 'قيد تجريبي',
+      reference: null,
+      draftId,
+      preparedByUserId: person,
+      approvedByUserId: null,
+      actor: actor(),
+    });
+    await post(tx, {
+      ...request('2026-11-02', null),
+      content: {
+        kind: 'manual',
+        today: '2026-12-31',
+        dealtRates: [],
+        lines: [
+          {
+            accountId: account('111004'),
+            dimensionValueIds: [],
+            currency: 'USD',
+            amountMinor: 2000000n,
+            memo: null,
+          },
+          {
+            accountId: account('212002'),
+            dimensionValueIds: [client, project],
+            currency: 'USD',
+            amountMinor: -2000000n,
+            memo: null,
+          },
+        ],
+      },
+    });
+    const documentOf = async (
+      on: string,
+      document: ProjectDocumentSpec,
+      lines: DocumentLineSpec[],
+    ): Promise<string> => {
+      const draftId = uuidv7();
+      await tx.insert(entryDrafts).values({
+        id: draftId,
+        companyId: id,
+        state: 'draft',
+        entryDate: on,
+        description: 'مستند مشروع تجريبي',
+        preparedByUserId: person,
+        projectDocumentKind: document.kind,
+        contractValueId: document.contractValueId,
+        counterpartyValueId: document.counterpartyValueId,
+        documentCurrency: document.currency,
+        cumulativeMinor: document.cumulativeMinor,
+        supplierReference: document.supplierReference,
+      });
+      const entry = await post(tx, {
+        ...request(on, draftId),
+        content: { kind: 'project_document', today: '2026-12-31', document, lines },
+      });
+      await tx
+        .update(entryDrafts)
+        .set({ state: 'posted', postedEntryId: entry.id })
+        .where(eq(entryDrafts.id, draftId));
+      const [row] = await tx
+        .select({ id: projectDocuments.id })
+        .from(projectDocuments)
+        .where(eq(projectDocuments.entryId, entry.id));
+      return row?.id as string;
+    };
+    const header = {
+      contractValueId: project,
+      side: null,
+      periodFrom: null,
+      periodTo: null,
+      retentionMinor: null,
+      advanceMinor: null,
+    } as const;
+    const purchase = await documentOf(
+      '2026-12-03',
+      {
+        ...header,
+        kind: 'purchase',
+        counterpartyValueId: supplier,
+        currency: 'TRY',
+        cumulativeMinor: null,
+        supplierReference: 'F-1024',
+      },
+      [
+        {
+          accountId: account('511001'),
+          dimensionValueIds: [],
+          amountMinor: null,
+          memo: null,
+          quantity: { materialId: cement, unit: 'طن', quantity: '12.500', unitPrice: '3150.0000' },
+          advanceMinor: null,
+        },
+      ],
+    );
+    const billing = await documentOf(
+      '2026-12-31',
+      {
+        ...header,
+        kind: 'progress_billing',
+        counterpartyValueId: null,
+        currency: null,
+        cumulativeMinor: 3000000n,
+        supplierReference: null,
+      },
+      [],
+    );
+    return { id, project, purchase, billing };
+  });
+}
+
+describe('reports.render of the project reports and documents (S12)', () => {
+  it('prints the project report, the material quantities, a purchase and a billing', async () => {
+    const { id, project, purchase, billing } = await projectCompany();
+    const printer = new KeepingPrinter();
+    const job = new ReportsRenderJob(db, files, printer);
+    const asked: [ProjectReportFile, Record<string, string>][] = [
+      ['project_report', { contract: project, from: '2026-12-01', to: '2026-12-31' }],
+      ['material_quantities', { from: '2026-12-01', to: '2026-12-31', ledger: 'parallel' }],
+      ['project_document', { document: purchase }],
+      ['project_document', { document: billing }],
+    ];
+    for (const [report, input] of asked) {
+      const file = await ask(id, { report, params: parseReportFileParams(report, input).stored });
+      expect(await job.work({ companyId: id, fileId: file.id }), report).toEqual({
+        state: 'ready',
+      });
+    }
+    const [report, quantities, invoice, certified] = printer.printed;
+    expect(report?.html).toContain('تقرير المشروع');
+    expect(report?.html).toContain('التكاليف والموازنة');
+    // 39,375.00 TRY = 1,158.09 USD of cement; billing 1's net, 21,000.00.
+    expect(report?.html).toContain('1,158.09');
+    expect(report?.html).toContain('21,000.00');
+    expect(report?.options).toEqual({ pageNumbers: ar.reports.pageOf });
+    // In the parallel ledger: 39,375.00 × 3.5 = 137,812.50 SYP, the new pound.
+    expect(quantities?.html).toContain('137,812.50');
+    expect(quantities?.html).toContain('الليرة السورية الجديدة');
+    expect(invoice?.html).toContain('size: A5 portrait');
+    expect(invoice?.html).toContain('F-1024');
+    expect(invoice?.html).toContain('12.500');
+    expect(invoice?.html).toContain('محاسب تجريبي');
+    expect(certified?.html).toContain('size: A4 portrait');
+    expect(certified?.html).toContain(ar.reports.projectDocument.kinds.progress_billing);
+    expect(certified?.html).toContain('21,000.00');
+    expect(certified?.html).toContain(amountInWords(2100000n, 'USD'));
+    for (const label of ar.reports.projectDocument.signatures.billing) {
+      expect(certified?.html).toContain(label);
+    }
   });
 });
 
