@@ -143,6 +143,12 @@ export const audit = {
     'export.cash_statement': 'صدّر كشف حساب نقدي',
     'export.cash_position': 'صدّر الموقف النقدي',
     'export.voucher': 'طبع سندًا',
+    'material.created': 'أضاف مادة إلى دليل المواد',
+    'material.updated': 'عدّل مادة في دليل المواد',
+    'material.archived': 'أرشف مادة من دليل المواد',
+    'project_terms.updated': 'عدّل شروط مشروع وموازنته',
+    'subcontract.created': 'أضاف عقد مقاول باطن',
+    'subcontract.updated': 'عدّل عقد مقاول باطن',
   } satisfies Record<CompanyAuditAction, string>,
   /** The audited entities (`AUDITED_FIELDS` in `packages/db`). */
   entities: {

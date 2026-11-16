@@ -34,6 +34,8 @@ export interface TemplateAccount {
   readonly counterpartyType: CounterpartyType | null;
   /** A cash account's kind (S11 rule 7); null on any other account. */
   readonly cashKind: CashKind | null;
+  /** Every line on it names a material and a quantity (S12 rule 4); a postable expense only. */
+  readonly requiresMaterial: boolean;
   readonly currency: CurrencyCode | null;
   readonly requiredDimensions: readonly BuiltinDimensionType[];
   readonly statementLine: string | null;
@@ -60,6 +62,7 @@ const h = (code: string, name: string, nameLatin: string): TemplateAccount => ({
   itemKind: null,
   counterpartyType: null,
   cashKind: null,
+  requiresMaterial: false,
   currency: null,
   requiredDimensions: [],
   statementLine: null,
@@ -73,6 +76,8 @@ interface PostableOptions {
   readonly control?: readonly [ItemKind, CounterpartyType];
   /** A cash account's kind (S11). */
   readonly cash?: CashKind;
+  /** Lines name a material and a quantity (S12). */
+  readonly material?: boolean;
   readonly currency?: CurrencyCode;
   readonly dims?: readonly BuiltinDimensionType[];
   readonly role?: AccountRole;
@@ -96,6 +101,7 @@ const p = (
   itemKind: options.control?.[0] ?? null,
   counterpartyType: options.control?.[1] ?? null,
   cashKind: options.cash ?? null,
+  requiresMaterial: options.material ?? false,
   currency: options.currency ?? null,
   requiredDimensions: options.dims ?? [],
   statementLine,
@@ -562,7 +568,8 @@ const contractingAccounts: readonly TemplateAccount[] = [
   h('5', 'المصاريف', 'Expenses'),
   h('51', 'تكاليف المشاريع', 'Project costs'),
   h('511', 'تكاليف المشاريع المباشرة', 'Direct project costs'),
-  p('511001', 'المواد', 'Materials', 'is.direct_costs', { dims: ['contract'] }),
+  // S12: the template's version stays 1, no company of it being in production (owner, 2026-11-16).
+  p('511001', 'المواد', 'Materials', 'is.direct_costs', { dims: ['contract'], material: true }),
   p('511002', 'أجور العمال والحرفيين', 'Wages of workers and craftsmen', 'is.direct_costs', {
     dims: ['contract'],
   }),

@@ -136,6 +136,13 @@ export const COMPANY_AUDIT_ACTIONS = [
   'export.cash_statement',
   'export.cash_position',
   'export.voucher',
+  // S12: the materials catalogue, a project's terms and budget, subcontracts.
+  'material.created',
+  'material.updated',
+  'material.archived',
+  'project_terms.updated',
+  'subcontract.created',
+  'subcontract.updated',
 ] as const;
 
 /**

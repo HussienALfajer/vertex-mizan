@@ -21,6 +21,8 @@ export * from './opening.js';
 export * from './opening-view.js';
 export * from './people.js';
 export * from './periods.js';
+export * from './project-documents.js';
+export * from './projects.js';
 export * from './rates.js';
 export * from './reports.js';
 export * from './vouchers.js';

@@ -52,6 +52,7 @@ describe('the chart templates (S02 "Templates" after the review of Q3, S11 "Temp
             itemKind: account.itemKind,
             counterpartyType: account.counterpartyType,
             cashKind: account.cashKind,
+            requiresMaterial: account.requiresMaterial,
             isMonetary: account.isMonetary,
             requiredDimensionCount: account.requiredDimensions.length,
           });
@@ -233,6 +234,17 @@ describe('the chart templates (S02 "Templates" after the review of Q3, S11 "Temp
       expect(contracting.accounts).toHaveLength(128);
       expect(contracting.accounts.filter((account) => account.kind === 'postable')).toHaveLength(
         84,
+      );
+    });
+
+    it('requires a material on 511001 alone (S12)', () => {
+      expect(
+        contracting.accounts
+          .filter((account) => account.requiresMaterial)
+          .map((account) => account.code),
+      ).toEqual(['511001']);
+      expect(chartTemplate('general').accounts.some((account) => account.requiresMaterial)).toBe(
+        false,
       );
     });
 

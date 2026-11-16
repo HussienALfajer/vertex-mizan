@@ -143,6 +143,13 @@ describe('error codes', () => {
       ['CASH_BOX_NEGATIVE', 409],
       ['CASH_COUNT_STALE', 409],
       ['CASH_ACCOUNT_INVALID', 422],
+      ['PROJECT_TERMS_MISSING', 422],
+      ['PROJECT_TERMS_LOCKED', 409],
+      ['MATERIAL_REQUIRED', 422],
+      ['MATERIAL_LOCKED', 409],
+      ['ADVANCE_CURRENCY_MISMATCH', 422],
+      ['BILLING_NOT_INCREASING', 422],
+      ['PROJECT_DOCUMENT_NOT_LATEST', 409],
     ]);
   });
 

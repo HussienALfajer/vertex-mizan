@@ -300,3 +300,76 @@ export const companyLedgersSchema = z
   .meta({ id: 'CompanyLedgers' });
 
 export type CompanyLedgers = z.infer<typeof companyLedgersSchema>;
+
+/** The places of a quantity (`numeric(14,3)`, S12 "Data"): up to 11 integer digits. */
+export const QUANTITY_PLACES = 3;
+
+/** The places of a unit price (`numeric(18,4)`, S12 "Data"): up to 14 integer digits. */
+export const UNIT_PRICE_PLACES = 4;
+
+const QUANTITY_PATTERN = /^-?\d{1,11}(\.\d{1,3})?$/;
+const UNIT_PRICE_PATTERN = /^\d{1,14}(\.\d{1,4})?$/;
+
+/** A decimal string's value times `10^places`, exactly; the string has at most `places` decimals. */
+function scaledDecimal(text: string, places: number): bigint {
+  const negative = text.startsWith('-');
+  const [whole = '0', fraction = ''] = (negative ? text.slice(1) : text).split('.');
+  const scaled = BigInt(whole + fraction.padEnd(places, '0'));
+  return negative ? -scaled : scaled;
+}
+
+/** A decimal string written with exactly `places` decimals: `"6.0"` → `"6.000"`, `"-0"` → `"0.000"`. */
+function fixedDecimal(scaled: bigint, places: number): string {
+  const negative = scaled < 0n;
+  const digits = (negative ? -scaled : scaled).toString().padStart(places + 1, '0');
+  const text = `${digits.slice(0, -places)}.${digits.slice(-places)}`;
+  return negative ? `-${text}` : text;
+}
+
+/**
+ * A quantity as typed (S12 rule 5, answer 12): a decimal with up to 3 places and a sign (a credit is
+ * a quantity out), written back with exactly 3 places as `numeric(14,3)` stores it.
+ */
+export const quantitySchema = z
+  .string()
+  .trim()
+  .regex(QUANTITY_PATTERN, 'A quantity has up to 11 digits and 3 decimals')
+  .transform((text) => fixedDecimal(scaledDecimal(text, QUANTITY_PLACES), QUANTITY_PLACES));
+
+/** A unit price as typed (S12 answer 12): not negative, up to 4 places, written back with 4. */
+export const unitPriceSchema = z
+  .string()
+  .trim()
+  .regex(UNIT_PRICE_PATTERN, 'A unit price is not negative and has up to 14 digits and 4 decimals')
+  .transform((text) => fixedDecimal(scaledDecimal(text, UNIT_PRICE_PLACES), UNIT_PRICE_PLACES));
+
+/** Whether a quantity (as `quantitySchema` writes it) is zero: a price adjustment's (S12 rule 6). */
+export function isZeroQuantity(quantity: string): boolean {
+  return scaledDecimal(quantity, QUANTITY_PLACES) === 0n;
+}
+
+/** The number of decimal places a quantity actually uses: `"6.500"` → 1 (S12 rule 10's days). */
+export function quantityPlacesUsed(quantity: string): number {
+  const fraction = quantity.split('.')[1] ?? '';
+  return fraction.replace(/0+$/, '').length;
+}
+
+/**
+ * A line's amount from its quantity and unit price (S12 rule 6, answer 12): their exact product in
+ * the currency's minor units, rounded half away from zero once, so 12.500 × 3.0300 USD = 37.875 →
+ * 37.88 and −2.500 × 3.0300 = −7.575 → −7.58. Both are decimal strings as their schemas write
+ * them; the result is refused outside the stored range (`AMOUNT_OUT_OF_RANGE`).
+ */
+export function lineAmount(quantity: string, unitPrice: string, currency: CurrencyCode): Money {
+  if (!QUANTITY_PATTERN.test(quantity) || !UNIT_PRICE_PATTERN.test(unitPrice)) {
+    throw new TypeError(`Not a quantity and a unit price: ${quantity} × ${unitPrice}`);
+  }
+  const numerator =
+    scaledDecimal(quantity, QUANTITY_PLACES) *
+    scaledDecimal(unitPrice, UNIT_PRICE_PLACES) *
+    10n ** BigInt(currencies[currency].exponent);
+  const denominator = 10n ** BigInt(QUANTITY_PLACES + UNIT_PRICE_PLACES);
+  const amountMinor = divideHalfAwayFromZero(numerator, denominator);
+  checkMinor(amountMinor, currency);
+  return money(amountMinor, currency);
+}
