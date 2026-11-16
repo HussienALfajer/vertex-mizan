@@ -401,11 +401,15 @@ export function createAuth(db: Database, config: Config) {
           // the second step does for anyone else (rules 2 and 20, owner 2026-11-16).
           const created = ctx.context.newSession;
           if (created) {
+            // An enrolled exempt person still has a second step to pass: not signed in yet.
             const [person] = await db
-              .select({ twoFactorExempt: users.twoFactorExempt })
+              .select({
+                twoFactorExempt: users.twoFactorExempt,
+                twoFactorEnabled: users.twoFactorEnabled,
+              })
               .from(users)
               .where(eq(users.id, created.user.id));
-            const exempt = person?.twoFactorExempt === true;
+            const exempt = person?.twoFactorExempt === true && !person.twoFactorEnabled;
             const actor = await personActor(created.user.id, created.session.id, facts);
             await writePlatformAudit(db, {
               action: 'user.signed_in',

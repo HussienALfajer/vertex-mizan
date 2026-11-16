@@ -8,13 +8,7 @@ import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import pg from 'pg';
 import { v7 as uuidv7 } from 'uuid';
 import { afterAll, beforeAll, describe, expect, inject, it } from 'vitest';
-import {
-  createCompanyBooks,
-  createDatabase,
-  type Transaction,
-  users,
-  withCompany,
-} from '../src/index.js';
+import { createCompanyBooks, createDatabase, type Transaction, withCompany } from '../src/index.js';
 
 // ADR 0021: Hub's tables are dropped only while they hold no row (0058). A database migrated up to
 // the release before the removal (0057) with one Hub row refuses the removal's migrations, and
@@ -90,10 +84,12 @@ async function companyWith(
   const app = createDatabase(at(inject('appUrl'), name));
   const companyId = uuidv7();
   try {
-    const [person] = await app
-      .insert(users)
-      .values({ email, name: 'محاسب تجريبي' })
-      .returning({ id: users.id });
+    // Named columns only: the database is migrated to an earlier version than the schema.
+    const {
+      rows: [person],
+    } = await app.execute<{ id: string }>(
+      sql`INSERT INTO public.users (id, email, name) VALUES (${uuidv7()}, ${email}, 'محاسب تجريبي') RETURNING id`,
+    );
     if (!person) throw new Error('no user inserted');
     await withCompany(app, companyId, async (tx) => {
       await createCompanyBooks(
