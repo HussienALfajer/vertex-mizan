@@ -8,6 +8,7 @@ import { keptLedgers, type Line, ledgerAmount } from './lines.js';
 import { manualEntry } from './manual.js';
 import type { MeasureContext } from './measure.js';
 import {
+  type BillingDocument,
   type BuiltDocument,
   buildProjectDocument,
   type LineQuantity,
@@ -588,5 +589,409 @@ describe('a wage sheet (S12 rule 10)', () => {
         why,
       ).toBe('VALIDATION_FAILED');
     }
+  });
+});
+
+// S12 rules 14–20 with the numbers of `projects/progress-billing`, `projects/subcontract-billing`
+// and `projects/retention-release`.
+
+const december31 = [
+  rate('USD', 'SYP', '120.0000', 'bulletin', '2026-12-31'),
+  rate('TRY', 'SYP', '3.5000', 'bulletin', '2026-12-31'),
+  rate('USD', 'TRY', '34.3000', 'market', '2026-12-31'),
+];
+const onDecember31 = (ledgers: CompanyLedgers = client) => at(ledgers, '2026-12-31', december31);
+
+const newDocumentItem = (id: string, currency: CurrencyCode, ledgers = client): ItemState => ({
+  id,
+  kind: 'document',
+  direction: null,
+  opensAs: 1,
+  balance: emptyBalance(currency, ledgers.parallel !== null),
+});
+
+/** C1's advance on P1: 20,000.00 USD received on 2 November at 115 (a credit). */
+const clientAdvance = running('C1-advance', {
+  transaction: money(-2_000_000n, 'USD'),
+  bookMinor: -2_000_000n,
+  parallelMinor: -230_000_000n,
+});
+
+function progressBilling(input: Partial<BillingDocument>, ledgers = client): BillingDocument {
+  const currency = input.currency ?? 'USD';
+  const dimensions = { client: 'C1', contract: 'P1' };
+  return {
+    kind: 'progress_billing',
+    currency,
+    on: '2026-12-31',
+    cumulativeMinor: 3_000_000n,
+    previous: null,
+    retentionBp: 1000,
+    advanceRecoveryBp: 2000,
+    retentionMinor: null,
+    advanceMinor: null,
+    value: { account: '411001', dimensions },
+    net: { account: '112001', dimensions, item: newDocumentItem('N1', currency, ledgers) },
+    retention: { account: '113002', dimensions, item: newDocumentItem('R1', currency, ledgers) },
+    advance: { account: '212002', dimensions, side: -1, shares: [clientAdvance] },
+    ...input,
+  };
+}
+
+/** S2's advance on P1: 300,000.00 TRY paid on 2 November at 33 and 3.4 (a debit). */
+const supplierAdvance = running('S2-advance', {
+  transaction: money(30_000_000n, 'TRY'),
+  bookMinor: 909_091n,
+  parallelMinor: 102_000_000n,
+});
+
+function subcontractBilling(input: Partial<BillingDocument>): BillingDocument {
+  const dimensions = { supplier: 'S2', contract: 'P1' };
+  return {
+    kind: 'subcontract_billing',
+    currency: 'TRY',
+    on: '2026-12-31',
+    cumulativeMinor: 60_000_000n,
+    previous: null,
+    retentionBp: 1000,
+    advanceRecoveryBp: 2000,
+    retentionMinor: null,
+    advanceMinor: null,
+    value: { account: '511003', dimensions: { contract: 'P1', supplier: 'S2' } },
+    net: { account: '211002', dimensions, item: fresh('S2-payable', 'TRY') },
+    retention: { account: '211006', dimensions, item: fresh('S2-retention', 'TRY') },
+    advance: { account: '114002', dimensions, side: 1, shares: [supplierAdvance] },
+    ...input,
+  };
+}
+
+describe("a client's progress billing (S12 rules 14–16)", () => {
+  it("is S12's example: the covered revenue at the advance's carrying amount, no difference", () => {
+    const built = buildProjectDocument(progressBilling({}), onDecember31());
+    expect([built.totalMinor, built.retentionMinor, built.advanceMinor, built.netMinor]).toEqual([
+      3_000_000n,
+      300_000n,
+      600_000n,
+      2_100_000n,
+    ]);
+    expect(built.advanceLine).toBe(2);
+    expect(view(posted(built, onDecember31()))).toEqual([
+      ['112001', 2_100_000n, 2_100_000n, 252_000_000n],
+      ['113002', 300_000n, 300_000n, 36_000_000n],
+      ['212002', 600_000n, 600_000n, 69_000_000n],
+      ['411001', -3_000_000n, -3_000_000n, -357_000_000n],
+    ]);
+  });
+
+  it('takes the previous cumulative, a typed recovery, and caps the computed one', () => {
+    const left = running('C1-advance', {
+      transaction: money(-400_000n, 'USD'),
+      bookMinor: -400_000n,
+      parallelMinor: -46_000_000n,
+    });
+    const rates = [rate('USD', 'SYP', '130.0000', 'bulletin', '2027-02-28')];
+    const context = at(client, '2027-02-28', rates);
+    const built = buildProjectDocument(
+      progressBilling({
+        on: '2027-02-28',
+        cumulativeMinor: 11_000_000n,
+        previous: { cumulativeMinor: 7_500_000n, on: '2027-01-31' },
+        advance: {
+          account: '212002',
+          dimensions: { client: 'C1', contract: 'P1' },
+          side: -1,
+          shares: [left],
+        },
+      }),
+      context,
+    );
+    expect([built.previousMinor, built.advanceMinor, built.netMinor]).toEqual([
+      7_500_000n,
+      400_000n,
+      2_750_000n,
+    ]);
+    expect(view(posted(built, context))).toEqual([
+      ['112001', 2_750_000n, 2_750_000n, 357_500_000n],
+      ['113002', 350_000n, 350_000n, 45_500_000n],
+      ['212002', 400_000n, 400_000n, 46_000_000n],
+      ['411001', -3_500_000n, -3_500_000n, -449_000_000n],
+    ]);
+  });
+
+  it('posts no receivable when the deductions take the whole value, and no advance line at 0', () => {
+    const built = buildProjectDocument(
+      progressBilling({ cumulativeMinor: 1_000_000n, advanceMinor: 900_000n }),
+      onDecember31(),
+    );
+    expect(view(posted(built, onDecember31()))).toEqual([
+      ['113002', 100_000n, 100_000n, 12_000_000n],
+      ['212002', 900_000n, 900_000n, 103_500_000n],
+      ['411001', -1_000_000n, -1_000_000n, -115_500_000n],
+    ]);
+    const none = buildProjectDocument(
+      progressBilling({ advance: { account: '212002', dimensions: {}, side: -1, shares: [] } }),
+      onDecember31(),
+    );
+    expect(none.advanceLine).toBeNull();
+    expect(view(posted(none, onDecember31()))).toEqual([
+      ['112001', 2_700_000n, 2_700_000n, 324_000_000n],
+      ['113002', 300_000n, 300_000n, 36_000_000n],
+      ['411001', -3_000_000n, -3_000_000n, -360_000_000n],
+    ]);
+  });
+
+  it('measures a TRY billing in both ledgers, the book rounding realised', () => {
+    const tryAdvance = running('C1-try', {
+      transaction: money(-60_000_000n, 'TRY'),
+      bookMinor: -1_818_182n,
+      parallelMinor: -204_000_000n,
+    });
+    const built = buildProjectDocument(
+      progressBilling({
+        currency: 'TRY',
+        cumulativeMinor: 90_000_000n,
+        advance: { account: '212002', dimensions: {}, side: -1, shares: [tryAdvance] },
+      }),
+      onDecember31(),
+    );
+    expect(view(posted(built, onDecember31()))).toEqual([
+      ['112001', 63_000_000n, 1_836_735n, 220_500_000n],
+      ['113002', 9_000_000n, 262_391n, 31_500_000n],
+      ['212002', 18_000_000n, 545_455n, 61_200_000n],
+      ['411001', -90_000_000n, -2_644_580n, -313_200_000n],
+      ['421001', -1n, -1n, 0n],
+    ]);
+  });
+
+  it('refuses a billing not increasing, back-dated, over-deducted or over-recovered', () => {
+    const previous = { cumulativeMinor: 3_000_000n, on: '2026-12-31' };
+    expect(
+      refusal(() =>
+        buildProjectDocument(
+          progressBilling({ cumulativeMinor: 3_000_000n, previous }),
+          onDecember31(),
+        ),
+      ),
+    ).toBe('BILLING_NOT_INCREASING');
+    expect(
+      refusal(() => buildProjectDocument(progressBilling({ cumulativeMinor: 0n }), onDecember31())),
+    ).toBe('BILLING_NOT_INCREASING');
+    expect(
+      refusal(() =>
+        buildProjectDocument(
+          progressBilling({
+            on: '2026-12-30',
+            cumulativeMinor: 5_000_000n,
+            previous,
+          }),
+          at(client, '2026-12-30', [rate('USD', 'SYP', '120.0000', 'bulletin', '2026-12-30')]),
+        ),
+      ),
+    ).toBe('VALIDATION_FAILED');
+    expect(
+      refusal(() =>
+        buildProjectDocument(
+          progressBilling({ retentionMinor: 2_000_000n, advanceMinor: 1_500_000n }),
+          onDecember31(),
+        ),
+      ),
+    ).toBe('VALIDATION_FAILED');
+    expect(
+      refusal(() =>
+        buildProjectDocument(progressBilling({ advanceMinor: 2_100_000n }), onDecember31()),
+      ),
+    ).toBe('RELEASE_EXCEEDS_BALANCE');
+  });
+
+  it("refuses a typed recovery while the project's advance is held only in another currency", () => {
+    const tryAdvance = running('C1-try', {
+      transaction: money(-60_000_000n, 'TRY'),
+      bookMinor: -1_818_182n,
+      parallelMinor: -204_000_000n,
+    });
+    const document = progressBilling({
+      advance: { account: '212002', dimensions: {}, side: -1, shares: [tryAdvance] },
+    });
+    expect(
+      refusal(() => buildProjectDocument({ ...document, advanceMinor: 600_000n }, onDecember31())),
+    ).toBe('ADVANCE_CURRENCY_MISMATCH');
+    // The computed recovery is capped at the 0 held in the document's currency.
+    expect(buildProjectDocument(document, onDecember31()).advanceMinor).toBe(0n);
+  });
+});
+
+describe("a subcontractor's billing (S12 rule 18)", () => {
+  it("is the scenario's billing 1: the covered cost at the advance's carried amounts", () => {
+    const built = buildProjectDocument(subcontractBilling({}), onDecember31());
+    expect(view(posted(built, onDecember31()))).toEqual([
+      ['511003', 60_000_000n, 1_763_053n, 208_800_000n],
+      ['211006', -6_000_000n, -174_927n, -21_000_000n],
+      ['114002', -12_000_000n, -363_636n, -40_800_000n],
+      ['211002', -42_000_000n, -1_224_490n, -147_000_000n],
+    ]);
+  });
+
+  it('caps the recovery at what is left and realises the book rounding', () => {
+    const left = running('S2-advance', {
+      transaction: money(18_000_000n, 'TRY'),
+      bookMinor: 545_455n,
+      parallelMinor: 61_200_000n,
+    });
+    const rates = [
+      rate('TRY', 'SYP', '3.6500', 'bulletin', '2027-01-31'),
+      rate('USD', 'TRY', '35.8400', 'market', '2027-01-31'),
+    ];
+    const context = at(client, '2027-01-31', rates);
+    const built = buildProjectDocument(
+      subcontractBilling({
+        on: '2027-01-31',
+        cumulativeMinor: 160_000_000n,
+        previous: { cumulativeMinor: 60_000_000n, on: '2026-12-31' },
+        advance: { account: '114002', dimensions: {}, side: 1, shares: [left] },
+      }),
+      context,
+    );
+    expect(view(posted(built, context))).toEqual([
+      ['511003', 100_000_000n, 2_833_401n, 360_500_000n],
+      ['211006', -10_000_000n, -279_018n, -36_500_000n],
+      ['114002', -18_000_000n, -545_455n, -61_200_000n],
+      ['211002', -72_000_000n, -2_008_929n, -262_800_000n],
+      ['541001', 1n, 1n, 0n],
+    ]);
+  });
+});
+
+describe('the billing deductions (S12 rule 15)', () => {
+  it('sum to the period’s value with the net, never below zero, and the entry balances', () => {
+    fc.assert(
+      fc.property(
+        fc.bigInt({ min: 0n, max: 50_000_000n }),
+        fc.bigInt({ min: 1n, max: 50_000_000n }),
+        fc.integer({ min: 0, max: 5000 }),
+        fc.integer({ min: 0, max: 5000 }),
+        fc.bigInt({ min: 0n, max: 30_000_000n }),
+        (previousMinor, periodMinor, retentionBp, advanceRecoveryBp, heldMinor) => {
+          const advance = running('C1-advance', {
+            transaction: money(-heldMinor, 'USD'),
+            bookMinor: -heldMinor,
+            parallelMinor: -heldMinor * 115n,
+          });
+          const built = buildProjectDocument(
+            progressBilling({
+              cumulativeMinor: previousMinor + periodMinor,
+              previous:
+                previousMinor === 0n ? null : { cumulativeMinor: previousMinor, on: '2026-12-01' },
+              retentionBp,
+              advanceRecoveryBp,
+              advance: { account: '212002', dimensions: {}, side: -1, shares: [advance] },
+            }),
+            onDecember31(),
+          );
+          expect(built.totalMinor).toBe(periodMinor);
+          expect(built.retentionMinor + built.advanceMinor + built.netMinor).toBe(periodMinor);
+          expect(built.netMinor >= 0n).toBe(true);
+          expect(built.advanceMinor <= heldMinor).toBe(true);
+          const lines = posted(built, onDecember31());
+          for (const [ledger] of keptLedgers(client)) expect(ledgerTotal(lines, ledger)).toBe(0n);
+        },
+      ),
+    );
+  });
+});
+
+describe('a retention release (S12 rules 19–20)', () => {
+  const february28 = [rate('USD', 'SYP', '130.0000', 'bulletin', '2027-02-28')];
+  const context = at(client, '2027-02-28', february28);
+  const retention = (id: string, amount: bigint, parallel: bigint): ItemState => ({
+    id,
+    kind: 'document',
+    direction: 1,
+    balance: { transaction: money(amount, 'USD'), bookMinor: amount, parallelMinor: parallel },
+  });
+  const dimensions = { client: 'C1', contract: 'P1' };
+
+  it("moves the client's retentions into one receivable, the parallel residual realised", () => {
+    const built = buildProjectDocument(
+      {
+        kind: 'retention_release',
+        side: 'client',
+        currency: 'USD',
+        items: [
+          {
+            target: { account: '113002', dimensions, item: retention('R1', 300_000n, 36_000_000n) },
+            amountMinor: 300_000n,
+          },
+          {
+            target: { account: '113002', dimensions, item: retention('R2', 200_000n, 25_000_000n) },
+            amountMinor: 200_000n,
+          },
+        ],
+        receivable: { account: '112001', dimensions, item: newDocumentItem('N', 'USD') },
+      },
+      context,
+    );
+    expect(built.retentionMinor).toBe(500_000n);
+    expect(view(posted(built, context))).toEqual([
+      ['112001', 500_000n, 500_000n, 65_000_000n],
+      ['113002', -300_000n, -300_000n, -36_000_000n],
+      ['113002', -200_000n, -200_000n, -25_000_000n],
+      ['421001', -4_000_000n, 0n, -4_000_000n],
+    ]);
+  });
+
+  it('refuses a release above an item’s open amount when its entry is built', () => {
+    expect(
+      refusal(() =>
+        posted(
+          buildProjectDocument(
+            {
+              kind: 'retention_release',
+              side: 'client',
+              currency: 'USD',
+              items: [
+                {
+                  target: {
+                    account: '113002',
+                    dimensions,
+                    item: retention('R1', 200_000n, 24_000_000n),
+                  },
+                  amountMinor: 250_000n,
+                },
+              ],
+              receivable: { account: '112001', dimensions, item: newDocumentItem('N', 'USD') },
+            },
+            context,
+          ),
+          context,
+        ),
+      ),
+    ).toBe('RELEASE_EXCEEDS_BALANCE');
+  });
+
+  it("clears the supplier's retention at the project's own average, refused beyond it", () => {
+    const share = running('S2-retention', {
+      transaction: money(-300_000n, 'USD'),
+      bookMinor: -300_000n,
+      parallelMinor: -36_000_000n,
+    });
+    const supplier = { supplier: 'S2', contract: 'P1' };
+    const release = (amountMinor: bigint) =>
+      buildProjectDocument(
+        {
+          kind: 'retention_release',
+          side: 'supplier',
+          currency: 'USD',
+          amountMinor,
+          retention: { account: '211006', dimensions: supplier, side: -1, shares: [share] },
+          payable: { account: '211002', dimensions: supplier, item: fresh('S2-payable', 'USD') },
+        },
+        context,
+      );
+    expect(view(posted(release(300_000n), context))).toEqual([
+      ['211006', 300_000n, 300_000n, 36_000_000n],
+      ['211002', -300_000n, -300_000n, -39_000_000n],
+      ['541001', 3_000_000n, 0n, 3_000_000n],
+    ]);
+    expect(refusal(() => release(350_000n))).toBe('RELEASE_EXCEEDS_BALANCE');
   });
 });

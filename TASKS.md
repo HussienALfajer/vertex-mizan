@@ -17,7 +17,7 @@ Four PRs, in order. Each PR switches its scenario files to `Approved (owner, 202
 
 ### PR 2 — billings and retention releases (branch `feat/s12-billings`)
 
-- [ ] ledger: `buildProjectDocument()` for `progress_billing`, `subcontract_billing` and `retention_release` (rules 14–20: the cumulative chain, deductions, recovery capped at the project's share, the release cleared at the project's share); property tests (deductions sum to the period's value, the net never negative)
+- [x] ledger: `buildProjectDocument()` for `progress_billing`, `subcontract_billing` and `retention_release` (rules 14–20: the cumulative chain, deductions, recovery capped at the project's share, the release cleared at the project's share); property tests (deductions sum to the period's value, the net never negative)
 - [ ] db: `project_sequence` per project or subcontract under lock; `PROJECT_TERMS_LOCKED` after the first billing; the cancellation order (rule 22, `PROJECT_DOCUMENT_NOT_LATEST`); concurrency tests (two billings of one project)
 - [ ] scenarios: `projects/progress-billing.md`, `projects/subcontract-billing.md` and `projects/retention-release.md` switched to `Approved` and run
 - [ ] api: drafts, preview and posting of the three kinds with their warnings; reversal refusals; tests
