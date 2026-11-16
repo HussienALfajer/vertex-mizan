@@ -120,6 +120,8 @@ export interface LinesSearch {
   profitabilityValue?: string | undefined;
   /** S10 rule 32: only the opening entries' lines, an opening column read from them. */
   openingEntry?: 'true' | undefined;
+  /** S12: only the lines whose quantity names this material. */
+  material?: string | undefined;
 }
 
 /** A figure's drill-down: the link to the lines behind it, for `ReportTable`'s `link`. */
@@ -278,6 +280,7 @@ export function ReportFrame({
   filters,
   ledger,
   header,
+  back,
   children,
 }: {
   /** The key the last parameters are kept under. */
@@ -289,6 +292,8 @@ export function ReportFrame({
   filters?: ReactNode;
   ledger?: { value: Ledger; onValueChange: (ledger: Ledger) => void } | undefined;
   header?: ReportHeader | undefined;
+  /** The way back, the reports by default. */
+  back?: ReactNode;
   children: ReactNode;
 }) {
   const { companyId, me } = useCompany();
@@ -301,7 +306,7 @@ export function ReportFrame({
   return (
     <>
       <PageHeader
-        back={<ReportsBackLink />}
+        back={back ?? <ReportsBackLink />}
         title={title}
         description={description}
         actions={actions}

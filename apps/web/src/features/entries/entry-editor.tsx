@@ -12,11 +12,15 @@ import {
   type EntryPreview,
   entryPreviewSchema,
   entryTotals,
+  isZeroQuantity,
+  lineAmount,
   money,
   type OpenItemSummary,
   postedDraftSchema,
+  quantitySchema,
   type RatePair,
   signedAmount,
+  unitPriceSchema,
   type VoucherKind,
 } from '@vertex-mizan/contracts';
 import { ar } from '@vertex-mizan/i18n';
@@ -53,10 +57,12 @@ import {
   Input,
   Kbd,
   keymap,
+  MaterialPicker,
   matchesShortcut,
   OpenItemPicker,
   type OpenItemPickerOption,
   PageHeader,
+  QuantityCell,
   RateInput,
   SelectField,
 } from '@vertex-mizan/ui';
@@ -81,6 +87,7 @@ import { api, hasCode } from '../../lib/api';
 import { damascusToday, formatDateTime, formatDay } from '../../lib/format';
 import { can, useCompany } from '../../lib/session';
 import { VoucherFields, type VoucherProblems, voucherProblems } from '../cash/voucher-fields';
+import { useMaterials } from '../projects/project-queries';
 import { openItemsQuery } from '../receivables/receivables-queries';
 import {
   dealtRatePairs,
@@ -253,6 +260,13 @@ export function EntryEditor({
     itemPages.flatMap((page) => page.data?.items ?? []).map((item) => [item.id, item]),
   );
   const showsItems = edit.lines.some((line) => itemKindOf(line) !== null);
+  // S12 rule 4: a line on an account that requires a material names it, with its quantity.
+  const requiresMaterialOf = (line: EditLine) =>
+    line.accountId ? (accountsById.get(line.accountId)?.requiresMaterial ?? false) : false;
+  const showsQuantities = edit.lines.some(
+    (line) => requiresMaterialOf(line) || line.quantity !== null,
+  );
+  const materials = useMaterials(companyId, showsQuantities);
   const amounts = edit.lines.flatMap((line) =>
     line.currency === null || line.amountMinor === null
       ? []
@@ -281,10 +295,13 @@ export function EntryEditor({
    */
   function withAccount(line: EditLine, account: Account | null): EditLine {
     const item = account?.id === line.accountId ? {} : { openItemId: null, newItem: null };
-    if (!account) return { ...line, ...item, accountId: null };
+    // S12 rule 4: a material and its quantity only on an account that requires one.
+    const quantity = account?.requiresMaterial ? {} : { quantity: null };
+    if (!account) return { ...line, ...item, ...quantity, accountId: null };
     return {
       ...line,
       ...item,
+      ...quantity,
       accountId: account.id,
       currency: line.currency ?? account.currency ?? bookCurrency,
     };
@@ -353,6 +370,122 @@ export function EntryEditor({
     return magnitude === null || magnitude === 0n ? null : magnitude;
   }
 
+  /**
+   * A line's quantity after a material, quantity or unit price is typed (S12 rules 4–6): a
+   * material by its code takes its unit; a quantity other than zero with a unit price sets the
+   * line's amount to their rounded product (`lineAmount()`), a negative quantity on the credit
+   * side; a quantity of zero is a price adjustment, whose amount is typed.
+   */
+  function withQuantityText(
+    line: EditLine,
+    column: 'material' | 'quantity' | 'unitPrice',
+    text: string,
+  ): EditLine {
+    const current = line.quantity ?? {
+      materialId: null,
+      unit: null,
+      quantity: '',
+      unitPrice: null,
+    };
+    let next = current;
+    if (column === 'material') {
+      const material = text === '' ? undefined : materialByCode(text);
+      next = { ...current, materialId: material?.id ?? null, unit: material?.unit ?? null };
+    } else if (column === 'quantity') {
+      next = { ...current, quantity: quantitySchema.safeParse(text).data ?? '' };
+    } else {
+      next = { ...current, unitPrice: unitPriceSchema.safeParse(text).data ?? null };
+    }
+    const empty = next.materialId === null && next.quantity === '' && next.unitPrice === null;
+    const currency = line.currency ?? bookCurrency;
+    const computed =
+      !empty && next.quantity !== '' && !isZeroQuantity(next.quantity) && next.unitPrice !== null;
+    return {
+      ...line,
+      quantity: empty ? null : next,
+      amountMinor: computed
+        ? lineAmount(next.quantity, next.unitPrice as string, currency).amountMinor
+        : line.amountMinor,
+    };
+  }
+
+  function materialByCode(text: string) {
+    const code = text.trim().toLowerCase();
+    return materials.all.find(
+      (material) => material.archivedAt === null && material.code.toLowerCase() === code,
+    );
+  }
+
+  /** The quantity columns (S12 rule 4), editable on a line whose account requires a material. */
+  function quantityColumns(): GridColumnDef<Row>[] {
+    const locked = (row: Row) => !linesEditable || !requiresMaterialOf(row);
+    return [
+      {
+        id: 'material',
+        type: 'text',
+        header: te.material,
+        readOnly: locked,
+        value: (row) =>
+          row.quantity?.materialId ? (materials.byId.get(row.quantity.materialId)?.code ?? '') : '',
+        validate: (text) =>
+          text.trim() === '' || materialByCode(text) ? undefined : te.materialUnknown,
+        render: (row) => {
+          const material = row.quantity?.materialId
+            ? materials.byId.get(row.quantity.materialId)
+            : undefined;
+          return material ? (
+            <span className="flex flex-col">
+              <bdi dir="ltr" className="font-medium">
+                {material.code}
+              </bdi>
+              <bdi className="max-w-40 truncate text-xs text-muted-foreground">{material.name}</bdi>
+            </span>
+          ) : null;
+        },
+      },
+      {
+        id: 'quantity',
+        type: 'text',
+        header: ar.materials.quantity,
+        readOnly: locked,
+        value: (row) => row.quantity?.quantity ?? '',
+        validate: (text) =>
+          text.trim() === '' || quantitySchema.safeParse(text).success
+            ? undefined
+            : ar.projects.form.quantityInvalid,
+        render: (row) =>
+          row.quantity && row.quantity.quantity !== '' ? (
+            <QuantityCell quantity={row.quantity.quantity} unit={row.quantity.unit} />
+          ) : null,
+      },
+      {
+        id: 'unitPrice',
+        type: 'text',
+        header: ar.materials.unitPrice,
+        readOnly: locked,
+        value: (row) => row.quantity?.unitPrice ?? '',
+        validate: (text) =>
+          text.trim() === '' || unitPriceSchema.safeParse(text).success
+            ? undefined
+            : ar.projects.form.unitPriceInvalid,
+        render: (row) => {
+          if (row.quantity?.unitPrice) {
+            return (
+              <bdi dir="ltr" className="tabular-nums">
+                {row.quantity.unitPrice}
+              </bdi>
+            );
+          }
+          return row.quantity &&
+            row.quantity.quantity !== '' &&
+            isZeroQuantity(row.quantity.quantity) ? (
+            <span className="text-xs text-muted-foreground">{ar.materials.priceAdjustment}</span>
+          ) : null;
+        },
+      },
+    ];
+  }
+
   const columns: GridColumnDef<Row>[] = [
     {
       id: 'no',
@@ -412,6 +545,7 @@ export function EntryEditor({
           } satisfies GridColumnDef<Row>,
         ]
       : []),
+    ...(showsQuantities ? quantityColumns() : []),
     {
       id: 'currency',
       type: 'text',
@@ -485,6 +619,8 @@ export function EntryEditor({
           };
         } else if (column === 'memo') {
           next[cell.row] = { ...line, memo: cell.text };
+        } else if (column === 'material' || column === 'quantity' || column === 'unitPrice') {
+          next[cell.row] = withQuantityText(line, column, text);
         }
       }
       return next;
@@ -726,6 +862,7 @@ export function EntryEditor({
       const column = columns[cell.column]?.id;
       if (
         column === 'account' ||
+        (column === 'material' && requiresMaterialOf(line)) ||
         column?.startsWith('dim:') ||
         (column === 'item' && itemKindOf(line) === 'document')
       ) {
@@ -1150,14 +1287,34 @@ export function EntryEditor({
           <DialogContent closeLabel={ar.common.close}>
             <DialogHeader>
               <DialogTitle>
-                {lookup.column === 'account' ? te.chooseAccount : te.chooseDimension}
+                {lookup.column === 'account'
+                  ? te.chooseAccount
+                  : lookup.column === 'material'
+                    ? te.chooseMaterial
+                    : te.chooseDimension}
               </DialogTitle>
               <DialogDescription>
                 {`${te.line} `}
                 <bdi dir="ltr">{edit.lines.indexOf(lookupLine) + 1}</bdi>
               </DialogDescription>
             </DialogHeader>
-            {lookup.column === 'account' ? (
+            {lookup.column === 'material' ? (
+              <MaterialPicker
+                label={te.material}
+                materials={materials.all.map((material) => ({
+                  ...material,
+                  archived: material.archivedAt !== null,
+                }))}
+                value={lookupLine.quantity?.materialId ?? null}
+                labels={ar.materials.picker}
+                onValueChange={(material) => {
+                  updateLine(lookupLine.key, (line) =>
+                    withQuantityText(line, 'material', material.code),
+                  );
+                  closeLookup();
+                }}
+              />
+            ) : lookup.column === 'account' ? (
               <AccountPicker
                 label={te.account}
                 accounts={pickerAccounts(accounts)}

@@ -30,6 +30,7 @@ import {
   passingOctober,
   periodsReads,
 } from './periods-mocks';
+import { project, projectReads } from './projects-mocks';
 import { rateReads, today } from './rate-mocks';
 import { client, m1, receivablesReads } from './receivables-mocks';
 import { cash, reportsReads } from './reports-mocks';
@@ -669,6 +670,74 @@ for (const colorScheme of ['light', 'dark'] as const) {
             await screenshot(page, testInfo, `voucher-new-${kind}-${colorScheme}-${width}`);
           });
         }
+      });
+
+      test.describe('project screens', () => {
+        test.use({ me: owner, api: projectReads });
+        test.beforeEach(async ({ page }) => {
+          await page.clock.setFixedTime(today);
+        });
+
+        test('projects', async ({ page }, testInfo) => {
+          await page.goto('/projects');
+          await expect(page.getByRole('table', { name: ar.projects.list.title })).toBeVisible();
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `projects-${colorScheme}-${width}`);
+        });
+
+        for (const tab of ['summary', 'costs', 'materials', 'billings'] as const) {
+          test(`project report: ${tab}`, async ({ page }, testInfo) => {
+            await page.goto(`/projects/${project.id}?tab=${tab}`);
+            await expect(
+              page.getByRole('tab', { name: ar.projects.report.tabs[tab] }),
+            ).toHaveAttribute('aria-selected', 'true');
+            await expectNoPageOverflow(page);
+            await screenshot(page, testInfo, `project-report-${tab}-${colorScheme}-${width}`);
+          });
+        }
+
+        test('project terms', async ({ page }, testInfo) => {
+          await page.goto(`/projects/${project.id}/terms`);
+          await expect(
+            page.getByRole('table', { name: ar.projects.terms.subcontracts.title }),
+          ).toBeVisible();
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `project-terms-${colorScheme}-${width}`);
+        });
+
+        test('project documents', async ({ page }, testInfo) => {
+          await page.goto('/projects/documents');
+          await expect(page.getByRole('table', { name: ar.projects.register.title })).toBeVisible();
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `project-documents-${colorScheme}-${width}`);
+        });
+
+        for (const kind of ['purchase', 'wage_sheet', 'progress_billing'] as const) {
+          test(`new ${kind}`, async ({ page }, testInfo) => {
+            await page.goto(`/projects/documents/new/${kind}?project=${project.id}`);
+            await expect(
+              page.getByRole('combobox', { name: ar.projects.form.project }),
+            ).toHaveValue(`P1 ${project.name}`);
+            await expectNoPageOverflow(page);
+            await screenshot(page, testInfo, `project-new-${kind}-${colorScheme}-${width}`);
+          });
+        }
+
+        test('materials', async ({ page }, testInfo) => {
+          await page.goto('/materials');
+          await expect(page.getByRole('table', { name: ar.materials.title })).toBeVisible();
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `materials-${colorScheme}-${width}`);
+        });
+
+        test('material quantities', async ({ page }, testInfo) => {
+          await page.goto('/reports/material-quantities?from=2026-11-01&to=2026-11-09');
+          await expect(
+            page.getByRole('table', { name: ar.reports.names.material_quantities }),
+          ).toBeVisible();
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `material-quantities-${colorScheme}-${width}`);
+        });
       });
 
       test.describe('trust screens', () => {

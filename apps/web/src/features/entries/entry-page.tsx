@@ -38,6 +38,7 @@ import { formatDateTime, formatDay, formatEntryNumber } from '../../lib/format';
 import { can, useCompany } from '../../lib/session';
 import { companyQuery } from '../company/company-queries';
 import { previousMonth } from '../periods/period-parts';
+import { DocumentNumberText, PrintDocumentButton } from '../projects/project-parts';
 import {
   AttachmentsCard,
   BackLink,
@@ -166,6 +167,24 @@ function EntryView({ entry }: { entry: Entry }) {
               </Link>
             </Fact>
           )}
+          {entry.projectDocument && (
+            <Fact label={ar.projects.entry.document}>
+              <span className="flex flex-col items-start gap-2">
+                <Link
+                  to="/projects/documents"
+                  search={{ kind: entry.projectDocument.kind }}
+                  className="text-primary underline-offset-4 hover:underline"
+                >
+                  <DocumentNumberText document={entry.projectDocument} startMonth={startMonth} />
+                </Link>
+                <PrintDocumentButton
+                  documentId={entry.projectDocument.id}
+                  size="sm"
+                  label={ar.projects.entry.print}
+                />
+              </span>
+            </Fact>
+          )}
           {entry.source === 'opening' && can(me, 'opening.read') && (
             <Fact label={ar.opening.entry.link}>
               <Link to="/opening" className="text-primary underline-offset-4 hover:underline">
@@ -284,6 +303,8 @@ export function ReverseDialog({
     onSuccess: async (result) => {
       await queryClient.invalidateQueries({ queryKey: ['entries', companyId] });
       await queryClient.invalidateQueries({ queryKey: ['drafts', companyId] });
+      // A cancelled project document (S12 rule 22) leaves the register and the reports.
+      await queryClient.invalidateQueries({ queryKey: ['projects', companyId] });
       onClose();
       if (result.entry) await navigate({ to: '/entries/$id', params: { id: result.entry.id } });
       else if (result.draft) await navigate({ to: '/drafts/$id', params: { id: result.draft.id } });

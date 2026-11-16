@@ -20,6 +20,7 @@ import {
   type ProjectDocumentSpec,
   post,
   putProjectTerms,
+  readItemsAt,
   readMaterialQuantities,
   readProfitability,
   readProjectDocumentPrint,
@@ -603,5 +604,70 @@ describe('the project report (S12 "Reports")', () => {
     );
     expect(list.projects.map((row) => row.project.id)).toEqual([other.project]);
     expect(list.projects[0]?.revenue).toBe('0');
+  });
+});
+
+describe("the open items' contract filter (S12 rule 19's release screen)", () => {
+  it("finds a client's retentions of one project, not those of the client's other project", async () => {
+    const { books } = await december();
+    // A second project of the same client, billed with its own retention.
+    const second = await inCompany(books.id, async (tx) => {
+      const [contract] = await tx
+        .select({ id: dimensionTypes.id })
+        .from(dimensionTypes)
+        .where(sql`${dimensionTypes.code} = 'contract'`);
+      const value = await createDimensionValue(
+        tx,
+        books.id,
+        {
+          typeId: contract?.id as string,
+          code: 'P2',
+          name: 'P2',
+          nameLatin: null,
+          contractKind: 'project',
+          parentValueId: books.client,
+        },
+        actor(),
+      );
+      await putProjectTerms(
+        tx,
+        books.id,
+        value.id,
+        {
+          currency: 'USD',
+          contractValueMinor: '5000000',
+          retentionBp: 1000,
+          advanceRecoveryBp: 0,
+          budget: [],
+        },
+        actor(),
+      );
+      return value.id;
+    });
+    await postDocument(
+      books,
+      '2026-12-31',
+      { ...header(books, 'progress_billing'), contractValueId: second, cumulativeMinor: 1000000n },
+      [],
+    );
+    const retentions = (contractValueId?: string) =>
+      inCompany(books.id, (tx) =>
+        readItemsAt(tx, {
+          asOf: TODAY,
+          accountIds: [account(books, '113002')],
+          counterpartyValueId: books.client,
+          state: 'open',
+          ...(contractValueId && { contractValueId }),
+        }),
+      );
+    const all = await retentions();
+    const first = await retentions(books.project);
+    const other = await retentions(second);
+    expect(all).toHaveLength(2);
+    expect(first.map((item) => item.openMinor)).toEqual([300000n]);
+    expect(other.map((item) => item.openMinor)).toEqual([100000n]);
+    expect(new Set([...first, ...other].map((item) => item.id))).toEqual(
+      new Set(all.map((item) => item.id)),
+    );
   });
 });

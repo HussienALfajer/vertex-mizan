@@ -30,6 +30,7 @@ import {
   type DimensionPickerOption,
   FileUploadButton,
   IconButton,
+  QuantityCell,
   Table,
   TableBody,
   TableCell,
@@ -42,7 +43,9 @@ import type { ReactNode } from 'react';
 import { FormError } from '../../components/form-error';
 import { api, download, upload } from '../../lib/api';
 import { formatDateTime, formatDay, formatEntryNumber, formatKilobytes } from '../../lib/format';
+import { useCompany } from '../../lib/session';
 import { companyQuery } from '../company/company-queries';
+import { useMaterials } from '../projects/project-queries';
 
 const t = ar.entries;
 
@@ -219,6 +222,12 @@ export function EntryLinesTable({
   dimensions: ReadonlyMap<string, DimensionValue>;
   accountLink?: boolean;
 }) {
+  const { companyId } = useCompany();
+  // The catalogue is read only when a line names a material (S12), to name it.
+  const materials = useMaterials(
+    companyId,
+    lines.some((line) => line.quantity?.materialId != null),
+  ).byId;
   return (
     <Table aria-label={label}>
       <TableHeader>
@@ -260,6 +269,23 @@ export function EntryLinesTable({
                 )}
                 <DimensionNames ids={line.dimensionValueIds} byId={dimensions} />
                 {line.item && <LineItem item={line.item} link={accountLink} />}
+                {line.quantity && (
+                  <LineQuantityText
+                    quantity={line.quantity}
+                    currency={line.currency}
+                    material={
+                      line.quantity.materialId ? materials.get(line.quantity.materialId) : undefined
+                    }
+                  />
+                )}
+                {line.covered && (
+                  <CoveredPartText
+                    covered={line.covered}
+                    currency={line.currency}
+                    bookCurrency={bookCurrency}
+                    parallelCurrency={parallelCurrency}
+                  />
+                )}
                 {line.memo && (
                   <span className="text-xs text-muted-foreground">
                     <bdi>{line.memo}</bdi>
@@ -319,6 +345,81 @@ export function EntryLinesTable({
         </TableRow>
       </TableBody>
     </Table>
+  );
+}
+
+/**
+ * A line's material and quantity (S12 rules 4–6): the material's code and name, the quantity with
+ * its unit and the unit price, or "تعديل سعر" for a quantity of zero.
+ */
+function LineQuantityText({
+  quantity,
+  currency,
+  material,
+}: {
+  quantity: NonNullable<EntryLine['quantity']>;
+  currency: CurrencyCode;
+  material: { readonly code: string; readonly name: string } | undefined;
+}) {
+  return (
+    <span data-slot="line-quantity" className="flex flex-wrap items-baseline gap-x-2 text-xs">
+      {material && (
+        <span>
+          <bdi dir="ltr" className="font-medium">
+            {material.code}
+          </bdi>{' '}
+          <bdi>{material.name}</bdi>
+        </span>
+      )}
+      {quantity.unitPrice === null ? (
+        <Badge tone="info">{ar.materials.priceAdjustment}</Badge>
+      ) : (
+        <span className="flex items-baseline gap-1">
+          <QuantityCell
+            quantity={quantity.quantity}
+            unit={quantity.unit}
+            trim={quantity.materialId === null}
+          />
+          <span aria-hidden="true">×</span>
+          <span className="sr-only">{ar.materials.unitPrice}</span>
+          <bdi dir="ltr" className="tabular-nums">
+            {`${quantity.unitPrice} ${currency}`}
+          </bdi>
+        </span>
+      )}
+    </span>
+  );
+}
+
+/**
+ * The part of a line an applied advance covers (S12 rule 12, IFRIC 22): its transaction amount and
+ * the advance's carried amounts it takes in each ledger.
+ */
+function CoveredPartText({
+  covered,
+  currency,
+  bookCurrency,
+  parallelCurrency,
+}: {
+  covered: NonNullable<EntryLine['covered']>;
+  currency: CurrencyCode;
+  bookCurrency: CurrencyCode;
+  parallelCurrency: CurrencyCode | null;
+}) {
+  const p = ar.projects.preview;
+  return (
+    <span data-slot="covered-part" className="flex flex-wrap items-baseline gap-x-2 text-xs">
+      <span className="text-muted-foreground">{p.covered}</span>
+      <Amount value={BigInt(covered.amountMinor)} currency={currency} showCurrency />
+      <span className="text-muted-foreground">{p.coveredBook}</span>
+      <Amount value={BigInt(covered.bookMinor)} currency={bookCurrency} showCurrency />
+      {parallelCurrency && covered.parallelMinor !== null && (
+        <>
+          <span className="text-muted-foreground">{p.coveredParallel}</span>
+          <Amount value={BigInt(covered.parallelMinor)} currency={parallelCurrency} showCurrency />
+        </>
+      )}
+    </span>
   );
 }
 

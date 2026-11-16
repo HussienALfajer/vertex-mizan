@@ -66,6 +66,7 @@ function DimensionPicker({
   error,
   disabled,
   className,
+  id,
 }: {
   label: string;
   values: readonly DimensionPickerOption[];
@@ -80,6 +81,8 @@ function DimensionPicker({
   error?: string | undefined;
   disabled?: boolean | undefined;
   className?: string | undefined;
+  /** The field's id, which an error summary links to. */
+  id?: string | undefined;
 }) {
   const chosen = values.find((option) => option.id === value) ?? null;
   const items = useMemo(
@@ -88,7 +91,7 @@ function DimensionPicker({
   );
   const clearable = labels.clear !== undefined && !required && chosen !== null && !disabled;
   return (
-    <Field invalid={error !== undefined} disabled={disabled} className={className}>
+    <Field id={id} invalid={error !== undefined} disabled={disabled} className={className}>
       <FieldLabel>{label}</FieldLabel>
       <Combobox.Root<DimensionPickerOption>
         items={items}

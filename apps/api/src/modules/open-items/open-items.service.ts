@@ -110,7 +110,10 @@ function ledgerCurrency(
 export class OpenItemsService {
   constructor(@Inject(DATABASE) private readonly db: Database) {}
 
-  /** `GET /api/open-items`: items by account, counterparty or its type, state and reference, at a date. */
+  /**
+   * `GET /api/open-items`: items by account, counterparty or its type, contract (S12), state and
+   * reference, at a date.
+   */
   async list(access: CompanyRouteAccess, query: OpenItemQuery): Promise<OpenItemPage> {
     const asOf = query.asOf ?? todayInDamascus();
     return withCompany(this.db, access.company.id, async (tx) => {
@@ -119,6 +122,7 @@ export class OpenItemsService {
         ...(query.account && { accountIds: [query.account] }),
         ...(query.counterparty && { counterpartyValueId: query.counterparty }),
         ...(query.counterpartyType && { counterpartyType: query.counterpartyType }),
+        ...(query.contract && { contractValueId: query.contract }),
         state: query.state,
         ...(query.text && { text: query.text }),
         ...(query.cursor && { afterItemId: decodeCursor(query.cursor).id }),

@@ -72,6 +72,8 @@ export interface ItemFilter {
   readonly counterpartyValueId?: string;
   /** The items of control accounts of this counterparty type (S11 rule 6). */
   readonly counterpartyType?: CounterpartyType;
+  /** S12: the items whose dimension set names this value (a project's retentions on `113002`). */
+  readonly contractValueId?: string;
   readonly kind?: ItemKind;
   /** `open`: not zero at the date; `settled`: zero; `all` (default) both. */
   readonly state?: 'open' | 'settled' | 'all';
@@ -113,6 +115,11 @@ export async function readItemsAt(tx: Transaction, filter: ItemFilter): Promise<
   }
   if (filter.counterpartyType) {
     conditions.push(sql`a.counterparty_type = ${filter.counterpartyType}`);
+  }
+  if (filter.contractValueId) {
+    conditions.push(
+      sql`exists (select 1 from dimension_set_values dv where dv.company_id = i.company_id and dv.set_id = i.dimension_set_id and dv.value_id = ${filter.contractValueId}::uuid)`,
+    );
   }
   if (filter.kind) conditions.push(sql`i.kind = ${filter.kind}`);
   if (filter.text) {

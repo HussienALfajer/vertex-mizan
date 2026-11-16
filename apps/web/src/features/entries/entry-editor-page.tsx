@@ -9,6 +9,7 @@ import { hasCode } from '../../lib/api';
 import { useCompany } from '../../lib/session';
 import { accountsQuery } from '../chart/chart-queries';
 import { companyQuery } from '../company/company-queries';
+import { ProjectDocumentEditor } from '../projects/document-editor';
 import { ratePairsQuery } from '../rates/rate-queries';
 import { EntryEditor } from './entry-editor';
 import { BackLink } from './entry-parts';
@@ -87,6 +88,20 @@ export function DraftEditorPage() {
     return <FormError error={company.error ?? accounts.error ?? pairs.error} />;
   }
   const { data } = draft;
+  // A project document's draft opens on its own form (S12 "Screens").
+  if (data.projectDocument) {
+    const key = [data.id, data.state, data.rejected?.at, data.archived?.at, reloads].join(':');
+    return (
+      <ProjectDocumentEditor
+        key={key}
+        draft={data}
+        kind={data.projectDocument.kind}
+        company={company.data}
+        accounts={accounts.data}
+        runPreview={open === 'preview'}
+      />
+    );
+  }
   // A change of state (submitted, withdrawn, rejected, discarded) or a reload starts over from
   // the stored draft; a save of the screen's own edits does not.
   const key = [data.id, data.state, data.rejected?.at, data.archived?.at, reloads].join(':');
@@ -133,6 +148,33 @@ export function NewVoucherPage() {
         kind,
         account: start?.currency != null ? { id: start.id, currency: start.currency } : null,
       }}
+    />
+  );
+}
+
+const newDocumentRoute = getRouteApi('/_app/_company/projects/documents/new/$kind');
+
+/**
+ * `/projects/documents/new/:kind` (S12 "Screens"): a new project document on its form; `?project=`,
+ * from a project's page, starts it on that project. The first save creates its draft, which then
+ * opens on `/drafts/:id`.
+ */
+export function NewProjectDocumentPage() {
+  const { kind } = newDocumentRoute.useParams();
+  const { project } = newDocumentRoute.useSearch();
+  const { company, accounts, pairs } = useEditorBasics();
+  if (company.isPending || accounts.isPending || pairs.isPending) return <Loading />;
+  if (company.isError || accounts.isError || pairs.isError) {
+    return <FormError error={company.error ?? accounts.error ?? pairs.error} />;
+  }
+  return (
+    <ProjectDocumentEditor
+      key={`${kind}:${project ?? ''}`}
+      draft={null}
+      kind={kind}
+      company={company.data}
+      accounts={accounts.data}
+      projectId={project ?? null}
     />
   );
 }
