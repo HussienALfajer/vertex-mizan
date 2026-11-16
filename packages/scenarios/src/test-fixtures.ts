@@ -150,6 +150,43 @@ expect:
         currency: SYP, cumulative: 100000, previous: 0, retention: 10000, advance: 0 }
 `;
 
+/** S12 "Reports": a billing with a wages budget, and the project report read after it. */
+export const PROJECT_REPORT = `
+case: a project report
+company: { shape: syp, book: SYP, rate_policy: { book: bulletin },
+           contracts: [{ code: P1, kind: project, client: C1,
+                         terms: { currency: SYP, value: 1000000, retention_bp: 1000, advance_recovery_bp: 2000,
+                                  budget: [{ account: "511002", amount: 50000 }] } }] }
+steps:
+  - project_document: progress billing 1 of P1
+    accounting_date: 2026-11-03
+    payload: { document: { kind: progress_billing, contract: P1, cumulative: 100000 } }
+expect:
+  entries:
+    - source: manual
+      date: 2026-11-03
+      lines:
+        - { account: "112001", dims: { client: C1, contract: P1 }, currency: SYP, amount: 90000, book: 90000 }
+        - { account: "113002", dims: { client: C1, contract: P1 }, currency: SYP, amount: 10000, book: 10000 }
+        - { account: "411001", dims: { client: C1, contract: P1 }, currency: SYP, amount: -100000, book: -100000 }
+  reports:
+    - report: project_report
+      params: { contract: P1, from: 2026-11-01, to: 2026-11-30, ledger: book }
+      marks: [period_open]
+      summary: { currency: SYP, contract_value: 1000000, cumulative: 100000, billed: "10.0",
+                 revenue: 100000, direct_costs: 0, contribution: 100000, margin: "100.0",
+                 retention_receivable: 10000, client_advance: 0, subcontract_retention: 0, subcontract_advance: 0 }
+      costs:
+        - { account: "511002", in_range: 0, to_date: 0, budget: 50000, variance: 50000, used: "0.0" }
+      costs_totals: { in_range: 0, to_date: 0, budget: 50000, variance: 50000, used: "0.0" }
+      materials: []
+      wages: []
+      subcontracts: []
+      billings:
+        - { sequence: 1, number: "2026/1", date: 2026-11-03, cumulative: 100000, previous: 0, period: 100000,
+            retention: 10000, advance: 0, net: 90000, state: posted, outstanding: 90000 }
+`;
+
 /** S12: a subcontractor's billing on a subcontract, and the document it holds. */
 export const SUBCONTRACT_BILLING = `
 case: a subcontractor's billing

@@ -1,4 +1,6 @@
 import {
+  currencies,
+  currencyCodeSchema,
   divideHalfAwayFromZero,
   minorAmountSchema,
   STATEMENT_LINES,
@@ -697,6 +699,252 @@ const journalBookSchema = z
     params: { fiscalYear: fiscal_year, ...params },
   }));
 
+// --- Project report (S12 "Reports") ---
+
+/**
+ * `numerator / denominator` written with `places` decimals, rounded half away from zero (the money
+ * module's `divideHalfAwayFromZero`), or null for a denominator of zero.
+ */
+export function decimalOf(numerator: bigint, denominator: bigint, places: number): string | null {
+  if (denominator === 0n) return null;
+  const scale = 10n ** BigInt(places);
+  // The money module divides by a positive denominator: a negative one moves its sign up.
+  const units =
+    denominator > 0n
+      ? divideHalfAwayFromZero(numerator * scale, denominator)
+      : divideHalfAwayFromZero(-numerator * scale, -denominator);
+  const sign = units < 0n ? '-' : '';
+  const magnitude = units < 0n ? -units : units;
+  const fraction = (magnitude % scale).toString().padStart(places, '0');
+  return `${sign}${magnitude / scale}.${fraction}`;
+}
+
+const percentSchema = z
+  .string()
+  .regex(/^-?\d+\.\d$/, 'Expected a percentage with one decimal in quotes ("30.0")')
+  .nullable();
+const quantityTextSchema = z
+  .string({ error: 'Expected the quantity in quotes ("12.500")' })
+  .regex(/^-?\d{1,11}\.\d{3}$/, 'Expected a quantity with 3 decimals ("12.500")')
+  .refine((quantity) => quantity !== '-0.000', 'A zero quantity has no sign');
+const scaled = (text: string) => BigInt(text.replace('.', ''));
+const codeSchema = z.string().min(1);
+
+const projectSummarySchema = z
+  .strictObject({
+    currency: currencyCodeSchema,
+    contract_value: magnitudeSchema,
+    cumulative: magnitudeSchema,
+    billed: percentSchema,
+    ...profitabilityFiguresSchema,
+    retention_receivable: amountSchema,
+    client_advance: amountSchema,
+    subcontract_retention: amountSchema,
+    subcontract_advance: amountSchema,
+  })
+  .superRefine((summary, context) => {
+    checkFigures(summary, [], context);
+    const billed = decimalOf(summary.cumulative * 100n, summary.contract_value, 1);
+    if (summary.billed !== billed) issueAt(context, `billed is ${billed ?? 'null'}`, ['billed']);
+  })
+  .transform((summary) => ({
+    currency: summary.currency,
+    contractValue: summary.contract_value,
+    cumulative: summary.cumulative,
+    billed: summary.billed,
+    revenue: summary.revenue,
+    directCosts: summary.direct_costs,
+    contribution: summary.contribution,
+    margin: summary.margin,
+    retentionReceivable: summary.retention_receivable,
+    clientAdvance: summary.client_advance,
+    subcontractRetention: summary.subcontract_retention,
+    subcontractAdvance: summary.subcontract_advance,
+  }));
+
+const projectCostFigures = {
+  in_range: amountSchema,
+  to_date: amountSchema,
+  budget: magnitudeSchema,
+  variance: amountSchema.nullable(),
+  used: percentSchema,
+};
+
+type ProjectCostFigures = {
+  in_range: bigint;
+  to_date: bigint;
+  budget: bigint;
+  variance: bigint | null;
+  used: string | null;
+};
+
+/** S12 answer 15: a variance and the share used together, or neither; each from the budget. */
+function checkVariance(figures: ProjectCostFigures, path: PropertyKey[], context: z.RefinementCtx) {
+  if (figures.variance === null) {
+    if (figures.used !== null) issueAt(context, 'used goes with a variance', [...path, 'used']);
+    return;
+  }
+  const variance = figures.budget - figures.to_date;
+  if (figures.variance !== variance) {
+    issueAt(context, `The variance is ${variance}`, [...path, 'variance']);
+  }
+  const used = decimalOf(figures.to_date * 100n, figures.budget, 1);
+  if (figures.used !== used) issueAt(context, `used is ${used ?? 'null'}`, [...path, 'used']);
+}
+
+const projectCostFiguresOf = (figures: ProjectCostFigures) => ({
+  inRange: figures.in_range,
+  toDate: figures.to_date,
+  budget: figures.budget,
+  variance: figures.variance,
+  used: figures.used,
+});
+
+const projectMaterialSchema = z
+  .strictObject({
+    material: codeSchema,
+    currency: currencyCodeSchema,
+    quantity: quantityTextSchema,
+    amount: amountSchema,
+    ledger_amount: amountSchema,
+    average: z
+      .string()
+      .regex(/^-?\d+\.\d{4}$/, 'Expected an average unit cost with 4 decimals ("3150.0000")')
+      .nullable(),
+  })
+  .superRefine((row, context) => {
+    // The amount over the quantity in the transaction currency, with 4 places.
+    const minor = 10n ** BigInt(currencies[row.currency].exponent);
+    const average = decimalOf(row.amount * 1000n, minor * scaled(row.quantity), 4);
+    if (row.average !== average)
+      issueAt(context, `The average is ${average ?? 'null'}`, ['average']);
+  })
+  .transform(({ ledger_amount, ...row }) => ({ ...row, ledgerAmount: ledger_amount }));
+
+const projectWageSchema = z
+  .strictObject({
+    worker: codeSchema,
+    days: quantityTextSchema,
+    lump_sum: amountSchema,
+    amount: amountSchema,
+    balance: amountSchema,
+  })
+  .transform(({ lump_sum, ...row }) => ({ ...row, lumpSum: lump_sum }));
+
+const projectSubcontractSchema = z.strictObject({
+  supplier: codeSchema,
+  currency: currencyCodeSchema,
+  value: magnitudeSchema.nullable(),
+  cumulative: magnitudeSchema,
+  retention: amountSchema,
+  advance: amountSchema,
+  paid: amountSchema,
+});
+
+const projectBillingSchema = z
+  .strictObject({
+    sequence: countSchema(1),
+    number: z.string().regex(/^\d{4}\/[1-9]\d*$/, 'Expected a printed number ("2026/1")'),
+    date: dateSchema,
+    cumulative: magnitudeSchema,
+    previous: magnitudeSchema,
+    period: amountSchema,
+    retention: magnitudeSchema,
+    advance: magnitudeSchema,
+    net: magnitudeSchema,
+    state: z.enum(['posted', 'cancelled']),
+    outstanding: magnitudeSchema,
+  })
+  .superRefine((billing, context) => {
+    // S12 rules 14–15: the period's value is the cumulative less the previous, above zero; the
+    // net is what the deductions leave.
+    if (billing.period !== billing.cumulative - billing.previous || billing.period <= 0n) {
+      issueAt(context, 'The period is the cumulative less the previous, above zero', ['period']);
+    }
+    if (billing.net !== billing.period - billing.retention - billing.advance) {
+      issueAt(context, 'The net is the period less the retention and the recovery', ['net']);
+    }
+    if (
+      billing.outstanding > billing.net ||
+      (billing.state === 'cancelled' && billing.outstanding !== 0n)
+    ) {
+      issueAt(context, 'What remains is at most the net, and nothing of a cancelled billing', [
+        'outstanding',
+      ]);
+    }
+  });
+
+const uniqueBy = <T>(rows: readonly T[], key: (row: T) => string) =>
+  new Set(rows.map(key)).size === rows.length;
+
+const projectReportSchema = z
+  .strictObject({
+    report: z.literal('project_report'),
+    params: z.strictObject({
+      contract: codeSchema,
+      from: dateSchema,
+      to: dateSchema,
+      ledger: ledgerSchema.optional(),
+    }),
+    marks: marksSchema,
+    summary: projectSummarySchema,
+    costs: z.array(z.strictObject({ account: accountSchema, ...projectCostFigures })),
+    costs_totals: z.strictObject(projectCostFigures),
+    materials: z.array(projectMaterialSchema),
+    wages: z.array(projectWageSchema),
+    subcontracts: z.array(projectSubcontractSchema),
+    billings: z.array(projectBillingSchema),
+  })
+  .superRefine((report, context) => {
+    const { params, costs, costs_totals: totals } = report;
+    if (params.from > params.to) issueAt(context, 'from is after to', ['params', 'from']);
+    if (!uniqueBy(costs, (row) => row.account)) issueAt(context, 'An account is twice', ['costs']);
+    for (const [index, row] of costs.entries()) checkVariance(row, ['costs', index], context);
+    checkVariance(totals, ['costs_totals'], context);
+    // The totals add up the rows, and a variance shows on every row or none.
+    for (const key of ['in_range', 'to_date', 'budget'] as const) {
+      const total = sum(costs.map((row) => row[key]));
+      if (totals[key] !== total) {
+        issueAt(context, `The rows add up to ${total} for ${key}`, ['costs_totals', key]);
+      }
+    }
+    if (costs.some((row) => (row.variance === null) !== (totals.variance === null))) {
+      issueAt(context, 'A variance shows on every row and the totals, or on none', ['costs']);
+    }
+    // S12 "Reconciliation": the costs by account sum to the summary's direct costs.
+    if (totals.in_range !== report.summary.directCosts) {
+      issueAt(context, "The range's costs are the summary's direct costs", [
+        'costs_totals',
+        'in_range',
+      ]);
+    }
+    const material = (row: { material: string; currency: string }) =>
+      `${row.material}/${row.currency}`;
+    if (!uniqueBy(report.materials, material)) {
+      issueAt(context, 'A material is twice in one currency', ['materials']);
+    }
+    if (!uniqueBy(report.wages, (row) => row.worker)) {
+      issueAt(context, 'A worker is twice', ['wages']);
+    }
+    if (!uniqueBy(report.subcontracts, (row) => row.supplier)) {
+      issueAt(context, 'A supplier is twice', ['subcontracts']);
+    }
+    const sequences = report.billings.map((billing) => billing.sequence);
+    if (sequences.some((sequence, index) => sequence !== index + 1)) {
+      issueAt(context, "The billings are the project's, numbered 1, 2, … in order", ['billings']);
+    }
+    for (const [index, billing] of report.billings.entries()) {
+      if (billing.date > params.to) {
+        issueAt(context, 'A billing is dated on or before to', ['billings', index, 'date']);
+      }
+    }
+  }, WHEN_VALID)
+  .transform(({ costs, costs_totals, ...report }) => ({
+    ...report,
+    costs: costs.map(({ account, ...row }) => ({ account, ...projectCostFiguresOf(row) })),
+    costsTotals: projectCostFiguresOf(costs_totals),
+  }));
+
 /** One report a case states, told apart by its `report` (S09 rule 37's identities). */
 export const expectedReportSchema = z.discriminatedUnion(
   'report',
@@ -707,11 +955,12 @@ export const expectedReportSchema = z.discriminatedUnion(
     balanceSheetSchema,
     profitabilitySchema,
     journalBookSchema,
+    projectReportSchema,
   ],
   {
     error:
       'Expected a report: trial_balance, account_statement, income_statement, balance_sheet, ' +
-      'profitability or journal_book',
+      'profitability, journal_book or project_report',
   },
 );
 

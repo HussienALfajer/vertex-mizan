@@ -172,6 +172,19 @@ const rawCompanySchema = z.strictObject({
               ),
               retention_bp: countSchema(0, 10000),
               advance_recovery_bp: countSchema(0, 10000),
+              // The budget per direct-cost account, in the terms' currency (S12 answer 8).
+              budget: z
+                .array(
+                  z.strictObject({
+                    account: accountSchema,
+                    amount: amountSchema.refine((amount) => amount >= 0n, 'A budget is ≥ 0'),
+                  }),
+                )
+                .refine(
+                  (budget) => new Set(budget.map((row) => row.account)).size === budget.length,
+                  'An account is budgeted twice',
+                )
+                .default([]),
             })
             .optional(),
         })
@@ -189,6 +202,7 @@ const rawCompanySchema = z.strictObject({
                   value: terms.value,
                   retentionBp: terms.retention_bp,
                   advanceRecoveryBp: terms.advance_recovery_bp,
+                  budget: terms.budget,
                 },
         })),
     )
@@ -1523,6 +1537,64 @@ export const caseSchema = z
           (report.yearResultPreOpening !== null || report.compareYearResultPreOpening !== null)
         ) {
           issue("The result before the books start needs the company's books_start", path);
+        }
+      }
+      // S12 "Reports": a stated project with terms, its currency, value and budget; its
+      // subcontracts and materials stated in the company.
+      if (report.report === 'project_report') {
+        const project = contracts.find((contract) => contract.code === report.params.contract);
+        if (project?.terms == null) {
+          issue(`${report.params.contract} is not a project with terms`, [
+            ...path,
+            'params',
+            'contract',
+          ]);
+        } else {
+          const { terms } = project;
+          if (report.summary.currency !== terms.currency) {
+            issue(`The terms are in ${terms.currency}`, [...path, 'summary', 'currency']);
+          }
+          if (report.summary.contractValue !== terms.value) {
+            issue(`The contract value is ${terms.value}`, [...path, 'summary', 'contract_value']);
+          }
+          for (const row of terms.budget) {
+            if (!report.costs.some((cost) => cost.account === row.account)) {
+              issue(`The budgeted ${row.account} is a row`, [...path, 'costs']);
+            }
+          }
+          for (const [index, cost] of report.costs.entries()) {
+            const budget = terms.budget.find((row) => row.account === cost.account)?.amount ?? 0n;
+            if (cost.budget !== budget) {
+              issue(`${cost.account}'s budget is ${budget}`, [...path, 'costs', index, 'budget']);
+            }
+          }
+        }
+        const ofProject = subcontracts.filter((s) => s.contract === report.params.contract);
+        if (report.subcontracts.length !== ofProject.length) {
+          issue("The rows are the project's subcontracts", [...path, 'subcontracts']);
+        }
+        for (const [index, row] of report.subcontracts.entries()) {
+          const subcontract = ofProject.find((s) => s.supplier === row.supplier);
+          if (
+            subcontract === undefined ||
+            subcontract.currency !== row.currency ||
+            subcontract.value !== row.value
+          ) {
+            issue(`${row.supplier} is a subcontract of the project, with its currency and value`, [
+              ...path,
+              'subcontracts',
+              index,
+            ]);
+          }
+        }
+        for (const [index, row] of report.materials.entries()) {
+          if (!materials.some((material) => material.code === row.material)) {
+            issue(`${row.material} is not a material in company.materials`, [
+              ...path,
+              'materials',
+              index,
+            ]);
+          }
         }
       }
       const named = reportEntries(report);
