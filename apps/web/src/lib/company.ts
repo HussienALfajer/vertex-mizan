@@ -1,8 +1,8 @@
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from '@tanstack/react-router';
 import { companySchema, meSchema } from '@vertex-mizan/contracts';
-import { api } from '../../lib/api';
-import { meQuery } from '../../lib/session';
+import { api } from './api';
+import { meQuery } from './session';
 
 /** `GET /api/company`: the active company, keyed by the company the page works in. */
 export function companyQuery(companyId: string) {
