@@ -2,7 +2,7 @@
 
 Status: Proposed
 
-The owner approves the expected entries of these six cases before S13's movements are built (ADR 0024, `docs/specs/S13-project-movements.md`). Every step is a path the engine already runs (a voucher, a purchase invoice, a manual entry), so the cases switch to `Approved` with S13's first API PR, which checks that each movement posts exactly these entries.
+The owner approves the expected entries of these eight cases before S13's movements are built (ADR 0024, `docs/specs/S13-project-movements.md`). Every step is a path the engine already runs (a voucher, a purchase invoice, a manual entry), so the cases switch to `Approved` with S13's first API PR, which checks that each movement posts exactly these entries.
 
 ## Rule
 
@@ -324,4 +324,138 @@ expect:
   balances:
     - { account: "511002", book: 0 }
     - { account: "111002", currency: USD, amount: 120000, book: 120000 }
+```
+
+### Debt collected across two items, oldest due first
+
+The client owes P1 two amounts in SYP: M-1 of 118,500.00 SYP due 1 December at 118.5 (1,000.00 USD), and M-2 of 60,000.00 SYP due 5 December at 120 (500.00 USD). On 7 December, at 125, the client pays 150,000.00 SYP (1,200.00 USD). The collection clears M-1 whole, then 31,500.00 SYP of M-2 at its carrying amount in proportion; the two items carried 1,262.50 USD against 1,200.00 USD of cash, a realised loss of 62.50 USD. M-2 stays open at 28,500.00 SYP carrying 237.50 USD.
+
+```yaml
+case: debt collected 150,000.00 SYP at 125 across M-1 (118,500.00 at 118.5) and M-2 (60,000.00 at 120); a loss of 62.50
+company: { shape: usd, book: USD, template: contracting,
+           rate_policy: { book: market, book_accepts_transaction_rate: true },
+           contracts: [{ code: P1, kind: project, client: C1 }] }
+rates:
+  - { date: 2026-12-01, base: USD, quote: SYP, rate: "118.5000", type: market }
+  - { date: 2026-12-05, base: USD, quote: SYP, rate: "120.0000", type: market }
+  - { date: 2026-12-07, base: USD, quote: SYP, rate: "125.0000", type: market }
+steps:
+  - manual: owed to us M-1 for P1
+    accounting_date: 2026-12-01
+    payload: { lines: [{ account: "112001", dims: { client: C1, contract: P1 }, currency: SYP, amount: 11850000,
+                         open_item: { ref: M-1, due: 2026-12-01 } },
+                       { account: "411001", dims: { client: C1, contract: P1 }, currency: SYP, amount: -11850000 }] }
+  - manual: owed to us M-2 for P1
+    accounting_date: 2026-12-05
+    payload: { lines: [{ account: "112001", dims: { client: C1, contract: P1 }, currency: SYP, amount: 6000000,
+                         open_item: { ref: M-2, due: 2026-12-05 } },
+                       { account: "411001", dims: { client: C1, contract: P1 }, currency: SYP, amount: -6000000 }] }
+  - voucher: 150,000.00 SYP collected from the client, M-1 first
+    accounting_date: 2026-12-07
+    payload: { voucher: { kind: receipt, cash_account: "111001", party_name: "C1" },
+               lines: [{ account: "111001", currency: SYP, amount: 15000000 },
+                       { account: "112001", currency: SYP, amount: -11850000, item: M-1 },
+                       { account: "112001", currency: SYP, amount: -3150000, item: M-2 }] }
+expect:
+  entries:
+    - source: manual
+      date: 2026-12-01
+      lines:
+        # 118,500.00 SYP / 118.5 = 1,000.00 USD
+        - { account: "112001", dims: { client: C1, contract: P1 }, currency: SYP, amount: 11850000, book: 100000 }
+        - { account: "411001", dims: { client: C1, contract: P1 }, currency: SYP, amount: -11850000, book: -100000 }
+    - source: manual
+      date: 2026-12-05
+      lines:
+        # 60,000.00 SYP / 120 = 500.00 USD
+        - { account: "112001", dims: { client: C1, contract: P1 }, currency: SYP, amount: 6000000, book: 50000 }
+        - { account: "411001", dims: { client: C1, contract: P1 }, currency: SYP, amount: -6000000, book: -50000 }
+    - source: manual
+      date: 2026-12-07
+      lines:
+        # 150,000.00 SYP / 125 = 1,200.00 USD
+        - { account: "111001", currency: SYP, amount: 15000000, book: 120000 }
+        # M-1 whole, at what it carries
+        - { account: "112001", dims: { client: C1, contract: P1 }, currency: SYP, amount: -11850000, book: -100000 }
+        # 31,500.00 of M-2's 60,000.00: 500.00 × 31,500 / 60,000 = 262.50 USD
+        - { account: "112001", dims: { client: C1, contract: P1 }, currency: SYP, amount: -3150000, book: -26250 }
+        # residual: 120,000 − 100,000 − 26,250 = −6,250 → a debit: realised loss 62.50 USD
+        - { account: "541001", currency: USD, amount: 6250, book: 6250 }
+  balances:
+    - { account: "111001", currency: SYP, amount: 15000000, book: 120000 }
+    - { account: "541001", book: 6250 }
+  open_items:
+    - { item: M-1, account: "112001", dims: { client: C1, contract: P1 }, currency: SYP, amount: 0, book: 0 }
+    # 60,000.00 − 31,500.00 = 28,500.00 SYP; 500.00 − 262.50 = 237.50 USD
+    - { item: M-2, account: "112001", dims: { client: C1, contract: P1 }, currency: SYP, amount: 2850000, book: 23750 }
+```
+
+### One supplier owed on two projects: a project's debt paid at the item's average
+
+S1 is owed 118,500.00 SYP for P1 on 1 December at 118.5 (1,000.00 USD) and 120,000.00 SYP for P2 on 2 December at 120 (1,000.00 USD): one running item of 238,500.00 SYP carried at 2,000.00 USD. On 3 December, at 120, the owner deposits 118,500.00 SYP and pays P1's debt. The payment clears the item at its average carrying amount, 2,000.00 × 118,500 / 238,500 = 993.71 USD, against 987.50 USD of cash: a realised gain of 6.21 USD, the supplier's (S13 rule 6). P1 owes S1 nothing in SYP; P2 still owes 120,000.00 SYP, and the item carries 1,006.29 USD for it.
+
+```yaml
+case: S1 owed 118,500.00 SYP for P1 at 118.5 and 120,000.00 SYP for P2 at 120; P1's debt paid at 120; a gain of 6.21
+company: { shape: usd, book: USD, template: contracting,
+           rate_policy: { book: market, book_accepts_transaction_rate: true },
+           contracts: [{ code: P1, kind: project, client: C1 }, { code: P2, kind: project, client: C1 }] }
+rates:
+  - { date: 2026-12-01, base: USD, quote: SYP, rate: "118.5000", type: market }
+  - { date: 2026-12-02, base: USD, quote: SYP, rate: "120.0000", type: market }
+  - { date: 2026-12-03, base: USD, quote: SYP, rate: "120.0000", type: market }
+steps:
+  - project_document: site costs owed to S1 for P1
+    accounting_date: 2026-12-01
+    payload: { document: { kind: purchase, contract: P1, supplier: S1, currency: SYP },
+               lines: [{ account: "511006", amount: 11850000 }] }
+  - project_document: site costs owed to S1 for P2
+    accounting_date: 2026-12-02
+    payload: { document: { kind: purchase, contract: P2, supplier: S1, currency: SYP },
+               lines: [{ account: "511006", amount: 12000000 }] }
+  - voucher: the owner deposits 118,500.00 SYP
+    accounting_date: 2026-12-03
+    payload: { voucher: { kind: receipt, cash_account: "111001", party_name: "المالك" },
+               lines: [{ account: "111001", currency: SYP, amount: 11850000 },
+                       { account: "313001", currency: SYP, amount: -11850000 }] }
+  - voucher: P1's debt to S1 paid
+    accounting_date: 2026-12-03
+    payload: { voucher: { kind: payment, cash_account: "111001", party_name: "S1" },
+               lines: [{ account: "211001", dims: { supplier: S1, contract: P1 }, currency: SYP, amount: 11850000 },
+                       { account: "111001", currency: SYP, amount: -11850000 }] }
+expect:
+  entries:
+    - source: manual
+      date: 2026-12-01
+      lines:
+        # 118,500.00 SYP / 118.5 = 1,000.00 USD
+        - { account: "511006", dims: { contract: P1 }, currency: SYP, amount: 11850000, book: 100000 }
+        - { account: "211001", dims: { supplier: S1, contract: P1 }, currency: SYP, amount: -11850000, book: -100000 }
+    - source: manual
+      date: 2026-12-02
+      lines:
+        # 120,000.00 SYP / 120 = 1,000.00 USD
+        - { account: "511006", dims: { contract: P2 }, currency: SYP, amount: 12000000, book: 100000 }
+        - { account: "211001", dims: { supplier: S1, contract: P2 }, currency: SYP, amount: -12000000, book: -100000 }
+    - source: manual
+      date: 2026-12-03
+      lines:
+        # 118,500.00 SYP / 120 = 987.50 USD
+        - { account: "111001", currency: SYP, amount: 11850000, book: 98750 }
+        - { account: "313001", currency: SYP, amount: -11850000, book: -98750 }
+    - source: manual
+      date: 2026-12-03
+      lines:
+        # the item's average: 200,000 × 11,850,000 / 23,850,000 = 99,371.06… → 99,371
+        - { account: "211001", dims: { supplier: S1, contract: P1 }, currency: SYP, amount: 11850000, book: 99371 }
+        - { account: "111001", currency: SYP, amount: -11850000, book: -98750 }
+        # residual: 99,371 − 98,750 = 621 → a credit: realised gain 6.21 USD
+        - { account: "421001", currency: USD, amount: -621, book: -621 }
+  balances:
+    # P1 owes S1 nothing in SYP; its lines carry −1,000.00 + 993.71 = −6.29 USD of the item's average
+    - { account: "211001", dims: { supplier: S1, contract: P1 }, currency: SYP, amount: 0, book: -629 }
+    - { account: "211001", dims: { supplier: S1, contract: P2 }, currency: SYP, amount: -12000000, book: -100000 }
+    - { account: "421001", book: -621 }
+  open_items:
+    # 238,500.00 − 118,500.00 = 120,000.00 SYP; 2,000.00 − 993.71 = 1,006.29 USD
+    - { item: S1, account: "211001", dims: { supplier: S1 }, currency: SYP, amount: -12000000, book: -100629 }
 ```
