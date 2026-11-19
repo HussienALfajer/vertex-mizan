@@ -17,6 +17,7 @@ import { grid } from './grid.js';
 import { integrity } from './integrity.js';
 import { materials } from './materials.js';
 import { members } from './members.js';
+import { movements } from './movements.js';
 import { openItems } from './open-items.js';
 import { opening } from './opening.js';
 import { periods } from './periods.js';
@@ -63,6 +64,7 @@ export const ar = {
   projects,
   materials,
   settings,
+  movements,
 };
 
 export type Catalog = typeof ar;

@@ -1,5 +1,15 @@
 import { ar } from '@vertex-mizan/i18n';
 import {
+  dashboard,
+  ids,
+  materialCosts,
+  movementPage,
+  otherProject,
+  owner,
+  project,
+  ratesMissing,
+} from './movements-data';
+import {
   expect,
   expectNoPageOverflow,
   logoReply,
@@ -23,7 +33,9 @@ for (const colorScheme of ['light', 'dark'] as const) {
         await expect(html).toHaveAttribute('lang', 'ar');
         if (colorScheme === 'dark') await expect(html).toHaveClass(/\bdark\b/);
         else await expect(html).not.toHaveClass(/\bdark\b/);
-        await expect(page.getByRole('heading', { level: 1 })).toHaveText(ar.shell.home.title);
+        await expect(page.getByRole('heading', { level: 1 })).toHaveText(
+          ar.movements.dashboard.title,
+        );
         await expect(page.getByText(ar.shell.status.ok)).toBeVisible();
         await expectNoPageOverflow(page);
         await screenshot(page, testInfo, `home-${colorScheme}-${width}`);
@@ -113,6 +125,66 @@ for (const colorScheme of ['light', 'dark'] as const) {
           await expect(page.getByRole('img', { name: withLogo.displayName })).toBeVisible();
           await expectNoPageOverflow(page);
           await screenshot(page, testInfo, `settings-${colorScheme}-${width}`);
+        });
+      });
+
+      test.describe('the projects (S13)', () => {
+        test.use({
+          me: owner,
+          api: {
+            'GET /api/dashboard': { status: 200, json: dashboard },
+            'GET /api/project-books': { status: 200, json: [project, otherProject] },
+            [`GET /api/project-books/${ids.project}`]: { status: 200, json: project },
+            'GET /api/movements': { status: 200, json: movementPage },
+            'GET /api/material-costs': { status: 200, json: materialCosts },
+            'GET /api/day-rates': { status: 200, json: ratesMissing },
+          },
+        });
+
+        test('dashboard', async ({ page }, testInfo) => {
+          await page.goto('/');
+          await expect(page.getByRole('link', { name: project.name }).first()).toBeVisible();
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `dashboard-${colorScheme}-${width}`);
+        });
+
+        test('projects', async ({ page }, testInfo) => {
+          await page.goto('/projects');
+          await expect(page.getByRole('link', { name: otherProject.name })).toBeVisible();
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `projects-${colorScheme}-${width}`);
+        });
+
+        test('project', async ({ page }, testInfo) => {
+          await page.goto(`/projects/${ids.project}`);
+          await expect(page.getByRole('heading', { level: 1 })).toHaveText(project.name);
+          await expect(page.getByText(movementPage.movements[0]?.description ?? '')).toBeVisible();
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `project-${colorScheme}-${width}`);
+        });
+
+        test('new movement', async ({ page }, testInfo) => {
+          await page.goto(`/projects/${ids.project}`);
+          await page.getByRole('button', { name: ar.movements.dashboard.newMovement }).click();
+          const dialog = page.getByRole('dialog', { name: ar.movements.dialog.title });
+          await dialog.getByRole('combobox', { name: ar.movements.dialog.kind }).click();
+          await page.getByRole('option', { name: ar.movements.kinds.debt_collected }).click();
+          await expect(dialog.getByText(ar.movements.dialog.openToUs)).toBeVisible();
+          await screenshot(page, testInfo, `movement-dialog-${colorScheme}-${width}`, {
+            fullPage: false,
+          });
+        });
+
+        test('new project', async ({ page }, testInfo) => {
+          await page.route('**/api/parties**', (route) => route.fulfill({ json: [] }));
+          await page.goto('/projects');
+          await page.getByRole('button', { name: ar.movements.projects.newProject }).click();
+          await expect(
+            page.getByRole('dialog', { name: ar.movements.newProject.title }),
+          ).toBeVisible();
+          await screenshot(page, testInfo, `new-project-${colorScheme}-${width}`, {
+            fullPage: false,
+          });
         });
       });
 

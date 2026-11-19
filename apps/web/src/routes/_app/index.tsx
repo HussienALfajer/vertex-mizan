@@ -1,7 +1,10 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { HomePage } from '../../features/home/home-page';
+import { DashboardPage } from '../../features/movements/dashboard-page';
 
-/** The first page: the product and the system's health, until the dashboard arrives (S13 PR 4). */
+/** `/` (S13 screen 2): the dashboard. */
 export const Route = createFileRoute('/_app/')({
-  component: HomePage,
+  component: function Dashboard() {
+    const { me, companyId } = Route.useRouteContext();
+    return <DashboardPage me={me} companyId={companyId} />;
+  },
 });

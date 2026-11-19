@@ -124,7 +124,7 @@ test.describe('signed out', () => {
 test('sends a signed-in person from sign-in to the app', async ({ page }) => {
   await page.goto('/sign-in');
   await expect(page).toHaveURL('/');
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText(ar.shell.home.title);
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText(ar.movements.dashboard.title);
 });
 
 function refusalRoute() {
@@ -144,7 +144,9 @@ test.describe('a hostile return address', () => {
   for (const target of hostile) {
     test(`is dropped when already signed in: ${JSON.stringify(target)}`, async ({ page }) => {
       await page.goto(`/sign-in?${new URLSearchParams({ redirect: target })}`);
-      await expect(page.getByRole('heading', { level: 1 })).toHaveText(ar.shell.home.title);
+      await expect(page.getByRole('heading', { level: 1 })).toHaveText(
+        ar.movements.dashboard.title,
+      );
       expect(new URL(page.url()).pathname).toBe('/');
       expect(new URL(page.url()).host).not.toContain('attacker');
     });
@@ -167,7 +169,9 @@ test.describe('a hostile return address', () => {
         await page.getByLabel(t.fields.email).fill('owner@example.test');
         await page.getByLabel(t.fields.password, { exact: true }).fill(`pw-${Date.now()}-long`);
         await page.getByRole('button', { name: t.signIn.submit }).click();
-        await expect(page.getByRole('heading', { level: 1 })).toHaveText(ar.shell.home.title);
+        await expect(page.getByRole('heading', { level: 1 })).toHaveText(
+          ar.movements.dashboard.title,
+        );
         expect(new URL(page.url()).pathname).toBe('/');
         expect(new URL(page.url()).host).not.toContain('attacker');
       });

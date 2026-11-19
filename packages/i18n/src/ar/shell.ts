@@ -4,7 +4,8 @@ export const shell = {
   navLabel: 'التنقل الرئيسي',
   openNav: 'افتح قائمة التنقل',
   nav: {
-    home: 'الرئيسية',
+    home: 'لوحة التحكم',
+    projects: 'المشاريع',
     settings: 'الإعدادات',
     designSystem: 'نظام التصميم',
   },
@@ -16,10 +17,6 @@ export const shell = {
   palette: {
     navigation: 'الانتقال',
     display: 'العرض',
-  },
-  home: {
-    title: 'الرئيسية',
-    description: 'نظام محاسبي متعدد الشركات بقيد مزدوج ودفترين، عربي أولًا.',
   },
   status: {
     label: 'حالة النظام',
