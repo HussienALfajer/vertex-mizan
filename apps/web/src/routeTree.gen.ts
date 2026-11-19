@@ -14,6 +14,7 @@ import { Route as AuthRouteImport } from './routes/_auth'
 import { Route as DesignSystemRouteImport } from './routes/design-system'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AppSettingsRouteImport } from './routes/_app/settings'
+import { Route as AuthNoCompanyRouteImport } from './routes/_auth/no-company'
 import { Route as AuthSignInRouteImport } from './routes/_auth/sign-in'
 
 const AppRoute = AppRouteImport.update({
@@ -39,6 +40,11 @@ const AppSettingsRoute = AppSettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => AppRoute,
 } as any)
+const AuthNoCompanyRoute = AuthNoCompanyRouteImport.update({
+  id: '/no-company',
+  path: '/no-company',
+  getParentRoute: () => AuthRoute,
+} as any)
 const AuthSignInRoute = AuthSignInRouteImport.update({
   id: '/sign-in',
   path: '/sign-in',
@@ -49,12 +55,14 @@ export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
   '/design-system': typeof DesignSystemRoute
   '/settings': typeof AppSettingsRoute
+  '/no-company': typeof AuthNoCompanyRoute
   '/sign-in': typeof AuthSignInRoute
 }
 export interface FileRoutesByTo {
   '/': typeof AppIndexRoute
   '/design-system': typeof DesignSystemRoute
   '/settings': typeof AppSettingsRoute
+  '/no-company': typeof AuthNoCompanyRoute
   '/sign-in': typeof AuthSignInRoute
 }
 export interface FileRoutesById {
@@ -63,20 +71,22 @@ export interface FileRoutesById {
   '/_auth': typeof AuthRouteWithChildren
   '/design-system': typeof DesignSystemRoute
   '/_app/settings': typeof AppSettingsRoute
+  '/_auth/no-company': typeof AuthNoCompanyRoute
   '/_auth/sign-in': typeof AuthSignInRoute
   '/_app/': typeof AppIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/design-system' | '/settings' | '/sign-in'
+  fullPaths: '/' | '/design-system' | '/settings' | '/no-company' | '/sign-in'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/design-system' | '/settings' | '/sign-in'
+  to: '/' | '/design-system' | '/settings' | '/no-company' | '/sign-in'
   id:
     | '__root__'
     | '/_app'
     | '/_auth'
     | '/design-system'
     | '/_app/settings'
+    | '/_auth/no-company'
     | '/_auth/sign-in'
     | '/_app/'
   fileRoutesById: FileRoutesById
@@ -124,6 +134,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSettingsRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_auth/no-company': {
+      id: '/_auth/no-company'
+      path: '/no-company'
+      fullPath: '/no-company'
+      preLoaderRoute: typeof AuthNoCompanyRouteImport
+      parentRoute: typeof AuthRoute
+    }
     '/_auth/sign-in': {
       id: '/_auth/sign-in'
       path: '/sign-in'
@@ -147,10 +164,12 @@ const AppRouteChildren: AppRouteChildren = {
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 
 interface AuthRouteChildren {
+  AuthNoCompanyRoute: typeof AuthNoCompanyRoute
   AuthSignInRoute: typeof AuthSignInRoute
 }
 
 const AuthRouteChildren: AuthRouteChildren = {
+  AuthNoCompanyRoute: AuthNoCompanyRoute,
   AuthSignInRoute: AuthSignInRoute,
 }
 

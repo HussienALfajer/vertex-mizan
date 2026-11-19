@@ -96,12 +96,13 @@ export interface CompanyContext {
 }
 
 /**
- * A page of the active company (S01 rule 20): without one, the person chooses on `/companies`.
- * The id is kept for the page's life and sent with its writes (rule 22).
+ * A page of the active company (S01 rule 20). S13 keeps one company per person and has no
+ * companies screen (ADR 0024): without an active company, `/no-company` says so and offers to sign
+ * out. The id is kept for the page's life and sent with its writes (rule 22).
  */
 export function requireCompany(me: Me): CompanyContext {
   const membership = activeMembership(me);
-  if (!membership) throw redirect({ href: '/companies' });
+  if (!membership) throw redirect({ to: '/no-company' });
   return { companyId: membership.company.id, membership };
 }
 

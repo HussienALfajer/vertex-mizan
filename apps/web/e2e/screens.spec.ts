@@ -86,6 +86,17 @@ for (const colorScheme of ['light', 'dark'] as const) {
         });
       });
 
+      test.describe('without an active company', () => {
+        test.use({ me: { ...signedIn, activeCompanyId: null } });
+
+        test('no company', async ({ page }, testInfo) => {
+          await page.goto('/no-company');
+          await expect(page.getByRole('heading', { level: 1 })).toHaveText(ar.auth.noCompany.title);
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `no-company-${colorScheme}-${width}`);
+        });
+      });
+
       test.describe('with the logo and the setting', () => {
         test.use({
           me: { ...signedIn, permissions: ['company.read', 'company.settings'] },

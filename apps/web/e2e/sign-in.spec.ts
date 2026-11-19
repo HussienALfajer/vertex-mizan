@@ -110,3 +110,68 @@ function refusalRoute() {
   const reply = refusal(401, 'UNAUTHENTICATED');
   return { status: reply.status, json: reply.json };
 }
+
+// A crafted link never sends a person to another site (`safeRedirect`).
+const hostile = [
+  '//attacker.example/',
+  'https://attacker.example/',
+  '/\t/attacker.example/',
+  '/.//attacker.example/',
+];
+
+test.describe('a hostile return address', () => {
+  for (const target of hostile) {
+    test(`is dropped when already signed in: ${JSON.stringify(target)}`, async ({ page }) => {
+      await page.goto(`/sign-in?${new URLSearchParams({ redirect: target })}`);
+      await expect(page.getByRole('heading', { level: 1 })).toHaveText(ar.shell.home.title);
+      expect(new URL(page.url()).pathname).toBe('/');
+      expect(new URL(page.url()).host).not.toContain('attacker');
+    });
+  }
+
+  test.describe('signing in', () => {
+    test.use({ me: null });
+
+    for (const target of hostile) {
+      test(`is dropped after signing in: ${JSON.stringify(target)}`, async ({ page }) => {
+        let session: typeof exempt | null = null;
+        await page.route('**/api/me', (route) =>
+          session ? route.fulfill({ status: 200, json: session }) : route.fulfill(refusalRoute()),
+        );
+        await page.route('**/api/auth/sign-in/email', (route) => {
+          session = exempt;
+          return route.fulfill({ status: 200, json: { twoFactorRequired: false } });
+        });
+        await page.goto(`/sign-in?${new URLSearchParams({ redirect: target })}`);
+        await page.getByLabel(t.fields.email).fill('owner@example.test');
+        await page.getByLabel(t.fields.password, { exact: true }).fill(`pw-${Date.now()}-long`);
+        await page.getByRole('button', { name: t.signIn.submit }).click();
+        await expect(page.getByRole('heading', { level: 1 })).toHaveText(ar.shell.home.title);
+        expect(new URL(page.url()).pathname).toBe('/');
+        expect(new URL(page.url()).host).not.toContain('attacker');
+      });
+    }
+  });
+});
+
+test.describe('signed in without an active company', () => {
+  test.use({ me: { ...signedIn, activeCompanyId: null } });
+
+  test('says so and offers to sign out', async ({ page }) => {
+    let signedOut = false;
+    await page.route('**/api/auth/sign-out', (route) => {
+      signedOut = true;
+      return route.fulfill({ status: 200, json: { success: true } });
+    });
+    await page.goto('/settings');
+    await expect(page).toHaveURL('/no-company');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(t.noCompany.title);
+    // Signing in again leads here too, never into a loop.
+    await page.goto('/sign-in');
+    await expect(page).toHaveURL('/no-company');
+    await page.route('**/api/me', (route) => route.fulfill(refusalRoute()));
+    await page.getByRole('button', { name: t.noCompany.signOut }).click();
+    await expect(page).toHaveURL('/sign-in');
+    expect(signedOut).toBe(true);
+  });
+});
