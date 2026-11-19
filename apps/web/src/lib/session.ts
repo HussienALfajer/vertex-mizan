@@ -1,5 +1,5 @@
 import { queryOptions } from '@tanstack/react-query';
-import { getRouteApi, redirect } from '@tanstack/react-router';
+import { redirect } from '@tanstack/react-router';
 import { type Me, type MyMembership, meSchema, type Permission } from '@vertex-mizan/contracts';
 import type { RouterContext } from '../routes/__root';
 import { ApiError, api } from './api';
@@ -50,6 +50,14 @@ export function returnTo(search: Record<string, unknown>): ReturnTo {
   return { redirect: safeRedirect(search.redirect) };
 }
 
+/**
+ * A sign-in or enrolment address that brings the person back. Its pages are being rebuilt, so the
+ * guards name it as a plain address rather than a typed route.
+ */
+function withReturn(path: string, target: string): string {
+  return `${path}?${new URLSearchParams({ redirect: target })}`;
+}
+
 interface GuardArgs {
   context: RouterContext;
   location: { href: string };
@@ -58,7 +66,7 @@ interface GuardArgs {
 /** The person, or a redirect to sign-in that brings them back here. */
 export async function requireSession({ context, location }: GuardArgs): Promise<Me> {
   const me = await context.queryClient.ensureQueryData(meQuery);
-  if (!me) throw redirect({ to: '/sign-in', search: { redirect: location.href } });
+  if (!me) throw redirect({ href: withReturn('/sign-in', location.href) });
   return me;
 }
 
@@ -69,7 +77,7 @@ export async function requireSession({ context, location }: GuardArgs): Promise<
 export async function requireEnrolled(args: GuardArgs): Promise<Me> {
   const me = await requireSession(args);
   if (!me.person.twoFactorEnabled && !me.person.twoFactorExempt) {
-    throw redirect({ to: '/two-factor/enrol', search: { redirect: args.location.href } });
+    throw redirect({ href: withReturn('/two-factor/enrol', args.location.href) });
   }
   return me;
 }
@@ -96,18 +104,11 @@ export interface CompanyContext {
  */
 export function requireCompany(me: Me): CompanyContext {
   const membership = activeMembership(me);
-  if (!membership) throw redirect({ to: '/companies' });
+  if (!membership) throw redirect({ href: '/companies' });
   return { companyId: membership.company.id, membership };
 }
 
 /** A page that needs a permission: anyone else goes to the company's first page. */
 export function requirePermission(me: Me, permission: Permission): void {
   if (!can(me, permission)) throw redirect({ to: '/' });
-}
-
-const companyRoute = getRouteApi('/_app/_company');
-
-/** The company a page of `/_app/_company` works in, with the person as the page loaded them. */
-export function useCompany(): CompanyContext & { me: Me } {
-  return companyRoute.useRouteContext();
 }

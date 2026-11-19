@@ -6,7 +6,7 @@ import {
   type Request,
   type TestInfo,
 } from '@playwright/test';
-import type { Company, ErrorCode, HealthResponse, Me } from '@vertex-mizan/contracts';
+import type { ErrorCode, HealthResponse, Me } from '@vertex-mizan/contracts';
 
 /*
  * The `test` every spec uses: Playwright's, with the API mocked for the page and failing a test
@@ -46,31 +46,6 @@ export const signedIn: Me = {
   ],
   activeCompanyId: '01900000-0000-7000-8000-000000000003',
   permissions: ['company.read'],
-};
-
-/**
- * The active company as `GET /api/company` answers it: the shell reads it for the opening's link
- * (S10), so every page asks for it; a company without a books start unless a test says so.
- */
-export const defaultCompany: Company = {
-  id: '01900000-0000-7000-8000-000000000003',
-  name: 'شركة اختبار',
-  nameLatin: 'Test Company',
-  ledgers: {
-    book: { currency: 'SYP', ratePolicy: { rateType: 'bulletin', acceptsTransactionRate: false } },
-    parallel: {
-      currency: 'USD',
-      ratePolicy: { rateType: 'market', acceptsTransactionRate: true },
-    },
-  },
-  fiscalYearStartMonth: 1,
-  policyNote: 'العملة الوظيفية هي الليرة السورية: عملة البيئة الاقتصادية الرئيسية للشركة (مثال).',
-  booksStarted: false,
-  booksStart: null,
-  openingState: null,
-  manualEntryApproval: false,
-  archived: null,
-  createdAt: '2026-10-20T08:00:00.000Z',
 };
 
 /** An API answer: a status and a JSON body (none for 204). */
@@ -118,9 +93,6 @@ export const test = base.extend<{ health: HealthMock; me: Me | null; api: ApiMoc
       if (key === 'GET /api/me') {
         const reply = me ? { status: 200, json: me } : refusal(401, 'UNAUTHENTICATED');
         return route.fulfill({ status: reply.status, json: reply.json });
-      }
-      if (key === 'GET /api/company') {
-        return route.fulfill({ status: 200, json: defaultCompany });
       }
       if (key === 'GET /api/health') {
         if (health === 'unreachable') return route.abort('connectionrefused');

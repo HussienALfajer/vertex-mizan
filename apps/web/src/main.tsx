@@ -12,7 +12,7 @@ import './styles.css';
 /**
  * A company request that finds no active company (the member was removed, S01 edge case 7), or a
  * read that finds another one (a switch in another tab, rule 22): the person loads again, and the
- * company pages follow (`_app/_company.tsx`) or send them to `/companies`. A refused write keeps
+ * company pages follow, or `requireCompany` sends them to `/companies`. A refused write keeps
  * its form and says to reload, so typed values are not dropped unseen.
  */
 function reloadPerson() {

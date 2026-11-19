@@ -1,11 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link, type LinkProps, useRouter } from '@tanstack/react-router';
-import {
-  type Me,
-  type Permission,
-  PROJECT_DOCUMENT_KINDS,
-  VOUCHER_KINDS,
-} from '@vertex-mizan/contracts';
+import type { Me, Permission } from '@vertex-mizan/contracts';
 import { ar } from '@vertex-mizan/i18n';
 import {
   Badge,
@@ -18,9 +13,7 @@ import {
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
-  keymap,
   type PaletteCommand,
   PoweredBy,
   Sheet,
@@ -30,49 +23,24 @@ import {
   setDensity,
   setTheme,
   ThemeToggle,
-  useShortcut,
   VertexMizanMark,
 } from '@vertex-mizan/ui';
 import {
   ArchiveIcon,
   ArrowLeftIcon,
-  ArrowLeftRightIcon,
-  BookOpenIcon,
-  BoxesIcon,
   BuildingIcon,
-  CalendarCheckIcon,
-  CalendarDaysIcon,
-  ChartColumnIcon,
   CheckIcon,
   ChevronDownIcon,
-  FilePenLineIcon,
-  FlagIcon,
-  FolderTreeIcon,
-  HardHatIcon,
-  HashIcon,
-  HourglassIcon,
   HouseIcon,
-  KeyRoundIcon,
-  LandmarkIcon,
   type LucideIcon,
   MenuIcon,
   MoonIcon,
-  PackageIcon,
-  PlusIcon,
   RowsIcon,
-  ScaleIcon,
-  ScrollTextIcon,
-  ShieldCheckIcon,
-  ShieldEllipsisIcon,
   SunIcon,
   SwatchBookIcon,
-  TagsIcon,
-  UserRoundSearchIcon,
-  UsersIcon,
-  WalletIcon,
 } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
-import { companyQuery, useSwitchCompany } from '../features/company/company-queries';
+import { useSwitchCompany } from '../lib/company';
 import { activeMembership, can, meQuery } from '../lib/session';
 
 const t = ar.shell;
@@ -88,97 +56,10 @@ interface NavItem {
   show?: () => boolean;
   /** Lists the item only for a person holding this permission in the active company (cosmetic). */
   permission?: Permission;
-  /**
-   * The opening's page (S10 "Screens"): in the sidebar while the company has a books start and its
-   * opening is not posted, in the palette whenever it has a books start.
-   */
-  opening?: true;
 }
-
-/** Where the opening's page is listed for the active company (S10 "Screens"). */
-type OpeningLink = 'sidebar' | 'palette' | 'none';
 
 const navItems: NavItem[] = [
   { to: '/', label: t.nav.home, icon: HouseIcon, exact: true },
-  { to: '/companies', label: ar.company.nav.companies, icon: BuildingIcon },
-  { to: '/chart', label: ar.chart.nav, icon: FolderTreeIcon, permission: 'accounts.read' },
-  {
-    to: '/chart/roles',
-    label: ar.chart.roleSettings.nav,
-    icon: KeyRoundIcon,
-    permission: 'accounts.read',
-  },
-  { to: '/dimensions', label: ar.dimensions.nav, icon: TagsIcon, permission: 'dimensions.read' },
-  { to: '/entries', label: ar.entries.nav, icon: BookOpenIcon, permission: 'entries.read' },
-  { to: '/drafts', label: ar.drafts.nav, icon: FilePenLineIcon, permission: 'drafts.read' },
-  { to: '/cash', label: ar.cash.title, icon: WalletIcon, permission: 'reports.read' },
-  { to: '/projects', label: ar.projects.nav, icon: HardHatIcon, permission: 'reports.read' },
-  {
-    to: '/receivables',
-    label: ar.openItems.ageing.nav,
-    icon: HourglassIcon,
-    permission: 'open_items.read',
-  },
-  {
-    to: '/reports',
-    label: ar.reports.nav,
-    icon: ChartColumnIcon,
-    permission: 'reports.read',
-  },
-  {
-    to: '/periods',
-    label: ar.periods.nav,
-    icon: CalendarCheckIcon,
-    permission: 'periods.read',
-  },
-  {
-    to: '/revaluation',
-    label: ar.revaluation.nav,
-    icon: ScaleIcon,
-    permission: 'periods.read',
-  },
-  {
-    to: '/rates',
-    label: ar.rates.nav,
-    icon: ArrowLeftRightIcon,
-    exact: true,
-    permission: 'rates.read',
-  },
-  {
-    to: '/rates/calendar',
-    label: ar.rates.calendar.nav,
-    icon: CalendarDaysIcon,
-    permission: 'rates.read',
-  },
-  {
-    to: '/settings/company',
-    label: ar.company.nav.settings,
-    icon: LandmarkIcon,
-    permission: 'company.read',
-  },
-  {
-    to: '/opening',
-    label: ar.opening.nav,
-    icon: FlagIcon,
-    permission: 'opening.read',
-    opening: true,
-  },
-  { to: '/settings/members', label: ar.members.nav, icon: UsersIcon, permission: 'members.read' },
-  { to: '/settings/audit', label: ar.audit.nav, icon: ScrollTextIcon, permission: 'audit.read' },
-  {
-    to: '/integrity',
-    label: ar.integrity.nav,
-    icon: ShieldEllipsisIcon,
-    permission: 'integrity.read',
-  },
-  {
-    to: '/settings/export',
-    label: ar.export.nav,
-    icon: PackageIcon,
-    permission: 'company.export',
-  },
-  { to: '/account/security', label: ar.auth.nav, icon: ShieldCheckIcon },
-  // A developer gallery (and the screenshot tests' page): listed in development only.
   {
     to: '/design-system',
     label: t.nav.designSystem,
@@ -188,32 +69,11 @@ const navItems: NavItem[] = [
   },
 ];
 
-const listedItems = (
-  me: Me | null | undefined,
-  opening: OpeningLink,
-  where: 'sidebar' | 'palette',
-) =>
+const listedItems = (me: Me | null | undefined) =>
   navItems.filter(
     (item) =>
-      (!item.show || item.show()) &&
-      (!item.permission || (me ? can(me, item.permission) : false)) &&
-      (!item.opening || opening === 'sidebar' || (where === 'palette' && opening === 'palette')),
+      (!item.show || item.show()) && (!item.permission || (me ? can(me, item.permission) : false)),
   );
-
-/**
- * Where the opening's page is listed: read from the active company's books start and opening
- * state (`GET /api/company`, shared with `/settings/company`), for a person with `opening.read`.
- */
-function useOpeningLink(me: Me | null | undefined): OpeningLink {
-  const companyId = me ? activeMembership(me)?.company.id : undefined;
-  const reads = me !== null && me !== undefined && can(me, 'opening.read');
-  const company = useQuery({
-    ...companyQuery(companyId ?? ''),
-    enabled: companyId !== undefined && reads,
-  }).data;
-  if (!reads || !company || company.id !== companyId || company.booksStart === null) return 'none';
-  return company.openingState === 'posted' ? 'palette' : 'sidebar';
-}
 
 /**
  * Vertex Green navigation, a gold marker on the active page (brand/identity.md §2, §7). Signed
@@ -270,7 +130,6 @@ const navLink = cn(
 );
 
 function Sidebar({ me, onNavigate }: { me: Me | null | undefined; onNavigate?: () => void }) {
-  const opening = useOpeningLink(me);
   return (
     <div className="flex h-full w-full flex-col border-e border-sidebar-border bg-sidebar text-sidebar-foreground [--ring:var(--sidebar-ring)]">
       <div className="flex h-14 shrink-0 items-center gap-3 border-b border-sidebar-border px-5">
@@ -282,7 +141,7 @@ function Sidebar({ me, onNavigate }: { me: Me | null | undefined; onNavigate?: (
         aria-label={t.navLabel}
         className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto p-3"
       >
-        {listedItems(me, opening, 'sidebar').map(({ to, label, icon: Icon, exact }) => (
+        {listedItems(me).map(({ to, label, icon: Icon, exact }) => (
           <Link
             key={to}
             to={to}
@@ -309,11 +168,6 @@ function Sidebar({ me, onNavigate }: { me: Me | null | undefined; onNavigate?: (
 function TopBar({ me }: { me: Me | null | undefined }) {
   const [navOpen, setNavOpen] = useState(false);
   const commands = useShellCommands(me);
-  const router = useRouter();
-  // Alt+N anywhere: a new manual entry (ADR 0010 §4), for those who prepare entries.
-  useShortcut(keymap.newEntry, () => void router.navigate({ to: '/entries/new' }), {
-    enabled: me ? can(me, 'drafts.manage') : false,
-  });
   return (
     <header className="sticky top-0 z-40 flex h-14 items-center justify-between gap-3 border-b border-border bg-surface px-4 md:px-8">
       <div className="flex shrink-0 items-center gap-2 md:hidden">
@@ -342,209 +196,14 @@ function TopBar({ me }: { me: Me | null | undefined }) {
 /** The palette's app-wide commands: the listed pages, the theme and the density. */
 function useShellCommands(me: Me | null | undefined): PaletteCommand[] {
   const router = useRouter();
-  const opening = useOpeningLink(me);
   return [
-    ...listedItems(me, opening, 'palette').map(({ to, label }) => ({
+    ...listedItems(me).map(({ to, label }) => ({
       id: `go-${to}`,
       label,
       group: t.palette.navigation,
       icon: <ArrowLeftIcon />,
       run: () => void router.navigate({ to }),
     })),
-    ...(me && can(me, 'accounts.manage')
-      ? [
-          {
-            id: 'new-account',
-            label: ar.chart.newAccount,
-            group: t.palette.navigation,
-            keywords: ['new account', 'chart'],
-            icon: <PlusIcon />,
-            run: () => void router.navigate({ to: '/chart', search: { new: true } }),
-          },
-        ]
-      : []),
-    ...(me && can(me, 'drafts.manage')
-      ? [
-          {
-            id: 'new-entry',
-            label: ar.entries.newEntry,
-            group: t.palette.navigation,
-            keywords: ['new entry', 'journal entry', 'قيد يومية'],
-            shortcut: keymap.newEntry,
-            icon: <PlusIcon />,
-            run: () => void router.navigate({ to: '/entries/new' }),
-          },
-        ]
-      : []),
-    ...(me && can(me, 'drafts.manage')
-      ? VOUCHER_KINDS.map((kind) => ({
-          id: `new-voucher-${kind}`,
-          label: ar.cash.palette[kind],
-          group: ar.cash.palette.group,
-          keywords: [ar.cash.newVoucher[kind], ar.cash.palette.keywords, `voucher ${kind}`],
-          icon: <WalletIcon />,
-          run: () => void router.navigate({ to: '/cash/vouchers/new/$kind', params: { kind } }),
-        }))
-      : []),
-    ...(me && can(me, 'drafts.manage')
-      ? PROJECT_DOCUMENT_KINDS.map((kind) => ({
-          id: `new-project-document-${kind}`,
-          label: ar.projects.newDocument[kind],
-          group: ar.projects.palette.group,
-          keywords: [ar.projects.kinds[kind], ar.projects.palette.keywords, `project ${kind}`],
-          icon: <HardHatIcon />,
-          run: () =>
-            void router.navigate({ to: '/projects/documents/new/$kind', params: { kind } }),
-        }))
-      : []),
-    ...(me && can(me, 'reports.read')
-      ? [
-          {
-            id: 'project-report',
-            label: ar.projects.palette.report,
-            group: ar.projects.palette.group,
-            keywords: [ar.projects.palette.keywords, 'project report'],
-            icon: <HardHatIcon />,
-            run: () => void router.navigate({ to: '/projects', search: { find: 'project' } }),
-          },
-        ]
-      : []),
-    ...(me && can(me, 'dimensions.read')
-      ? [
-          {
-            id: 'materials',
-            label: ar.projects.palette.materials,
-            group: ar.projects.palette.group,
-            keywords: [ar.projects.palette.keywords, 'materials catalogue', 'مواد'],
-            icon: <BoxesIcon />,
-            run: () => void router.navigate({ to: '/materials' }),
-          },
-        ]
-      : []),
-    ...(me && can(me, 'reports.read')
-      ? [
-          {
-            id: 'cash-statement',
-            label: ar.cash.palette.statement,
-            group: ar.cash.palette.group,
-            keywords: [ar.cash.palette.keywords, 'cash statement'],
-            icon: <WalletIcon />,
-            run: () => void router.navigate({ to: '/cash', search: { find: 'statement' } }),
-          },
-        ]
-      : []),
-    ...(me && can(me, 'entries.read')
-      ? [
-          {
-            id: 'entry-number',
-            label: ar.entries.goToNumber,
-            group: t.palette.navigation,
-            keywords: ['entry number', 'رقم القيد'],
-            icon: <HashIcon />,
-            run: () => void router.navigate({ to: '/entries', search: { find: 'number' } }),
-          },
-        ]
-      : []),
-    ...(me && can(me, 'open_items.read')
-      ? [
-          {
-            id: 'client-statement',
-            label: ar.openItems.find.clientStatement,
-            group: t.palette.navigation,
-            keywords: ['client statement', 'statement of account', 'العميل'],
-            icon: <UserRoundSearchIcon />,
-            run: () => void router.navigate({ to: '/receivables', search: { find: 'client' } }),
-          },
-          {
-            id: 'go-to-item',
-            label: ar.openItems.find.goToItem,
-            group: t.palette.navigation,
-            keywords: ['open item', 'invoice', 'reference', 'فاتورة'],
-            icon: <HashIcon />,
-            run: () => void router.navigate({ to: '/receivables', search: { find: 'item' } }),
-          },
-        ]
-      : []),
-    ...(me && can(me, 'entries.approve')
-      ? [
-          {
-            id: 'awaiting-approval',
-            label: ar.drafts.awaitingApproval,
-            group: t.palette.navigation,
-            keywords: ['approval', 'اعتماد'],
-            icon: <FilePenLineIcon />,
-            run: () => void router.navigate({ to: '/drafts', search: { view: 'awaiting' } }),
-          },
-        ]
-      : []),
-    ...(me && can(me, 'integrity.read')
-      ? [
-          {
-            id: 'run-integrity-check',
-            label: ar.integrity.paletteRun,
-            group: t.palette.navigation,
-            keywords: ['integrity check', 'chain', 'السلسلة'],
-            icon: <ShieldEllipsisIcon />,
-            run: () => void router.navigate({ to: '/integrity', search: { run: true } }),
-          },
-        ]
-      : []),
-    ...(me && can(me, 'rates.manage')
-      ? [
-          {
-            id: 'record-bulletin',
-            label: ar.rates.recordBulletin,
-            group: t.palette.navigation,
-            keywords: ['bulletin rate', 'exchange rate', 'سعر الصرف'],
-            icon: <PlusIcon />,
-            run: () => void router.navigate({ to: '/rates', search: { record: 'bulletin' } }),
-          },
-        ]
-      : []),
-    ...(me && can(me, 'reports.read')
-      ? [
-          {
-            id: 'report-trial-balance',
-            label: ar.reports.palette.trialBalance,
-            group: t.palette.navigation,
-            keywords: ['trial balance', 'ميزان'],
-            icon: <ChartColumnIcon />,
-            run: () => void router.navigate({ to: '/reports/trial-balance' }),
-          },
-          {
-            id: 'report-income-statement',
-            label: ar.reports.palette.incomeStatement,
-            group: t.palette.navigation,
-            keywords: ['income statement', 'profit and loss', 'الأرباح والخسائر'],
-            icon: <ChartColumnIcon />,
-            run: () => void router.navigate({ to: '/reports/income-statement' }),
-          },
-          {
-            id: 'report-balance-sheet',
-            label: ar.reports.palette.balanceSheet,
-            group: t.palette.navigation,
-            keywords: ['balance sheet', 'financial position', 'المركز المالي'],
-            icon: <ChartColumnIcon />,
-            run: () => void router.navigate({ to: '/reports/balance-sheet' }),
-          },
-          {
-            id: 'report-account-statement',
-            label: ar.reports.palette.accountStatement,
-            group: t.palette.navigation,
-            keywords: ['account statement', 'ledger', 'كشف'],
-            icon: <UserRoundSearchIcon />,
-            run: () => void router.navigate({ to: '/reports', search: { find: 'account' } }),
-          },
-          {
-            id: 'report-journal-book',
-            label: ar.reports.palette.journalBook,
-            group: t.palette.navigation,
-            keywords: ['journal book', 'print journal', 'اليومية'],
-            icon: <BookOpenIcon />,
-            run: () => void router.navigate({ to: '/reports/journal', search: { print: true } }),
-          },
-        ]
-      : []),
     {
       id: 'dark',
       label: common.theme.toDark,
@@ -621,11 +280,6 @@ function CompanySwitcher({ me }: { me: Me }) {
             );
           })}
         </DropdownMenuGroup>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem render={<Link to="/companies" />}>
-          <BuildingIcon aria-hidden="true" />
-          {switcher.all}
-        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );
