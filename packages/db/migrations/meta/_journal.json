@@ -554,6 +554,20 @@
       "when": 1794825264777,
       "tag": "0078_s01_two_factor_exempt_guard",
       "breakpoints": true
+    },
+    {
+      "idx": 79,
+      "version": "7",
+      "when": 1795110708224,
+      "tag": "0079_many_adam_destine",
+      "breakpoints": true
+    },
+    {
+      "idx": 80,
+      "version": "7",
+      "when": 1795110719953,
+      "tag": "0080_s13_movement_guards",
+      "breakpoints": true
     }
   ]
 }

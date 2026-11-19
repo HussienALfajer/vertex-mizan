@@ -3483,6 +3483,177 @@ BEGIN
 END
 `,
     },
+    {
+      name: 'project_movement_sequence_rules',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    IF NEW.last_number <> 1 THEN
+      RAISE EXCEPTION 'project_movement_sequences: a fiscal year''s numbers start at 1'
+        USING ERRCODE = 'restrict_violation';
+    END IF;
+    RETURN NEW;
+  END IF;
+  IF (NEW.id, NEW.company_id, NEW.fiscal_year, NEW.created_at)
+      IS DISTINCT FROM (OLD.id, OLD.company_id, OLD.fiscal_year, OLD.created_at)
+    OR NEW.last_number IS DISTINCT FROM OLD.last_number + 1 THEN
+    RAISE EXCEPTION 'project_movement_sequences: a sequence moves by one number at a time'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  RETURN NEW;
+END
+`,
+    },
+    {
+      name: 'project_movement_sequence_used',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM public.project_movements m
+    WHERE m.company_id = NEW.company_id AND m.fiscal_year = NEW.fiscal_year
+      AND m.number = NEW.last_number
+  ) THEN
+    RAISE EXCEPTION 'movement number % of fiscal year % was given but no movement took it',
+      NEW.last_number, NEW.fiscal_year
+      USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NULL;
+END
+`,
+    },
+    {
+      name: 'project_movement_rules',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+DECLARE
+  given integer;
+  entry record;
+  project record;
+BEGIN
+  SELECT s.last_number INTO given
+  FROM public.project_movement_sequences s
+  WHERE s.company_id = NEW.company_id AND s.fiscal_year = NEW.fiscal_year;
+  IF given IS DISTINCT FROM NEW.number THEN
+    RAISE EXCEPTION 'project_movements: a movement takes the number its sequence just gave'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  SELECT e.draft_id, e.entry_date, e.fiscal_year, e.source, e.reverses_entry_id INTO entry
+  FROM public.journal_entries e
+  WHERE e.company_id = NEW.company_id AND e.id = NEW.entry_id;
+  IF NOT FOUND OR entry.draft_id IS DISTINCT FROM NEW.draft_id
+    OR entry.entry_date <> NEW.movement_date OR entry.fiscal_year <> NEW.fiscal_year
+    OR entry.source <> 'manual' OR entry.reverses_entry_id IS NOT NULL THEN
+    RAISE EXCEPTION 'project_movements: a movement''s entry is posted from its draft, on its date'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF NEW.contract_value_id IS NOT NULL THEN
+    SELECT v.contract_kind, v.parent_value_id INTO project
+    FROM public.dimension_values v
+    WHERE v.company_id = NEW.company_id AND v.id = NEW.contract_value_id;
+    IF NOT FOUND OR project.contract_kind IS DISTINCT FROM 'project' THEN
+      RAISE EXCEPTION 'project_movements: a movement is on a project'
+        USING ERRCODE = 'restrict_violation';
+    END IF;
+    IF NEW.kind IN ('received', 'owed_to_us', 'debt_collected')
+      AND NEW.counterparty_value_id IS DISTINCT FROM project.parent_value_id THEN
+      RAISE EXCEPTION 'project_movements: a client''s movement names the project''s client'
+        USING ERRCODE = 'restrict_violation';
+    END IF;
+  END IF;
+  RETURN NEW;
+END
+`,
+    },
+    {
+      name: 'project_movement_cancellation_rules',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+DECLARE
+  original uuid;
+  reversed uuid;
+BEGIN
+  SELECT m.entry_id INTO original
+  FROM public.project_movements m
+  WHERE m.company_id = NEW.company_id AND m.id = NEW.movement_id;
+  SELECT e.reverses_entry_id INTO reversed
+  FROM public.journal_entries e
+  WHERE e.company_id = NEW.company_id AND e.id = NEW.reversal_entry_id;
+  IF original IS NULL OR reversed IS DISTINCT FROM original THEN
+    RAISE EXCEPTION 'project_movement_cancellations: its entry reverses its movement''s entry'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  RETURN NEW;
+END
+`,
+    },
+    {
+      name: 'journal_entry_movement_cancelled',
+      arguments: '',
+      returns: 'trigger',
+      language: 'plpgsql',
+      volatility: 'v',
+      parallel: 'u',
+      strict: false,
+      leakproof: false,
+      definer: false,
+      config: null,
+      owner: OWNER_ROLE,
+      source: `
+BEGIN
+  IF NEW.reverses_entry_id IS NOT NULL
+    AND EXISTS (
+      SELECT 1 FROM public.project_movements m
+      WHERE m.company_id = NEW.company_id AND m.entry_id = NEW.reverses_entry_id
+    )
+    AND NOT EXISTS (
+      SELECT 1 FROM public.project_movement_cancellations c
+      WHERE c.company_id = NEW.company_id AND c.reversal_entry_id = NEW.id
+    ) THEN
+    RAISE EXCEPTION 'journal_entries: reversal % of a movement''s entry is its cancellation', NEW.id
+      USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NULL;
+END
+`,
+    },
   ],
   triggers: [
     // The two-factor exemption (S01 rule 2): never set on an existing person.
@@ -4612,6 +4783,113 @@ END
       table: 'advance_applications',
       name: 'advance_applications_agree',
       function: 'advance_applications_agree',
+      deferred: true,
+      on: ['INSERT'],
+    },
+    // S13's movements (0080): append-only movements and cancellations, gapless sequences, every
+    // reversal of a movement's entry its cancellation.
+    {
+      table: 'project_movements',
+      name: 'project_movements_refuse_change',
+      function: 'refuse_change',
+      deferred: false,
+      on: ['UPDATE', 'DELETE'],
+    },
+    {
+      table: 'project_movements',
+      name: 'project_movements_refuse_truncate',
+      function: 'refuse_change',
+      deferred: false,
+      on: ['TRUNCATE'],
+    },
+    {
+      table: 'project_movements',
+      name: 'project_movement_rules',
+      function: 'project_movement_rules',
+      deferred: false,
+      on: ['INSERT'],
+    },
+    {
+      table: 'project_movement_cancellations',
+      name: 'project_movement_cancellations_refuse_change',
+      function: 'refuse_change',
+      deferred: false,
+      on: ['UPDATE', 'DELETE'],
+    },
+    {
+      table: 'project_movement_cancellations',
+      name: 'project_movement_cancellations_refuse_truncate',
+      function: 'refuse_change',
+      deferred: false,
+      on: ['TRUNCATE'],
+    },
+    {
+      table: 'project_movement_cancellations',
+      name: 'project_movement_cancellation_rules',
+      function: 'project_movement_cancellation_rules',
+      deferred: false,
+      on: ['INSERT'],
+    },
+    {
+      table: 'project_movement_sequences',
+      name: 'project_movement_sequences_refuse_delete',
+      function: 'refuse_delete',
+      deferred: false,
+      on: ['DELETE'],
+    },
+    {
+      table: 'project_movement_sequences',
+      name: 'project_movement_sequences_refuse_truncate',
+      function: 'refuse_delete',
+      deferred: false,
+      on: ['TRUNCATE'],
+    },
+    {
+      table: 'project_movement_sequences',
+      name: 'project_movement_sequence_rules',
+      function: 'project_movement_sequence_rules',
+      deferred: false,
+      on: ['INSERT', 'UPDATE'],
+    },
+    {
+      table: 'project_movement_sequences',
+      name: 'project_movement_sequence_used',
+      function: 'project_movement_sequence_used',
+      deferred: true,
+      on: ['INSERT', 'UPDATE'],
+    },
+    {
+      table: 'project_details',
+      name: 'project_details_refuse_delete',
+      function: 'refuse_delete',
+      deferred: false,
+      on: ['DELETE'],
+    },
+    {
+      table: 'project_details',
+      name: 'project_details_refuse_truncate',
+      function: 'refuse_delete',
+      deferred: false,
+      on: ['TRUNCATE'],
+    },
+    {
+      table: 'company_branding',
+      name: 'company_branding_refuse_delete',
+      function: 'refuse_delete',
+      deferred: false,
+      on: ['DELETE'],
+    },
+    {
+      table: 'company_branding',
+      name: 'company_branding_refuse_truncate',
+      function: 'refuse_delete',
+      deferred: false,
+      on: ['TRUNCATE'],
+    },
+    {
+      table: 'journal_entries',
+      name: 'journal_entry_movement_cancelled',
+      function: 'journal_entry_movement_cancelled',
       deferred: true,
       on: ['INSERT'],
     },

@@ -13,6 +13,7 @@ import {
   chainAnchors,
   chartAccounts,
   companies,
+  companyBranding,
   companyExports,
   companySettings,
   dimensionTypes,
@@ -32,6 +33,11 @@ import {
   postVoucher,
   previewRevaluation,
   projectBudgets,
+  projectDetails,
+  projectDocuments,
+  projectMovementCancellations,
+  projectMovementSequences,
+  projectMovements,
   projectTerms,
   ratePairs,
   reportFiles,
@@ -98,6 +104,11 @@ const COVERED = [
   'project_documents',
   'line_quantities',
   'advance_applications',
+  'project_movement_sequences',
+  'project_movements',
+  'project_movement_cancellations',
+  'project_details',
+  'company_branding',
 ];
 
 const auditRow = fc.record({
@@ -382,10 +393,10 @@ async function seedLedger(tx: Transaction, companyId: string, userId: string, da
 }
 
 /**
- * The entries `seedOpening`, `seedLedger`, `seedRevaluation` and `seedProjects` post, each with one
- * audit row.
+ * The entries `seedOpening`, `seedLedger`, `seedRevaluation`, `seedProjects` and `seedMovements`
+ * (S13: a deposit and its reversal) post, each with one audit row.
  */
-const POSTED = 9;
+const POSTED = 11;
 
 /** The rows each S02, S03 and S04 table holds for a company seeded with `data`. */
 const expectedRows = (data: CompanyData): Record<string, number> => ({
@@ -418,7 +429,8 @@ const expectedRows = (data: CompanyData): Record<string, number> => ({
   posting_requests: POSTED,
   journal_entries: POSTED,
   // S10's opening: two stated lines; S12's advance two lines and its purchase three.
-  journal_lines: 19,
+  // S13: the deposit's two lines and its reversal's two.
+  journal_lines: 23,
   // The expense's and S07's cash entry's two lines convert into the book currency; the reversal
   // carries its amounts, the invoice is in the book currency and a revaluation converts nothing.
   line_conversions: 4,
@@ -439,9 +451,11 @@ const expectedRows = (data: CompanyData): Record<string, number> => ({
   // again in December.
   // S10's opening: its two accounts in November.
   // S12: the advance on 114002, the purchase's cost on 511001 and its credit on 211001.
-  period_balances: 13,
+  // S13: the box in November, moved by the deposit (591002's November row was there).
+  period_balances: 14,
   // S11's count draft beside S03's, and S12's purchase.
-  entry_drafts: 3,
+  // S13: the deposit's draft.
+  entry_drafts: 4,
   entry_draft_lines: 2,
   entry_attachments: 2,
   chain_anchors: 1,
@@ -473,6 +487,13 @@ const expectedRows = (data: CompanyData): Record<string, number> => ({
   project_documents: 1,
   line_quantities: 1,
   advance_applications: 1,
+  // S13: two movements, the second a deposit cancelled by its reversal; a project's details and the
+  // branding.
+  project_movement_sequences: 1,
+  project_movements: 2,
+  project_movement_cancellations: 1,
+  project_details: 1,
+  company_branding: 1,
 });
 
 /**
@@ -670,6 +691,161 @@ async function seedProjects(tx: Transaction, companyId: string, userId: string, 
     .update(entryDrafts)
     .set({ state: 'posted', postedEntryId: entry.id })
     .where(eq(entryDrafts.id, draftId));
+}
+
+/**
+ * S13's rows: a project's details, the company's branding, movement 1 recording S12's purchase as a
+ * debt owed by us, and movement 2 a deposit into the box from its own draft, posted, then cancelled
+ * by its reversal with its cancellation row.
+ */
+async function seedMovements(tx: Transaction, companyId: string, userId: string) {
+  const codeOf = async (code: string) => {
+    const [account] = await tx
+      .select({ id: chartAccounts.id })
+      .from(chartAccounts)
+      .where(and(eq(chartAccounts.companyId, companyId), eq(chartAccounts.code, code)));
+    return account?.id as string;
+  };
+  const dimensionValueOf = async (code: string) => {
+    const [value] = await tx
+      .select({ id: dimensionValues.id })
+      .from(dimensionValues)
+      .where(and(eq(dimensionValues.companyId, companyId), eq(dimensionValues.code, code)));
+    return value?.id as string;
+  };
+  const [settings] = await tx
+    .select({ currency: companySettings.bookCurrency })
+    .from(companySettings)
+    .where(eq(companySettings.companyId, companyId));
+  const currency = settings?.currency as string;
+  const projectId = await dimensionValueOf('P1');
+  const [purchase] = await tx
+    .select({
+      entryId: projectDocuments.entryId,
+      draftId: projectDocuments.draftId,
+      fiscalYear: projectDocuments.fiscalYear,
+    })
+    .from(projectDocuments)
+    .where(eq(projectDocuments.companyId, companyId));
+  await tx.insert(projectDetails).values({
+    companyId,
+    contractValueId: projectId,
+    startDate: '2026-11-01',
+    state: 'active',
+  });
+  await tx.insert(companyBranding).values({ companyId, displayName: 'شركة مولّدة' });
+  const fiscalYear = purchase?.fiscalYear as number;
+  await tx.insert(projectMovementSequences).values({ companyId, fiscalYear, lastNumber: 1 });
+  await tx.insert(projectMovements).values({
+    companyId,
+    kind: 'owed_by_us',
+    fiscalYear,
+    number: 1,
+    movementDate: '2026-11-11',
+    contractValueId: projectId,
+    counterpartyValueId: await dimensionValueOf('S1'),
+    currency,
+    amountMinor: 700n,
+    description: 'فاتورة مولّدة',
+    entryId: purchase?.entryId as string,
+    draftId: purchase?.draftId as string,
+    requestKey: `generated-movement-1-${companyId}`,
+    requestHash: '0'.repeat(64),
+    createdByUserId: userId,
+  });
+  const actor: AuditActor = {
+    kind: 'person',
+    userId,
+    name: 'شخص مولّد',
+    sessionId: null,
+    requestId: 'request-generated',
+    ipAddress: null,
+    userAgent: null,
+  };
+  const common = {
+    client: 'manual',
+    description: 'إيداع مولّد',
+    reference: null,
+    preparedByUserId: userId,
+    approvedByUserId: null,
+    actor,
+  };
+  const draftId = uuidv7();
+  await tx.insert(entryDrafts).values({
+    id: draftId,
+    companyId,
+    state: 'draft',
+    entryDate: '2026-11-21',
+    description: 'إيداع مولّد',
+    preparedByUserId: userId,
+  });
+  const deposit = await post(tx, {
+    ...common,
+    idempotencyKey: draftId,
+    entryDate: '2026-11-21',
+    draftId,
+    content: {
+      kind: 'manual',
+      today: '2026-11-30',
+      dealtRates: [],
+      lines: [
+        {
+          accountId: await codeOf('111001'),
+          dimensionValueIds: [],
+          currency,
+          amountMinor: 500n,
+          memo: null,
+        },
+        {
+          accountId: await codeOf('591002'),
+          dimensionValueIds: [],
+          currency,
+          amountMinor: -500n,
+          memo: null,
+        },
+      ],
+    },
+  });
+  await tx
+    .update(entryDrafts)
+    .set({ state: 'posted', postedEntryId: deposit.id })
+    .where(eq(entryDrafts.id, draftId));
+  await tx
+    .update(projectMovementSequences)
+    .set({ lastNumber: 2 })
+    .where(eq(projectMovementSequences.companyId, companyId));
+  const [movement] = await tx
+    .insert(projectMovements)
+    .values({
+      companyId,
+      kind: 'deposit',
+      fiscalYear,
+      number: 2,
+      movementDate: '2026-11-21',
+      currency,
+      amountMinor: 500n,
+      description: 'إيداع مولّد',
+      entryId: deposit.id,
+      draftId,
+      requestKey: `generated-movement-2-${companyId}`,
+      requestHash: '1'.repeat(64),
+      createdByUserId: userId,
+    })
+    .returning({ id: projectMovements.id });
+  const reversal = await post(tx, {
+    ...common,
+    idempotencyKey: `reversal:${deposit.id}`,
+    entryDate: '2026-11-22',
+    draftId: null,
+    content: { kind: 'reversal', entryId: deposit.id, today: '2026-11-30' },
+  });
+  await tx.insert(projectMovementCancellations).values({
+    companyId,
+    movementId: movement?.id as string,
+    reversalEntryId: reversal.id,
+    reason: 'إلغاء مولّد',
+    createdByUserId: userId,
+  });
 }
 
 /**
@@ -1066,6 +1242,7 @@ async function seed(userId: string, data: CompanyData): Promise<string> {
     await seedServiceDepartment(tx, row.id, userId);
     await seedVoucher(tx, row.id, userId, data);
     await seedProjects(tx, row.id, userId, data);
+    await seedMovements(tx, row.id, userId);
     // S07's period history: November closed, as the posting function writes a close.
     await writePeriodTransition(tx, {
       companyId: row.id,

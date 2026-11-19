@@ -8,6 +8,7 @@ export * from './dimensions.js';
 export * from './drafts.js';
 export * from './email.js';
 export * from './ledger.js';
+export * from './movements.js';
 export * from './open-items.js';
 export * from './opening.js';
 export * from './project-documents.js';
