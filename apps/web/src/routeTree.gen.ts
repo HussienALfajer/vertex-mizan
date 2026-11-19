@@ -13,11 +13,17 @@ import { Route as AppRouteImport } from './routes/_app'
 import { Route as AuthRouteImport } from './routes/_auth'
 import { Route as DesignSystemRouteImport } from './routes/design-system'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
+import { Route as AppMaterialsRouteImport } from './routes/_app/materials'
+import { Route as AppRatesRouteImport } from './routes/_app/rates'
 import { Route as AppSettingsRouteImport } from './routes/_app/settings'
 import { Route as AuthNoCompanyRouteImport } from './routes/_auth/no-company'
 import { Route as AuthSignInRouteImport } from './routes/_auth/sign-in'
+import { Route as AppClientsIndexRouteImport } from './routes/_app/clients/index'
+import { Route as AppClientsPartyIdRouteImport } from './routes/_app/clients/$partyId'
 import { Route as AppProjectsIndexRouteImport } from './routes/_app/projects/index'
 import { Route as AppProjectsProjectIdRouteImport } from './routes/_app/projects/$projectId'
+import { Route as AppSuppliersIndexRouteImport } from './routes/_app/suppliers/index'
+import { Route as AppSuppliersPartyIdRouteImport } from './routes/_app/suppliers/$partyId'
 
 const AppRoute = AppRouteImport.update({
   id: '/_app',
@@ -37,6 +43,16 @@ const AppIndexRoute = AppIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AppRoute,
 } as any)
+const AppMaterialsRoute = AppMaterialsRouteImport.update({
+  id: '/materials',
+  path: '/materials',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppRatesRoute = AppRatesRouteImport.update({
+  id: '/rates',
+  path: '/rates',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppSettingsRoute = AppSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
@@ -52,6 +68,16 @@ const AuthSignInRoute = AuthSignInRouteImport.update({
   path: '/sign-in',
   getParentRoute: () => AuthRoute,
 } as any)
+const AppClientsIndexRoute = AppClientsIndexRouteImport.update({
+  id: '/clients/',
+  path: '/clients/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppClientsPartyIdRoute = AppClientsPartyIdRouteImport.update({
+  id: '/clients/$partyId',
+  path: '/clients/$partyId',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppProjectsIndexRoute = AppProjectsIndexRouteImport.update({
   id: '/projects/',
   path: '/projects/',
@@ -62,67 +88,113 @@ const AppProjectsProjectIdRoute = AppProjectsProjectIdRouteImport.update({
   path: '/projects/$projectId',
   getParentRoute: () => AppRoute,
 } as any)
+const AppSuppliersIndexRoute = AppSuppliersIndexRouteImport.update({
+  id: '/suppliers/',
+  path: '/suppliers/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppSuppliersPartyIdRoute = AppSuppliersPartyIdRouteImport.update({
+  id: '/suppliers/$partyId',
+  path: '/suppliers/$partyId',
+  getParentRoute: () => AppRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
   '/design-system': typeof DesignSystemRoute
+  '/materials': typeof AppMaterialsRoute
+  '/rates': typeof AppRatesRoute
   '/settings': typeof AppSettingsRoute
   '/no-company': typeof AuthNoCompanyRoute
   '/sign-in': typeof AuthSignInRoute
+  '/clients/$partyId': typeof AppClientsPartyIdRoute
   '/projects/$projectId': typeof AppProjectsProjectIdRoute
+  '/suppliers/$partyId': typeof AppSuppliersPartyIdRoute
+  '/clients/': typeof AppClientsIndexRoute
   '/projects/': typeof AppProjectsIndexRoute
+  '/suppliers/': typeof AppSuppliersIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof AppIndexRoute
   '/design-system': typeof DesignSystemRoute
+  '/materials': typeof AppMaterialsRoute
+  '/rates': typeof AppRatesRoute
   '/settings': typeof AppSettingsRoute
   '/no-company': typeof AuthNoCompanyRoute
   '/sign-in': typeof AuthSignInRoute
+  '/clients/$partyId': typeof AppClientsPartyIdRoute
   '/projects/$projectId': typeof AppProjectsProjectIdRoute
+  '/suppliers/$partyId': typeof AppSuppliersPartyIdRoute
+  '/clients': typeof AppClientsIndexRoute
   '/projects': typeof AppProjectsIndexRoute
+  '/suppliers': typeof AppSuppliersIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_app': typeof AppRouteWithChildren
   '/_auth': typeof AuthRouteWithChildren
   '/design-system': typeof DesignSystemRoute
+  '/_app/materials': typeof AppMaterialsRoute
+  '/_app/rates': typeof AppRatesRoute
   '/_app/settings': typeof AppSettingsRoute
   '/_auth/no-company': typeof AuthNoCompanyRoute
   '/_auth/sign-in': typeof AuthSignInRoute
   '/_app/': typeof AppIndexRoute
+  '/_app/clients/$partyId': typeof AppClientsPartyIdRoute
   '/_app/projects/$projectId': typeof AppProjectsProjectIdRoute
+  '/_app/suppliers/$partyId': typeof AppSuppliersPartyIdRoute
+  '/_app/clients/': typeof AppClientsIndexRoute
   '/_app/projects/': typeof AppProjectsIndexRoute
+  '/_app/suppliers/': typeof AppSuppliersIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
     | '/design-system'
+    | '/materials'
+    | '/rates'
     | '/settings'
     | '/no-company'
     | '/sign-in'
+    | '/clients/$partyId'
     | '/projects/$projectId'
+    | '/suppliers/$partyId'
+    | '/clients/'
     | '/projects/'
+    | '/suppliers/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/design-system'
+    | '/materials'
+    | '/rates'
     | '/settings'
     | '/no-company'
     | '/sign-in'
+    | '/clients/$partyId'
     | '/projects/$projectId'
+    | '/suppliers/$partyId'
+    | '/clients'
     | '/projects'
+    | '/suppliers'
   id:
     | '__root__'
     | '/_app'
     | '/_auth'
     | '/design-system'
+    | '/_app/materials'
+    | '/_app/rates'
     | '/_app/settings'
     | '/_auth/no-company'
     | '/_auth/sign-in'
     | '/_app/'
+    | '/_app/clients/$partyId'
     | '/_app/projects/$projectId'
+    | '/_app/suppliers/$partyId'
+    | '/_app/clients/'
     | '/_app/projects/'
+    | '/_app/suppliers/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -161,6 +233,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppIndexRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/materials': {
+      id: '/_app/materials'
+      path: '/materials'
+      fullPath: '/materials'
+      preLoaderRoute: typeof AppMaterialsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/rates': {
+      id: '/_app/rates'
+      path: '/rates'
+      fullPath: '/rates'
+      preLoaderRoute: typeof AppRatesRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/settings': {
       id: '/_app/settings'
       path: '/settings'
@@ -182,6 +268,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthSignInRouteImport
       parentRoute: typeof AuthRoute
     }
+    '/_app/clients/': {
+      id: '/_app/clients/'
+      path: '/clients'
+      fullPath: '/clients/'
+      preLoaderRoute: typeof AppClientsIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/clients/$partyId': {
+      id: '/_app/clients/$partyId'
+      path: '/clients/$partyId'
+      fullPath: '/clients/$partyId'
+      preLoaderRoute: typeof AppClientsPartyIdRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/projects/': {
       id: '/_app/projects/'
       path: '/projects'
@@ -196,21 +296,47 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppProjectsProjectIdRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/suppliers/': {
+      id: '/_app/suppliers/'
+      path: '/suppliers'
+      fullPath: '/suppliers/'
+      preLoaderRoute: typeof AppSuppliersIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/suppliers/$partyId': {
+      id: '/_app/suppliers/$partyId'
+      path: '/suppliers/$partyId'
+      fullPath: '/suppliers/$partyId'
+      preLoaderRoute: typeof AppSuppliersPartyIdRouteImport
+      parentRoute: typeof AppRoute
+    }
   }
 }
 
 interface AppRouteChildren {
+  AppMaterialsRoute: typeof AppMaterialsRoute
+  AppRatesRoute: typeof AppRatesRoute
   AppSettingsRoute: typeof AppSettingsRoute
   AppIndexRoute: typeof AppIndexRoute
+  AppClientsPartyIdRoute: typeof AppClientsPartyIdRoute
   AppProjectsProjectIdRoute: typeof AppProjectsProjectIdRoute
+  AppSuppliersPartyIdRoute: typeof AppSuppliersPartyIdRoute
+  AppClientsIndexRoute: typeof AppClientsIndexRoute
   AppProjectsIndexRoute: typeof AppProjectsIndexRoute
+  AppSuppliersIndexRoute: typeof AppSuppliersIndexRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
+  AppMaterialsRoute: AppMaterialsRoute,
+  AppRatesRoute: AppRatesRoute,
   AppSettingsRoute: AppSettingsRoute,
   AppIndexRoute: AppIndexRoute,
+  AppClientsPartyIdRoute: AppClientsPartyIdRoute,
   AppProjectsProjectIdRoute: AppProjectsProjectIdRoute,
+  AppSuppliersPartyIdRoute: AppSuppliersPartyIdRoute,
+  AppClientsIndexRoute: AppClientsIndexRoute,
   AppProjectsIndexRoute: AppProjectsIndexRoute,
+  AppSuppliersIndexRoute: AppSuppliersIndexRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)

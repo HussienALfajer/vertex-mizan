@@ -1,13 +1,21 @@
 import { ar } from '@vertex-mizan/i18n';
 import {
+  client,
+  company,
   dashboard,
   ids,
+  material,
   materialCosts,
   movementPage,
   otherProject,
+  owedToUs,
   owner,
   project,
+  rateHistory,
   ratesMissing,
+  ratesToday,
+  received,
+  supplier,
 } from './movements-data';
 import {
   expect,
@@ -185,6 +193,77 @@ for (const colorScheme of ['light', 'dark'] as const) {
           await screenshot(page, testInfo, `new-project-${colorScheme}-${width}`, {
             fullPage: false,
           });
+        });
+      });
+
+      test.describe('the parties, materials and rates (S13)', () => {
+        test.use({
+          me: owner,
+          api: {
+            'GET /api/company': { status: 200, json: company },
+            'GET /api/parties': (request) => ({
+              status: 200,
+              json:
+                new URL(request.url()).searchParams.get('type') === 'client'
+                  ? [client]
+                  : [supplier],
+            }),
+            'GET /api/project-books': { status: 200, json: [project, otherProject] },
+            'GET /api/movements': {
+              status: 200,
+              json: { movements: [owedToUs, received], nextCursor: null },
+            },
+            'GET /api/material-costs': { status: 200, json: materialCosts },
+            'GET /api/materials': {
+              status: 200,
+              json: { materials: [material], nextCursor: null },
+            },
+            'GET /api/day-rates': { status: 200, json: ratesToday },
+            'GET /api/rates': { status: 200, json: { rates: rateHistory, nextCursor: null } },
+          },
+        });
+
+        test('clients', async ({ page }, testInfo) => {
+          await page.goto('/clients');
+          await expect(page.getByRole('link', { name: client.name })).toBeVisible();
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `clients-${colorScheme}-${width}`);
+        });
+
+        test('client', async ({ page }, testInfo) => {
+          await page.goto(`/clients/${ids.client}`);
+          await expect(page.getByText(owedToUs.description)).toBeVisible();
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `client-${colorScheme}-${width}`);
+        });
+
+        test('suppliers', async ({ page }, testInfo) => {
+          await page.goto('/suppliers');
+          await expect(page.getByRole('link', { name: supplier.name })).toBeVisible();
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `suppliers-${colorScheme}-${width}`);
+        });
+
+        test('materials', async ({ page }, testInfo) => {
+          await page.goto('/materials');
+          await expect(page.getByRole('cell', { name: material.name, exact: true })).toBeVisible();
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `materials-${colorScheme}-${width}`);
+        });
+
+        test('materials catalogue', async ({ page }, testInfo) => {
+          await page.goto('/materials');
+          await page.getByRole('tab', { name: ar.movements.materialsPage.tabs.catalogue }).click();
+          await expect(page.getByRole('cell', { name: material.code })).toBeVisible();
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `materials-catalogue-${colorScheme}-${width}`);
+        });
+
+        test('rates', async ({ page }, testInfo) => {
+          await page.goto('/rates');
+          await expect(page.getByText(ar.movements.ratesPage.corrected)).toBeVisible();
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `rates-${colorScheme}-${width}`);
         });
       });
 

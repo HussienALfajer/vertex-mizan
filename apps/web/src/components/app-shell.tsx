@@ -26,6 +26,7 @@ import {
 import {
   ArchiveIcon,
   ArrowLeftIcon,
+  ArrowLeftRightIcon,
   ChevronDownIcon,
   CircleUserIcon,
   FolderKanbanIcon,
@@ -34,10 +35,13 @@ import {
   type LucideIcon,
   MenuIcon,
   MoonIcon,
+  PackageIcon,
   RowsIcon,
   SettingsIcon,
   SunIcon,
   SwatchBookIcon,
+  TruckIcon,
+  UsersIcon,
 } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { api } from '../lib/api';
@@ -67,6 +71,36 @@ const navItems: NavItem[] = [
     icon: FolderKanbanIcon,
     show: (me) => Boolean(me),
     permission: 'reports.read',
+  },
+  {
+    to: '/clients',
+    label: t.nav.clients,
+    icon: UsersIcon,
+    show: (me) => Boolean(me),
+    permission: 'dimensions.read',
+  },
+  {
+    to: '/suppliers',
+    label: t.nav.suppliers,
+    icon: TruckIcon,
+    show: (me) => Boolean(me),
+    permission: 'dimensions.read',
+  },
+  {
+    to: '/materials',
+    label: t.nav.materials,
+    icon: PackageIcon,
+    exact: true,
+    show: (me) => Boolean(me),
+    permission: 'dimensions.read',
+  },
+  {
+    to: '/rates',
+    label: t.nav.rates,
+    icon: ArrowLeftRightIcon,
+    exact: true,
+    show: (me) => Boolean(me),
+    permission: 'rates.read',
   },
   {
     to: '/settings',

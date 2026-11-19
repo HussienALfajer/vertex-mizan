@@ -140,19 +140,24 @@ export function MovementTable({
 }
 
 /**
- * A project's movements with their filters (kind, currency, dates), by pages, each cancellable
- * with a reason when the person may post (S13 rule 8).
+ * A project's or a party's movements with their filters (kind, currency, dates), by pages, each
+ * cancellable with a reason when the person may post (S13 rule 8). A party's list names each
+ * movement's project and offers only the kinds that name a party of its type.
  */
-export function ProjectMovements({
+export function MovementBrowser({
   companyId,
-  projectId,
+  scope,
   bookCurrency,
   canCancel,
+  kinds = PROJECT_MOVEMENT_KINDS.filter((value) => value !== 'deposit'),
+  emptyHint = t.emptyHint,
 }: {
   companyId: string;
-  projectId: string;
+  scope: { project: string } | { party: string };
   bookCurrency: CurrencyCode;
   canCancel: boolean;
+  kinds?: readonly ProjectMovementKind[];
+  emptyHint?: string;
 }) {
   const queryClient = useQueryClient();
   const [kind, setKind] = useState<ProjectMovementKind | 'all'>('all');
@@ -163,7 +168,7 @@ export function ProjectMovements({
   const filtered = kind !== 'all' || currency !== 'all' || range.from !== '' || range.to !== '';
   const list = useInfiniteQuery({
     ...movementsQuery(companyId, {
-      project: projectId,
+      ...scope,
       kind: kind === 'all' ? undefined : kind,
       currency: currency === 'all' ? undefined : currency,
       from: ordered ? range.from : undefined,
@@ -180,7 +185,7 @@ export function ProjectMovements({
           value={kind}
           options={[
             { value: 'all' as const, label: t.allKinds },
-            ...PROJECT_MOVEMENT_KINDS.filter((value) => value !== 'deposit').map((value) => ({
+            ...kinds.map((value) => ({
               value,
               label: ar.movements.kinds[value],
             })),
@@ -242,13 +247,14 @@ export function ProjectMovements({
       ) : movements.length === 0 ? (
         <EmptyState
           title={filtered ? t.noMatch : t.empty}
-          description={filtered ? undefined : t.emptyHint}
+          description={filtered ? undefined : emptyHint}
         />
       ) : (
         <>
           <MovementTable
             movements={movements}
             bookCurrency={bookCurrency}
+            showProject={'party' in scope}
             onCancel={canCancel ? setCancelling : undefined}
           />
           {list.hasNextPage && (

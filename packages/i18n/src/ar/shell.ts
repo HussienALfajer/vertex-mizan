@@ -6,6 +6,10 @@ export const shell = {
   nav: {
     home: 'لوحة التحكم',
     projects: 'المشاريع',
+    clients: 'العملاء',
+    suppliers: 'الموردون',
+    materials: 'المواد',
+    rates: 'الأسعار',
     settings: 'الإعدادات',
     designSystem: 'نظام التصميم',
   },

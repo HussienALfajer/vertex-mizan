@@ -1,4 +1,5 @@
 import type {
+  Company,
   Dashboard,
   DayRates,
   Material,
@@ -8,6 +9,7 @@ import type {
   Party,
   Permission,
   Project,
+  RateRow,
 } from '@vertex-mizan/contracts';
 import { signedIn } from './test';
 
@@ -225,3 +227,82 @@ export const dashboard: Dashboard = {
 
 /** A movement page, newest first. */
 export const movementPage = { movements: [expense, received], nextCursor: null };
+
+/** The company as `GET /api/company` answers it: a USD book with no parallel ledger (S13). */
+export const company: Company = {
+  id: owner.activeCompanyId ?? id(1),
+  name: 'شركة تجريبية',
+  nameLatin: null,
+  ledgers: {
+    book: { currency: 'USD', ratePolicy: { rateType: 'market', acceptsTransactionRate: true } },
+    parallel: null,
+  },
+  fiscalYearStartMonth: 1,
+  policyNote: 'سياسة تجريبية',
+  booksStarted: true,
+  booksStart: null,
+  openingState: null,
+  manualEntryApproval: false,
+  archived: null,
+  createdAt: '2026-10-01T08:00:00.000Z',
+};
+
+/** A movement naming the client: owed to us on the project. */
+export const owedToUs: Movement = {
+  ...received,
+  id: id(503),
+  kind: 'owed_to_us',
+  number: 8,
+  date: '2026-11-12',
+  currency: 'USD',
+  amountMinor: '400000',
+  bookMinor: '400000',
+  description: 'مستحق الدفعة الثانية',
+  entryId: id(604),
+  cancellation: null,
+};
+
+/** A supplier's debt on the project. */
+export const owedByUs: Movement = {
+  ...expense,
+  id: id(504),
+  kind: 'owed_by_us',
+  number: 9,
+  date: '2026-11-14',
+  party: { id: ids.supplier, name: 'مورد تجريبي' },
+  amountMinor: '150000',
+  bookMinor: '150000',
+  description: 'حديد بالآجل',
+  material: null,
+  entryId: id(605),
+};
+
+const rateRow = (n: number, row: Partial<RateRow>): RateRow => ({
+  id: id(700 + n),
+  effectiveOn: '2026-11-19',
+  base: 'USD',
+  quote: 'SYP',
+  rate: '110.0000000000',
+  type: 'market',
+  source: 'manual',
+  supersedesRateId: null,
+  reason: null,
+  recordedBy: { kind: 'person', id: signedIn.person.id, name: signedIn.person.name },
+  superseded: false,
+  createdAt: '2026-11-19T08:00:00.000Z',
+  ...row,
+});
+
+/** The market rates of the last days, newest first: the 18th's SYP rate corrected. */
+export const rateHistory: RateRow[] = [
+  rateRow(1, {}),
+  rateRow(2, { quote: 'TRY', rate: '34.2500000000' }),
+  rateRow(3, {
+    effectiveOn: '2026-11-18',
+    rate: '111.5000000000',
+    supersedesRateId: id(704),
+    reason: 'خطأ في الكتابة',
+  }),
+  rateRow(4, { effectiveOn: '2026-11-18', rate: '115.0000000000', superseded: true }),
+  rateRow(5, { effectiveOn: '2026-11-18', quote: 'TRY', rate: '34.1000000000' }),
+];
