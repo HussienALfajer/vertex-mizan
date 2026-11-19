@@ -30,12 +30,12 @@ const icons = [
 const green = palette.green[800];
 const sand = palette.gold[400];
 
-/** The page shown for a page load without a connection: self-contained (no script, no fetch). */
+/**
+ * The page shown for a page load without a connection: self-contained (no script, no fetch), and
+ * with no product name or mark (ADR 0024 §8).
+ */
 export function offlinePage(): string {
   const text = ar.common.app;
-  const mark = brandFile('svg/app-icon.svg')
-    .toString('utf8')
-    .replace(/<title>.*?<\/title>/, '');
   return `<!doctype html>
 <html lang="ar" dir="${textDirection}">
 <head>
@@ -52,9 +52,6 @@ body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding
 @media (prefers-color-scheme: dark) {
   body { background: ${palette.neutral[950]}; color: ${palette.neutral[100]}; } }
 main { max-inline-size: 26rem; }
-.mark { inline-size: 4rem; block-size: 4rem; border-radius: 1rem; overflow: hidden;
-  margin-inline: auto; margin-block: 0 1.5rem; }
-.mark svg { display: block; inline-size: 100%; block-size: 100%; }
 h1 { font-size: 1.25rem; margin-block: 0 .75rem; }
 p { margin-block: 0 1.5rem; line-height: 1.8; }
 a { display: inline-block; padding-block: .625rem; padding-inline: 1.25rem; border-radius: .5rem;
@@ -64,7 +61,6 @@ a:focus-visible { outline: 2px solid ${sand}; outline-offset: 2px; }
 </head>
 <body>
 <main>
-<div class="mark" aria-hidden="true">${mark}</div>
 <h1>${text.offlineTitle}</h1>
 <p>${text.offlineBody}</p>
 <a href="/">${ar.common.retry}</a>

@@ -1,5 +1,5 @@
 import { ar } from '@vertex-mizan/i18n';
-import { expect, test } from './test';
+import { expect, expectNoProductName, test } from './test';
 
 /** The installable app (pwa.ts): the manifest, its icons, the service worker and the offline page. */
 
@@ -71,6 +71,7 @@ test.describe('installable app', () => {
     await page.goto('/offline.html');
     await expect(page.getByRole('heading', { level: 1 })).toHaveText(ar.common.app.offlineTitle);
     await expect(page.getByText(ar.common.app.offlineBody)).toBeVisible();
+    await expectNoProductName(page);
     await page.getByRole('link', { name: ar.common.retry }).click();
     await expect(page.getByRole('heading', { level: 1 })).toHaveText(ar.shell.home.title);
   });

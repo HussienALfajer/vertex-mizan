@@ -159,7 +159,10 @@ export async function expectNoProductName(page: Page): Promise<void> {
       ),
     ].join(' | '),
   );
-  expect(seen).not.toMatch(/فيرتكس|ميزان|vertex|mizan/i);
+  // "ميزان" alone, not the accounting terms "ميزان المراجعة" or "الميزانية".
+  expect(seen).not.toMatch(
+    /فيرتكس|vertex|mizan|(^|[^\u0600-\u06FF])ميزان(?! المراجعة)([^\u0600-\u06FF]|$)/i,
+  );
 }
 
 /** The widths every screen is checked at (AGENTS.md: responsive from 360 px). */

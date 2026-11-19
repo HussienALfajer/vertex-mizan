@@ -115,6 +115,7 @@ test.describe('signed out', () => {
       await page.getByLabel(t.fields.password, { exact: true }).fill(`pw-${Date.now()}-long`);
       await page.getByRole('button', { name: t.signIn.submit }).click();
       await expect(page.getByRole('alert')).toHaveText(t.signIn.twoFactorUnavailable);
+      await expectNoProductName(page);
       await expect(page).toHaveURL('/sign-in');
     });
   });
@@ -186,6 +187,7 @@ test.describe('signed in without an active company', () => {
     await page.goto('/settings');
     await expect(page).toHaveURL('/no-company');
     await expect(page.getByRole('heading', { level: 1 })).toHaveText(t.noCompany.title);
+    await expectNoProductName(page);
     // Signing in again leads here too, never into a loop.
     await page.goto('/sign-in');
     await expect(page).toHaveURL('/no-company');
