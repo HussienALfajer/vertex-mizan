@@ -401,8 +401,8 @@ company: { shape: usd, book: USD, template: contracting,
            contracts: [{ code: P1, kind: project, client: C1 }, { code: P2, kind: project, client: C1 }] }
 rates:
   - { date: 2026-12-01, base: USD, quote: SYP, rate: "118.5000", type: market }
+  # 120.0000 from 2 December stays in force on 3 December (a same rate would be RATE_UNCHANGED)
   - { date: 2026-12-02, base: USD, quote: SYP, rate: "120.0000", type: market }
-  - { date: 2026-12-03, base: USD, quote: SYP, rate: "120.0000", type: market }
 steps:
   - project_document: site costs owed to S1 for P1
     accounting_date: 2026-12-01
