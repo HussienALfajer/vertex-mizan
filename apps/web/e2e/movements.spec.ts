@@ -167,6 +167,67 @@ test.describe('a project', () => {
     });
   });
 
+  test.describe('its PDF', () => {
+    const fileId = '019a0000-0000-7000-8000-0000000000f1';
+    const file = {
+      id: fileId,
+      report: 'project_statement',
+      params: { project: ids.project },
+      format: 'pdf',
+      official: false,
+      state: 'queued',
+      sizeBytes: null,
+      error: null,
+      createdAt: '2026-12-31T09:00:00.000Z',
+      readyAt: null,
+      expiresAt: null,
+    };
+    let asked: unknown;
+    let reads = 0;
+    test.use({
+      api: {
+        ...projectPage,
+        'POST /api/reports/files': (request) => {
+          asked = request.postDataJSON();
+          return { status: 201, json: file };
+        },
+        [`GET /api/reports/files/${fileId}`]: () => {
+          reads += 1;
+          return {
+            status: 200,
+            json:
+              reads < 2
+                ? file
+                : {
+                    ...file,
+                    state: 'ready',
+                    sizeBytes: 9,
+                    readyAt: '2026-12-31T09:00:02.000Z',
+                    expiresAt: '2026-01-01T09:00:02.000Z',
+                  },
+          };
+        },
+        [`GET /api/reports/files/${fileId}/download`]: {
+          status: 200,
+          body: Buffer.from('%PDF-1.7 synthetic'),
+          contentType: 'application/pdf',
+        },
+      },
+    });
+
+    test('is asked, waited for and downloaded', async ({ page }) => {
+      await page.goto(`/projects/${ids.project}`);
+      await expect(page.getByRole('heading', { level: 1 })).toHaveText(project.name);
+      await page.getByRole('button', { name: t.print.projectAction }).click();
+      const save = page.getByRole('button', { name: ar.reports.exportMenu.download });
+      await expect(save).toBeVisible();
+      expect(asked).toEqual({ report: 'project_statement', params: { project: ids.project } });
+      const downloaded = page.waitForEvent('download');
+      await save.click();
+      expect(await (await downloaded).failure()).toBeNull();
+    });
+  });
+
   test.describe('cancelling a movement', () => {
     let cancelled: { url: string; body: unknown } | undefined;
     test.use({

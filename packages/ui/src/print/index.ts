@@ -12,6 +12,21 @@ export {
 } from './document.js';
 export { printFontFaces } from './fonts.js';
 export {
+  MovementsPrint,
+  type MovementsPrintData,
+  type MovementsPrintProps,
+  type MovementsPrintText,
+  movementsPageHeader,
+  movementsPrintStyles,
+  type PrintCurrencyAmount,
+  type PrintFigures,
+  type PrintMaterialCost,
+  type PrintMovement,
+  type PrintParty,
+  type PrintProjectSection,
+  type PrintProjectsOverview,
+} from './movements-print.js';
+export {
   ProjectDocumentPrint,
   type ProjectDocumentPrintData,
   type ProjectDocumentPrintProps,
@@ -23,6 +38,7 @@ export {
   columnWidthRules,
   JOURNAL_BOOK_WIDTHS,
   renderJournalBookHtml,
+  renderMovementsHtml,
   renderProjectDocumentHtml,
   renderReportHtml,
   renderVoucherHtml,

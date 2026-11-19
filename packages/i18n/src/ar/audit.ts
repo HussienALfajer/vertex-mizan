@@ -156,6 +156,9 @@ export const audit = {
     'project.created': 'أضاف مشروعًا',
     'project.updated': 'عدّل مشروعًا',
     'branding.updated': 'عدّل اسم الشركة أو شعارها',
+    'export.projects_overview': 'طبع تقرير كل المشاريع',
+    'export.project_statement': 'طبع تقرير مشروع',
+    'export.material_costs': 'طبع تقرير المواد',
   } satisfies Record<CompanyAuditAction, string>,
   /** The audited entities (`AUDITED_FIELDS` in `packages/db`). */
   entities: {

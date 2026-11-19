@@ -31,6 +31,9 @@ export const reports = {
     project_report: 'تقرير المشروع',
     material_quantities: 'كميات المواد',
     project_document: 'مستند مشروع',
+    projects_overview: 'تقرير كل المشاريع',
+    project_statement: 'تقرير المشروع',
+    material_costs: 'تقرير المواد',
   } satisfies Record<Report, string>,
   /** The journal of `/reports/journal` (rule 12), the journal book's Excel. */
   journal: 'اليومية العامة',

@@ -153,6 +153,10 @@ export const COMPANY_AUDIT_ACTIONS = [
   'project.created',
   'project.updated',
   'branding.updated',
+  // S13 PR 6: the three PDFs.
+  'export.projects_overview',
+  'export.project_statement',
+  'export.material_costs',
 ] as const;
 
 /**

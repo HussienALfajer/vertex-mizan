@@ -44,7 +44,7 @@ describe('audit actions', () => {
       'period.reopened',
       'service_department.set',
     ]);
-    expect(COMPANY_AUDIT_ACTIONS.slice(-34, -4)).toEqual([
+    expect(COMPANY_AUDIT_ACTIONS.slice(-37, -7)).toEqual([
       'export.trial_balance',
       'export.general_ledger',
       'export.account_statement',
@@ -75,6 +75,15 @@ describe('audit actions', () => {
       'export.project_report',
       'export.material_quantities',
       'export.project_document',
+    ]);
+    expect(COMPANY_AUDIT_ACTIONS.slice(-7)).toEqual([
+      'movement.cancelled',
+      'project.created',
+      'project.updated',
+      'branding.updated',
+      'export.projects_overview',
+      'export.project_statement',
+      'export.material_costs',
     ]);
     for (const action of [...PLATFORM_AUDIT_ACTIONS, ...COMPANY_AUDIT_ACTIONS]) {
       expect(action).toMatch(/^[a-z]+(_[a-z]+)*\.[a-z]+(_[a-z]+)*$/);

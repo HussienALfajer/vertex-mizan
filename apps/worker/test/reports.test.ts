@@ -3,20 +3,24 @@ import { mkdtemp, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
-import type { ActiveReport, CompanyLedgers } from '@vertex-mizan/contracts';
+import type { ActiveReport, CompanyLedgers, RecordMovement } from '@vertex-mizan/contracts';
 import {
   auditEntries,
+  cancelMovement,
   chartAccounts,
   createCompanyBooks,
   createDatabase,
   createDimensionValue,
   createMaterial,
+  createParty,
+  createProject,
   type Database,
   type DocumentLineSpec,
   dimensionTypes,
   dimensionValues,
   entryDrafts,
   journalBookPrints,
+  type MovementPrintReport,
   type PersonActor,
   type ProjectDocumentSpec,
   parseReportFileParams,
@@ -24,8 +28,11 @@ import {
   postVoucher,
   projectDocuments,
   putProjectTerms,
+  recordDayRates,
+  recordMovement,
   recordRate,
   reportFiles,
+  updateBranding,
   users,
   withCompany,
   writePeriodTransition,
@@ -398,8 +405,9 @@ describe('reports.render', () => {
       chart: {},
       // The cash reports print from a contracting company's vouchers: their own test below.
       // The project reports print from a project's documents: their own test below.
+      // S13's three PDFs print from a company's movements: their own test below.
     } satisfies Record<
-      Exclude<ActiveReport, CashReport | ProjectReportFile>,
+      Exclude<ActiveReport, CashReport | ProjectReportFile | MovementPrintReport>,
       Record<string, string>
     >;
     for (const [report, input] of Object.entries(asked) as [
@@ -799,6 +807,160 @@ describe('reports.render of the project reports and documents (S12)', () => {
     for (const label of ar.reports.projectDocument.signatures.billing) {
       expect(certified?.html).toContain(label);
     }
+  });
+});
+
+/** S13: a USD company with a project, its movements (one cancelled) and a logo. */
+async function movementsCompany(): Promise<{ id: string; project: string; logo: Buffer }> {
+  const id = uuidv7();
+  const today = '2026-12-31';
+  // A 1 × 1 PNG, synthetic.
+  const logo = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+    'base64',
+  );
+  const logoId = uuidv7();
+  await files.write(id, logoId, Readable.from([logo]));
+  const project = await withCompany(db, id, async (tx) => {
+    await createCompanyBooks(
+      tx,
+      id,
+      {
+        name: 'شركة مقاولات تجريبية',
+        nameLatin: null,
+        ledgers: {
+          book: {
+            currency: 'USD',
+            ratePolicy: { rateType: 'market', acceptsTransactionRate: true },
+          },
+          parallel: null,
+        },
+        fiscalYearStartMonth: 1,
+        policyNote: 'مذكرة سياسة تجريبية.',
+        template: 'contracting',
+        createdByUserId: person,
+      },
+      actor(),
+    );
+    await recordDayRates(tx, id, actor(), {
+      date: '2026-12-01',
+      rates: [
+        { base: 'USD', quote: 'SYP', rate: '118.5' },
+        { base: 'USD', quote: 'TRY', rate: '41' },
+      ],
+      reason: null,
+    });
+    const project = await createProject(tx, id, actor(), {
+      name: 'فيلا تجريبية',
+      clientId: null,
+      clientName: 'عميل تجريبي',
+      startDate: '2026-12-01',
+      contractValue: { amountMinor: '2000000', currency: 'USD' },
+    });
+    const supplier = await createParty(tx, id, actor(), { type: 'supplier', name: 'مورد تجريبي' });
+    const steel = (
+      await createMaterial(
+        tx,
+        id,
+        { code: 'STL', name: 'حديد تسليح', nameLatin: null, unit: 'طن' },
+        actor(),
+      )
+    ).id;
+    const context = { companyId: id, actor: actor(), today };
+    const movement = (fields: Partial<RecordMovement>): RecordMovement => ({
+      requestKey: uuidv7(),
+      kind: 'received',
+      date: '2026-12-01',
+      projectId: project,
+      supplierId: null,
+      currency: 'USD',
+      amountMinor: null,
+      material: null,
+      description: 'حركة تجريبية',
+      dealtRate: null,
+      ...fields,
+    });
+    await recordMovement(tx, context, movement({ kind: 'received', amountMinor: '500000' }));
+    await recordMovement(
+      tx,
+      context,
+      movement({
+        kind: 'expense',
+        material: { materialId: steel, quantity: '2.500', unitPrice: '820.0000' },
+      }),
+    );
+    await recordMovement(
+      tx,
+      context,
+      movement({
+        kind: 'owed_by_us',
+        supplierId: supplier,
+        currency: 'TRY',
+        amountMinor: '4100000',
+      }),
+    );
+    const wages = await recordMovement(
+      tx,
+      context,
+      movement({ kind: 'wages', amountMinor: '30000', description: 'أجور خطأ' }),
+    );
+    await cancelMovement(tx, context, wages, { reason: 'سُجّلت خطأً' });
+    await updateBranding(tx, id, actor(), {
+      displayName: 'مقاولات الشعار التجريبية',
+      logo: {
+        storageKey: `${id}/${logoId}`,
+        contentType: 'image/png',
+        sha256: createHash('sha256').update(logo).digest('hex'),
+      },
+    });
+    return project;
+  });
+  return { id, project, logo };
+}
+
+describe('reports.render of the project movements (S13)', () => {
+  it('prints all projects, one project and the materials under the company name and logo', async () => {
+    const { id, project, logo } = await movementsCompany();
+    const printer = new KeepingPrinter();
+    const job = new ReportsRenderJob(db, files, printer);
+    const asked: [MovementPrintReport, Record<string, string>][] = [
+      ['projects_overview', {}],
+      ['project_statement', { project }],
+      ['material_costs', { project, from: '2026-12-01', to: '2026-12-31' }],
+    ];
+    for (const [report, input] of asked) {
+      const file = await ask(id, { report, params: parseReportFileParams(report, input).stored });
+      expect(await job.work({ companyId: id, fileId: file.id }), report).toEqual({
+        state: 'ready',
+      });
+    }
+    const [overview, statement, materials] = printer.printed;
+    for (const printed of [overview, statement, materials]) {
+      const header = printed?.options.pageHeader ?? '';
+      expect(printed?.options.pageNumbers).toBe(ar.reports.pageOf);
+      expect(header).toContain('مقاولات الشعار التجريبية');
+      expect(header).toContain(`data:image/png;base64,${logo.toString('base64')}`);
+      // No mark of the product (ADR 0024 §8).
+      for (const text of [printed?.html ?? '', header]) {
+        expect(text).not.toContain('Vertex');
+        expect(text).not.toContain(ar.common.productName);
+      }
+    }
+    expect(overview?.html).toContain(ar.reports.names.projects_overview);
+    expect(overview?.html).toContain('فيلا تجريبية');
+    // Received 5,000.00; the steel 2.500 × 820.0000 = 2,050.00; 41,000.00 TRY = 1,000.00 USD.
+    expect(overview?.html).toContain('5,000.00');
+    expect(overview?.html).toContain('2,050.00');
+    expect(overview?.html).toContain('41,000.00');
+    expect(overview?.html).toContain('مورد تجريبي');
+    expect(overview?.html).toContain('سُجّلت خطأً');
+    expect(overview?.html).toContain(ar.movements.print.rates);
+    expect(statement?.html).toContain('عميل تجريبي');
+    expect(statement?.html).toContain('20,000.00');
+    expect(statement?.html).not.toContain(ar.movements.print.rates);
+    expect(materials?.html).toContain('حديد تسليح');
+    expect(materials?.html).toContain('2.500');
+    expect(materials?.options.pageHeader).toContain('2026-12-01 – 2026-12-31');
   });
 });
 

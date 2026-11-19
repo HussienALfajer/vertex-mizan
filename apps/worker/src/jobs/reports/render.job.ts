@@ -20,9 +20,15 @@ import {
   type Database,
   describeForLog,
   journalBookPrints,
+  MOVEMENT_PRINT_REPORTS,
+  type MovementPrintReport,
+  readBranding,
   readJournalBook,
   readJournalBookTotals,
+  readMaterialCosts,
   readProjectDocumentPrint,
+  readProjectStatementPrint,
+  readProjectsOverviewPrint,
   readRangePeriods,
   readReportAnswer,
   readVoucherPrint,
@@ -35,9 +41,13 @@ import {
 import { amountInWords, ar } from '@vertex-mizan/i18n';
 import {
   entryNumberText,
+  formatProducedAt,
+  type MovementsPrintData,
+  movementsPageHeader,
   printedCurrency,
   printFontFaces,
   renderJournalBookHtml,
+  renderMovementsHtml,
   renderProjectDocumentHtml,
   renderReportHtml,
   renderVoucherHtml,
@@ -264,9 +274,24 @@ export class ReportsRenderJob implements QueueWorker {
             fontFaces: this.fontFaces(),
           });
           pdf = await this.printer.print(html, { pageNumbers: ar.reports.pageOf });
+        } else if ((MOVEMENT_PRINT_REPORTS as readonly string[]).includes(report)) {
+          // S13 "Printing": under the company's display name and logo, on every page.
+          pdf = await this.printMovements(
+            tx,
+            companyId,
+            report as MovementPrintReport,
+            row.params,
+            now,
+          );
         } else {
-          const params = REPORT_FILE_QUERIES[report].parse(row.params);
-          const answer = await readReportAnswer(tx, report, params, now, todayInDamascus());
+          const params = REPORT_FILE_QUERIES[report as SheetReportOf].parse(row.params);
+          const answer = await readReportAnswer(
+            tx,
+            report as SheetReportOf,
+            params,
+            now,
+            todayInDamascus(),
+          );
           const sheet = reportSheet(answer, {
             text: SHEET_TEXT,
             fiscalYearStartMonth: settings.startMonth,
@@ -359,11 +384,109 @@ export class ReportsRenderJob implements QueueWorker {
     });
   }
 
+  /** One of S13's three PDFs (S13 "Printing"), read in the render's snapshot. */
+  private async printMovements(
+    tx: Transaction,
+    companyId: string,
+    report: MovementPrintReport,
+    params: unknown,
+    now: Date,
+  ): Promise<Buffer> {
+    const text = ar.movements.print;
+    const branding = await readBranding(tx);
+    const logo = await this.logoOf(companyId, branding.logo);
+    const today = todayInDamascus();
+    let content: MovementsPrintData;
+    let bookCurrency: CurrencyCode;
+    let scope = text.asOf.replace('{date}', today);
+    if (report === 'projects_overview') {
+      const data = await readProjectsOverviewPrint(tx);
+      content = { report, data };
+      bookCurrency = data.bookCurrency;
+    } else if (report === 'project_statement') {
+      const { project } = REPORT_FILE_QUERIES.project_statement.parse(params);
+      const { bookCurrency: book, section } = await readProjectStatementPrint(tx, project);
+      content = { report, data: section };
+      bookCurrency = book;
+      scope = `${section.project.name} · ${scope}`;
+    } else {
+      const query = REPORT_FILE_QUERIES.material_costs.parse(params);
+      const costs = await readMaterialCosts(tx, query);
+      content = {
+        report,
+        data: { materials: costs.materials, totalBookMinor: costs.totalBookMinor },
+      };
+      bookCurrency = costs.bookCurrency;
+      const range =
+        query.from !== undefined && query.to !== undefined
+          ? text.range.replace('{from}', query.from).replace('{to}', query.to)
+          : query.from !== undefined
+            ? text.since.replace('{date}', query.from)
+            : query.to !== undefined
+              ? text.until.replace('{date}', query.to)
+              : text.allDates;
+      let project: string = text.allProjectsScope;
+      if (query.project !== undefined) {
+        const statement = await readProjectStatementPrint(tx, query.project);
+        project = statement.section.project.name;
+      }
+      scope = `${project} · ${range}`;
+    }
+    const title = ar.reports.names[report];
+    const printedAt = formatProducedAt(now.toISOString());
+    const html = renderMovementsHtml({
+      company: branding.displayName,
+      logo,
+      title,
+      scope,
+      printedAt,
+      bookCurrency,
+      currencyName: (currency) => printedCurrency(currency, SHEET_TEXT),
+      text: {
+        print: text,
+        kinds: ar.movements.kinds,
+        states: ar.movements.states,
+        figures: ar.movements.figures,
+      },
+      content,
+      fontFaces: this.fontFaces(),
+    });
+    return this.printer.print(html, {
+      pageNumbers: ar.reports.pageOf,
+      pageHeader: movementsPageHeader({
+        company: branding.displayName,
+        logo,
+        title,
+        scope,
+        printedAt,
+      }),
+    });
+  }
+
+  /** The company's logo as a `data:` URL, PNG or JPEG only as uploaded; none when it is gone. */
+  private async logoOf(
+    companyId: string,
+    logo: { storageKey: string; contentType: string } | null,
+  ): Promise<string | null> {
+    if (logo === null) return null;
+    if (logo.contentType !== 'image/png' && logo.contentType !== 'image/jpeg') return null;
+    const [owner, id] = logo.storageKey.split('/');
+    if (owner !== companyId || id === undefined) return null;
+    const file = await this.files.read(companyId, id);
+    return file === null ? null : `data:${logo.contentType};base64,${file.toString('base64')}`;
+  }
+
   private fontFaces(): string {
     this.fonts ??= printFontFaces();
     return this.fonts;
   }
 }
+
+/** The reports printed as a sheet. */
+type SheetReportOf = Exclude<
+  ActiveReport,
+  'journal_book' | 'voucher' | 'project_document' | MovementPrintReport
+>;
 
 interface JournalRange {
   readonly fiscalYear: number;

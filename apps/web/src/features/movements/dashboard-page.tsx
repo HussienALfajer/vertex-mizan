@@ -38,6 +38,7 @@ import { ByCurrency, CountCard, FigureCard } from './figures';
 import { MovementDialog } from './movement-dialog';
 import { MovementTable } from './movement-list';
 import { NewProjectDialog } from './new-project-dialog';
+import { ReportPdfButton } from './report-pdf';
 
 const t = ar.movements.dashboard;
 const f = ar.movements.figures;
@@ -71,6 +72,12 @@ export function DashboardPage({ me, companyId }: { me: Me; companyId: string }) 
         actions={
           canRead && (
             <div className="flex flex-wrap gap-2">
+              <ReportPdfButton
+                companyId={companyId}
+                report="projects_overview"
+                params={{}}
+                label={ar.movements.print.allProjectsAction}
+              />
               {canProjects && (
                 <Button variant="outline" onClick={() => setDialog('project')}>
                   {t.newProject}

@@ -802,7 +802,8 @@ export async function readMovement(tx: Transaction, id: string): Promise<Movemen
 async function movementRows(
   tx: Transaction,
   where: ReturnType<typeof sql>,
-  limit: number,
+  limit: number | null,
+  order: 'newest' | 'oldest' = 'newest',
 ): Promise<MovementRow[]> {
   const result = await tx.execute<{
     id: string;
@@ -854,8 +855,8 @@ async function movementRows(
     left join public.project_movement_cancellations x on x.movement_id = m.id
     left join public.journal_entries r on r.id = x.reversal_entry_id
     where ${where}
-    order by m.movement_date desc, m.id desc
-    limit ${limit}`);
+    order by ${order === 'newest' ? sql`m.movement_date desc, m.id desc` : sql`m.movement_date, m.fiscal_year, m.number, m.id`}
+    ${limit === null ? sql`` : sql`limit ${limit}`}`);
   return result.rows.map((row) => ({
     id: row.id,
     kind: row.kind,
@@ -1694,3 +1695,147 @@ export async function companyExists(tx: Transaction, companyId: string): Promise
     .where(eq(companies.id, companyId));
   return row !== undefined;
 }
+
+// S13 "Printing": what the three PDFs print, read in the render's one snapshot.
+
+/** What the project owes each supplier, by currency, valued as `owedByUsOf()` values it. */
+export interface SupplierDebtRow {
+  readonly supplier: { id: string; name: string };
+  readonly owed: CurrencyAmountRow[];
+}
+
+async function owedBySupplier(tx: Transaction, projectId: string): Promise<SupplierDebtRow[]> {
+  const result = await tx.execute<{
+    id: string;
+    name: string;
+    currency: CurrencyCode;
+    amount: string;
+    book: string;
+  }>(sql`
+    with project_lines as (
+      select i.id as item_id, i.counterparty_value_id as supplier, l.currency,
+        -sum(l.amount_minor) as owed
+      from public.journal_lines l
+      join public.chart_accounts a on a.id = l.account_id and a.code = ${ACCOUNTS.suppliers}
+      join public.dimension_set_values sv on sv.set_id = l.dimension_set_id
+      join public.open_items i on i.account_id = l.account_id and i.currency = l.currency
+        and i.counterparty_value_id = sv.value_id
+      where ${onProject(projectId, sql`l.dimension_set_id`)}
+      group by i.id, i.counterparty_value_id, l.currency
+    )
+    select v.id, v.name, p.currency, sum(p.owed)::text as amount,
+      sum(case when b.open_minor = 0 then 0
+        else round(-b.book_minor::numeric * p.owed / -b.open_minor) end)::text as book
+    from project_lines p
+    join public.open_item_balances b on b.item_id = p.item_id
+    join public.dimension_values v on v.id = p.supplier
+    where p.owed <> 0
+    group by v.id, v.name, p.currency
+    order by v.name, v.id, p.currency`);
+  const suppliers: SupplierDebtRow[] = [];
+  for (const row of result.rows) {
+    let supplier = suppliers.find((item) => item.supplier.id === row.id);
+    if (supplier === undefined) {
+      supplier = { supplier: { id: row.id, name: row.name }, owed: [] };
+      suppliers.push(supplier);
+    }
+    supplier.owed.push({ currency: row.currency, amountMinor: row.amount, bookMinor: row.book });
+  }
+  return suppliers;
+}
+
+/** One project as its PDF and the PDF of all projects print it. */
+export interface ProjectPrintSection {
+  readonly project: ProjectRow;
+  /** Every movement of the project, oldest first, cancelled ones marked. */
+  readonly movements: MovementRow[];
+  readonly materials: MaterialCostRow[];
+  readonly materialsBookMinor: string;
+  readonly suppliers: SupplierDebtRow[];
+}
+
+async function projectSection(tx: Transaction, project: ProjectRow): Promise<ProjectPrintSection> {
+  const costs = await readMaterialCosts(tx, { project: project.id });
+  return {
+    project,
+    movements: await movementRows(tx, sql`m.contract_value_id = ${project.id}`, null, 'oldest'),
+    materials: costs.materials,
+    materialsBookMinor: costs.totalBookMinor,
+    suppliers: await owedBySupplier(tx, project.id),
+  };
+}
+
+/** One project's PDF (S13 "Printing"): the project and client, figures, movements, materials, debts. */
+export async function readProjectStatementPrint(
+  tx: Transaction,
+  projectId: string,
+): Promise<{ bookCurrency: CurrencyCode; section: ProjectPrintSection }> {
+  const [project] = await readProjects(tx, { id: projectId });
+  if (project === undefined) throw new DomainError('NOT_FOUND', 'No such project');
+  return { bookCurrency: project.figures.bookCurrency, section: await projectSection(tx, project) };
+}
+
+/** A rate a movement was measured at: 1 `base` in `quote` on its day, as quoted. */
+export interface RateUsedRow {
+  readonly date: string;
+  readonly base: CurrencyCode;
+  readonly quote: CurrencyCode;
+  readonly rate: string;
+}
+
+/** The PDF of all projects (S13 "Printing"). */
+export interface ProjectsOverviewPrint {
+  readonly bookCurrency: CurrencyCode;
+  readonly figures: FiguresRow;
+  readonly exchangeDifferencesMinor: string;
+  readonly boxes: CurrencyAmountRow[];
+  readonly projects: ProjectPrintSection[];
+  readonly materials: MaterialCostRow[];
+  readonly materialsBookMinor: string;
+  readonly clients: PartyRow[];
+  readonly suppliers: PartyRow[];
+  readonly rates: RateUsedRow[];
+}
+
+export async function readProjectsOverviewPrint(tx: Transaction): Promise<ProjectsOverviewPrint> {
+  const figures = await readFigures(tx, null);
+  const differences = await tx.execute<{ value: string }>(sql`
+    select (-coalesce(sum(l.book_minor), 0))::text as value
+    from public.journal_lines l
+    join public.chart_accounts a on a.id = l.account_id
+    where a.code in (${ACCOUNTS.gain}, ${ACCOUNTS.loss})`);
+  const projects: ProjectPrintSection[] = [];
+  for (const project of await readProjects(tx)) projects.push(await projectSection(tx, project));
+  const costs = await readMaterialCosts(tx, {});
+  const owing = (party: PartyRow) => party.owedToUs.length > 0 || party.owedByUs.length > 0;
+  // The rates the movements' entries and their cancellations were measured at in the book ledger.
+  const rates = await tx.execute<{
+    date: string;
+    base: CurrencyCode;
+    quote: CurrencyCode;
+    rate: string;
+  }>(sql`
+    select distinct c.effective_on::text as date, c.base, c.quote, c.rate::text as rate
+    from public.line_conversions c
+    join public.journal_lines l on l.id = c.line_id
+    where c.ledger = 'book' and l.entry_id in (
+      select m.entry_id from public.project_movements m
+      union all
+      select x.reversal_entry_id from public.project_movement_cancellations x)
+    order by 1, 2, 3, 4`);
+  return {
+    bookCurrency: figures.bookCurrency,
+    figures,
+    exchangeDifferencesMinor: differences.rows[0]?.value ?? '0',
+    boxes: await readBoxes(tx),
+    projects,
+    materials: costs.materials,
+    materialsBookMinor: costs.totalBookMinor,
+    clients: (await readParties(tx, 'client')).filter(owing),
+    suppliers: (await readParties(tx, 'supplier')).filter(owing),
+    rates: rates.rows.map((row) => ({ ...row, rate: trimRate(row.rate) })),
+  };
+}
+
+/** A stored rate without the trailing zeros of its `numeric(22, 10)`. */
+const trimRate = (rate: string) => (rate.includes('.') ? rate.replace(/\.?0+$/, '') : rate);

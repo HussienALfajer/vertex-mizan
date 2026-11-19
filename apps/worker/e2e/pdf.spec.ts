@@ -10,8 +10,12 @@ import {
 import { ar } from '@vertex-mizan/i18n';
 import {
   entryNumberText,
+  movementsPageHeader,
+  type PrintProjectSection,
+  printedCurrency,
   printFontFaces,
   renderJournalBookHtml,
+  renderMovementsHtml,
   renderReportHtml,
   reportSheet,
 } from '@vertex-mizan/ui/print';
@@ -189,4 +193,152 @@ test('a draft journal book prints its mark, and a long report flows over its pag
   });
   const pdf = await printPdf(browser, html, { pageNumbers: ar.reports.pageOf });
   expect(pageCount(pdf)).toBeGreaterThan(5);
+});
+
+/** A 1 × 1 PNG, synthetic: the company's logo. */
+const LOGO =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+
+function longProject(name: string): PrintProjectSection {
+  const figures = {
+    revenueMinor: LARGE,
+    costsMinor: LARGE,
+    profitMinor: '-123456789',
+    receivedMinor: LARGE,
+    expensesMinor: LARGE,
+    wagesMinor: LARGE,
+    netCashMinor: LARGE,
+    owedByUs: [{ currency: 'SYP' as const, amountMinor: LARGE, bookMinor: LARGE }],
+    owedToUs: [{ currency: 'TRY' as const, amountMinor: LARGE, bookMinor: LARGE }],
+    movementCount: 120,
+  };
+  return {
+    project: {
+      name,
+      client: { name: longest(60) },
+      startDate: '2026-12-01',
+      state: 'active',
+      contractValue: { amountMinor: LARGE, currency: 'USD' },
+      figures,
+    },
+    movements: Array.from({ length: 120 }, (_, at) => ({
+      kind: at % 3 === 0 ? 'expense' : 'received',
+      fiscalYear: 2026,
+      number: at + 1,
+      date: '2026-12-31',
+      project: { name },
+      party: at % 3 === 0 ? null : { name: longest(60) },
+      currency: 'SYP',
+      amountMinor: LARGE,
+      bookMinor: LARGE,
+      description: longest(200),
+      material:
+        at % 3 === 0
+          ? {
+              name: longest(60),
+              unit: longest(10),
+              quantity: '999999.999',
+              unitPrice: '99999999.9999',
+            }
+          : null,
+      cancellation: at % 10 === 0 ? { reason: longest(100), on: '2026-12-31' } : null,
+    })),
+    materials: [
+      {
+        material: { name: longest(60), unit: longest(10) },
+        quantity: '999999.999',
+        bookMinor: LARGE,
+        byCurrency: [
+          { currency: 'SYP', amountMinor: LARGE, bookMinor: LARGE },
+          { currency: 'TRY', amountMinor: LARGE, bookMinor: LARGE },
+        ],
+        byProject: [{ project: { name }, quantity: '999999.999', bookMinor: LARGE }],
+      },
+    ],
+    materialsBookMinor: LARGE,
+    suppliers: [
+      {
+        supplier: { name: longest(60) },
+        owed: [{ currency: 'SYP', amountMinor: LARGE, bookMinor: LARGE }],
+      },
+    ],
+  };
+}
+
+test('the PDF of all projects carries the logo and name on every page and clips nothing', async ({
+  browser,
+  page,
+}) => {
+  const projects = [longProject(longest(60)), longProject(longest(60))];
+  const props = {
+    company: longest(60),
+    logo: LOGO,
+    title: ar.reports.names.projects_overview,
+    scope: ar.movements.print.asOf.replace('{date}', '2026-12-31'),
+    printedAt: '31 كانون الأول 2026، 21:00',
+  };
+  const html = renderMovementsHtml({
+    ...props,
+    bookCurrency: 'USD',
+    currencyName: (currency) =>
+      printedCurrency(currency, {
+        reports: ar.reports,
+        accounting: ar.accounting,
+        openItems: ar.openItems,
+        chart: ar.chart,
+        cash: ar.cash,
+      }),
+    text: {
+      print: ar.movements.print,
+      kinds: ar.movements.kinds,
+      states: ar.movements.states,
+      figures: ar.movements.figures,
+    },
+    content: {
+      report: 'projects_overview',
+      data: {
+        figures: projects[0]?.project.figures as PrintProjectSection['project']['figures'],
+        exchangeDifferencesMinor: '-123456',
+        boxes: [{ currency: 'SYP', amountMinor: LARGE, bookMinor: LARGE }],
+        projects,
+        materials: projects[0]?.materials ?? [],
+        materialsBookMinor: LARGE,
+        clients: [
+          {
+            name: longest(60),
+            owedToUs: projects[0]?.project.figures.owedToUs ?? [],
+            owedByUs: [],
+          },
+        ],
+        suppliers: [],
+        rates: [{ date: '2026-12-31', base: 'USD', quote: 'SYP', rate: '118.5' }],
+      },
+    },
+    fontFaces,
+  });
+  // The print area of a portrait A4 page with its margins, at 96 dpi: 186 mm wide.
+  await page.setViewportSize({ width: 703, height: 950 });
+  await page.emulateMedia({ media: 'print' });
+  await page.setContent(html, { waitUntil: 'load' });
+  await page.evaluate(() => document.fonts.ready);
+  const wide = await page.evaluate(() =>
+    [...document.querySelectorAll<HTMLElement>('main table')]
+      .filter((element) => element.scrollWidth > element.clientWidth + 1)
+      .map((element) => element.textContent?.slice(0, 20)),
+  );
+  expect(wide).toEqual([]);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(704);
+  expect(
+    await page
+      .locator('.cover-logo')
+      .evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth),
+  ).toBe(1);
+
+  const pdf = await printPdf(browser, html, {
+    pageNumbers: ar.reports.pageOf,
+    pageHeader: movementsPageHeader(props),
+  });
+  expect(pageCount(pdf)).toBeGreaterThan(6);
+  // The logo is drawn: the cover's and the page header's.
+  expect(pdf.toString('latin1')).toMatch(/\/Subtype\s*\/Image/);
 });

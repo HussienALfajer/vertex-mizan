@@ -283,6 +283,21 @@ describe('the exports and files', () => {
     expect(REPORT_FILE_QUERIES.project_document).toBe(projectDocumentFileQuerySchema);
     expect(REPORT_FILE_QUERIES.material_quantities).toBe(materialQuantitiesQuerySchema);
   });
+
+  it('reads the files of S13: all projects, one project by its id, the materials over a range', () => {
+    const project = '019a0000-0000-7000-8000-000000000003';
+    expect(REPORT_FILE_QUERIES.projects_overview.parse({})).toEqual({});
+    expect(REPORT_FILE_QUERIES.project_statement.parse({ project })).toEqual({ project });
+    expect(issuePaths(REPORT_FILE_QUERIES.project_statement, {})).toEqual(['project']);
+    expect(
+      REPORT_FILE_QUERIES.material_costs.parse({ project, from: '2026-11-01', to: '2026-11-30' }),
+    ).toEqual({ project, from: '2026-11-01', to: '2026-11-30' });
+    expect(REPORT_FILE_QUERIES.material_costs.parse({})).toEqual({});
+    expect(reportFileRequestSchema.parse({ report: 'projects_overview' })).toMatchObject({
+      report: 'projects_overview',
+      official: false,
+    });
+  });
 });
 
 describe('the project reports (S12 "Reports")', () => {

@@ -131,6 +131,7 @@ Three PDFs on A4, Arabic, right to left, each page with the company's logo and n
 - **All projects:** a cover; the summary; one section per project (summary, movements, materials, debts); materials across projects; debts by party; the rates used.
 - **One project:** the project and client; the summary; the movements; the materials; its debts.
 - **Materials:** per material and per project.
+- The PDFs of all projects and of one project read every movement from the project's start to the print's day ("حتى <date>"); the materials' PDF takes the range and project of `/materials` (PR 6).
 
 ## Reports
 Every figure is read from ledger lines, never summed from movement amounts, so a debt settled at another rate leaves no gap:

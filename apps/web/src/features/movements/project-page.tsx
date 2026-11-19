@@ -31,6 +31,7 @@ import { can } from '../../lib/session';
 import { ByCurrency, FigureCard } from './figures';
 import { MovementDialog } from './movement-dialog';
 import { MovementBrowser } from './movement-list';
+import { ReportPdfButton } from './report-pdf';
 
 const t = ar.movements.project;
 const f = ar.movements.figures;
@@ -130,6 +131,12 @@ function ProjectView({
         }
         actions={
           <div className="flex flex-wrap gap-2">
+            <ReportPdfButton
+              companyId={companyId}
+              report="project_statement"
+              params={{ project: project.id }}
+              label={ar.movements.print.projectAction}
+            />
             {canManage && (
               <Button variant="outline" onClick={() => setDialog('state')}>
                 {finished ? t.reopen : t.finish}

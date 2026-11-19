@@ -575,6 +575,13 @@
       "when": 1795112701565,
       "tag": "0081_s13_movement_entry_guard",
       "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "7",
+      "when": 1795120352710,
+      "tag": "0082_light_lord_hawal",
+      "breakpoints": true
     }
   ]
 }

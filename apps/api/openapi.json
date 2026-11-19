@@ -1500,7 +1500,10 @@
                 "movement.cancelled",
                 "project.created",
                 "project.updated",
-                "branding.updated"
+                "branding.updated",
+                "export.projects_overview",
+                "export.project_statement",
+                "export.material_costs"
               ]
             }
           },
@@ -15286,7 +15289,10 @@
           "movement.cancelled",
           "project.created",
           "project.updated",
-          "branding.updated"
+          "branding.updated",
+          "export.projects_overview",
+          "export.project_statement",
+          "export.material_costs"
         ]
       },
       "AuditPage": {
@@ -27714,7 +27720,10 @@
           "voucher",
           "project_report",
           "material_quantities",
-          "project_document"
+          "project_document",
+          "projects_overview",
+          "project_statement",
+          "material_costs"
         ]
       },
       "ReportFileState": {
@@ -27764,7 +27773,10 @@
           "voucher",
           "project_report",
           "material_quantities",
-          "project_document"
+          "project_document",
+          "projects_overview",
+          "project_statement",
+          "material_costs"
         ]
       },
       "JournalBookPrintsQuery": {
