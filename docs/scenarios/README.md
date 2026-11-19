@@ -38,6 +38,7 @@ Every rule is tested in each shape it can occur in (ADR 0007, ADR 0008):
 | `syp-usd` | SYP | USD | Vertex Media |
 | `usd-syp` | USD | SYP | A company whose statutory books are in USD, if the law allows it |
 | `third` | SYP | USD | A transaction in a third currency (TRY or EUR) |
+| `usd` | USD | — | One contracting company's management books (ADR 0024, S13) |
 
 ## YAML schema
 

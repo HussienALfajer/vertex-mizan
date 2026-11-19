@@ -1,0 +1,23 @@
+# 0024 — Simple project movements for one contracting company
+
+Status: Accepted (owner, 2026-11-19) · Date: 2026-11-19 · Amends [0021](0021-stand-alone-without-hub.md) (the product's first client and its screens), [0010](0010-design-system-for-accountants.md) (the product name and logo shown) and the phase 1 scope (the screens of F01–F14 replaced by S13's) · Spec: `docs/specs/S13-project-movements.md`
+
+## Context
+The owner runs one contracting company and wants a very simple system: add a project for a client, record its money movements (received, spent, workers' wages, what the company owes and what it is owed), see each project apart and all of them together, follow materials' costs, keep the SYP, TRY and USD rates, and print a complete, professional PDF under the company's name and logo. The web screens of S01–S12 were removed on 2026-11-19 to be rebuilt this way. The engine under them (the ledger, vouchers, project documents, materials, rates, reports and printing) stays and is exactly what such movements need.
+
+The repository is public: no real company's name, logo or data may be committed (AGENTS.md).
+
+## Decision
+1. **One company, one person.** The app serves one company and one person, who signs in with email and password (`admin:create-account`, exempt from two-factor). There is no company switcher, companies list, members, invitations or role screen. Company isolation stays in the database unchanged (ADR 0003).
+2. **Movements over the existing engine.** The person records a movement on a project; the API turns it, in one transaction, into a draft of an existing kind posted at once: a receipt or payment voucher (S11), a project purchase invoice (S12) or a manual entry with an open item (S03, S04). Every rule of those paths applies unchanged (balanced entries, boxes never negative, items, exchange differences, closed periods). A movement is never deleted: it is cancelled by reversing its entry, with a reason, and stays visible as cancelled.
+3. **Seven project movements and one cash deposit.** Received, expense (optionally a material with its quantity and unit price), workers' wages, owed by us (bought on credit from a supplier), owed to us (due from the client), debt paid and debt collected; and, outside projects, a deposit of the owner's money into a box.
+4. **Revenue when received or due (owner, 2026-11-19).** A receipt from the client with nothing due before it is the project's revenue at once, and what is due from the client is revenue when recorded. This is the company's management policy for its own books; it departs from the output method of S12 (IFRS 15.35(b), 15.B15), whose certified progress billings stay in the engine for a later need.
+5. **The USD book, no parallel ledger.** The company's book currency is USD with a `market` rate policy that accepts the dealt rate; there is no parallel ledger. Each movement keeps its own currency (USD, SYP or TRY); totals across currencies are in USD at the rates recorded for each movement's day. One box per currency, chosen by the movement's currency.
+6. **The accounting screens are hidden.** The chart, journal, drafts, periods, revaluation, integrity check and the statutory reports have no screen; they keep working underneath. Their API stays.
+7. **The company's name and logo are data.** The person sets the company's display name and uploads its logo in the app; they are stored in the database and shown in the app's header, the sign-in page and every PDF. The repository holds no company name or logo, and the product's own name in the code is generic.
+
+## Consequences
+- New API: movements, the dashboard and project summaries, material costs, the branding, and three PDFs; the design system and `packages/ui` stay as they are.
+- `admin:create-account` with `--book-currency USD --no-parallel --template contracting` makes the company; a parallel ledger cannot be added after the first entry (S01 rule 11).
+- Balances in SYP and TRY are not revalued while the period screens are hidden; the dashboard and PDFs show each balance in its own currency beside the USD total. An automatic month-end revaluation is a later decision.
+- The scenarios that S13's movements compose stay as they are; `docs/scenarios/projects/simple-movements.md` pins each movement's entry.

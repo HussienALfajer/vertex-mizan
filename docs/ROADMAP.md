@@ -160,6 +160,14 @@ The owner cancelled the integration with Hub on 2026-11-13 (`docs/product/phase-
     - [x] PR 4 (`feat/s12-screens`): the screens: `MaterialPicker`, `QuantityCell`, `BillingSummary` and `BudgetVarianceBar` in `packages/ui`; the i18n namespaces `projects` and `materials`; `/materials`, a project's terms with its budget and subcontracts, the register of project documents (print, cancel by reversal), the document form for the five kinds on `/projects/documents/new/:kind` and `/drafts/:id` with its preview's figures, covered parts and warnings; `/projects`, a project's report in tabs with drill-down, Excel and PDF, `/reports/material-quantities`; quantity columns on manual entries and vouchers, "يتطلب مادة" on the account sheet, the palette's entries; E2E with RTL screenshots
 - [x] The installable web app (`feat/pwa-install`): a manifest with the brand's icons (a maskable one, `brand/logo/svg/app-icon-maskable.svg`), the theme color, and a service worker that never answers `/api` or caches company data and only replaces a failed page load with an offline page (`apps/web/pwa.ts`)
 - [x] The web screens removed to be rebuilt (owner, 2026-11-19; `chore/remove-web-screens`): every page of `apps/web` (S01–S12) with its routes, layouts and E2E specs; kept the API, the worker, the packages, `packages/ui` and the design-system page, the shell, the app-wide components and `src/lib` (the API client and the guards)
+- [ ] S13 project movements (ADR 0024, `docs/specs/S13-project-movements.md`; owner, 2026-11-19: one person, totals in USD, seven movements, cancellation with a reason, one box per currency, the accounting screens hidden, the name and logo set in the app, revenue when received or due)
+  - [x] PR 1 the ADR, the spec and `docs/scenarios/projects/simple-movements.md` (eight cases, `Proposed`; the scenario shape `usd`)
+  - [x] The owner's approval of the eight cases' entries and the cash deposit (2026-11-19)
+  - [ ] PR 2 the API: movements and their cancellation, projects with their details, parties, the dashboard and summaries, material costs, the day's rates, the branding (the cases switch to `Approved`)
+  - [ ] PR 3 the sign-in, the shell with the company's name and logo, the settings
+  - [ ] PR 4 the dashboard, projects, the project page and the movement dialog
+  - [ ] PR 5 clients, suppliers, materials and rates
+  - [ ] PR 6 the three PDFs with the logo
 - [x] Accounts without an invitation (`feat/exempt-accounts`; owner, 2026-11-16): `admin:create-account` makes an exempt person (S01 rule 2: email and password, no two-factor until they enrol) with a generated password, their company and their owner membership; both commands accept the transaction's rate by default only on a `market` ledger
 - [ ] The client's first company in production; a real month closed; the client keeps the full export
 

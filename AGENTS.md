@@ -1,6 +1,6 @@
 # Vertex Mizan
 
-A professional multi-company accounting system by Vertex, Arabic-first. A permanent double-entry core (chart of accounts, journal entries, currencies with stored rates, dimensions, period close, statements), and optional business modules per company. Mizan is a stand-alone system: the integration with Vertex Hub was cancelled on 2026-11-13 (ADR 0021), and its Hub parts are being removed.
+A professional multi-company accounting system by Vertex, Arabic-first. A permanent double-entry core (chart of accounts, journal entries, currencies with stored rates, dimensions, period close, statements), and optional business modules per company. Mizan is a stand-alone system: the integration with Vertex Hub was cancelled on 2026-11-13 (ADR 0021), and its Hub parts are being removed. Since 2026-11-19 it serves one contracting company and one person through simple project movements over that core (ADR 0024, S13); the company's name and logo are data, never committed.
 
 Phase 1 goal: a contracting client's books are kept in Mizan, one company per business (`docs/product/phase-1-scope.md` §1). **Accuracy comes before everything: this is an accounting system.**
 
@@ -12,7 +12,7 @@ Standing read-only references (owner, 2026-10-20), **read, never edit**: `D:\ver
 |---|---|
 | `docs/product/vision-and-phases.md` | The product, its layers and four phases |
 | `docs/product/phase-1-scope.md` | What phase 1 includes (F01–F14), the accounting policies and the treatment of each Hub event. Anything not in it is out of scope: ask before adding. |
-| `docs/decisions/` | ADRs, indexed in its `README.md`. Follow them; propose a new ADR to change one. 0002 stack, 0003 tenancy and access, 0005 and 0008 ledger invariants, 0007 money (book and parallel ledgers; it supersedes 0004), 0009 and 0010 the brand and design system, 0011 the chart, dimensions and bulletin rate, 0021 the stand-alone system without Hub (it supersedes 0006, 0014, 0015 and 0017). |
+| `docs/decisions/` | ADRs, indexed in its `README.md`. Follow them; propose a new ADR to change one. 0002 stack, 0003 tenancy and access, 0005 and 0008 ledger invariants, 0007 money (book and parallel ledgers; it supersedes 0004), 0009 and 0010 the brand and design system, 0011 the chart, dimensions and bulletin rate, 0021 the stand-alone system without Hub (it supersedes 0006, 0014, 0015 and 0017), 0024 simple project movements for one company. |
 | `docs/scenarios/` | The scenario book: one solved example per accounting rule, executed as a test (ADR 0005) |
 | `docs/glossary.md` | Accounting terms in Arabic and English. Name code after the English term. |
 | `docs/ROADMAP.md` | Phase and task status. Update it when an item is done. |
