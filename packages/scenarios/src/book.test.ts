@@ -286,7 +286,7 @@ describe('a case', () => {
     [
       'a step of no kind',
       CASE.replace('  - manual: a USD invoice', '  - what: a USD invoice'),
-      'manual, reversal, rate, revalue, block, close, reopen, draft, discard, service_department, opening, reverse_opening, voucher or project_document',
+      'manual, reversal, rate, revalue, block, close, reopen, draft, discard, service_department, opening, reverse_opening, voucher, project_document, movement or cancel_movement',
     ],
     [
       'a step of two kinds',
@@ -706,6 +706,45 @@ describe('a case', () => {
         ),
       ),
     ).toContain('accounting_date');
+  });
+
+  it('reads a movement step and its cancellation (S13)', () => {
+    const steps = parseCase(`
+case: a movement and its cancellation
+company: { shape: usd, book: USD, template: contracting, rate_policy: { book: market },
+           contracts: [{ code: P1, kind: project, client: C1 }] }
+steps:
+  - movement: owed by us to S1 for P1
+    accounting_date: 2026-12-01
+    payload: { kind: owed_by_us, contract: P1, supplier: S1, currency: USD, amount: 1000 }
+  - cancel_movement: 1
+    accounting_date: 2026-12-02
+    reason: "خطأ"
+expect:
+  entries: []
+`).steps;
+    expect(steps).toEqual([
+      {
+        kind: 'movement',
+        description: 'owed by us to S1 for P1',
+        accountingDate: '2026-12-01',
+        payload: {
+          kind: 'owed_by_us',
+          contract: 'P1',
+          supplier: 'S1',
+          currency: 'USD',
+          amount: 1000n,
+        },
+        outcome: null,
+      },
+      {
+        kind: 'cancel_movement',
+        movement: 1,
+        accountingDate: '2026-12-02',
+        reason: 'خطأ',
+        outcome: null,
+      },
+    ]);
   });
 
   it("reads a project's terms, a project document step and the documents a case states (S12)", () => {

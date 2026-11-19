@@ -186,6 +186,16 @@ steps:                              # in order; a manual entry, a reversal, a ra
                                     #   one month); each line a worker with days and a daily rate as
                                     #   quoted decimals (as typed, at most 1 decimal used; 4 places),
                                     #   or a typed amount with its description (piece work)
+  - movement: <what it records>     # a project movement (S13 rule 1) recorded through the movement
+    accounting_date: 2026-12-01     #   service as the API records it: kind (received, expense, wages,
+    payload: { kind: owed_by_us, contract: P1, supplier: S1, currency: SYP, amount: 11850000 }
+                                    #   owed_by_us, owed_to_us, debt_paid, debt_collected, deposit),
+                                    #   the project (contract) and supplier by code, the currency, the
+                                    #   amount, or material, quantity and unit_price; its description
+                                    #   is the step's text
+  - cancel_movement: 1              # the case's first movement (in the order recorded) cancelled
+    accounting_date: 2026-12-03     #   through the movement service (S13 rule 8), on that day, with
+    reason: "سُجّل خطأً"             #   its reason
 expect:
   entries:                          # the exact set posted, in posting order; every line of every entry
     - source: <manual | opening | revaluation | reversal>

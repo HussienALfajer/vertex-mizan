@@ -11,6 +11,7 @@ import type {
   Step,
   StepKind,
 } from './format.js';
+import { cancelMovementStep, movement } from './movements.js';
 import { opening, reverse as reverseOpening } from './opening.js';
 import {
   materials,
@@ -178,7 +179,7 @@ export type ObservedQuantity = ExpectedQuantity;
  * periods through the close service (its second); S09's `service_department` and the `reports`
  * reader (`reports.ts`); S11's `voucher` executor and `vouchers` reader; S12's `project_document`
  * executor, its `materials` and `subcontracts` setups and its `projectDocuments` and `quantities`
- * readers (`projects.ts`).
+ * readers (`projects.ts`); S13's `movement` and `cancel_movement` executors (`movements.ts`).
  */
 export const bookHarness: ScenarioHarness = {
   setUp,
@@ -197,6 +198,8 @@ export const bookHarness: ScenarioHarness = {
     reverse_opening: reverseOpening,
     voucher,
     project_document: projectDocument,
+    movement,
+    cancel_movement: cancelMovementStep,
   },
   ledger,
   reports,

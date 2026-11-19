@@ -95,6 +95,7 @@ import {
   postingRequests,
   revaluations,
 } from '../schema/ledger.js';
+import { projectMovements } from '../schema/movements.js';
 import {
   openItemBalances,
   openItemDueDates,
@@ -1438,7 +1439,9 @@ async function checkLatestBilling(tx: Transaction, entryId: string): Promise<voi
 }
 
 /**
- * A billing's or a retention release's cancellation is exact (owner, 2026-11-16): its reversal
+ * A project movement's cancellation is exact (S13 rule 8; owner, 2026-11-19), refused while a later
+ * clearing or difference stands on a running item it moved. A billing's or a retention release's
+ * cancellation is exact (owner, 2026-11-16): its reversal
  * gives back to each running item exactly what it moved, with no S04 rule 13 difference entry, so a
  * project's share of an advance or a retention stays the sum of its lines. To keep that true, it
  * is refused (`OPEN_ITEM_HAS_SETTLEMENTS`) while a later clearing of a running item it moved stands
@@ -1453,6 +1456,40 @@ async function checkExactCancellation(
   entryId: string,
   sequence: bigint,
 ): Promise<boolean> {
+  // A project movement's cancellation is exact too (S13 rule 8; owner, 2026-11-19): the books read
+  // as if the movement had never been recorded (IAS 8.42), so no S04 rule 13 difference. A running
+  // item it moved must have no later clearing or difference standing, whatever its project, since
+  // those measured the item at an average that included the movement: cancel them first.
+  const [movement] = await tx
+    .select({ id: projectMovements.id })
+    .from(projectMovements)
+    .where(eq(projectMovements.entryId, entryId));
+  if (movement !== undefined) {
+    const later = await tx.execute<{ later: boolean }>(sql`
+      select exists (
+        select 1
+        from ${openItemMovements} mine
+        join ${openItems} i on i.company_id = mine.company_id and i.id = mine.item_id
+        join ${openItemMovements} m on m.company_id = i.company_id and m.item_id = i.id
+        join ${journalEntries} e on e.company_id = m.company_id and e.id = m.entry_id
+        where mine.entry_id = ${entryId} and i.kind = 'running'
+          and e.sequence > ${sequence} and e.reverses_entry_id is null
+          and not exists (
+            select 1 from ${journalEntries} r
+            where r.company_id = e.company_id and r.reverses_entry_id = e.id)
+          and (m.kind in ('clear', 'difference')
+            or exists (
+              select 1 from ${postingRequests} p
+              where p.company_id = e.company_id and p.id = e.request_id
+                and p.idempotency_key like '%:difference'))
+      ) as later`);
+    if (later.rows[0]?.later === true) {
+      refuse('OPEN_ITEM_HAS_SETTLEMENTS', 'Cancel the later payments of the item first', {
+        entryId,
+      });
+    }
+    return true;
+  }
   const [document] = await tx
     .select({ kind: projectDocuments.kind, contractValueId: projectDocuments.contractValueId })
     .from(projectDocuments)

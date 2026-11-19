@@ -26,6 +26,8 @@ export const STEPS_ARRIVE_WITH = {
   reverse_opening: "the opening's whole reversal arrives with S10",
   voucher: 'cash vouchers arrive with S11',
   project_document: 'project documents arrive with S12',
+  movement: 'project movements arrive with S13',
+  cancel_movement: "a movement's cancellation arrives with S13",
 } as const satisfies Record<StepKind, string>;
 
 /** A case that did not do what its scenario states: every difference, one per line. */
@@ -160,6 +162,14 @@ function executorFor(harness: ScenarioHarness, step: Step): Run | undefined {
       const execute = harness.executors.project_document;
       return execute && ((context) => execute(context, step));
     }
+    case 'movement': {
+      const execute = harness.executors.movement;
+      return execute && ((context) => execute(context, step));
+    }
+    case 'cancel_movement': {
+      const execute = harness.executors.cancel_movement;
+      return execute && ((context) => execute(context, step));
+    }
   }
 }
 
@@ -196,6 +206,10 @@ function describeStep(step: Step): string {
       return `voucher "${step.description}" on ${step.accountingDate}`;
     case 'project_document':
       return `project document "${step.description}" on ${step.accountingDate}`;
+    case 'movement':
+      return `movement "${step.description}" on ${step.accountingDate}`;
+    case 'cancel_movement':
+      return `cancellation of movement ${step.movement} on ${step.accountingDate}`;
   }
 }
 
