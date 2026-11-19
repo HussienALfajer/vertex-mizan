@@ -122,6 +122,20 @@ test.describe('the suppliers', () => {
       await expect(page.getByText(p.supplier.empty)).toBeVisible();
     });
   });
+
+  test.describe('owed nothing', () => {
+    test.use({
+      api: {
+        'GET /api/company': { status: 200, json: company },
+        'GET /api/parties': { status: 200, json: [{ ...supplier, owedByUs: [] }] },
+      },
+    });
+
+    test('says the company owes the supplier nothing', async ({ page }) => {
+      await page.goto('/suppliers');
+      await expect(page.getByText('لا دين له عليك.')).toBeVisible();
+    });
+  });
 });
 
 test.describe('the materials', () => {
