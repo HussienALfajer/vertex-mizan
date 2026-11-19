@@ -145,6 +145,23 @@ export const test = base.extend<{
   },
 });
 
+/**
+ * The product's own name appears nowhere the company's person looks (ADR 0024 §8): the page's
+ * text, its title and its images' names.
+ */
+export async function expectNoProductName(page: Page): Promise<void> {
+  const seen = await page.evaluate(() =>
+    [
+      document.title,
+      document.body.innerText,
+      ...[...document.querySelectorAll('[aria-label], img[alt], title')].map(
+        (node) => node.getAttribute('aria-label') ?? node.getAttribute('alt') ?? node.textContent,
+      ),
+    ].join(' | '),
+  );
+  expect(seen).not.toMatch(/فيرتكس|ميزان|vertex|mizan/i);
+}
+
 /** The widths every screen is checked at (AGENTS.md: responsive from 360 px). */
 export const widths = [360, 768, 1280] as const;
 

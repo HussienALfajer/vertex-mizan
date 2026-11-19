@@ -127,7 +127,7 @@ All in Arabic, on the design system, responsive from 360 px, each with its loadi
 10. **Settings** (`/settings`): the company's display name and logo, the person's password.
 
 ## Printing
-Three PDFs on A4, Arabic, right to left, each page with the company's logo and name, the report's title and range, the print time and page numbers; amounts with their currency, totals in USD, SYP labelled "الليرة السورية الجديدة".
+Three PDFs on A4, Arabic, right to left, each page with the company's logo and name, the report's title and range, the print time and page numbers; amounts with their currency, totals in USD, SYP labelled "الليرة السورية الجديدة"; no "Powered by Vertex Mizan" line or mark (ADR 0024 §8).
 - **All projects:** a cover; the summary; one section per project (summary, movements, materials, debts); materials across projects; debts by party; the rates used.
 - **One project:** the project and client; the summary; the movements; the materials; its debts.
 - **Materials:** per material and per project.
