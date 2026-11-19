@@ -15,7 +15,7 @@ test.describe('installable app', () => {
 
   test('links a manifest whose icons load', async ({ page, request }) => {
     await page.goto('/');
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText(ar.shell.home.title);
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(ar.movements.dashboard.title);
     const href = await page.locator('link[rel="manifest"]').getAttribute('href');
     expect(href).toBe('/manifest.json');
     await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute('content', '#004139');
@@ -47,7 +47,7 @@ test.describe('installable app', () => {
     page,
   }) => {
     await page.goto('/');
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText(ar.shell.home.title);
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(ar.movements.dashboard.title);
     await page.evaluate(() => navigator.serviceWorker.ready);
     // The page that registered the worker is not yet controlled by it: load once more.
     await page.reload();
@@ -73,6 +73,6 @@ test.describe('installable app', () => {
     await expect(page.getByText(ar.common.app.offlineBody)).toBeVisible();
     await expectNoProductName(page);
     await page.getByRole('link', { name: ar.common.retry }).click();
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText(ar.shell.home.title);
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(ar.movements.dashboard.title);
   });
 });

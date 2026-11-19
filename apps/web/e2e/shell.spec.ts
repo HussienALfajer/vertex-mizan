@@ -41,7 +41,7 @@ test.describe('system status', () => {
 test.describe('shell', () => {
   test('lets keyboard users skip to the content', async ({ page }) => {
     await page.goto('/');
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText(ar.shell.home.title);
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(ar.movements.dashboard.title);
     await page.keyboard.press('Tab');
     const skip = page.getByRole('link', { name: ar.shell.skipToContent });
     await expect(skip).toBeFocused();
@@ -60,7 +60,7 @@ test.describe('shell', () => {
 
   test('sets the density from the command palette', async ({ page }) => {
     await page.goto('/');
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText(ar.shell.home.title);
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(ar.movements.dashboard.title);
     await page.keyboard.press('Control+k');
     const palette = page.getByRole('dialog', { name: ar.commandPalette.title });
     await expect(palette).toBeVisible();
@@ -81,7 +81,7 @@ test.describe('shell', () => {
     await sheet.getByRole('link', { name: ar.shell.nav.home }).click();
     await expect(sheet).toBeHidden();
     await expect(page).toHaveURL('/');
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText(ar.shell.home.title);
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(ar.movements.dashboard.title);
   });
 
   test('offers a way home from an unknown address', async ({ page }) => {

@@ -28,6 +28,7 @@ import {
   ArrowLeftIcon,
   ChevronDownIcon,
   CircleUserIcon,
+  FolderKanbanIcon,
   HouseIcon,
   LogOutIcon,
   type LucideIcon,
@@ -60,6 +61,13 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { to: '/', label: t.nav.home, icon: HouseIcon, exact: true },
+  {
+    to: '/projects',
+    label: t.nav.projects,
+    icon: FolderKanbanIcon,
+    show: (me) => Boolean(me),
+    permission: 'reports.read',
+  },
   {
     to: '/settings',
     label: t.nav.settings,
