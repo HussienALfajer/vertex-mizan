@@ -584,6 +584,23 @@ describe('the refusals of rules 2, 5, 6 and 8', () => {
     await expect(
       record(books, movement(books, 'debt_paid', { amountMinor: '500', date: '2026-12-05' })),
     ).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
+    // A back-dated payment never pays more than is owed after the later ones, even when a new
+    // debt comes later still: paid on 20 December, owed again on 25, nothing is owed in between.
+    await record(books, movement(books, 'debt_paid', { amountMinor: '500', date: '2026-12-20' }));
+    await record(books, movement(books, 'owed_by_us', { amountMinor: '500', date: '2026-12-25' }));
+    await expect(
+      record(books, movement(books, 'debt_paid', { amountMinor: '500', date: '2026-12-15' })),
+    ).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
+    // A client's collection likewise: collected on 20 December, a collection dated 15 finds
+    // nothing left of the item.
+    await record(
+      books,
+      movement(books, 'debt_collected', { amountMinor: '1000', date: '2026-12-20' }),
+    );
+    await record(books, movement(books, 'owed_to_us', { amountMinor: '1000', date: '2026-12-25' }));
+    await expect(
+      record(books, movement(books, 'debt_collected', { amountMinor: '1000', date: '2026-12-15' })),
+    ).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
   });
 
   it('refuses a movement in a closed month and in a currency with no rate', async () => {

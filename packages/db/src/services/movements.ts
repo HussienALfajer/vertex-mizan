@@ -150,7 +150,9 @@ async function checkSupplier(tx: Transaction, id: string): Promise<void> {
 
 /**
  * A client's open items on a project's receivables that exist on `on`, oldest due first (S13 rules
- * 5 and 7): a debt is settled only once it is recognised (IAS 21.28), so an item dated later is
+ * 5 and 7), each with what stays open from `on` on: the lowest of its running balance on that day
+ * and every later day it moved, so a back-dated collection never settles more than is left after
+ * the later ones. A debt is settled only once it is recognised (IAS 21.28): an item dated later is
  * not open on an earlier day.
  */
 async function clientItems(
@@ -161,7 +163,19 @@ async function clientItems(
   on: string,
 ): Promise<{ id: string; currency: CurrencyCode; openMinor: bigint }[]> {
   const result = await tx.execute<{ id: string; currency: CurrencyCode; open: string }>(sql`
-    select i.id, i.currency, b.open_minor::text as open
+    select i.id, i.currency, least(b.open_minor, coalesce((
+        select min(running.open) from (
+          select d.on_day, (
+            select coalesce(sum(m.amount_minor), 0) from public.open_item_movements m
+            where m.item_id = i.id and m.entry_date <= d.on_day
+          ) as open
+          from (
+            select ${on}::date as on_day
+            union select m.entry_date from public.open_item_movements m
+            where m.item_id = i.id and m.entry_date >= ${on}
+          ) d
+        ) running
+      ), 0))::text as open
     from public.open_items i
     join public.open_item_balances b on b.item_id = i.id
     join public.chart_accounts a on a.id = i.account_id and a.code = ${ACCOUNTS.receivables}
@@ -176,16 +190,16 @@ async function clientItems(
       select d.due_on from public.open_item_due_dates d
       where d.item_id = i.id order by d.effective_on desc, d.created_at desc limit 1
     ), i.document_date), i.document_date, i.created_at`);
-  return result.rows.map((row) => ({
-    id: row.id,
-    currency: row.currency,
-    openMinor: BigInt(row.open),
-  }));
+  return result.rows
+    .map((row) => ({ id: row.id, currency: row.currency, openMinor: BigInt(row.open) }))
+    .filter((item) => item.openMinor > 0n);
 }
 
 /**
- * What a project owes a supplier in a currency on `on` (S13 rule 6): minus the transaction amounts
- * of the `211001` lines carrying both, of entries dated on or before it.
+ * What a project owes a supplier in a currency from `on` on (S13 rule 6): the lowest, over `on`
+ * and every later day the debt moved, of minus the transaction amounts of the `211001` lines
+ * carrying both dated up to that day; so a back-dated payment never pays more than was owed then
+ * or is left after the later payments.
  */
 async function owedToSupplier(
   tx: Transaction,
@@ -195,15 +209,25 @@ async function owedToSupplier(
   on: string,
 ): Promise<bigint> {
   const result = await tx.execute<{ owed: string }>(sql`
-    select (-coalesce(sum(l.amount_minor), 0))::text as owed
-    from public.journal_lines l
-    join public.journal_entries e on e.id = l.entry_id and e.entry_date <= ${on}
-    join public.chart_accounts a on a.id = l.account_id and a.code = ${ACCOUNTS.suppliers}
-    where l.currency = ${currency}
-      and exists (select 1 from public.dimension_set_values s
-        where s.set_id = l.dimension_set_id and s.value_id = ${supplierId})
-      and exists (select 1 from public.dimension_set_values s
-        where s.set_id = l.dimension_set_id and s.value_id = ${projectId})`);
+    with lines as (
+      select e.entry_date, l.amount_minor
+      from public.journal_lines l
+      join public.journal_entries e on e.id = l.entry_id
+      join public.chart_accounts a on a.id = l.account_id and a.code = ${ACCOUNTS.suppliers}
+      where l.currency = ${currency}
+        and exists (select 1 from public.dimension_set_values s
+          where s.set_id = l.dimension_set_id and s.value_id = ${supplierId})
+        and exists (select 1 from public.dimension_set_values s
+          where s.set_id = l.dimension_set_id and s.value_id = ${projectId})
+    ),
+    days as (
+      select ${on}::date as on_day
+      union select entry_date from lines where entry_date >= ${on}
+    )
+    select min(-coalesce(
+      (select sum(x.amount_minor) from lines x where x.entry_date <= days.on_day), 0
+    ))::text as owed
+    from days`);
   return BigInt(result.rows[0]?.owed ?? '0');
 }
 
