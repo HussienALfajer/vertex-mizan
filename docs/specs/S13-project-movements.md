@@ -1,6 +1,6 @@
 # S13 — Project movements
 
-Status: Draft · Date: 2026-11-19 · Features: ADR 0024 (replaces the screens of F01–F14 for one contracting company) · ADRs: 0003, 0005, 0007, 0013, 0021, 0022, 0023, 0024
+Status: Approved (owner, 2026-11-19) · Date: 2026-11-19 · Features: ADR 0024 (replaces the screens of F01–F14 for one contracting company) · ADRs: 0003, 0005, 0007, 0013, 0021, 0022, 0023, 0024
 
 <!-- Approved once the owner approves the expected entries of docs/scenarios/projects/simple-movements.md. -->
 

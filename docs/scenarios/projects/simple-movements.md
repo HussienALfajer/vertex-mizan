@@ -2,7 +2,7 @@
 
 Status: Proposed
 
-The owner approves the expected entries of these eight cases before S13's movements are built (ADR 0024, `docs/specs/S13-project-movements.md`). Every step is a path the engine already runs (a voucher, a purchase invoice, a manual entry), so the cases switch to `Approved` with S13's first API PR, which checks that each movement posts exactly these entries.
+The expected entries of these eight cases, and the cash deposit, were approved by the owner on 2026-11-19 (ADR 0024, `docs/specs/S13-project-movements.md`). Every step is a path the engine already runs (a voucher, a purchase invoice, a manual entry), so the cases switch to `Approved` with S13's first API PR, which checks that each movement posts exactly these entries.
 
 ## Rule
 
