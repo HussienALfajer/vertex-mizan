@@ -79,11 +79,20 @@ export type ReportAnswer =
 
 /**
  * The reports a sheet is read for: every one but the journal book's print and the voucher, which
- * print their own pages (a project document too), and the journal.
+ * print their own pages (a project document and S13's three too), and the journal.
  */
 export type SheetReport =
-  | Exclude<ActiveReport, 'journal_book' | 'voucher' | 'project_document'>
+  | Exclude<ActiveReport, 'journal_book' | 'voucher' | 'project_document' | MovementPrintReport>
   | 'journal';
+
+/** S13's three PDFs, which print their own pages under the company's name and logo. */
+export const MOVEMENT_PRINT_REPORTS = [
+  'projects_overview',
+  'project_statement',
+  'material_costs',
+] as const satisfies readonly ActiveReport[];
+
+export type MovementPrintReport = (typeof MOVEMENT_PRINT_REPORTS)[number];
 
 /**
  * Reads a report whole in the transaction's snapshot: the general ledger, the account statement

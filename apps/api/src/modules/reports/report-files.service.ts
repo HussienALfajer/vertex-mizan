@@ -24,6 +24,7 @@ import {
   readCashAccount,
   readJournalBookPrints,
   readProjectDocument,
+  readProjects,
   readProjectTerms,
   readReportAnswer,
   readReportFiles,
@@ -208,6 +209,14 @@ export class ReportFilesService {
       // S12: a project report of a project, a document of the company's register.
       if (request.report === 'project_report')
         await readProjectTerms(tx, params.contract as string);
+      // S13: one project's PDF, or the materials' of one project, of a project of the company.
+      const project =
+        request.report === 'project_statement' || request.report === 'material_costs'
+          ? (params.project as string | undefined)
+          : undefined;
+      if (project !== undefined && (await readProjects(tx, { id: project })).length === 0) {
+        throw new CodedException('NOT_FOUND', 'No such project');
+      }
       if (request.report === 'project_document') {
         const document = await readProjectDocument(tx, { id: params.document as string });
         if (document === null) throw new CodedException('NOT_FOUND', 'No such project document');

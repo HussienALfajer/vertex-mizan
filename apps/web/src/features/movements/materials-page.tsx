@@ -60,6 +60,7 @@ import {
 } from '../../lib/movements';
 import { can } from '../../lib/session';
 import { ByCurrency } from './figures';
+import { ReportPdfButton } from './report-pdf';
 
 const t = ar.movements.materialsPage;
 const m = ar.materials;
@@ -106,6 +107,11 @@ function MaterialCostsView({ companyId }: { companyId: string }) {
     }),
   );
   const filtered = project !== 'all' || range.from !== '' || range.to !== '';
+  const printed: Record<string, string> = {
+    ...(project === 'all' ? {} : { project }),
+    ...(ordered && range.from !== '' ? { from: range.from } : {}),
+    ...(ordered && range.to !== '' ? { to: range.to } : {}),
+  };
 
   return (
     <div className="flex flex-col gap-4">
@@ -163,7 +169,15 @@ function MaterialCostsView({ companyId }: { companyId: string }) {
           <EmptyState icon={<PackageIcon />} title={t.empty} description={t.emptyHint} />
         )
       ) : (
-        <CostsTable costs={costs.data} showProjects={project === 'all'} />
+        <>
+          <ReportPdfButton
+            companyId={companyId}
+            report="material_costs"
+            params={printed}
+            label={ar.movements.print.materialsAction}
+          />
+          <CostsTable costs={costs.data} showProjects={project === 'all'} />
+        </>
       )}
     </div>
   );

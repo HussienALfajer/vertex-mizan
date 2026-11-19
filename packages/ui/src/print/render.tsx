@@ -6,6 +6,11 @@ import {
   type ReportPrintProps,
 } from './document.js';
 import {
+  MovementsPrint,
+  type MovementsPrintProps,
+  movementsPrintStyles,
+} from './movements-print.js';
+import {
   ProjectDocumentPrint,
   type ProjectDocumentPrintProps,
   projectDocumentStyles,
@@ -95,5 +100,17 @@ export function renderProjectDocumentHtml(
     `${print.text.kinds[document.kind]} ${document.fiscalYear}/${document.number}`,
     `${fontFaces}\n${projectDocumentStyles(document.kind)}`,
     renderToStaticMarkup(<ProjectDocumentPrint {...print} />),
+  );
+}
+
+/** One of S13's three PDFs as a whole document (S13 "Printing"); its page header is apart. */
+export function renderMovementsHtml(
+  props: MovementsPrintProps & { readonly fontFaces: string },
+): string {
+  const { fontFaces, ...print } = props;
+  return documentOf(
+    `${print.company} · ${print.title}`,
+    `${fontFaces}\n${movementsPrintStyles()}`,
+    renderToStaticMarkup(<MovementsPrint {...print} />),
   );
 }

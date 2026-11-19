@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { createReadStream, createWriteStream, type ReadStream } from 'node:fs';
-import { mkdir, readdir, rename, rm, stat } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rename, rm, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
@@ -46,6 +46,16 @@ export class FileStore {
   async size(companyId: string, id: string): Promise<number | null> {
     try {
       return (await stat(this.pathOf(companyId, id))).size;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+      throw error;
+    }
+  }
+
+  /** A small file read whole (a company's logo, S13), or null when it is not on disk. */
+  async read(companyId: string, id: string): Promise<Buffer | null> {
+    try {
+      return await readFile(this.pathOf(companyId, id));
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
       throw error;

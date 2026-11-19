@@ -6,6 +6,8 @@ export interface PrintOptions {
    * for a document that numbers its own pages (the journal book, rule 27).
    */
   readonly pageNumbers: string | null;
+  /** The header of every page, a whole template of its own (S13's PDFs); none when absent. */
+  readonly pageHeader?: string;
 }
 
 /** How long one document may take to load and print (S09: a year's journal book ≤ 10 minutes). */
@@ -42,8 +44,8 @@ export async function printPdf(
       format: 'A4',
       printBackground: true,
       preferCSSPageSize: true,
-      displayHeaderFooter: options.pageNumbers !== null,
-      headerTemplate: '<span></span>',
+      displayHeaderFooter: options.pageNumbers !== null || options.pageHeader !== undefined,
+      headerTemplate: options.pageHeader ?? '<span></span>',
       footerTemplate:
         options.pageNumbers === null ? '<span></span>' : footerTemplate(options.pageNumbers),
     });

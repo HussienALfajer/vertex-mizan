@@ -1,6 +1,6 @@
 # TASKS
 
-No task in progress (S13 PR 5 done: `docs/ROADMAP.md`).
+No task in progress (S13 PR 6 done: `docs/ROADMAP.md`).
 
 ## Carried over
 

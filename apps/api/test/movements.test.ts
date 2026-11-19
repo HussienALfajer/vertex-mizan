@@ -299,6 +299,38 @@ describe('movements (S13 rules 1–9)', () => {
   });
 });
 
+describe('the three PDFs (S13 "Printing")', () => {
+  it("queues each as a report file, audited, and refuses another company's project", async () => {
+    // Three at most queued per person (S09): the three of S13, then the refusals.
+    const books = await company();
+    const asked = [
+      { report: 'projects_overview', params: {} },
+      { report: 'project_statement', params: { project: books.project } },
+      { report: 'material_costs', params: { project: books.project, from: today(), to: today() } },
+    ];
+    for (const body of asked) {
+      const file = await books.browser.post('/api/reports/files', body);
+      expect(file.status, JSON.stringify(file.body)).toBe(201);
+      expect(file.body).toMatchObject({ report: body.report, state: 'queued', official: false });
+    }
+    const audit = await books.browser.get('/api/audit', { action: 'export.project_statement' });
+    expect(audit.body.entries).toHaveLength(1);
+    const missing = await books.browser.post('/api/reports/files', {
+      report: 'project_statement',
+      params: {},
+    });
+    expect(missing.body.code).toBe('VALIDATION_FAILED');
+    const other = await company();
+    for (const report of ['project_statement', 'material_costs']) {
+      const refused = await other.browser.post('/api/reports/files', {
+        report,
+        params: { project: books.project },
+      });
+      expect(refused.body.code, report).toBe('NOT_FOUND');
+    }
+  });
+});
+
 describe('branding (S13 "Data")', () => {
   it('keeps the display name and a PNG logo, and refuses another file', async () => {
     const books = await company();

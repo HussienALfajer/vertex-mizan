@@ -4,6 +4,7 @@ import { cashPositionQuerySchema, cashStatementQuerySchema } from './cash.js';
 import { STATEMENT_LINES } from './chart.js';
 import { entryHubDocumentSchema } from './entries.js';
 import { currencyCodeSchema, ledgerSchema } from './money.js';
+import { materialCostQuerySchema } from './movements.js';
 import { ageingQuerySchema, counterpartyStatementQuerySchema } from './open-items.js';
 import { voucherNumberSchema } from './vouchers.js';
 import { entryNumberSchema, minorUnitsSchema, personRefSchema } from './wire.js';
@@ -35,6 +36,9 @@ export const REPORTS = [
   'project_report',
   'material_quantities',
   'project_document',
+  'projects_overview',
+  'project_statement',
+  'material_costs',
 ] as const;
 
 export const reportSchema = z.enum(REPORTS).meta({ id: 'Report' });
@@ -1231,6 +1235,24 @@ export const projectDocumentFileQuerySchema = z
 
 export type ProjectDocumentFileQuery = z.infer<typeof projectDocumentFileQuerySchema>;
 
+/**
+ * S13 "Printing": the PDF of all projects takes no parameter, every project from its start to the
+ * print's day, as the dashboard reads them.
+ */
+export const projectsOverviewFileQuerySchema = z
+  .object({})
+  .meta({ id: 'ProjectsOverviewFileQuery' });
+
+/** S13 "Printing": one project's PDF names its project, from its start to the print's day. */
+export const projectStatementFileQuerySchema = z
+  .object({ project: z.uuid() })
+  .meta({ id: 'ProjectStatementFileQuery' });
+
+export type ProjectStatementFileQuery = z.infer<typeof projectStatementFileQuerySchema>;
+
+/** S13 "Printing": the materials' PDF over the range and project of `/materials`. */
+export const materialCostsFileQuerySchema = materialCostQuerySchema;
+
 /** The query of each report's Excel export, `format=xlsx` aside. */
 export const EXCEL_REPORT_QUERIES = {
   trial_balance: trialBalanceQuerySchema,
@@ -1260,6 +1282,9 @@ export const REPORT_FILE_QUERIES = {
   project_report: projectReportFileQuerySchema,
   material_quantities: materialQuantitiesQuerySchema,
   project_document: projectDocumentFileQuerySchema,
+  projects_overview: projectsOverviewFileQuerySchema,
+  project_statement: projectStatementFileQuerySchema,
+  material_costs: materialCostsFileQuerySchema,
 } as const satisfies Record<ActiveReport, z.ZodType>;
 
 export type ReportFileQuery<R extends ActiveReport> = z.output<(typeof REPORT_FILE_QUERIES)[R]>;
