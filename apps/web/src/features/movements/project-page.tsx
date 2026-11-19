@@ -30,7 +30,7 @@ import { materialCostsQuery, projectQuery, refreshBooks } from '../../lib/moveme
 import { can } from '../../lib/session';
 import { ByCurrency, FigureCard } from './figures';
 import { MovementDialog } from './movement-dialog';
-import { ProjectMovements } from './movement-list';
+import { MovementBrowser } from './movement-list';
 
 const t = ar.movements.project;
 const f = ar.movements.figures;
@@ -186,9 +186,9 @@ function ProjectView({
             <TabsTrigger value="materials">{t.tabs.materials}</TabsTrigger>
           </TabsList>
           <TabsContent value="movements">
-            <ProjectMovements
+            <MovementBrowser
               companyId={companyId}
-              projectId={project.id}
+              scope={{ project: project.id }}
               bookCurrency={book}
               canCancel={can(me, 'entries.post')}
             />
@@ -226,7 +226,7 @@ function ProjectView({
 
 /** The project's materials (S13 screen 4): each with its quantity and cost in USD. */
 function ProjectMaterials({ companyId, projectId }: { companyId: string; projectId: string }) {
-  const costs = useQuery(materialCostsQuery(companyId, projectId));
+  const costs = useQuery(materialCostsQuery(companyId, { project: projectId }));
   const m = ar.movements.materials;
   if (costs.isPending) {
     return (

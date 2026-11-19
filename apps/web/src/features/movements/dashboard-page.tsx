@@ -142,7 +142,7 @@ function Figures({
   const figures = data.figures;
   return (
     <div className="flex flex-col gap-6">
-      <Rates rates={data.rates} canRates={canRates} onRates={onRates} />
+      <DayRatesSummary rates={data.rates} canRates={canRates} onRates={onRates} />
       <section aria-label={t.title} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <CountCard label={f.projects}>
           <p className="text-xl font-bold tabular-nums">
@@ -281,7 +281,7 @@ function Figures({
 }
 
 /** The day's rates, or a prompt to record them before a movement in SYP or TRY. */
-function Rates({
+export function DayRatesSummary({
   rates,
   canRates,
   onRates,

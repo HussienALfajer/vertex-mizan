@@ -196,6 +196,14 @@ describe('movements (S13 rules 1–9)', () => {
     const list = await books.browser.get('/api/movements', { project: books.project });
     expect(list.status).toBe(200);
     expect(list.body.movements).toHaveLength(7);
+    const clients = await books.browser.get('/api/parties', { type: 'client' });
+    // The client's page: the movements naming the client (received, owed to us, debt collected).
+    const ofClient = await books.browser.get('/api/movements', { party: clients.body[0].id });
+    expect(ofClient.body.movements.map((row: { kind: string }) => row.kind).sort()).toEqual([
+      'debt_collected',
+      'owed_to_us',
+      'received',
+    ]);
     const dashboard = await books.browser.get('/api/dashboard');
     expect(dashboard.status, JSON.stringify(dashboard.body)).toBe(200);
     expect(dashboard.body.figures.wagesMinor).toBe('0');
@@ -208,7 +216,6 @@ describe('movements (S13 rules 1–9)', () => {
     });
     const costs = await books.browser.get('/api/material-costs', { project: books.project });
     expect(costs.body.materials[0]).toMatchObject({ quantity: '2.500', bookMinor: '205000' });
-    const clients = await books.browser.get('/api/parties', { type: 'client' });
     expect(clients.body[0].owedToUs).toEqual([
       { currency: 'USD', amountMinor: '250000', bookMinor: '250000' },
     ]);

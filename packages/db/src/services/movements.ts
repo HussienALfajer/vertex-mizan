@@ -774,6 +774,7 @@ export async function readMovements(
   const [cursorDate, cursorId] = query.cursor?.split('_') ?? [];
   const filters = [
     query.project === undefined ? sql`true` : sql`m.contract_value_id = ${query.project}`,
+    query.party === undefined ? sql`true` : sql`m.counterparty_value_id = ${query.party}`,
     query.kind === undefined ? sql`true` : sql`m.kind = ${query.kind}`,
     query.currency === undefined ? sql`true` : sql`m.currency = ${query.currency}`,
     query.from === undefined ? sql`true` : sql`m.movement_date >= ${query.from}`,

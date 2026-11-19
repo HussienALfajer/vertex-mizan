@@ -160,10 +160,14 @@ export const movementSchema = z
 
 export type Movement = z.infer<typeof movementSchema>;
 
-/** `GET /api/movements`: filters by project, kind, currency and dates, newest first, by page. */
+/**
+ * `GET /api/movements`: filters by project, party (the client or supplier a movement names), kind,
+ * currency and dates, newest first, by page.
+ */
 export const movementQuerySchema = z
   .object({
     project: z.uuid().optional(),
+    party: z.uuid().optional(),
     kind: projectMovementKindSchema.optional(),
     currency: currencyCodeSchema.optional(),
     from: z.iso.date().optional(),
