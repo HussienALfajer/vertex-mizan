@@ -14,6 +14,7 @@ import {
   withCompany,
 } from '@vertex-mizan/db';
 import { and, desc, eq } from 'drizzle-orm';
+import { v7 as uuidv7 } from 'uuid';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   createAccountWithCompany,
@@ -436,14 +437,16 @@ describe('admin:create-account (S01 rules 2 and 9, owner 2026-11-16)', () => {
 
   it('refuses an email that already has a person, before writing anything', async () => {
     const { person } = await signedInPerson(app, db);
-    const before = await db.select({ id: companies.id }).from(companies);
+    // A name no other test uses: the other test files make companies at the same time.
+    const name = `شركة مرفوضة ${uuidv7()}`;
+    const named = company.map((value) => (value === 'شركة اختبار' ? name : value));
     await expect(
       createAccountWithCompany(
         db,
-        parseCreateAccount([...company, '--email', person.email, '--person-name', 'x']),
+        parseCreateAccount([...named, '--email', person.email, '--person-name', 'x']),
       ),
     ).rejects.toThrow(/exists/);
-    expect(await db.select({ id: companies.id }).from(companies)).toHaveLength(before.length);
+    expect(await db.select().from(companies).where(eq(companies.name, name))).toEqual([]);
   });
 
   it('never confirms by password for a person who is not exempt', async () => {

@@ -676,12 +676,12 @@ export function movementsPageHeader(props: {
   const logo =
     props.logo === null || !/^data:image\/(png|jpeg);base64,[A-Za-z0-9+/=]+$/.test(props.logo)
       ? ''
-      : `<img src="${props.logo}" style="max-height:12mm;max-width:30mm;object-fit:contain">`;
+      : `<img src="${props.logo}" style="max-block-size:12mm;max-inline-size:30mm;object-fit:contain">`;
   // Chromium lays the template over the page's top margin (30 mm): a box of that height, inset
   // as the page's own margins, every size explicit since the template has no stylesheet of ours.
   // The system's sans-serif, as the footer's: a face inlined here never loads in time, and its
   // `font-display: block` would leave the text unpainted.
-  return `<div style="box-sizing:border-box;direction:rtl;width:100%;height:28mm;padding:8mm 12mm 0;font-family:sans-serif;font-size:8pt;line-height:1.4;color:${lightColors.foreground};-webkit-print-color-adjust:exact;print-color-adjust:exact"><div style="display:flex;align-items:center;gap:4mm;padding-bottom:2mm;border-bottom:0.6pt solid ${brand}">${logo}<div style="flex:1;min-width:0"><div style="font-size:10.5pt;font-weight:700;color:${brand}">${escapeText(props.company)}</div><div><b>${escapeText(props.title)}</b> · ${escapeText(props.scope)}</div></div><div style="color:${muted};white-space:nowrap">${escapeText(props.printedAt)}</div></div></div>`;
+  return `<div style="box-sizing:border-box;direction:rtl;inline-size:100%;block-size:28mm;padding-block:8mm 0;padding-inline:12mm;font-family:sans-serif;font-size:8pt;line-height:1.4;color:${lightColors.foreground};-webkit-print-color-adjust:exact;print-color-adjust:exact"><div style="display:flex;align-items:center;gap:4mm;padding-block-end:2mm;border-block-end:0.6pt solid ${brand}">${logo}<div style="flex:1;min-inline-size:0"><div style="font-size:10.5pt;font-weight:700;color:${brand}">${escapeText(props.company)}</div><div><b>${escapeText(props.title)}</b> · ${escapeText(props.scope)}</div></div><div style="color:${muted};white-space:nowrap">${escapeText(props.printedAt)}</div></div></div>`;
 }
 
 /** The stylesheet of the three PDFs: A4 with room for the page header and footer. */

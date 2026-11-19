@@ -69,6 +69,9 @@ describe('the report identities and marks', () => {
       'project_report',
       'material_quantities',
       'project_document',
+      'projects_overview',
+      'project_statement',
+      'material_costs',
     ]);
     // S10 rules 32–33's marks appended after rule 4's two.
     expect(REPORT_MARKS).toEqual([

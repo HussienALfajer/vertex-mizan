@@ -6,12 +6,15 @@ describe('audit actions', () => {
   // Stored values: a later spec appends, never renames (S01, "Audit").
   it('are the platform and company actions of S01 to S13, as <entity>.<verb>', () => {
     expect(PLATFORM_AUDIT_ACTIONS).toHaveLength(12);
-    expect(COMPANY_AUDIT_ACTIONS).toHaveLength(106);
+    expect(COMPANY_AUDIT_ACTIONS).toHaveLength(109);
     expect(COMPANY_AUDIT_ACTIONS.slice(102)).toEqual([
       'movement.cancelled',
       'project.created',
       'project.updated',
       'branding.updated',
+      'export.projects_overview',
+      'export.project_statement',
+      'export.material_costs',
     ]);
     expect(COMPANY_AUDIT_ACTIONS.slice(15, 17)).toEqual(['account.created', 'account.updated']);
     expect(COMPANY_AUDIT_ACTIONS.slice(38, 41)).toEqual([
@@ -19,7 +22,7 @@ describe('audit actions', () => {
       'entry.posted',
       'draft.created',
     ]);
-    expect(COMPANY_AUDIT_ACTIONS.slice(-57, -34)).toEqual([
+    expect(COMPANY_AUDIT_ACTIONS.slice(-60, -37)).toEqual([
       'company.settings_updated',
       'integrity.checked',
       'export.requested',
@@ -75,15 +78,6 @@ describe('audit actions', () => {
       'export.project_report',
       'export.material_quantities',
       'export.project_document',
-    ]);
-    expect(COMPANY_AUDIT_ACTIONS.slice(-7)).toEqual([
-      'movement.cancelled',
-      'project.created',
-      'project.updated',
-      'branding.updated',
-      'export.projects_overview',
-      'export.project_statement',
-      'export.material_costs',
     ]);
     for (const action of [...PLATFORM_AUDIT_ACTIONS, ...COMPANY_AUDIT_ACTIONS]) {
       expect(action).toMatch(/^[a-z]+(_[a-z]+)*\.[a-z]+(_[a-z]+)*$/);
