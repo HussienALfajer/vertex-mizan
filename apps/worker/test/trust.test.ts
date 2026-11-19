@@ -176,9 +176,13 @@ describe('ledger.daily-anchor', () => {
   it('anchors each company’s head and emails each owner the anchors of all their companies', async () => {
     const job = new DailyAnchorJob(jobs);
     const empty = await company('شركة بلا قيود', [people.second], 0);
-    // Yesterday ended before any of these entries was posted: nothing to anchor for it.
-    const yesterday = await job.anchor(dayBefore(todayInDamascus()));
-    expect(yesterday.anchors).toBe(0);
+    // Yesterday ended before any of these entries was posted: nothing of these companies to anchor
+    // for it. Other files' companies may be (a run that crosses midnight in Damascus), so this
+    // reads its own companies only.
+    await job.anchor(dayBefore(todayInDamascus()));
+    for (const id of [both, single, empty]) {
+      expect(await withCompany(db, id, (tx) => tx.select().from(chainAnchors))).toEqual([]);
+    }
 
     const today = todayInDamascus();
     const run = await job.anchor(today);
