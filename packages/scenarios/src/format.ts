@@ -476,7 +476,9 @@ const stepOutcome = { outcome: outcomeSchema.optional() };
  * rules 4 and 11), which S07's checklist reads (`no_drafts`); and S09's `service_department`, a
  * manual service's dated department (rule 34); and S10's `opening` (rules 10–23) and its
  * `reverse_opening` (rule 25); and S11's `voucher` (rules 9–14), a cash voucher posted from its
- * draft; and S12's `project_document` (rules 7–22), a project document posted from its draft.
+ * draft; and S12's `project_document` (rules 7–22), a project document posted from its draft;
+ * and S13's `movement` (rule 1), a movement recorded through the movement service, and
+ * `cancel_movement` (rule 8), one cancelled by its place among the case's movements.
  */
 export const STEP_KINDS = [
   'manual',
@@ -493,6 +495,8 @@ export const STEP_KINDS = [
   'reverse_opening',
   'voucher',
   'project_document',
+  'movement',
+  'cancel_movement',
 ] as const;
 
 export type StepKind = (typeof STEP_KINDS)[number];
@@ -684,6 +688,47 @@ const projectDocumentStepSchema = z
     outcome: step.outcome ?? null,
   }));
 
+/**
+ * A project movement (S13 rule 1): what it records, its date and the movement as the form sends it
+ * with codes for ids (`kind`, `contract?`, `supplier?`, `currency`, `amount?`, `material?`,
+ * `quantity?`, `unit_price?`), recorded and posted through the movement service.
+ */
+const movementStepSchema = z
+  .strictObject({
+    kind: z.literal('movement'),
+    movement: z.string().trim().min(1),
+    accounting_date: dateSchema,
+    payload: payloadSchema,
+    ...stepOutcome,
+  })
+  .transform((step) => ({
+    kind: step.kind,
+    description: step.movement,
+    accountingDate: step.accounting_date,
+    payload: step.payload,
+    outcome: step.outcome ?? null,
+  }));
+
+/**
+ * A movement cancelled (S13 rule 8): its place among the case's movements, 1-based in the order
+ * they were recorded, the cancellation's date and its reason.
+ */
+const cancelMovementStepSchema = z
+  .strictObject({
+    kind: z.literal('cancel_movement'),
+    cancel_movement: countSchema(1),
+    accounting_date: dateSchema,
+    reason: z.string().trim().min(1).max(500),
+    ...stepOutcome,
+  })
+  .transform((step) => ({
+    kind: step.kind,
+    movement: step.cancel_movement,
+    accountingDate: step.accounting_date,
+    reason: step.reason,
+    outcome: step.outcome ?? null,
+  }));
+
 /** Discard a draft the case saved, by its step number, with a reason (S03 rule 11). */
 const discardStepSchema = z
   .strictObject({
@@ -809,12 +854,14 @@ const stepSchema = z.preprocess(
       reverseOpeningStepSchema,
       voucherStepSchema,
       projectDocumentStepSchema,
+      movementStepSchema,
+      cancelMovementStepSchema,
     ],
     {
       error:
         'Expected a step with one of the keys manual, reversal, rate, revalue, block, close, ' +
-        'reopen, draft, discard, service_department, opening, reverse_opening, voucher or ' +
-        'project_document',
+        'reopen, draft, discard, service_department, opening, reverse_opening, voucher, ' +
+        'project_document, movement or cancel_movement',
     },
   ),
 );

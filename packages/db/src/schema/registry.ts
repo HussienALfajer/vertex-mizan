@@ -111,6 +111,13 @@ export const tableRegistry = {
   project_documents: { module: 'ledger', scope: 'company', kind: 'append-only' },
   line_quantities: { module: 'ledger', scope: 'company', kind: 'append-only' },
   advance_applications: { module: 'ledger', scope: 'company', kind: 'append-only' },
+  // S13 (ADR 0024): project movements, their numbers and cancellations; a project's dates and
+  // state; the company's display name and logo.
+  project_movement_sequences: { module: 'movements', scope: 'company', kind: 'ledger-state' },
+  project_movements: { module: 'movements', scope: 'company', kind: 'append-only' },
+  project_movement_cancellations: { module: 'movements', scope: 'company', kind: 'append-only' },
+  project_details: { module: 'movements', scope: 'company', kind: 'business' },
+  company_branding: { module: 'movements', scope: 'company', kind: 'business' },
 } as const satisfies Record<string, TableInfo>;
 
 export type TableScope = 'company' | 'platform';

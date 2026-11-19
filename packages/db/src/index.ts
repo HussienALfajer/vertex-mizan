@@ -96,6 +96,7 @@ export * from './services/companies.js';
 export * from './services/departments.js';
 export * from './services/dimensions.js';
 export * from './services/drafts.js';
+export * from './services/movements.js';
 export * from './services/opening.js';
 export * from './services/periods.js';
 export * from './services/project-reports.js';

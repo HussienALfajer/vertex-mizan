@@ -148,6 +148,11 @@ export const COMPANY_AUDIT_ACTIONS = [
   'export.project_report',
   'export.material_quantities',
   'export.project_document',
+  // S13: a movement cancelled with its reason, a project made or changed, the company's branding.
+  'movement.cancelled',
+  'project.created',
+  'project.updated',
+  'branding.updated',
 ] as const;
 
 /**

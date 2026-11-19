@@ -262,6 +262,10 @@ export const AUDITED_FIELDS = {
     'advanceRecoveryBp',
     'archived',
   ],
+  // S13: a movement's cancellation, a project's details, the company's branding.
+  project_movement: ['number', 'fiscalYear', 'kind', 'reason', 'reversalEntryId'],
+  project: ['name', 'clientValueId', 'startDate', 'state'],
+  company_branding: ['displayName', 'logoSha256'],
 } as const satisfies Record<string, readonly string[]>;
 
 export type AuditedEntity = keyof typeof AUDITED_FIELDS;

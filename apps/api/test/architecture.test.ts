@@ -61,6 +61,9 @@ it('keeps the public routes to the ones the spec names', () => {
     'AuthController.signIn',
     'AuthController.verifyBackupCode',
     'AuthController.verifyTotp',
+    // S13: the sign-in page's company name and logo, of the company the server's setting names.
+    'BrandingPublicController.logo',
+    'BrandingPublicController.show',
     'HealthController.check',
     'InvitationsController.accept',
     'InvitationsController.lookup',

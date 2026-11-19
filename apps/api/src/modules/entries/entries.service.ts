@@ -24,6 +24,7 @@ import {
   dimensionSetValues,
   entryAttachments,
   exchangeRates,
+  isMovementEntry,
   journalEntries,
   journalLines,
   lineConversions,
@@ -130,6 +131,10 @@ export class EntriesService {
     return withCompany(this.db, companyId, async (tx) => {
       await lockCompanyForWrite(tx, companyId);
       await entryRow(tx, id);
+      // S13 rule 8: a movement's entry is reversed only by cancelling the movement.
+      if (await isMovementEntry(tx, id)) {
+        throw new CodedException('ENTRY_NOT_REVERSIBLE', 'Cancel the movement instead');
+      }
       const actor = actorOf(access);
       const today = todayInDamascus();
       if (await approvalIsOn(tx)) {

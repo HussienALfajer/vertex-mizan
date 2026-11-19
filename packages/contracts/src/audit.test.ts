@@ -4,16 +4,22 @@ import { auditQuerySchema, COMPANY_AUDIT_ACTIONS, PLATFORM_AUDIT_ACTIONS } from 
 
 describe('audit actions', () => {
   // Stored values: a later spec appends, never renames (S01, "Audit").
-  it('are the platform and company actions of S01 to S12, as <entity>.<verb>', () => {
+  it('are the platform and company actions of S01 to S13, as <entity>.<verb>', () => {
     expect(PLATFORM_AUDIT_ACTIONS).toHaveLength(12);
-    expect(COMPANY_AUDIT_ACTIONS).toHaveLength(102);
+    expect(COMPANY_AUDIT_ACTIONS).toHaveLength(106);
+    expect(COMPANY_AUDIT_ACTIONS.slice(102)).toEqual([
+      'movement.cancelled',
+      'project.created',
+      'project.updated',
+      'branding.updated',
+    ]);
     expect(COMPANY_AUDIT_ACTIONS.slice(15, 17)).toEqual(['account.created', 'account.updated']);
     expect(COMPANY_AUDIT_ACTIONS.slice(38, 41)).toEqual([
       'export.chart',
       'entry.posted',
       'draft.created',
     ]);
-    expect(COMPANY_AUDIT_ACTIONS.slice(-53, -30)).toEqual([
+    expect(COMPANY_AUDIT_ACTIONS.slice(-57, -34)).toEqual([
       'company.settings_updated',
       'integrity.checked',
       'export.requested',
@@ -38,7 +44,7 @@ describe('audit actions', () => {
       'period.reopened',
       'service_department.set',
     ]);
-    expect(COMPANY_AUDIT_ACTIONS.slice(-30)).toEqual([
+    expect(COMPANY_AUDIT_ACTIONS.slice(-34, -4)).toEqual([
       'export.trial_balance',
       'export.general_ledger',
       'export.account_statement',

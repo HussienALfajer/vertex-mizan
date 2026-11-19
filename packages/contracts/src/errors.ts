@@ -269,6 +269,9 @@ export const errorStatus = {
   BILLING_NOT_INCREASING: 422,
   /** A billing cancelled while a later uncancelled billing of its project or subcontract exists (S12 rule 22). */
   PROJECT_DOCUMENT_NOT_LATEST: 409,
+  // S13 (ADR 0024): a movement on a finished project; a receipt while the client owes the project.
+  PROJECT_FINISHED: 409,
+  CLIENT_HAS_OPEN_DEBT: 409,
 } as const satisfies Record<string, number>;
 
 export type ErrorCode = keyof typeof errorStatus;

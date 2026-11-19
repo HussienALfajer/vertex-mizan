@@ -29,6 +29,7 @@ import { IntegrityModule } from './modules/integrity/integrity.module.js';
 import { InvitationsModule } from './modules/invitations/invitations.module.js';
 import { MeModule } from './modules/me/me.module.js';
 import { MembersModule } from './modules/members/members.module.js';
+import { MovementsModule } from './modules/movements/movements.module.js';
 import { OpenItemsModule } from './modules/open-items/open-items.module.js';
 import { OpeningModule } from './modules/opening/opening.module.js';
 import { PeriodsModule } from './modules/periods/periods.module.js';
@@ -82,6 +83,7 @@ export class AppModule {
         DraftsModule,
         CashModule,
         ProjectsModule,
+        MovementsModule,
         IntegrityModule,
         ExportsModule,
         OpenItemsModule,

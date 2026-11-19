@@ -16,6 +16,7 @@ describe('loadConfig', () => {
       logLevel: 'info',
       filesDir: DEVELOPMENT_FILES_DIR,
       queueDatabaseUrl: null,
+      signInCompanyId: null,
     });
     expect(DEVELOPMENT_FILES_DIR).toMatch(/[/\\]\.data[/\\]files$/);
   });

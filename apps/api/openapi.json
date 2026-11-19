@@ -1496,7 +1496,11 @@
                 "subcontract.updated",
                 "export.project_report",
                 "export.material_quantities",
-                "export.project_document"
+                "export.project_document",
+                "movement.cancelled",
+                "project.created",
+                "project.updated",
+                "branding.updated"
               ]
             }
           },
@@ -7938,6 +7942,1439 @@
         ]
       }
     },
+    "/api/movements": {
+      "get": {
+        "operationId": "MovementsController_list",
+        "parameters": [
+          {
+            "name": "project",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          },
+          {
+            "name": "kind",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "received",
+                "expense",
+                "wages",
+                "owed_by_us",
+                "owed_to_us",
+                "debt_paid",
+                "debt_collected",
+                "deposit"
+              ]
+            }
+          },
+          {
+            "name": "currency",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "USD",
+                "SYP",
+                "TRY",
+                "EUR"
+              ]
+            }
+          },
+          {
+            "name": "from",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            }
+          },
+          {
+            "name": "to",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            }
+          },
+          {
+            "name": "cursor",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": 50,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of movements, newest first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MovementPage"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "TWO_FACTOR_REQUIRED, FORBIDDEN",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "COMPANY_NOT_SELECTED, COMPANY_SWITCHED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_FAILED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "movements"
+        ]
+      },
+      "post": {
+        "operationId": "MovementsController_record",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordMovement"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The movement, posted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Movement"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "TWO_FACTOR_REQUIRED, FORBIDDEN",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "COMPANY_NOT_SELECTED, COMPANY_SWITCHED, COMPANY_ARCHIVED, PROJECT_FINISHED, CLIENT_HAS_OPEN_DEBT, IDEMPOTENCY_CONFLICT, CASH_BOX_NEGATIVE, PERIOD_CLOSED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_FAILED, ENTRY_DATE_OUT_OF_RANGE, CASH_ACCOUNT_INVALID, RATE_MISSING, MATERIAL_REQUIRED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "movements"
+        ]
+      }
+    },
+    "/api/movements/{id}/cancel": {
+      "post": {
+        "operationId": "MovementsController_cancel",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CancelMovement"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The movement, cancelled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Movement"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "TWO_FACTOR_REQUIRED, FORBIDDEN",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "COMPANY_NOT_SELECTED, COMPANY_SWITCHED, COMPANY_ARCHIVED, ENTRY_ALREADY_REVERSED, OPEN_ITEM_HAS_SETTLEMENTS, CASH_BOX_NEGATIVE, PERIOD_CLOSED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_FAILED, REVERSAL_BEFORE_ORIGINAL",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "movements"
+        ]
+      }
+    },
+    "/api/project-books": {
+      "get": {
+        "operationId": "ProjectBooksController_list",
+        "parameters": [
+          {
+            "name": "state",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "active",
+                "finished"
+              ]
+            }
+          },
+          {
+            "name": "search",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The projects by name",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Project"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "TWO_FACTOR_REQUIRED, FORBIDDEN",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "COMPANY_NOT_SELECTED, COMPANY_SWITCHED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_FAILED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "movements"
+        ]
+      },
+      "post": {
+        "operationId": "ProjectBooksController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateProject"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The new project",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Project"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "TWO_FACTOR_REQUIRED, FORBIDDEN",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "COMPANY_NOT_SELECTED, COMPANY_SWITCHED, COMPANY_ARCHIVED, DIMENSION_CODE_TAKEN",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_FAILED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "movements"
+        ]
+      }
+    },
+    "/api/project-books/{id}": {
+      "get": {
+        "operationId": "ProjectBooksController_show",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The project with its figures",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Project"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "TWO_FACTOR_REQUIRED, FORBIDDEN",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "COMPANY_NOT_SELECTED, COMPANY_SWITCHED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "movements"
+        ]
+      },
+      "patch": {
+        "operationId": "ProjectBooksController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateProject"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The changed project",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Project"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "TWO_FACTOR_REQUIRED, FORBIDDEN",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "COMPANY_NOT_SELECTED, COMPANY_SWITCHED, COMPANY_ARCHIVED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_FAILED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "movements"
+        ]
+      }
+    },
+    "/api/parties": {
+      "get": {
+        "operationId": "PartiesController_list",
+        "parameters": [
+          {
+            "name": "type",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "client",
+                "supplier"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The parties by name",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Party"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "TWO_FACTOR_REQUIRED, FORBIDDEN",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "COMPANY_NOT_SELECTED, COMPANY_SWITCHED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_FAILED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "movements"
+        ]
+      },
+      "post": {
+        "operationId": "PartiesController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateParty"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The new party",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Party"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "TWO_FACTOR_REQUIRED, FORBIDDEN",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "COMPANY_NOT_SELECTED, COMPANY_SWITCHED, COMPANY_ARCHIVED, DIMENSION_CODE_TAKEN",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_FAILED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "movements"
+        ]
+      }
+    },
+    "/api/material-costs": {
+      "get": {
+        "operationId": "MaterialCostsController_list",
+        "parameters": [
+          {
+            "name": "project",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          },
+          {
+            "name": "from",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            }
+          },
+          {
+            "name": "to",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The materials' costs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MaterialCosts"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "TWO_FACTOR_REQUIRED, FORBIDDEN",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "COMPANY_NOT_SELECTED, COMPANY_SWITCHED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_FAILED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "movements"
+        ]
+      }
+    },
+    "/api/day-rates": {
+      "get": {
+        "operationId": "DayRatesController_show",
+        "parameters": [
+          {
+            "name": "date",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The day's rates",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DayRates"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "TWO_FACTOR_REQUIRED, FORBIDDEN",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "COMPANY_NOT_SELECTED, COMPANY_SWITCHED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_FAILED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "movements"
+        ]
+      },
+      "post": {
+        "operationId": "DayRatesController_record",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordDayRates"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The day's rates as recorded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DayRates"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "TWO_FACTOR_REQUIRED, FORBIDDEN",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "COMPANY_NOT_SELECTED, COMPANY_SWITCHED, COMPANY_ARCHIVED, RATE_UNCHANGED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_FAILED, RATE_REASON_REQUIRED, INVALID_RATE, SYP_BEFORE_REDENOMINATION",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "movements"
+        ]
+      }
+    },
+    "/api/dashboard": {
+      "get": {
+        "operationId": "DashboardController_show",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "The dashboard",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Dashboard"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "TWO_FACTOR_REQUIRED, FORBIDDEN",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "COMPANY_NOT_SELECTED, COMPANY_SWITCHED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "movements"
+        ]
+      }
+    },
+    "/api/company/branding": {
+      "get": {
+        "operationId": "BrandingController_show",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "The branding",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Branding"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "TWO_FACTOR_REQUIRED, FORBIDDEN",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "COMPANY_NOT_SELECTED, COMPANY_SWITCHED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "movements"
+        ]
+      },
+      "put": {
+        "operationId": "BrandingController_update",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateBranding"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The branding as saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Branding"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "TWO_FACTOR_REQUIRED, FORBIDDEN",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "COMPANY_NOT_SELECTED, COMPANY_SWITCHED, COMPANY_ARCHIVED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_FAILED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "movements"
+        ]
+      }
+    },
+    "/api/company/branding/logo": {
+      "post": {
+        "operationId": "BrandingController_uploadLogo",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "file"
+                ],
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The branding with its new logo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Branding"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "TWO_FACTOR_REQUIRED, FORBIDDEN",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "COMPANY_NOT_SELECTED, COMPANY_SWITCHED, COMPANY_ARCHIVED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "ATTACHMENT_TOO_LARGE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_FAILED, ATTACHMENT_TYPE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "movements"
+        ]
+      },
+      "get": {
+        "operationId": "BrandingController_logo",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "The logo",
+            "content": {
+              "image/png": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "image/jpeg": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UNAUTHENTICATED",
+            "content": {
+              "image/png": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "image/jpeg": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "TWO_FACTOR_REQUIRED, FORBIDDEN",
+            "content": {
+              "image/png": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "image/jpeg": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND",
+            "content": {
+              "image/png": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "image/jpeg": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "COMPANY_NOT_SELECTED, COMPANY_SWITCHED",
+            "content": {
+              "image/png": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "image/jpeg": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "movements"
+        ]
+      }
+    },
+    "/api/branding/public": {
+      "get": {
+        "operationId": "BrandingPublicController_show",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "The sign-in page's branding",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Branding"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "movements"
+        ]
+      }
+    },
+    "/api/branding/public/logo": {
+      "get": {
+        "operationId": "BrandingPublicController_logo",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "The sign-in page's logo",
+            "content": {
+              "image/png": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "image/jpeg": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND",
+            "content": {
+              "image/png": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              },
+              "image/jpeg": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "movements"
+        ]
+      }
+    },
     "/api/integrity/check": {
       "post": {
         "operationId": "IntegrityController_check",
@@ -13035,7 +14472,9 @@
           "MATERIAL_LOCKED",
           "ADVANCE_CURRENCY_MISMATCH",
           "BILLING_NOT_INCREASING",
-          "PROJECT_DOCUMENT_NOT_LATEST"
+          "PROJECT_DOCUMENT_NOT_LATEST",
+          "PROJECT_FINISHED",
+          "CLIENT_HAS_OPEN_DEBT"
         ]
       },
       "PageQuery": {
@@ -13833,7 +15272,11 @@
           "subcontract.updated",
           "export.project_report",
           "export.material_quantities",
-          "export.project_document"
+          "export.project_document",
+          "movement.cancelled",
+          "project.created",
+          "project.updated",
+          "branding.updated"
         ]
       },
       "AuditPage": {
@@ -16576,8 +18019,7 @@
           "base",
           "quote",
           "rate"
-        ],
-        "additionalProperties": false
+        ]
       },
       "DraftLine": {
         "type": "object",
@@ -19945,6 +21387,1029 @@
           "parallelMinor"
         ],
         "additionalProperties": false
+      },
+      "MovementQuery": {
+        "type": "object",
+        "properties": {
+          "project": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "kind": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ProjectMovementKind"
+              }
+            ]
+          },
+          "currency": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CurrencyCode"
+              }
+            ]
+          },
+          "from": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          },
+          "to": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          },
+          "cursor": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+          },
+          "limit": {
+            "default": 50,
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200
+          }
+        }
+      },
+      "ProjectMovementKind": {
+        "type": "string",
+        "enum": [
+          "received",
+          "expense",
+          "wages",
+          "owed_by_us",
+          "owed_to_us",
+          "debt_paid",
+          "debt_collected",
+          "deposit"
+        ]
+      },
+      "MovementPage": {
+        "type": "object",
+        "properties": {
+          "movements": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Movement"
+            }
+          },
+          "nextCursor": {
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "movements",
+          "nextCursor"
+        ],
+        "additionalProperties": false
+      },
+      "Movement": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ProjectMovementKind"
+          },
+          "fiscalYear": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "number": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "date": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          },
+          "project": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/NamedRef"
+              }
+            ]
+          },
+          "party": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/NamedRef"
+              }
+            ]
+          },
+          "currency": {
+            "$ref": "#/components/schemas/CurrencyCode"
+          },
+          "amountMinor": {
+            "$ref": "#/components/schemas/MinorUnits"
+          },
+          "bookMinor": {
+            "$ref": "#/components/schemas/MinorUnits"
+          },
+          "description": {
+            "type": "string"
+          },
+          "material": {
+            "nullable": true,
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              "name": {
+                "type": "string"
+              },
+              "unit": {
+                "type": "string"
+              },
+              "quantity": {
+                "type": "string"
+              },
+              "unitPrice": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "unit",
+              "quantity",
+              "unitPrice"
+            ],
+            "additionalProperties": false
+          },
+          "entryId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "cancellation": {
+            "nullable": true,
+            "type": "object",
+            "properties": {
+              "reason": {
+                "type": "string"
+              },
+              "on": {
+                "type": "string",
+                "format": "date",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+              },
+              "reversalEntryId": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              }
+            },
+            "required": [
+              "reason",
+              "on",
+              "reversalEntryId"
+            ],
+            "additionalProperties": false
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "fiscalYear",
+          "number",
+          "date",
+          "project",
+          "party",
+          "currency",
+          "amountMinor",
+          "bookMinor",
+          "description",
+          "material",
+          "entryId",
+          "cancellation",
+          "createdAt"
+        ],
+        "additionalProperties": false
+      },
+      "NamedRef": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "RecordMovement": {
+        "type": "object",
+        "properties": {
+          "requestKey": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ProjectMovementKind"
+          },
+          "date": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          },
+          "projectId": {
+            "default": null,
+            "nullable": true,
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "supplierId": {
+            "default": null,
+            "nullable": true,
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "currency": {
+            "$ref": "#/components/schemas/CurrencyCode"
+          },
+          "amountMinor": {
+            "default": null,
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MinorUnits"
+              }
+            ]
+          },
+          "material": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MovementMaterialInput"
+              }
+            ]
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "dealtRate": {
+            "default": null,
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/DealtRate"
+              }
+            ]
+          }
+        },
+        "required": [
+          "requestKey",
+          "kind",
+          "date",
+          "currency",
+          "description"
+        ]
+      },
+      "MovementMaterialInput": {
+        "type": "object",
+        "properties": {
+          "materialId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "quantity": {
+            "type": "string",
+            "pattern": "^-?\\d{1,11}(\\.\\d{1,3})?$"
+          },
+          "unitPrice": {
+            "type": "string",
+            "pattern": "^\\d{1,14}(\\.\\d{1,4})?$"
+          }
+        },
+        "required": [
+          "materialId",
+          "quantity",
+          "unitPrice"
+        ]
+      },
+      "CancelMovement": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          }
+        },
+        "required": [
+          "reason"
+        ]
+      },
+      "ProjectQuery": {
+        "type": "object",
+        "properties": {
+          "state": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ProjectState"
+              }
+            ]
+          },
+          "search": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          }
+        }
+      },
+      "ProjectState": {
+        "type": "string",
+        "enum": [
+          "active",
+          "finished"
+        ]
+      },
+      "Project": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "name": {
+            "type": "string"
+          },
+          "client": {
+            "$ref": "#/components/schemas/NamedRef"
+          },
+          "startDate": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          },
+          "state": {
+            "$ref": "#/components/schemas/ProjectState"
+          },
+          "contractValue": {
+            "nullable": true,
+            "type": "object",
+            "properties": {
+              "amountMinor": {
+                "$ref": "#/components/schemas/MinorUnits"
+              },
+              "currency": {
+                "$ref": "#/components/schemas/CurrencyCode"
+              }
+            },
+            "required": [
+              "amountMinor",
+              "currency"
+            ],
+            "additionalProperties": false
+          },
+          "figures": {
+            "$ref": "#/components/schemas/ProjectFigures"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "client",
+          "startDate",
+          "state",
+          "contractValue",
+          "figures"
+        ],
+        "additionalProperties": false
+      },
+      "ProjectFigures": {
+        "type": "object",
+        "properties": {
+          "bookCurrency": {
+            "$ref": "#/components/schemas/CurrencyCode"
+          },
+          "revenueMinor": {
+            "$ref": "#/components/schemas/MinorUnits"
+          },
+          "costsMinor": {
+            "$ref": "#/components/schemas/MinorUnits"
+          },
+          "profitMinor": {
+            "$ref": "#/components/schemas/MinorUnits"
+          },
+          "receivedMinor": {
+            "$ref": "#/components/schemas/MinorUnits"
+          },
+          "expensesMinor": {
+            "$ref": "#/components/schemas/MinorUnits"
+          },
+          "wagesMinor": {
+            "$ref": "#/components/schemas/MinorUnits"
+          },
+          "netCashMinor": {
+            "$ref": "#/components/schemas/MinorUnits"
+          },
+          "owedByUs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CurrencyAmount"
+            }
+          },
+          "owedToUs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CurrencyAmount"
+            }
+          },
+          "movementCount": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "bookCurrency",
+          "revenueMinor",
+          "costsMinor",
+          "profitMinor",
+          "receivedMinor",
+          "expensesMinor",
+          "wagesMinor",
+          "netCashMinor",
+          "owedByUs",
+          "owedToUs",
+          "movementCount"
+        ],
+        "additionalProperties": false
+      },
+      "CurrencyAmount": {
+        "type": "object",
+        "properties": {
+          "currency": {
+            "$ref": "#/components/schemas/CurrencyCode"
+          },
+          "amountMinor": {
+            "$ref": "#/components/schemas/MinorUnits"
+          },
+          "bookMinor": {
+            "$ref": "#/components/schemas/MinorUnits"
+          }
+        },
+        "required": [
+          "currency",
+          "amountMinor",
+          "bookMinor"
+        ],
+        "additionalProperties": false
+      },
+      "CreateProject": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "clientId": {
+            "default": null,
+            "nullable": true,
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "clientName": {
+            "default": null,
+            "nullable": true,
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "startDate": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          },
+          "contractValue": {
+            "default": null,
+            "nullable": true,
+            "type": "object",
+            "properties": {
+              "amountMinor": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/MinorUnits"
+                  }
+                ]
+              },
+              "currency": {
+                "$ref": "#/components/schemas/CurrencyCode"
+              }
+            },
+            "required": [
+              "amountMinor",
+              "currency"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "startDate"
+        ]
+      },
+      "UpdateProject": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "startDate": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          },
+          "state": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ProjectState"
+              }
+            ]
+          }
+        }
+      },
+      "PartyQuery": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/PartyType"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "PartyType": {
+        "type": "string",
+        "enum": [
+          "client",
+          "supplier"
+        ]
+      },
+      "Party": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "type": {
+            "$ref": "#/components/schemas/PartyType"
+          },
+          "name": {
+            "type": "string"
+          },
+          "projectCount": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "owedToUs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CurrencyAmount"
+            }
+          },
+          "owedByUs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CurrencyAmount"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "name",
+          "projectCount",
+          "owedToUs",
+          "owedByUs"
+        ],
+        "additionalProperties": false
+      },
+      "CreateParty": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/PartyType"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "required": [
+          "type",
+          "name"
+        ]
+      },
+      "MaterialCostQuery": {
+        "type": "object",
+        "properties": {
+          "project": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "from": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          },
+          "to": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          }
+        }
+      },
+      "MaterialCosts": {
+        "type": "object",
+        "properties": {
+          "bookCurrency": {
+            "$ref": "#/components/schemas/CurrencyCode"
+          },
+          "materials": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MaterialCost"
+            }
+          },
+          "totalBookMinor": {
+            "$ref": "#/components/schemas/MinorUnits"
+          }
+        },
+        "required": [
+          "bookCurrency",
+          "materials",
+          "totalBookMinor"
+        ],
+        "additionalProperties": false
+      },
+      "MaterialCost": {
+        "type": "object",
+        "properties": {
+          "material": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              "name": {
+                "type": "string"
+              },
+              "unit": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "unit"
+            ],
+            "additionalProperties": false
+          },
+          "quantity": {
+            "type": "string"
+          },
+          "bookMinor": {
+            "$ref": "#/components/schemas/MinorUnits"
+          },
+          "byCurrency": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CurrencyAmount"
+            }
+          },
+          "byProject": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "project": {
+                  "$ref": "#/components/schemas/NamedRef"
+                },
+                "quantity": {
+                  "type": "string"
+                },
+                "bookMinor": {
+                  "$ref": "#/components/schemas/MinorUnits"
+                }
+              },
+              "required": [
+                "project",
+                "quantity",
+                "bookMinor"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "material",
+          "quantity",
+          "bookMinor",
+          "byCurrency",
+          "byProject"
+        ],
+        "additionalProperties": false
+      },
+      "DayRatesQuery": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          }
+        }
+      },
+      "DayRates": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          },
+          "rates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DayRate"
+            }
+          },
+          "missing": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "date",
+          "rates",
+          "missing"
+        ],
+        "additionalProperties": false
+      },
+      "DayRate": {
+        "type": "object",
+        "properties": {
+          "base": {
+            "$ref": "#/components/schemas/CurrencyCode"
+          },
+          "quote": {
+            "$ref": "#/components/schemas/CurrencyCode"
+          },
+          "rate": {
+            "nullable": true,
+            "type": "string",
+            "pattern": "^(?:0|[1-9]\\d{0,11})(?:\\.\\d{1,10})?$"
+          },
+          "effectiveOn": {
+            "nullable": true,
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          }
+        },
+        "required": [
+          "base",
+          "quote",
+          "rate",
+          "effectiveOn"
+        ],
+        "additionalProperties": false
+      },
+      "RecordDayRates": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          },
+          "rates": {
+            "minItems": 1,
+            "maxItems": 4,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "base": {
+                  "$ref": "#/components/schemas/CurrencyCode"
+                },
+                "quote": {
+                  "$ref": "#/components/schemas/CurrencyCode"
+                },
+                "rate": {
+                  "type": "string",
+                  "pattern": "^(?:0|[1-9]\\d{0,11})(?:\\.\\d{1,10})?$"
+                }
+              },
+              "required": [
+                "base",
+                "quote",
+                "rate"
+              ]
+            }
+          },
+          "reason": {
+            "default": null,
+            "nullable": true,
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          }
+        },
+        "required": [
+          "date",
+          "rates"
+        ]
+      },
+      "Dashboard": {
+        "type": "object",
+        "properties": {
+          "bookCurrency": {
+            "$ref": "#/components/schemas/CurrencyCode"
+          },
+          "projects": {
+            "type": "object",
+            "properties": {
+              "active": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "finished": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "active",
+              "finished"
+            ],
+            "additionalProperties": false
+          },
+          "figures": {
+            "$ref": "#/components/schemas/ProjectFigures"
+          },
+          "exchangeDifferencesMinor": {
+            "$ref": "#/components/schemas/MinorUnits"
+          },
+          "boxes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CurrencyAmount"
+            }
+          },
+          "rates": {
+            "$ref": "#/components/schemas/DayRates"
+          },
+          "topProjects": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "project": {
+                  "$ref": "#/components/schemas/NamedRef"
+                },
+                "profitMinor": {
+                  "$ref": "#/components/schemas/MinorUnits"
+                },
+                "netCashMinor": {
+                  "$ref": "#/components/schemas/MinorUnits"
+                }
+              },
+              "required": [
+                "project",
+                "profitMinor",
+                "netCashMinor"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "latestMovements": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Movement"
+            }
+          },
+          "topMaterials": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "material": {
+                  "$ref": "#/components/schemas/NamedRef"
+                },
+                "unit": {
+                  "type": "string"
+                },
+                "quantity": {
+                  "type": "string"
+                },
+                "bookMinor": {
+                  "$ref": "#/components/schemas/MinorUnits"
+                }
+              },
+              "required": [
+                "material",
+                "unit",
+                "quantity",
+                "bookMinor"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "bookCurrency",
+          "projects",
+          "figures",
+          "exchangeDifferencesMinor",
+          "boxes",
+          "rates",
+          "topProjects",
+          "latestMovements",
+          "topMaterials"
+        ],
+        "additionalProperties": false
+      },
+      "Branding": {
+        "type": "object",
+        "properties": {
+          "displayName": {
+            "type": "string"
+          },
+          "hasLogo": {
+            "type": "boolean"
+          },
+          "logoVersion": {
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "displayName",
+          "hasLogo",
+          "logoVersion"
+        ],
+        "additionalProperties": false
+      },
+      "UpdateBranding": {
+        "type": "object",
+        "properties": {
+          "displayName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "required": [
+          "displayName"
+        ]
       },
       "IntegrityCheck": {
         "type": "object",
