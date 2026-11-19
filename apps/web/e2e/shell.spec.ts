@@ -1,5 +1,5 @@
 import { ar } from '@vertex-mizan/i18n';
-import { expect, test } from './test';
+import { branded, expect, logoReply, signedIn, test, withLogo } from './test';
 
 const status = ar.shell.status;
 
@@ -88,5 +88,57 @@ test.describe('shell', () => {
     await page.goto('/no-such-page');
     await page.getByRole('link', { name: ar.shell.notFound.backHome }).click();
     await expect(page).toHaveURL('/');
+  });
+});
+
+test.describe('company branding', () => {
+  test("shows the company's display name and logo in the shell", async ({ page }) => {
+    await page.goto('/');
+    await expect(page.locator('aside').getByText(branded.displayName)).toBeVisible();
+  });
+
+  test.describe('with a logo', () => {
+    test.use({ branding: withLogo, api: { 'GET /api/company/branding/logo': logoReply } });
+
+    test('loads the logo by its version', async ({ page }) => {
+      await page.goto('/');
+      const logo = page.locator('aside [data-slot="company-logo"] img');
+      await expect(logo).toHaveAttribute('src', '/api/company/branding/logo?v=v1');
+      await expect(logo).toHaveJSProperty('complete', true);
+    });
+  });
+
+  test('shows the company on a phone, beside the menu button', async ({ page }) => {
+    await page.setViewportSize({ width: 360, height: 800 });
+    await page.goto('/');
+    await expect(page.locator('header').getByText(branded.displayName)).toBeVisible();
+  });
+});
+
+test.describe('account menu', () => {
+  test('opens the settings and signs out', async ({ page }) => {
+    let signedOut = false;
+    await page.route('**/api/auth/sign-out', (route) => {
+      signedOut = true;
+      return route.fulfill({ status: 200, json: { success: true } });
+    });
+    await page.goto('/');
+    const menu = page.getByRole('button', {
+      name: `${ar.shell.account.open}: ${signedIn.person.name}`,
+    });
+    await menu.click();
+    await page.getByRole('menuitem', { name: ar.shell.account.settings }).click();
+    await expect(page).toHaveURL('/settings');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(ar.settings.title);
+    await page.route('**/api/me', (route) =>
+      route.fulfill({
+        status: 401,
+        json: { statusCode: 401, code: 'UNAUTHENTICATED', message: 'UNAUTHENTICATED' },
+      }),
+    );
+    await menu.click();
+    await page.getByRole('menuitem', { name: ar.shell.account.signOut }).click();
+    await expect(page).toHaveURL('/sign-in');
+    expect(signedOut).toBe(true);
   });
 });

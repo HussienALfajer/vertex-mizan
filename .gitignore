@@ -22,6 +22,7 @@ coverage/
 # Test output
 .verify/
 test-results/
+.tanstack/
 playwright-report/
 blob-report/
 

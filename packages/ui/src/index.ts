@@ -22,6 +22,7 @@ export * from './accounting/report-marks';
 export * from './accounting/report-table';
 export * from './accounting/voucher-header';
 export { AscentLines } from './brand/ascent-lines';
+export * from './brand/company-logo';
 export { VertexMizanLogo, VertexMizanMark } from './brand/logo';
 export * from './brand/powered-by';
 export * from './components/alert-dialog';

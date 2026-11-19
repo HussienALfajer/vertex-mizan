@@ -1,18 +1,18 @@
-import { useQuery } from '@tanstack/react-query';
-import { Link, type LinkProps, useRouter } from '@tanstack/react-router';
-import type { Me, Permission } from '@vertex-mizan/contracts';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link, type LinkProps, useNavigate, useRouter } from '@tanstack/react-router';
+import type { Branding, Me, Permission } from '@vertex-mizan/contracts';
 import { ar } from '@vertex-mizan/i18n';
 import {
-  Badge,
   Button,
   Callout,
   CommandPalette,
+  CompanyLogo,
   cn,
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuGroup,
+  DropdownMenuHeader,
   DropdownMenuItem,
-  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
   type PaletteCommand,
   PoweredBy,
@@ -28,19 +28,21 @@ import {
 import {
   ArchiveIcon,
   ArrowLeftIcon,
-  BuildingIcon,
-  CheckIcon,
   ChevronDownIcon,
+  CircleUserIcon,
   HouseIcon,
+  LogOutIcon,
   type LucideIcon,
   MenuIcon,
   MoonIcon,
   RowsIcon,
+  SettingsIcon,
   SunIcon,
   SwatchBookIcon,
 } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
-import { useSwitchCompany } from '../lib/company';
+import { api } from '../lib/api';
+import { brandingQuery, displayName, logoUrl } from '../lib/branding';
 import { activeMembership, can, meQuery } from '../lib/session';
 
 const t = ar.shell;
@@ -53,13 +55,21 @@ interface NavItem {
   /** Active only on this exact path; otherwise also on its sub-pages. */
   exact?: boolean;
   /** Lists the item only when this holds; the page stays reachable. */
-  show?: () => boolean;
+  show?: (me: Me | null | undefined) => boolean;
   /** Lists the item only for a person holding this permission in the active company (cosmetic). */
   permission?: Permission;
 }
 
 const navItems: NavItem[] = [
   { to: '/', label: t.nav.home, icon: HouseIcon, exact: true },
+  {
+    to: '/settings',
+    label: t.nav.settings,
+    icon: SettingsIcon,
+    exact: true,
+    show: (me) => Boolean(me),
+    permission: 'company.read',
+  },
   {
     to: '/design-system',
     label: t.nav.designSystem,
@@ -72,13 +82,15 @@ const navItems: NavItem[] = [
 const listedItems = (me: Me | null | undefined) =>
   navItems.filter(
     (item) =>
-      (!item.show || item.show()) && (!item.permission || (me ? can(me, item.permission) : false)),
+      (!item.show || item.show(me)) &&
+      (!item.permission || (me ? can(me, item.permission) : false)),
   );
 
 /**
  * Vertex Green navigation, a gold marker on the active page (brand/identity.md §2, §7). Signed
- * in, the top bar carries the company switcher, and an archived company shows its banner on every
- * page (S01 rules 12, 20).
+ * in, the sidebar and the phone's top bar show the company's logo and display name (S13
+ * "Screens"), the top bar carries the person's menu (settings, sign out), and an archived company
+ * shows its banner on every page (S01 rule 12).
  */
 export function AppShell({
   children,
@@ -88,7 +100,13 @@ export function AppShell({
   signedIn?: boolean;
 }) {
   const me = useQuery({ ...meQuery, enabled: signedIn }).data;
-  const archived = me ? activeMembership(me)?.company.archived : false;
+  const company = me ? activeMembership(me)?.company : undefined;
+  const archived = company?.archived ?? false;
+  const branding = useQuery({
+    ...brandingQuery(company?.id ?? ''),
+    enabled: company !== undefined,
+  }).data;
+  const brand = company ? { branding, fallback: company.name } : undefined;
   return (
     <div className="flex min-h-dvh bg-background">
       {/* Keyboard users skip the navigation on every page (WCAG 2.4.1). */}
@@ -99,10 +117,10 @@ export function AppShell({
         {t.skipToContent}
       </a>
       <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 md:flex">
-        <Sidebar me={me} />
+        <Sidebar me={me} brand={brand} />
       </aside>
       <div className="flex min-w-0 flex-1 flex-col">
-        <TopBar me={me} />
+        <TopBar me={me} brand={brand} />
         <main id="main" tabIndex={-1} className="flex-1 outline-none">
           <div className="mx-auto flex max-w-6xl min-w-0 flex-col gap-8 px-4 py-6 md:px-8">
             {archived && (
@@ -129,12 +147,41 @@ const navLink = cn(
   'before:absolute before:inset-y-2 before:start-0 before:w-0.5 before:bg-sidebar-marker before:opacity-0 data-[status=active]:before:opacity-100',
 );
 
-function Sidebar({ me, onNavigate }: { me: Me | null | undefined; onNavigate?: () => void }) {
+/** The signed-in company's branding, and its registered name while the branding loads. */
+interface Brand {
+  branding: Branding | undefined;
+  fallback: string;
+}
+
+function Sidebar({
+  me,
+  brand,
+  onNavigate,
+}: {
+  me: Me | null | undefined;
+  brand: Brand | undefined;
+  onNavigate?: () => void;
+}) {
   return (
     <div className="flex h-full w-full flex-col border-e border-sidebar-border bg-sidebar text-sidebar-foreground [--ring:var(--sidebar-ring)]">
       <div className="flex h-14 shrink-0 items-center gap-3 border-b border-sidebar-border px-5">
-        <VertexMizanMark className="w-7 text-sidebar-marker" />
-        <span className="text-lg font-bold">{common.productName}</span>
+        {brand ? (
+          <>
+            <CompanyLogo
+              src={logoUrl(brand.branding, '/company/branding/logo')}
+              className="text-sidebar-marker"
+              imageClassName="rounded-sm bg-sidebar-foreground p-0.5"
+            />
+            <span className="line-clamp-2 min-w-0 text-base leading-tight font-bold">
+              <bdi>{displayName(brand.branding, brand.fallback)}</bdi>
+            </span>
+          </>
+        ) : (
+          <>
+            <VertexMizanMark className="w-7 text-sidebar-marker" />
+            <span className="text-lg font-bold">{common.productName}</span>
+          </>
+        )}
       </div>
       {/* The links scroll under the fixed header on short screens and phones. */}
       <nav
@@ -165,7 +212,7 @@ function Sidebar({ me, onNavigate }: { me: Me | null | undefined; onNavigate?: (
   );
 }
 
-function TopBar({ me }: { me: Me | null | undefined }) {
+function TopBar({ me, brand }: { me: Me | null | undefined; brand: Brand | undefined }) {
   const [navOpen, setNavOpen] = useState(false);
   const commands = useShellCommands(me);
   return (
@@ -177,17 +224,29 @@ function TopBar({ me }: { me: Me | null | undefined }) {
           </SheetTrigger>
           <SheetContent className="bg-sidebar">
             <SheetTitle className="sr-only">{t.navLabel}</SheetTitle>
-            <Sidebar me={me} onNavigate={() => setNavOpen(false)} />
+            <Sidebar me={me} brand={brand} onNavigate={() => setNavOpen(false)} />
           </SheetContent>
         </Sheet>
-        <VertexMizanMark className="w-6 text-primary" label={common.productName} />
       </div>
       <div className="flex min-w-0 flex-1 items-center gap-2">
-        {me && <CompanySwitcher me={me} />}
+        {brand ? (
+          <div className="flex min-w-0 items-center gap-2 md:hidden">
+            <CompanyLogo
+              src={logoUrl(brand.branding, '/company/branding/logo')}
+              className="text-primary"
+            />
+            <span className="min-w-0 truncate font-bold text-foreground">
+              <bdi>{displayName(brand.branding, brand.fallback)}</bdi>
+            </span>
+          </div>
+        ) : (
+          <VertexMizanMark className="w-6 text-primary md:hidden" label={common.productName} />
+        )}
       </div>
       <div className="flex shrink-0 items-center gap-2">
         <CommandPalette commands={commands} labels={ar.commandPalette} />
         <ThemeToggle labels={common.theme} />
+        {me && <AccountMenu me={me} />}
       </div>
     </header>
   );
@@ -231,55 +290,53 @@ function useShellCommands(me: Me | null | undefined): PaletteCommand[] {
   ];
 }
 
-const switcher = ar.company.switcher;
-
-/** The active company and the person's role there; choosing another makes it active (rule 20). */
-function CompanySwitcher({ me }: { me: Me }) {
-  const active = activeMembership(me);
-  const open = useSwitchCompany();
+/** The person's menu: their name and email, the settings and signing out. */
+function AccountMenu({ me }: { me: Me }) {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const signOut = useMutation({
+    mutationFn: () => api('POST', '/auth/sign-out'),
+    onSuccess: async () => {
+      queryClient.clear();
+      await navigate({ to: '/sign-in', search: { redirect: undefined } });
+    },
+  });
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
         render={
           <Button
-            variant="outline"
-            className="max-w-72 min-w-0 shrink"
-            aria-label={`${switcher.open}: ${active?.company.name ?? switcher.none}`}
-            loading={open.isPending}
+            variant="ghost"
+            className="min-w-0"
+            aria-label={`${t.account.open}: ${me.person.name}`}
+            loading={signOut.isPending}
           />
         }
       >
-        <BuildingIcon aria-hidden="true" />
-        <span className="truncate">
-          {active ? <bdi>{active.company.name}</bdi> : switcher.none}
+        <CircleUserIcon aria-hidden="true" />
+        <span className="hidden max-w-40 truncate lg:inline">
+          <bdi>{me.person.name}</bdi>
         </span>
-        {active && (
-          <span className="hidden text-muted-foreground lg:inline">· {ar.roles[active.role]}</span>
-        )}
         <ChevronDownIcon aria-hidden="true" />
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="max-w-80">
-        <DropdownMenuGroup>
-          <DropdownMenuLabel>{switcher.label}</DropdownMenuLabel>
-          {me.memberships.map((membership) => {
-            const current = membership.company.id === me.activeCompanyId;
-            return (
-              <DropdownMenuItem
-                key={membership.membershipId}
-                onClick={() => {
-                  if (!current) open.mutate(membership.company.id);
-                }}
-              >
-                <CheckIcon aria-hidden="true" className={cn(!current && 'invisible')} />
-                <span className="flex min-w-0 flex-1 flex-col">
-                  <bdi className="truncate">{membership.company.name}</bdi>
-                  <span className="text-xs text-muted-foreground">{ar.roles[membership.role]}</span>
-                </span>
-                {membership.company.archived && <Badge tone="warning">{switcher.archived}</Badge>}
-              </DropdownMenuItem>
-            );
-          })}
-        </DropdownMenuGroup>
+      <DropdownMenuContent align="end" className="max-w-72">
+        <DropdownMenuHeader>
+          <bdi className="truncate font-medium text-foreground">{me.person.name}</bdi>
+          <bdi dir="ltr" className="truncate text-xs text-muted-foreground">
+            {me.person.email}
+          </bdi>
+        </DropdownMenuHeader>
+        <DropdownMenuSeparator />
+        {can(me, 'company.read') && (
+          <DropdownMenuItem onClick={() => void navigate({ to: '/settings' })}>
+            <SettingsIcon aria-hidden="true" />
+            {t.account.settings}
+          </DropdownMenuItem>
+        )}
+        <DropdownMenuItem onClick={() => signOut.mutate()}>
+          <LogOutIcon aria-hidden="true" />
+          {t.account.signOut}
+        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );

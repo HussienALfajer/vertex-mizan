@@ -50,14 +50,6 @@ export function returnTo(search: Record<string, unknown>): ReturnTo {
   return { redirect: safeRedirect(search.redirect) };
 }
 
-/**
- * A sign-in or enrolment address that brings the person back. Its pages are being rebuilt, so the
- * guards name it as a plain address rather than a typed route.
- */
-function withReturn(path: string, target: string): string {
-  return `${path}?${new URLSearchParams({ redirect: target })}`;
-}
-
 interface GuardArgs {
   context: RouterContext;
   location: { href: string };
@@ -66,18 +58,23 @@ interface GuardArgs {
 /** The person, or a redirect to sign-in that brings them back here. */
 export async function requireSession({ context, location }: GuardArgs): Promise<Me> {
   const me = await context.queryClient.ensureQueryData(meQuery);
-  if (!me) throw redirect({ href: withReturn('/sign-in', location.href) });
+  if (!me) throw redirect({ to: '/sign-in', search: { redirect: location.href } });
   return me;
 }
 
+/** Whether the person may use the app: two-factor enrolled, or exempt (S01 rule 2). */
+export function isEnrolled(me: Me): boolean {
+  return me.person.twoFactorEnabled || me.person.twoFactorExempt;
+}
+
 /**
- * A person with two-factor enrolled, or exempt (S01 rule 2, owner 2026-11-16): anyone else reaches
- * only enrolment.
+ * A person with two-factor enrolled, or exempt (S01 rule 2, owner 2026-11-16). S13 has no
+ * enrolment screens (ADR 0024), so anyone else goes back to sign-in, which says what to do.
  */
 export async function requireEnrolled(args: GuardArgs): Promise<Me> {
   const me = await requireSession(args);
-  if (!me.person.twoFactorEnabled && !me.person.twoFactorExempt) {
-    throw redirect({ href: withReturn('/two-factor/enrol', args.location.href) });
+  if (!isEnrolled(me)) {
+    throw redirect({ to: '/sign-in', search: { redirect: args.location.href } });
   }
   return me;
 }
@@ -99,12 +96,13 @@ export interface CompanyContext {
 }
 
 /**
- * A page of the active company (S01 rule 20): without one, the person chooses on `/companies`.
- * The id is kept for the page's life and sent with its writes (rule 22).
+ * A page of the active company (S01 rule 20). S13 keeps one company per person and has no
+ * companies screen (ADR 0024): without an active company, `/no-company` says so and offers to sign
+ * out. The id is kept for the page's life and sent with its writes (rule 22).
  */
 export function requireCompany(me: Me): CompanyContext {
   const membership = activeMembership(me);
-  if (!membership) throw redirect({ href: '/companies' });
+  if (!membership) throw redirect({ to: '/no-company' });
   return { companyId: membership.company.id, membership };
 }
 

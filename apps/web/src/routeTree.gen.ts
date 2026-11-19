@@ -9,12 +9,20 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as IndexRouteImport } from './routes/index'
+import { Route as AppRouteImport } from './routes/_app'
+import { Route as AuthRouteImport } from './routes/_auth'
 import { Route as DesignSystemRouteImport } from './routes/design-system'
+import { Route as AppIndexRouteImport } from './routes/_app/index'
+import { Route as AppSettingsRouteImport } from './routes/_app/settings'
+import { Route as AuthNoCompanyRouteImport } from './routes/_auth/no-company'
+import { Route as AuthSignInRouteImport } from './routes/_auth/sign-in'
 
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
+const AppRoute = AppRouteImport.update({
+  id: '/_app',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthRoute = AuthRouteImport.update({
+  id: '/_auth',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DesignSystemRoute = DesignSystemRouteImport.update({
@@ -22,40 +30,87 @@ const DesignSystemRoute = DesignSystemRouteImport.update({
   path: '/design-system',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AppIndexRoute = AppIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppSettingsRoute = AppSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => AppRoute,
+} as any)
+const AuthNoCompanyRoute = AuthNoCompanyRouteImport.update({
+  id: '/no-company',
+  path: '/no-company',
+  getParentRoute: () => AuthRoute,
+} as any)
+const AuthSignInRoute = AuthSignInRouteImport.update({
+  id: '/sign-in',
+  path: '/sign-in',
+  getParentRoute: () => AuthRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
-  '/': typeof IndexRoute
+  '/': typeof AppIndexRoute
   '/design-system': typeof DesignSystemRoute
+  '/settings': typeof AppSettingsRoute
+  '/no-company': typeof AuthNoCompanyRoute
+  '/sign-in': typeof AuthSignInRoute
 }
 export interface FileRoutesByTo {
-  '/': typeof IndexRoute
+  '/': typeof AppIndexRoute
   '/design-system': typeof DesignSystemRoute
+  '/settings': typeof AppSettingsRoute
+  '/no-company': typeof AuthNoCompanyRoute
+  '/sign-in': typeof AuthSignInRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
-  '/': typeof IndexRoute
+  '/_app': typeof AppRouteWithChildren
+  '/_auth': typeof AuthRouteWithChildren
   '/design-system': typeof DesignSystemRoute
+  '/_app/settings': typeof AppSettingsRoute
+  '/_auth/no-company': typeof AuthNoCompanyRoute
+  '/_auth/sign-in': typeof AuthSignInRoute
+  '/_app/': typeof AppIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/design-system'
+  fullPaths: '/' | '/design-system' | '/settings' | '/no-company' | '/sign-in'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/design-system'
-  id: '__root__' | '/' | '/design-system'
+  to: '/' | '/design-system' | '/settings' | '/no-company' | '/sign-in'
+  id:
+    | '__root__'
+    | '/_app'
+    | '/_auth'
+    | '/design-system'
+    | '/_app/settings'
+    | '/_auth/no-company'
+    | '/_auth/sign-in'
+    | '/_app/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
-  IndexRoute: typeof IndexRoute
+  AppRoute: typeof AppRouteWithChildren
+  AuthRoute: typeof AuthRouteWithChildren
   DesignSystemRoute: typeof DesignSystemRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/': {
-      id: '/'
-      path: '/'
+    '/_app': {
+      id: '/_app'
+      path: ''
       fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
+      preLoaderRoute: typeof AppRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_auth': {
+      id: '/_auth'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof AuthRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/design-system': {
@@ -65,11 +120,64 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DesignSystemRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_app/': {
+      id: '/_app/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof AppIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/settings': {
+      id: '/_app/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof AppSettingsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_auth/no-company': {
+      id: '/_auth/no-company'
+      path: '/no-company'
+      fullPath: '/no-company'
+      preLoaderRoute: typeof AuthNoCompanyRouteImport
+      parentRoute: typeof AuthRoute
+    }
+    '/_auth/sign-in': {
+      id: '/_auth/sign-in'
+      path: '/sign-in'
+      fullPath: '/sign-in'
+      preLoaderRoute: typeof AuthSignInRouteImport
+      parentRoute: typeof AuthRoute
+    }
   }
 }
 
+interface AppRouteChildren {
+  AppSettingsRoute: typeof AppSettingsRoute
+  AppIndexRoute: typeof AppIndexRoute
+}
+
+const AppRouteChildren: AppRouteChildren = {
+  AppSettingsRoute: AppSettingsRoute,
+  AppIndexRoute: AppIndexRoute,
+}
+
+const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
+
+interface AuthRouteChildren {
+  AuthNoCompanyRoute: typeof AuthNoCompanyRoute
+  AuthSignInRoute: typeof AuthSignInRoute
+}
+
+const AuthRouteChildren: AuthRouteChildren = {
+  AuthNoCompanyRoute: AuthNoCompanyRoute,
+  AuthSignInRoute: AuthSignInRoute,
+}
+
+const AuthRouteWithChildren = AuthRoute._addFileChildren(AuthRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
-  IndexRoute: IndexRoute,
+  AppRoute: AppRouteWithChildren,
+  AuthRoute: AuthRouteWithChildren,
   DesignSystemRoute: DesignSystemRoute,
 }
 export const routeTree = rootRouteImport
