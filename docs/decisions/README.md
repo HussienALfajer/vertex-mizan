@@ -27,5 +27,6 @@ Short records of decisions that shape the system. Each has a status: **Accepted*
 | [0021](0021-stand-alone-without-hub.md) | A stand-alone accounting system: the Hub integration removed, a contracting client first | Accepted |
 | [0022](0022-counterparties-cash-accounts-and-vouchers.md) | Counterparties, cash accounts and vouchers: supplier and worker types, boxes never negative, voucher numbers per kind and year | Accepted (amends 0008, 0013) |
 | [0023](0023-project-documents-quantities-and-advance-application.md) | Project documents, quantities and the application of advances: numbered project documents, revenue by certified billings, a materials catalogue, advances at their carrying amount (IFRIC 22) | Accepted (amends 0007, 0022) |
+| [0024](0024-simple-project-movements-for-one-company.md) | Simple project movements for one contracting company: one person, seven movements over the existing engine, revenue when received or due, a USD book, the accounting screens hidden, the name and logo as data | Accepted (amends 0010, 0021, phase 1 scope) |
 
 The specs S05, S06 and S08, and the Hub parts of the phase 1 scope and of S10, which the superseded ADRs 0006, 0014, 0015 and 0017 and ADR 0019 cite, were removed by ADR 0021; they are in git history at commit `1a0ee40`.

@@ -178,6 +178,20 @@ describe('a scenario file', () => {
     expect(scenarioCase.rates[0]).toMatchObject({ effectiveOn: '2026-11-03', source: 'manual' });
     expect(scenarioCase.steps[0]).toMatchObject({ kind: 'manual', description: 'a USD invoice' });
     expect(parseCase(SYP_ONLY).expect.entries[0]?.lines[0]?.parallel).toBeNull();
+    // ADR 0024: a USD book with no parallel ledger.
+    const usdOnly = parseCase(
+      SYP_ONLY.replace(
+        '{ shape: syp, book: SYP, rate_policy: { book: bulletin } }',
+        '{ shape: usd, book: USD, rate_policy: { book: market } }',
+      ).replaceAll('currency: SYP', 'currency: USD'),
+    );
+    expect(usdOnly.company.ledgers).toEqual({
+      book: { currency: 'USD', ratePolicy: { rateType: 'market', acceptsTransactionRate: false } },
+      parallel: null,
+    });
+    expect(() =>
+      parseCase(SYP_ONLY.replace('shape: syp, book: SYP', 'shape: usd, book: SYP')),
+    ).toThrow();
   });
 
   it('reads Proposed', () => {

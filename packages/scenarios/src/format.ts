@@ -83,6 +83,8 @@ export const SHAPES = {
   'syp-usd': { book: 'SYP', parallel: 'USD' },
   'usd-syp': { book: 'USD', parallel: 'SYP' },
   third: { book: 'SYP', parallel: 'USD' },
+  /** One contracting company's management books (ADR 0024, S13). */
+  usd: { book: 'USD', parallel: null },
 } as const satisfies Record<string, { book: CurrencyCode; parallel: CurrencyCode | null }>;
 
 export type Shape = keyof typeof SHAPES;
