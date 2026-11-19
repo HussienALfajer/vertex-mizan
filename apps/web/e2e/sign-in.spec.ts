@@ -1,5 +1,15 @@
 import { ar } from '@vertex-mizan/i18n';
-import { branded, expect, fieldError, logoReply, refusal, signedIn, test, withLogo } from './test';
+import {
+  branded,
+  expect,
+  expectNoProductName,
+  fieldError,
+  logoReply,
+  refusal,
+  signedIn,
+  test,
+  withLogo,
+} from './test';
 
 const t = ar.auth;
 
@@ -33,10 +43,14 @@ test.describe('signed out', () => {
     expect(sent).toMatchObject({ email: 'owner@example.test' });
   });
 
-  test("shows the company's name above the card", async ({ page }) => {
+  test("shows the company's name above the card and in the tab, never the product", async ({
+    page,
+  }) => {
     await page.goto('/sign-in');
     await expect(page.getByText(branded.displayName)).toBeVisible();
     await expect(page.locator('[data-slot="company-logo"] img')).toHaveCount(0);
+    await expect(page).toHaveTitle(branded.displayName);
+    await expectNoProductName(page);
   });
 
   test.describe('with a logo', () => {
@@ -47,6 +61,11 @@ test.describe('signed out', () => {
       const logo = page.locator('[data-slot="company-logo"] img');
       await expect(logo).toHaveAttribute('src', '/api/branding/public/logo?v=v1');
       await expect(logo).toHaveJSProperty('complete', true);
+      // The tab's icon is the company's logo.
+      await expect(page.locator('link[rel="icon"]')).toHaveAttribute(
+        'href',
+        '/api/branding/public/logo?v=v1',
+      );
       expect(await logo.evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(
         0,
       );
@@ -56,9 +75,10 @@ test.describe('signed out', () => {
   test.describe('without a company named for sign-in', () => {
     test.use({ branding: { displayName: '', hasLogo: false, logoVersion: null } });
 
-    test("shows the product's logo", async ({ page }) => {
+    test('shows a generic title, never the product', async ({ page }) => {
       await page.goto('/sign-in');
-      await expect(page.getByRole('img', { name: ar.common.productName })).toBeVisible();
+      await expect(page.getByText(ar.common.productName, { exact: true })).toBeVisible();
+      await expectNoProductName(page);
     });
   });
 
@@ -95,6 +115,7 @@ test.describe('signed out', () => {
       await page.getByLabel(t.fields.password, { exact: true }).fill(`pw-${Date.now()}-long`);
       await page.getByRole('button', { name: t.signIn.submit }).click();
       await expect(page.getByRole('alert')).toHaveText(t.signIn.twoFactorUnavailable);
+      await expectNoProductName(page);
       await expect(page).toHaveURL('/sign-in');
     });
   });
@@ -166,6 +187,7 @@ test.describe('signed in without an active company', () => {
     await page.goto('/settings');
     await expect(page).toHaveURL('/no-company');
     await expect(page.getByRole('heading', { level: 1 })).toHaveText(t.noCompany.title);
+    await expectNoProductName(page);
     // Signing in again leads here too, never into a loop.
     await page.goto('/sign-in');
     await expect(page).toHaveURL('/no-company');

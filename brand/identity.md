@@ -153,7 +153,7 @@ Never animate it continuously, never use it as a full-page background behind con
 | Clear space | One stroke width of the mark on every side (≈ 10% of the mark's width) |
 | Minimum size | Full logo 96 px wide; mark 24 px; below that use the favicon |
 | Approved colorways | Green on white or light surfaces; sand on Vertex Green; white on Vertex Green or dark photos; sand on white only at large sizes (≥ 160 px) |
-| In the app | Sidebar: sand mark on green. Sign-in: full logo. Printed books, statements and reports: the **company's** name and logo lead the header; the footer carries "Powered by Vertex Mizan" with the mark (ADR 0009) |
+| In the app | Sidebar: sand mark on green. Sign-in: full logo. Printed books, statements and reports: the **company's** name and logo lead the header; the footer carries "Powered by Vertex Mizan" with the mark (ADR 0009). For S13's one company (ADR 0024 §8) nothing the person sees names Vertex Mizan: no "Powered by", no mark in place of a missing logo, the tab under the company's name |
 | Don't | Recolor outside the palette, stretch, rotate, outline, add shadows or gradients, place on busy images, rebuild the wordmark in another font, replace MIZAN with another word outside the Vertex product set |
 
 ## 8. Patterns to avoid (to keep the product from looking generic)

@@ -1,23 +1,16 @@
 import { useQuery } from '@tanstack/react-query';
 import { ar } from '@vertex-mizan/i18n';
-import {
-  AscentLines,
-  Card,
-  CompanyLogo,
-  PoweredBy,
-  Skeleton,
-  ThemeToggle,
-  VertexMizanLogo,
-} from '@vertex-mizan/ui';
+import { Card, CompanyLogo, Skeleton, ThemeToggle } from '@vertex-mizan/ui';
 import type { ReactNode } from 'react';
-import { displayName, logoUrl, publicBrandingQuery } from '../lib/branding';
+import { displayName, logoUrl, publicBrandingQuery, useCompanyTab } from '../lib/branding';
 
 const { common } = ar;
 
 /**
  * The frame of the pages a person sees before the app: one card in the middle under the
- * company's logo and name (S13 screen 1), no navigation. Without a company named for the sign-in
- * page, or while its branding cannot be read, the product's own logo.
+ * company's logo and name (S13 screen 1), no navigation. Never the product's own name or mark
+ * (ADR 0024 §8): without a company named for the sign-in page, or while its branding cannot be
+ * read, a generic title.
  */
 export function AuthLayout({ children }: { children: ReactNode }) {
   return (
@@ -25,7 +18,6 @@ export function AuthLayout({ children }: { children: ReactNode }) {
       <div className="absolute end-4 top-4">
         <ThemeToggle labels={common.theme} />
       </div>
-      <AscentLines className="absolute inset-y-0 start-0 hidden h-full w-24 text-border lg:block" />
       <main
         id="main"
         tabIndex={-1}
@@ -34,30 +26,26 @@ export function AuthLayout({ children }: { children: ReactNode }) {
         <SignInBrand />
         <Card className="gap-5 p-6">{children}</Card>
       </main>
-      <PoweredBy label={common.poweredBy} className="relative mt-8" />
     </div>
   );
 }
 
 function SignInBrand() {
   const branding = useQuery(publicBrandingQuery);
+  const named = branding.data?.displayName.trim() || undefined;
+  const logo = logoUrl(branding.data, '/branding/public/logo');
+  useCompanyTab(named, logo);
   if (branding.isPending) {
-    return <Skeleton className="h-20 w-48 self-center" />;
+    return <Skeleton className="h-28 w-48 self-center" />;
   }
-  const named = branding.data?.displayName.trim();
-  if (!named && !branding.data?.hasLogo) {
-    return (
-      <VertexMizanLogo
-        label={common.productName}
-        className="h-14 w-auto self-center text-primary"
-      />
-    );
+  if (!named && !logo) {
+    return <p className="text-center text-2xl font-bold text-foreground">{common.productName}</p>;
   }
   const name = displayName(branding.data);
   return (
     <div className="flex flex-col items-center gap-3 text-center">
       <CompanyLogo
-        src={logoUrl(branding.data, '/branding/public/logo')}
+        src={logo}
         size="lg"
         className="text-primary"
         imageClassName="rounded-md bg-sidebar-foreground p-2"

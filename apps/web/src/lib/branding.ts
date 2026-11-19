@@ -1,6 +1,7 @@
 import { queryOptions } from '@tanstack/react-query';
 import { type Branding, brandingSchema } from '@vertex-mizan/contracts';
 import { ar } from '@vertex-mizan/i18n';
+import { useEffect } from 'react';
 import { api } from './api';
 
 /**
@@ -41,4 +42,23 @@ export function logoUrl(
 export function displayName(branding: Branding | undefined, fallback?: string): string {
   const name = branding?.displayName.trim();
   return name ? name : (fallback ?? ar.common.productName);
+}
+
+/**
+ * The browser tab shows the company, never the product (ADR 0024 §8): its display name as the
+ * page title and, once it has one, its logo as the tab's icon.
+ */
+export function useCompanyTab(name: string | undefined, logo: string | undefined): void {
+  useEffect(() => {
+    if (name) document.title = name;
+  }, [name]);
+  useEffect(() => {
+    if (!logo) return;
+    for (const link of document.querySelectorAll<HTMLLinkElement>(
+      'link[rel="icon"], link[rel="apple-touch-icon"]',
+    )) {
+      link.removeAttribute('type');
+      link.href = logo;
+    }
+  }, [logo]);
 }

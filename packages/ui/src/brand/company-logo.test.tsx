@@ -28,10 +28,12 @@ describe('CompanyLogo', () => {
     expect(screen.queryByRole('img')).toBeNull();
   });
 
-  it('shows the mark when the company has no logo', () => {
+  it('shows a generic icon, never the product mark, when the company has no logo', () => {
     render(<CompanyLogo label="شركة تجريبية" size="lg" />);
-    const mark = screen.getByRole('img', { name: 'شركة تجريبية' });
-    expect(mark.tagName.toLowerCase()).toBe('svg');
+    const icon = screen.getByRole('img', { name: 'شركة تجريبية' });
+    expect(icon.querySelector('svg')).not.toBeNull();
+    expect(document.querySelector('img')).toBeNull();
+    expect(document.querySelector('svg title')).toBeNull();
   });
 
   it('falls back to the mark when the image fails, and tries a new address again', () => {
@@ -40,7 +42,7 @@ describe('CompanyLogo', () => {
     if (!image) throw new Error('No image');
     fireEvent.error(image);
     expect(document.querySelector('img')).toBeNull();
-    expect(screen.getByRole('img', { name: 'شركة' }).tagName.toLowerCase()).toBe('svg');
+    expect(screen.getByRole('img', { name: 'شركة' }).querySelector('svg')).not.toBeNull();
     rerender(<CompanyLogo src="/fixed.png" label="شركة" />);
     expect(document.querySelector('img')?.getAttribute('src')).toBe('/fixed.png');
   });

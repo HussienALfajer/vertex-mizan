@@ -1,6 +1,6 @@
+import { Building2Icon } from 'lucide-react';
 import { type ComponentProps, useState } from 'react';
 import { cn } from '../lib/cn';
-import { VertexMizanMark } from './logo';
 
 type CompanyLogoProps = Omit<ComponentProps<'span'>, 'children'> & {
   /** The logo's address, or `undefined` when the company has none. */
@@ -22,15 +22,16 @@ type CompanyLogoProps = Omit<ComponentProps<'span'>, 'children'> & {
 const sizes = {
   sm: 'h-8 max-w-24',
   md: 'h-16 max-w-48',
-  lg: 'h-20 max-w-64',
+  lg: 'h-28 max-w-80',
 };
 
-const markSizes = { sm: 'w-7', md: 'w-12', lg: 'w-16' };
+const iconSizes = { sm: 'size-7', md: 'size-12', lg: 'size-16' };
 
 /**
  * A company's own logo (S13, ADR 0024 §7): the image the company uploaded, kept whole in its box
- * (never cropped or stretched), or the Vertex Mizan mark when it has none or the image fails to
- * load. The image comes from the company, so it is shown as given, never recolored.
+ * (never cropped or stretched), or a generic building icon when it has none or the image fails to
+ * load: never the product's own mark (ADR 0024 §8). The image comes from the company, so it is
+ * shown as given, never recolored.
  */
 function CompanyLogo({
   src,
@@ -55,11 +56,12 @@ function CompanyLogo({
           className={cn('w-auto object-contain', sizes[size], imageClassName)}
           onError={() => setFailed(src)}
         />
+      ) : label ? (
+        <span role="img" aria-label={label} className="inline-flex">
+          <Building2Icon aria-hidden="true" className={cn('text-current', iconSizes[size])} />
+        </span>
       ) : (
-        <VertexMizanMark
-          {...(label ? { label } : {})}
-          className={cn('text-current', markSizes[size])}
-        />
+        <Building2Icon aria-hidden="true" className={cn('text-current', iconSizes[size])} />
       )}
     </span>
   );

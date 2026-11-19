@@ -15,7 +15,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
   type PaletteCommand,
-  PoweredBy,
   Sheet,
   SheetContent,
   SheetTitle,
@@ -23,7 +22,6 @@ import {
   setDensity,
   setTheme,
   ThemeToggle,
-  VertexMizanMark,
 } from '@vertex-mizan/ui';
 import {
   ArchiveIcon,
@@ -42,7 +40,7 @@ import {
 } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { api } from '../lib/api';
-import { brandingQuery, displayName, logoUrl } from '../lib/branding';
+import { brandingQuery, displayName, logoUrl, useCompanyTab } from '../lib/branding';
 import { activeMembership, can, meQuery } from '../lib/session';
 
 const t = ar.shell;
@@ -87,7 +85,8 @@ const listedItems = (me: Me | null | undefined) =>
   );
 
 /**
- * Vertex Green navigation, a gold marker on the active page (brand/identity.md §2, §7). Signed
+ * Green navigation, a gold marker on the active page (brand/identity.md §2, §7), and never the
+ * product's own name or mark (ADR 0024 §8): the company's, or a generic title. Signed
  * in, the sidebar and the phone's top bar show the company's logo and display name (S13
  * "Screens"), the top bar carries the person's menu (settings, sign out), and an archived company
  * shows its banner on every page (S01 rule 12).
@@ -107,6 +106,10 @@ export function AppShell({
     enabled: company !== undefined,
   }).data;
   const brand = company ? { branding, fallback: company.name } : undefined;
+  useCompanyTab(
+    brand && displayName(brand.branding, brand.fallback),
+    logoUrl(branding, '/company/branding/logo'),
+  );
   return (
     <div className="flex min-h-dvh bg-background">
       {/* Keyboard users skip the navigation on every page (WCAG 2.4.1). */}
@@ -178,7 +181,7 @@ function Sidebar({
           </>
         ) : (
           <>
-            <VertexMizanMark className="w-7 text-sidebar-marker" />
+            <CompanyLogo className="text-sidebar-marker" />
             <span className="text-lg font-bold">{common.productName}</span>
           </>
         )}
@@ -201,13 +204,6 @@ function Sidebar({
           </Link>
         ))}
       </nav>
-      <div className="border-t border-sidebar-border p-4">
-        {/* The sidebar's own colors: the mark in gold, as in its header. */}
-        <PoweredBy
-          label={common.poweredBy}
-          className="text-sidebar-muted-foreground [&_svg]:text-sidebar-marker"
-        />
-      </div>
     </div>
   );
 }
@@ -240,7 +236,7 @@ function TopBar({ me, brand }: { me: Me | null | undefined; brand: Brand | undef
             </span>
           </div>
         ) : (
-          <VertexMizanMark className="w-6 text-primary md:hidden" label={common.productName} />
+          <CompanyLogo className="text-primary md:hidden" label={common.productName} />
         )}
       </div>
       <div className="flex shrink-0 items-center gap-2">

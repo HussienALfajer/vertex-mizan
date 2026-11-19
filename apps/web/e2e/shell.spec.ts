@@ -1,5 +1,5 @@
 import { ar } from '@vertex-mizan/i18n';
-import { branded, expect, logoReply, signedIn, test, withLogo } from './test';
+import { branded, expect, expectNoProductName, logoReply, signedIn, test, withLogo } from './test';
 
 const status = ar.shell.status;
 
@@ -92,9 +92,13 @@ test.describe('shell', () => {
 });
 
 test.describe('company branding', () => {
-  test("shows the company's display name and logo in the shell", async ({ page }) => {
+  test("shows the company's display name in the shell and the tab, never the product", async ({
+    page,
+  }) => {
     await page.goto('/');
     await expect(page.locator('aside').getByText(branded.displayName)).toBeVisible();
+    await expect(page).toHaveTitle(branded.displayName);
+    await expectNoProductName(page);
   });
 
   test.describe('with a logo', () => {
