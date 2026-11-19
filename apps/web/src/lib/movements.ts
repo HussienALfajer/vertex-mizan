@@ -130,10 +130,12 @@ export function materialsQuery(companyId: string) {
   });
 }
 
-export function dayRatesQuery(companyId: string) {
+/** A day's rates: today in Damascus by default, or the day a movement is dated. */
+export function dayRatesQuery(companyId: string, date?: string) {
   return queryOptions({
-    queryKey: key(companyId, 'day-rates'),
-    queryFn: () => api('GET', '/day-rates', { company: companyId, schema: dayRatesSchema }),
+    queryKey: key(companyId, 'day-rates', date ?? null),
+    queryFn: () =>
+      api('GET', `/day-rates${query({ date })}`, { company: companyId, schema: dayRatesSchema }),
   });
 }
 

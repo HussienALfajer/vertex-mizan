@@ -33,12 +33,15 @@ export function DayRatesDialog({
   companyId,
   open,
   onOpenChange,
+  date,
 }: {
   companyId: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** The day to record, a back-dated movement's; today in Damascus when left out. */
+  date?: string | undefined;
 }) {
-  const rates = useQuery({ ...dayRatesQuery(companyId), enabled: open });
+  const rates = useQuery({ ...dayRatesQuery(companyId, date), enabled: open });
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent closeLabel={ar.common.close}>

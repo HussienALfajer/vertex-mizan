@@ -304,15 +304,65 @@ test.describe('the new movement', () => {
     });
   });
 
+  test.describe('a debt paid to a supplier', () => {
+    test.use({
+      api: {
+        [`GET /api/project-books/${ids.project}`]: {
+          status: 200,
+          json: {
+            ...project,
+            figures: {
+              ...project.figures,
+              owedByUs: [
+                ...project.figures.owedByUs,
+                { currency: 'SYP', amountMinor: '5500000', bookMinor: '50000' },
+              ],
+            },
+          },
+        },
+        'GET /api/movements': { status: 200, json: movementPage },
+        'GET /api/parties': { status: 200, json: [supplier] },
+      },
+    });
+
+    test('offers only the currencies that supplier is owed in', async ({ page }) => {
+      await page.goto(`/projects/${ids.project}`);
+      await page.getByRole('button', { name: t.dashboard.newMovement }).click();
+      const dialog = page.getByRole('dialog', { name: t.dialog.title });
+      await dialog.getByRole('combobox', { name: t.dialog.kind }).click();
+      await page.getByRole('option', { name: t.kinds.debt_paid }).click();
+      const currency = dialog.getByRole('combobox', { name: t.dialog.currency });
+      await currency.click();
+      await expect(page.getByRole('option', { name: ar.accounting.currencies.SYP })).toBeVisible();
+      await page.keyboard.press('Escape');
+      await dialog.getByRole('combobox', { name: t.dialog.supplier }).fill('مورد');
+      await page.getByRole('option', { name: supplier.name }).click();
+      await currency.click();
+      await expect(page.getByRole('option', { name: ar.accounting.currencies.USD })).toBeVisible();
+      await expect(page.getByRole('option', { name: ar.accounting.currencies.SYP })).toBeHidden();
+    });
+  });
+
   test.describe('refused', () => {
     const bodies: Record<string, unknown>[] = [];
+    const rateDays: (string | null)[] = [];
+    let ratesRecorded = false;
     test.use({
       api: {
         ...projectPage,
-        'GET /api/day-rates': { status: 200, json: ratesMissing },
+        'GET /api/materials': { status: 200, json: { materials: [material], nextCursor: null } },
+        'GET /api/day-rates': (request) => {
+          rateDays.push(new URL(request.url()).searchParams.get('date'));
+          return { status: 200, json: ratesMissing };
+        },
+        'POST /api/day-rates': () => {
+          ratesRecorded = true;
+          return { status: 200, json: { ...ratesMissing, missing: false } };
+        },
         'POST /api/movements': (request) => {
           const body = request.postDataJSON();
           bodies.push(body);
+          if (body.currency === 'SYP' && !ratesRecorded) return refusal(422, 'RATE_MISSING');
           if (body.kind === 'received') return refusal(422, 'CLIENT_HAS_OPEN_DEBT');
           if (body.kind === 'wages') return refusal(422, 'CASH_BOX_NEGATIVE');
           return { status: 201, json: expense };
@@ -358,6 +408,36 @@ test.describe('the new movement', () => {
         kind: 'deposit',
         projectId: null,
         amountMinor: '50000',
+      });
+    });
+
+    test('without the day’s rate records it for the movement’s day, then posts', async ({
+      page,
+    }) => {
+      await page.goto(`/projects/${ids.project}`);
+      await page.getByRole('button', { name: t.dashboard.newMovement }).click();
+      const dialog = page.getByRole('dialog', { name: t.dialog.title });
+      await dialog.getByRole('combobox', { name: t.dialog.kind }).click();
+      await page.getByRole('option', { name: t.kinds.expense }).click();
+      await dialog.getByRole('combobox', { name: t.dialog.currency }).click();
+      await page.getByRole('option', { name: ar.accounting.currencies.SYP }).click();
+      await dialog.getByLabel(t.dialog.amount).fill('1000');
+      const date = await dialog.getByLabel(t.dialog.date).inputValue();
+      await dialog.getByRole('button', { name: t.dialog.submit }).click();
+      await expect(dialog.getByRole('alert')).toHaveText(ar.errors.RATE_MISSING);
+      await dialog.getByRole('button', { name: t.dialog.toRates }).click();
+      const rates = page.getByRole('dialog', { name: t.rates.dialogTitle });
+      await rates.getByLabel(`${t.rates.rateOf}${ar.accounting.currencies.TRY}`).fill('34.5');
+      await rates.getByRole('button', { name: t.rates.save }).click();
+      await expect(rates).toBeHidden();
+      expect(rateDays.at(-1)).toBe(date);
+      await expect(dialog.getByRole('alert')).toBeHidden();
+      await dialog.getByRole('button', { name: t.dialog.submit }).click();
+      await expect(dialog).toBeHidden();
+      expect(bodies.at(-1)).toMatchObject({
+        kind: 'expense',
+        currency: 'SYP',
+        amountMinor: '100000',
       });
     });
   });

@@ -41,6 +41,7 @@ import { FormError, FormErrorSummary } from '../../components/form-error';
 import { api, hasCode } from '../../lib/api';
 import { damascusToday } from '../../lib/format';
 import {
+  inCurrency,
   MOVEMENT_CURRENCIES,
   materialsQuery,
   partiesQuery,
@@ -214,10 +215,15 @@ function MovementForm({
       : kind === 'debt_paid'
         ? (project?.figures.owedByUs ?? [])
         : null;
+  // A supplier is paid only in a currency both the project and the supplier owe in.
+  const payable = (currency: CurrencyCode) =>
+    kind !== 'debt_paid' || !supplier || inCurrency(supplier.owedByUs, currency) !== undefined;
   const currencies: readonly CurrencyCode[] =
     openAmounts === null
       ? MOVEMENT_CURRENCIES
-      : openAmounts.filter((amount) => amount.amountMinor !== '0').map((amount) => amount.currency);
+      : openAmounts
+          .filter((amount) => amount.amountMinor !== '0' && payable(amount.currency))
+          .map((amount) => amount.currency);
 
   const material = materials.data?.find((option) => option.id === form.materialId);
   const quantityOk = quantitySchema.safeParse(form.quantity);
@@ -578,6 +584,7 @@ function MovementForm({
       </DialogFooter>
       <DayRatesDialog
         companyId={companyId}
+        date={form.date}
         open={ratesOpen}
         onOpenChange={(next) => {
           setRatesOpen(next);
