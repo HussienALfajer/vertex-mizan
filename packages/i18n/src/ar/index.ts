@@ -26,6 +26,7 @@ import { rates } from './rates.js';
 import { reports } from './reports.js';
 import { revaluation } from './revaluation.js';
 import { roles } from './roles.js';
+import { settings } from './settings.js';
 import { shell } from './shell.js';
 import { shortcuts } from './shortcuts.js';
 
@@ -61,6 +62,7 @@ export const ar = {
   cash,
   projects,
   materials,
+  settings,
 };
 
 export type Catalog = typeof ar;

@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import {
   test as base,
   expect,
@@ -6,7 +7,7 @@ import {
   type Request,
   type TestInfo,
 } from '@playwright/test';
-import type { ErrorCode, HealthResponse, Me } from '@vertex-mizan/contracts';
+import type { Branding, ErrorCode, HealthResponse, Me } from '@vertex-mizan/contracts';
 
 /*
  * The `test` every spec uses: Playwright's, with the API mocked for the page and failing a test
@@ -48,10 +49,31 @@ export const signedIn: Me = {
   permissions: ['company.read'],
 };
 
-/** An API answer: a status and a JSON body (none for 204). */
+/** The synthetic company's branding: a display name, no logo. */
+export const branded: Branding = {
+  displayName: 'شركة المثال للمقاولات',
+  hasLogo: false,
+  logoVersion: null,
+};
+
+/** A branding with a logo, served by `logoReply`. */
+export const withLogo: Branding = { ...branded, hasLogo: true, logoVersion: 'v1' };
+
+/** A synthetic PNG logo: the brand's own mark, read from the repository. */
+export const logoReply: ApiReply = {
+  status: 200,
+  body: readFileSync(
+    new URL('../../../brand/logo/png/vertex-mizan-mark-green.png', import.meta.url),
+  ),
+  contentType: 'image/png',
+};
+
+/** An API answer: a status and a JSON body (none for 204), or a file's bytes. */
 export interface ApiReply {
   status: number;
   json?: unknown;
+  body?: Buffer;
+  contentType?: string;
 }
 
 /** Answers keyed by `METHOD /api/path` (no query string); a function sees the request. */
@@ -67,12 +89,19 @@ export function refusal(status: number, code: ErrorCode): ApiReply {
   return { status, json: { statusCode: status, code, message: code } };
 }
 
-export const test = base.extend<{ health: HealthMock; me: Me | null; api: ApiMocks }>({
+export const test = base.extend<{
+  health: HealthMock;
+  me: Me | null;
+  branding: Branding;
+  api: ApiMocks;
+}>({
   health: [healthy, { option: true }],
+  // `GET /api/company/branding` and `GET /api/branding/public`. An `api` mock of either wins.
+  branding: [branded, { option: true }],
   // `GET /api/me`: the person, or `null` for no session (401). An `api` mock of it wins.
   me: [signedIn, { option: true }],
   api: [{}, { option: true }],
-  page: async ({ page, health, me, api }, use) => {
+  page: async ({ page, health, me, branding, api }, use) => {
     const failures: string[] = [];
     page.on('pageerror', (error) => failures.push(`Page error: ${error.message}`));
     page.on('console', (message) => {
@@ -86,9 +115,19 @@ export const test = base.extend<{ health: HealthMock; me: Me | null; api: ApiMoc
       const mock = api[key];
       if (mock) {
         const reply = typeof mock === 'function' ? mock(route.request()) : mock;
+        if (reply.body) {
+          return route.fulfill({
+            status: reply.status,
+            body: reply.body,
+            ...(reply.contentType ? { contentType: reply.contentType } : {}),
+          });
+        }
         return reply.json === undefined
           ? route.fulfill({ status: reply.status })
           : route.fulfill({ status: reply.status, json: reply.json });
+      }
+      if (key === 'GET /api/company/branding' || key === 'GET /api/branding/public') {
+        return route.fulfill({ status: 200, json: branding });
       }
       if (key === 'GET /api/me') {
         const reply = me ? { status: 200, json: me } : refusal(401, 'UNAUTHENTICATED');

@@ -34,8 +34,10 @@ export const auth = {
   },
   signIn: {
     title: 'تسجيل الدخول',
-    description: 'ادخل إلى دفاتر شركاتك.',
+    description: 'ادخل إلى حسابات مشاريعك.',
     submit: 'دخول',
+    twoFactorUnavailable:
+      'هذا الحساب يتطلب التحقق بخطوتين، وهو غير متاح في هذه النسخة. تواصل مع Vertex لإعادة ضبط حسابك.',
     forgot: 'نسيت كلمة المرور؟',
   },
   twoFactor: {

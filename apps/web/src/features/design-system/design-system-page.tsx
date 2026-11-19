@@ -34,6 +34,7 @@ import {
   ChangeList,
   Checklist,
   type ChecklistItemData,
+  CompanyLogo,
   type DateRange,
   DateRangeField,
   Digest,
@@ -96,6 +97,7 @@ import {
 } from '@vertex-mizan/ui';
 import { CheckIcon, DownloadIcon, SearchIcon } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
+import sampleLogo from '../../../../../brand/logo/png/vertex-mizan-logo-green.png';
 
 const t = ar.designSystem;
 const { accounting, common } = ar;
@@ -1449,6 +1451,15 @@ export function DesignSystemPage() {
           />
           <AscentLines className="h-16 w-40 shrink-0 text-accent" />
         </Card>
+        <div className="flex flex-col gap-3">
+          <p className="text-muted-foreground">{t.brand.companyLogo}</p>
+          <div className="flex flex-wrap items-center gap-6">
+            <CompanyLogo src={sampleLogo} label={t.brand.sampleCompany} size="md" />
+            <CompanyLogo label={t.brand.sampleCompany} size="sm" className="text-primary" />
+            <CompanyLogo label={t.brand.sampleCompany} size="md" className="text-primary" />
+            <CompanyLogo label={t.brand.sampleCompany} size="lg" className="text-primary" />
+          </div>
+        </div>
         <PoweredBy label={common.poweredBy} />
       </Section>
 

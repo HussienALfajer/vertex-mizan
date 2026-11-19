@@ -50,14 +50,6 @@ export function returnTo(search: Record<string, unknown>): ReturnTo {
   return { redirect: safeRedirect(search.redirect) };
 }
 
-/**
- * A sign-in or enrolment address that brings the person back. Its pages are being rebuilt, so the
- * guards name it as a plain address rather than a typed route.
- */
-function withReturn(path: string, target: string): string {
-  return `${path}?${new URLSearchParams({ redirect: target })}`;
-}
-
 interface GuardArgs {
   context: RouterContext;
   location: { href: string };
@@ -66,18 +58,23 @@ interface GuardArgs {
 /** The person, or a redirect to sign-in that brings them back here. */
 export async function requireSession({ context, location }: GuardArgs): Promise<Me> {
   const me = await context.queryClient.ensureQueryData(meQuery);
-  if (!me) throw redirect({ href: withReturn('/sign-in', location.href) });
+  if (!me) throw redirect({ to: '/sign-in', search: { redirect: location.href } });
   return me;
 }
 
+/** Whether the person may use the app: two-factor enrolled, or exempt (S01 rule 2). */
+export function isEnrolled(me: Me): boolean {
+  return me.person.twoFactorEnabled || me.person.twoFactorExempt;
+}
+
 /**
- * A person with two-factor enrolled, or exempt (S01 rule 2, owner 2026-11-16): anyone else reaches
- * only enrolment.
+ * A person with two-factor enrolled, or exempt (S01 rule 2, owner 2026-11-16). S13 has no
+ * enrolment screens (ADR 0024), so anyone else goes back to sign-in, which says what to do.
  */
 export async function requireEnrolled(args: GuardArgs): Promise<Me> {
   const me = await requireSession(args);
-  if (!me.person.twoFactorEnabled && !me.person.twoFactorExempt) {
-    throw redirect({ href: withReturn('/two-factor/enrol', args.location.href) });
+  if (!isEnrolled(me)) {
+    throw redirect({ to: '/sign-in', search: { redirect: args.location.href } });
   }
   return me;
 }

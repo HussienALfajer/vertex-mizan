@@ -5,7 +5,13 @@ export const shell = {
   openNav: 'افتح قائمة التنقل',
   nav: {
     home: 'الرئيسية',
+    settings: 'الإعدادات',
     designSystem: 'نظام التصميم',
+  },
+  account: {
+    open: 'حسابك',
+    settings: 'الإعدادات',
+    signOut: 'تسجيل الخروج',
   },
   palette: {
     navigation: 'الانتقال',

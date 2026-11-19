@@ -1,5 +1,14 @@
 import { ar } from '@vertex-mizan/i18n';
-import { expect, expectNoPageOverflow, screenshot, test, widths } from './test';
+import {
+  expect,
+  expectNoPageOverflow,
+  logoReply,
+  screenshot,
+  signedIn,
+  test,
+  widths,
+  withLogo,
+} from './test';
 
 // RTL screenshots of every screen in both themes at each width: the design review evidence.
 for (const colorScheme of ['light', 'dark'] as const) {
@@ -55,6 +64,45 @@ for (const colorScheme of ['light', 'dark'] as const) {
         await screenshot(page, testInfo, `sheet-${colorScheme}-${width}`, { fullPage: false });
         await sheet.getByRole('button', { name: ar.common.close }).click();
         await expect(sheet).toBeHidden();
+      });
+
+      test.describe('signed out', () => {
+        test.use({
+          me: null,
+          branding: withLogo,
+          api: { 'GET /api/branding/public/logo': logoReply },
+        });
+
+        test('sign-in', async ({ page }, testInfo) => {
+          await page.goto('/sign-in');
+          await expect(page.getByRole('heading', { level: 1 })).toHaveText(ar.auth.signIn.title);
+          await expect(page.getByText(withLogo.displayName)).toBeVisible();
+          await expect(page.locator('[data-slot="company-logo"] img')).toHaveJSProperty(
+            'complete',
+            true,
+          );
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `sign-in-${colorScheme}-${width}`);
+        });
+      });
+
+      test.describe('with the logo and the setting', () => {
+        test.use({
+          me: { ...signedIn, permissions: ['company.read', 'company.settings'] },
+          branding: withLogo,
+          api: { 'GET /api/company/branding/logo': logoReply },
+        });
+
+        test('settings', async ({ page }, testInfo) => {
+          await page.goto('/settings');
+          await expect(page.getByRole('heading', { level: 1 })).toHaveText(ar.settings.title);
+          await expect(page.getByLabel(ar.settings.branding.displayName)).toHaveValue(
+            withLogo.displayName,
+          );
+          await expect(page.getByRole('img', { name: withLogo.displayName })).toBeVisible();
+          await expectNoPageOverflow(page);
+          await screenshot(page, testInfo, `settings-${colorScheme}-${width}`);
+        });
       });
 
       test('page not found', async ({ page }, testInfo) => {
