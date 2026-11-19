@@ -11,6 +11,7 @@ export * from './journal-book.js';
 export * from './lines.js';
 export * from './manual.js';
 export * from './measure.js';
+export * from './movements.js';
 export * from './opening.js';
 export * from './periods.js';
 export * from './project-report.js';

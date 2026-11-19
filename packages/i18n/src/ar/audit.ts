@@ -152,6 +152,10 @@ export const audit = {
     'export.project_report': 'صدّر تقرير مشروع',
     'export.material_quantities': 'صدّر تقرير كميات المواد',
     'export.project_document': 'طبع مستند مشروع',
+    'movement.cancelled': 'ألغى حركة مشروع',
+    'project.created': 'أضاف مشروعًا',
+    'project.updated': 'عدّل مشروعًا',
+    'branding.updated': 'عدّل اسم الشركة أو شعارها',
   } satisfies Record<CompanyAuditAction, string>,
   /** The audited entities (`AUDITED_FIELDS` in `packages/db`). */
   entities: {
@@ -189,6 +193,9 @@ export const audit = {
     material: 'المادة',
     project_terms: 'شروط المشروع',
     subcontract: 'عقد مقاول الباطن',
+    project_movement: 'حركة المشروع',
+    project: 'المشروع',
+    company_branding: 'اسم الشركة وشعارها',
   },
   /** The audited fields, by entity field name. */
   fields: {
@@ -327,5 +334,9 @@ export const audit = {
     creditTotalMinor: 'مجموع الدائن',
     contentSha256: 'بصمة المحتوى',
     fileSha256: 'بصمة الملف',
+    reason: 'السبب',
+    startDate: 'تاريخ البدء',
+    displayName: 'اسم الشركة',
+    logoSha256: 'بصمة الشعار',
   },
 };

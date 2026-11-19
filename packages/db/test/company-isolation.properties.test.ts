@@ -1,4 +1,4 @@
-import { CURRENCY_CODES } from '@vertex-mizan/contracts';
+import { CURRENCY_CODES, type CurrencyCode } from '@vertex-mizan/contracts';
 import { fiscalYearOf } from '@vertex-mizan/ledger';
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import fc from 'fast-check';
@@ -717,7 +717,7 @@ async function seedMovements(tx: Transaction, companyId: string, userId: string)
     .select({ currency: companySettings.bookCurrency })
     .from(companySettings)
     .where(eq(companySettings.companyId, companyId));
-  const currency = settings?.currency as string;
+  const currency = settings?.currency as CurrencyCode;
   const projectId = await dimensionValueOf('P1');
   const [purchase] = await tx
     .select({

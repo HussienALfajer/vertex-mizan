@@ -28,8 +28,8 @@ import { materials } from './projects.js';
 const listed = (values: readonly string[]) =>
   sql.raw(values.map((value) => `'${value}'`).join(', '));
 
-/** The kinds of movement (S13 "Data"); `MOVEMENT_KINDS` in contracts equals it (a test). */
-export const MOVEMENT_KINDS = [
+/** The kinds of movement (S13 "Data"); `PROJECT_MOVEMENT_KINDS` in contracts equals it (a test). */
+export const PROJECT_MOVEMENT_KINDS = [
   'received',
   'expense',
   'wages',
@@ -40,7 +40,7 @@ export const MOVEMENT_KINDS = [
   'deposit',
 ] as const;
 
-export const movementKind = pgEnum('movement_kind', MOVEMENT_KINDS);
+export const movementKind = pgEnum('movement_kind', PROJECT_MOVEMENT_KINDS);
 
 export const PROJECT_STATES = ['active', 'finished'] as const;
 

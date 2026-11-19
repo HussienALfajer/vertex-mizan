@@ -16,6 +16,7 @@ export * from './money.js';
 export { divideHalfAwayFromZero } from './money-arithmetic.js';
 export * from './money-summary.js';
 export * from './money-text.js';
+export * from './movements.js';
 export * from './open-items.js';
 export * from './opening.js';
 export * from './opening-view.js';

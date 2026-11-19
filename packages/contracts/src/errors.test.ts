@@ -150,6 +150,8 @@ describe('error codes', () => {
       ['ADVANCE_CURRENCY_MISMATCH', 422],
       ['BILLING_NOT_INCREASING', 422],
       ['PROJECT_DOCUMENT_NOT_LATEST', 409],
+      ['PROJECT_FINISHED', 409],
+      ['CLIENT_HAS_OPEN_DEBT', 409],
     ]);
   });
 
