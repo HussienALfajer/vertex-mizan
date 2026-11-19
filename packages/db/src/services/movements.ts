@@ -745,6 +745,13 @@ export async function readMovements(
   };
 }
 
+/** One movement as listed, or `NOT_FOUND`. */
+export async function readMovement(tx: Transaction, id: string): Promise<MovementRow> {
+  const [row] = await movementRows(tx, sql`m.id = ${id}`, 1);
+  if (row === undefined) throw new DomainError('NOT_FOUND', 'No such movement');
+  return row;
+}
+
 async function movementRows(
   tx: Transaction,
   where: ReturnType<typeof sql>,
@@ -1011,7 +1018,11 @@ export interface ProjectRow {
 /** The company's projects, by name, with their figures; filtered by state or a search. */
 export async function readProjects(
   tx: Transaction,
-  filter: { state?: 'active' | 'finished'; search?: string; id?: string } = {},
+  filter: {
+    state?: 'active' | 'finished' | undefined;
+    search?: string | undefined;
+    id?: string | undefined;
+  } = {},
 ): Promise<ProjectRow[]> {
   const result = await tx.execute<{
     id: string;
@@ -1273,7 +1284,7 @@ export interface MaterialCostRow {
 
 export async function readMaterialCosts(
   tx: Transaction,
-  filter: { project?: string; from?: string; to?: string },
+  filter: { project?: string | undefined; from?: string | undefined; to?: string | undefined },
 ): Promise<{ bookCurrency: CurrencyCode; materials: MaterialCostRow[]; totalBookMinor: string }> {
   const [settings] = await tx
     .select({ bookCurrency: companySettings.bookCurrency })

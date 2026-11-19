@@ -81,6 +81,12 @@ const configSchema = z
         return parsed.username === QUEUE_ROLE && !parsed.searchParams.has('user');
       })
       .optional(),
+    /**
+     * The one company whose display name and logo the sign-in page shows before anyone signs in
+     * (S13 "Data", ADR 0024 §7): read under its own company context, never from the request.
+     * Without it the page shows the product's generic name and no logo.
+     */
+    SIGN_IN_COMPANY_ID: z.uuid().optional(),
   })
   .refine((env) => env.NODE_ENV !== 'production' || env.MIZAN_FILES_DIR !== undefined, {
     path: ['MIZAN_FILES_DIR'],
@@ -98,6 +104,7 @@ const configSchema = z
     logLevel: env.LOG_LEVEL,
     filesDir: env.MIZAN_FILES_DIR ?? DEVELOPMENT_FILES_DIR,
     queueDatabaseUrl: env.DATABASE_QUEUE_URL ?? null,
+    signInCompanyId: env.SIGN_IN_COMPANY_ID ?? null,
   }));
 
 export type Config = z.output<typeof configSchema>;

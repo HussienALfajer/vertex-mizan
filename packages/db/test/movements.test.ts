@@ -295,6 +295,15 @@ describe('recording movements', () => {
     });
   });
 
+  it('posts one entry for two identical requests at once (rule 1)', async () => {
+    const books = await newBooks();
+    const input = movement(books, 'owed_to_us', { amountMinor: '1000' });
+    const [first, second] = await Promise.all([record(books, input), record(books, input)]);
+    expect(second).toBe(first);
+    const page = await inCompany(books.id, (tx) => readMovements(tx, { limit: 50 }));
+    expect(page.movements).toHaveLength(1);
+  });
+
   it('refuses a receipt while the client owes the project, in any currency (rule 7)', async () => {
     const books = await newBooks();
     await record(books, movement(books, 'owed_to_us', { amountMinor: '400000' }));

@@ -298,6 +298,8 @@ export type Party = z.infer<typeof partySchema>;
 
 export const partyQuerySchema = z.object({ type: partyTypeSchema }).meta({ id: 'PartyQuery' });
 
+export type PartyQuery = z.infer<typeof partyQuerySchema>;
+
 export const createPartySchema = z
   .object({ type: partyTypeSchema, name: nameSchema })
   .meta({ id: 'CreateParty' });
@@ -423,5 +425,12 @@ export type UpdateBranding = z.infer<typeof updateBrandingSchema>;
 export const LOGO_MAX_BYTES = 1024 * 1024;
 
 export const LOGO_CONTENT_TYPES = ['image/png', 'image/jpeg'] as const;
+
+/** `GET /api/day-rates`: the day, today in Damascus by default. */
+export const dayRatesQuerySchema = z
+  .object({ date: z.iso.date().optional() })
+  .meta({ id: 'DayRatesQuery' });
+
+export type DayRatesQuery = z.infer<typeof dayRatesQuerySchema>;
 
 export const movementParamsSchema = z.object({ id: z.uuid() }).meta({ id: 'MovementParams' });
