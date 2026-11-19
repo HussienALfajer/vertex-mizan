@@ -148,12 +148,17 @@ async function checkSupplier(tx: Transaction, id: string): Promise<void> {
   if (row === undefined) throw new DomainError('NOT_FOUND', 'No such supplier');
 }
 
-/** A client's open items on a project's receivables, oldest due first (S13 rules 5 and 7). */
+/**
+ * A client's open items on a project's receivables that exist on `on`, oldest due first (S13 rules
+ * 5 and 7): a debt is settled only once it is recognised (IAS 21.28), so an item dated later is
+ * not open on an earlier day.
+ */
 async function clientItems(
   tx: Transaction,
   clientId: string,
   projectId: string,
   currency: CurrencyCode | null,
+  on: string,
 ): Promise<{ id: string; currency: CurrencyCode; openMinor: bigint }[]> {
   const result = await tx.execute<{ id: string; currency: CurrencyCode; open: string }>(sql`
     select i.id, i.currency, b.open_minor::text as open
@@ -161,6 +166,7 @@ async function clientItems(
     join public.open_item_balances b on b.item_id = i.id
     join public.chart_accounts a on a.id = i.account_id and a.code = ${ACCOUNTS.receivables}
     where i.counterparty_value_id = ${clientId} and b.open_minor <> 0
+      and i.document_date <= ${on}
       and (${currency}::text is null or i.currency = ${currency})
       and exists (
         select 1 from public.dimension_set_values s
@@ -178,18 +184,20 @@ async function clientItems(
 }
 
 /**
- * What a project owes a supplier in a currency (S13 rule 6): minus the transaction amounts of the
- * `211001` lines carrying both.
+ * What a project owes a supplier in a currency on `on` (S13 rule 6): minus the transaction amounts
+ * of the `211001` lines carrying both, of entries dated on or before it.
  */
 async function owedToSupplier(
   tx: Transaction,
   supplierId: string,
   projectId: string,
   currency: CurrencyCode,
+  on: string,
 ): Promise<bigint> {
   const result = await tx.execute<{ owed: string }>(sql`
     select (-coalesce(sum(l.amount_minor), 0))::text as owed
     from public.journal_lines l
+    join public.journal_entries e on e.id = l.entry_id and e.entry_date <= ${on}
     join public.chart_accounts a on a.id = l.account_id and a.code = ${ACCOUNTS.suppliers}
     where l.currency = ${currency}
       and exists (select 1 from public.dimension_set_values s
@@ -260,6 +268,22 @@ const postingLineOf = (line: Line, currency: CurrencyCode) => ({
   quantity: line.quantity ?? null,
 });
 
+/**
+ * Movements and their cancellations post at once, so they are refused while manual-entry approval
+ * is on: one person cannot approve their own draft (S03 rule 8; S13 "Access").
+ */
+async function refuseWhileApprovalIsOn(tx: Transaction): Promise<void> {
+  const [settings] = await tx
+    .select({ approval: companySettings.manualEntryApproval })
+    .from(companySettings);
+  if (settings?.approval) {
+    throw new DomainError('VALIDATION_FAILED', 'Movements post at once: approval is off', {
+      manualEntryApproval: 'true',
+      issues: [{ path: ['kind'], message: 'manualEntryApproval' }],
+    });
+  }
+}
+
 /** The previous answer to a request key, or null; another request under it is refused. */
 async function replayOf(
   tx: Transaction,
@@ -301,11 +325,7 @@ export async function recordMovement(
   }
   const [settings] = await tx.select().from(companySettings);
   if (!settings) throw new Error('A company without its settings');
-  if (settings.manualEntryApproval) {
-    throw new DomainError('VALIDATION_FAILED', 'Movements post at once: approval is off', {
-      issues: [{ path: ['kind'], message: 'manualEntryApproval' }],
-    });
-  }
+  await refuseWhileApprovalIsOn(tx);
   const project = input.projectId === null ? null : await projectOf(tx, input.projectId);
   if (project?.state === 'finished') {
     throw new DomainError('PROJECT_FINISHED', 'The project is finished', { project: project.id });
@@ -457,7 +477,7 @@ export async function recordMovement(
     const onProject = [project.id];
     const withClient = [project.clientId, project.id];
     if (kind === 'received') {
-      const open = await clientItems(tx, project.clientId, project.id, null);
+      const open = await clientItems(tx, project.clientId, project.id, null, input.date);
       if (open.length > 0) {
         throw new DomainError('CLIENT_HAS_OPEN_DEBT', 'The client owes the project', {
           open: open.map((item) => `${item.openMinor} ${item.currency}`).join(', '),
@@ -483,7 +503,7 @@ export async function recordMovement(
       ]);
     } else if (kind === 'debt_paid') {
       const supplierId = input.supplierId as string;
-      const owed = await owedToSupplier(tx, supplierId, project.id, input.currency);
+      const owed = await owedToSupplier(tx, supplierId, project.id, input.currency, input.date);
       if (amountMinor > owed) {
         throw new DomainError('VALIDATION_FAILED', 'More than the project owes the supplier', {
           open: owed.toString(),
@@ -499,7 +519,7 @@ export async function recordMovement(
         },
       ]);
     } else if (kind === 'debt_collected') {
-      const items = await clientItems(tx, project.clientId, project.id, input.currency);
+      const items = await clientItems(tx, project.clientId, project.id, input.currency, input.date);
       const open = openTotal(items);
       if (amountMinor > open) {
         throw new DomainError('VALIDATION_FAILED', 'More than the client owes the project', {
@@ -623,6 +643,7 @@ export async function cancelMovement(
   await tx.select({ id: ledgerHeads.id }).from(ledgerHeads).for('update');
   const [movement] = await tx.select().from(projectMovements).where(eq(projectMovements.id, id));
   if (movement === undefined) throw new DomainError('NOT_FOUND', 'No such movement');
+  await refuseWhileApprovalIsOn(tx);
   const [cancelled] = await tx
     .select({ id: projectMovementCancellations.id })
     .from(projectMovementCancellations)
@@ -640,6 +661,7 @@ export async function cancelMovement(
       movement.counterpartyValueId,
       movement.contractValueId,
       movement.currency as CurrencyCode,
+      today,
     );
     if (owed < movement.amountMinor) {
       throw new DomainError('VALIDATION_FAILED', 'Cancel the payments to the supplier first', {
@@ -909,12 +931,16 @@ export async function readFigures(tx: Transaction, projectId: string | null): Pr
           where a.statement_line = 'is.direct_costs' and ${lineOnProject}), 0) as costs,
         coalesce((select sum(l.book_minor) from public.journal_lines l
           join public.chart_accounts a on a.id = l.account_id
-          where a.code = ${ACCOUNTS.wages} and ${lineOnProject}), 0) as wages
+          join movement_entries e on e.entry_id = l.entry_id and e.kind = 'wages'
+          where a.code = ${ACCOUNTS.wages}), 0) as wages
     )
     select
       f.revenue::text as revenue,
       (f.revenue - f.costs)::text as profit,
-      (f.costs - f.wages)::text as expenses,
+      coalesce((select sum(l.book_minor) from public.journal_lines l
+        join public.chart_accounts a on a.id = l.account_id
+        join movement_entries e on e.entry_id = l.entry_id and e.kind = 'expense'
+        where a.statement_line = 'is.direct_costs'), 0)::text as expenses,
       f.costs::text as costs,
       (-coalesce((select sum(l.book_minor) from public.journal_lines l
         join public.chart_accounts a on a.id = l.account_id

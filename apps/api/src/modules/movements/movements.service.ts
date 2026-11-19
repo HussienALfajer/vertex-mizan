@@ -194,8 +194,9 @@ export class MovementsService {
     }
     const companyId = access.company.id;
     const id = uuidv7();
-    await this.files.write(companyId, id, file.buffer);
     return this.#write(access, async (tx) => {
+      // Written once the company row is locked (an archived company is refused first).
+      await this.files.write(companyId, id, file.buffer);
       await updateBranding(tx, companyId, actorOf(access), {
         logo: {
           storageKey: `${companyId}/${id}`,

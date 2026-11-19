@@ -168,7 +168,10 @@ export const movementQuerySchema = z
     currency: currencyCodeSchema.optional(),
     from: z.iso.date().optional(),
     to: z.iso.date().optional(),
-    cursor: z.string().max(200).optional(),
+    cursor: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)
+      .optional(),
     limit: z.coerce.number().int().min(1).max(200).default(50),
   })
   .meta({ id: 'MovementQuery' });

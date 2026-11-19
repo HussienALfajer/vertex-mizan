@@ -3575,6 +3575,24 @@ BEGIN
     RAISE EXCEPTION 'project_movements: a movement''s entry is posted from its draft, on its date'
       USING ERRCODE = 'restrict_violation';
   END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM public.ledger_heads h
+    WHERE h.company_id = NEW.company_id AND h.last_entry_id = NEW.entry_id
+  ) THEN
+    RAISE EXCEPTION 'project_movements: a movement records the entry posted just before it'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM public.journal_lines l
+    WHERE l.company_id = NEW.company_id AND l.entry_id = NEW.entry_id
+      AND l.currency = NEW.currency
+  ) OR EXISTS (
+    SELECT 1 FROM public.journal_entries r
+    WHERE r.company_id = NEW.company_id AND r.reverses_entry_id = NEW.entry_id
+  ) THEN
+    RAISE EXCEPTION 'project_movements: a movement''s entry is in its currency and not reversed'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
   IF NEW.contract_value_id IS NOT NULL THEN
     SELECT v.contract_kind, v.parent_value_id INTO project
     FROM public.dimension_values v

@@ -568,6 +568,13 @@
       "when": 1795110719953,
       "tag": "0080_s13_movement_guards",
       "breakpoints": true
+    },
+    {
+      "idx": 81,
+      "version": "7",
+      "when": 1795112701565,
+      "tag": "0081_s13_movement_entry_guard",
+      "breakpoints": true
     }
   ]
 }

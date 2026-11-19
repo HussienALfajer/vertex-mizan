@@ -125,6 +125,7 @@ describe('the guard on the movement routes', () => {
       { method: 'get', path: '/api/company/branding' },
       { method: 'put', path: '/api/company/branding' },
       { method: 'get', path: '/api/company/branding/logo' },
+      { method: 'post', path: '/api/company/branding/logo' },
     ]);
   });
 });
@@ -168,7 +169,7 @@ describe('movements (S13 rules 1–9)', () => {
       costsMinor: '1140000',
       profitMinor: '-240000',
       receivedMinor: '500000',
-      expensesMinor: '1020000',
+      expensesMinor: '205000',
       wagesMinor: '120000',
       netCashMinor: '25000',
       owedByUs: [{ currency: 'USD', amountMinor: '515000', bookMinor: '515000' }],
@@ -242,6 +243,43 @@ describe('movements (S13 rules 1–9)', () => {
     expect(refused.body.code).toBe('PROJECT_FINISHED');
   });
 
+  it("never reads or writes another company's projects or movements", async () => {
+    const mine = await company();
+    const movementOfMine = await record(mine, movement(mine, 'deposit', { amountMinor: '1000' }));
+    const other = await company();
+    const read = await other.browser.get(`/api/project-books/${mine.project}`);
+    expect(read.body.code).toBe('NOT_FOUND');
+    const patched = await other.browser.patch(`/api/project-books/${mine.project}`, {
+      state: 'finished',
+    });
+    expect(patched.body.code).toBe('NOT_FOUND');
+    const recorded = await other.browser.post(
+      '/api/movements',
+      movement(mine, 'owed_to_us', { amountMinor: '1000' }),
+    );
+    expect(recorded.body.code).toBe('NOT_FOUND');
+    const supplier = await other.browser.post('/api/movements', {
+      ...movement(other, 'owed_by_us', { amountMinor: '1000' }),
+      supplierId: mine.supplier,
+    });
+    expect(supplier.body.code).toBe('NOT_FOUND');
+    const material = await other.browser.post(
+      '/api/movements',
+      movement(other, 'expense', {
+        material: { materialId: mine.steel, quantity: '1.000', unitPrice: '1.0000' },
+      }),
+    );
+    expect(material.body.code).toBe('MATERIAL_REQUIRED');
+    const cancelled = await other.browser.post(`/api/movements/${movementOfMine.id}/cancel`, {
+      reason: 'إلغاء',
+    });
+    expect(cancelled.body.code).toBe('NOT_FOUND');
+    const listed = await other.browser.get('/api/movements', { project: mine.project });
+    expect(listed.body.movements).toEqual([]);
+    const malformed = await other.browser.get('/api/movements', { cursor: 'x_y' });
+    expect(malformed.body.code).toBe('VALIDATION_FAILED');
+  });
+
   it('lets a viewer read and nothing more', async () => {
     const books = await company();
     const viewer = await joinCompany(app, db, books.companyId, 'viewer');
@@ -273,6 +311,12 @@ describe('branding (S13 "Data")', () => {
       'logo.svg',
     );
     expect(text.body.code).toBe('ATTACHMENT_TYPE');
+    const large = await books.browser.upload(
+      '/api/company/branding/logo',
+      Buffer.concat([PNG, Buffer.alloc(1024 * 1024)]),
+      'large.png',
+    );
+    expect(large.body.code).toBe('ATTACHMENT_TOO_LARGE');
   });
 
   it("shows the sign-in page the setting's company only, and nothing without it", async () => {

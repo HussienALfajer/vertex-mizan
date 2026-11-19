@@ -8014,7 +8014,7 @@
             "in": "query",
             "schema": {
               "type": "string",
-              "maxLength": 200
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
             }
           },
           {
@@ -21422,7 +21422,7 @@
           },
           "cursor": {
             "type": "string",
-            "maxLength": 200
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
           },
           "limit": {
             "default": 50,

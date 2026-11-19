@@ -4,11 +4,13 @@ import {
   type CurrencyCode,
   type RecordMovement,
 } from '@vertex-mizan/contracts';
-import { sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
+import fc from 'fast-check';
 import { v7 as uuidv7 } from 'uuid';
 import { beforeAll, describe, expect, it } from 'vitest';
 import {
   cancelMovement,
+  companySettings,
   createCompanyBooks,
   createMaterial,
   createParty,
@@ -17,6 +19,9 @@ import {
   type PersonActor,
   PROJECT_MOVEMENT_KINDS,
   post,
+  projectMovementCancellations,
+  projectMovementSequences,
+  projectMovements,
   readDashboard,
   readDayRates,
   readFigures,
@@ -31,14 +36,14 @@ import {
   users,
   withCompany,
 } from '../src/index.js';
-import { connect, refusal } from './connections.js';
+import { closeMonthByHand, connect, refusal } from './connections.js';
 
-// S13 (ADR 0024) on the migrated database (0079–0080): each movement recorded and posted through
+// S13 (ADR 0024) on the migrated database (0079–0081): each movement recorded and posted through
 // its path with the numbers of `projects/simple-movements`, the figures read from the ledger, the
 // refusals of rules 2–9, a replay and a conflict, the cancellation and the guard that no other
 // route reverses a movement's entry. All values are synthetic.
 
-const { app } = connect();
+const { app, owner } = connect();
 
 let personId = '';
 
@@ -223,7 +228,8 @@ describe('recording movements', () => {
       costsMinor: '1140000',
       profitMinor: '-240000',
       receivedMinor: '500000',
-      expensesMinor: '1020000',
+      // the steel expense only; the steel bought on credit is owed by us (S13 "Reports")
+      expensesMinor: '205000',
       wagesMinor: '120000',
       // 5,000.00 − 2,050.00 − 1,200.00 − 3,000.00 + 1,500.00; the deposit is not the project's
       netCashMinor: '25000',
@@ -409,4 +415,440 @@ describe('the rates of a day', () => {
     });
     expect((await inCompany(books.id, (tx) => readDayRates(tx, '2026-12-01'))).missing).toBe(false);
   });
+});
+
+/** Rates recorded for a day: SYP per USD only, as a later day's market rate. */
+const syp = (books: Books, date: string, rate: string) =>
+  inCompany(books.id, (tx) =>
+    recordDayRates(tx, books.id, actor(), {
+      date,
+      rates: [{ base: 'USD', quote: 'SYP', rate }],
+      reason: null,
+    }),
+  );
+
+/** An entry's lines as a sorted list, to compare without their order. */
+const sorted = (lines: string[][]) => [...lines].sort((a, b) => a.join().localeCompare(b.join()));
+
+describe('the approved SYP cases through the movement service', () => {
+  it('pays a SYP debt at a later rate: a realised gain of 25.00 (case 4)', async () => {
+    const books = await newBooks();
+    await syp(books, '2026-12-02', '120');
+    await record(
+      books,
+      movement(books, 'owed_by_us', {
+        currency: 'SYP',
+        amountMinor: '23700000',
+        date: '2026-12-01',
+      }),
+    );
+    await record(
+      books,
+      movement(books, 'deposit', { currency: 'SYP', amountMinor: '23700000', date: '2026-12-02' }),
+    );
+    const paid = await record(
+      books,
+      movement(books, 'debt_paid', {
+        currency: 'SYP',
+        amountMinor: '23700000',
+        date: '2026-12-02',
+      }),
+    );
+    expect(sorted(await linesOf(books, await movementEntry(books, paid)))).toEqual(
+      sorted([
+        ['211001', 'SYP', '23700000', '200000'],
+        ['111001', 'SYP', '-23700000', '-197500'],
+        ['421001', 'USD', '-2500', '-2500'],
+      ]),
+    );
+    const figures = await inCompany(books.id, (tx) => readFigures(tx, books.project));
+    expect(figures.owedByUs).toEqual([]);
+    const dashboard = await inCompany(books.id, (tx) => readDashboard(tx, TODAY));
+    expect(dashboard.exchangeDifferencesMinor).toBe('2500');
+  });
+
+  it('collects across two items, oldest due first: a loss of 62.50 (case 7)', async () => {
+    const books = await newBooks();
+    await syp(books, '2026-12-05', '120');
+    await syp(books, '2026-12-07', '125');
+    await record(
+      books,
+      movement(books, 'owed_to_us', {
+        currency: 'SYP',
+        amountMinor: '11850000',
+        date: '2026-12-01',
+      }),
+    );
+    await record(
+      books,
+      movement(books, 'owed_to_us', {
+        currency: 'SYP',
+        amountMinor: '6000000',
+        date: '2026-12-05',
+      }),
+    );
+    const collected = await record(
+      books,
+      movement(books, 'debt_collected', {
+        currency: 'SYP',
+        amountMinor: '15000000',
+        date: '2026-12-07',
+      }),
+    );
+    expect(sorted(await linesOf(books, await movementEntry(books, collected)))).toEqual(
+      sorted([
+        ['111001', 'SYP', '15000000', '120000'],
+        ['112001', 'SYP', '-11850000', '-100000'],
+        ['112001', 'SYP', '-3150000', '-26250'],
+        ['541001', 'USD', '6250', '6250'],
+      ]),
+    );
+    const figures = await inCompany(books.id, (tx) => readFigures(tx, books.project));
+    expect(figures.owedToUs).toEqual([
+      { currency: 'SYP', amountMinor: '2850000', bookMinor: '23750' },
+    ]);
+    const dashboard = await inCompany(books.id, (tx) => readDashboard(tx, TODAY));
+    expect(dashboard.exchangeDifferencesMinor).toBe('-6250');
+  });
+
+  it("pays one project's debt to a supplier owed on two at the item's average (case 8)", async () => {
+    const books = await newBooks();
+    await syp(books, '2026-12-02', '120');
+    const second = await inCompany(books.id, (tx) =>
+      createProject(tx, books.id, actor(), {
+        name: 'مشروع ثان',
+        clientId: books.client,
+        clientName: null,
+        startDate: '2026-12-01',
+        contractValue: null,
+      }),
+    );
+    await record(
+      books,
+      movement(books, 'owed_by_us', {
+        currency: 'SYP',
+        amountMinor: '11850000',
+        date: '2026-12-01',
+      }),
+    );
+    await record(books, {
+      ...movement(books, 'owed_by_us', {
+        currency: 'SYP',
+        amountMinor: '12000000',
+        date: '2026-12-02',
+      }),
+      projectId: second,
+    });
+    await record(
+      books,
+      movement(books, 'deposit', { currency: 'SYP', amountMinor: '11850000', date: '2026-12-03' }),
+    );
+    const paid = await record(
+      books,
+      movement(books, 'debt_paid', {
+        currency: 'SYP',
+        amountMinor: '11850000',
+        date: '2026-12-03',
+      }),
+    );
+    expect(sorted(await linesOf(books, await movementEntry(books, paid)))).toEqual(
+      sorted([
+        ['211001', 'SYP', '11850000', '99371'],
+        ['111001', 'SYP', '-11850000', '-98750'],
+        ['421001', 'USD', '-621', '-621'],
+      ]),
+    );
+    const first = await inCompany(books.id, (tx) => readFigures(tx, books.project));
+    expect(first.owedByUs).toEqual([]);
+    const other = await inCompany(books.id, (tx) => readFigures(tx, second));
+    // 120,000.00 SYP at the item's average: 1,006.29 USD
+    expect(other.owedByUs).toEqual([
+      { currency: 'SYP', amountMinor: '12000000', bookMinor: '100629' },
+    ]);
+    const dashboard = await inCompany(books.id, (tx) => readDashboard(tx, TODAY));
+    expect(dashboard.exchangeDifferencesMinor).toBe('621');
+  });
+});
+
+describe('the refusals of rules 2, 5, 6 and 8', () => {
+  it('settles a debt only once it exists: a back-dated collection is refused', async () => {
+    const books = await newBooks();
+    await record(books, movement(books, 'owed_to_us', { amountMinor: '1000', date: '2026-12-10' }));
+    await expect(
+      record(books, movement(books, 'debt_collected', { amountMinor: '1000', date: '2026-12-05' })),
+    ).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
+    // Nothing was due on 5 December: a receipt that day is revenue, not a collection.
+    await record(books, movement(books, 'received', { amountMinor: '1000', date: '2026-12-05' }));
+    await record(books, movement(books, 'owed_by_us', { amountMinor: '500', date: '2026-12-10' }));
+    await record(books, movement(books, 'deposit', { amountMinor: '5000', date: '2026-12-01' }));
+    await expect(
+      record(books, movement(books, 'debt_paid', { amountMinor: '500', date: '2026-12-05' })),
+    ).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
+  });
+
+  it('refuses a movement in a closed month and in a currency with no rate', async () => {
+    const books = await newBooks();
+    await record(books, movement(books, 'deposit', { amountMinor: '1000', date: '2026-11-20' }));
+    await closeMonthByHand(app, books.id, '2026-11');
+    await expect(
+      record(books, movement(books, 'deposit', { amountMinor: '1000', date: '2026-11-25' })),
+    ).rejects.toMatchObject({ code: 'PERIOD_CLOSED' });
+    await expect(
+      record(
+        books,
+        movement(books, 'received', { currency: 'EUR', amountMinor: '1000', date: '2026-12-02' }),
+      ),
+    ).rejects.toMatchObject({
+      code: expect.stringMatching(/^(RATE_MISSING|CASH_ACCOUNT_INVALID)$/),
+    });
+  });
+
+  it('refuses a cancellation the books cannot take back (rule 8)', async () => {
+    const books = await newBooks();
+    const context = { companyId: books.id, actor: actor(), today: TODAY };
+    const cancel = (id: string) =>
+      inCompany(books.id, (tx) => cancelMovement(tx, context, id, { reason: 'إلغاء تجريبي' }));
+    // A deposit whose cash was spent.
+    const deposit = await record(books, movement(books, 'deposit', { amountMinor: '1000' }));
+    await record(books, movement(books, 'wages', { amountMinor: '1000' }));
+    await expect(cancel(deposit)).rejects.toMatchObject({ code: 'CASH_BOX_NEGATIVE' });
+    // An amount owed to us with a collection standing.
+    const owed = await record(books, movement(books, 'owed_to_us', { amountMinor: '2000' }));
+    await record(books, movement(books, 'debt_collected', { amountMinor: '500' }));
+    await expect(cancel(owed)).rejects.toMatchObject({ code: 'OPEN_ITEM_HAS_SETTLEMENTS' });
+    // A debt owed by us with a payment standing.
+    const debt = await record(books, movement(books, 'owed_by_us', { amountMinor: '300' }));
+    await record(books, movement(books, 'debt_paid', { amountMinor: '300' }));
+    await expect(cancel(debt)).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
+  });
+
+  it('refuses movements and cancellations while approval is on', async () => {
+    const books = await newBooks();
+    const deposit = await record(books, movement(books, 'deposit', { amountMinor: '1000' }));
+    await inCompany(books.id, (tx) =>
+      tx.update(companySettings).set({ manualEntryApproval: true }),
+    );
+    await expect(
+      record(books, movement(books, 'deposit', { amountMinor: '1000' })),
+    ).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
+    await expect(
+      inCompany(books.id, (tx) =>
+        cancelMovement(tx, { companyId: books.id, actor: actor(), today: TODAY }, deposit, {
+          reason: 'إلغاء تجريبي',
+        }),
+      ),
+    ).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
+  });
+});
+
+describe('the guards against forged writes', () => {
+  /** A movement row as the service writes it, with `fields` changed. */
+  async function forged(books: Books, fields: Partial<typeof projectMovements.$inferInsert>) {
+    const id = await record(books, movement(books, 'deposit', { amountMinor: '100' }));
+    const [row] = await inCompany(books.id, (tx) =>
+      tx.select().from(projectMovements).where(eq(projectMovements.id, id)),
+    );
+    if (row === undefined) throw new Error('no movement');
+    const { id: _id, createdAt: _created, ...rest } = row;
+    return { ...rest, requestKey: uuidv7(), ...fields };
+  }
+
+  it('refuses, as the app role and the owner, a movement that does not record its entry', async () => {
+    for (const db of [app, owner]) {
+      const books = await newBooks();
+      // The same entry again: not the one posted just before it, and its number not the next.
+      const again = await forged(books, {});
+      expect(
+        await refusal(inCompany(books.id, (tx) => tx.insert(projectMovements).values(again))),
+      ).toMatch(/duplicate key|project_movements/);
+      // An older entry, after another posted.
+      const older = await forged(books, {});
+      await record(books, movement(books, 'deposit', { amountMinor: '100' }));
+      await inCompany(books.id, (tx) =>
+        tx
+          .update(projectMovementSequences)
+          .set({ lastNumber: sql`${projectMovementSequences.lastNumber} + 1` }),
+      ).catch(() => undefined);
+      expect(
+        await refusal(
+          withCompany(db, books.id, (tx) =>
+            tx.insert(projectMovements).values({ ...older, number: older.number + 2 }),
+          ),
+        ),
+      ).toMatch(/project_movements/);
+    }
+  });
+
+  it('refuses a cancellation whose entry reverses another', async () => {
+    const books = await newBooks();
+    await record(books, movement(books, 'deposit', { amountMinor: '1000' }));
+    const wages = await record(books, movement(books, 'wages', { amountMinor: '100' }));
+    const other = await record(books, movement(books, 'wages', { amountMinor: '200' }));
+    const context = { companyId: books.id, actor: actor(), today: TODAY };
+    await inCompany(books.id, (tx) => cancelMovement(tx, context, other, { reason: 'إلغاء' }));
+    const [cancellation] = await inCompany(books.id, (tx) =>
+      tx.select().from(projectMovementCancellations),
+    );
+    expect(
+      await refusal(
+        inCompany(books.id, (tx) =>
+          tx.insert(projectMovementCancellations).values({
+            companyId: books.id,
+            movementId: wages,
+            reversalEntryId: cancellation?.reversalEntryId as string,
+            reason: 'مزوّر',
+            createdByUserId: personId,
+          }),
+        ),
+      ),
+    ).toMatch(/project_movement_cancellations/);
+  });
+
+  it('never changes or deletes a movement, a cancellation or a sequence, for any role', async () => {
+    const books = await newBooks();
+    await record(books, movement(books, 'deposit', { amountMinor: '1000' }));
+    const wages = await record(books, movement(books, 'wages', { amountMinor: '100' }));
+    await inCompany(books.id, (tx) =>
+      cancelMovement(tx, { companyId: books.id, actor: actor(), today: TODAY }, wages, {
+        reason: 'إلغاء',
+      }),
+    );
+    for (const db of [app, owner]) {
+      const inIt = <T>(work: (tx: Transaction) => Promise<T>) => withCompany(db, books.id, work);
+      expect(
+        await refusal(inIt((tx) => tx.update(projectMovements).set({ description: 'تغيير' }))),
+      ).toBeTruthy();
+      expect(await refusal(inIt((tx) => tx.delete(projectMovements)))).toBeTruthy();
+      expect(
+        await refusal(
+          inIt((tx) => tx.update(projectMovementCancellations).set({ reason: 'تغيير' })),
+        ),
+      ).toBeTruthy();
+      expect(await refusal(inIt((tx) => tx.delete(projectMovementSequences)))).toBeTruthy();
+      expect(
+        await refusal(
+          inIt((tx) =>
+            tx
+              .update(projectMovementSequences)
+              .set({ lastNumber: sql`${projectMovementSequences.lastNumber} + 2` }),
+          ),
+        ),
+      ).toBeTruthy();
+    }
+  });
+});
+
+describe('the figures, as properties (S13 "Reports")', () => {
+  const step = fc.oneof(
+    fc.record({
+      kind: fc.constant('received' as const),
+      amount: fc.integer({ min: 1, max: 9_000 }),
+    }),
+    fc.record({ kind: fc.constant('expense' as const), amount: fc.integer({ min: 1, max: 900 }) }),
+    fc.record({ kind: fc.constant('wages' as const), amount: fc.integer({ min: 1, max: 900 }) }),
+    fc.record({
+      kind: fc.constant('owed_by_us' as const),
+      amount: fc.integer({ min: 1, max: 900 }),
+    }),
+    fc.record({
+      kind: fc.constant('owed_to_us' as const),
+      amount: fc.integer({ min: 1, max: 900 }),
+    }),
+    fc.record({
+      kind: fc.constant('debt_paid' as const),
+      amount: fc.integer({ min: 1, max: 900 }),
+    }),
+    fc.record({
+      kind: fc.constant('debt_collected' as const),
+      amount: fc.integer({ min: 1, max: 900 }),
+    }),
+    fc.record({ kind: fc.constant('cancel' as const), amount: fc.nat() }),
+  );
+
+  it("keep a project's figures equal to its lines, items and boxes under any sequence", async () => {
+    await fc.assert(
+      fc.asyncProperty(fc.array(step, { minLength: 1, maxLength: 12 }), async (steps) => {
+        const books = await newBooks();
+        await record(books, movement(books, 'deposit', { amountMinor: '100000000' }));
+        const recorded: string[] = [];
+        for (const item of steps) {
+          try {
+            if (item.kind === 'cancel') {
+              const id = recorded[item.amount % Math.max(recorded.length, 1)];
+              if (id === undefined) continue;
+              await inCompany(books.id, (tx) =>
+                cancelMovement(tx, { companyId: books.id, actor: actor(), today: TODAY }, id, {
+                  reason: 'إلغاء',
+                }),
+              );
+            } else {
+              recorded.push(
+                await record(
+                  books,
+                  movement(books, item.kind, { amountMinor: String(item.amount) }),
+                ),
+              );
+            }
+          } catch {
+            // A refusal leaves the books as they were; the properties hold either way.
+          }
+        }
+        await inCompany(books.id, async (tx) => {
+          const figures = await readFigures(tx, books.project);
+          const ledger = await tx.execute<{
+            revenue: string;
+            costs: string;
+            owed_to_us: string;
+            boxes: string;
+            deposits: string;
+            supplier: string;
+            project_cash: string;
+          }>(sql`
+            select
+              (-coalesce((select sum(l.book_minor) from public.journal_lines l
+                join public.chart_accounts a on a.id = l.account_id where a.code = '411001'), 0))::text
+                as revenue,
+              coalesce((select sum(l.book_minor) from public.journal_lines l
+                join public.chart_accounts a on a.id = l.account_id
+                where a.statement_line = 'is.direct_costs'), 0)::text as costs,
+              coalesce((select sum(b.open_minor) from public.open_item_balances b
+                join public.open_items i on i.id = b.item_id
+                join public.chart_accounts a on a.id = i.account_id where a.code = '112001'), 0)::text
+                as owed_to_us,
+              coalesce((select sum(l.book_minor) from public.journal_lines l
+                join public.chart_accounts a on a.id = l.account_id where a.cash_kind = 'box'), 0)::text
+                as boxes,
+              coalesce((select sum(l.book_minor) from public.journal_lines l
+                join public.chart_accounts a on a.id = l.account_id
+                where a.cash_kind = 'box' and l.entry_id in (
+                  select m.entry_id from public.project_movements m where m.kind = 'deposit'
+                  union all select x.reversal_entry_id from public.project_movement_cancellations x
+                  join public.project_movements m on m.id = x.movement_id where m.kind = 'deposit')),
+                0)::text as deposits,
+              (coalesce((select sum(l.book_minor) from public.journal_lines l
+                join public.chart_accounts a on a.id = l.account_id where a.cash_kind = 'box'), 0)
+              - coalesce((select sum(l.book_minor) from public.journal_lines l
+                join public.chart_accounts a on a.id = l.account_id
+                where a.cash_kind = 'box' and l.entry_id in (
+                  select m.entry_id from public.project_movements m where m.kind = 'deposit'
+                  union all select x.reversal_entry_id from public.project_movement_cancellations x
+                  join public.project_movements m on m.id = x.movement_id where m.kind = 'deposit')),
+                0))::text as project_cash,
+              (-coalesce((select sum(l.amount_minor) from public.journal_lines l
+                join public.chart_accounts a on a.id = l.account_id where a.code = '211001'), 0))::text
+                as supplier`);
+          const row = ledger.rows[0];
+          expect(figures.revenueMinor).toBe(row?.revenue);
+          expect(figures.costsMinor).toBe(row?.costs);
+          const owedToUs = figures.owedToUs.find((item) => item.currency === 'USD');
+          expect(owedToUs?.amountMinor ?? '0').toBe(row?.owed_to_us);
+          // The project's net cash and the deposits are the boxes, in one currency.
+          expect(figures.netCashMinor).toBe(row?.project_cash);
+          // Owed by us is nothing exactly when the project's supplier lines net to zero.
+          expect(figures.owedByUs.length === 0).toBe(row?.supplier === '0');
+        });
+      }),
+      { numRuns: 8 },
+    );
+  }, 180_000);
 });
