@@ -692,11 +692,11 @@ describe('a case', () => {
     const refused = voucher.replace(
       'amount: 10000, dims: { client: C1 } }] }\n',
       'amount: 10000, dims: { client: C1 } }] }\n' +
-        '    outcome: { status: refused, reason: CASH_BOX_NEGATIVE }\n',
+        '    outcome: { status: refused, reason: PERIOD_CLOSED }\n',
     );
     expect(parseCase(refused).steps[0]).toMatchObject({
       kind: 'voucher',
-      outcome: { status: 'refused', reason: 'CASH_BOX_NEGATIVE', detail: null },
+      outcome: { status: 'refused', reason: 'PERIOD_CLOSED', detail: null },
     });
     expect(
       refusal(

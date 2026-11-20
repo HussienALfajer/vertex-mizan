@@ -233,7 +233,7 @@ export function countLines(count: {
   readonly overageAccount: string;
 }): VoucherLine[] {
   if (count.countedMinor < 0n || count.expectedMinor < 0n) {
-    throw new RangeError('A box is never below zero, nor is the cash counted in it');
+    throw new RangeError('A count is of a box at or above zero, and the cash counted is too');
   }
   const difference = count.countedMinor - count.expectedMinor;
   if (difference === 0n) return [];
@@ -253,53 +253,6 @@ export function countLines(count: {
 export interface BoxMovement {
   readonly date: string;
   readonly amountMinor: bigint;
-}
-
-/** The first date a box would be below zero, and by how much (S11 rule 8). */
-export interface BoxShortfall {
-  readonly date: string;
-  readonly shortfallMinor: bigint;
-}
-
-/**
- * The box check's arithmetic (S11 rule 8): a box holding `opening` at the end of the day before
- * `on`, with the posted movements `later` dated on or after `on`, receives `change` dated `on`. The
- * first date from `on` at whose end its balance would be below zero, and the shortfall then; null
- * when it never is. Only a change that takes cash out can make a box negative: any other is never
- * refused, whatever the box held.
- */
-export function boxShortfall(box: {
-  readonly opening: bigint;
-  readonly later: readonly BoxMovement[];
-  readonly on: string;
-  readonly change: bigint;
-}): BoxShortfall | null {
-  if (box.change >= 0n) return null;
-  const byDate = new Map<string, bigint>([[box.on, box.change]]);
-  for (const movement of box.later) {
-    if (movement.date < box.on) throw new RangeError('A movement before the change');
-    byDate.set(movement.date, (byDate.get(movement.date) ?? 0n) + movement.amountMinor);
-  }
-  let balance = box.opening;
-  for (const date of [...byDate.keys()].sort()) {
-    balance += byDate.get(date) as bigint;
-    if (balance < 0n) return { date, shortfallMinor: -balance };
-  }
-  return null;
-}
-
-/** Each account's net movement in its transaction currency over `lines` (S11 rule 8). */
-export function netChanges(
-  lines: readonly {
-    readonly account: string;
-    readonly transaction: { readonly amountMinor: bigint };
-  }[],
-): Map<string, bigint> {
-  const changes = new Map<string, bigint>();
-  for (const line of lines) {
-    changes.set(line.account, (changes.get(line.account) ?? 0n) + line.transaction.amountMinor);
-  }
-  return changes;
 }
 
 /** A box's balance at the end of `on` (S11 rule 13): `opening` plus its movements dated `on`. */

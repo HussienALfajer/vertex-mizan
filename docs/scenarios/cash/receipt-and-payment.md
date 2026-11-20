@@ -4,9 +4,11 @@ Status: Approved (owner, 2026-11-14)
 
 The expected entries of all eleven cases were approved by the owner on 2026-11-14, with the TRY receipt at a dealt rate as two cases: at the rate agreed with the client, which leaves no book difference, and with no dealt rate, which leaves a difference in both ledgers. S11's second PR brought the `voucher` executor, the box rule and the cash chart `contracting@1` and switched them to `Approved` with no expected value changed.
 
+On 2026-11-20 the owner let a box go below zero (S11 rule 8: "allow going below zero, shown negative in red, and when a deposit or receipt is added it adjusts"). The two cases that were refused with `CASH_BOX_NEGATIVE` now post: the payment beyond the box, leaving it at −200.00 USD, and the back-dated payment, followed by a deposit that raises the box to 200.00 USD. The owner approved their new expected entries on 2026-11-20 ("موافق، تابع").
+
 ## Rule
 
-A receipt voucher has exactly one debit on its cash account and a payment voucher exactly one credit; their counter lines are ordinary manual lines in any currency (S11 rules 10, 11 and 15). The cash line is a new measurement, at the dealt rate in a ledger that accepts it for the pair, otherwise at the ledger's policy rate of the day. A counter line on a control account names its counterparty: on a document account it clears the item at its carrying amount in proportion to what remains, on a running account it clears at the average carrying amount and splits at zero, the excess a new measurement; any other counter line is a new measurement. Each ledger's residual is a realised exchange difference in that ledger only, to `fx_realised_gain` (`421001`) when a credit and `fx_realised_loss` (`541001`) when a debit. An advance from a client (`212002`) is non-monetary and the month-end revaluation never touches it. A payment after which a box would be below zero at its date or any later date is refused whole (`CASH_BOX_NEGATIVE`). Cancelling a voucher reverses its entry exactly and reopens what it cleared at its earlier carrying amount.
+A receipt voucher has exactly one debit on its cash account and a payment voucher exactly one credit; their counter lines are ordinary manual lines in any currency (S11 rules 10, 11 and 15). The cash line is a new measurement, at the dealt rate in a ledger that accepts it for the pair, otherwise at the ledger's policy rate of the day. A counter line on a control account names its counterparty: on a document account it clears the item at its carrying amount in proportion to what remains, on a running account it clears at the average carrying amount and splits at zero, the excess a new measurement; any other counter line is a new measurement. Each ledger's residual is a realised exchange difference in that ledger only, to `fx_realised_gain` (`421001`) when a credit and `fx_realised_loss` (`541001`) when a debit. An advance from a client (`212002`) is non-monetary and the month-end revaluation never touches it. A box may go below zero (S11 rule 8; owner, 2026-11-20): a payment beyond what the box holds posts like any other, and a later receipt or deposit simply raises the box again. Cancelling a voucher reverses its entry exactly and reopens what it cleared at its earlier carrying amount.
 
 ## Basis
 
@@ -21,7 +23,7 @@ A receipt voucher has exactly one debit on its cash account and a payment vouche
 
 The company is the contracting client's shape unless a case says otherwise: `usd-syp`, the USD book at `market` accepting dealt rates, the SYP parallel ledger at the bulletin, and TRY as a third currency, with the chart `contracting@1` (S11 "Templates"): the boxes `111002` (USD) and `111005` (TRY), trade receivables `112001` (a document control account for clients, client and contract required), suppliers `211001` (a running control account for suppliers), workers and craftsmen `211007` (a running control account for workers), advances from clients `212002` (a running control account for clients, non-monetary, client and contract required), the owner's current account `313001`, contract revenue `411001` (client and contract required), materials `511001`, wages `511002`, machinery hire `511004` and site transport and fuel `511005` (each requiring the contract), realised exchange gains `421001` and losses `541001`, unrealised gains `421002`. Client C1's contract is P1. Every rate and amount is synthetic. Tuesday 24 and Monday 30 November, and Tuesday 1, Wednesday 2 and Thursday 3 December 2026 are publication days.
 
-A billing, a supplier's invoice and a worker's wages are manual entries (S04; the invoice and the wages are S12's to automate). Each case that pays from a box first puts cash into it by a receipt voucher from the owner's current account, since a box never goes below zero (S11 rule 8). A voucher step's payload is the voucher draft as the form sends it: the voucher header, the lines and, on a receipt or a payment, the dealt rates the accountant typed (S03 rule 13). A line on a document control account names its item (`open_item`, `item`) and takes the item's dimensions; a line on a running control account names its counterparty in `dims`, and its item is named in `open_items` by the counterparty's code.
+A billing, a supplier's invoice and a worker's wages are manual entries (S04; the invoice and the wages are S12's to automate). Each case that pays from a box first puts cash into it by a receipt voucher from the owner's current account, as the owner does before spending; the two cases after the worker's show a box going below zero (S11 rule 8). A voucher step's payload is the voucher draft as the form sends it: the voucher header, the lines and, on a receipt or a payment, the dealt rates the accountant typed (S03 rule 13). A line on a document control account names its item (`open_item`, `item`) and takes the item's dimensions; a line on a running control account names its counterparty in `dims`, and its item is named in `open_items` by the counterparty's code.
 
 A difference line carries its amount in one ledger only, in that ledger's currency (ADR 0007): in the USD books a book difference is a USD line with parallel 0, and a parallel difference an SYP line with book 0.
 
@@ -484,12 +486,12 @@ expect:
     - { item: W1, account: "211007", dims: { worker: W1 }, currency: USD, amount: 10000, book: 10000, parallel: 1220000 }
 ```
 
-### A payment refused: the box would go below zero
+### A payment beyond the box: the box goes below zero
 
-The USD box holds 1,000.00 USD; a payment of 1,200.00 USD of machinery hire is refused whole (S11 rule 8): it would leave the box 200.00 USD short at the end of its date. Nothing posts and no voucher number is taken.
+The USD box holds 1,000.00 USD; a payment of 1,200.00 USD of machinery hire posts in full (S11 rule 8; owner, 2026-11-20): a box may go below zero, and this one is left 200.00 USD below zero, shown as a negative amount in the negative colour. The payment is an ordinary new measurement at the day's rates; nothing in the entry depends on the box's balance.
 
 ```yaml
-case: 1,200.00 USD paid from a box holding 1,000.00 USD; refused
+case: 1,200.00 USD paid from a box holding 1,000.00 USD; the box ends at −200.00 USD
 company: { shape: usd-syp, book: USD, parallel: SYP, template: contracting,
            rate_policy: { book: market, book_accepts_transaction_rate: true, parallel: bulletin },
            contracts: [{ code: P1, kind: project, client: C1 }] }
@@ -514,18 +516,24 @@ expect:
       lines:
         - { account: "111002", currency: USD, amount: 100000, book: 100000, parallel: 12000000 }
         - { account: "313001", currency: USD, amount: -100000, book: -100000, parallel: -12000000 }
+    - source: manual
+      date: 2026-12-02
+      lines:
+        # parallel: 1,200.00 USD × 120 = 144,000.00 SYP
+        - { account: "511004", dims: { contract: P1 }, currency: USD, amount: 120000, book: 120000, parallel: 14400000 }
+        - { account: "111002", currency: USD, amount: -120000, book: -120000, parallel: -14400000 }
   balances:
-    - { account: "111002", currency: USD, amount: 100000, book: 100000, parallel: 12000000 }
-    - { account: "511004", book: 0, parallel: 0 }
-  outcome: { status: refused, reason: CASH_BOX_NEGATIVE }
+    # 1,000.00 − 1,200.00 = −200.00 USD; parallel 120,000.00 − 144,000.00 = −24,000.00 SYP
+    - { account: "111002", currency: USD, amount: -20000, book: -20000, parallel: -2400000 }
+    - { account: "511004", book: 120000, parallel: 14400000 }
 ```
 
-### A back-dated payment refused: a later date would go below zero
+### A back-dated payment, then a deposit raises the box again
 
-The USD box receives 1,000.00 USD on 1 December and pays 800.00 USD on 3 December, leaving 200.00. A payment of 300.00 USD then dated 2 December would leave 700.00 at the end of its own date, but 100.00 short at the end of 3 December, after the payment already posted. It is refused, naming 3 December (S11 rule 8, edge case 3).
+The USD box receives 1,000.00 USD on 1 December and pays 800.00 USD on 3 December, leaving 200.00. A payment of 300.00 USD then dated 2 December posts (S11 rule 8; owner, 2026-11-20): the box ends 2 December at 700.00 and 3 December at 100.00 USD below zero. The owner then deposits 300.00 USD on 3 December, which simply raises the box to 200.00 USD; no posted entry is changed or measured again.
 
 ```yaml
-case: a 300.00 USD payment back-dated to 2 December, before an 800.00 USD payment of 3 December; refused
+case: a 300.00 USD payment back-dated before an 800.00 USD payment takes the box to −100.00; a 300.00 USD deposit raises it to 200.00
 company: { shape: usd-syp, book: USD, parallel: SYP, template: contracting,
            rate_policy: { book: market, book_accepts_transaction_rate: true, parallel: bulletin },
            contracts: [{ code: P1, kind: project, client: C1 }] }
@@ -549,6 +557,11 @@ steps:
     payload: { voucher: { kind: payment, cash_account: "111002", party_name: "مؤجر الآليات" },
                lines: [{ account: "511004", dims: { contract: P1 }, currency: USD, amount: 30000 },
                        { account: "111002", currency: USD, amount: -30000 }] }
+  - voucher: the owner pays 300.00 USD into the USD box
+    accounting_date: 2026-12-03
+    payload: { voucher: { kind: receipt, cash_account: "111002", party_name: "المالك" },
+               lines: [{ account: "111002", currency: USD, amount: 30000 },
+                       { account: "313001", currency: USD, amount: -30000 }] }
 expect:
   entries:
     - source: manual
@@ -562,10 +575,23 @@ expect:
         # parallel: 800.00 USD × 120 = 96,000.00 SYP
         - { account: "511004", dims: { contract: P1 }, currency: USD, amount: 80000, book: 80000, parallel: 9600000 }
         - { account: "111002", currency: USD, amount: -80000, book: -80000, parallel: -9600000 }
+    - source: manual
+      date: 2026-12-02
+      lines:
+        # parallel: 300.00 USD × 120 = 36,000.00 SYP
+        - { account: "511004", dims: { contract: P1 }, currency: USD, amount: 30000, book: 30000, parallel: 3600000 }
+        - { account: "111002", currency: USD, amount: -30000, book: -30000, parallel: -3600000 }
+    - source: manual
+      date: 2026-12-03
+      lines:
+        - { account: "111002", currency: USD, amount: 30000, book: 30000, parallel: 3600000 }
+        - { account: "313001", currency: USD, amount: -30000, book: -30000, parallel: -3600000 }
   balances:
-    # the box at the end of 3 December: 1,000.00 − 800.00 = 200.00 USD; the refused 300.00 would make it −100.00
+    # without the deposit, the end of 3 December: 1,000.00 − 300.00 − 800.00 = −100.00 USD;
+    # with it: −100.00 + 300.00 = 200.00 USD; parallel 120,000 − 36,000 − 96,000 + 36,000 = 24,000.00 SYP
     - { account: "111002", currency: USD, amount: 20000, book: 20000, parallel: 2400000 }
-  outcome: { status: refused, reason: CASH_BOX_NEGATIVE }
+    - { account: "511004", book: 110000, parallel: 13200000 }
+    - { account: "313001", book: -130000, parallel: -15600000 }
 ```
 
 ### A receipt cancelled, reopening its billing

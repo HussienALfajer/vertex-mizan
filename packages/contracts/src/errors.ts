@@ -248,7 +248,7 @@ export const errorStatus = {
   /** The books start changes only before any entry, snapshot or opening draft (S10 rule 2). */
   BOOKS_START_LOCKED: 409,
   // S11 (cash accounts and vouchers):
-  /** An entry would take a box below zero at its date or a later one (S11 rule 8; details: account, date, shortfall). */
+  /** Retired (owner, 2026-11-20): a box may go below zero (S11 rule 8); nothing raises it. */
   CASH_BOX_NEGATIVE: 409,
   /** A box's expected balance changed between a count's preview and its posting (S11 rule 13; details: expected). */
   CASH_COUNT_STALE: 409,
@@ -278,7 +278,8 @@ export type ErrorCode = keyof typeof errorStatus;
 
 /**
  * The codes of features removed with Hub (ADR 0021): a dimension value's Hub link (S02), the posting
- * API, its keys and the inbox's actions (S05) and the reconciliation's start date (S08). They stay
+ * API, its keys and the inbox's actions (S05) and the reconciliation's start date (S08), and the
+ * refusal of a box below zero, which the owner lifted on 2026-11-20 (S11 rule 8). They stay
  * in `errorStatus`, in their place and with their status (`pnpm check:error-codes`), and nothing
  * raises them or reuses them.
  */
@@ -292,6 +293,7 @@ export const RETIRED_ERROR_CODES = [
   'ENTRY_ALREADY_LINKED',
   'MAPPING_ACCOUNT_INVALID',
   'RECONCILIATION_START_LOCKED',
+  'CASH_BOX_NEGATIVE',
 ] as const satisfies readonly ErrorCode[];
 
 export const errorCodes = Object.keys(errorStatus) as [ErrorCode, ...ErrorCode[]];

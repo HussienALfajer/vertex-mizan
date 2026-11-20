@@ -136,7 +136,8 @@ const newKey = () => crypto.randomUUID();
 /**
  * The new movement (S13 screen 5): the kind first, then only its fields. From a project, the
  * project is fixed; from the dashboard it is picked, and a deposit has none. A refusal says what
- * to do: record the day's rates, deposit cash, or record a receipt as a debt collected.
+ * to do: record the day's rates, or record a receipt as a debt collected. A payment beyond what a
+ * box holds posts, and the box shows below zero (S11 rule 8; owner, 2026-11-20).
  */
 export function MovementDialog({
   companyId,
@@ -184,8 +185,6 @@ function MovementForm({
   // Quantity and unit price are grouped by thousands as they are typed, read without the commas.
   const quantityTyping = useTypedDecimal({ allowNegative: false });
   const unitPriceTyping = useTypedDecimal({ allowNegative: false });
-  // The movement to come back to after a deposit made for it (S13 rule 2: deposit cash).
-  const [resume, setResume] = useState<Form | null>(null);
   const [requestKey, setRequestKey] = useState(newKey);
   const [errors, setErrors] = useState<Errors>({});
   const [attempt, setAttempt] = useState(0);
@@ -287,12 +286,6 @@ function MovementForm({
     onSuccess: async () => {
       await refreshBooks(queryClient, companyId);
       setRequestKey(newKey());
-      if (resume) {
-        setForm(resume);
-        setResume(null);
-        setErrors({});
-        return;
-      }
       onDone();
     },
   });
@@ -565,13 +558,6 @@ function MovementForm({
       <Recovery
         error={record.error}
         onRates={() => setRatesOpen(true)}
-        onDeposit={() => {
-          setResume(form);
-          setForm({ ...blank('deposit', null), currency: form.currency, date: form.date });
-          setRequestKey(newKey());
-          setErrors({});
-          record.reset();
-        }}
         onCollect={() => {
           change({ kind: 'debt_collected' });
           setRequestKey(newKey());
@@ -580,19 +566,6 @@ function MovementForm({
       />
 
       <DialogFooter>
-        {resume && (
-          <Button
-            variant="outline"
-            onClick={() => {
-              setForm(resume);
-              setResume(null);
-              setRequestKey(newKey());
-              record.reset();
-            }}
-          >
-            {ar.common.cancel}
-          </Button>
-        )}
         <Button type="submit" loading={record.isPending}>
           {t.submit}
         </Button>
@@ -614,21 +587,17 @@ function MovementForm({
 function Recovery({
   error,
   onRates,
-  onDeposit,
   onCollect,
 }: {
   error: unknown;
   onRates: () => void;
-  onDeposit: () => void;
   onCollect: () => void;
 }) {
   const action = hasCode(error, 'RATE_MISSING')
     ? { label: t.toRates, run: onRates }
-    : hasCode(error, 'CASH_BOX_NEGATIVE')
-      ? { label: t.toDeposit, run: onDeposit }
-      : hasCode(error, 'CLIENT_HAS_OPEN_DEBT')
-        ? { label: t.toCollect, run: onCollect }
-        : null;
+    : hasCode(error, 'CLIENT_HAS_OPEN_DEBT')
+      ? { label: t.toCollect, run: onCollect }
+      : null;
   if (!action) return null;
   return (
     <Button variant="outline" className="w-fit" onClick={action.run}>

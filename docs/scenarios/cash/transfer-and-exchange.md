@@ -4,9 +4,11 @@ Status: Approved (owner, 2026-11-14)
 
 The expected entries of all eight cases were approved by the owner on 2026-11-14, with "the same exchange" in `syp` and `syp-usd` read as the TRY to USD exchange and the refused cancellation added. S11's second PR brought the `voucher` executor, the box rule and the cash chart `contracting@1` and switched them to `Approved` with no expected value changed.
 
+On 2026-11-20 the owner let a box go below zero (S11 rule 8). The cancellation of the exchange after part of the TRY was spent, refused until then, now posts and leaves the TRY box at −500.00 TRY; the owner approved its new expected entries on 2026-11-20 ("موافق، تابع").
+
 ## Rule
 
-A transfer voucher moves cash from one cash account to another: one credit on the source, one debit on the destination and at most one debit fee line on an expense account in the source's currency, every line a new measurement. In one currency the source's credit equals the destination's debit plus the fee, and nothing is left over. Between two currencies it is a currency exchange: the voucher derives the dealt rate from its amounts, `destination amount / (source credit − fee)` quoted in the company's orientation of the pair, rounded once to 10 decimals, and offers it to a ledger that accepts a dealt rate for that pair (S03 rule 13); every other conversion is at the ledger's policy rate of the day. Whatever each ledger is left out of balance by is a realised exchange difference in that ledger only, to `fx_realised_gain` (`421001`) when a credit and `fx_realised_loss` (`541001`) when a debit. Cancelling the voucher reverses its entry exactly, and is refused when the reversal would take a box below zero.
+A transfer voucher moves cash from one cash account to another: one credit on the source, one debit on the destination and at most one debit fee line on an expense account in the source's currency, every line a new measurement. In one currency the source's credit equals the destination's debit plus the fee, and nothing is left over. Between two currencies it is a currency exchange: the voucher derives the dealt rate from its amounts, `destination amount / (source credit − fee)` quoted in the company's orientation of the pair, rounded once to 10 decimals, and offers it to a ledger that accepts a dealt rate for that pair (S03 rule 13); every other conversion is at the ledger's policy rate of the day. Whatever each ledger is left out of balance by is a realised exchange difference in that ledger only, to `fx_realised_gain` (`421001`) when a credit and `fx_realised_loss` (`541001`) when a debit. Cancelling the voucher reverses its entry exactly, even when the reversal takes a box below zero (S11 rule 8; owner, 2026-11-20).
 
 ## Basis
 
@@ -20,7 +22,7 @@ A transfer voucher moves cash from one cash account to another: one credit on th
 
 The company is the contracting client's shape unless a case says otherwise: `usd-syp`, the USD book at `market` accepting dealt rates, the SYP parallel ledger at the bulletin, and TRY as a third currency, with the chart `contracting@1` (S11 "Templates"): the boxes `111001` (SYP), `111002` (USD) and `111005` (TRY), the USD bank account `111004`, the owner's current account `313001`, `532002` bank and transfer charges, `531005` stationery and supplies, realised exchange gains `421001` and losses `541001`. Every rate and amount is synthetic. Tuesday 1, Wednesday 2 and Thursday 3 December 2026 are publication days.
 
-Each case first puts cash into the box it spends from, by a receipt voucher from the owner's current account, since a box never goes below zero (S11 rule 8). A voucher step's payload is the voucher draft as the form sends it: the voucher header and the lines. A transfer states no dealt rate: the system derives it from the amounts (rule 12) and the voucher shows it; a ledger that cannot take it for the pair converts at its policy rate and the voucher is not refused for it, since the accountant typed no rate (S11 "Currencies, rates and rounding" and edge cases 6–7). A rate is quoted in the orientation the company holds the pair in: USD/SYP and USD/TRY with USD as the base, TRY/SYP with TRY as the base.
+Each case first puts cash into the box it spends from, by a receipt voucher from the owner's current account, as the owner does before spending; the last case shows a box going below zero (S11 rule 8). A voucher step's payload is the voucher draft as the form sends it: the voucher header and the lines. A transfer states no dealt rate: the system derives it from the amounts (rule 12) and the voucher shows it; a ledger that cannot take it for the pair converts at its policy rate and the voucher is not refused for it, since the accountant typed no rate (S11 "Currencies, rates and rounding" and edge cases 6–7). A rate is quoted in the orientation the company holds the pair in: USD/SYP and USD/TRY with USD as the base, TRY/SYP with TRY as the base.
 
 A difference line carries its amount in one ledger only, in that ledger's currency (ADR 0007): in the USD books a book difference is a USD line with parallel 0, and a parallel difference an SYP line with book 0.
 
@@ -383,12 +385,12 @@ expect:
     - { account: "421001", book: 0, parallel: 0 }
 ```
 
-### The cancellation refused after the TRY was spent
+### The exchange cancelled after the TRY was spent
 
-The same exchange, then 500.00 TRY paid from the TRY box for stationery the next day. Cancelling the exchange would credit the TRY box 34,500.00 TRY when it holds 34,000.00, so the reversal is refused (S11 rule 8 and edge case 4): the payment is cancelled first. Nothing posts.
+The same exchange, then 500.00 TRY paid from the TRY box for stationery the next day. Cancelling the exchange credits the TRY box 34,500.00 TRY when it holds 34,000.00; the reversal posts (S11 rule 8 and edge case 4; owner, 2026-11-20) and leaves the TRY box 500.00 TRY below zero, at exactly what the stationery took out of it in each ledger. It is still the exact reversal: every line of the exchange negated as posted, no rate of its date read.
 
 ```yaml
-case: the USD to TRY exchange cannot be cancelled once part of the TRY is spent
+case: the USD to TRY exchange cancelled once part of the TRY is spent; the TRY box ends at −500.00 TRY
 company: { shape: usd-syp, book: USD, parallel: SYP, template: contracting,
            rate_policy: { book: market, book_accepts_transaction_rate: true, parallel: bulletin } }
 rates:
@@ -437,8 +439,21 @@ expect:
         # book: 500.00 TRY / 34 (market) = 14.7058… → 14.71 USD; parallel: × 3.5 = 1,750.00 SYP
         - { account: "531005", currency: TRY, amount: 50000, book: 1471, parallel: 175000 }
         - { account: "111005", currency: TRY, amount: -50000, book: -1471, parallel: -175000 }
+    - source: reversal
+      date: 2026-12-03
+      lines:
+        # entry 2 exactly, signs reversed
+        - { account: "111005", currency: TRY, amount: -3450000, book: -100000, parallel: -12075000 }
+        - { account: "532002", currency: USD, amount: -1000, book: -1000, parallel: -120000 }
+        - { account: "111002", currency: USD, amount: 101000, book: 101000, parallel: 12120000 }
+        - { account: "421001", currency: SYP, amount: 75000, book: 0, parallel: 75000 }
   balances:
-    # 34,500.00 − 500.00 = 34,000.00 TRY left; the reversal would need 34,500.00
-    - { account: "111005", currency: TRY, amount: 3400000, book: 98529, parallel: 11900000 }
-  outcome: { status: refused, reason: CASH_BOX_NEGATIVE }
+    # the USD box back at the receipt's 2,000.00 USD
+    - { account: "111002", currency: USD, amount: 200000, book: 200000, parallel: 24000000 }
+    # 34,500.00 − 500.00 − 34,500.00 = −500.00 TRY; book 100,000 − 1,471 − 100,000 = −14.71 USD;
+    # parallel 12,075,000 − 175,000 − 12,075,000 = −1,750.00 SYP: what the stationery took out
+    - { account: "111005", currency: TRY, amount: -50000, book: -1471, parallel: -175000 }
+    - { account: "531005", book: 1471, parallel: 175000 }
+    - { account: "532002", book: 0, parallel: 0 }
+    - { account: "421001", book: 0, parallel: 0 }
 ```

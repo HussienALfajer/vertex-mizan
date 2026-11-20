@@ -654,8 +654,8 @@ export async function recordMovement(
 /**
  * Cancels a movement (S13 rule 8): its entry reversed today with the reason, and the cancellation
  * written in the same transaction. A debt owed by us whose payments would then exceed it is
- * refused; the posting function refuses the rest (`OPEN_ITEM_HAS_SETTLEMENTS`, `CASH_BOX_NEGATIVE`,
- * `PERIOD_CLOSED`).
+ * refused; the posting function refuses the rest (`OPEN_ITEM_HAS_SETTLEMENTS`,
+ * `PERIOD_CLOSED`); a cancellation that takes a box below zero posts (S11 rule 8).
  */
 export async function cancelMovement(
   tx: Transaction,

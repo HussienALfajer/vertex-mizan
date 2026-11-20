@@ -331,14 +331,11 @@ describe('recording movements', () => {
     ).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
   });
 
-  it('refuses a future date, an empty box and a finished project', async () => {
+  it('refuses a future date and a finished project', async () => {
     const books = await newBooks();
     await expect(
       record(books, movement(books, 'received', { amountMinor: '1000', date: '2027-01-01' })),
     ).rejects.toMatchObject({ code: 'ENTRY_DATE_OUT_OF_RANGE' });
-    await expect(
-      record(books, movement(books, 'wages', { amountMinor: '1000' })),
-    ).rejects.toMatchObject({ code: 'CASH_BOX_NEGATIVE' });
     await inCompany(books.id, (tx) =>
       updateProject(tx, books.id, actor(), books.project, { state: 'finished' }),
     );
@@ -620,15 +617,33 @@ describe('the refusals of rules 2, 5, 6 and 8', () => {
     });
   });
 
+  it('takes a box below zero, and a later deposit raises it (S11 rule 8; owner, 2026-11-20)', async () => {
+    const books = await newBooks();
+    const usdBox = async () =>
+      (await inCompany(books.id, (tx) => readDashboard(tx, TODAY))).boxes.find(
+        (box) => box.currency === 'USD',
+      );
+    // Wages paid from an empty box post; the box is 1,000 below zero.
+    await record(books, movement(books, 'wages', { amountMinor: '1000' }));
+    expect(await usdBox()).toEqual({ currency: 'USD', amountMinor: '-1000', bookMinor: '-1000' });
+    // A deposit raises it again.
+    await record(books, movement(books, 'deposit', { amountMinor: '1500' }));
+    expect(await usdBox()).toEqual({ currency: 'USD', amountMinor: '500', bookMinor: '500' });
+    // A deposit whose cash was spent is cancelled, and the box goes back below zero.
+    const context = { companyId: books.id, actor: actor(), today: TODAY };
+    const deposit = await record(books, movement(books, 'deposit', { amountMinor: '2000' }));
+    await record(books, movement(books, 'expense', { amountMinor: '2400' }));
+    await inCompany(books.id, (tx) =>
+      cancelMovement(tx, context, deposit, { reason: 'إلغاء تجريبي' }),
+    );
+    expect(await usdBox()).toEqual({ currency: 'USD', amountMinor: '-1900', bookMinor: '-1900' });
+  });
+
   it('refuses a cancellation the books cannot take back (rule 8)', async () => {
     const books = await newBooks();
     const context = { companyId: books.id, actor: actor(), today: TODAY };
     const cancel = (id: string) =>
       inCompany(books.id, (tx) => cancelMovement(tx, context, id, { reason: 'إلغاء تجريبي' }));
-    // A deposit whose cash was spent.
-    const deposit = await record(books, movement(books, 'deposit', { amountMinor: '1000' }));
-    await record(books, movement(books, 'wages', { amountMinor: '1000' }));
-    await expect(cancel(deposit)).rejects.toMatchObject({ code: 'CASH_BOX_NEGATIVE' });
     // An amount owed to us with a collection standing.
     const owed = await record(books, movement(books, 'owed_to_us', { amountMinor: '2000' }));
     await record(books, movement(books, 'debt_collected', { amountMinor: '500' }));

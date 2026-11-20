@@ -12,7 +12,7 @@ A movement on a project posts one entry through an existing path. **Received:** 
 
 - **IAS 1.102:** costs by nature (`511001` materials, `511002` wages, `511006` other site costs), each carrying its project (S11 rule 3).
 - **IAS 21.21–22:** each new line at the rate of its day; the USD book at `market`. **IAS 21.28:** a debt paid at another rate than it was carried at realises an exchange difference (`421001`, `541001`), by S04's running-item clearing.
-- **Company policy:** ADR 0024: a receipt from the client and an amount due from the client are revenue when recorded (owner, 2026-11-19), the company's management policy, departing from S12's revenue by certified billings (IFRS 15.35(b)); the USD book with no parallel ledger; one box per currency. S11 rules 8, 10, 11 and 15 (vouchers, boxes never negative); S12 rules 4 and 12 (materials, line amounts); S04 rules 3 and 10–13 (items and their clearing); S03 rule 9 (reversal).
+- **Company policy:** ADR 0024: a receipt from the client and an amount due from the client are revenue when recorded (owner, 2026-11-19), the company's management policy, departing from S12's revenue by certified billings (IFRS 15.35(b)); the USD book with no parallel ledger; one box per currency. S11 rules 8, 10, 11 and 15 (vouchers; a box may go below zero, owner, 2026-11-20); S12 rules 4 and 12 (materials, line amounts); S04 rules 3 and 10–13 (items and their clearing); S03 rule 9 (reversal).
 - **Syrian rules:** none; the rates are the market rates the owner records.
 
 ## Cases
@@ -61,7 +61,7 @@ expect:
 
 ### Expenses with and without a material, and wages, paid from the boxes
 
-The owner deposits 4,000.00 USD and 100,000.00 SYP into the boxes, since a box never goes below zero (S11 rule 8). Then for P1: 2.500 t of steel at 820.0000 USD from the USD box; 59,250.00 SYP of site costs with no material from the SYP box; 1,200.00 USD of workers' wages from the USD box.
+The owner deposits 4,000.00 USD and 100,000.00 SYP into the boxes before spending from them. Then for P1: 2.500 t of steel at 820.0000 USD from the USD box; 59,250.00 SYP of site costs with no material from the SYP box; 1,200.00 USD of workers' wages from the USD box.
 
 ```yaml
 case: deposits, a material expense of 2.500 t × 820, a SYP expense of 59,250.00 at 118.5, wages of 1,200.00

@@ -116,7 +116,7 @@ export const chartAccounts = pgTable(
      * that names a line's counterparty and keys its items; set exactly on a control account.
      */
     counterpartyType: counterpartyType(),
-    /** A cash account's kind (S11 rule 7): a box, which never goes below zero, or a bank. */
+    /** A cash account's kind (S11 rule 7): a box, whose balance may go below zero (rule 8), or a bank. */
     cashKind: cashKind(),
     /** Every line on it names a material and a quantity (S12 rule 4); a postable expense only. */
     requiresMaterial: boolean().notNull().default(false),

@@ -24,6 +24,7 @@ import {
   post,
   postVoucher,
   previewVoucher,
+  readCashPosition,
   readVoucherPrint,
   recordRate,
   type Transaction,
@@ -37,8 +38,8 @@ import { connect, refusal } from './connections.js';
 // S11 PR 2 on the migrated database (0067–0068): vouchers posted through the posting function with
 // the numbers of `cash/transfer-and-exchange` and `cash/cash-count` (a receipt, an exchange at its
 // derived rate, a count's shortage, a stale count, a count that matched), their gapless numbers per
-// kind and fiscal year, the box rule (a payment beyond the box, a back-dated one, a reversal of
-// spent cash, two payments at once), the replay of a draft, and the guards against vouchers and
+// kind and fiscal year, a box below zero (a payment beyond the box, a back-dated one, a reversal
+// of spent cash, two payments at once), the replay of a draft, and the guards against vouchers and
 // sequences written by hand. All values are synthetic.
 
 const { app, owner } = connect();
@@ -403,39 +404,40 @@ describe('vouchers through the posting function (S11 rules 9–12)', () => {
   });
 });
 
-describe('the box rule (S11 rule 8)', () => {
-  it('refuses a payment beyond the box, taking no number, and allows one to exactly zero', async () => {
+describe('a box below zero (S11 rule 8; owner, 2026-11-20)', () => {
+  const boxAt = async (books: Books, code: string, asOf: string) => {
+    const position = await inCompany(books.id, (tx) => readCashPosition(tx, asOf));
+    const box = position.groups
+      .flatMap((group) => group.accounts)
+      .find((account) => account.code === code);
+    return box?.balance.amountMinor;
+  };
+
+  it('posts a payment beyond the box, with its number, and a later receipt raises the box', async () => {
     const books = await newBooks();
     await receipt(books, '111002', 'USD', 100000n);
-    const refused = await codeOf(payment(books, '111002', 120000n, '2026-12-02'));
-    expect(refused).toEqual({
-      code: 'CASH_BOX_NEGATIVE',
-      details: expect.objectContaining({
-        account: '111002',
-        date: '2026-12-02',
-        shortfallMinor: '20000',
-      }),
-    });
-    const paid = await payment(books, '111002', 100000n, '2026-12-02');
+    const paid = await payment(books, '111002', 120000n, '2026-12-02');
     expect(paid.number).toBe(1);
+    expect(await boxAt(books, '111002', '2026-12-02')).toBe('-20000');
+    await receipt(books, '111002', 'USD', 50000n, '2026-12-03');
+    expect(await boxAt(books, '111002', '2026-12-03')).toBe('30000');
   });
 
-  it('refuses a back-dated payment that leaves a later date short, naming that date', async () => {
+  it('posts a back-dated payment that leaves a later date below zero', async () => {
     const books = await newBooks();
     await receipt(books, '111002', 'USD', 100000n);
     await payment(books, '111002', 80000n, '2026-12-03');
-    const refused = await codeOf(payment(books, '111002', 30000n, '2026-12-02'));
-    expect(refused).toEqual({
-      code: 'CASH_BOX_NEGATIVE',
-      details: expect.objectContaining({ date: '2026-12-03', shortfallMinor: '10000' }),
-    });
+    const paid = await payment(books, '111002', 30000n, '2026-12-02');
+    expect(paid.entry?.id).toBeDefined();
+    expect(await boxAt(books, '111002', '2026-12-02')).toBe('70000');
+    expect(await boxAt(books, '111002', '2026-12-03')).toBe('-10000');
   });
 
-  it('refuses the reversal of a receipt whose cash was spent, of any source', async () => {
+  it('posts the reversal of a receipt whose cash was spent', async () => {
     const books = await newBooks();
     const first = await receipt(books, '111002', 'USD', 100000n);
     await payment(books, '111002', 60000n, '2026-12-02');
-    const reversal = inCompany(books.id, (tx) =>
+    await inCompany(books.id, (tx) =>
       post(tx, {
         client: 'manual',
         idempotencyKey: `reversal:${first.entry?.id}`,
@@ -449,17 +451,18 @@ describe('the box rule (S11 rule 8)', () => {
         content: { kind: 'reversal', entryId: first.entry?.id as string, today: TODAY },
       }),
     );
-    expect((await codeOf(reversal)).code).toBe('CASH_BOX_NEGATIVE');
+    expect(await boxAt(books, '111002', '2026-12-03')).toBe('-60000');
   });
 
-  it('lets one of two payments from one box at once post and refuses the other', async () => {
+  it('posts two payments from one box at once, both with their numbers', async () => {
     const books = await newBooks();
     await receipt(books, '111002', 'USD', 100000n);
-    const results = await Promise.all([
-      codeOf(payment(books, '111002', 60000n, '2026-12-02')),
-      codeOf(payment(books, '111002', 60000n, '2026-12-02')),
+    const paid = await Promise.all([
+      payment(books, '111002', 60000n, '2026-12-02'),
+      payment(books, '111002', 60000n, '2026-12-02'),
     ]);
-    expect(results.map((result) => result.code).sort()).toEqual(['CASH_BOX_NEGATIVE', 'none']);
+    expect(paid.map((voucher) => voucher.number).sort()).toEqual([1, 2]);
+    expect(await boxAt(books, '111002', '2026-12-02')).toBe('-20000');
   });
 
   it('gives gapless numbers to receipts posted at once', async () => {
@@ -537,6 +540,22 @@ describe('cash counts (S11 rule 13)', () => {
       );
       expect(rows).toHaveLength(1);
     }
+  });
+
+  it('refuses a count of a box below zero, recording nothing (S11 rules 8 and 13)', async () => {
+    const books = await newBooks();
+    await receipt(books, '111002', 'USD', 1000n);
+    await payment(books, '111002', 1500n, '2026-12-02');
+    const draftId = await countDraft(books, 0n);
+    const refused = await codeOf(postCount(books, draftId, 0n, -500n));
+    expect(refused).toEqual({
+      code: 'VALIDATION_FAILED',
+      details: expect.objectContaining({ expectedMinor: '-500' }),
+    });
+    const rows = await inCompany(books.id, (tx) =>
+      tx.select().from(cashVouchers).where(eq(cashVouchers.draftId, draftId)),
+    );
+    expect(rows).toHaveLength(0);
   });
 
   it('refuses a count of a blocked box, even one that matches', async () => {

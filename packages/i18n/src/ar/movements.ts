@@ -303,7 +303,6 @@ export const movements = {
     tooLong: '500 حرف على الأكثر.',
     /** What to do after a refusal (S13 rule 2). */
     toRates: 'سجّل أسعار اليوم',
-    toDeposit: 'سجّل إيداعًا في الصندوق',
     toCollect: 'سجّلها تحصيل دين',
   },
   /** The three PDFs (S13 "Printing") and the action that asks for one. */
