@@ -205,6 +205,7 @@ export function MovementBrowser({
           onValueChange={setCurrency}
         />
         <DateRangeField
+          labelHidden
           className="sm:col-span-2 lg:col-span-1"
           value={range}
           onValueChange={setRange}

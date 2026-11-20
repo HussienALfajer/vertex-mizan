@@ -238,3 +238,67 @@ function signed(numerator: bigint, denominator: bigint): Fraction {
     ? { numerator: -numerator, denominator: -denominator }
     : { numerator, denominator };
 }
+
+/** Typed text with its caret, as an input holds it while the person types. */
+export interface TypedText {
+  readonly text: string;
+  readonly caret: number;
+}
+
+const ARABIC_KEYS: Readonly<Record<string, string>> = {
+  '٫': '.',
+  '٬': ',',
+  '−': '-',
+};
+
+/** One typed character as `normalize()` reads it; each maps to exactly one character. */
+const latinChar = (char: string): string => {
+  const code = char.charCodeAt(0);
+  if (code >= 0x0660 && code <= 0x0669) return String(code - 0x0660);
+  if (code >= 0x06f0 && code <= 0x06f9) return String(code - 0x06f0);
+  return ARABIC_KEYS[char] ?? char;
+};
+
+/** Every character but a grouping comma counts toward where the caret stands. */
+const countsForCaret = (char: string): boolean => char !== ',';
+
+/**
+ * Thousands separators put in while a plain number is typed (`1250000` → `1,250,000`), keeping
+ * the caret after the same digit. Arabic-Indic digits and separators become Latin, leading zeros
+ * of the integer part are dropped (a lone `0` before the point stays), and the decimals are kept
+ * as typed, so nothing is rounded or padded here. Anything that is not a plain number (an `=`
+ * expression, a space, a letter) is returned unchanged for the parser to judge on commit.
+ */
+export function groupTypedDecimal(
+  { text, caret }: TypedText,
+  { allowNegative = true }: { allowNegative?: boolean } = {},
+): TypedText {
+  const latin = Array.from(text, latinChar).join('');
+  const match = /^(-?)([\d,]*)(?:(\.)(\d*))?$/.exec(latin);
+  if (!match || (match[1] && !allowNegative)) return { text, caret };
+  const [, sign = '', integerTyped = '', point = '', fraction = ''] = match;
+  const digits = integerTyped.replaceAll(',', '');
+  const kept = digits.replace(/^0+(?=\d)/, '');
+  const dropped = digits.length - kept.length;
+  const groups: string[] = [];
+  for (let end = kept.length; end > 0; end -= 3)
+    groups.unshift(kept.slice(Math.max(0, end - 3), end));
+  const grouped = `${sign}${groups.join(',')}${point}${fraction}`;
+
+  // The caret stands after the same count of characters other than grouping commas, less the
+  // leading zeros dropped before it.
+  const before = Array.from(latin.slice(0, caret)).filter(countsForCaret).length;
+  const zerosBefore = Math.min(dropped, Math.max(0, before - sign.length));
+  let wanted = before - zerosBefore;
+  let at = 0;
+  while (wanted > 0 && at < grouped.length) {
+    if (countsForCaret(grouped.charAt(at))) wanted -= 1;
+    at += 1;
+  }
+  return { text: grouped, caret: at };
+}
+
+/** The grouping commas taken out of a typed decimal, for a schema that reads plain digits. */
+export function ungroupTypedDecimal(text: string): string {
+  return Array.from(text, latinChar).join('').replaceAll(',', '');
+}

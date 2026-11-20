@@ -84,6 +84,7 @@ export {
   shortcutKeys,
 } from './lib/shortcuts';
 export { useShortcut } from './lib/use-shortcut';
+export { useTypedDecimal } from './lib/use-typed-decimal';
 export {
   densityStorageKey,
   type Theme,

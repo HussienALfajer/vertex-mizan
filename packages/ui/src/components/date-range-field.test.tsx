@@ -88,4 +88,22 @@ describe('isDateRangeOrdered', () => {
     expect(isDateRangeOrdered({ from: '2026-10-01', to: '2026-10-01' })).toBe(true);
     expect(isDateRangeOrdered({ from: '2026-10-02', to: '2026-10-01' })).toBe(false);
   });
+
+  it('keeps the group name for screen readers only when labelHidden', () => {
+    render(
+      <DateRangeField
+        value={{ from: '', to: '' }}
+        onValueChange={() => {}}
+        label="الفترة"
+        fromLabel="من تاريخ"
+        toLabel="إلى تاريخ"
+        orderError="خطأ"
+        labelHidden
+      />,
+    );
+    expect(screen.getByRole('group', { name: 'الفترة' })).toBeTruthy();
+    expect(screen.getByText('الفترة').className).toContain('sr-only');
+    expect(screen.getByLabelText('من تاريخ').getAttribute('type')).toBe('date');
+    expect(screen.getByText('من تاريخ').className).not.toContain('text-muted-foreground');
+  });
 });

@@ -60,6 +60,38 @@ describe('AmountInput', () => {
     expect(input().value).toBe('1,250.50');
   });
 
+  it('groups thousands while typing, keeping the caret after the same digit', () => {
+    const onCommit = vi.fn();
+    render(<Harness currency="USD" onCommit={onCommit} />);
+    // The caret is put back only in the focused field, as it is while the person types.
+    input().focus();
+    type('1234567');
+    expect(input().value).toBe('1,234,567');
+    expect(input().selectionStart).toBe(9);
+    // A 9 typed in the middle: the browser leaves the caret after it ("1,234,9|567"), and it
+    // stays after the 9 once the text is grouped again ("12,349|,567").
+    const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+    setValue?.call(input(), '1,234,9567');
+    input().setSelectionRange(7, 7);
+    fireEvent.input(input());
+    expect(input().value).toBe('12,349,567');
+    expect(input().selectionStart).toBe(6);
+    type('12,349,567.5');
+    expect(input().value).toBe('12,349,567.5');
+    expect(onCommit).not.toHaveBeenCalled();
+    fireEvent.blur(input());
+    expect(onCommit).toHaveBeenCalledWith(1_234_956_750n);
+    expect(input().value).toBe('12,349,567.50');
+  });
+
+  it('leaves an expression and a refused minus as typed while typing', () => {
+    render(<Harness currency="USD" allowNegative={false} />);
+    type('=1000*3');
+    expect(input().value).toBe('=1000*3');
+    type('-1000');
+    expect(input().value).toBe('-1000');
+  });
+
   it('commits on Enter, from Arabic-Indic digits and the Arabic separators', () => {
     const onCommit = vi.fn();
     render(<Harness onCommit={onCommit} />);

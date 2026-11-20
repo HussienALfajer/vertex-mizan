@@ -126,6 +126,7 @@ function MaterialCostsView({ companyId }: { companyId: string }) {
           onValueChange={setProject}
         />
         <DateRangeField
+          labelHidden
           value={range}
           onValueChange={setRange}
           label={t.range}

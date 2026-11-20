@@ -13,8 +13,10 @@ import {
   amountParts,
   evaluateAmount,
   formatMinor,
+  groupTypedDecimal,
   parseAmount,
   spreadsheetAmount,
+  ungroupTypedDecimal,
 } from './money-text.js';
 
 const ok = (amountMinor: bigint) => ({ ok: true, amountMinor });
@@ -305,5 +307,74 @@ describe('spreadsheetAmount', () => {
         },
       ),
     );
+  });
+});
+
+describe('groupTypedDecimal', () => {
+  const at = (text: string, caret = text.length) => groupTypedDecimal({ text, caret });
+
+  it.each([
+    ['1234567', '1,234,567'],
+    ['1,23,4567', '1,234,567'],
+    ['-1234.5', '-1,234.5'],
+    ['1234.', '1,234.'],
+    ['.5', '.5'],
+    ['0.50', '0.50'],
+    ['000123', '123'],
+    ['0', '0'],
+    ['-', '-'],
+    ['', ''],
+    ['١٢٣٤٫٥', '1,234.5'],
+  ])('groups %s as %s', (typed, grouped) => {
+    expect(at(typed).text).toBe(grouped);
+  });
+
+  it.each([['=1000*3'], ['1 000'], ['12a'], ['1.2.3'], ['1e3']])(
+    'leaves %s as typed, for the parser to judge',
+    (typed) => {
+      expect(at(typed, 2)).toEqual({ text: typed, caret: 2 });
+    },
+  );
+
+  it('leaves a minus as typed where negatives are refused', () => {
+    expect(groupTypedDecimal({ text: '-1000', caret: 5 }, { allowNegative: false })).toEqual({
+      text: '-1000',
+      caret: 5,
+    });
+  });
+
+  it('keeps the caret after the same digit', () => {
+    expect(at('1234567')).toEqual({ text: '1,234,567', caret: 9 });
+    // "1,234,9|567": a 9 typed after the 4.
+    expect(at('1,234,9567', 7)).toEqual({ text: '12,349,567', caret: 6 });
+    // A comma removed by Backspace: "1,000" → "1|000".
+    expect(at('1000', 1)).toEqual({ text: '1,000', caret: 1 });
+    // Leading zeros dropped before the caret.
+    expect(at('0012', 3)).toEqual({ text: '12', caret: 1 });
+    expect(at('', 0)).toEqual({ text: '', caret: 0 });
+  });
+
+  it('never changes the digits, so parsing the grouped text gives the typed amount', () => {
+    fc.assert(
+      fc.property(
+        fc.stringMatching(/^-?[1-9]\d{0,12}(\.\d{0,2})?$/),
+        fc.nat(),
+        (typed, position) => {
+          const caret = position % (typed.length + 1);
+          const result = groupTypedDecimal({ text: typed, caret });
+          expect(ungroupTypedDecimal(result.text)).toBe(typed);
+          expect(result.caret).toBeGreaterThanOrEqual(0);
+          expect(result.caret).toBeLessThanOrEqual(result.text.length);
+          expect(parseAmount(result.text, 'USD')).toEqual(parseAmount(typed, 'USD'));
+        },
+      ),
+    );
+  });
+});
+
+describe('ungroupTypedDecimal', () => {
+  it('drops grouping commas and reads Arabic digits and separators', () => {
+    expect(ungroupTypedDecimal('1,234,567.5')).toBe('1234567.5');
+    expect(ungroupTypedDecimal('١٬٢٣٤٫٥')).toBe('1234.5');
   });
 });

@@ -39,7 +39,6 @@ import {
   RowsIcon,
   SettingsIcon,
   SunIcon,
-  SwatchBookIcon,
   TruckIcon,
   UsersIcon,
 } from 'lucide-react';
@@ -110,13 +109,6 @@ const navItems: NavItem[] = [
     show: (me) => Boolean(me),
     permission: 'company.read',
   },
-  {
-    to: '/design-system',
-    label: t.nav.designSystem,
-    icon: SwatchBookIcon,
-    exact: true,
-    show: () => import.meta.env.DEV,
-  },
 ];
 
 const listedItems = (me: Me | null | undefined) =>
@@ -186,7 +178,8 @@ export function AppShell({
 }
 
 const navLink = cn(
-  'relative flex h-control items-center gap-3 rounded-md px-3 text-control text-sidebar-muted-foreground transition-colors duration-150 ease-out',
+  // Larger than a form control (owner, 2026-11-20): the sidebar is the app's main way around.
+  'relative flex min-h-control items-center gap-3 rounded-md px-3 py-2.5 text-md text-sidebar-muted-foreground transition-colors duration-150 ease-out',
   'hover:bg-sidebar-hover hover:text-sidebar-foreground',
   'data-[status=active]:bg-sidebar-active data-[status=active]:font-medium data-[status=active]:text-sidebar-foreground',
   'before:absolute before:inset-y-2 before:start-0 before:w-0.5 before:bg-sidebar-marker before:opacity-0 data-[status=active]:before:opacity-100',
@@ -231,7 +224,7 @@ function Sidebar({
       {/* The links scroll under the fixed header on short screens and phones. */}
       <nav
         aria-label={t.navLabel}
-        className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto p-3"
+        className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto p-3"
       >
         {listedItems(me).map(({ to, label, icon: Icon, exact }) => (
           <Link
@@ -241,7 +234,7 @@ function Sidebar({
             activeOptions={{ exact: exact ?? false }}
             className={navLink}
           >
-            <Icon aria-hidden="true" className="size-icon" />
+            <Icon aria-hidden="true" className="size-5 shrink-0" />
             {label}
           </Link>
         ))}

@@ -27,6 +27,11 @@ type DateRangeFieldProps = Omit<ComponentProps<'fieldset'>, 'children' | 'onChan
   /** Shown under the end date while it is before the start date. */
   orderError: string;
   disabled?: boolean;
+  /**
+   * Keeps the group's name for screen readers only, so both dates sit on the same line as the
+   * fields beside them in a filter bar; the end labels then read as full field labels.
+   */
+  labelHidden?: boolean;
 };
 
 /**
@@ -42,11 +47,13 @@ function DateRangeField({
   toLabel,
   orderError,
   disabled,
+  labelHidden,
   className,
   ...props
 }: DateRangeFieldProps) {
   const legendId = useId();
   const reversed = !isDateRangeOrdered(value);
+  const endLabelClass = labelHidden ? undefined : 'text-muted-foreground';
   return (
     <fieldset
       data-slot="date-range-field"
@@ -55,12 +62,15 @@ function DateRangeField({
       className={cn('flex min-w-0 flex-col gap-2', className)}
       {...props}
     >
-      <legend id={legendId} className="mb-2 text-control font-medium text-foreground">
+      <legend
+        id={legendId}
+        className={labelHidden ? 'sr-only' : 'mb-2 text-control font-medium text-foreground'}
+      >
         {label}
       </legend>
       <div className="grid grid-cols-2 gap-3">
         <Field>
-          <FieldLabel className="text-muted-foreground">{fromLabel}</FieldLabel>
+          <FieldLabel className={endLabelClass}>{fromLabel}</FieldLabel>
           <Input
             type="date"
             dir="ltr"
@@ -70,7 +80,7 @@ function DateRangeField({
           />
         </Field>
         <Field invalid={reversed}>
-          <FieldLabel className="text-muted-foreground">{toLabel}</FieldLabel>
+          <FieldLabel className={endLabelClass}>{toLabel}</FieldLabel>
           <Input
             type="date"
             dir="ltr"
