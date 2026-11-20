@@ -122,7 +122,7 @@ function AmountInput({
       ref={typed.ref}
       onValueChange={(next: string) => {
         setEditing(true);
-        setText(typed.group(next));
+        setText(typed.group(next, text));
       }}
       onBlur={(event) => {
         commit();

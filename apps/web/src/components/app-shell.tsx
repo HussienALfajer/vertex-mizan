@@ -179,7 +179,7 @@ export function AppShell({
 
 const navLink = cn(
   // Larger than a form control (owner, 2026-11-20): the sidebar is the app's main way around.
-  'relative flex min-h-control items-center gap-3 rounded-md px-3 py-2.5 text-md text-sidebar-muted-foreground transition-colors duration-150 ease-out',
+  'relative flex min-h-nav items-center gap-3 rounded-md px-3 py-1.5 text-nav text-sidebar-muted-foreground transition-colors duration-150 ease-out',
   'hover:bg-sidebar-hover hover:text-sidebar-foreground',
   'data-[status=active]:bg-sidebar-active data-[status=active]:font-medium data-[status=active]:text-sidebar-foreground',
   'before:absolute before:inset-y-2 before:start-0 before:w-0.5 before:bg-sidebar-marker before:opacity-0 data-[status=active]:before:opacity-100',
@@ -234,7 +234,7 @@ function Sidebar({
             activeOptions={{ exact: exact ?? false }}
             className={navLink}
           >
-            <Icon aria-hidden="true" className="size-5 shrink-0" />
+            <Icon aria-hidden="true" className="size-nav-icon shrink-0" />
             {label}
           </Link>
         ))}

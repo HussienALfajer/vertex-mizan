@@ -262,21 +262,45 @@ const latinChar = (char: string): string => {
 /** Every character but a grouping comma counts toward where the caret stands. */
 const countsForCaret = (char: string): boolean => char !== ',';
 
+/** The commas of an integer part as typed: none, or a correct grouping (`GROUPED`). */
+const commasOf = (integer: string): number => integer.split(',').length - 1;
+const groupedOrPlain = (integer: string): boolean =>
+  commasOf(integer) === 0 || GROUPED.test(integer);
+
+/** A typed decimal in Latin characters: `[sign, integer part, point, decimals]`, or null. */
+function typedParts(latin: string): [string, string, string, string] | null {
+  const match = /^(-?)([\d,]*)(?:(\.)(\d*))?$/.exec(latin);
+  if (!match) return null;
+  return [match[1] ?? '', match[2] ?? '', match[3] ?? '', match[4] ?? ''];
+}
+
 /**
  * Thousands separators put in while a plain number is typed (`1250000` → `1,250,000`), keeping
  * the caret after the same digit. Arabic-Indic digits and separators become Latin, leading zeros
  * of the integer part are dropped (a lone `0` before the point stays), and the decimals are kept
- * as typed, so nothing is rounded or padded here. Anything that is not a plain number (an `=`
- * expression, a space, a letter) is returned unchanged for the parser to judge on commit.
+ * as typed, so nothing is rounded or padded here.
+ *
+ * Only grouping commas are moved: the integer part is regrouped when it has no comma, is already
+ * grouped correctly, or holds no more commas than the `previous` text's correct grouping (a digit
+ * typed or deleted between them, or one of them deleted). A comma the person types or pastes
+ * anywhere else (`3,75`, `0,500`, `1,5`) leaves the text as typed, so the parser refuses it on
+ * commit as before (`GROUPED`): a decimal comma never becomes a whole number. Anything that is
+ * not a plain number (an `=` expression, a space, a letter) is returned unchanged too.
  */
 export function groupTypedDecimal(
   { text, caret }: TypedText,
-  { allowNegative = true }: { allowNegative?: boolean } = {},
+  { allowNegative = true, previous = '' }: { allowNegative?: boolean; previous?: string } = {},
 ): TypedText {
   const latin = Array.from(text, latinChar).join('');
-  const match = /^(-?)([\d,]*)(?:(\.)(\d*))?$/.exec(latin);
-  if (!match || (match[1] && !allowNegative)) return { text, caret };
-  const [, sign = '', integerTyped = '', point = '', fraction = ''] = match;
+  const parts = typedParts(latin);
+  if (parts === null) return { text, caret };
+  const [sign, integerTyped, point, fraction] = parts;
+  if (sign && !allowNegative) return { text, caret };
+  const before = typedParts(Array.from(previous, latinChar).join(''));
+  const ours =
+    before !== null && groupedOrPlain(before[1]) && commasOf(integerTyped) <= commasOf(before[1]);
+  if (!groupedOrPlain(integerTyped) && !ours) return { text, caret };
+
   const digits = integerTyped.replaceAll(',', '');
   const kept = digits.replace(/^0+(?=\d)/, '');
   const dropped = digits.length - kept.length;
@@ -287,9 +311,9 @@ export function groupTypedDecimal(
 
   // The caret stands after the same count of characters other than grouping commas, less the
   // leading zeros dropped before it.
-  const before = Array.from(latin.slice(0, caret)).filter(countsForCaret).length;
-  const zerosBefore = Math.min(dropped, Math.max(0, before - sign.length));
-  let wanted = before - zerosBefore;
+  const counted = Array.from(latin.slice(0, caret)).filter(countsForCaret).length;
+  const zerosBefore = Math.min(dropped, Math.max(0, counted - sign.length));
+  let wanted = counted - zerosBefore;
   let at = 0;
   while (wanted > 0 && at < grouped.length) {
     if (countsForCaret(grouped.charAt(at))) wanted -= 1;
@@ -298,7 +322,14 @@ export function groupTypedDecimal(
   return { text: grouped, caret: at };
 }
 
-/** The grouping commas taken out of a typed decimal, for a schema that reads plain digits. */
+/**
+ * The text a schema that reads plain digits gets (a quantity, a unit price, a rate): Arabic-Indic
+ * digits and separators in Latin, and the commas taken out only when they group the integer part
+ * correctly. A comma anywhere else stays, so the schema refuses it (`1,5` is never `15`).
+ */
 export function ungroupTypedDecimal(text: string): string {
-  return Array.from(text, latinChar).join('').replaceAll(',', '');
+  const latin = Array.from(text, latinChar).join('');
+  const parts = typedParts(latin.trim());
+  if (parts === null || !GROUPED.test(parts[1])) return latin;
+  return latin.trim().replaceAll(',', '');
 }

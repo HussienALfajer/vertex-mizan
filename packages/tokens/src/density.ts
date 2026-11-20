@@ -26,11 +26,36 @@ export interface DensityTokens {
   readonly icon: number;
   /** The smallest hit area of an icon inside a row (WCAG 2.5.8; 2.5.5 in comfortable). */
   readonly hitArea: number;
+  /**
+   * The app's main navigation links, larger than a form control: the sidebar is the way around
+   * the app (owner, 2026-11-20). Their height, text and icon.
+   */
+  readonly navigation: {
+    readonly height: number;
+    readonly text: { readonly size: number; readonly lineHeight: number };
+    readonly icon: number;
+  };
 }
 
 export const densities: { readonly [D in Density]: DensityTokens } = {
-  compact: { control: 32, row: 28, cellPadding: 8, text: fontSize.sm, icon: 16, hitArea: 24 },
-  comfortable: { control: 44, row: 44, cellPadding: 12, text: fontSize.md, icon: 20, hitArea: 44 },
+  compact: {
+    control: 32,
+    row: 28,
+    cellPadding: 8,
+    text: fontSize.sm,
+    icon: 16,
+    hitArea: 24,
+    navigation: { height: 44, text: fontSize.base, icon: 20 },
+  },
+  comfortable: {
+    control: 44,
+    row: 44,
+    cellPadding: 12,
+    text: fontSize.md,
+    icon: 20,
+    hitArea: 44,
+    navigation: { height: 52, text: fontSize.lg, icon: 24 },
+  },
 };
 
 /**

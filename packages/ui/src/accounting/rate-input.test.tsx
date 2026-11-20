@@ -65,6 +65,8 @@ describe('RateInput', () => {
     ['1.12345678901', '1.12345678901'],
     ['1234567890123', '1,234,567,890,123'],
     ['1e3', '1e3'],
+    ['3,75', '3,75'],
+    ['1,5 ', '1,5 '],
   ])('refuses %s and keeps the text as typed, grouped', async (text, shown) => {
     const onCommit = vi.fn();
     const onError = vi.fn();

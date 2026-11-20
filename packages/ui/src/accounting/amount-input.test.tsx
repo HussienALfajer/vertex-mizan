@@ -84,6 +84,33 @@ describe('AmountInput', () => {
     expect(input().value).toBe('12,349,567.50');
   });
 
+  it('keeps the caret in place when Backspace deletes a grouping comma', () => {
+    render(<Harness currency="USD" />);
+    input().focus();
+    type('1234567');
+    const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+    // "1,|234,567" and Backspace: the browser leaves "1|234,567".
+    setValue?.call(input(), '1234,567');
+    input().setSelectionRange(1, 1);
+    fireEvent.input(input());
+    expect(input().value).toBe('1,234,567');
+    expect(input().selectionStart).toBe(1);
+  });
+
+  it.each([['3,75'], ['0,500']])(
+    'refuses %s, a comma that does not group thousands, instead of reading it as digits',
+    (typed) => {
+      const onCommit = vi.fn();
+      const onError = vi.fn();
+      render(<Harness currency="USD" onCommit={onCommit} onError={onError} />);
+      type(typed);
+      expect(input().value).toBe(typed);
+      fireEvent.blur(input());
+      expect(onCommit).not.toHaveBeenCalled();
+      expect(onError).toHaveBeenLastCalledWith('INVALID');
+    },
+  );
+
   it('leaves an expression and a refused minus as typed while typing', () => {
     render(<Harness currency="USD" allowNegative={false} />);
     type('=1000*3');

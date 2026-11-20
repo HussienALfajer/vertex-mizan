@@ -315,7 +315,7 @@ describe('groupTypedDecimal', () => {
 
   it.each([
     ['1234567', '1,234,567'],
-    ['1,23,4567', '1,234,567'],
+    ['1,250,000', '1,250,000'],
     ['-1234.5', '-1,234.5'],
     ['1234.', '1,234.'],
     ['.5', '.5'],
@@ -329,12 +329,45 @@ describe('groupTypedDecimal', () => {
     expect(at(typed).text).toBe(grouped);
   });
 
-  it.each([['=1000*3'], ['1 000'], ['12a'], ['1.2.3'], ['1e3']])(
+  it.each([['=1000*3'], ['1 000'], ['12a'], ['1.2.3'], ['1e3'], ['1,5 '], [' 1,5']])(
     'leaves %s as typed, for the parser to judge',
     (typed) => {
       expect(at(typed, 2)).toEqual({ text: typed, caret: 2 });
     },
   );
+
+  it.each([
+    ['3,75', ''],
+    ['0,500', ''],
+    ['1,5', '1'],
+    ['3,75', '3,7'],
+    ['1,23,4567', ''],
+    ['1,234,', '1,234'],
+    ['٣٬٧٥', ''],
+  ])('leaves %s (a comma not of its own grouping, after %s) as typed', (typed, previous) => {
+    expect(groupTypedDecimal({ text: typed, caret: 1 }, { previous })).toEqual({
+      text: typed,
+      caret: 1,
+    });
+  });
+
+  it('moves its own grouping commas when a digit or one of them is typed or deleted', () => {
+    // A comma deleted by Backspace: "1,|234,567" → "1|234,567".
+    expect(groupTypedDecimal({ text: '1234,567', caret: 1 }, { previous: '1,234,567' })).toEqual({
+      text: '1,234,567',
+      caret: 1,
+    });
+    // A digit deleted: "1,000" → "1,00".
+    expect(groupTypedDecimal({ text: '1,00', caret: 4 }, { previous: '1,000' })).toEqual({
+      text: '100',
+      caret: 3,
+    });
+    // A digit typed between groups.
+    expect(groupTypedDecimal({ text: '1,2345', caret: 6 }, { previous: '1,234' })).toEqual({
+      text: '12,345',
+      caret: 6,
+    });
+  });
 
   it('leaves a minus as typed where negatives are refused', () => {
     expect(groupTypedDecimal({ text: '-1000', caret: 5 }, { allowNegative: false })).toEqual({
@@ -346,7 +379,10 @@ describe('groupTypedDecimal', () => {
   it('keeps the caret after the same digit', () => {
     expect(at('1234567')).toEqual({ text: '1,234,567', caret: 9 });
     // "1,234,9|567": a 9 typed after the 4.
-    expect(at('1,234,9567', 7)).toEqual({ text: '12,349,567', caret: 6 });
+    expect(groupTypedDecimal({ text: '1,234,9567', caret: 7 }, { previous: '1,234,567' })).toEqual({
+      text: '12,349,567',
+      caret: 6,
+    });
     // A comma removed by Backspace: "1,000" → "1|000".
     expect(at('1000', 1)).toEqual({ text: '1,000', caret: 1 });
     // Leading zeros dropped before the caret.
@@ -362,12 +398,26 @@ describe('groupTypedDecimal', () => {
         (typed, position) => {
           const caret = position % (typed.length + 1);
           const result = groupTypedDecimal({ text: typed, caret });
-          expect(ungroupTypedDecimal(result.text)).toBe(typed);
+          expect(ungroupTypedDecimal(result.text)).toBe(typed.replace(/^(-?)0+(?=\d)/, '$1'));
           expect(result.caret).toBeGreaterThanOrEqual(0);
           expect(result.caret).toBeLessThanOrEqual(result.text.length);
           expect(parseAmount(result.text, 'USD')).toEqual(parseAmount(typed, 'USD'));
         },
       ),
+    );
+  });
+
+  it('never makes text with commas mean another amount', () => {
+    fc.assert(
+      fc.property(fc.stringMatching(/^-?[\d,]{0,10}(\.[\d,]{0,3})?$/), (typed) => {
+        const { text } = groupTypedDecimal({ text: typed, caret: typed.length });
+        expect(parseAmount(text, 'USD')).toEqual(parseAmount(typed, 'USD'));
+        // A schema that reads plain digits sees the same number, or text it refuses.
+        const plain = ungroupTypedDecimal(text);
+        if (!plain.includes(',')) {
+          expect(parseAmount(plain, 'USD')).toEqual(parseAmount(typed, 'USD'));
+        }
+      }),
     );
   });
 });
@@ -377,4 +427,11 @@ describe('ungroupTypedDecimal', () => {
     expect(ungroupTypedDecimal('1,234,567.5')).toBe('1234567.5');
     expect(ungroupTypedDecimal('١٬٢٣٤٫٥')).toBe('1234.5');
   });
+
+  it.each([['1,5'], ['1,5 '], [' 1,5'], ['0,500'], ['3,75'], ['12,50,000'], ['1,234,']])(
+    'keeps the commas of %s, which do not group thousands, for the schema to refuse',
+    (typed) => {
+      expect(ungroupTypedDecimal(typed)).toContain(',');
+    },
+  );
 });

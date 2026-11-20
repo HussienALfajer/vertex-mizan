@@ -498,7 +498,7 @@ function MovementForm({
                     ref={quantityTyping.ref}
                     value={form.quantity}
                     onChange={(event) =>
-                      change({ quantity: quantityTyping.group(event.target.value) })
+                      change({ quantity: quantityTyping.group(event.target.value, form.quantity) })
                     }
                   />
                   {material && <FieldDescription>{material.unit}</FieldDescription>}
@@ -512,7 +512,9 @@ function MovementForm({
                     ref={unitPriceTyping.ref}
                     value={form.unitPrice}
                     onChange={(event) =>
-                      change({ unitPrice: unitPriceTyping.group(event.target.value) })
+                      change({
+                        unitPrice: unitPriceTyping.group(event.target.value, form.unitPrice),
+                      })
                     }
                   />
                   <FieldDescription>{ar.accounting.currencies[form.currency]}</FieldDescription>
