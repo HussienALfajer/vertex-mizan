@@ -170,7 +170,7 @@ describe('vouchers through the drafts (S11 rules 9–13)', () => {
     ).toContainEqual(['111005', '100000']);
   });
 
-  it('refuses a payment beyond the box with its shortfall, and a voucher on another account', async () => {
+  it('posts a payment beyond the box, which then shows below zero, and refuses a voucher on another account', async () => {
     const books = await contractor();
     await books.browser.post(`/api/drafts/${await receipt(books, '111002', 'USD', '1000')}/post`);
     const payment = await voucherDraft(
@@ -179,9 +179,16 @@ describe('vouchers through the drafts (S11 rules 9–13)', () => {
       [line(books, '531005', 'USD', '1500'), line(books, '111002', 'USD', '-1500')],
     );
     const preview = await books.browser.post(`/api/drafts/${payment}/preview`);
-    expect(preview.body.refusals[0]).toMatchObject({ code: 'CASH_BOX_NEGATIVE' });
-    const refused = await books.browser.post(`/api/drafts/${payment}/post`);
-    expect([refused.status, refused.body.code]).toEqual([409, 'CASH_BOX_NEGATIVE']);
+    expect(preview.body.refusals).toEqual([]);
+    const paid = await books.browser.post(`/api/drafts/${payment}/post`);
+    expect(paid.status, JSON.stringify(paid.body)).toBe(200);
+    const position = await books.browser.get('/api/cash/accounts', { asOf: today() });
+    const usd = position.body.groups.find(
+      (group: { currency: string }) => group.currency === 'USD',
+    );
+    expect(
+      usd.accounts.find((account: { code: string }) => account.code === '111002').balance,
+    ).toEqual({ amountMinor: '-500', currency: 'USD' });
     const wrong = await voucherDraft(
       books,
       { kind: 'receipt', cashAccountId: books.accounts.get('313001') },

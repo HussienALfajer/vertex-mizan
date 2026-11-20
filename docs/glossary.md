@@ -138,7 +138,7 @@ One name per concept. Code, contracts and tables use the English term; the Arabi
 | محضر جرد | cash count | A count of a box against its expected balance; a difference posts as a cash shortage or overage (S11) |
 | عجز الصناديق / زيادة الصناديق | cash shortage / cash overage | The difference a cash count finds below or above the expected balance (S11) |
 | حساب نقدية | cash account | A postable asset account under `111` restricted to one currency and marked a box or a bank (S11) |
-| صندوق | box | A cash account of cash on hand; it never goes below zero (S11) |
+| صندوق | box | A cash account of cash on hand; its balance may go below zero, shown negative (S11 rule 8) |
 | الطرف | counterparty | Who an open item is owed by or to: a client, a supplier or a worker (ADR 0022) |
 | نوع الطرف | counterparty type | The dimension type a control account keys its open items by: `client`, `supplier` or `worker` (ADR 0022) |
 | المورّد | supplier | A built-in dimension type for suppliers and subcontractors (ADR 0022) |

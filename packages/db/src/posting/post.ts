@@ -23,7 +23,6 @@ import {
   balanceAtEnd,
   balanceEntry,
   balancingLine,
-  boxShortfall,
   buildProjectDocument,
   type CanonicalValue,
   type CarriedAmounts,
@@ -62,7 +61,6 @@ import {
   measuredLine,
   moveItem,
   movementOn,
-  netChanges,
   type ProjectDocumentInput,
   periodOf,
   type RevaluedBalance,
@@ -3158,7 +3156,6 @@ async function previewBuilt(
     false,
     documentNumber,
   );
-  await checkBoxes(tx, built.lines, on, false);
   const made = new Map(built.newItems.map((item) => [item.id, item]));
   const lines = built.lines.map(
     ({ line, memo, adjusted }, index): PreviewLine => ({
@@ -3758,8 +3755,6 @@ export async function post(tx: Transaction, request: PostingRequest): Promise<Po
     true,
     documentNumber === null ? null : { fiscalYear, number: documentNumber },
   );
-  // S11 rule 8: every entry, of any source, leaves each box at or above zero at every date.
-  await checkBoxes(tx, built.lines, on, true);
   const reversesEntryId =
     content.kind === 'reversal' || content.kind === 'opening_reversal' ? content.entryId : null;
   const source: EntrySource =
@@ -4116,7 +4111,7 @@ async function writeVoucher(
 /**
  * A box's balance in its currency at the end of the day before `on`, from the period balances of
  * the months before `on`'s and the lines of its month before `on`, and its net movement on each
- * date from `on` on (S11 rule 8; "Volume and performance").
+ * date from `on` on (S11 rule 13; "Volume and performance").
  */
 async function boxMovements(
   tx: Transaction,
@@ -4161,48 +4156,6 @@ async function boxMovements(
 async function boxBalanceAt(tx: Transaction, box: string, on: string): Promise<bigint> {
   const { opening, later } = await boxMovements(tx, box, on);
   return balanceAtEnd({ opening, later, on });
-}
-
-/**
- * S11 rule 8: refuses lines after which a box would be below zero in its currency at the end of
- * their date or of any later date (`CASH_BOX_NEGATIVE`, naming the box, the first such date and
- * the shortfall). Each box the lines take cash out of is locked `FOR NO KEY UPDATE` in id order when
- * `lock` (after the ledger head, ADR 0008's order), so two payments from one box serialise and the
- * second reads the first's line; a draft or a line that names the box (a key share) never blocks it.
- * Bank accounts are not checked (an overdraft is a borrowing, Q17).
- */
-async function checkBoxes(
-  tx: Transaction,
-  lines: readonly BuiltLine[],
-  on: string,
-  lock: boolean,
-): Promise<void> {
-  const changes = netChanges(lines.map(({ line }) => line));
-  const outgoing = [...changes].filter(([, change]) => change < 0n).map(([account]) => account);
-  if (outgoing.length === 0) return;
-  const query = tx
-    .select({ id: chartAccounts.id, code: chartAccounts.code, currency: chartAccounts.currency })
-    .from(chartAccounts)
-    .where(and(inArray(chartAccounts.id, outgoing), eq(chartAccounts.cashKind, 'box')))
-    .orderBy(asc(chartAccounts.id));
-  const boxes = lock ? await query.for('no key update') : await query;
-  for (const box of boxes) {
-    const { opening, later } = await boxMovements(tx, box.id, on);
-    const shortfall = boxShortfall({ opening, later, on, change: changes.get(box.id) ?? 0n });
-    if (shortfall !== null) {
-      refuse(
-        'CASH_BOX_NEGATIVE',
-        `The box ${box.code} would be ${shortfall.shortfallMinor} below zero on ${shortfall.date}`,
-        {
-          accountId: box.id,
-          account: box.code,
-          currency: box.currency,
-          date: shortfall.date,
-          shortfallMinor: shortfall.shortfallMinor.toString(),
-        },
-      );
-    }
-  }
 }
 
 /** The order in which a currency is a pair's base when the company holds no orientation for it. */
@@ -4402,6 +4355,18 @@ async function prepareVoucher(
       expectedMinor: expectedMinor.toString(),
     });
   }
+  // A box below zero (S11 rule 8) holds cash its books have not recorded: the cash that covers it
+  // is recorded first, so a count never books it as an overage (rule 13; owner, 2026-11-20).
+  if (expectedMinor < 0n) {
+    refuse(
+      'VALIDATION_FAILED',
+      'A box below zero is counted once the cash covering it is recorded',
+      {
+        field: 'countedMinor',
+        expectedMinor: expectedMinor.toString(),
+      },
+    );
+  }
   const targets = await tx
     .select({
       id: chartAccounts.id,
@@ -4472,8 +4437,8 @@ export interface PostedVoucherRef {
  * Posts a voucher draft (S11 rules 8–14), inside `withCompany`, idempotent by the draft (one
  * voucher per draft): the ledger head locked first, then the voucher prepared (`prepareVoucher()`,
  * a count's box locked and its expected balance compared), then posted by `post()` with its voucher
- * header, which takes the number, writes the entry with its reference and the voucher, and checks
- * every box (rule 8). A count that matches posts no entry: its period made open, its date checked
+ * header, which takes the number and writes the entry with its reference and the voucher; a box
+ * may go below zero (rule 8; owner, 2026-11-20). A count that matches posts no entry: its period made open, its date checked
  * as a manual entry's, its number taken and its voucher written with the audit row
  * `cash_count.recorded`. Any refusal throws and the caller's transaction rolls back, so no number
  * is used up.

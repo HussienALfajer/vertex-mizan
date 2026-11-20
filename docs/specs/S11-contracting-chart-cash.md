@@ -1,9 +1,9 @@
 # S11 — The contracting chart and cash boxes
 
-Status: Approved (owner, 2026-11-14) · Date: 2026-11-14 · Features: `docs/product/phase-1-scope.md` "Added by ADR 0021" (N5, N1), F02, F03, F06, F13 · ADRs: 0003, 0005, 0007, 0008, 0011, 0012, 0013, 0016, 0021, 0022
+Status: Approved (owner, 2026-11-14; rule 8 amended by the owner, 2026-11-20: a box may go below zero) · Date: 2026-11-14 · Features: `docs/product/phase-1-scope.md` "Added by ADR 0021" (N5, N1), F02, F03, F06, F13 · ADRs: 0003, 0005, 0007, 0008, 0011, 0012, 0013, 0016, 0021, 0022
 
 ## Summary
-The contracting client's books need a chart made for a construction contractor and a way to move cash. S11 adds the template `contracting@1` (N5): cash boxes in SYP, USD and TRY, project costs by kind under the contract (project) dimension, clients' progress billings, advances and retentions, and the balances of suppliers, subcontractors, workers and craftsmen, each kept per counterparty through two new built-in dimension types (ADR 0022). It adds cash accounts and vouchers (N1): receipts, payments, transfers and currency exchanges between boxes, and cash counts, each a manual entry with its own voucher number, printed in Arabic; a box never goes below zero; and each cash account has its balance and statement.
+The contracting client's books need a chart made for a construction contractor and a way to move cash. S11 adds the template `contracting@1` (N5): cash boxes in SYP, USD and TRY, project costs by kind under the contract (project) dimension, clients' progress billings, advances and retentions, and the balances of suppliers, subcontractors, workers and craftsmen, each kept per counterparty through two new built-in dimension types (ADR 0022). It adds cash accounts and vouchers (N1): receipts, payments, transfers and currency exchanges between boxes, and cash counts, each a manual entry with its own voucher number, printed in Arabic; a box may go below zero, shown in the negative colour (owner, 2026-11-20); and each cash account has its balance and statement.
 
 It also records the client's currency answer (ADR 0021 "Open"), plans the move of the scenario book from its frozen service-agency chart to the new template, and leaves the application of advances (IFRIC 22) to S12.
 
@@ -21,7 +21,7 @@ It also records the client's currency answer (ADR 0021 "Open"), plans the move o
   - a control account's **counterparty type** (`client` · `supplier` · `worker`), which generalises S04's open items from clients to any counterparty (ADR 0022);
   - **N1:** cash accounts (a postable account under `111` restricted to one currency, marked `box` or `bank`);
   - vouchers of four kinds: receipt (سند قبض), payment (سند صرف), transfer (سند تحويل, between two cash accounts, an exchange when their currencies differ) and cash count (محضر جرد), each a manual entry through S03's drafts, approval and posting, numbered per kind and fiscal year;
-  - the non-negative rule for boxes;
+  - a box's balance, which may go below zero (rule 8);
   - the cash position and a cash account's statement, with Excel and PDF;
   - the printed voucher in Arabic with the amount in words;
   - the plan for moving the scenario book to `contracting@1` (its own PR).
@@ -91,14 +91,14 @@ Drafts (S03) gain the voucher's header: `voucher_kind` (null), `cash_account_id`
 
 ### Cash accounts (N1)
 7. A **cash account** is a postable asset account with a `cash_kind` (rule of the Data section): a `box` (صندوق) or a `bank` account (حساب مصرفي). The accountant marks one in the account sheet; the template marks its five. Each is restricted to one currency (S02 rule 8 refuses a line in another currency).
-8. **A box never goes below zero** (owner, 2026-11-14). The posting function refuses any entry, of any source, after which a box's balance in its currency would be negative at the end of the entry date or of any later date (`CASH_BOX_NEGATIVE`, naming the box, the first such date and the shortfall). It takes each box of the entry in a per-box lock after the head lock (ADR 0008 lock order), and reads the box's balance at the entry date from the period balances and the lines, then the running balance of every later dated line. A reversal that would make a box negative is refused too: the later payment is reversed first. Bank accounts are not checked (an overdraft is a borrowing, Q17).
+8. **A box may go below zero** (owner, 2026-11-20: "allow going below zero, shown negative in red, and when a deposit or receipt is added it adjusts"; it supersedes the owner's 2026-11-14 decision that a box never goes below zero). The posting function checks no box's balance: a payment, a transfer or a reversal beyond what a box holds, at its date or any later date, posts like any other entry, and a later receipt or deposit simply raises the box again. Nothing in an entry depends on the box's balance, so no posted entry is measured again. Every screen and PDF that shows a box shows a balance below zero as a negative amount, with its minus sign, in the negative colour (the `Amount` component; ADR 0010). `CASH_BOX_NEGATIVE` is retired: it stays in the registry and nothing raises it (ADR 0021's rule on codes). Bank accounts were never checked (an overdraft is a borrowing, Q17).
 
 ### Vouchers (N1)
 9. A voucher is prepared as a voucher draft and follows S03 rules 4–11: saved as typed, submitted for approval when approval is on, posted by `post()`, refused whole on any failure. At posting, in the same transaction, the function takes the next number of the voucher's kind and fiscal year (the fiscal year of the voucher date, as entry numbers, S03), writes `cash_vouchers`, and sets the entry's reference to the voucher's printed number when the accountant left it empty. A refusal consumes no number (gapless, as entry numbers).
 10. **Receipt (سند قبض):** exactly one line on the voucher's cash account, a debit in its currency; one or more counter lines, none on that cash account, in any currency. A counter line on a control account names its counterparty (and item for a document item) as S04 rules 5–9 require, so a receipt settles a client's billing, an advance or any balance.
 11. **Payment (سند صرف):** the mirror of rule 10: exactly one credit line on the cash account; debit counter lines in any currency.
 12. **Transfer (سند تحويل):** exactly one credit line on the source cash account, one debit line on the destination cash account (not the same account, `CASH_ACCOUNT_INVALID`), and at most one debit fee line on an expense account in the source's currency (owner, 2026-11-14: a stated fee is its own expense line, by default `532002` bank and transfer charges). The source's credit equals the destination's debit plus the fee when both are in one currency. When the currencies differ it is a **currency exchange**: the dealt rate is derived from the two amounts, `destination amount / (source credit − fee)`, quoted in the company's orientation for that pair (S02 `RATE_ORIENTATION`), at 10 decimals rounded half away from zero, and offered to the ledgers as S03 rule 13 does. The preview shows it, and the accountant may overwrite it by typing the rate instead of an amount.
-13. **Cash count (محضر جرد):** for a box and a date in an open period, the accountant enters the counted amount and a reason. At posting, the function computes the expected balance (the box's balance at the end of that date, under the box lock) and compares it with the expected amount the preview showed: if it changed, the count is refused (`CASH_COUNT_STALE`, with the new expected amount) and the accountant counts again. A shortage posts Dr `532007` cash shortages / Cr the box; an overage posts Dr the box / Cr `422002` cash overages; a match records the count with no entry. Every count gets its number. A count is not redone when an entry is later back-dated before it; the statement shows both.
+13. **Cash count (محضر جرد):** for a box and a date in an open period, the accountant enters the counted amount and a reason. At posting, the function computes the expected balance (the box's balance at the end of that date, under the box lock) and compares it with the expected amount the preview showed: if it changed, the count is refused (`CASH_COUNT_STALE`, with the new expected amount) and the accountant counts again. A shortage posts Dr `532007` cash shortages / Cr the box; an overage posts Dr the box / Cr `422002` cash overages; a match records the count with no entry. A box whose expected balance is below zero (rule 8) is not counted (`VALIDATION_FAILED`, naming the expected amount): the cash that covers it is recorded first, so a count never books unrecorded cash as an overage (owner, 2026-11-20). Every count gets its number. A count is not redone when an entry is later back-dated before it; the statement shows both.
 14. **Cancelling a voucher** is reversing its entry (S03 rule 9). The voucher keeps its number and prints "ملغى" with the reversal's number. A count with no entry cannot be cancelled; a new count follows.
 15. A voucher's lines, apart from the rules above, are ordinary manual lines: S02 rule 8 (accounts, currencies, dimensions), S03 rules 12–16 (measurement, dealt rates, rounding, exchange differences), S04 (items, carrying amounts, residuals) and S07 (closed periods).
 
@@ -158,7 +158,7 @@ These numbers are confirmed in `cash/transfer-and-exchange` and `cash/receipt-an
 ## Periods
 - A voucher's date follows S03 rule 6; a closed period refuses it (`PERIOD_CLOSED`). A count's date is in an open period.
 - Voucher drafts are drafts: the close checklist's "no drafts or unapproved entries" item (S07) counts them.
-- A back-dated voucher is checked against the box at its date and every later date (rule 8), so a back-dated payment cannot make an already-posted later balance negative.
+- A back-dated voucher posts whatever it leaves the box at on its date or any later date (rule 8); the box's statement shows each date's running balance, below zero where it is.
 - Voucher numbers restart each fiscal year by voucher date, as entry numbers do; a voucher dated 31 December posted on 2 January takes the earlier year's next number.
 
 ## API
@@ -169,7 +169,7 @@ All under `/api`, with `X-Mizan-Company`; lists are cursor-paged (S01 pattern). 
 | `GET /api/chart/templates` (S02) | `accounts.read` | — | now lists `general@3` and `contracting@1` | as S02 |
 | `PUT /api/chart/accounts/:id` (S02) | `accounts.manage` | gains `counterpartyType`, `cashKind` | the account | S02's, `CASH_ACCOUNT_INVALID` |
 | `POST /api/drafts` · `PUT /api/drafts/:id` (S03) | `drafts.manage` | gains `voucher: { kind, cashAccountId, counterCashAccountId?, partyName?, countedMinor? }` | the draft, with the voucher header | S03's, `CASH_ACCOUNT_INVALID` |
-| `POST /api/drafts/:id/preview` · `/submit` · `/post` · `/approve` (S03) | as S03 | as S03 | as S03, plus the voucher's kind and, after posting, its number; for a transfer the derived dealt rate; for a count the expected amount and the difference | S03's and S04's, `CASH_BOX_NEGATIVE`, `CASH_COUNT_STALE`, `CASH_ACCOUNT_INVALID` |
+| `POST /api/drafts/:id/preview` · `/submit` · `/post` · `/approve` (S03) | as S03 | as S03 | as S03, plus the voucher's kind and, after posting, its number; for a transfer the derived dealt rate; for a count the expected amount and the difference | S03's and S04's, `CASH_COUNT_STALE`, `CASH_ACCOUNT_INVALID` |
 | `GET /api/cash/accounts` | `reports.read` | `asOf` | cash accounts with kind, currency, balance and both carrying amounts; totals per currency and ledger | — |
 | `GET /api/cash/accounts/:id/statement` | `reports.read` | `from`, `to`, `ledgers` | rule 17 | `NOT_FOUND`, `VALIDATION_FAILED` |
 | `GET /api/cash/accounts/export` · `GET /api/cash/accounts/:id/statement/export` | `reports.read` | as above, `format=xlsx` | the workbook, audited `export.cash_position` · `export.cash_statement` | as above, `REPORT_TOO_LARGE` |
@@ -182,7 +182,7 @@ New error codes, appended to the registry:
 
 | Code | Status | When |
 |---|---|---|
-| `CASH_BOX_NEGATIVE` | 409 | An entry would take a box below zero at its date or a later one (rule 8) |
+| `CASH_BOX_NEGATIVE` | 409 | Retired (owner, 2026-11-20): a box may go below zero (rule 8); nothing raises it |
 | `CASH_COUNT_STALE` | 409 | The box's expected balance changed between the count's preview and its posting (rule 13) |
 | `CASH_ACCOUNT_INVALID` | 422 | A voucher's cash account is not a cash account, a transfer's two accounts are the same, a voucher's lines break rules 10–13, or a cash kind is set on an account that cannot carry it |
 
@@ -220,12 +220,12 @@ The command palette gains "سند قبض"، "سند صرف"، "سند تحويل
 
 ## Volume and performance
 - The contractor: up to 5 cash accounts, 300 vouchers and 20 counts a month a company; 100 counterparties.
-- The box check (rule 8) reads one period-balance row and the box's lines from the entry date to the latest dated line, at most a few hundred, by the index `(company_id, account_id, entry_date)` on journal lines (S03). The posting stays under S03's target.
+- A count's expected balance (rule 13) reads one period-balance row and the box's lines of its month up to the count's date, by the index `(company_id, account_id, entry_date)` on journal lines (S03). The posting stays under S03's target; no other posting reads a box's balance (rule 8).
 - The cash position reads period balances plus one month's lines; the statement reads the account's lines in the range. Both answer under 1 s for 10,000 lines.
 
 ## Migration and compatibility
 - **`packages/contracts`:** `CHART_TEMPLATE_IDS` gains `contracting`; `chart-templates.ts` gains `contracting@1`; `BUILTIN_DIMENSION_TYPES` gains `supplier` and `worker`; the account schemas gain `counterpartyType` and `cashKind`; `open-items.ts` renames `client` to `counterparty` and gains `counterpartyType`; `cash.ts` (vouchers, the cash position, the statement); the error codes appended.
-- **`packages/db` (`/db-migration`):** the two enums and columns on `chart_accounts` with their checks and the lock; the rename of `open_items.client_value_id` and the counterparty-type guard; the new built-in types for existing companies; `voucher_sequences` and `cash_vouchers` with grants, RLS, guards and registry entries; the drafts' voucher columns; `post()` gains the voucher numbering and rule 8. Existing control accounts get `counterparty_type = client`; existing data needs nothing else. No guard is weakened.
+- **`packages/db` (`/db-migration`):** the two enums and columns on `chart_accounts` with their checks and the lock; the rename of `open_items.client_value_id` and the counterparty-type guard; the new built-in types for existing companies; `voucher_sequences` and `cash_vouchers` with grants, RLS, guards and registry entries; the drafts' voucher columns; `post()` gains the voucher numbering (rule 8's box check, added here, was removed on 2026-11-20). Existing control accounts get `counterparty_type = client`; existing data needs nothing else. No guard is weakened.
 - **`packages/ledger`:** the voucher shape checks (rules 10–13) and the derived dealt rate are pure functions with property tests; the box check's arithmetic (the minimum of a running balance from a date) too.
 - **`apps/api`, `apps/web`:** the endpoints and screens above; the S04 routes renamed with redirects.
 - **`admin:create-company`:** `--template contracting`.
@@ -263,21 +263,20 @@ In the same transaction (S01 rule 23): `account.updated` with before and after o
 
 ## Abuse and failure cases
 - **Double submit or replay:** posting is idempotent by the draft; one voucher per draft (unique key).
-- **Two payments from one box at once:** both take the box lock after the head lock; the second sees the first's line and is refused if it would go negative.
-- **A back-dated payment hiding a shortfall:** rule 8 checks every later date.
+- **Two payments from one box at once:** both serialise on the ledger head and both post; the box shows what they leave, below zero if so (rule 8).
 - **A count posted on a stale expected balance:** `CASH_COUNT_STALE`.
 - **A gap in voucher numbers:** numbers are taken inside the posting transaction under the sequence row's lock; the integrity check reports any gap.
 - **Editing a posted voucher:** refused by the table guards; a cancellation is a reversal.
 - **Cross-company access:** RLS on the new tables, composite foreign keys (the voucher's entry, draft and accounts), every endpoint tested as another company's member; the isolation property test covers the new tables.
 - **A stolen session:** vouchers need `entries.post` like any entry; approval, when on, needs a second person (S03 rule 8).
 - **Race with a close:** the period lock of S07 serialises a voucher's posting with the close; a voucher dated in a period closed meanwhile is refused.
-- **A box turned into a bank to escape rule 8:** the cash kind is locked after first use.
+- **A box turned into a bank:** the cash kind is locked after first use.
 
 ## Edge cases
 1. A receipt or payment of zero: refused (`VALIDATION_FAILED`, S03 edge case 3).
 2. A payment that takes a box exactly to zero: allowed.
-3. A payment back-dated to a day when the box held enough, but a later payment then lacks cover: refused, naming the later date.
-4. The reversal of a receipt whose cash was spent since: `CASH_BOX_NEGATIVE`; reverse the payment first.
+3. A payment back-dated to a day when the box held enough, but a later payment then lacks cover: posted; the box is below zero from the later date until cash comes in (rule 8).
+4. The reversal of a receipt whose cash was spent since: posted; the box is below zero by what was spent (rule 8).
 5. A transfer from a box to itself: `CASH_ACCOUNT_INVALID`.
 6. An exchange between two foreign currencies (TRY to SYP in the client's company): both lines at market in the book, realised residual (Currencies section).
 7. An exchange in `syp` (one ledger): one residual, in the book only.
@@ -448,7 +447,7 @@ Accounting rules this spec introduces or confirms, each written and approved thr
   - a payment of a site cost in TRY on `511005` with its contract;
   - a TRY payment to supplier S1's running balance (the example above);
   - a payment to a worker beyond the worker's balance, crossing zero;
-  - a payment that would take the box below zero, and a back-dated one that would make a later date negative, both refused;
+  - a payment that takes the box below zero, and a back-dated one that makes a later date negative, both posted, then a deposit raising the box (owner, 2026-11-20);
   - the cancellation of a receipt that settled a billing, reopening it at its carrying amount.
 - **`docs/scenarios/cash/transfer-and-exchange.md`:**
   - a USD transfer from a box to the bank, with a fee (no difference);
@@ -456,7 +455,7 @@ Accounting rules this spec introduces or confirms, each written and approved thr
   - an exchange TRY to SYP, both foreign to the book (realised in both ledgers at market and bulletin);
   - an exchange TRY to USD whose derived rate is not exact (a residual of under half a cent);
   - the same exchange in `syp` and in `syp-usd`;
-  - the cancellation of an exchange.
+  - the cancellation of an exchange, and its cancellation after part of the TRY was spent, which takes the TRY box below zero (owner, 2026-11-20).
 - **`docs/scenarios/cash/cash-count.md`:** a shortage in the TRY box and an overage in the USD box, both measured new; a count that matches; a stale count refused.
 - **The move of the scenario book** (its own PR, no new rule): the owner approves the mapping and the moved files with their numbers unchanged.
 - **For S12 (not here):** the application of an advance against a billing or an invoice at the advance's carrying amount (IFRIC 22.8–9), in `advances/application.md`.
@@ -473,13 +472,13 @@ Accounting rules this spec introduces or confirms, each written and approved thr
   2. Record the bulletin for 1–3 December (120.0000 SYP per USD, 3.5000 SYP per TRY) and the market for 3 December (34.0000 TRY per USD). Add the supplier "مورد تجريبي 1", the worker "عامل تجريبي 1", the client "عميل تجريبي 1" and its contract "مشروع البناء التجريبي".
   3. Post a receipt of 5,000.00 USD into the USD box from the owner's current account. `/cash` shows 5,000.00 USD.
   4. Post the exchange of the example: the TRY box shows 34,500.00 TRY, the USD box 3,990.00 USD; the entry shows the 750.00 SYP gain in the parallel ledger only; print the voucher and read the amount in words.
-  5. Try a payment of 40,000.00 TRY from the TRY box: refused, naming the box and the shortfall of 5,500.00 TRY.
+  5. Try a payment of 40,000.00 TRY from the TRY box: refused, naming the box and the shortfall of 5,500.00 TRY (until 2026-11-20; since then it posts and the box shows −5,500.00 TRY in the negative colour, rule 8).
   6. Count the TRY box at 34,450.00 TRY: a shortage of 50.00 TRY posts to `532007`.
   7. Open the TRY box's statement: opening, the exchange, the count, the closing balance 34,450.00 TRY; export it to Excel and PDF.
   8. Cancel the count's voucher: it prints "ملغى"; the box shows 34,500.00 TRY again.
 - **Tests:**
   - API: success, 401, 403, another company and an idempotent replay per endpoint;
-  - unit and property tests: the voucher shapes (rules 10–13); the derived dealt rate; the box check (any order of back-dated postings and reversals never leaves a box negative at any date, and refuses exactly when it would); voucher numbers gapless per kind and year under concurrent postings; `amountInWords` on its table; the template's data (every postable account has a statement line fitting its class; roles fit S02 rule 7; control accounts have a counterparty type and require it; cash kinds only on eligible accounts; codes fit the shape; names present);
+  - unit and property tests: the voucher shapes (rules 10–13); the derived dealt rate; a box's balance below zero and raised again (rule 8); voucher numbers gapless per kind and year under concurrent postings; `amountInWords` on its table; the template's data (every postable account has a statement line fitting its class; roles fit S02 rule 7; control accounts have a counterparty type and require it; cash kinds only on eligible accounts; codes fit the shape; names present);
   - database tests as `mizan_app`: the guards on `cash_vouchers` and `voucher_sequences`, the counterparty-type guard, the cash-kind check and lock, isolation;
   - the scenario book: the three `cash/` files, and every moved file with unchanged numbers;
   - E2E with RTL screenshots at 360 px and desktop: the cash position, a receipt, an exchange, a count, a statement, a printed voucher.

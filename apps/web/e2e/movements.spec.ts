@@ -49,6 +49,21 @@ test.describe('the dashboard', () => {
     await expectNoProductName(page);
   });
 
+  test('shows a box below zero as a negative amount in the negative color (S11 rule 8)', async ({
+    page,
+  }) => {
+    const overdrawn = {
+      ...dashboard,
+      boxes: [{ currency: 'USD' as const, amountMinor: '-3085900', bookMinor: '-3085900' }],
+    };
+    await page.route('**/api/dashboard', (route) => route.fulfill({ json: overdrawn }));
+    await page.goto('/');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(t.dashboard.title);
+    const box = page.locator('[data-negative="true"]', { hasText: '30,859.00' }).first();
+    await expect(box).toBeVisible();
+    await expect(box).toHaveClass(/text-negative/);
+  });
+
   test.describe('without today’s rates', () => {
     let sent: unknown;
     test.use({
@@ -425,7 +440,6 @@ test.describe('the new movement', () => {
           bodies.push(body);
           if (body.currency === 'SYP' && !ratesRecorded) return refusal(422, 'RATE_MISSING');
           if (body.kind === 'received') return refusal(422, 'CLIENT_HAS_OPEN_DEBT');
-          if (body.kind === 'wages') return refusal(422, 'CASH_BOX_NEGATIVE');
           return { status: 201, json: expense };
         },
       },
@@ -449,7 +463,7 @@ test.describe('the new movement', () => {
       expect(second?.requestKey).not.toBe(first?.requestKey);
     });
 
-    test('wages beyond the box offer a deposit, then come back', async ({ page }) => {
+    test('wages beyond the box post with no refusal (S11 rule 8)', async ({ page }) => {
       await page.goto(`/projects/${ids.project}`);
       await page.getByRole('button', { name: t.dashboard.newMovement }).click();
       const dialog = page.getByRole('dialog', { name: t.dialog.title });
@@ -457,19 +471,8 @@ test.describe('the new movement', () => {
       await page.getByRole('option', { name: t.kinds.wages }).click();
       await dialog.getByLabel(t.dialog.amount).fill('300');
       await dialog.getByRole('button', { name: t.dialog.submit }).click();
-      await expect(dialog.getByRole('alert')).toHaveText(ar.errors.CASH_BOX_NEGATIVE);
-      await dialog.getByRole('button', { name: t.dialog.toDeposit }).click();
-      const deposit = page.getByRole('dialog', { name: t.kinds.deposit });
-      await deposit.getByLabel(t.dialog.amount).fill('500');
-      await deposit.getByRole('button', { name: t.dialog.submit }).click();
-      // Back on the wages, as typed.
-      await expect(page.getByRole('dialog', { name: t.dialog.title })).toBeVisible();
-      await expect(dialog.getByLabel(t.dialog.amount)).toHaveValue('300.00');
-      expect(bodies.at(-1)).toMatchObject({
-        kind: 'deposit',
-        projectId: null,
-        amountMinor: '50000',
-      });
+      await expect(dialog).toBeHidden();
+      expect(bodies.at(-1)).toMatchObject({ kind: 'wages', amountMinor: '30000' });
     });
 
     test('without the day’s rate records it for the movement’s day, then posts', async ({

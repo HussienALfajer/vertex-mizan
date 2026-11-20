@@ -81,8 +81,7 @@ const POSTING_ERRORS = [
   'ACCOUNT_NOT_CONTROL',
   'OPEN_ITEM_DIRECTION',
   'RELEASE_EXCEEDS_BALANCE',
-  // S11: the box rule, a stale count and a voucher's shape.
-  'CASH_BOX_NEGATIVE',
+  // S11: a stale count and a voucher's shape.
   'CASH_COUNT_STALE',
   'CASH_ACCOUNT_INVALID',
   // S12: project documents (rules 1, 4, 12, 14).

@@ -4,8 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { balanceEntry, ledgerTotal } from './balance.js';
 import { reverseLines } from './carried.js';
 import {
-  type BoxMovement,
-  boxShortfall,
+  balanceAtEnd,
   checkVoucherShape,
   countLines,
   derivedDealtRate,
@@ -232,94 +231,15 @@ describe("a count's lines (S11 rule 13)", () => {
   });
 });
 
-describe('the box check (S11 rule 8)', () => {
-  it('allows a payment to zero and refuses one beyond, naming the date and the shortfall', () => {
-    expect(
-      boxShortfall({ opening: 100000n, later: [], on: '2026-12-02', change: -100000n }),
-    ).toBeNull();
-    expect(
-      boxShortfall({ opening: 100000n, later: [], on: '2026-12-02', change: -120000n }),
-    ).toEqual({
-      date: '2026-12-02',
-      shortfallMinor: 20000n,
-    });
-  });
-
-  it('refuses a back-dated payment that leaves a later date short (edge case 3)', () => {
-    expect(
-      boxShortfall({
-        opening: 100000n,
-        later: [{ date: '2026-12-03', amountMinor: -80000n }],
-        on: '2026-12-02',
-        change: -30000n,
-      }),
-    ).toEqual({ date: '2026-12-03', shortfallMinor: 10000n });
-  });
-
-  it('never refuses cash coming in', () => {
-    expect(boxShortfall({ opening: -5n, later: [], on: '2026-12-02', change: 1n })).toBeNull();
-  });
-
-  it('accepts exactly the changes that leave the box at or above zero at every date, in any order', () => {
-    const day = (n: number) => `2026-12-${String(n).padStart(2, '0')}`;
-    const operation = fc.oneof(
-      fc.record({
-        kind: fc.constant('post' as const),
-        day: fc.integer({ min: 1, max: 20 }),
-        amount: fc.bigInt({ min: -50_000n, max: 50_000n }).filter((amount) => amount !== 0n),
-      }),
-      fc.record({
-        kind: fc.constant('reverse' as const),
-        pick: fc.nat(),
-        later: fc.integer({ min: 0, max: 5 }),
-      }),
-    );
-    fc.assert(
-      fc.property(fc.array(operation, { maxLength: 40 }), (operations) => {
-        const posted: { date: string; amount: bigint; reversed: boolean }[] = [];
-        const balanceAt = (movements: readonly BoxMovement[], date: string) =>
-          movements.filter((m) => m.date <= date).reduce((sum, m) => sum + m.amountMinor, 0n);
-        for (const operation of operations) {
-          let change: BoxMovement;
-          let original: (typeof posted)[number] | undefined;
-          if (operation.kind === 'post') {
-            change = { date: day(operation.day), amountMinor: operation.amount };
-          } else {
-            const standing = posted.filter((entry) => !entry.reversed);
-            if (standing.length === 0) continue;
-            original = standing[operation.pick % standing.length] as (typeof posted)[number];
-            const on = Number(original.date.slice(8)) + operation.later;
-            change = { date: day(Math.min(on, 28)), amountMinor: -original.amount };
-          }
-          const movements = posted.map((entry) => ({
-            date: entry.date,
-            amountMinor: entry.amount,
-          }));
-          const found = boxShortfall({
-            opening: movements
-              .filter((m) => m.date < change.date)
-              .reduce((sum, m) => sum + m.amountMinor, 0n),
-            later: movements.filter((m) => m.date >= change.date),
-            on: change.date,
-            change: change.amountMinor,
-          });
-          const after = [...movements, change];
-          const dates = [...new Set(after.map((m) => m.date))].sort();
-          const firstShort = dates.find((date) => balanceAt(after, date) < 0n);
-          if (change.amountMinor < 0n) {
-            expect(found?.date ?? null).toBe(firstShort ?? null);
-          } else {
-            expect(found).toBeNull();
-          }
-          if (found !== null) continue;
-          posted.push({ date: change.date, amount: change.amountMinor, reversed: false });
-          if (original !== undefined) original.reversed = true;
-          // The rule holds after every accepted change, at every date.
-          const now = posted.map((entry) => ({ date: entry.date, amountMinor: entry.amount }));
-          for (const date of dates) expect(balanceAt(now, date) >= 0n).toBe(true);
-        }
-      }),
-      { numRuns: 500 },
+describe("a box's balance (S11 rules 8 and 13)", () => {
+  it('may be below zero, and a later receipt raises it again (owner, 2026-11-20)', () => {
+    const later = [
+      { date: '2026-12-02', amountMinor: -120000n },
+      { date: '2026-12-03', amountMinor: 50000n },
+    ];
+    expect(balanceAtEnd({ opening: 100000n, later, on: '2026-12-02' })).toBe(-20000n);
+    expect(balanceAtEnd({ opening: -20000n, later: later.slice(1), on: '2026-12-03' })).toBe(
+      30000n,
     );
   });
 });

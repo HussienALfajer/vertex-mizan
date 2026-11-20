@@ -423,7 +423,7 @@ export function statementLineFits(code: string, accountClass: AccountClass): boo
 }
 
 /**
- * The kind of a cash account (S11 rule 7): a box (صندوق), which never goes below zero (rule 8), or
+ * The kind of a cash account (S11 rule 7): a box (صندوق), whose balance may go below zero (rule 8), or
  * a bank account (حساب مصرفي), which may (an overdraft is a borrowing, Q17). Stored in the
  * `cash_kind` enum: a value is never renamed.
  */
