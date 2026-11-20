@@ -9,6 +9,7 @@ import {
 } from '@vertex-mizan/contracts';
 import { useEffect, useState } from 'react';
 import { cn } from '../lib/cn';
+import { useTypedDecimal } from '../lib/use-typed-decimal';
 
 type AmountInputProps = Omit<
   InputPrimitive.Props,
@@ -17,7 +18,10 @@ type AmountInputProps = Omit<
   currency: CurrencyCode;
   /** The amount in minor units, or `null` when the field is empty. */
   value: bigint | null;
-  /** Called on commit (blur, Enter) with the amount the text stands for, never while typing. */
+  /**
+   * Called on commit (blur, Enter) with the amount the text stands for, never while typing; the
+   * text is grouped by thousands as it is typed (`useTypedDecimal`).
+   */
   onValueChange: (value: bigint | null) => void;
   /** False for debit and credit cells, which hold magnitudes (ADR 0009). */
   allowNegative?: boolean;
@@ -52,8 +56,10 @@ function AmountInput({
   onKeyDown,
   onPaste,
   'aria-invalid': ariaInvalid,
+  ref,
   ...props
 }: AmountInputProps) {
+  const typed = useTypedDecimal({ allowNegative, ref });
   const [text, setText] = useState(() => display(value, currency));
   const [editing, setEditing] = useState(false);
   const [invalid, setInvalid] = useState(false);
@@ -113,9 +119,10 @@ function AmountInput({
         !editing && value !== null && value < 0n && 'text-negative',
         className,
       )}
+      ref={typed.ref}
       onValueChange={(next: string) => {
         setEditing(true);
-        setText(next);
+        setText(typed.group(next, text));
       }}
       onBlur={(event) => {
         commit();
@@ -128,6 +135,9 @@ function AmountInput({
           event.preventDefault();
           setInvalid(true);
           onTextError('INVALID');
+        } else {
+          // Only a paste that reaches the field is remembered for the change it makes.
+          typed.onPaste(event);
         }
         onPaste?.(event);
       }}

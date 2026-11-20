@@ -249,6 +249,10 @@
   --control-leading: 20px;
   --icon-size: 16px;
   --hit-size: 24px;
+  --nav-h: 44px;
+  --nav-text: 15px;
+  --nav-leading: 24px;
+  --nav-icon: 20px;
 }
 
 @media (pointer: coarse) {
@@ -260,6 +264,10 @@
     --control-leading: 26px;
     --icon-size: 20px;
     --hit-size: 44px;
+    --nav-h: 52px;
+    --nav-text: 18px;
+    --nav-leading: 28px;
+    --nav-icon: 24px;
   }
 }
 
@@ -271,6 +279,10 @@
   --control-leading: 20px;
   --icon-size: 16px;
   --hit-size: 24px;
+  --nav-h: 44px;
+  --nav-text: 15px;
+  --nav-leading: 24px;
+  --nav-icon: 20px;
 }
 
 [data-density="comfortable"] {
@@ -281,6 +293,10 @@
   --control-leading: 26px;
   --icon-size: 20px;
   --hit-size: 44px;
+  --nav-h: 52px;
+  --nav-text: 18px;
+  --nav-leading: 28px;
+  --nav-icon: 24px;
 }
 
 @theme inline {
@@ -335,7 +351,10 @@
   --color-negative: var(--negative);
   --color-selection: var(--selection);
 
-  /* Density sizes: `h-control`, `h-row`, `px-cell`, `size-icon`, `size-hit`, `text-control`. */
+  /*
+   * Density sizes: `h-control`, `h-row`, `px-cell`, `size-icon`, `size-hit`, `text-control`; the
+   * main navigation's `min-h-nav`, `text-nav` and `size-nav-icon`.
+   */
   --spacing-control: var(--control-h);
   --spacing-row: var(--row-h);
   --spacing-cell: var(--cell-px);
@@ -343,4 +362,8 @@
   --spacing-hit: var(--hit-size);
   --text-control: var(--control-text);
   --text-control--line-height: var(--control-leading);
+  --spacing-nav: var(--nav-h);
+  --spacing-nav-icon: var(--nav-icon);
+  --text-nav: var(--nav-text);
+  --text-nav--line-height: var(--nav-leading);
 }

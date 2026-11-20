@@ -28,16 +28,34 @@ describe('densities', () => {
       expect(table['Control and cell text']?.[i]).toBe(`${d.text.size} / ${d.text.lineHeight}`);
       expect(table.Icon?.[i]).toBe(`${d.icon}`);
       expect(table['Icon hit area']?.[i]).toBe(`${d.hitArea}`);
+      expect(table['Navigation link height']?.[i]).toBe(`${d.navigation.height}`);
+      expect(table['Navigation text']?.[i]).toBe(
+        `${d.navigation.text.size} / ${d.navigation.text.lineHeight}`,
+      );
+      expect(table['Navigation icon']?.[i]).toBe(`${d.navigation.icon}`);
     });
   });
 
   it('stay on the 4 px grid and on the type scale', () => {
     const steps = Object.values(fontSize);
     for (const d of Object.values(densities)) {
-      for (const px of [d.control, d.row, d.cellPadding, d.icon, d.hitArea]) {
+      for (const px of [
+        d.control,
+        d.row,
+        d.cellPadding,
+        d.icon,
+        d.hitArea,
+        d.navigation.height,
+        d.navigation.icon,
+      ]) {
         expect(px % 4).toBe(0);
       }
       expect(steps).toContainEqual(d.text);
+      expect(steps).toContainEqual(d.navigation.text);
+      // A navigation link is never smaller than a control, in text, icon or height.
+      expect(d.navigation.height).toBeGreaterThanOrEqual(d.control);
+      expect(d.navigation.text.size).toBeGreaterThanOrEqual(d.text.size);
+      expect(d.navigation.icon).toBeGreaterThanOrEqual(d.icon);
     }
   });
 

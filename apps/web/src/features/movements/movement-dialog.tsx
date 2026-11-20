@@ -12,6 +12,7 @@ import {
   quantitySchema,
   recordMovementSchema,
   SUPPLIER_MOVEMENT_KINDS,
+  ungroupTypedDecimal,
   unitPriceSchema,
 } from '@vertex-mizan/contracts';
 import { ar } from '@vertex-mizan/i18n';
@@ -35,6 +36,7 @@ import {
   SelectField,
   SwitchField,
   Textarea,
+  useTypedDecimal,
 } from '@vertex-mizan/ui';
 import { useState } from 'react';
 import { FormError, FormErrorSummary } from '../../components/form-error';
@@ -179,6 +181,9 @@ function MovementForm({
 }) {
   const queryClient = useQueryClient();
   const [form, setForm] = useState<Form>(() => blank(initialKind, fixedProject?.id ?? null));
+  // Quantity and unit price are grouped by thousands as they are typed, read without the commas.
+  const quantityTyping = useTypedDecimal({ allowNegative: false });
+  const unitPriceTyping = useTypedDecimal({ allowNegative: false });
   // The movement to come back to after a deposit made for it (S13 rule 2: deposit cash).
   const [resume, setResume] = useState<Form | null>(null);
   const [requestKey, setRequestKey] = useState(newKey);
@@ -226,8 +231,8 @@ function MovementForm({
           .map((amount) => amount.currency);
 
   const material = materials.data?.find((option) => option.id === form.materialId);
-  const quantityOk = quantitySchema.safeParse(form.quantity);
-  const unitPriceOk = unitPriceSchema.safeParse(form.unitPrice);
+  const quantityOk = quantitySchema.safeParse(ungroupTypedDecimal(form.quantity));
+  const unitPriceOk = unitPriceSchema.safeParse(ungroupTypedDecimal(form.unitPrice));
   const computed =
     quantityOk.success && unitPriceOk.success
       ? safeLineAmount(quantityOk.data, unitPriceOk.data, form.currency)
@@ -267,8 +272,8 @@ function MovementForm({
         material: withMaterial
           ? {
               materialId: current.materialId,
-              quantity: current.quantity,
-              unitPrice: current.unitPrice,
+              quantity: ungroupTypedDecimal(current.quantity),
+              unitPrice: ungroupTypedDecimal(current.unitPrice),
             }
           : null,
         description:
@@ -490,8 +495,12 @@ function MovementForm({
                   <Input
                     dir="ltr"
                     inputMode="decimal"
+                    ref={quantityTyping.ref}
+                    onPaste={quantityTyping.onPaste}
                     value={form.quantity}
-                    onChange={(event) => change({ quantity: event.target.value })}
+                    onChange={(event) =>
+                      change({ quantity: quantityTyping.group(event.target.value, form.quantity) })
+                    }
                   />
                   {material && <FieldDescription>{material.unit}</FieldDescription>}
                   <FieldError match={errors.quantity !== undefined}>{errors.quantity}</FieldError>
@@ -501,8 +510,14 @@ function MovementForm({
                   <Input
                     dir="ltr"
                     inputMode="decimal"
+                    ref={unitPriceTyping.ref}
+                    onPaste={unitPriceTyping.onPaste}
                     value={form.unitPrice}
-                    onChange={(event) => change({ unitPrice: event.target.value })}
+                    onChange={(event) =>
+                      change({
+                        unitPrice: unitPriceTyping.group(event.target.value, form.unitPrice),
+                      })
+                    }
                   />
                   <FieldDescription>{ar.accounting.currencies[form.currency]}</FieldDescription>
                   <FieldError match={errors.unitPrice !== undefined}>{errors.unitPrice}</FieldError>

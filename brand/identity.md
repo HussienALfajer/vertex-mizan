@@ -188,6 +188,9 @@ Mizan keeps everything above and adapts density, figures and interaction for acc
 | Control and cell text | 13 / 20 | 16 / 26 |
 | Icon | 16 | 20 |
 | Icon hit area | 24 | 44 |
+| Navigation link height | 44 | 52 |
+| Navigation text | 15 / 24 | 18 / 28 |
+| Navigation icon | 20 | 24 |
 
 Sizes in px. Compact is the default; comfortable applies when the primary pointer is coarse; the person's choice (`auto`, `compact`, `comfortable`) wins. Headings and figures outside tables keep the type scale of §3.
 

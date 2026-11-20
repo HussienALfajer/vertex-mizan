@@ -13,8 +13,10 @@ import {
   amountParts,
   evaluateAmount,
   formatMinor,
+  groupTypedDecimal,
   parseAmount,
   spreadsheetAmount,
+  ungroupTypedDecimal,
 } from './money-text.js';
 
 const ok = (amountMinor: bigint) => ({ ok: true, amountMinor });
@@ -306,4 +308,187 @@ describe('spreadsheetAmount', () => {
       ),
     );
   });
+});
+
+describe('groupTypedDecimal', () => {
+  const at = (text: string, caret = text.length) => groupTypedDecimal({ text, caret });
+
+  it.each([
+    ['1234567', '1,234,567'],
+    ['1,250,000', '1,250,000'],
+    ['-1234.5', '-1,234.5'],
+    ['1234.', '1,234.'],
+    ['.5', '.5'],
+    ['0.50', '0.50'],
+    ['000123', '123'],
+    ['0', '0'],
+    ['-', '-'],
+    ['', ''],
+    ['١٢٣٤٫٥', '1,234.5'],
+  ])('groups %s as %s', (typed, grouped) => {
+    expect(at(typed).text).toBe(grouped);
+  });
+
+  it.each([['=1000*3'], ['1 000'], ['12a'], ['1.2.3'], ['1e3'], ['1,5 '], [' 1,5']])(
+    'leaves %s as typed, for the parser to judge',
+    (typed) => {
+      expect(at(typed, 2)).toEqual({ text: typed, caret: 2 });
+    },
+  );
+
+  it.each([
+    ['3,75', ''],
+    ['0,500', ''],
+    ['1,5', '1'],
+    ['3,75', '3,7'],
+    ['1,23,4567', ''],
+    ['1,234,', '1,234'],
+    ['٣٬٧٥', ''],
+    // Pasted over the whole of a grouped field, or over part of it.
+    ['3,75', '1,000'],
+    ['3,75', '1,250.00'],
+    ['0,500', '1,000'],
+    ['15,5', '12,000'],
+  ])('leaves %s (a comma not of its own grouping, after %s) as typed', (typed, previous) => {
+    expect(groupTypedDecimal({ text: typed, caret: 1 }, { previous, pasted: typed })).toEqual({
+      text: typed,
+      caret: 1,
+    });
+    expect(groupTypedDecimal({ text: typed, caret: 1 }, { previous })).toEqual({
+      text: typed,
+      caret: 1,
+    });
+  });
+
+  it('moves its own grouping commas when a digit or one of them is typed or deleted', () => {
+    // A comma deleted by Backspace: "1,|234,567" → "1|234,567".
+    expect(groupTypedDecimal({ text: '1234,567', caret: 1 }, { previous: '1,234,567' })).toEqual({
+      text: '1,234,567',
+      caret: 1,
+    });
+    // A digit deleted: "1,000" → "1,00".
+    expect(groupTypedDecimal({ text: '1,00', caret: 4 }, { previous: '1,000' })).toEqual({
+      text: '100',
+      caret: 3,
+    });
+    // A digit typed between groups.
+    expect(groupTypedDecimal({ text: '1,2345', caret: 6 }, { previous: '1,234' })).toEqual({
+      text: '12,345',
+      caret: 6,
+    });
+  });
+
+  it('judges a paste by what was pasted, though it looks like a deletion', () => {
+    // "1,5" pasted over "1,500" reads, from the text alone, as two zeros deleted.
+    expect(
+      groupTypedDecimal({ text: '1,5', caret: 3 }, { previous: '1,500', pasted: '1,5' }).text,
+    ).toBe('1,5');
+    expect(groupTypedDecimal({ text: '1,5', caret: 3 }, { previous: '1,500' }).text).toBe('15');
+  });
+
+  it('never lets a paste without a comma hide a comma typed now', () => {
+    // A paste that never reached the field is still remembered when "," is typed after "3".
+    expect(groupTypedDecimal({ text: '3,', caret: 2 }, { previous: '3', pasted: '4	5' })).toEqual({
+      text: '3,',
+      caret: 2,
+    });
+  });
+
+  it('regroups a correctly grouped paste and a paste of digits over a grouped field', () => {
+    expect(groupTypedDecimal({ text: '2,500,000', caret: 9 }, { previous: '1,000' }).text).toBe(
+      '2,500,000',
+    );
+    expect(groupTypedDecimal({ text: '1,0005', caret: 6 }, { previous: '1,000' }).text).toBe(
+      '10,005',
+    );
+  });
+
+  it('never makes a paste into a grouped field mean another amount', () => {
+    fc.assert(
+      fc.property(
+        fc.bigInt({ min: 0n, max: 10n ** 12n }),
+        fc.stringMatching(/^[\d,.]{1,6}$/),
+        fc.nat(),
+        fc.nat(),
+        (amount, pasted, from, length) => {
+          const previous = groupTypedDecimal({ text: amount.toString(), caret: 0 }).text;
+          const start = from % (previous.length + 1);
+          const end = Math.min(previous.length, start + (length % 4));
+          const typed = previous.slice(0, start) + pasted + previous.slice(end);
+          const { text } = groupTypedDecimal({ text: typed, caret: start }, { previous, pasted });
+          if (text === typed) return;
+          // Regrouped: either the pasted text put in no comma, or the whole text was grouped
+          // correctly; either way the digits are the typed ones and parse to the same amount.
+          expect(!pasted.includes(',') || parseAmount(typed, 'USD').ok).toBe(true);
+          expect(text.replaceAll(',', '')).toBe(typed.replaceAll(',', '').replace(/^0+(?=\d)/, ''));
+        },
+      ),
+    );
+  });
+
+  it('leaves a minus as typed where negatives are refused', () => {
+    expect(groupTypedDecimal({ text: '-1000', caret: 5 }, { allowNegative: false })).toEqual({
+      text: '-1000',
+      caret: 5,
+    });
+  });
+
+  it('keeps the caret after the same digit', () => {
+    expect(at('1234567')).toEqual({ text: '1,234,567', caret: 9 });
+    // "1,234,9|567": a 9 typed after the 4.
+    expect(groupTypedDecimal({ text: '1,234,9567', caret: 7 }, { previous: '1,234,567' })).toEqual({
+      text: '12,349,567',
+      caret: 6,
+    });
+    // A comma removed by Backspace: "1,000" → "1|000".
+    expect(at('1000', 1)).toEqual({ text: '1,000', caret: 1 });
+    // Leading zeros dropped before the caret.
+    expect(at('0012', 3)).toEqual({ text: '12', caret: 1 });
+    expect(at('', 0)).toEqual({ text: '', caret: 0 });
+  });
+
+  it('never changes the digits, so parsing the grouped text gives the typed amount', () => {
+    fc.assert(
+      fc.property(
+        fc.stringMatching(/^-?[1-9]\d{0,12}(\.\d{0,2})?$/),
+        fc.nat(),
+        (typed, position) => {
+          const caret = position % (typed.length + 1);
+          const result = groupTypedDecimal({ text: typed, caret });
+          expect(ungroupTypedDecimal(result.text)).toBe(typed.replace(/^(-?)0+(?=\d)/, '$1'));
+          expect(result.caret).toBeGreaterThanOrEqual(0);
+          expect(result.caret).toBeLessThanOrEqual(result.text.length);
+          expect(parseAmount(result.text, 'USD')).toEqual(parseAmount(typed, 'USD'));
+        },
+      ),
+    );
+  });
+
+  it('never makes text with commas mean another amount', () => {
+    fc.assert(
+      fc.property(fc.stringMatching(/^-?[\d,]{0,10}(\.[\d,]{0,3})?$/), (typed) => {
+        const { text } = groupTypedDecimal({ text: typed, caret: typed.length });
+        expect(parseAmount(text, 'USD')).toEqual(parseAmount(typed, 'USD'));
+        // A schema that reads plain digits sees the same number, or text it refuses.
+        const plain = ungroupTypedDecimal(text);
+        if (!plain.includes(',')) {
+          expect(parseAmount(plain, 'USD')).toEqual(parseAmount(typed, 'USD'));
+        }
+      }),
+    );
+  });
+});
+
+describe('ungroupTypedDecimal', () => {
+  it('drops grouping commas and reads Arabic digits and separators', () => {
+    expect(ungroupTypedDecimal('1,234,567.5')).toBe('1234567.5');
+    expect(ungroupTypedDecimal('١٬٢٣٤٫٥')).toBe('1234.5');
+  });
+
+  it.each([['1,5'], ['1,5 '], [' 1,5'], ['0,500'], ['3,75'], ['12,50,000'], ['1,234,']])(
+    'keeps the commas of %s, which do not group thousands, for the schema to refuse',
+    (typed) => {
+      expect(ungroupTypedDecimal(typed)).toContain(',');
+    },
+  );
 });

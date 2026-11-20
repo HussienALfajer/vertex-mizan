@@ -59,15 +59,15 @@ describe('RateInput', () => {
   });
 
   it.each([
-    ['0'],
-    ['0.0000'],
-    ['-1'],
-    ['1.12345678901'],
-    ['1234567890123'],
-    ['1,200'],
-    ['1e3'],
-    ['012'],
-  ])('refuses %s and keeps the text as typed', async (text) => {
+    ['0', '0'],
+    ['0.0000', '0.0000'],
+    ['-1', '-1'],
+    ['1.12345678901', '1.12345678901'],
+    ['1234567890123', '1,234,567,890,123'],
+    ['1e3', '1e3'],
+    ['3,75', '3,75'],
+    ['1,5 ', '1,5 '],
+  ])('refuses %s and keeps the text as typed, grouped', async (text, shown) => {
     const onCommit = vi.fn();
     const onError = vi.fn();
     render(<Harness initial="118.5" onCommit={onCommit} onError={onError} />);
@@ -75,8 +75,43 @@ describe('RateInput', () => {
     await enter(input, text);
     expect(onCommit).not.toHaveBeenCalled();
     expect(onError).toHaveBeenLastCalledWith(true);
-    expect(input.value).toBe(text);
+    expect(input.value).toBe(shown);
     expect(input.getAttribute('aria-invalid')).toBe('true');
+  });
+
+  it('groups thousands while typing and commits the rate without them', async () => {
+    const onCommit = vi.fn();
+    render(<Harness onCommit={onCommit} />);
+    const input = screen.getByRole('textbox', { name: 'rate' }) as HTMLInputElement;
+    await act(async () => {
+      fireEvent.change(input, { target: { value: '13000.5' } });
+    });
+    expect(input.value).toBe('13,000.5');
+    expect(onCommit).not.toHaveBeenCalled();
+    await act(async () => {
+      fireEvent.blur(input);
+    });
+    expect(onCommit).toHaveBeenCalledWith('13000.5');
+    expect(input.value).toBe('13,000.5');
+  });
+
+  it.each([
+    ['1,200', '1200', '1,200'],
+    ['012', '12', '12'],
+  ])('reads %s as the rate %s', async (text, rate, shown) => {
+    const onCommit = vi.fn();
+    render(<Harness onCommit={onCommit} />);
+    const input = screen.getByRole('textbox', { name: 'rate' }) as HTMLInputElement;
+    await enter(input, text);
+    expect(onCommit).toHaveBeenCalledWith(rate);
+    expect(input.value).toBe(shown);
+  });
+
+  it('shows a rate set from outside grouped', () => {
+    render(<Harness initial="13500.25" />);
+    expect((screen.getByRole('textbox', { name: 'rate' }) as HTMLInputElement).value).toBe(
+      '13,500.25',
+    );
   });
 
   it('empties to null and Escape restores the committed rate', async () => {

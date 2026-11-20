@@ -1,9 +1,10 @@
 'use client';
 
 import { Input as InputPrimitive } from '@base-ui/react/input';
-import { rateValueSchema } from '@vertex-mizan/contracts';
+import { groupTypedDecimal, rateValueSchema, ungroupTypedDecimal } from '@vertex-mizan/contracts';
 import { useEffect, useState } from 'react';
 import { cn } from '../lib/cn';
+import { useTypedDecimal } from '../lib/use-typed-decimal';
 
 type RateInputProps = Omit<
   InputPrimitive.Props,
@@ -33,6 +34,10 @@ export function normalizeRateText(text: string): string {
     .replace(/٫/g, '.');
 }
 
+/** A rate as shown in the field: grouped by thousands, its decimals as quoted. */
+const shownRate = (rate: string | null) =>
+  rate === null ? '' : groupTypedDecimal({ text: rate, caret: 0 }, { allowNegative: false }).text;
+
 /**
  * An exchange rate typed as quoted (S02 rule 14, ADR 0007): quote units per one base unit, up to
  * 12 integer digits and 10 decimals, checked with the contract's `rateValueSchema`. It keeps every
@@ -46,10 +51,13 @@ function RateInput({
   className,
   onBlur,
   onKeyDown,
+  onPaste,
   'aria-invalid': ariaInvalid,
+  ref,
   ...props
 }: RateInputProps) {
-  const [text, setText] = useState(value ?? '');
+  const typed = useTypedDecimal({ allowNegative: false, ref });
+  const [text, setText] = useState(() => shownRate(value));
   const [editing, setEditing] = useState(false);
   const [invalid, setInvalid] = useState(false);
   const [shown, setShown] = useState(value);
@@ -58,7 +66,7 @@ function RateInput({
   // A rate set from outside (a reset form) replaces the text unless it is being edited.
   if (!editing && shown !== value) {
     setShown(value);
-    setText(value ?? '');
+    setText(shownRate(value));
     if (invalid) {
       setInvalid(false);
       setClearedError(true);
@@ -72,7 +80,7 @@ function RateInput({
 
   function commit() {
     setEditing(false);
-    const normalized = normalizeRateText(text);
+    const normalized = normalizeRateText(ungroupTypedDecimal(text));
     if (normalized === '') {
       setInvalid(false);
       onTextError(false);
@@ -83,7 +91,7 @@ function RateInput({
     if (rateValueSchema.safeParse(normalized).success) {
       setInvalid(false);
       onTextError(false);
-      setText(normalized);
+      setText(shownRate(normalized));
       if (normalized !== value) onValueChange(normalized);
     } else {
       setInvalid(true);
@@ -107,9 +115,14 @@ function RateInput({
         'aria-invalid:border-destructive-text',
         className,
       )}
+      ref={typed.ref}
+      onPaste={(event) => {
+        typed.onPaste(event);
+        onPaste?.(event);
+      }}
       onValueChange={(next: string) => {
         setEditing(true);
-        setText(next);
+        setText(typed.group(next, text));
       }}
       onBlur={(event) => {
         commit();
@@ -121,7 +134,7 @@ function RateInput({
           setEditing(false);
           setInvalid(false);
           onTextError(false);
-          setText(value ?? '');
+          setText(shownRate(value));
         }
         onKeyDown?.(event);
       }}

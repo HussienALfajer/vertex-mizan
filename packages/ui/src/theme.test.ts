@@ -93,7 +93,7 @@ function densityVariables(block: string): Record<string, number> {
   return Object.fromEntries(
     [
       ...block.matchAll(
-        /--(control-h|row-h|cell-px|control-text|control-leading|icon-size|hit-size):\s*(\d+)px;/g,
+        /--(control-h|row-h|cell-px|control-text|control-leading|icon-size|hit-size|nav-h|nav-text|nav-leading|nav-icon):\s*(\d+)px;/g,
       ),
     ].map(([, name = '', px = '']) => [name, Number(px)]),
   );
@@ -113,6 +113,10 @@ describe('densities (ADR 0010 §2)', () => {
           'control-leading': d.text.lineHeight,
           'icon-size': d.icon,
           'hit-size': d.hitArea,
+          'nav-h': d.navigation.height,
+          'nav-text': d.navigation.text.size,
+          'nav-leading': d.navigation.text.lineHeight,
+          'nav-icon': d.navigation.icon,
         },
       ];
     }),
@@ -180,6 +184,9 @@ describe('generated utilities', async () => {
       'size-icon',
       'size-hit',
       'text-control',
+      'min-h-nav',
+      'text-nav',
+      'size-nav-icon',
     ]) {
       expect(build(candidate), candidate).toContain(`.${candidate}`);
     }

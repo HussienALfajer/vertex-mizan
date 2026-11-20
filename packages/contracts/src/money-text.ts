@@ -238,3 +238,138 @@ function signed(numerator: bigint, denominator: bigint): Fraction {
     ? { numerator: -numerator, denominator: -denominator }
     : { numerator, denominator };
 }
+
+/** Typed text with its caret, as an input holds it while the person types. */
+export interface TypedText {
+  readonly text: string;
+  readonly caret: number;
+}
+
+const ARABIC_KEYS: Readonly<Record<string, string>> = {
+  '٫': '.',
+  '٬': ',',
+  '−': '-',
+};
+
+/** One typed character as `normalize()` reads it; each maps to exactly one character. */
+const latinChar = (char: string): string => {
+  const code = char.charCodeAt(0);
+  if (code >= 0x0660 && code <= 0x0669) return String(code - 0x0660);
+  if (code >= 0x06f0 && code <= 0x06f9) return String(code - 0x06f0);
+  return ARABIC_KEYS[char] ?? char;
+};
+
+/** Every character but a grouping comma counts toward where the caret stands. */
+const countsForCaret = (char: string): boolean => char !== ',';
+
+/** The commas of an integer part as typed: none, or a correct grouping (`GROUPED`). */
+const commasOf = (integer: string): number => integer.split(',').length - 1;
+const groupedOrPlain = (integer: string): boolean =>
+  commasOf(integer) === 0 || GROUPED.test(integer);
+
+/**
+ * What an edit put into the text: `next` less the longest prefix and suffix it shares with
+ * `previous` (empty for a deletion). A paste over a selection is all of the pasted text.
+ */
+function insertedText(previous: string, next: string): string {
+  let start = 0;
+  while (start < previous.length && start < next.length && previous[start] === next[start]) {
+    start += 1;
+  }
+  let end = 0;
+  while (
+    end < previous.length - start &&
+    end < next.length - start &&
+    previous[previous.length - 1 - end] === next[next.length - 1 - end]
+  ) {
+    end += 1;
+  }
+  return next.slice(start, next.length - end);
+}
+
+/** A typed decimal in Latin characters: `[sign, integer part, point, decimals]`, or null. */
+function typedParts(latin: string): [string, string, string, string] | null {
+  const match = /^(-?)([\d,]*)(?:(\.)(\d*))?$/.exec(latin);
+  if (!match) return null;
+  return [match[1] ?? '', match[2] ?? '', match[3] ?? '', match[4] ?? ''];
+}
+
+/**
+ * Thousands separators put in while a plain number is typed (`1250000` → `1,250,000`), keeping
+ * the caret after the same digit. Arabic-Indic digits and separators become Latin, leading zeros
+ * of the integer part are dropped (a lone `0` before the point stays), and the decimals are kept
+ * as typed, so nothing is rounded or padded here.
+ *
+ * Only grouping commas are moved: the integer part is regrouped when it has no comma, is already
+ * grouped correctly, or came from the `previous` text's correct grouping by an edit that put in
+ * no comma (a digit typed or pasted, or anything deleted, a grouping comma included). A comma the
+ * person types or pastes (`3,75`, `0,500`, `1,5`, even over a selection of `1,000`, the caller
+ * passing what was `pasted`) leaves the text as typed unless the result is grouped correctly, so the parser refuses it on commit as
+ * before (`GROUPED`): a decimal comma never becomes a whole number. Anything that is
+ * not a plain number (an `=` expression, a space, a letter) is returned unchanged too.
+ */
+export function groupTypedDecimal(
+  { text, caret }: TypedText,
+  {
+    allowNegative = true,
+    previous = '',
+    pasted,
+  }: {
+    allowNegative?: boolean;
+    /** The text the field held before this edit. */
+    previous?: string;
+    /** What this edit pasted, when it was a paste: a paste may look like a deletion. */
+    pasted?: string | undefined;
+  } = {},
+): TypedText {
+  const latin = Array.from(text, latinChar).join('');
+  const parts = typedParts(latin);
+  if (parts === null) return { text, caret };
+  const [sign, integerTyped, point, fraction] = parts;
+  if (sign && !allowNegative) return { text, caret };
+  const previousLatin = Array.from(previous, latinChar).join('');
+  const before = typedParts(previousLatin);
+  // Both must hold: the two texts show no comma put in, and a paste (if this edit was one) held
+  // none. A paste can look like a deletion, and a paste remembered from an edit that never
+  // reached the field must not hide a comma typed now.
+  const ours =
+    before !== null &&
+    groupedOrPlain(before[1]) &&
+    !insertedText(previousLatin, latin).includes(',') &&
+    !Array.from(pasted ?? '', latinChar)
+      .join('')
+      .includes(',');
+  if (!groupedOrPlain(integerTyped) && !ours) return { text, caret };
+
+  const digits = integerTyped.replaceAll(',', '');
+  const kept = digits.replace(/^0+(?=\d)/, '');
+  const dropped = digits.length - kept.length;
+  const groups: string[] = [];
+  for (let end = kept.length; end > 0; end -= 3)
+    groups.unshift(kept.slice(Math.max(0, end - 3), end));
+  const grouped = `${sign}${groups.join(',')}${point}${fraction}`;
+
+  // The caret stands after the same count of characters other than grouping commas, less the
+  // leading zeros dropped before it.
+  const counted = Array.from(latin.slice(0, caret)).filter(countsForCaret).length;
+  const zerosBefore = Math.min(dropped, Math.max(0, counted - sign.length));
+  let wanted = counted - zerosBefore;
+  let at = 0;
+  while (wanted > 0 && at < grouped.length) {
+    if (countsForCaret(grouped.charAt(at))) wanted -= 1;
+    at += 1;
+  }
+  return { text: grouped, caret: at };
+}
+
+/**
+ * The text a schema that reads plain digits gets (a quantity, a unit price, a rate): Arabic-Indic
+ * digits and separators in Latin, and the commas taken out only when they group the integer part
+ * correctly. A comma anywhere else stays, so the schema refuses it (`1,5` is never `15`).
+ */
+export function ungroupTypedDecimal(text: string): string {
+  const latin = Array.from(text, latinChar).join('');
+  const parts = typedParts(latin.trim());
+  if (parts === null || !GROUPED.test(parts[1])) return latin;
+  return latin.trim().replaceAll(',', '');
+}
