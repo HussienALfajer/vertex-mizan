@@ -4358,10 +4358,14 @@ async function prepareVoucher(
   // A box below zero (S11 rule 8) holds cash its books have not recorded: the cash that covers it
   // is recorded first, so a count never books it as an overage (rule 13; owner, 2026-11-20).
   if (expectedMinor < 0n) {
-    refuse('VALIDATION_FAILED', 'A box below zero is counted once the cash covering it is recorded', {
-      field: 'countedMinor',
-      expectedMinor: expectedMinor.toString(),
-    });
+    refuse(
+      'VALIDATION_FAILED',
+      'A box below zero is counted once the cash covering it is recorded',
+      {
+        field: 'countedMinor',
+        expectedMinor: expectedMinor.toString(),
+      },
+    );
   }
   const targets = await tx
     .select({

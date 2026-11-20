@@ -238,7 +238,9 @@ describe("a box's balance (S11 rules 8 and 13)", () => {
       { date: '2026-12-03', amountMinor: 50000n },
     ];
     expect(balanceAtEnd({ opening: 100000n, later, on: '2026-12-02' })).toBe(-20000n);
-    expect(balanceAtEnd({ opening: -20000n, later: later.slice(1), on: '2026-12-03' })).toBe(30000n);
+    expect(balanceAtEnd({ opening: -20000n, later: later.slice(1), on: '2026-12-03' })).toBe(
+      30000n,
+    );
   });
 });
 
