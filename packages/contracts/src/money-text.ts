@@ -329,14 +329,16 @@ export function groupTypedDecimal(
   if (sign && !allowNegative) return { text, caret };
   const previousLatin = Array.from(previous, latinChar).join('');
   const before = typedParts(previousLatin);
+  // Both must hold: the two texts show no comma put in, and a paste (if this edit was one) held
+  // none. A paste can look like a deletion, and a paste remembered from an edit that never
+  // reached the field must not hide a comma typed now.
   const ours =
     before !== null &&
     groupedOrPlain(before[1]) &&
-    !(
-      pasted === undefined
-        ? insertedText(previousLatin, latin)
-        : Array.from(pasted, latinChar).join('')
-    ).includes(',');
+    !insertedText(previousLatin, latin).includes(',') &&
+    !Array.from(pasted ?? '', latinChar)
+      .join('')
+      .includes(',');
   if (!groupedOrPlain(integerTyped) && !ours) return { text, caret };
 
   const digits = integerTyped.replaceAll(',', '');

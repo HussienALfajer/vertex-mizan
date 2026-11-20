@@ -129,13 +129,15 @@ function AmountInput({
         onBlur?.(event);
       }}
       onPaste={(event) => {
-        typed.onPaste(event);
         // Several cells or lines are several values: the browser would flatten their breaks into
         // spaces, so they are refused here, before they reach the field (a grid pastes them).
         if (/[\t\n\r]/.test(event.clipboardData.getData('text').trim())) {
           event.preventDefault();
           setInvalid(true);
           onTextError('INVALID');
+        } else {
+          // Only a paste that reaches the field is remembered for the change it makes.
+          typed.onPaste(event);
         }
         onPaste?.(event);
       }}

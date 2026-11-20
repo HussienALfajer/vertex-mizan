@@ -386,6 +386,14 @@ describe('groupTypedDecimal', () => {
     expect(groupTypedDecimal({ text: '1,5', caret: 3 }, { previous: '1,500' }).text).toBe('15');
   });
 
+  it('never lets a paste without a comma hide a comma typed now', () => {
+    // A paste that never reached the field is still remembered when "," is typed after "3".
+    expect(groupTypedDecimal({ text: '3,', caret: 2 }, { previous: '3', pasted: '4	5' })).toEqual({
+      text: '3,',
+      caret: 2,
+    });
+  });
+
   it('regroups a correctly grouped paste and a paste of digits over a grouped field', () => {
     expect(groupTypedDecimal({ text: '2,500,000', caret: 9 }, { previous: '1,000' }).text).toBe(
       '2,500,000',

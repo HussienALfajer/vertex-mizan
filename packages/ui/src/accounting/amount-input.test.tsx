@@ -107,6 +107,21 @@ describe('AmountInput', () => {
     expect(onCommit).not.toHaveBeenCalled();
   });
 
+  it('keeps a comma typed after a refused paste, for the parser to refuse', () => {
+    const onCommit = vi.fn();
+    const onError = vi.fn();
+    render(<Harness currency="USD" onCommit={onCommit} onError={onError} />);
+    input().focus();
+    type('3');
+    fireEvent.paste(input(), { clipboardData: { getData: () => '4	5' } });
+    type('3,');
+    type('3,75');
+    expect(input().value).toBe('3,75');
+    fireEvent.blur(input());
+    expect(onCommit).not.toHaveBeenCalled();
+    expect(onError).toHaveBeenLastCalledWith('INVALID');
+  });
+
   it('judges a paste by the clipboard, though it looks like digits deleted', () => {
     const onCommit = vi.fn();
     render(<Harness currency="USD" onCommit={onCommit} />);
