@@ -19,7 +19,7 @@ The data-residency statement for customers stays open in Q7 until phase 4.
 | What | Where |
 |---|---|
 | Releases, the active one, shared state | `/srv/mizan.vertexmedia.pro/{releases,current,shared}`, owner `vertexmizan`; a bare clone in `repo.git` |
-| Environment | `shared/.env` (`vertexmizan`, 600): the app, jobs and queue roles' URLs, `AUTH_SECRET`, SMTP. The owner role's URL is root's, in `/etc/mizan/owner.env` (600): `mizan-deploy` hands it to the migrations on a file descriptor, and the app user, whose processes run the API, the worker and every build script, never reads it (ADR 0008). The backup monitor alerts on any `mizan_owner` session outside a deploy |
+| Environment | `shared/.env` (`vertexmizan`, 600): the app, jobs and queue roles' URLs, `AUTH_SECRET`, SMTP. `SIGN_IN_COMPANY_ID` (S13: the company whose name and logo the sign-in page shows) is added by hand after the company exists, the file backed up first to `/root/mizan-shared.env.bak-<time>`, then `pm2 reload mizan-api mizan-worker --update-env` as `vertexmizan`; `provision.sh` does not write it. The owner role's URL is root's, in `/etc/mizan/owner.env` (600): `mizan-deploy` hands it to the migrations on a file descriptor, and the app user, whose processes run the API, the worker and every build script, never reads it (ADR 0008). The backup monitor alerts on any `mizan_owner` session outside a deploy |
 | Attachments and exports | `shared/files` (`MIZAN_FILES_DIR`) |
 | Processes | PM2 as `vertexmizan` (`pm2-vertexmizan.service`): `mizan-api` on `127.0.0.1:3300`, `mizan-worker` |
 | Public gateway | nginx: `/etc/nginx/sites-available/mizan.vertexmedia.pro`, snippets `mizan-headers.conf` and `mizan-proxy.conf`, zones in `conf.d/mizan-limits.conf`; TLS from Let's Encrypt |
