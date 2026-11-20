@@ -576,6 +576,62 @@ describe('admin:change-email (owner, 2026-11-20)', () => {
     });
   });
 
+  it('ends a password-reset link sent to the old address before the change', async () => {
+    const before = await account();
+    const asked = await new Browser(app).post('/api/auth/request-password-reset', {
+      email: before.email,
+    });
+    expect(asked.status).toBe(204);
+    const [mail] = await db
+      .select()
+      .from(emailOutbox)
+      .where(and(eq(emailOutbox.recipient, before.email), eq(emailOutbox.kind, 'password_reset')))
+      .orderBy(desc(emailOutbox.createdAt));
+    if (!mail) throw new Error('no reset email');
+    const token = new URL((mail.data as { link: string }).link).hash.slice('#token='.length);
+
+    const to = `after.${uuidv7()}@example.test`;
+    await changeEmailByVertex(db, { from: before.email, to, reason: 'البريد القديم فُقد' });
+
+    const reset = await new Browser(app).post('/api/auth/reset-password', {
+      token,
+      password: 'a password from the old mailbox',
+    });
+    expect(reset.status).toBe(410);
+    expect(reset.body.code).toBe('LINK_INVALID');
+    // The password is the one the person had.
+    const next = await new Browser(app).post('/api/auth/sign-in/email', {
+      email: to,
+      password: before.password,
+    });
+    expect(next.status).toBe(200);
+  });
+
+  it('refuses the change while an invitation to the old address is pending', async () => {
+    const before = await account();
+    await createCompanyWithOwner(
+      db,
+      'http://mizan.test',
+      parseCreateCompany([
+        '--name',
+        'شركة دعوة معلقة',
+        '--policy-note',
+        'مذكرة سياسة تجريبية.',
+        '--owner-email',
+        before.email,
+      ]),
+    );
+    await expect(
+      changeEmailByVertex(db, {
+        from: before.email,
+        to: `after.${uuidv7()}@example.test`,
+        reason: 'اختبار',
+      }),
+    ).rejects.toThrow('An invitation to the old email is pending: revoke it first');
+    const [still] = await db.select().from(users).where(eq(users.id, before.personId));
+    expect(still?.email).toBe(before.email);
+  });
+
   it('refuses an unknown email, a taken one and the same one, changing nothing', async () => {
     const one = await account();
     const two = await account();
