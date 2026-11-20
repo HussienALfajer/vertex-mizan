@@ -51,6 +51,7 @@ function RateInput({
   className,
   onBlur,
   onKeyDown,
+  onPaste,
   'aria-invalid': ariaInvalid,
   ref,
   ...props
@@ -115,6 +116,10 @@ function RateInput({
         className,
       )}
       ref={typed.ref}
+      onPaste={(event) => {
+        typed.onPaste(event);
+        onPaste?.(event);
+      }}
       onValueChange={(next: string) => {
         setEditing(true);
         setText(typed.group(next, text));

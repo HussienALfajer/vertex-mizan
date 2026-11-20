@@ -267,6 +267,26 @@ const commasOf = (integer: string): number => integer.split(',').length - 1;
 const groupedOrPlain = (integer: string): boolean =>
   commasOf(integer) === 0 || GROUPED.test(integer);
 
+/**
+ * What an edit put into the text: `next` less the longest prefix and suffix it shares with
+ * `previous` (empty for a deletion). A paste over a selection is all of the pasted text.
+ */
+function insertedText(previous: string, next: string): string {
+  let start = 0;
+  while (start < previous.length && start < next.length && previous[start] === next[start]) {
+    start += 1;
+  }
+  let end = 0;
+  while (
+    end < previous.length - start &&
+    end < next.length - start &&
+    previous[previous.length - 1 - end] === next[next.length - 1 - end]
+  ) {
+    end += 1;
+  }
+  return next.slice(start, next.length - end);
+}
+
 /** A typed decimal in Latin characters: `[sign, integer part, point, decimals]`, or null. */
 function typedParts(latin: string): [string, string, string, string] | null {
   const match = /^(-?)([\d,]*)(?:(\.)(\d*))?$/.exec(latin);
@@ -281,24 +301,42 @@ function typedParts(latin: string): [string, string, string, string] | null {
  * as typed, so nothing is rounded or padded here.
  *
  * Only grouping commas are moved: the integer part is regrouped when it has no comma, is already
- * grouped correctly, or holds no more commas than the `previous` text's correct grouping (a digit
- * typed or deleted between them, or one of them deleted). A comma the person types or pastes
- * anywhere else (`3,75`, `0,500`, `1,5`) leaves the text as typed, so the parser refuses it on
- * commit as before (`GROUPED`): a decimal comma never becomes a whole number. Anything that is
+ * grouped correctly, or came from the `previous` text's correct grouping by an edit that put in
+ * no comma (a digit typed or pasted, or anything deleted, a grouping comma included). A comma the
+ * person types or pastes (`3,75`, `0,500`, `1,5`, even over a selection of `1,000`, the caller
+ * passing what was `pasted`) leaves the text as typed unless the result is grouped correctly, so the parser refuses it on commit as
+ * before (`GROUPED`): a decimal comma never becomes a whole number. Anything that is
  * not a plain number (an `=` expression, a space, a letter) is returned unchanged too.
  */
 export function groupTypedDecimal(
   { text, caret }: TypedText,
-  { allowNegative = true, previous = '' }: { allowNegative?: boolean; previous?: string } = {},
+  {
+    allowNegative = true,
+    previous = '',
+    pasted,
+  }: {
+    allowNegative?: boolean;
+    /** The text the field held before this edit. */
+    previous?: string;
+    /** What this edit pasted, when it was a paste: a paste may look like a deletion. */
+    pasted?: string | undefined;
+  } = {},
 ): TypedText {
   const latin = Array.from(text, latinChar).join('');
   const parts = typedParts(latin);
   if (parts === null) return { text, caret };
   const [sign, integerTyped, point, fraction] = parts;
   if (sign && !allowNegative) return { text, caret };
-  const before = typedParts(Array.from(previous, latinChar).join(''));
+  const previousLatin = Array.from(previous, latinChar).join('');
+  const before = typedParts(previousLatin);
   const ours =
-    before !== null && groupedOrPlain(before[1]) && commasOf(integerTyped) <= commasOf(before[1]);
+    before !== null &&
+    groupedOrPlain(before[1]) &&
+    !(
+      pasted === undefined
+        ? insertedText(previousLatin, latin)
+        : Array.from(pasted, latinChar).join('')
+    ).includes(',');
   if (!groupedOrPlain(integerTyped) && !ours) return { text, caret };
 
   const digits = integerTyped.replaceAll(',', '');

@@ -496,6 +496,7 @@ function MovementForm({
                     dir="ltr"
                     inputMode="decimal"
                     ref={quantityTyping.ref}
+                    onPaste={quantityTyping.onPaste}
                     value={form.quantity}
                     onChange={(event) =>
                       change({ quantity: quantityTyping.group(event.target.value, form.quantity) })
@@ -510,6 +511,7 @@ function MovementForm({
                     dir="ltr"
                     inputMode="decimal"
                     ref={unitPriceTyping.ref}
+                    onPaste={unitPriceTyping.onPaste}
                     value={form.unitPrice}
                     onChange={(event) =>
                       change({

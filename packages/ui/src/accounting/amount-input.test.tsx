@@ -97,6 +97,30 @@ describe('AmountInput', () => {
     expect(input().selectionStart).toBe(1);
   });
 
+  it('refuses a decimal comma pasted over a grouped amount', () => {
+    const onCommit = vi.fn();
+    render(<Harness currency="USD" initial={125_000n} onCommit={onCommit} />);
+    expect(input().value).toBe('1,250.00');
+    type('3,75');
+    expect(input().value).toBe('3,75');
+    fireEvent.blur(input());
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
+  it('judges a paste by the clipboard, though it looks like digits deleted', () => {
+    const onCommit = vi.fn();
+    render(<Harness currency="USD" onCommit={onCommit} />);
+    input().focus();
+    type('1500');
+    expect(input().value).toBe('1,500');
+    // "1,5" pasted over all of "1,500" reads, from the two texts, as two zeros deleted.
+    fireEvent.paste(input(), { clipboardData: { getData: () => '1,5' } });
+    type('1,5');
+    expect(input().value).toBe('1,5');
+    fireEvent.blur(input());
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
   it.each([['3,75'], ['0,500']])(
     'refuses %s, a comma that does not group thousands, instead of reading it as digits',
     (typed) => {
