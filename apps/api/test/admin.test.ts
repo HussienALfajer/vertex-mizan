@@ -17,8 +17,10 @@ import { and, desc, eq } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
+  changeEmailByVertex,
   createAccountWithCompany,
   createCompanyWithOwner,
+  parseChangeEmail,
   parseCreateAccount,
   parseCreateCompany,
   parseResetTwoFactor,
@@ -485,5 +487,169 @@ describe('admin:reset-two-factor', () => {
     await expect(
       resetTwoFactorByVertex(db, { email: 'nobody.here@example.test', reason: 'لا' }),
     ).rejects.toThrow('No person with that email');
+  });
+});
+
+describe('admin:change-email (owner, 2026-11-20)', () => {
+  async function account() {
+    const email = `before.${uuidv7()}@example.test`;
+    const created = await createAccountWithCompany(
+      db,
+      parseCreateAccount([
+        '--name',
+        'شركة اختبار البريد',
+        '--policy-note',
+        'مذكرة سياسة تجريبية.',
+        '--book-currency',
+        'USD',
+        '--no-parallel',
+        '--template',
+        'contracting',
+        '--email',
+        email,
+        '--person-name',
+        'مالك تجريبي',
+      ]),
+    );
+    return { email, ...created };
+  }
+
+  it('moves the sign-in to the new email, keeps the person, company and password', async () => {
+    const before = await account();
+    const browser = new Browser(app);
+    await browser.post('/api/auth/sign-in/email', {
+      email: before.email,
+      password: before.password,
+    });
+    expect((await browser.get('/api/me')).status).toBe(200);
+
+    const after = `After.${uuidv7()}@Example.TEST`;
+    const input = parseChangeEmail([
+      '--from',
+      before.email,
+      '--to',
+      after,
+      '--reason',
+      'البريد الحقيقي للشركة',
+    ]);
+    expect(input.to).toBe(after.toLowerCase());
+    await changeEmailByVertex(db, input);
+
+    // The open session ends; the old email no longer signs in.
+    expect((await browser.get('/api/me')).status).toBe(401);
+    const old = await new Browser(app).post('/api/auth/sign-in/email', {
+      email: before.email,
+      password: before.password,
+    });
+    expect(old.status).toBe(401);
+
+    // The new email signs in with the same password, as the same person, in the same company.
+    const next = new Browser(app);
+    const signed = await next.post('/api/auth/sign-in/email', {
+      email: input.to,
+      password: before.password,
+    });
+    expect(signed.body).toEqual({ twoFactorRequired: false });
+    const me = await next.get('/api/me');
+    expect(me.body.person).toMatchObject({ id: before.personId, email: input.to });
+    expect(me.body.activeCompanyId).toBe(before.companyId);
+
+    const [entry] = await db
+      .select()
+      .from(platformAuditEntries)
+      .where(
+        and(
+          eq(platformAuditEntries.email, input.to),
+          eq(platformAuditEntries.action, 'user.email_changed'),
+        ),
+      );
+    expect(entry).toMatchObject({
+      actorKind: 'system',
+      actorUserId: null,
+      userAgent: 'admin:change-email',
+      details: {
+        personId: before.personId,
+        from: before.email,
+        to: input.to,
+        reason: 'البريد الحقيقي للشركة',
+      },
+    });
+  });
+
+  it('ends a password-reset link sent to the old address before the change', async () => {
+    const before = await account();
+    const asked = await new Browser(app).post('/api/auth/request-password-reset', {
+      email: before.email,
+    });
+    expect(asked.status).toBe(204);
+    const [mail] = await db
+      .select()
+      .from(emailOutbox)
+      .where(and(eq(emailOutbox.recipient, before.email), eq(emailOutbox.kind, 'password_reset')))
+      .orderBy(desc(emailOutbox.createdAt));
+    if (!mail) throw new Error('no reset email');
+    const token = new URL((mail.data as { link: string }).link).hash.slice('#token='.length);
+
+    const to = `after.${uuidv7()}@example.test`;
+    await changeEmailByVertex(db, { from: before.email, to, reason: 'البريد القديم فُقد' });
+
+    const reset = await new Browser(app).post('/api/auth/reset-password', {
+      token,
+      password: 'a password from the old mailbox',
+    });
+    expect(reset.status).toBe(410);
+    expect(reset.body.code).toBe('LINK_INVALID');
+    // The password is the one the person had.
+    const next = await new Browser(app).post('/api/auth/sign-in/email', {
+      email: to,
+      password: before.password,
+    });
+    expect(next.status).toBe(200);
+  });
+
+  it('refuses the change while an invitation to the old address is pending', async () => {
+    const before = await account();
+    await createCompanyWithOwner(
+      db,
+      'http://mizan.test',
+      parseCreateCompany([
+        '--name',
+        'شركة دعوة معلقة',
+        '--policy-note',
+        'مذكرة سياسة تجريبية.',
+        '--owner-email',
+        before.email,
+      ]),
+    );
+    await expect(
+      changeEmailByVertex(db, {
+        from: before.email,
+        to: `after.${uuidv7()}@example.test`,
+        reason: 'اختبار',
+      }),
+    ).rejects.toThrow('An invitation to the old email is pending: revoke it first');
+    const [still] = await db.select().from(users).where(eq(users.id, before.personId));
+    expect(still?.email).toBe(before.email);
+  });
+
+  it('refuses an unknown email, a taken one and the same one, changing nothing', async () => {
+    const one = await account();
+    const two = await account();
+    const reason = 'اختبار';
+    await expect(
+      changeEmailByVertex(db, { from: 'nobody.here@example.test', to: 'x@example.test', reason }),
+    ).rejects.toThrow('No person with that email');
+    await expect(
+      changeEmailByVertex(db, { from: one.email, to: two.email, reason }),
+    ).rejects.toThrow('A person with the new email exists');
+    await expect(
+      changeEmailByVertex(db, { from: one.email, to: one.email, reason }),
+    ).rejects.toThrow('The new email is the current one');
+    const [still] = await db.select().from(users).where(eq(users.id, one.personId));
+    expect(still?.email).toBe(one.email);
+    expect(() =>
+      parseChangeEmail(['--from', one.email, '--to', 'not an email', '--reason', 'x']),
+    ).toThrow();
+    expect(() => parseChangeEmail(['--from', one.email, '--to', 'x@example.test'])).toThrow();
   });
 });

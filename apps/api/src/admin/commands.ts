@@ -13,13 +13,15 @@ import {
   accounts,
   createCompanyBooks,
   type Database,
+  invitations,
   memberships,
   sessions,
   twoFactors,
   users,
+  verifications,
   withCompany,
 } from '@vertex-mizan/db';
-import { eq } from 'drizzle-orm';
+import { and, eq, gt, isNull, like, sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
 import {
   type AuditActor,
@@ -315,6 +317,78 @@ export async function resetTwoFactorByVertex(
       actor,
       email: input.email,
       details: { reason: input.reason, twoFactorWasEnabled: person.twoFactorEnabled },
+    });
+  });
+}
+
+/** `admin:change-email` arguments: the person's current email, the new one and the reason. */
+export function parseChangeEmail(argv: string[]): { from: string; to: string; reason: string } {
+  const { values } = parseArgs({
+    args: argv,
+    options: { from: { type: 'string' }, to: { type: 'string' }, reason: { type: 'string' } },
+    strict: true,
+  });
+  return {
+    from: emailSchema.parse(values.from),
+    to: emailSchema.parse(values.to),
+    reason: reasonSchema.parse({ reason: values.reason }).reason,
+  };
+}
+
+/**
+ * Changes a person's sign-in email by Vertex (S01 "Out": a server command only; owner,
+ * 2026-11-20). The person, their memberships and every company's books keep their ids, so nothing
+ * else changes; the password stays. Refuses an unknown email, one that already belongs to a
+ * person, and the change while a live invitation is addressed to the old email (accepting it
+ * would make another person with that address: an owner revokes it first). Ends every session and
+ * deletes the person's password-reset links, which name the person and not the address, so
+ * nothing sent to the old mailbox still opens the account; then writes the platform audit log
+ * with both addresses and the reason.
+ */
+export async function changeEmailByVertex(
+  db: Database,
+  input: { from: string; to: string; reason: string },
+  actor = commandActor('admin:change-email'),
+): Promise<void> {
+  if (input.from === input.to) throw new Error('The new email is the current one');
+  await db.transaction(async (tx) => {
+    const [person] = await tx
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.email, input.from))
+      .for('update');
+    if (!person) throw new Error('No person with that email');
+    const [taken] = await tx.select({ id: users.id }).from(users).where(eq(users.email, input.to));
+    if (taken) throw new Error('A person with the new email exists');
+    const [invited] = await tx
+      .select({ id: invitations.id })
+      .from(invitations)
+      .where(
+        and(
+          eq(invitations.email, input.from),
+          isNull(invitations.acceptedAt),
+          isNull(invitations.revokedAt),
+          gt(invitations.expiresAt, sql`now()`),
+        ),
+      )
+      .limit(1);
+    if (invited) {
+      throw new Error('An invitation to the old email is pending: revoke it first');
+    }
+    await tx
+      .update(users)
+      // Vertex sets the address, as `admin:create-account` does: it counts as verified.
+      .set({ email: input.to, emailVerified: true, updatedAt: new Date() })
+      .where(eq(users.id, person.id));
+    await tx.delete(sessions).where(eq(sessions.userId, person.id));
+    await tx
+      .delete(verifications)
+      .where(and(eq(verifications.value, person.id), like(verifications.identifier, 'reset:%')));
+    await writePlatformAudit(tx, {
+      action: 'user.email_changed',
+      actor,
+      email: input.to,
+      details: { personId: person.id, from: input.from, to: input.to, reason: input.reason },
     });
   });
 }

@@ -5,7 +5,8 @@ import { auditQuerySchema, COMPANY_AUDIT_ACTIONS, PLATFORM_AUDIT_ACTIONS } from 
 describe('audit actions', () => {
   // Stored values: a later spec appends, never renames (S01, "Audit").
   it('are the platform and company actions of S01 to S13, as <entity>.<verb>', () => {
-    expect(PLATFORM_AUDIT_ACTIONS).toHaveLength(12);
+    expect(PLATFORM_AUDIT_ACTIONS).toHaveLength(13);
+    expect(PLATFORM_AUDIT_ACTIONS.slice(11)).toEqual(['user.created', 'user.email_changed']);
     expect(COMPANY_AUDIT_ACTIONS).toHaveLength(109);
     expect(COMPANY_AUDIT_ACTIONS.slice(102)).toEqual([
       'movement.cancelled',
