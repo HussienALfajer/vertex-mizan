@@ -14579,7 +14579,8 @@
           "company.created",
           "user.two_factor_reset",
           "user.other_sessions_revoked",
-          "user.created"
+          "user.created",
+          "user.email_changed"
         ]
       },
       "ChangePassword": {

@@ -8,6 +8,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "start": "node --env-file-if-exists=../../.env dist/main.js",
+    "admin:change-email": "node --env-file-if-exists=../../.env dist/admin/change-email.js",
     "admin:create-account": "node --env-file-if-exists=../../.env dist/admin/create-account.js",
     "admin:create-company": "node --env-file-if-exists=../../.env dist/admin/create-company.js",
     "admin:reset-two-factor": "node --env-file-if-exists=../../.env dist/admin/reset-two-factor.js"

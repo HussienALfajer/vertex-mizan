@@ -19,7 +19,7 @@ Mizan serves many companies under one login, each fully isolated. This spec deli
   - **Module switches** (ADR 0001, ADR 0003): every optional module is off in phase 1 and nothing in S01 reads them.
   - Exporting the audit log to Excel or PDF: with the report exports (F13).
   - Public sign-up, a platform super-user, Vertex support access (phase 4, ADR 0003).
-  - Changing a person's email, archiving a person, and signing in with another provider: a server command only, if ever needed in phase 1.
+  - Changing a person's email, archiving a person, and signing in with another provider: a server command only, if ever needed in phase 1. The email's command exists: `admin:change-email` (owner, 2026-11-20), audited `user.email_changed`.
   - Branches and branch-scoped permissions (later).
 
 ## Access

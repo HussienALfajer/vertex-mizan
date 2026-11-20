@@ -17,6 +17,7 @@ export const PLATFORM_AUDIT_ACTIONS = [
   'user.two_factor_reset',
   'user.other_sessions_revoked',
   'user.created',
+  'user.email_changed',
 ] as const;
 
 export const platformAuditActionSchema = z

@@ -318,3 +318,54 @@ export async function resetTwoFactorByVertex(
     });
   });
 }
+
+/** `admin:change-email` arguments: the person's current email, the new one and the reason. */
+export function parseChangeEmail(argv: string[]): { from: string; to: string; reason: string } {
+  const { values } = parseArgs({
+    args: argv,
+    options: { from: { type: 'string' }, to: { type: 'string' }, reason: { type: 'string' } },
+    strict: true,
+  });
+  return {
+    from: emailSchema.parse(values.from),
+    to: emailSchema.parse(values.to),
+    reason: reasonSchema.parse({ reason: values.reason }).reason,
+  };
+}
+
+/**
+ * Changes a person's sign-in email by Vertex (S01 "Out": a server command only; owner,
+ * 2026-11-20). The person, their memberships and every company's books keep their ids, so nothing
+ * else changes; the password stays. Refuses an unknown email and one that already belongs to a
+ * person, ends every session so the next sign-in uses the new email, and writes the platform
+ * audit log with both addresses and the reason.
+ */
+export async function changeEmailByVertex(
+  db: Database,
+  input: { from: string; to: string; reason: string },
+  actor = commandActor('admin:change-email'),
+): Promise<void> {
+  if (input.from === input.to) throw new Error('The new email is the current one');
+  await db.transaction(async (tx) => {
+    const [person] = await tx
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.email, input.from))
+      .for('update');
+    if (!person) throw new Error('No person with that email');
+    const [taken] = await tx.select({ id: users.id }).from(users).where(eq(users.email, input.to));
+    if (taken) throw new Error('A person with the new email exists');
+    await tx
+      .update(users)
+      // Vertex sets the address, as `admin:create-account` does: it counts as verified.
+      .set({ email: input.to, emailVerified: true, updatedAt: new Date() })
+      .where(eq(users.id, person.id));
+    await tx.delete(sessions).where(eq(sessions.userId, person.id));
+    await writePlatformAudit(tx, {
+      action: 'user.email_changed',
+      actor,
+      email: input.to,
+      details: { personId: person.id, from: input.from, to: input.to, reason: input.reason },
+    });
+  });
+}

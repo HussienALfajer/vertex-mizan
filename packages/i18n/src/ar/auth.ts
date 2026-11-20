@@ -176,6 +176,7 @@ export const auth = {
     'user.two_factor_reset': 'إعادة تعيين المصادقة الثنائية',
     'user.other_sessions_revoked': 'تسجيل الخروج من الجلسات الأخرى',
     'user.created': 'إنشاء الحساب من فيرتكس',
+    'user.email_changed': 'تغيير البريد الإلكتروني من فيرتكس',
   } satisfies Record<PlatformAuditAction, string>,
   nav: 'أمان الحساب',
 };
